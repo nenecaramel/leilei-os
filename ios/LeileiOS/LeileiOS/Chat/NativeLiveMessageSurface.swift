@@ -13,6 +13,8 @@ struct NativeLiveMessageSurface: View {
 
     private let bottomAnchorID = "native-live-chat-bottom"
     @State private var isAwayFromBottom = false
+    @State private var copiedMessageID: String?
+    @State private var copyFeedbackToken = UUID()
 
     var body: some View {
         Group {
@@ -60,6 +62,13 @@ struct NativeLiveMessageSurface: View {
                         NativeLiveMessageRow(
                             message: message,
                             isTurnInFlight: isTurnInFlight,
+                            isCopied: copiedMessageID == message.id,
+                            onCopyMessage: { text in
+                                copyMessage(
+                                    text,
+                                    messageID: message.id
+                                )
+                            },
                             onRetryMessage: onRetryMessage,
                             onEditMessage: onEditMessage
                         )
@@ -97,6 +106,24 @@ struct NativeLiveMessageSurface: View {
             }
             .onChange(of: snapshot.syncToken) { _, _ in
                 scrollToBottom(proxy)
+            }
+            .overlay(alignment: .top) {
+                if copiedMessageID != nil {
+                    Text("Message copied")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .glassEffect(
+                            .regular,
+                            in: Capsule()
+                        )
+                        .padding(.top, 10)
+                        .transition(
+                            .move(edge: .top)
+                                .combined(with: .opacity)
+                        )
+                }
             }
             .overlay(alignment: .bottom) {
                 if isAwayFromBottom {
@@ -142,6 +169,29 @@ struct NativeLiveMessageSurface: View {
         }
     }
 
+    private func copyMessage(
+        _ text: String,
+        messageID: String
+    ) {
+        UIPasteboard.general.string = text
+
+        let token = UUID()
+        copyFeedbackToken = token
+
+        withAnimation(.easeInOut(duration: 0.16)) {
+            copiedMessageID = messageID
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard copyFeedbackToken == token else { return }
+
+            withAnimation(.easeInOut(duration: 0.16)) {
+                copiedMessageID = nil
+            }
+        }
+    }
+
     private func scrollToBottom(
         _ proxy: ScrollViewProxy
     ) {
@@ -157,6 +207,8 @@ struct NativeLiveMessageSurface: View {
 private struct NativeLiveMessageRow: View {
     let message: NativeLiveCurrentPathMessage
     let isTurnInFlight: Bool
+    let isCopied: Bool
+    let onCopyMessage: (String) -> Void
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
@@ -213,10 +265,18 @@ private struct NativeLiveMessageRow: View {
                 HStack(spacing: 12) {
                     if let copyText {
                         Button {
-                            UIPasteboard.general.string = copyText
+                            onCopyMessage(copyText)
                         } label: {
-                            Image(systemName: "square.on.square")
-                                .frame(width: 22, height: 22)
+                            Image(
+                                systemName:
+                                    isCopied
+                                    ? "checkmark"
+                                    : "square.on.square"
+                            )
+                            .contentTransition(
+                                .symbolEffect(.replace)
+                            )
+                            .frame(width: 22, height: 22)
                         }
                     }
 
@@ -225,7 +285,7 @@ private struct NativeLiveMessageRow: View {
                             onRetryMessage(targetUserMessageID)
                         } label: {
                             Image(systemName: "arrow.clockwise")
-                                .rotationEffect(.degrees(-15))
+                                .rotationEffect(.degrees(45))
                                 .frame(width: 22, height: 22)
                         }
                         .disabled(isTurnInFlight)
@@ -257,11 +317,15 @@ private struct NativeLiveMessageRow: View {
                     .frame(minHeight: 20)
             }
         } else {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(
+                alignment: .leading,
+                spacing: message.role == "user" ? 19 : 22
+            ) {
                 ForEach(visibleBlocks) { block in
                     NativeLiveBlockView(
                         block: block,
-                        fillsAvailableWidth: message.role != "user"
+                        fillsAvailableWidth: message.role != "user",
+                        isUserMessage: message.role == "user"
                     )
                 }
             }
@@ -450,6 +514,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
 private struct NativeLiveBlockView: View {
     let block: NativeLiveCurrentPathBlock
     let fillsAvailableWidth: Bool
+    let isUserMessage: Bool
 
     var body: some View {
         if let text = normalizedText {
@@ -457,14 +522,16 @@ private struct NativeLiveBlockView: View {
             case "text":
                 ChatMarkdownView(
                     text: text,
-                    fillsAvailableWidth: fillsAvailableWidth
+                    fillsAvailableWidth: fillsAvailableWidth,
+                    lineSpacing: isUserMessage ? 5 : 6,
+                    paragraphSpacing: isUserMessage ? 19 : 22
                 )
 
             case "tool_use", "tool_result", "attachment":
                 Text(text)
                     .font(.system(size: 15))
-                    .tracking(0.12)
-                    .lineSpacing(6)
+                    .tracking(0.10)
+                    .lineSpacing(isUserMessage ? 5 : 6)
                     .foregroundStyle(.secondary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
@@ -490,11 +557,13 @@ private struct NativeLiveBlockView: View {
 private struct ChatMarkdownView: View {
     let text: String
     let fillsAvailableWidth: Bool
+    let lineSpacing: CGFloat
+    let paragraphSpacing: CGFloat
 
     private let baseFontSize: CGFloat = 17
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: paragraphSpacing) {
             ForEach(
                 Array(ChatMarkdownParser.blocks(from: text).enumerated()),
                 id: \.offset
@@ -516,8 +585,8 @@ private struct ChatMarkdownView: View {
         case .paragraph(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
-                .tracking(0.12)
-                .lineSpacing(6)
+                .tracking(0.08)
+                .lineSpacing(lineSpacing)
 
         case .heading(let level, let text):
             inlineText(text)
@@ -525,15 +594,15 @@ private struct ChatMarkdownView: View {
                     size: headingSize(level),
                     weight: level <= 2 ? .semibold : .medium
                 ))
-                .tracking(0.12)
-                .lineSpacing(6)
+                .tracking(0.10)
+                .lineSpacing(lineSpacing)
                 .padding(.top, level == 1 ? 2 : 0)
 
         case .quote(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
-                .tracking(0.12)
-                .lineSpacing(6)
+                .tracking(0.10)
+                .lineSpacing(lineSpacing)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
@@ -546,32 +615,32 @@ private struct ChatMarkdownView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
                     .font(.system(size: baseFontSize))
-                    .tracking(0.12)
+                    .tracking(0.10)
 
                 inlineText(text)
                     .font(.system(size: baseFontSize))
-                    .tracking(0.12)
-                    .lineSpacing(6)
+                    .tracking(0.10)
+                    .lineSpacing(lineSpacing)
             }
 
         case .orderedItem(let number, let text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(number).")
                     .font(.system(size: baseFontSize))
-                    .tracking(0.12)
+                    .tracking(0.10)
                     .foregroundStyle(.secondary)
 
                 inlineText(text)
                     .font(.system(size: baseFontSize))
-                    .tracking(0.12)
-                    .lineSpacing(6)
+                    .tracking(0.10)
+                    .lineSpacing(lineSpacing)
             }
 
         case .codeBlock(let code):
             Text(code)
                 .font(.system(size: 14, design: .monospaced))
                 .tracking(0.10)
-                .lineSpacing(6)
+                .lineSpacing(lineSpacing)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
