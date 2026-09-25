@@ -1,0 +1,267 @@
+import { sql } from "drizzle-orm";
+import postgres from "postgres";
+import type { createDatabase } from "../../database/client.js";
+
+type Database = ReturnType<typeof createDatabase>["db"];
+
+const WORK_WAKE_CHANNEL = "leileios_native_live_work_ready";
+
+export type NativeLiveWorkKind =
+  | "semantic"
+  | "foreground"
+  | "background_model";
+
+export type NativeLiveWorkWaitOutcome =
+  | { outcome: "ready"; version: number }
+  | { outcome: "timeout"; version: number };
+
+export class DrizzleNativeLiveWorkWakePublisher {
+  constructor(private readonly db: Database) {}
+
+  async notify(input: {
+    userId: string;
+    kind: NativeLiveWorkKind;
+  }): Promise<void> {
+    const payload = JSON.stringify({
+      user_id: input.userId,
+      kind: input.kind,
+    });
+    try {
+      await this.db.execute(sql`
+        SELECT pg_notify(${WORK_WAKE_CHANNEL}, ${payload})
+      `);
+    } catch {
+      // Wake-up is advisory. Durable queue state remains authoritative and
+      // wait-side availability checks recover missed notifications.
+    }
+  }
+}
+
+export class DrizzleNativeLiveWorkAvailability {
+  constructor(private readonly db: Database) {}
+
+  async hasWork(input: { userId: string }): Promise<boolean> {
+    const rows = await this.db.execute<{ ready: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1
+        FROM native_live_semantic_scoring_requests AS semantic
+        INNER JOIN native_live_turn_preparations AS preparation
+          ON preparation.id = semantic.prepare_id
+         AND preparation.user_id = semantic.user_id
+        WHERE semantic.user_id = ${input.userId}::uuid
+          AND preparation.status = 'prepared'
+          AND preparation.mind_prepared = false
+          AND (
+            semantic.status = 'pending'
+            OR (
+              semantic.status = 'reserved'
+              AND semantic.reservation_expires_at <= now()
+            )
+          )
+
+        UNION ALL
+
+        SELECT 1
+        FROM native_live_turn_preparations AS preparation
+        WHERE preparation.user_id = ${input.userId}::uuid
+          AND preparation.status = 'prepared'
+          AND preparation.mind_prepared = true
+          AND (
+            preparation.dispatch_status = 'pending'
+            OR (
+              preparation.dispatch_status = 'reserved'
+              AND preparation.reservation_expires_at <= now()
+              AND preparation.execution_started_at IS NULL
+            )
+          )
+
+        UNION ALL
+
+        SELECT 1
+        FROM native_live_background_model_jobs AS job
+        WHERE job.user_id = ${input.userId}::uuid
+          AND (
+            job.status = 'pending'
+            OR (
+              job.status = 'reserved'
+              AND job.reservation_expires_at <= now()
+            )
+            OR (
+              job.status IN ('completed', 'failed')
+              AND job.consumed_at IS NULL
+            )
+          )
+      ) AS ready
+    `);
+    return rows[0]?.ready === true;
+  }
+}
+
+type Waiter = {
+  resolve: (outcome: NativeLiveWorkWaitOutcome) => void;
+  timer: ReturnType<typeof setTimeout>;
+  abortCleanup: (() => void) | null;
+};
+
+export class NativeLiveWorkWakeBroker {
+  private readonly client: ReturnType<typeof postgres>;
+  private readonly versions = new Map<string, number>();
+  private readonly waiters = new Map<string, Set<Waiter>>();
+  private startPromise: Promise<void> | null = null;
+  private closed = false;
+
+  constructor(databaseUrl: string) {
+    this.client = postgres(databaseUrl, {
+      max: 1,
+      prepare: false,
+      ssl: "require",
+      connect_timeout: 3,
+      idle_timeout: 0,
+    });
+  }
+
+  start(): Promise<void> {
+    if (this.closed) {
+      return Promise.reject(
+        new Error("Native live work wake broker is closed."),
+      );
+    }
+    this.startPromise ??= Promise.resolve(
+      this.client.listen(
+        WORK_WAKE_CHANNEL,
+        (payload) => this.handleNotification(payload),
+      ),
+    ).then(() => undefined);
+    return this.startPromise;
+  }
+
+  version(userId: string): number {
+    return this.versions.get(userId) ?? 0;
+  }
+
+  async waitForChange(input: {
+    userId: string;
+    afterVersion: number;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<NativeLiveWorkWaitOutcome> {
+    await this.start();
+
+    const current = this.version(input.userId);
+    if (current !== input.afterVersion) {
+      return { outcome: "ready", version: current };
+    }
+    if (input.signal?.aborted) {
+      return { outcome: "timeout", version: current };
+    }
+
+    return new Promise((resolve) => {
+      const finish = (outcome: NativeLiveWorkWaitOutcome) => {
+        const bucket = this.waiters.get(input.userId);
+        if (bucket) {
+          bucket.delete(waiter);
+          if (bucket.size === 0) this.waiters.delete(input.userId);
+        }
+        clearTimeout(waiter.timer);
+        waiter.abortCleanup?.();
+        resolve(outcome);
+      };
+
+      const waiter: Waiter = {
+        resolve: finish,
+        timer: setTimeout(() => {
+          finish({
+            outcome: "timeout",
+            version: this.version(input.userId),
+          });
+        }, input.timeoutMs),
+        abortCleanup: null,
+      };
+
+      if (input.signal) {
+        const onAbort = () => {
+          finish({
+            outcome: "timeout",
+            version: this.version(input.userId),
+          });
+        };
+        input.signal.addEventListener("abort", onAbort, { once: true });
+        waiter.abortCleanup = () =>
+          input.signal?.removeEventListener("abort", onAbort);
+      }
+
+      const bucket = this.waiters.get(input.userId) ?? new Set<Waiter>();
+      bucket.add(waiter);
+      this.waiters.set(input.userId, bucket);
+
+      const latest = this.version(input.userId);
+      if (latest !== input.afterVersion) {
+        finish({ outcome: "ready", version: latest });
+      }
+    });
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    for (const [userId, bucket] of this.waiters) {
+      for (const waiter of [...bucket]) {
+        waiter.resolve({
+          outcome: "timeout",
+          version: this.version(userId),
+        });
+      }
+    }
+    this.waiters.clear();
+    await this.client.end({ timeout: 5 });
+  }
+
+  private handleNotification(payload: string): void {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return;
+    }
+    const userId = (parsed as Record<string, unknown>).user_id;
+    if (typeof userId !== "string" || !userId.trim()) return;
+
+    const version = (this.versions.get(userId) ?? 0) + 1;
+    this.versions.set(userId, version);
+    const bucket = this.waiters.get(userId);
+    if (!bucket) return;
+    for (const waiter of [...bucket]) {
+      waiter.resolve({ outcome: "ready", version });
+    }
+  }
+}
+
+export class NativeLiveWorkWaitService {
+  constructor(
+    private readonly availability: DrizzleNativeLiveWorkAvailability,
+    private readonly broker: NativeLiveWorkWakeBroker,
+  ) {}
+
+  async wait(input: {
+    userId: string;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<NativeLiveWorkWaitOutcome> {
+    await this.broker.start();
+    const version = this.broker.version(input.userId);
+
+    if (await this.availability.hasWork({ userId: input.userId })) {
+      return { outcome: "ready", version };
+    }
+
+    return this.broker.waitForChange({
+      userId: input.userId,
+      afterVersion: version,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
+    });
+  }
+}
