@@ -47,42 +47,36 @@ struct ChatComposer: View {
 
                 Menu {
                     Section("Model") {
-                        ForEach(NativeLiveClaudeModel.allCases) { option in
-                            Button {
-                                selectModel(option)
-                            } label: {
-                                menuRow(
-                                    option.displayName,
-                                    selected: model == option
-                                )
+                        Picker("", selection: modelSelection) {
+                            ForEach(NativeLiveClaudeModel.allCases) { option in
+                                Text(option.displayName)
+                                    .tag(option)
                             }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.inline)
                     }
 
                     Section("Thinking") {
-                        ForEach(model.supportedThinkingModes) { option in
-                            Button {
-                                thinking = option
-                            } label: {
-                                menuRow(
-                                    option.displayName,
-                                    selected: thinking == option
-                                )
+                        Picker("", selection: $thinking) {
+                            ForEach(model.supportedThinkingModes) { option in
+                                Text(option.displayName)
+                                    .tag(option)
                             }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.inline)
                     }
 
                     Section("Effort") {
-                        ForEach(model.supportedEffortLevels) { option in
-                            Button {
-                                effort = option
-                            } label: {
-                                menuRow(
-                                    option.displayName,
-                                    selected: effort == option
-                                )
+                        Picker("", selection: $effort) {
+                            ForEach(model.supportedEffortLevels) { option in
+                                Text(option.displayName)
+                                    .tag(option)
                             }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.inline)
                     }
                 } label: {
                     CombinedModelCapsule(
@@ -169,20 +163,10 @@ struct ChatComposer: View {
         }
     }
 
-    private func menuRow(
-        _ title: String,
-        selected: Bool
-    ) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark")
-                .opacity(selected ? 1 : 0)
-                .frame(width: 16, alignment: .leading)
-
-            Text(title)
-
-            Spacer(minLength: 12)
-        }
-        .frame(minWidth: 150, minHeight: 30, alignment: .leading)
-        .padding(.vertical, 2)
+    private var modelSelection: Binding<NativeLiveClaudeModel> {
+        Binding(
+            get: { model },
+            set: { selectModel($0) }
+        )
     }
 }
