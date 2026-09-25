@@ -12,26 +12,26 @@ test("Mac daemon Claude transport defaults to Agent SDK", () => {
   );
 });
 
-test("Mac daemon Claude transport keeps explicit headless rollback", () => {
+test("Mac daemon Claude transport accepts explicit agent_sdk", () => {
   assert.equal(
     resolveNativeLiveMacClaudeTransportKind({
-      LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT: " headless ",
+      LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT: " agent_sdk ",
     }),
-    "headless",
+    "agent_sdk",
   );
 });
 
-test("Mac daemon Claude transport rejects unknown selector values", () => {
+test("Mac daemon Claude transport rejects retired selectors", () => {
   assert.throws(
     () =>
       resolveNativeLiveMacClaudeTransportKind({
-        LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT: "other",
+        LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT: "headless",
       }),
-    /must be agent_sdk or headless/i,
+    /retired.*agent_sdk only/i,
   );
 });
 
-test("Mac daemon transport factory creates the selected parity adapter", async () => {
+test("Mac daemon transport factory creates the Agent SDK adapter", async () => {
   const agent = await createNativeLiveMacClaudeTransport(
     {},
     process.cwd(),
@@ -42,17 +42,4 @@ test("Mac daemon transport factory creates the selected parity adapter", async (
   assert.equal(typeof agent.runtime.fork, "function");
   assert.equal(typeof agent.runtime.abort, "function");
   assert.equal(typeof agent.runtime.executeTurn, "function");
-
-  const headless = await createNativeLiveMacClaudeTransport(
-    {
-      LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT: "headless",
-    },
-    process.cwd(),
-  );
-  assert.equal(headless.kind, "headless");
-  assert.equal(typeof headless.runtime.sendNew, "function");
-  assert.equal(typeof headless.runtime.resume, "function");
-  assert.equal(typeof headless.runtime.fork, "function");
-  assert.equal(typeof headless.runtime.abort, "function");
-  assert.equal(headless.runtime.executeTurn, undefined);
 });
