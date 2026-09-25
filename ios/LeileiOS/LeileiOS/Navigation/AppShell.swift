@@ -52,6 +52,7 @@ struct AppShell: View {
                         }
                         newSessionPresented = true
                     },
+                    newSessionEnabled: appModel.isAuthenticated,
                     onSettings: {
                         settingsPresented = true
                     },
@@ -119,6 +120,7 @@ struct AppShell: View {
                 onNewSession: {
                     newSessionPresented = true
                 },
+                newSessionEnabled: appModel.isAuthenticated,
                 onSettings: nil,
                 onSelect: {}
             )
