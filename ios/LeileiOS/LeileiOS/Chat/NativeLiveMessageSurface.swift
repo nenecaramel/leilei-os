@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct NativeLiveMessageSurface: View {
     let snapshot: NativeLiveCurrentPathSnapshot?
@@ -121,18 +122,15 @@ private struct NativeLiveMessageRow: View {
                                 style: .continuous
                             )
                         )
-                        .contentShape(
-                            .contextMenuPreview,
-                            RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
-                        )
-                        .contextMenu {
-                            Button("Edit") {
+                        .overlay {
+                            LightweightContextMenuInteraction(
+                                title: "Edit",
+                                systemImage: "pencil",
+                                isDisabled: isTurnInFlight,
+                                cornerRadius: 18
+                            ) {
                                 onEditMessage(message)
                             }
-                            .disabled(isTurnInFlight)
                         }
 
                     messageStatus
@@ -148,19 +146,16 @@ private struct NativeLiveMessageRow: View {
                         .foregroundStyle(.secondary)
 
                     messageContent
-                        .contentShape(
-                            .contextMenuPreview,
-                            RoundedRectangle(
-                                cornerRadius: 12,
-                                style: .continuous
-                            )
-                        )
-                        .contextMenu {
+                        .overlay {
                             if let targetUserMessageID = message.parentMessageId {
-                                Button("Retry") {
+                                LightweightContextMenuInteraction(
+                                    title: "Retry",
+                                    systemImage: "arrow.clockwise",
+                                    isDisabled: isTurnInFlight,
+                                    cornerRadius: 12
+                                ) {
                                     onRetryMessage(targetUserMessageID)
                                 }
-                                .disabled(isTurnInFlight)
                             }
                         }
 
@@ -222,6 +217,139 @@ private struct NativeLiveMessageRow: View {
         return normalized.isEmpty ? nil : normalized
     }
 }
+
+private struct LightweightContextMenuInteraction: UIViewRepresentable {
+    let title: String
+    let systemImage: String
+    let isDisabled: Bool
+    let cornerRadius: CGFloat
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            title: title,
+            systemImage: systemImage,
+            isDisabled: isDisabled,
+            cornerRadius: cornerRadius,
+            action: action
+        )
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isOpaque = false
+
+        let interaction = UIContextMenuInteraction(
+            delegate: context.coordinator
+        )
+        view.addInteraction(interaction)
+        context.coordinator.hostView = view
+        return view
+    }
+
+    func updateUIView(
+        _ uiView: UIView,
+        context: Context
+    ) {
+        context.coordinator.title = title
+        context.coordinator.systemImage = systemImage
+        context.coordinator.isDisabled = isDisabled
+        context.coordinator.cornerRadius = cornerRadius
+        context.coordinator.action = action
+        context.coordinator.hostView = uiView
+    }
+
+    final class Coordinator: NSObject, UIContextMenuInteractionDelegate {
+        weak var hostView: UIView?
+
+        var title: String
+        var systemImage: String
+        var isDisabled: Bool
+        var cornerRadius: CGFloat
+        var action: () -> Void
+
+        init(
+            title: String,
+            systemImage: String,
+            isDisabled: Bool,
+            cornerRadius: CGFloat,
+            action: @escaping () -> Void
+        ) {
+            self.title = title
+            self.systemImage = systemImage
+            self.isDisabled = isDisabled
+            self.cornerRadius = cornerRadius
+            self.action = action
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configurationForMenuAtLocation location: CGPoint
+        ) -> UIContextMenuConfiguration? {
+            UIContextMenuConfiguration(
+                identifier: nil,
+                previewProvider: nil
+            ) { [weak self] _ in
+                guard let self else {
+                    return UIMenu(children: [])
+                }
+
+                let attributes: UIMenuElement.Attributes =
+                    self.isDisabled ? [.disabled] : []
+
+                let action = UIAction(
+                    title: self.title,
+                    image: UIImage(systemName: self.systemImage),
+                    attributes: attributes
+                ) { [weak self] _ in
+                    self?.action()
+                }
+
+                return UIMenu(children: [action])
+            }
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configuration: UIContextMenuConfiguration,
+            highlightPreviewForItemWithIdentifier identifier: any NSCopying
+        ) -> UITargetedPreview? {
+            preview(for: interaction)
+        }
+
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configuration: UIContextMenuConfiguration,
+            dismissalPreviewForItemWithIdentifier identifier: any NSCopying
+        ) -> UITargetedPreview? {
+            preview(for: interaction)
+        }
+
+        private func preview(
+            for interaction: UIContextMenuInteraction
+        ) -> UITargetedPreview? {
+            guard let hostView = interaction.view else {
+                return nil
+            }
+
+            let previewView = hostView.superview ?? hostView
+            let parameters = UIPreviewParameters()
+            parameters.backgroundColor = .clear
+            parameters.visiblePath = UIBezierPath(
+                roundedRect: previewView.bounds,
+                cornerRadius: cornerRadius
+            )
+            parameters.shadowPath = UIBezierPath()
+
+            return UITargetedPreview(
+                view: previewView,
+                parameters: parameters
+            )
+        }
+    }
+}
+
 
 private struct NativeLiveBlockView: View {
     let block: NativeLiveCurrentPathBlock
