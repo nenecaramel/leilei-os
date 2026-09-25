@@ -61,9 +61,7 @@ struct ChatComposer: View {
 
                     Section("Effort") {
                         Picker("", selection: $effort) {
-                            ForEach(
-                                Array(availableEffortLevels.reversed())
-                            ) { option in
+                            ForEach(availableEffortLevels) { option in
                                 Text(option.displayName)
                                     .tag(option)
                             }
