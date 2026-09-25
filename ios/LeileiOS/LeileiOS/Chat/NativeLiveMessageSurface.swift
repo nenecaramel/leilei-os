@@ -799,10 +799,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
                 roundedRect: previewView.bounds,
                 cornerRadius: cornerRadius
             )
-            parameters.shadowPath = UIBezierPath(
-                roundedRect: previewView.bounds,
-                cornerRadius: cornerRadius
-            )
+            parameters.shadowPath = UIBezierPath()
 
             return UITargetedPreview(
                 view: previewView,
