@@ -147,3 +147,20 @@ test("search export and restore contracts expose active modules only", () => {
     /ExportScope = "all" \| "diary" \| "todo"/,
   );
 });
+
+
+test("retired Phase 2 Memory seed tooling stays absent", () => {
+  assert.equal(existsSync("scripts/seed-phase-2.ts"), false);
+  const rootPackage = JSON.parse(
+    readFileSync("package.json", "utf8"),
+  ) as { scripts?: Record<string, string> };
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      rootPackage.scripts ?? {},
+      "db:seed:phase2",
+    ),
+    false,
+  );
+  const envExample = readFileSync(".env.example", "utf8");
+  assert.equal(envExample.includes("SEED_CONTENT_AUTHOR"), false);
+});
