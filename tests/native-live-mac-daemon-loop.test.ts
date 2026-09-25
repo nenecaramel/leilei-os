@@ -620,6 +620,55 @@ test("foreground normalized events are delivered in reservation-local sequence b
   );
 });
 
+test("foreground runtime event buffering flushes in bounded batches", async () => {
+  class NineEventExecutor implements NativeLivePreparedCommandExecutor {
+    async execute(
+      _input: unknown,
+      options?: {
+        onNormalizedEvent?: (
+          event: NativeLiveNormalizedEvent,
+        ) => void | Promise<void>;
+      },
+    ) {
+      for (let index = 1; index <= 9; index += 1) {
+        await options?.onNormalizedEvent?.({
+          type: "partial_text",
+          payload: {
+            delta: String(index),
+            accumulated_length: index,
+          },
+        });
+      }
+      return success();
+    }
+  }
+
+  const relay = new FakeRuntimeEventRelay();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new NineEventExecutor(),
+  );
+
+  assert.equal((await loop.runOnce()).outcome, "completed");
+  const batches = relay.calls
+    .filter((entry) => entry.name === "appendRuntimeEvents")
+    .map((entry) => (
+      entry.input as {
+        events: Array<{ sequence: number }>;
+      }
+    ).events);
+
+  assert.deepEqual(
+    batches.map((batch) => batch.length),
+    [8, 1],
+  );
+  assert.deepEqual(
+    batches.flat().map((event) => event.sequence),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  );
+});
+
 test("runtime event delivery is fail-soft and does not invalidate canonical terminal result", async () => {
   const relay = new FakeRuntimeEventRelay();
   relay.eventSubmitError = new Error("event store unavailable");
