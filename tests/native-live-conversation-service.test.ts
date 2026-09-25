@@ -50,6 +50,14 @@ class FakeRepository implements NativeLiveConversationRepository {
     return null;
   }
 
+  async deleteConversation() {
+    this.events.push("delete");
+    return {
+      outcome: "deleted" as const,
+      deletedAt: "2026-09-21T00:00:00.000Z",
+    };
+  }
+
   async appendUserMessage(): Promise<NativeLiveMessage> {
     this.events.push("user");
     return message("u1", "user");
@@ -172,4 +180,18 @@ test("completeAssistantTurn never advances head after checkpoint failure", async
     "checkpoint",
     "tx:rollback",
   ]);
+});
+
+
+test("deleteConversation delegates to the repository lifecycle boundary", async () => {
+  const repository = new FakeRepository();
+  const service = new NativeLiveConversationService(repository);
+
+  const result = await service.deleteConversation({
+    userId: "user-1",
+    conversationId: "c1",
+  });
+
+  assert.equal(result.outcome, "deleted");
+  assert.deepEqual(repository.events, ["delete"]);
 });
