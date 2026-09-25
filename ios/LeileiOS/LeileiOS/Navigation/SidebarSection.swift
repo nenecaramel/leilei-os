@@ -29,7 +29,7 @@ struct SidebarSection: View {
                     HStack(spacing: 10) {
                         Image(systemName: page.sidebarSystemImage)
                             .font(.system(size: 16, weight: .medium))
-                            .frame(width: 18, alignment: .leading)
+                            .frame(width: 18, alignment: .center)
 
                         Text(page.rawValue)
                             .font(.system(size: 17.5, weight: .medium))
