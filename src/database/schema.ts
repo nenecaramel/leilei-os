@@ -630,6 +630,14 @@ export type NativeLiveRuntimeInteractionStatus =
   | "pending"
   | "resolved"
   | "cancelled";
+export type NativeLiveRuntimeControlKind =
+  | "mid_turn_input"
+  | "interrupt";
+export type NativeLiveRuntimeControlStatus =
+  | "pending"
+  | "reserved"
+  | "applied"
+  | "failed";
 export type NativeLiveMindFollowUpStatus =
   | "pending"
   | "processing"
@@ -1391,6 +1399,94 @@ export const nativeLiveRuntimeInteractions = pgTable(
           AND ${table.response} IS NULL
           AND ${table.resolvedAt} IS NULL
           AND ${table.cancelledAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeControls = pgTable(
+  "native_live_runtime_controls",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    prepareId: uuid("prepare_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<NativeLiveRuntimeControlKind>()
+      .notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveRuntimeControlStatus>()
+      .default("pending")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    receipt: jsonb("receipt").$type<Record<string, unknown> | null>(),
+    failureCode: varchar("failure_code", { length: 64 }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_runtime_controls_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_runtime_controls_queue_idx").on(
+      table.userId,
+      table.prepareId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "native_live_runtime_controls_kind_allowed",
+      sql`${table.kind} IN ('mid_turn_input', 'interrupt')`,
+    ),
+    check(
+      "native_live_runtime_controls_payload_object",
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+    check(
+      "native_live_runtime_controls_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'applied', 'failed')`,
+    ),
+    check(
+      "native_live_runtime_controls_receipt_object",
+      sql`${table.receipt} IS NULL OR jsonb_typeof(${table.receipt}) = 'object'`,
+    ),
+    check(
+      "native_live_runtime_controls_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.receipt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.appliedAt} IS NULL)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.receipt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.appliedAt} IS NULL)
+        OR (${table.status} = 'applied'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.receipt} IS NOT NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.appliedAt} IS NOT NULL)
+        OR (${table.status} = 'failed'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.receipt} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND ${table.appliedAt} IS NOT NULL)`,
     ),
   ],
 );
