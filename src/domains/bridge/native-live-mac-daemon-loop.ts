@@ -418,6 +418,7 @@ export class NativeLiveMacDaemonLoop {
                       signal: context.signal,
                     }),
                 }
+              : {}),
             ...(this.relay.reserveRuntimeControl
               && this.relay.completeRuntimeControl
               ? {
@@ -431,7 +432,6 @@ export class NativeLiveMacDaemonLoop {
                       context.signal,
                     ),
                 }
-              : {}),
               : {}),
           },
         );
