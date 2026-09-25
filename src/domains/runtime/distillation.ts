@@ -85,6 +85,7 @@ export class DistillationPlanningError extends Error {
   constructor(
     readonly code:
       | "INVALID_SURFACE_LIMIT"
+      | "INVALID_BATCH_SIZE"
       | "INVALID_CANONICAL_TURN"
       | "UNSETTLED_SOURCE",
     message: string,
@@ -128,7 +129,7 @@ export function planDistillationWindow(input: {
     || minSourceMessages % 2 !== 0
   ) {
     throw new DistillationPlanningError(
-      "INVALID_SURFACE_LIMIT",
+      "INVALID_BATCH_SIZE",
       "Distillation minSourceMessages must be an even integer of at least 2.",
     );
   }
