@@ -7,6 +7,7 @@ import {
 import {
   nativeLiveRuntimeCommandFromPreparation,
   type NativeLiveBackendTurnCoordinator,
+  type NativeLiveFinalizeFailureCode,
   type NativeLiveFinalizeResult,
   type NativeLivePreparedTurn,
 } from "./native-live-backend-turn-coordinator.js";
@@ -138,6 +139,7 @@ export class NativeLiveBackendRelayError extends Error {
       | "RESERVATION_CONFLICT"
       | "FINALIZE_REJECTED",
     message: string,
+    readonly finalizeCode: NativeLiveFinalizeFailureCode | null = null,
   ) {
     super(message);
     this.name = "NativeLiveBackendRelayError";
@@ -727,6 +729,7 @@ export class NativeLiveBackendRelayService {
       throw new NativeLiveBackendRelayError(
         "FINALIZE_REJECTED",
         "Native live backend rejected the runtime result.",
+        finalized.code,
       );
     }
 

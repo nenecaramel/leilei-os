@@ -412,7 +412,26 @@ implements NativeLiveMacDaemonRelayClient {
 
     const record = readRecord(payload);
     if (!response.ok || record.success !== true) {
-      throw new Error("Native live relay request failed.");
+      const error =
+        record.error
+        && typeof record.error === "object"
+        && !Array.isArray(record.error)
+          ? record.error as Record<string, unknown>
+          : {};
+      throw Object.assign(
+        new Error("Native live relay request failed."),
+        {
+          relayCode:
+            typeof error.code === "string"
+              ? error.code
+              : null,
+          finalizeCode:
+            typeof error.finalizeCode === "string"
+              ? error.finalizeCode
+              : null,
+          httpStatus: response.status,
+        },
+      );
     }
     return record.data;
   }
