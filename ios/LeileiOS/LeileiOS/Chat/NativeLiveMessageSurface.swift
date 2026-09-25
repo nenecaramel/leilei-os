@@ -26,7 +26,7 @@ struct NativeLiveMessageSurface: View {
                 AppStateSurface(title: "Nothing here")
             } else if let snapshot {
                 if snapshot.messages.isEmpty {
-                    AppStateSurface(title: "Nothing here")
+                    Color.clear
                 } else {
                     messageList(snapshot)
                 }
@@ -69,7 +69,7 @@ struct NativeLiveMessageSurface: View {
 
                 ZStack {
                     ScrollView {
-                        VStack(spacing: 18) {
+                        VStack(spacing: 21) {
                             ForEach(snapshot.messages) { message in
                                 NativeLiveMessageRow(
                                     message: message,
@@ -179,8 +179,8 @@ struct NativeLiveMessageSurface: View {
                             } label: {
                                 Image(systemName: "arrow.down")
                                     .font(.system(
-                                        size: 14,
-                                        weight: .semibold
+                                        size: 16,
+                                        weight: .light
                                     ))
                                     .foregroundStyle(
                                         Color.primary.opacity(0.78)
@@ -280,49 +280,47 @@ private struct NativeLiveMessageRow: View {
                 }
             }
         } else {
-            HStack(alignment: .top, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(MessageTimestampFormatter.string(
-                        from: message.completedAt ?? message.createdAt
-                    ))
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 4)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(MessageTimestampFormatter.string(
+                    from: message.completedAt ?? message.createdAt
+                ))
+                    .font(.system(size: 13.5))
+                    .tracking(0.15)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
 
-                    messageContent
-                        .textSelection(.enabled)
+                messageContent
+                    .textSelection(.enabled)
 
-                    messageStatus
+                messageStatus
 
-                    HStack(spacing: 12) {
-                        if let copyText {
-                            Button {
-                                UIPasteboard.general.string = copyText
-                            } label: {
-                                Image(systemName: "square.on.square")
-                                    .frame(width: 24, height: 24)
-                            }
-                        }
-
-                        if let targetUserMessageID = message.parentMessageId {
-                            Button {
-                                onRetryMessage(targetUserMessageID)
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                                    .rotationEffect(.degrees(-15))
-                                    .frame(width: 24, height: 24)
-                            }
-                            .disabled(isTurnInFlight)
+                HStack(spacing: 12) {
+                    if let copyText {
+                        Button {
+                            UIPasteboard.general.string = copyText
+                        } label: {
+                            Image(systemName: "square.on.square")
+                                .frame(width: 22, height: 22)
                         }
                     }
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .buttonStyle(.plain)
-                    .padding(.top, 7)
-                }
 
-                Spacer(minLength: 24)
+                    if let targetUserMessageID = message.parentMessageId {
+                        Button {
+                            onRetryMessage(targetUserMessageID)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .rotationEffect(.degrees(-15))
+                                .frame(width: 22, height: 22)
+                        }
+                        .disabled(isTurnInFlight)
+                    }
+                }
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .padding(.top, 7)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -549,6 +547,8 @@ private struct NativeLiveBlockView: View {
             case "tool_use", "tool_result", "attachment":
                 Text(text)
                     .font(.system(size: 15.5))
+                    .tracking(0.15)
+                    .lineSpacing(2)
                     .foregroundStyle(.secondary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
@@ -600,6 +600,8 @@ private struct ChatMarkdownView: View {
         case .paragraph(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
+                .tracking(0.15)
+                .lineSpacing(2)
 
         case .heading(let level, let text):
             inlineText(text)
@@ -607,11 +609,15 @@ private struct ChatMarkdownView: View {
                     size: headingSize(level),
                     weight: level <= 2 ? .semibold : .medium
                 ))
+                .tracking(0.15)
+                .lineSpacing(2)
                 .padding(.top, level == 1 ? 2 : 0)
 
         case .quote(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
+                .tracking(0.15)
+                .lineSpacing(2)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
@@ -624,24 +630,32 @@ private struct ChatMarkdownView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
                     .font(.system(size: baseFontSize))
+                    .tracking(0.15)
 
                 inlineText(text)
                     .font(.system(size: baseFontSize))
+                    .tracking(0.15)
+                    .lineSpacing(2)
             }
 
         case .orderedItem(let number, let text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(number).")
                     .font(.system(size: baseFontSize))
+                    .tracking(0.15)
                     .foregroundStyle(.secondary)
 
                 inlineText(text)
                     .font(.system(size: baseFontSize))
+                    .tracking(0.15)
+                    .lineSpacing(2)
             }
 
         case .codeBlock(let code):
             Text(code)
                 .font(.system(size: 14.5, design: .monospaced))
+                .tracking(0.12)
+                .lineSpacing(2)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
