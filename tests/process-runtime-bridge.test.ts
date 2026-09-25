@@ -19,15 +19,28 @@ test("process runtime exposes bridge service from the shared database resource",
   });
   assert.equal(resources, 1);
   assert.ok(runtime.appDependencies);
-  assert.ok(runtime.appDependencies.webNativeLiveCoordinator);
-  assert.ok(runtime.appDependencies.webNativeLiveTurnReader);
+  assert.ok(runtime.appDependencies.nativeLiveProduction);
   assert.ok(
-    runtime.appDependencies.webNativeLiveCurrentPathReader,
+    runtime.appDependencies.nativeLiveProduction.web.coordinator,
   );
-  assert.ok(runtime.appDependencies.nativeLiveRelayService);
-  assert.ok(runtime.appDependencies.nativeLiveSemanticService);
-  assert.ok(runtime.appDependencies.nativeLiveBackgroundModelService);
-  assert.ok(runtime.appDependencies.nativeLiveBackgroundModelCoordinator);
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.web.turnReader,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.web.currentPathReader,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.relayService,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.semanticService,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.backgroundModelService,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.backgroundModelCoordinator,
+  );
   assert.ok(runtime.topicResurfaceCrossDeviceCoordinator);
   assert.ok(runtime.distillationCrossDeviceCoordinator);
   assert.ok(runtime.proactivityWakeCrossDeviceCoordinator);
@@ -48,7 +61,8 @@ test("process runtime exposes Topic resurface opportunity only with explicit cad
     createDatabaseResource: () => fake,
   });
   assert.equal(
-    disabled.appDependencies.nativeLiveBackgroundModelOpportunity,
+    disabled.appDependencies.nativeLiveProduction
+      ?.internal.backgroundModelOpportunity,
     undefined,
   );
 
@@ -63,6 +77,7 @@ test("process runtime exposes Topic resurface opportunity only with explicit cad
     createDatabaseResource: () => fake,
   });
   assert.ok(
-    enabled.appDependencies.nativeLiveBackgroundModelOpportunity,
+    enabled.appDependencies.nativeLiveProduction
+      ?.internal.backgroundModelOpportunity,
   );
 });
