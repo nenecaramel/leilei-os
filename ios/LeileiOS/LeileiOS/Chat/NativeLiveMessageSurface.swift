@@ -91,12 +91,10 @@ struct NativeLiveMessageSurface: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
                 }
+                .defaultScrollAnchor(.bottom)
                 .coordinateSpace(name: scrollCoordinateSpace)
                 .refreshable {
                     await onRefresh()
-                }
-                .onAppear {
-                    scrollToBottom(proxy)
                 }
                 .onChange(of: snapshot.syncToken) { _, _ in
                     scrollToBottom(proxy)
