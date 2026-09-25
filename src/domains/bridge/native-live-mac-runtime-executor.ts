@@ -77,7 +77,9 @@ export class NativeLiveMacRuntimeExecutor {
               parentProviderSessionId:
                 command.parent_provider_session_id,
               streaming: true,
-              execution: command.execution_selection ?? null,
+              ...(command.execution_selection
+                ? { execution: command.execution_selection }
+                : {}),
               ...(options.onNormalizedEvent
                 ? {
                     onNormalizedEvent:
