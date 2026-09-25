@@ -1445,7 +1445,23 @@ test("internal relay waits for and completes listener-owned foreground controls"
   const calls = [];
   const runtimeControlService = {
     async waitNextForListener(input: unknown) {
-      calls.push({ name: "wait", input });
+      const value = input as {
+        userId: string;
+        listenerInstanceId: string;
+        reservationId: string;
+        timeoutMs: number;
+        signal?: AbortSignal | null;
+      };
+      calls.push({
+        name: "wait",
+        input: {
+          userId: value.userId,
+          listenerInstanceId: value.listenerInstanceId,
+          reservationId: value.reservationId,
+          timeoutMs: value.timeoutMs,
+          hasSignal: value.signal instanceof AbortSignal,
+        },
+      });
       return {
         outcome: "reserved" as const,
         control: {
@@ -1543,7 +1559,7 @@ test("internal relay waits for and completes listener-owned foreground controls"
             listenerInstanceId: listenerId,
             reservationId: prepareId,
             timeoutMs: 25_000,
-            signal: assert.match.any,
+            hasSignal: true,
           },
         },
         {
