@@ -42,7 +42,21 @@ export type NativeLiveMacClaudeTransport =
     executeTurn?(
       prompt: string,
       options: NativeLiveMacInteractiveTurnOptions,
-    ): Promise<NativeLiveRuntimeResult>;
+    ): Promise<NativeLiveRuntimeResult & {
+      contextUsage?: Record<string, unknown> | null;
+      compactionAdvisory?: Record<string, unknown> | null;
+    }>;
+    compact?(
+      sessionId: string,
+      execution?: NativeLiveExecutionSelection | null,
+    ): Promise<NativeLiveRuntimeResult & {
+      compaction?: {
+        boundary?: Record<string, unknown> | null;
+        postCompact?: Array<{
+          summary?: string | null;
+        }>;
+      };
+    }>;
   };
 
 export function resolveNativeLiveMacClaudeTransportKind(
