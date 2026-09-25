@@ -109,6 +109,14 @@ while (!stopping) {
                 outcome.eventDeliveryFailures,
             }
           : {}),
+        ...("relayErrorCode" in outcome
+          && outcome.relayErrorCode
+          ? { relayErrorCode: outcome.relayErrorCode }
+          : {}),
+        ...("finalizeCode" in outcome
+          && outcome.finalizeCode
+          ? { finalizeCode: outcome.finalizeCode }
+          : {}),
         ...("result" in outcome
           ? {
               resultStatus: outcome.result.status,
