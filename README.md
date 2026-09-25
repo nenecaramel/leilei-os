@@ -130,6 +130,5 @@ Repository documentation describes the checked-in release path, not the live dep
 - [`docs/deployment.md`](docs/deployment.md) — current release and production verification path.
 - [`docs/branch-release-policy.md`](docs/branch-release-policy.md) — branch and release rules.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — recurring build/deployment diagnostics.
-- [`docs/leilei-os-v1-milestone.md`](docs/leilei-os-v1-milestone.md) — explicitly historical v1 acceptance snapshot.
 
-Dated implementation plans and design specs are historical engineering records. Completed plan/spec trees are retired from the current HEAD and remain recoverable through Git history; current procedure belongs in the authoritative docs below.
+Dated implementation plans and design specs are historical engineering records. Completed plan/spec trees are retired from the current HEAD and remain recoverable through Git history; current procedure belongs in the authoritative docs above.
