@@ -200,7 +200,7 @@ struct NativeLiveMessageSurface: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Scroll to latest")
-                            .offset(y: 18)
+                            .offset(y: 22)
                             .transition(
                                 .scale(scale: 0.9)
                                     .combined(with: .opacity)
@@ -268,7 +268,6 @@ private struct NativeLiveMessageRow: View {
                         .overlay {
                             LightweightContextMenuInteraction(
                                 title: "Edit",
-                                systemImage: "pencil",
                                 copyText: copyText,
                                 isDisabled: isTurnInFlight,
                                 cornerRadius: 18
@@ -389,7 +388,6 @@ private struct NativeLiveMessageRow: View {
 
 private struct LightweightContextMenuInteraction: UIViewRepresentable {
     let title: String
-    let systemImage: String
     let copyText: String?
     let isDisabled: Bool
     let cornerRadius: CGFloat
@@ -398,7 +396,6 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             title: title,
-            systemImage: systemImage,
             copyText: copyText,
             isDisabled: isDisabled,
             cornerRadius: cornerRadius,
@@ -424,7 +421,6 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
         context: Context
     ) {
         context.coordinator.title = title
-        context.coordinator.systemImage = systemImage
         context.coordinator.copyText = copyText
         context.coordinator.isDisabled = isDisabled
         context.coordinator.cornerRadius = cornerRadius
@@ -436,7 +432,6 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
         weak var hostView: UIView?
 
         var title: String
-        var systemImage: String
         var copyText: String?
         var isDisabled: Bool
         var cornerRadius: CGFloat
@@ -444,14 +439,12 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
 
         init(
             title: String,
-            systemImage: String,
             copyText: String?,
             isDisabled: Bool,
             cornerRadius: CGFloat,
             action: @escaping () -> Void
         ) {
             self.title = title
-            self.systemImage = systemImage
             self.copyText = copyText
             self.isDisabled = isDisabled
             self.cornerRadius = cornerRadius
@@ -476,7 +469,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
                    !copyText.isEmpty {
                     let copyAction = UIAction(
                         title: "Copy",
-                        image: UIImage(systemName: "doc.on.doc")
+                        image: nil
                     ) { _ in
                         UIPasteboard.general.string = copyText
                     }
@@ -488,7 +481,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
 
                 let action = UIAction(
                     title: self.title,
-                    image: UIImage(systemName: self.systemImage),
+                    image: nil,
                     attributes: attributes
                 ) { [weak self] _ in
                     self?.action()
@@ -555,7 +548,7 @@ private struct NativeLiveBlockView: View {
 
             case "tool_use", "tool_result", "attachment":
                 Text(text)
-                    .font(.callout)
+                    .font(.system(size: 15.5))
                     .foregroundStyle(.secondary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
@@ -582,7 +575,7 @@ private struct ChatMarkdownView: View {
     let text: String
     let fillsAvailableWidth: Bool
 
-    private let baseFontSize: CGFloat = 18
+    private let baseFontSize: CGFloat = 17
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -648,7 +641,7 @@ private struct ChatMarkdownView: View {
 
         case .codeBlock(let code):
             Text(code)
-                .font(.system(size: 15.5, design: .monospaced))
+                .font(.system(size: 14.5, design: .monospaced))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -683,13 +676,13 @@ private struct ChatMarkdownView: View {
     private func headingSize(_ level: Int) -> CGFloat {
         switch level {
         case 1:
-            return 22
+            return 21
         case 2:
-            return 20
-        case 3:
             return 19
-        default:
+        case 3:
             return 18
+        default:
+            return 17
         }
     }
 }
