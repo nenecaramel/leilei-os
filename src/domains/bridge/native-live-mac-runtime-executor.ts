@@ -11,6 +11,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
       mode: "new" | "fork";
       parentProviderSessionId: string | null;
       streaming: boolean;
+      execution?: NativeLiveExecutionSelection | null;
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
       ) => void | Promise<void>;
@@ -32,6 +33,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
 import type {
   NativeLiveMacActiveTurnController,
 } from "./native-live-mac-claude-transport.js";
+import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -75,6 +77,7 @@ export class NativeLiveMacRuntimeExecutor {
               parentProviderSessionId:
                 command.parent_provider_session_id,
               streaming: true,
+              execution: command.execution_selection ?? null,
               ...(options.onNormalizedEvent
                 ? {
                     onNormalizedEvent:
