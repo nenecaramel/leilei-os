@@ -63,6 +63,12 @@ export interface NativeLiveConversationRepository {
     conversationId: string;
   }): Promise<NativeLiveConversation | null>;
 
+  renameConversation(input: {
+    userId: string;
+    conversationId: string;
+    title: string;
+  }): Promise<NativeLiveConversationSummary | null>;
+
   deleteConversation(input: {
     userId: string;
     conversationId: string;
@@ -324,6 +330,52 @@ implements NativeLiveConversationRepository {
       updatedAt: conversation.updatedAt.toISOString(),
       messages,
     };
+  }
+
+  async renameConversation(input: {
+    userId: string;
+    conversationId: string;
+    title: string;
+  }): Promise<NativeLiveConversationSummary | null> {
+    const title = input.title.trim();
+    if (!title || title.length > 200) {
+      throw new Error(
+        "Native live conversation title must be 1-200 characters.",
+      );
+    }
+
+    const updatedAt = new Date();
+    const [row] = await this.db
+      .update(conversations)
+      .set({
+        title,
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(conversations.userId, input.userId),
+          eq(conversations.id, input.conversationId),
+          eq(conversations.origin, "native_live"),
+          eq(conversations.lifecycleStatus, "active"),
+        ),
+      )
+      .returning({
+        id: conversations.id,
+        title: conversations.title,
+        currentHeadMessageId: conversations.currentHeadMessageId,
+        createdAt: conversations.createdAt,
+        updatedAt: conversations.updatedAt,
+      });
+
+    return row
+      ? {
+          id: row.id,
+          title: row.title,
+          currentHeadMessageId: row.currentHeadMessageId,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        }
+      : null;
   }
 
   async deleteConversation(input: {
