@@ -5,7 +5,6 @@ struct ConversationsView: View {
 
     let onOpenConversation: () -> Void
 
-
     var body: some View {
         Group {
             if !appModel.isAuthenticated {
@@ -45,7 +44,8 @@ struct ConversationsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))        .task {
+        .background(Color(.systemBackground))
+        .task {
             guard appModel.isAuthenticated else { return }
             await appModel.refreshNativeLiveConversations()
         }
