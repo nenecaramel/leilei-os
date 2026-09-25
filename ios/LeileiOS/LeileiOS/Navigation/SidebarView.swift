@@ -25,7 +25,7 @@ struct SidebarView: View {
                         Text("Leilei OS")
                             .font(.system(size: 22, weight: .regular))
                             .padding(.top, 18)
-                            .offset(x: titleHorizontalOffset - 2, y: 20)
+                            .offset(x: titleHorizontalOffset - 5, y: 20)
 
                         VStack(alignment: .leading, spacing: 28) {
                             SidebarSection(
