@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: leileios_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d leileios_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/leileios_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact event head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cd web && npm ci
+      - name: Apply ephemeral PostgreSQL migrations
+        run: pnpm db:migrate
+      - name: Verify migration ledger
+        run: pnpm db:check
+      - name: Run deterministic canonical suite
+        run: pnpm test
+      - name: Run active-user PostgreSQL regressions
+        env:
+          RUN_ACTIVE_USER_DATABASE_INTEGRATION_TEST: "1"
+          RUN_DATABASE_INTEGRATION_TEST: "1"
+          RUN_UNIVERSE_MCP_WRITE_DATABASE_TEST: "1"
+          RUN_UNIVERSE_MCP_PROVENANCE_DATABASE_TEST: "1"
+          RUN_MCP_WRITE_IDEMPOTENCY_DATABASE_TEST: "1"
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/diary-repository.integration.test.ts
+          tests/diary-discovery-repository.integration.test.ts
+          tests/universe-compact-read.integration.test.ts
+          tests/active-user-mutation-atomicity.integration.test.ts
+          tests/universe-mcp-writes.integration.test.ts
+          tests/mcp-universe-write-migration.integration.test.ts
+          tests/mcp-write-idempotency.integration.test.ts
+          tests/universe-mcp-provenance.integration.test.ts
+      - name: Run Native Live PostgreSQL regression
+        env:
+          RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST: "1"
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/native-live-conversation-repository.integration.test.ts
+      - name: Run retention PostgreSQL regression
+        env:
+          RUN_DATA_RETENTION_DATABASE_TEST: "1"
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/data-retention.integration.test.ts
+      - name: Typecheck root
+        run: pnpm typecheck
+      - name: Verify generated artifacts
+        run: pnpm check:generated
+      - name: Build root
+        run: pnpm build
+      - name: Typecheck and build Web
+        run: cd web && npm run typecheck && npm run build
+      - run: git diff --check
