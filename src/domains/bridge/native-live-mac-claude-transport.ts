@@ -8,6 +8,11 @@ export type NativeLiveMacClaudeTransportKind =
   | "agent_sdk"
   | "headless";
 
+export type NativeLiveMacActiveTurnController = {
+  sendUserMessage(text: string): Record<string, unknown>;
+  interrupt(): Promise<Record<string, unknown>>;
+};
+
 export type NativeLiveMacInteractiveTurnOptions = {
   mode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
@@ -23,6 +28,10 @@ export type NativeLiveMacInteractiveTurnOptions = {
     request: Record<string, unknown>,
     context: { signal: AbortSignal | null },
   ) => Promise<Record<string, unknown>>;
+  controlPump?: (
+    controller: NativeLiveMacActiveTurnController,
+    context: { signal: AbortSignal },
+  ) => Promise<void>;
 };
 
 export type NativeLiveMacClaudeTransport =
