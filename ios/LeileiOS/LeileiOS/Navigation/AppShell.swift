@@ -7,8 +7,8 @@ struct AppShell: View {
     @State private var selectedPage: AppPage = .chat
     @State private var menuOpen = false
     @State private var settingsPresented = false
-    @State private var newSessionInFlight = false
-    @State private var newSessionErrorMessage: String?
+    @State private var isDraftConversation = false
+    @State private var draftConversationID = UUID()
     @State private var floatingControlCenters: [String: CGFloat] = [:]
 
     var body: some View {
@@ -26,47 +26,17 @@ struct AppShell: View {
         .sheet(isPresented: $settingsPresented) {
             SettingsSheetView(appModel: appModel)
         }
-        .alert(
-            "New conversation failed",
-            isPresented: Binding(
-                get: { newSessionErrorMessage != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        newSessionErrorMessage = nil
-                    }
-                }
-            )
-        ) {
-            Button("OK", role: .cancel) {
-                newSessionErrorMessage = nil
-            }
-        } message: {
-            Text(newSessionErrorMessage ?? "")
-        }
     }
 
 
-    private func createNewSession() {
-        guard appModel.isAuthenticated, !newSessionInFlight else {
+    private func beginNewSession() {
+        guard appModel.isAuthenticated else {
             return
         }
 
-        newSessionInFlight = true
-
-        Task { @MainActor in
-            defer {
-                newSessionInFlight = false
-            }
-
-            do {
-                _ = try await appModel.createNativeLiveConversation(
-                    title: "New Conversation"
-                )
-                selectedPage = .chat
-            } catch {
-                newSessionErrorMessage = error.localizedDescription
-            }
-        }
+        draftConversationID = UUID()
+        isDraftConversation = true
+        selectedPage = .chat
     }
 
     private func openConversationFromSidebar(
@@ -75,6 +45,8 @@ struct AppShell: View {
         guard let conversationID = UUID(uuidString: conversation.id) else {
             return
         }
+
+        isDraftConversation = false
 
         Task { @MainActor in
             await appModel.openNativeLiveConversation(conversationID)
@@ -98,12 +70,15 @@ struct AppShell: View {
                         withAnimation(.snappy) {
                             menuOpen = false
                         }
-                        createNewSession()
+                        beginNewSession()
                     },
                     newSessionEnabled:
-                        appModel.isAuthenticated && !newSessionInFlight,
+                        appModel.isAuthenticated,
                     conversations: appModel.nativeLiveConversations,
-                    activeConversationID: appModel.activeNativeLiveConversationID,
+                    activeConversationID:
+                        isDraftConversation
+                            ? nil
+                            : appModel.activeNativeLiveConversationID,
                     onOpenConversation: openConversationFromSidebar,
                     onSettings: {
                         settingsPresented = true
@@ -120,6 +95,11 @@ struct AppShell: View {
 
                 MainPageLayer(
                     selectedPage: selectedPage,
+                    isDraftConversation: isDraftConversation,
+                    draftConversationID: draftConversationID,
+                    onDraftCommitted: {
+                        isDraftConversation = false
+                    },
                     onMenu: {
                         withAnimation(.snappy) {
                             menuOpen.toggle()
@@ -170,12 +150,15 @@ struct AppShell: View {
                 selectedPage: $selectedPage,
                 menuButtonCenterY: nil,
                 onNewSession: {
-                    createNewSession()
+                    beginNewSession()
                 },
                 newSessionEnabled:
-                    appModel.isAuthenticated && !newSessionInFlight,
+                    appModel.isAuthenticated,
                 conversations: appModel.nativeLiveConversations,
-                activeConversationID: appModel.activeNativeLiveConversationID,
+                activeConversationID:
+                        isDraftConversation
+                            ? nil
+                            : appModel.activeNativeLiveConversationID,
                 onOpenConversation: openConversationFromSidebar,
                 onSettings: nil,
                 onSelect: {}
@@ -187,6 +170,11 @@ struct AppShell: View {
 
             PageContainer(
                 selectedPage: selectedPage,
+                isDraftConversation: isDraftConversation,
+                draftConversationID: draftConversationID,
+                onDraftCommitted: {
+                    isDraftConversation = false
+                },
                 onMenu: nil,
                 onOpenConversation: {
                     selectedPage = .chat
@@ -198,6 +186,9 @@ struct AppShell: View {
 
 private struct MainPageLayer: View {
     let selectedPage: AppPage
+    let isDraftConversation: Bool
+    let draftConversationID: UUID
+    let onDraftCommitted: () -> Void
     let onMenu: () -> Void
     let onOpenConversation: () -> Void
 
@@ -208,6 +199,9 @@ private struct MainPageLayer: View {
 
             PageContainer(
                 selectedPage: selectedPage,
+                isDraftConversation: isDraftConversation,
+                draftConversationID: draftConversationID,
+                onDraftCommitted: onDraftCommitted,
                 onMenu: onMenu,
                 onOpenConversation: onOpenConversation
             )
