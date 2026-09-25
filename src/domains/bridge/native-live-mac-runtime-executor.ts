@@ -161,7 +161,9 @@ export class NativeLiveMacRuntimeExecutor {
       status: "success",
       provider_session_id: runtimeResult.providerSessionId,
       normalized_events: [...runtimeResult.normalizedEvents],
-      runtime_metadata: runtimeMetadata,
+      ...(runtimeMetadata
+        ? { runtime_metadata: runtimeMetadata }
+        : {}),
     };
   }
 
