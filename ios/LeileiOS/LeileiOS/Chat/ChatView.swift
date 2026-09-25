@@ -47,10 +47,6 @@ struct ChatView: View {
             }
         }
         .contentShape(Rectangle())
-        .ignoresSafeArea(
-            .keyboard,
-            edges: isComposerFocused ? [] : .bottom
-        )
         .onTapGesture {
             isComposerFocused = false
         }
@@ -110,7 +106,7 @@ struct ChatView: View {
                 .ignoresSafeArea()
             }
             .offset(
-                y: isComposerFocused && isSystemKeyboardVisible
+                y: isSystemKeyboardVisible
                     ? 0
                     : 10
             )
