@@ -245,20 +245,50 @@ struct NativeLiveMessageSurface: View {
             }
             .overlay(alignment: .top) {
                 if copiedMessageID != nil {
-                    Text("Message copied")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 14)
-                        .frame(height: 34)
-                        .glassEffect(
-                            .regular,
-                            in: Capsule()
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark")
+                            .font(.system(
+                                size: 12,
+                                weight: .semibold
+                            ))
+
+                        Text("Message copied")
+                            .font(.system(
+                                size: 14,
+                                weight: .regular
+                            ))
+
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 14)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: 40
+                    )
+                    .glassEffect(
+                        .regular,
+                        in: RoundedRectangle(
+                            cornerRadius: 14,
+                            style: .continuous
                         )
-                        .padding(.top, 10)
-                        .transition(
-                            .move(edge: .top)
-                                .combined(with: .opacity)
+                    )
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 14,
+                            style: .continuous
                         )
+                        .stroke(
+                            Color.primary.opacity(0.08),
+                            lineWidth: 0.6
+                        )
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 10)
+                    .transition(
+                        .move(edge: .top)
+                            .combined(with: .opacity)
+                    )
                 }
             }
             .overlay(alignment: .bottom) {
@@ -418,7 +448,8 @@ private struct NativeLiveMessageRow: View {
                                 title: "Edit",
                                 copyText: copyText,
                                 isDisabled: isTurnInFlight,
-                                cornerRadius: 18
+                                cornerRadius: 18,
+                                onCopy: onCopyMessage
                             ) {
                                 onEditMessage(message)
                             }
@@ -626,6 +657,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
     let copyText: String?
     let isDisabled: Bool
     let cornerRadius: CGFloat
+    let onCopy: (String) -> Void
     let action: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -634,6 +666,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
             copyText: copyText,
             isDisabled: isDisabled,
             cornerRadius: cornerRadius,
+            onCopy: onCopy,
             action: action
         )
     }
@@ -659,6 +692,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
         context.coordinator.copyText = copyText
         context.coordinator.isDisabled = isDisabled
         context.coordinator.cornerRadius = cornerRadius
+        context.coordinator.onCopy = onCopy
         context.coordinator.action = action
         context.coordinator.hostView = uiView
     }
@@ -670,6 +704,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
         var copyText: String?
         var isDisabled: Bool
         var cornerRadius: CGFloat
+        var onCopy: (String) -> Void
         var action: () -> Void
 
         init(
@@ -677,12 +712,14 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
             copyText: String?,
             isDisabled: Bool,
             cornerRadius: CGFloat,
+            onCopy: @escaping (String) -> Void,
             action: @escaping () -> Void
         ) {
             self.title = title
             self.copyText = copyText
             self.isDisabled = isDisabled
             self.cornerRadius = cornerRadius
+            self.onCopy = onCopy
             self.action = action
         }
 
@@ -705,8 +742,8 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
                     let copyAction = UIAction(
                         title: "Copy",
                         image: nil
-                    ) { _ in
-                        UIPasteboard.general.string = copyText
+                    ) { [weak self] _ in
+                        self?.onCopy(copyText)
                     }
                     children.append(copyAction)
                 }
