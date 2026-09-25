@@ -67,10 +67,40 @@ export type NativeLiveRuntimeCompactionMetadata = {
   failure_code: "COMPACT_FAILED" | "COMPACT_UNSUPPORTED" | null;
 };
 
+export type NativeLiveRuntimeExecutionCapability = {
+  value: string | null;
+  display_name: string | null;
+  description: string | null;
+  supports_effort: boolean | null;
+  supported_effort_levels: string[];
+  supports_adaptive_thinking: boolean | null;
+  supports_fast_mode: boolean | null;
+  supports_auto_mode: boolean | null;
+};
+
+export type NativeLiveRuntimeExecutionReadback = {
+  requested: {
+    model: string | null;
+    thinking: string | null;
+    effort: string | null;
+  } | null;
+  applied: {
+    model: string | null;
+    effort: string | null;
+  };
+  capability: NativeLiveRuntimeExecutionCapability | null;
+};
+
+export type NativeLiveRuntimeExecutionMetadata = {
+  readback: NativeLiveRuntimeExecutionReadback;
+  readback_error: string | null;
+};
+
 export type NativeLiveRuntimeMetadata = {
   context_usage: NativeLiveRuntimeContextUsage | null;
   compaction_advisory: NativeLiveRuntimeCompactionAdvisory | null;
   compaction: NativeLiveRuntimeCompactionMetadata | null;
+  execution?: NativeLiveRuntimeExecutionMetadata | null;
 };
 
 export type NativeLiveRuntimeExecutionResult =
@@ -290,11 +320,15 @@ function parseRuntimeMetadata(
   value: unknown,
 ): NativeLiveRuntimeMetadata {
   const body = requireRecord(value);
-  requireExactKeys(body, [
-    "context_usage",
-    "compaction_advisory",
-    "compaction",
-  ]);
+  requireExactKeys(
+    body,
+    [
+      "context_usage",
+      "compaction_advisory",
+      "compaction",
+    ],
+    ["execution"],
+  );
 
   return {
     context_usage:
@@ -309,7 +343,157 @@ function parseRuntimeMetadata(
       body.compaction === null
         ? null
         : parseCompactionMetadata(body.compaction),
+    ...(body.execution === undefined
+      ? {}
+      : {
+          execution:
+            body.execution === null
+              ? null
+              : parseExecutionMetadata(body.execution),
+        }),
   };
+}
+
+function parseExecutionMetadata(
+  value: unknown,
+): NativeLiveRuntimeExecutionMetadata {
+  const body = requireRecord(value);
+  requireExactKeys(body, ["readback", "readback_error"]);
+  return {
+    readback: parseExecutionReadback(body.readback),
+    readback_error: nullableString(
+      body.readback_error,
+      "execution.readback_error",
+    ),
+  };
+}
+
+function parseExecutionReadback(
+  value: unknown,
+): NativeLiveRuntimeExecutionReadback {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "requested",
+    "applied",
+    "capability",
+  ]);
+
+  const applied = requireRecord(body.applied);
+  requireExactKeys(applied, ["model", "effort"]);
+
+  let requested:
+    NativeLiveRuntimeExecutionReadback["requested"] = null;
+  if (body.requested !== null) {
+    const record = requireRecord(body.requested);
+    requireExactKeys(record, ["model", "thinking", "effort"]);
+    requested = {
+      model: nullableString(
+        record.model,
+        "execution.readback.requested.model",
+      ),
+      thinking: nullableString(
+        record.thinking,
+        "execution.readback.requested.thinking",
+      ),
+      effort: nullableString(
+        record.effort,
+        "execution.readback.requested.effort",
+      ),
+    };
+  }
+
+  return {
+    requested,
+    applied: {
+      model: nullableString(
+        applied.model,
+        "execution.readback.applied.model",
+      ),
+      effort: nullableString(
+        applied.effort,
+        "execution.readback.applied.effort",
+      ),
+    },
+    capability:
+      body.capability === null
+        ? null
+        : parseExecutionCapability(body.capability),
+  };
+}
+
+function parseExecutionCapability(
+  value: unknown,
+): NativeLiveRuntimeExecutionCapability {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "value",
+    "display_name",
+    "description",
+    "supports_effort",
+    "supported_effort_levels",
+    "supports_adaptive_thinking",
+    "supports_fast_mode",
+    "supports_auto_mode",
+  ]);
+  if (!Array.isArray(body.supported_effort_levels)) {
+    throw new NativeLiveRuntimeProtocolError(
+      "execution capability effort levels must be an array.",
+    );
+  }
+  const supportedEffortLevels =
+    body.supported_effort_levels.map((level, index) => {
+      if (typeof level !== "string") {
+        throw new NativeLiveRuntimeProtocolError(
+          `execution capability effort level ${index} must be a string.`,
+        );
+      }
+      return level;
+    });
+
+  return {
+    value: nullableString(
+      body.value,
+      "execution.readback.capability.value",
+    ),
+    display_name: nullableString(
+      body.display_name,
+      "execution.readback.capability.display_name",
+    ),
+    description: nullableString(
+      body.description,
+      "execution.readback.capability.description",
+    ),
+    supports_effort: nullableBoolean(
+      body.supports_effort,
+      "execution.readback.capability.supports_effort",
+    ),
+    supported_effort_levels: supportedEffortLevels,
+    supports_adaptive_thinking: nullableBoolean(
+      body.supports_adaptive_thinking,
+      "execution.readback.capability.supports_adaptive_thinking",
+    ),
+    supports_fast_mode: nullableBoolean(
+      body.supports_fast_mode,
+      "execution.readback.capability.supports_fast_mode",
+    ),
+    supports_auto_mode: nullableBoolean(
+      body.supports_auto_mode,
+      "execution.readback.capability.supports_auto_mode",
+    ),
+  };
+}
+
+function nullableBoolean(
+  value: unknown,
+  field: string,
+): boolean | null {
+  if (value === null) return null;
+  if (typeof value !== "boolean") {
+    throw new NativeLiveRuntimeProtocolError(
+      `${field} must be boolean or null.`,
+    );
+  }
+  return value;
 }
 
 function parseContextUsage(
