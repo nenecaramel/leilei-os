@@ -234,7 +234,6 @@ private struct NativeLiveBlockView: View {
                 Text(text)
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .textSelection(.enabled)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
                         alignment: .leading
@@ -244,7 +243,6 @@ private struct NativeLiveBlockView: View {
                 Text(text)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
                         alignment: .leading
