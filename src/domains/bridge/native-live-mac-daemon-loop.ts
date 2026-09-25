@@ -142,9 +142,10 @@ export interface NativeLiveMacDaemonRelayClient {
     signal: AbortSignal | null;
   }): Promise<Record<string, unknown>>;
 
-  reserveRuntimeControl?(input: {
+  waitRuntimeControl?(input: {
     listenerInstanceId: string;
     reservationId: string;
+    signal?: AbortSignal | null;
   }): Promise<NativeLiveRuntimeControlReservation | null>;
 
   completeRuntimeControl?(input: {
@@ -421,7 +422,7 @@ export class NativeLiveMacDaemonLoop {
                     }),
                 }
               : {}),
-            ...(this.relay.reserveRuntimeControl
+            ...(this.relay.waitRuntimeControl
               && this.relay.completeRuntimeControl
               ? {
                   controlPump: (
@@ -492,17 +493,18 @@ export class NativeLiveMacDaemonLoop {
     while (!signal.aborted) {
       let control: NativeLiveRuntimeControlReservation | null;
       try {
-        control = await this.relay.reserveRuntimeControl!({
+        control = await this.relay.waitRuntimeControl!({
           listenerInstanceId: this.listenerInstanceId,
           reservationId,
+          signal,
         });
       } catch {
-        await delayWithAbort(400, signal);
+        if (signal.aborted) return;
+        await delayWithAbort(1_000, signal);
         continue;
       }
 
       if (!control) {
-        await delayWithAbort(250, signal);
         continue;
       }
 
