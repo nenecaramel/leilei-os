@@ -141,6 +141,10 @@ import {
   NativeLiveRuntimeInteractionService,
 } from "../domains/bridge/native-live-runtime-interaction.js";
 import {
+  DrizzleNativeLiveRuntimeControlRepository,
+  NativeLiveRuntimeControlService,
+} from "../domains/bridge/native-live-runtime-control.js";
+import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpScheduler,
@@ -378,6 +382,10 @@ export function createProcessRuntime(
   const nativeLiveRuntimeInteractionService =
     new NativeLiveRuntimeInteractionService(
       new DrizzleNativeLiveRuntimeInteractionRepository(db),
+    );
+  const nativeLiveRuntimeControlService =
+    new NativeLiveRuntimeControlService(
+      new DrizzleNativeLiveRuntimeControlRepository(db),
     );
   const proactivityWakeRepository =
     new DrizzleProactivityWakeRepository(db);
@@ -667,6 +675,7 @@ export function createProcessRuntime(
       nativeLiveRelayService,
       nativeLiveRuntimeEventService,
       nativeLiveRuntimeInteractionService,
+      nativeLiveRuntimeControlService,
       nativeLiveSemanticService,
       nativeLiveBackgroundModelService,
       nativeLiveBackgroundModelCoordinator:
