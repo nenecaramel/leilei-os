@@ -147,6 +147,14 @@ async function run() {
       environment: process.env,
     });
 
+    let filesystemInit = null;
+    const onFilesystemRaw = (event) => {
+      if (event?.type === "system" && event?.subtype === "init") {
+        filesystemInit = event;
+      }
+    };
+    transport.events.on("event", onFilesystemRaw);
+
     const filesystem = await transport.sendNew(
       [
         "This is a deterministic LeileiOS Agent SDK filesystem parity smoke.",
@@ -159,6 +167,21 @@ async function run() {
         "After the required tools complete, reply with exactly the skill sentinel and nothing else.",
       ].join("\n"),
     );
+    transport.events.off("event", onFilesystemRaw);
+
+    assert.ok(filesystemInit, "real SDK emitted no system/init event.");
+    assert.ok(
+      Array.isArray(filesystemInit.skills)
+      && filesystemInit.skills.includes("leileios-parity"),
+      `project Skill was not advertised in init: ${JSON.stringify(filesystemInit.skills)}`,
+    );
+    for (const required of ["Write", "Edit", "Glob", "Grep", "Skill"]) {
+      assert.ok(
+        Array.isArray(filesystemInit.tools)
+        && filesystemInit.tools.includes(required),
+        `init did not expose built-in ${required}: ${JSON.stringify(filesystemInit.tools)}`,
+      );
+    }
 
     assert.equal(
       finalText(filesystem),
@@ -200,6 +223,14 @@ async function run() {
       `PostToolUse hook did not record Edit: ${JSON.stringify(hookEvents)}`,
     );
 
+    let subagentInit = null;
+    const onSubagentRaw = (event) => {
+      if (event?.type === "system" && event?.subtype === "init") {
+        subagentInit = event;
+      }
+    };
+    transport.events.on("event", onSubagentRaw);
+
     const subagent = await transport.sendNew(
       [
         "This is the LeileiOS subagent parity smoke.",
@@ -208,6 +239,14 @@ async function run() {
         "Do not inspect .claude/agents files yourself.",
         "Return exactly the subagent's sentinel and nothing else.",
       ].join("\n"),
+    );
+    transport.events.off("event", onSubagentRaw);
+
+    assert.ok(subagentInit, "subagent turn emitted no system/init event.");
+    assert.ok(
+      Array.isArray(subagentInit.agents)
+      && subagentInit.agents.includes("leileios-parity-agent"),
+      `project subagent was not advertised in init: ${JSON.stringify(subagentInit.agents)}`,
     );
 
     assert.equal(
@@ -245,6 +284,10 @@ async function run() {
           filesystemToolNames: names,
           subagentToolNames: subagentTools,
           hookEvents,
+          init: {
+            skills: filesystemInit.skills,
+            agents: subagentInit.agents,
+          },
         },
         null,
         2,
