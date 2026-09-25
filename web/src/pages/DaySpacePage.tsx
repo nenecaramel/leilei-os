@@ -19,7 +19,7 @@ import {
 import { DaySpaceDatePicker } from "./DaySpaceDatePicker.js";
 import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog.js";
 import { TodoPaperDialog } from "./TodoPaperDialog.js";
-import { ModuleSearchButton, ModuleSearchField, ModuleSearchStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
+import { ModuleSearchButton, ModuleSearchField, ModuleStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
 import { ModuleState, PageState } from "../components/StateSurface";
 import { composeDaySpacePapers, resolveDaySpaceDefaultDate, type DaySpaceModuleState } from "./day-space-data.js";
 import type { DaySpaceApi, DaySpaceDiary } from "./day-space-api.js";
@@ -292,7 +292,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
         {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="Search todos..." value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}
       </header>
       {todoSearchOpen ? <div className="day-space-search-panel">
-        <ModuleSearchStateMessage state={todoSearchState} placement="inline" emptyText="没有匹配的 Todo" errorText="Unable to read todos." retryLabel="Retry" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
+        <ModuleStateMessage state={todoSearchState} placement="inline" emptyText="没有匹配的 Todo" errorText="Unable to read todos." retryLabel="Retry" onRetry={() => setTodoSearchRetry((value) => value + 1)} />
         {todoSearchState === "ready" ? <div className="day-space-search-results" aria-label="Todo 搜索结果">
           {todoSearchResults.map((entry) => <button type="button" key={`${entry.date}:${entry.author}:${entry.entry_id}`} onClick={() => navigate(`/day-space?date=${encodeURIComponent(entry.date)}&author=${entry.author}`)}>
             <span>{entry.date} · {entry.author} · {entry.kind}</span><strong>{entry.snippet}</strong>
