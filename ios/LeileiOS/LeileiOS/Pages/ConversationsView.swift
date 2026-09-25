@@ -5,7 +5,6 @@ struct ConversationsView: View {
 
     let onOpenConversation: () -> Void
 
-    @State private var createPresented = false
 
     var body: some View {
         Group {
@@ -46,25 +45,7 @@ struct ConversationsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    createPresented = true
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                }
-                .accessibilityLabel("New Conversation")
-                .disabled(!appModel.isAuthenticated)
-            }
-        }
-        .sheet(isPresented: $createPresented) {
-            ConversationCreateSheet {
-                onOpenConversation()
-            }
-            .environmentObject(appModel)
-        }
-        .task {
+        .background(Color(.systemBackground))        .task {
             guard appModel.isAuthenticated else { return }
             await appModel.refreshNativeLiveConversations()
         }
@@ -174,7 +155,7 @@ private struct ConversationListSkeleton: View {
     }
 }
 
-private struct ConversationCreateSheet: View {
+struct ConversationCreateSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
@@ -195,7 +176,7 @@ private struct ConversationCreateSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("New Conversation")
+            .navigationTitle("New Session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
