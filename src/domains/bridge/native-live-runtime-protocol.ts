@@ -32,6 +32,47 @@ export type NativeLiveRuntimeFailureCode =
   | "PROVIDER_SESSION_CONFLICT"
   | "RUNTIME_UNAVAILABLE";
 
+export type NativeLiveRuntimeContextUsageCategory = {
+  name: string | null;
+  tokens: number | null;
+  kind: string | null;
+  is_deferred: boolean | null;
+};
+
+export type NativeLiveRuntimeContextUsage = {
+  model: string | null;
+  total_tokens: number | null;
+  max_tokens: number | null;
+  raw_max_tokens: number | null;
+  percentage: number | null;
+  categories: NativeLiveRuntimeContextUsageCategory[];
+};
+
+export type NativeLiveRuntimeCompactionAdvisory = {
+  due: boolean;
+  threshold_percent: number;
+  observed_percent: number | null;
+  reason:
+    | "context_usage_unavailable"
+    | "turn_boundary_threshold_reached"
+    | "below_threshold";
+};
+
+export type NativeLiveRuntimeCompactionMetadata = {
+  source: "runtime_threshold";
+  attempted: boolean;
+  outcome: "not_due" | "succeeded" | "failed" | "unsupported";
+  boundary: Record<string, unknown> | null;
+  summary: string | null;
+  failure_code: "COMPACT_FAILED" | "COMPACT_UNSUPPORTED" | null;
+};
+
+export type NativeLiveRuntimeMetadata = {
+  context_usage: NativeLiveRuntimeContextUsage | null;
+  compaction_advisory: NativeLiveRuntimeCompactionAdvisory | null;
+  compaction: NativeLiveRuntimeCompactionMetadata | null;
+};
+
 export type NativeLiveRuntimeExecutionResult =
   | {
       protocol_version: 1;
@@ -41,6 +82,7 @@ export type NativeLiveRuntimeExecutionResult =
       status: "success";
       provider_session_id: string;
       normalized_events: NativeLiveNormalizedEvent[];
+      runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
       protocol_version: 1;
@@ -143,15 +185,19 @@ export function parseNativeLiveRuntimeExecutionResult(
   const status = body.status;
 
   if (status === "success") {
-    requireExactKeys(body, [
-      "protocol_version",
-      "prepare_id",
-      "request_id",
-      "conversation_id",
-      "status",
-      "provider_session_id",
-      "normalized_events",
-    ]);
+    requireExactKeys(
+      body,
+      [
+        "protocol_version",
+        "prepare_id",
+        "request_id",
+        "conversation_id",
+        "status",
+        "provider_session_id",
+        "normalized_events",
+      ],
+      ["runtime_metadata"],
+    );
 
     if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
       throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
@@ -172,6 +218,16 @@ export function parseNativeLiveRuntimeExecutionResult(
       ),
       normalized_events:
         body.normalized_events as NativeLiveNormalizedEvent[],
+      ...(
+        body.runtime_metadata === undefined
+          ? {}
+          : {
+              runtime_metadata:
+                body.runtime_metadata === null
+                  ? null
+                  : parseRuntimeMetadata(body.runtime_metadata),
+            }
+      ),
     };
   }
 
@@ -228,6 +284,249 @@ export function assertRuntimeResultMatchesCommand(
       "Fork result must use a new provider session id.",
     );
   }
+}
+
+function parseRuntimeMetadata(
+  value: unknown,
+): NativeLiveRuntimeMetadata {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "context_usage",
+    "compaction_advisory",
+    "compaction",
+  ]);
+
+  return {
+    context_usage:
+      body.context_usage === null
+        ? null
+        : parseContextUsage(body.context_usage),
+    compaction_advisory:
+      body.compaction_advisory === null
+        ? null
+        : parseCompactionAdvisory(body.compaction_advisory),
+    compaction:
+      body.compaction === null
+        ? null
+        : parseCompactionMetadata(body.compaction),
+  };
+}
+
+function parseContextUsage(
+  value: unknown,
+): NativeLiveRuntimeContextUsage {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "model",
+    "total_tokens",
+    "max_tokens",
+    "raw_max_tokens",
+    "percentage",
+    "categories",
+  ]);
+  if (!Array.isArray(body.categories)) {
+    throw new NativeLiveRuntimeProtocolError(
+      "context_usage.categories must be an array.",
+    );
+  }
+  return {
+    model: nullableString(body.model, "context_usage.model"),
+    total_tokens:
+      nullableFiniteNumber(
+        body.total_tokens,
+        "context_usage.total_tokens",
+      ),
+    max_tokens:
+      nullableFiniteNumber(
+        body.max_tokens,
+        "context_usage.max_tokens",
+      ),
+    raw_max_tokens:
+      nullableFiniteNumber(
+        body.raw_max_tokens,
+        "context_usage.raw_max_tokens",
+      ),
+    percentage:
+      nullableFiniteNumber(
+        body.percentage,
+        "context_usage.percentage",
+      ),
+    categories: body.categories.map(
+      (category, index) =>
+        parseContextUsageCategory(category, index),
+    ),
+  };
+}
+
+function parseContextUsageCategory(
+  value: unknown,
+  index: number,
+): NativeLiveRuntimeContextUsageCategory {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "name",
+    "tokens",
+    "kind",
+    "is_deferred",
+  ]);
+  const deferred = body.is_deferred;
+  if (deferred !== null && typeof deferred !== "boolean") {
+    throw new NativeLiveRuntimeProtocolError(
+      `context_usage.categories[${index}].is_deferred must be boolean or null.`,
+    );
+  }
+  return {
+    name: nullableString(
+      body.name,
+      `context_usage.categories[${index}].name`,
+    ),
+    tokens: nullableFiniteNumber(
+      body.tokens,
+      `context_usage.categories[${index}].tokens`,
+    ),
+    kind: nullableString(
+      body.kind,
+      `context_usage.categories[${index}].kind`,
+    ),
+    is_deferred: deferred as boolean | null,
+  };
+}
+
+function parseCompactionAdvisory(
+  value: unknown,
+): NativeLiveRuntimeCompactionAdvisory {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "due",
+    "threshold_percent",
+    "observed_percent",
+    "reason",
+  ]);
+  if (typeof body.due !== "boolean") {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction_advisory.due must be boolean.",
+    );
+  }
+  const threshold = nullableFiniteNumber(
+    body.threshold_percent,
+    "compaction_advisory.threshold_percent",
+  );
+  if (threshold === null || threshold < 0 || threshold > 100) {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction_advisory.threshold_percent is invalid.",
+    );
+  }
+  const observed = nullableFiniteNumber(
+    body.observed_percent,
+    "compaction_advisory.observed_percent",
+  );
+  if (observed !== null && (observed < 0 || observed > 100)) {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction_advisory.observed_percent is invalid.",
+    );
+  }
+  const reason = body.reason;
+  if (
+    reason !== "context_usage_unavailable"
+    && reason !== "turn_boundary_threshold_reached"
+    && reason !== "below_threshold"
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction_advisory.reason is invalid.",
+    );
+  }
+  return {
+    due: body.due,
+    threshold_percent: threshold,
+    observed_percent: observed,
+    reason,
+  };
+}
+
+function parseCompactionMetadata(
+  value: unknown,
+): NativeLiveRuntimeCompactionMetadata {
+  const body = requireRecord(value);
+  requireExactKeys(body, [
+    "source",
+    "attempted",
+    "outcome",
+    "boundary",
+    "summary",
+    "failure_code",
+  ]);
+  if (body.source !== "runtime_threshold") {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction.source is invalid.",
+    );
+  }
+  if (typeof body.attempted !== "boolean") {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction.attempted must be boolean.",
+    );
+  }
+  if (
+    body.outcome !== "not_due"
+    && body.outcome !== "succeeded"
+    && body.outcome !== "failed"
+    && body.outcome !== "unsupported"
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction.outcome is invalid.",
+    );
+  }
+  const boundary =
+    body.boundary === null
+      ? null
+      : requireRecord(body.boundary);
+  const summary = nullableString(
+    body.summary,
+    "compaction.summary",
+  );
+  const failureCode = body.failure_code;
+  if (
+    failureCode !== null
+    && failureCode !== "COMPACT_FAILED"
+    && failureCode !== "COMPACT_UNSUPPORTED"
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "compaction.failure_code is invalid.",
+    );
+  }
+  return {
+    source: "runtime_threshold",
+    attempted: body.attempted,
+    outcome: body.outcome,
+    boundary,
+    summary,
+    failure_code: failureCode,
+  };
+}
+
+function nullableFiniteNumber(
+  value: unknown,
+  field: string,
+): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new NativeLiveRuntimeProtocolError(
+      `${field} must be finite or null.`,
+    );
+  }
+  return value;
+}
+
+function nullableString(
+  value: unknown,
+  field: string,
+): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new NativeLiveRuntimeProtocolError(
+      `${field} must be a string or null.`,
+    );
+  }
+  return value;
 }
 
 function parseExecutionSelection(
