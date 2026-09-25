@@ -201,7 +201,7 @@ private struct NativeLiveMessageRow: View {
                     from: message.completedAt ?? message.createdAt
                 ))
                     .font(.system(size: 13.5))
-                    .tracking(0.15)
+                    .tracking(0.10)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 4)
 
@@ -463,7 +463,7 @@ private struct NativeLiveBlockView: View {
             case "tool_use", "tool_result", "attachment":
                 Text(text)
                     .font(.system(size: 15))
-                    .tracking(0.15)
+                    .tracking(0.10)
                     .lineSpacing(5)
                     .foregroundStyle(.secondary)
                     .frame(
@@ -516,7 +516,7 @@ private struct ChatMarkdownView: View {
         case .paragraph(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
-                .tracking(0.15)
+                .tracking(0.10)
                 .lineSpacing(5)
 
         case .heading(let level, let text):
@@ -525,14 +525,14 @@ private struct ChatMarkdownView: View {
                     size: headingSize(level),
                     weight: level <= 2 ? .semibold : .medium
                 ))
-                .tracking(0.15)
+                .tracking(0.10)
                 .lineSpacing(5)
                 .padding(.top, level == 1 ? 2 : 0)
 
         case .quote(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
-                .tracking(0.15)
+                .tracking(0.10)
                 .lineSpacing(5)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
@@ -546,11 +546,11 @@ private struct ChatMarkdownView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
                     .font(.system(size: baseFontSize))
-                    .tracking(0.15)
+                    .tracking(0.10)
 
                 inlineText(text)
                     .font(.system(size: baseFontSize))
-                    .tracking(0.15)
+                    .tracking(0.10)
                     .lineSpacing(5)
             }
 
@@ -558,19 +558,19 @@ private struct ChatMarkdownView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(number).")
                     .font(.system(size: baseFontSize))
-                    .tracking(0.15)
+                    .tracking(0.10)
                     .foregroundStyle(.secondary)
 
                 inlineText(text)
                     .font(.system(size: baseFontSize))
-                    .tracking(0.15)
+                    .tracking(0.10)
                     .lineSpacing(5)
             }
 
         case .codeBlock(let code):
             Text(code)
                 .font(.system(size: 14, design: .monospaced))
-                .tracking(0.12)
+                .tracking(0.08)
                 .lineSpacing(5)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
