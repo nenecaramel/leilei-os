@@ -126,6 +126,9 @@ test("effect delivery worker runs through shared orchestrator and marks canonica
       },
     },
     workerId,
+    (event) => {
+      calls.push("observer:" + event.name);
+    },
   );
 
   worker.scheduleUser(userId);
@@ -137,6 +140,7 @@ test("effect delivery worker runs through shared orchestrator and marks canonica
     "begin",
     "canonical",
     "complete:observed",
+    "observer:runtime_effect_delivery_observed",
   ]);
   void pending;
 });
@@ -205,6 +209,17 @@ test("unknown effect is reconciled from durable canonical mapping before any new
       },
     },
     workerId,
+    (event) => {
+      calls.push(
+        "observer:"
+        + event.name
+        + (
+          event.name === "runtime_effect_delivery_reconciled"
+            ? ":" + event.outcome
+            : ""
+        ),
+      );
+    },
   );
 
   await worker.runOne(userId);
@@ -212,6 +227,7 @@ test("unknown effect is reconciled from durable canonical mapping before any new
     "unknown",
     "mapping",
     "reconcile:observed",
+    "observer:runtime_effect_delivery_reconciled:observed",
   ]);
 });
 
