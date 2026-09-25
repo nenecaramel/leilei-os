@@ -730,6 +730,7 @@ export function readNativeLiveTurnHandler(
           semanticStatus: turn.semanticStatus,
           semanticFallbackCode: turn.semanticFallbackCode,
           failureCode: turn.failureCode,
+          runtimeMetadata: turn.runtimeMetadata,
           assistantMessage: turn.assistantMessage
             ? {
                 id: turn.assistantMessage.id,

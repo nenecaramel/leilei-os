@@ -4,6 +4,10 @@ import type {
   NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
 import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
+import type {
+  NativeLiveRuntimeCompactionAdvisory,
+  NativeLiveRuntimeContextUsage,
+} from "./native-live-runtime-protocol.js";
 
 export type NativeLiveMacClaudeTransportKind =
   | "agent_sdk"
@@ -42,7 +46,22 @@ export type NativeLiveMacClaudeTransport =
     executeTurn?(
       prompt: string,
       options: NativeLiveMacInteractiveTurnOptions,
-    ): Promise<NativeLiveRuntimeResult>;
+    ): Promise<NativeLiveRuntimeResult & {
+      contextUsage?: NativeLiveRuntimeContextUsage | null;
+      compactionAdvisory?:
+        NativeLiveRuntimeCompactionAdvisory | null;
+    }>;
+    compact?(
+      sessionId: string,
+      execution?: NativeLiveExecutionSelection | null,
+    ): Promise<NativeLiveRuntimeResult & {
+      compaction?: {
+        boundary?: Record<string, unknown> | null;
+        postCompact?: Array<{
+          summary?: string | null;
+        }>;
+      };
+    }>;
   };
 
 export function resolveNativeLiveMacClaudeTransportKind(

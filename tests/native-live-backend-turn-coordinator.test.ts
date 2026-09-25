@@ -630,3 +630,55 @@ test("idempotent finalize never duplicates Mind writes or branch reconciliation"
   assert.equal(result.ok, true);
   assert.equal(mind.finalizeCalls.length, 0);
 });
+
+
+test("runtime compaction metadata is handed to durable finalization", async () => {
+  const { port, coordinator } = setup();
+
+  const metadata = {
+    context_usage: {
+      model: "claude-opus-5-5",
+      total_tokens: 760000,
+      max_tokens: 1000000,
+      raw_max_tokens: 1000000,
+      percentage: 76,
+      categories: [],
+    },
+    compaction_advisory: {
+      due: true,
+      threshold_percent: 75,
+      observed_percent: 76,
+      reason: "turn_boundary_threshold_reached" as const,
+    },
+    compaction: {
+      source: "runtime_threshold" as const,
+      attempted: true,
+      outcome: "succeeded" as const,
+      boundary: {
+        trigger: "manual",
+        pre_tokens: 760000,
+        post_tokens: 120000,
+      },
+      summary: "compact summary",
+      failure_code: null,
+    },
+  };
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [
+      { type: "text", payload: { text: "READY" } },
+    ],
+    runtime_metadata: metadata,
+  });
+
+  assert.equal(result.ok, true);
+  const call = port.finalizeSuccessCalls[0] as
+    Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0];
+  assert.deepEqual(call.runtimeMetadata, metadata);
+});

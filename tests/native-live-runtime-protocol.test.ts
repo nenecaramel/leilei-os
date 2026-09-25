@@ -100,6 +100,66 @@ test("success result carries provider session and normalized events only", () =>
   assert.equal(result.normalized_events.length, 1);
 });
 
+test("success result accepts bounded runtime compaction metadata", () => {
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: {
+        model: "claude-opus-5-5",
+        total_tokens: 760000,
+        max_tokens: 1000000,
+        raw_max_tokens: 1000000,
+        percentage: 76,
+        categories: [{
+          name: "Messages",
+          tokens: 700000,
+          kind: "used",
+          is_deferred: false,
+        }],
+      },
+      compaction_advisory: {
+        due: true,
+        threshold_percent: 75,
+        observed_percent: 76,
+        reason: "turn_boundary_threshold_reached",
+      },
+      compaction: {
+        source: "runtime_threshold",
+        attempted: true,
+        outcome: "succeeded",
+        boundary: {
+          trigger: "manual",
+          pre_tokens: 760000,
+          post_tokens: 120000,
+        },
+        summary: "compact summary",
+        failure_code: null,
+      },
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(
+    result.runtime_metadata?.context_usage?.percentage,
+    76,
+  );
+  assert.equal(
+    result.runtime_metadata?.compaction?.outcome,
+    "succeeded",
+  );
+  assert.equal(
+    result.runtime_metadata?.compaction?.summary,
+    "compact summary",
+  );
+});
+
 test("failure result exposes only a bounded safe error code", () => {
   assert.deepEqual(
     parseNativeLiveRuntimeExecutionResult({

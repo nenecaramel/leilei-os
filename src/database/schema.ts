@@ -1045,6 +1045,8 @@ export const conversationProviderSessionCheckpoints = pgTable(
       .$type<ConversationRuntimeProvider>()
       .notNull(),
     providerSessionId: text("provider_session_id").notNull(),
+    runtimeMetadata: jsonb("runtime_metadata")
+      .$type<Record<string, unknown> | null>(),
     providerCheckpointId: text("provider_checkpoint_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -1115,6 +1117,8 @@ export const nativeLiveTurnPreparations = pgTable(
       .notNull(),
     resultHash: varchar("result_hash", { length: 64 }),
     providerSessionId: text("provider_session_id"),
+    runtimeMetadata: jsonb("runtime_metadata")
+      .$type<Record<string, unknown> | null>(),
     assistantMessageId: uuid("assistant_message_id"),
     failureCode: varchar("failure_code", { length: 64 }),
     dispatchStatus: varchar("dispatch_status", { length: 32 })
@@ -1252,6 +1256,10 @@ export const nativeLiveTurnPreparations = pgTable(
     check(
       "native_live_turn_preparations_result_hash_format",
       sql`${table.resultHash} IS NULL OR ${table.resultHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "native_live_turn_preparations_runtime_metadata_object",
+      sql`${table.runtimeMetadata} IS NULL OR jsonb_typeof(${table.runtimeMetadata}) = 'object'`,
     ),
     check(
       "native_live_turn_preparations_result_consistency",
