@@ -7,7 +7,8 @@ struct AppShell: View {
     @State private var selectedPage: AppPage = .chat
     @State private var menuOpen = false
     @State private var settingsPresented = false
-    @State private var newSessionPresented = false
+    @State private var newSessionInFlight = false
+    @State private var newSessionErrorMessage: String?
     @State private var floatingControlCenters: [String: CGFloat] = [:]
 
     var body: some View {
@@ -25,14 +26,48 @@ struct AppShell: View {
         .sheet(isPresented: $settingsPresented) {
             SettingsSheetView(appModel: appModel)
         }
-        .sheet(isPresented: $newSessionPresented) {
-            ConversationCreateSheet {
-                selectedPage = .chat
+        .alert(
+            "New conversation failed",
+            isPresented: Binding(
+                get: { newSessionErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        newSessionErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                newSessionErrorMessage = nil
             }
-            .environmentObject(appModel)
+        } message: {
+            Text(newSessionErrorMessage ?? "")
         }
     }
 
+
+    private func createNewSession() {
+        guard appModel.isAuthenticated, !newSessionInFlight else {
+            return
+        }
+
+        newSessionInFlight = true
+
+        Task { @MainActor in
+            defer {
+                newSessionInFlight = false
+            }
+
+            do {
+                _ = try await appModel.createNativeLiveConversation(
+                    title: "New Conversation"
+                )
+                selectedPage = .chat
+            } catch {
+                newSessionErrorMessage = error.localizedDescription
+            }
+        }
+    }
 
     private func openConversationFromSidebar(
         _ conversation: NativeLiveConversationSummary
@@ -63,9 +98,10 @@ struct AppShell: View {
                         withAnimation(.snappy) {
                             menuOpen = false
                         }
-                        newSessionPresented = true
+                        createNewSession()
                     },
-                    newSessionEnabled: appModel.isAuthenticated,
+                    newSessionEnabled:
+                        appModel.isAuthenticated && !newSessionInFlight,
                     conversations: appModel.nativeLiveConversations,
                     activeConversationID: appModel.activeNativeLiveConversationID,
                     onOpenConversation: openConversationFromSidebar,
@@ -134,9 +170,10 @@ struct AppShell: View {
                 selectedPage: $selectedPage,
                 menuButtonCenterY: nil,
                 onNewSession: {
-                    newSessionPresented = true
+                    createNewSession()
                 },
-                newSessionEnabled: appModel.isAuthenticated,
+                newSessionEnabled:
+                    appModel.isAuthenticated && !newSessionInFlight,
                 conversations: appModel.nativeLiveConversations,
                 activeConversationID: appModel.activeNativeLiveConversationID,
                 onOpenConversation: openConversationFromSidebar,
