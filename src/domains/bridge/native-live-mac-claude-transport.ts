@@ -3,6 +3,7 @@ import type {
   NativeLiveNormalizedEvent,
   NativeLiveRuntimeResult,
 } from "../conversation/native-live-conversation-orchestrator.js";
+import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 
 export type NativeLiveMacClaudeTransportKind =
   | "agent_sdk"
@@ -17,6 +18,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
   mode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
   streaming: boolean;
+  execution?: NativeLiveExecutionSelection | null;
   onNormalizedEvent?: (
     event: NativeLiveNormalizedEvent,
   ) => void | Promise<void>;
