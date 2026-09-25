@@ -4,6 +4,7 @@ import {
   asc,
   eq,
   gt,
+  inArray,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -17,6 +18,8 @@ import type {
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
+const MAX_RUNTIME_EVENT_BATCH = 32;
+
 export type NativeLiveRuntimeEventRecord = {
   sequence: number;
   event: NativeLiveNormalizedEvent;
@@ -26,6 +29,11 @@ export type NativeLiveRuntimeEventRecord = {
 export type NativeLiveRuntimeEventAppendOutcome =
   | "created"
   | "idempotent";
+
+export type NativeLiveRuntimeEventBatchAppendOutcome = {
+  created: number;
+  idempotent: number;
+};
 
 export class NativeLiveRuntimeEventError extends Error {
   constructor(
@@ -64,13 +72,30 @@ export class DrizzleNativeLiveRuntimeEventRepository {
     sequence: number;
     event: NativeLiveNormalizedEvent;
   }): Promise<NativeLiveRuntimeEventAppendOutcome> {
-    const event = normalizeRuntimeEvent(input.event);
-    if (!Number.isInteger(input.sequence) || input.sequence < 1) {
-      throw new NativeLiveRuntimeEventError(
-        "INVALID_EVENT",
-        "Native live runtime event sequence must be a positive integer.",
-      );
-    }
+    const outcome = await this.appendBatch({
+      userId: input.userId,
+      listenerInstanceId: input.listenerInstanceId,
+      reservationId: input.reservationId,
+      events: [{
+        sequence: input.sequence,
+        event: input.event,
+      }],
+    });
+    return outcome.created === 1
+      ? "created"
+      : "idempotent";
+  }
+
+  async appendBatch(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    events: ReadonlyArray<{
+      sequence: number;
+      event: NativeLiveNormalizedEvent;
+    }>;
+  }): Promise<NativeLiveRuntimeEventBatchAppendOutcome> {
+    const events = normalizeRuntimeEventBatch(input.events);
 
     return this.db.transaction(async (transaction) => {
       const [preparation] = await transaction
@@ -95,8 +120,9 @@ export class DrizzleNativeLiveRuntimeEventRepository {
         );
       }
 
-      const [existing] = await transaction
+      const existingRows = await transaction
         .select({
+          sequence: nativeLiveRuntimeEvents.sequence,
           eventType: nativeLiveRuntimeEvents.eventType,
           providerSessionId: nativeLiveRuntimeEvents.providerSessionId,
           payload: nativeLiveRuntimeEvents.payload,
@@ -106,52 +132,76 @@ export class DrizzleNativeLiveRuntimeEventRepository {
           and(
             eq(nativeLiveRuntimeEvents.userId, input.userId),
             eq(nativeLiveRuntimeEvents.prepareId, input.reservationId),
-            eq(nativeLiveRuntimeEvents.sequence, input.sequence),
+            inArray(
+              nativeLiveRuntimeEvents.sequence,
+              events.map((item) => item.sequence),
+            ),
           ),
-        )
-        .limit(1);
+        );
 
-      if (existing) {
-        const existingEvent: NativeLiveNormalizedEvent = {
-          type: existing.eventType,
-          ...(existing.providerSessionId === null
-            ? {}
-            : { provider_session_id: existing.providerSessionId }),
-          ...(existing.payload === null
-            ? {}
-            : { payload: existing.payload }),
-        };
-        if (!isDeepStrictEqual(existingEvent, event)) {
+      const existingBySequence = new Map(
+        existingRows.map((row) => [
+          row.sequence,
+          {
+            type: row.eventType,
+            ...(row.providerSessionId === null
+              ? {}
+              : { provider_session_id: row.providerSessionId }),
+            ...(row.payload === null
+              ? {}
+              : { payload: row.payload }),
+          } satisfies NativeLiveNormalizedEvent,
+        ]),
+      );
+
+      const missing: typeof events = [];
+      let idempotent = 0;
+      for (const item of events) {
+        const existing = existingBySequence.get(item.sequence);
+        if (!existing) {
+          missing.push(item);
+          continue;
+        }
+        if (!isDeepStrictEqual(existing, item.event)) {
           throw new NativeLiveRuntimeEventError(
             "EVENT_CONFLICT",
             "Native live runtime event sequence already contains different data.",
           );
         }
-        return "idempotent";
+        idempotent += 1;
       }
 
-      if (
-        preparation.reservedBy !== input.listenerInstanceId
-        || (
-          preparation.dispatchStatus !== "executing"
-          && preparation.dispatchStatus !== "delivery_unknown"
-        )
-      ) {
-        throw new NativeLiveRuntimeEventError(
-          "RESERVATION_CONFLICT",
-          "Native live runtime event does not belong to the active execution reservation.",
+      if (missing.length > 0) {
+        if (
+          preparation.reservedBy !== input.listenerInstanceId
+          || (
+            preparation.dispatchStatus !== "executing"
+            && preparation.dispatchStatus !== "delivery_unknown"
+          )
+        ) {
+          throw new NativeLiveRuntimeEventError(
+            "RESERVATION_CONFLICT",
+            "Native live runtime events do not belong to the active execution reservation.",
+          );
+        }
+
+        await transaction.insert(nativeLiveRuntimeEvents).values(
+          missing.map((item) => ({
+            userId: input.userId,
+            prepareId: input.reservationId,
+            sequence: item.sequence,
+            eventType: item.event.type,
+            providerSessionId:
+              item.event.provider_session_id ?? null,
+            payload: item.event.payload ?? null,
+          })),
         );
       }
 
-      await transaction.insert(nativeLiveRuntimeEvents).values({
-        userId: input.userId,
-        prepareId: input.reservationId,
-        sequence: input.sequence,
-        eventType: event.type,
-        providerSessionId: event.provider_session_id ?? null,
-        payload: event.payload ?? null,
-      });
-      return "created";
+      return {
+        created: missing.length,
+        idempotent,
+      };
     });
   }
 
@@ -236,6 +286,18 @@ export class NativeLiveRuntimeEventService {
     return this.repository.append(input);
   }
 
+  appendBatch(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    events: ReadonlyArray<{
+      sequence: number;
+      event: NativeLiveNormalizedEvent;
+    }>;
+  }): Promise<NativeLiveRuntimeEventBatchAppendOutcome> {
+    return this.repository.appendBatch(input);
+  }
+
   list(input: {
     userId: string;
     prepareId: string;
@@ -244,6 +306,46 @@ export class NativeLiveRuntimeEventService {
   }): Promise<NativeLiveRuntimeEventRecord[] | null> {
     return this.repository.list(input);
   }
+}
+
+function normalizeRuntimeEventBatch(
+  input: ReadonlyArray<{
+    sequence: number;
+    event: NativeLiveNormalizedEvent;
+  }>,
+): Array<{
+  sequence: number;
+  event: NativeLiveNormalizedEvent;
+}> {
+  if (
+    !Array.isArray(input)
+    || input.length < 1
+    || input.length > MAX_RUNTIME_EVENT_BATCH
+  ) {
+    throw new NativeLiveRuntimeEventError(
+      "INVALID_EVENT",
+      `Native live runtime event batch must contain 1 to ${MAX_RUNTIME_EVENT_BATCH} events.`,
+    );
+  }
+
+  let previousSequence = 0;
+  return input.map((item) => {
+    if (
+      !Number.isInteger(item.sequence)
+      || item.sequence < 1
+      || item.sequence <= previousSequence
+    ) {
+      throw new NativeLiveRuntimeEventError(
+        "INVALID_EVENT",
+        "Native live runtime event batch sequences must be positive and strictly increasing.",
+      );
+    }
+    previousSequence = item.sequence;
+    return {
+      sequence: item.sequence,
+      event: normalizeRuntimeEvent(item.event),
+    };
+  });
 }
 
 function normalizeRuntimeEvent(
