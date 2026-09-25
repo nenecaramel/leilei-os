@@ -181,40 +181,46 @@ async function run() {
 
   const metadata = result.runtime_metadata;
   assert.ok(metadata, "Trigger turn returned no runtime metadata.");
-  assert.ok(metadata.context_usage);
+  const contextUsage = metadata.context_usage;
+  const advisory = metadata.compaction_advisory;
+  const compaction = metadata.compaction;
+  assert.ok(contextUsage);
   assert.ok(
-    (metadata.context_usage.percentage ?? 0) >= thresholdPercent,
-    `Trigger turn was not genuinely over threshold: ${metadata.context_usage.percentage}.`,
+    (contextUsage.percentage ?? 0) >= thresholdPercent,
+    `Trigger turn was not genuinely over threshold: ${contextUsage.percentage}.`,
   );
-  assert.equal(metadata.compaction_advisory?.due, true);
+  assert.equal(advisory?.due, true);
   assert.equal(
-    metadata.compaction_advisory?.reason,
+    advisory?.reason,
     "turn_boundary_threshold_reached",
   );
-  assert.equal(metadata.compaction?.source, "runtime_threshold");
-  assert.equal(metadata.compaction?.attempted, true);
-  assert.equal(metadata.compaction?.outcome, "succeeded");
-  assert.equal(metadata.compaction?.failure_code, null);
-  assert.ok(metadata.compaction?.boundary);
+  assert.ok(compaction);
+  assert.equal(compaction.source, "runtime_threshold");
+  assert.equal(compaction.attempted, true);
+  assert.equal(compaction.outcome, "succeeded");
+  assert.equal(compaction.failure_code, null);
+  const boundary = compaction.boundary;
+  assert.ok(boundary);
   assert.ok(
-    Number(metadata.compaction.boundary.pre_tokens) > 0,
+    Number(boundary.pre_tokens) > 0,
     "Auto-compact boundary did not expose positive pre_tokens.",
   );
   assert.ok(
-    Number(metadata.compaction.boundary.post_tokens) > 0,
+    Number(boundary.post_tokens) > 0,
     "Auto-compact boundary did not expose positive post_tokens.",
   );
   assert.ok(
-    Number(metadata.compaction.boundary.post_tokens)
-      < Number(metadata.compaction.boundary.pre_tokens),
+    Number(boundary.post_tokens)
+      < Number(boundary.pre_tokens),
     "Auto-compact did not reduce provider context tokens.",
   );
+  const summary = compaction.summary;
   assert.ok(
-    metadata.compaction?.summary?.trim(),
+    summary?.trim(),
     "Auto-compact did not expose a summary.",
   );
   assert.ok(
-    metadata.compaction.summary.includes(marker),
+    summary.includes(marker),
     "Auto-compact summary did not preserve the durable marker.",
   );
   assert.equal(
@@ -249,7 +255,7 @@ async function run() {
   );
   assert.ok(
     (after.contextUsage.percentage ?? 100)
-      < (metadata.context_usage.percentage ?? 0),
+      < (contextUsage.percentage ?? 0),
     "Post-compact context usage did not decrease.",
   );
 
@@ -258,9 +264,9 @@ async function run() {
       phase: "accepted",
       thresholdPercent,
       preCompactObservedPercent:
-        metadata.context_usage.percentage,
-      advisory: metadata.compaction_advisory,
-      compaction: metadata.compaction,
+        contextUsage.percentage,
+      advisory,
+      compaction,
       childProviderSessionId: compactedSessionId,
       parentProviderSessionId: hotSessionId,
       postCompactContextUsage: after.contextUsage,
