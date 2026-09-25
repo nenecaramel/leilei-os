@@ -331,4 +331,3 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   );
 }
 
-export { DaySpacePageContent as DaySpacePage };
