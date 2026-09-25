@@ -1,6 +1,6 @@
 import type { WebApiClient } from "../api/useWebApiClient";
 
-export type WebImportModule = "diary" | "todo";
+type WebImportModule = "diary" | "todo";
 
 export type WebImportModuleSummary = {
   create: number;
