@@ -129,7 +129,7 @@ private struct NativeLiveMessageRow: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(
-                            Color.primary.opacity(0.07),
+                            Color.chatSoftFill,
                             in: RoundedRectangle(
                                 cornerRadius: 18,
                                 style: .continuous
@@ -194,7 +194,10 @@ private struct NativeLiveMessageRow: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(visibleBlocks) { block in
-                    NativeLiveBlockView(block: block)
+                    NativeLiveBlockView(
+                        block: block,
+                        fillsAvailableWidth: message.role != "user"
+                    )
                 }
             }
         }
@@ -225,6 +228,7 @@ private struct NativeLiveMessageRow: View {
 
 private struct NativeLiveBlockView: View {
     let block: NativeLiveCurrentPathBlock
+    let fillsAvailableWidth: Bool
 
     var body: some View {
         if let text = normalizedText {
@@ -235,7 +239,7 @@ private struct NativeLiveBlockView: View {
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
                     .frame(
-                        maxWidth: .infinity,
+                        maxWidth: fillsAvailableWidth ? .infinity : nil,
                         alignment: .leading
                     )
 
@@ -245,7 +249,7 @@ private struct NativeLiveBlockView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .frame(
-                        maxWidth: .infinity,
+                        maxWidth: fillsAvailableWidth ? .infinity : nil,
                         alignment: .leading
                     )
 
