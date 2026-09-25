@@ -486,7 +486,7 @@ private struct NativeLiveBlockView: View {
             switch block.kind {
             case "text":
                 Text(text)
-                    .font(.system(size: 18.5))
+                    .font(.system(size: 18))
                     .foregroundStyle(.primary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
