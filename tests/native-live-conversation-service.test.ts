@@ -50,6 +50,17 @@ class FakeRepository implements NativeLiveConversationRepository {
     return null;
   }
 
+  async renameConversation() {
+    this.events.push("rename");
+    return {
+      id: "c1",
+      title: "Renamed",
+      currentHeadMessageId: null,
+      createdAt: "2026-09-21T00:00:00.000Z",
+      updatedAt: "2026-09-21T00:01:00.000Z",
+    };
+  }
+
   async deleteConversation() {
     this.events.push("delete");
     return {
@@ -194,4 +205,19 @@ test("deleteConversation delegates to the repository lifecycle boundary", async 
 
   assert.equal(result.outcome, "deleted");
   assert.deepEqual(repository.events, ["delete"]);
+});
+
+
+test("renameConversation delegates to the repository lifecycle boundary", async () => {
+  const repository = new FakeRepository();
+  const service = new NativeLiveConversationService(repository);
+
+  const result = await service.renameConversation({
+    userId: "user-1",
+    conversationId: "c1",
+    title: "Renamed",
+  });
+
+  assert.equal(result?.title, "Renamed");
+  assert.deepEqual(repository.events, ["rename"]);
 });

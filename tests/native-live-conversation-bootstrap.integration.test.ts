@@ -197,6 +197,27 @@ test(
       [otherTenant.id],
     );
 
+    const renamed = await service.renameConversation({
+      userId: userA,
+      conversationId: newer.id,
+      title: "Renamed newer",
+    });
+    assert.equal(renamed?.title, "Renamed newer");
+
+    const listedAfterRename = await service.listConversations({
+      userId: userA,
+      limit: 10,
+    });
+    assert.equal(listedAfterRename[0]?.id, newer.id);
+    assert.equal(listedAfterRename[0]?.title, "Renamed newer");
+
+    const crossTenantRename = await service.renameConversation({
+      userId: userB,
+      conversationId: newer.id,
+      title: "Must not rename",
+    });
+    assert.equal(crossTenantRename, null);
+
     const deleted = await service.deleteConversation({
       userId: userA,
       conversationId: newer.id,
@@ -208,6 +229,13 @@ test(
       conversationId: newer.id,
     });
     assert.equal(repeated.outcome, "already_deleted");
+
+    const renameAfterDelete = await service.renameConversation({
+      userId: userA,
+      conversationId: newer.id,
+      title: "Must stay deleted",
+    });
+    assert.equal(renameAfterDelete, null);
 
     const listedAfterDelete = await service.listConversations({
       userId: userA,

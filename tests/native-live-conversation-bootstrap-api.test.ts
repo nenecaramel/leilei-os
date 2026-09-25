@@ -11,6 +11,20 @@ const conversationId = "55555555-5555-4555-8555-555555555555";
 class FakeConversationService {
   listCalls: unknown[] = [];
   createCalls: unknown[] = [];
+  renameCalls: unknown[] = [];
+  renameOutcome: {
+    id: string;
+    title: string | null;
+    currentHeadMessageId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null = {
+    id: conversationId,
+    title: "Renamed",
+    currentHeadMessageId: null,
+    createdAt: "2026-09-24T00:00:00.000Z",
+    updatedAt: "2026-09-24T01:30:00.000Z",
+  };
   deleteCalls: unknown[] = [];
   deleteOutcome:
     | { outcome: "deleted"; deletedAt: string }
@@ -47,6 +61,15 @@ class FakeConversationService {
       updatedAt: "2026-09-24T00:00:00.000Z",
       messages: [],
     };
+  }
+
+  async renameConversation(input: {
+    userId: string;
+    conversationId: string;
+    title: string;
+  }) {
+    this.renameCalls.push(input);
+    return this.renameOutcome;
   }
 
   async deleteConversation(input: {
@@ -240,5 +263,77 @@ test("native live bootstrap delete rejects busy, missing, and invalid ids", asyn
     );
     assert.equal(invalid.status, 400);
     assert.equal(service.deleteCalls.length, 2);
+  });
+});
+
+
+test("native live bootstrap renames an owner conversation and trims title", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "  Renamed  " }),
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json() as {
+      data: { title: string | null };
+    };
+    assert.equal(payload.data.title, "Renamed");
+    assert.deepEqual(service.renameCalls, [{
+      userId,
+      conversationId,
+      title: "Renamed",
+    }]);
+  });
+});
+
+test("native live bootstrap rename rejects missing, blank, invalid, and extra fields", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    service.renameOutcome = null;
+    const missing = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Missing" }),
+      },
+    );
+    assert.equal(missing.status, 404);
+
+    const blank = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "   " }),
+      },
+    );
+    assert.equal(blank.status, 400);
+
+    const extra = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Okay", extra: true }),
+      },
+    );
+    assert.equal(extra.status, 400);
+
+    const invalidId = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/not-a-uuid`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Okay" }),
+      },
+    );
+    assert.equal(invalidId.status, 400);
+    assert.equal(service.renameCalls.length, 1);
   });
 });

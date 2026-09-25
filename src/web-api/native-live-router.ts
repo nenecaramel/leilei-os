@@ -46,7 +46,7 @@ export type NativeLiveApiDependencies = {
   currentPathReader?: NativeLiveCurrentPathReader;
   conversationService?: Pick<
     NativeLiveConversationService,
-    "listConversations" | "createConversation" | "deleteConversation"
+    "listConversations" | "createConversation" | "renameConversation" | "deleteConversation"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
@@ -102,6 +102,10 @@ export function createNativeLiveApiRouter(
     router.post(
       "/conversations",
       createNativeLiveConversationHandler(dependencies),
+    );
+    router.patch(
+      "/conversations/:conversationId",
+      renameNativeLiveConversationHandler(dependencies),
     );
     router.delete(
       "/conversations/:conversationId",
@@ -221,6 +225,99 @@ export function createNativeLiveConversationHandler(
         error: {
           code: "NATIVE_LIVE_CONVERSATION_BOOTSTRAP_UNAVAILABLE",
           message: "Native live conversation could not be created.",
+        },
+      });
+    }
+  };
+}
+
+export function renameNativeLiveConversationHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const conversationId = routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
+        },
+      });
+      return;
+    }
+
+    const body = exactBody(request.body, ["title"]);
+    const title = body?.title;
+    if (typeof title !== "string") {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_RENAME",
+          message:
+            "Conversation title must be a non-empty string up to 200 characters.",
+        },
+      });
+      return;
+    }
+
+    const trimmedTitle = title.trim();
+    if (trimmedTitle.length === 0 || trimmedTitle.length > 200) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_RENAME",
+          message:
+            "Conversation title must be a non-empty string up to 200 characters.",
+        },
+      });
+      return;
+    }
+
+    const service = dependencies.conversationService;
+    if (!service) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_LIFECYCLE_UNAVAILABLE",
+          message:
+            "Native live conversation lifecycle is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const renamed = await service.renameConversation({
+        userId: request.webUserId,
+        conversationId,
+        title: trimmedTitle,
+      });
+
+      if (!renamed) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Native live conversation was not found.",
+          },
+        });
+        return;
+      }
+
+      response.json({
+        success: true,
+        data: renamed,
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_LIFECYCLE_UNAVAILABLE",
+          message:
+            "Native live conversation could not be renamed.",
         },
       });
     }
