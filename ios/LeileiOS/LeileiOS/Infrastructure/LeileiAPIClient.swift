@@ -62,6 +62,93 @@ enum NativeLiveCurrentPathFetchResult: Sendable, Equatable {
     case notModified
 }
 
+enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case opus55 = "claude-opus-5-5"
+    case opus46 = "claude-opus-4-6"
+    case sonnet5 = "claude-sonnet-5"
+    case sonnet46 = "claude-sonnet-4-6"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .opus55:
+            return "Opus 5.5"
+        case .opus46:
+            return "Opus 4.6"
+        case .sonnet5:
+            return "Sonnet 5"
+        case .sonnet46:
+            return "Sonnet 4.6"
+        }
+    }
+
+    var supportedThinkingModes: [NativeLiveThinkingMode] {
+        switch self {
+        case .opus55:
+            return [.adaptive]
+        case .opus46, .sonnet5, .sonnet46:
+            return [.adaptive, .disabled]
+        }
+    }
+
+    var supportedEffortLevels: [NativeLiveEffortLevel] {
+        switch self {
+        case .opus55, .sonnet5:
+            return [.low, .medium, .high, .xhigh, .max]
+        case .opus46, .sonnet46:
+            return [.low, .medium, .high, .max]
+        }
+    }
+}
+
+enum NativeLiveThinkingMode: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case adaptive
+    case disabled
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .adaptive:
+            return "Adaptive"
+        case .disabled:
+            return "Off"
+        }
+    }
+}
+
+enum NativeLiveEffortLevel: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case low
+    case medium
+    case high
+    case xhigh
+    case max
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .low:
+            return "Low"
+        case .medium:
+            return "Medium"
+        case .high:
+            return "High"
+        case .xhigh:
+            return "Extra High"
+        case .max:
+            return "Max"
+        }
+    }
+}
+
+struct NativeLiveExecutionSelection: Codable, Sendable, Equatable {
+    let model: NativeLiveClaudeModel
+    let thinking: NativeLiveThinkingMode
+    let effort: NativeLiveEffortLevel
+}
+
 struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
     let outcome: String
     let semanticPending: Bool
@@ -172,10 +259,37 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func renameNativeLiveConversation(
+        conversationID: UUID,
+        title: String
+    ) async throws -> NativeLiveConversationSummary {
+        let body = try JSONEncoder().encode(
+            RenameNativeLiveConversationBody(title: title)
+        )
+        let envelope: NativeLiveConversationEnvelope = try await request(
+            path: "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())",
+            method: "PATCH",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteNativeLiveConversation(
+        conversationID: UUID
+    ) async throws {
+        let _: NoContentResponse = try await request(
+            path: "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())",
+            method: "DELETE",
+            authenticated: true
+        )
+    }
+
     func prepareNativeLiveSend(
         conversationID: UUID,
         expectedHeadMessageID: String?,
         text: String,
+        execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
     ) async throws -> NativeLivePrepareResult {
         let body = try JSONEncoder().encode(
@@ -185,7 +299,8 @@ final class LeileiAPIClient {
                 operation: "send",
                 conversationId: conversationID.uuidString.lowercased(),
                 expectedHeadMessageId: expectedHeadMessageID,
-                text: text
+                text: text,
+                execution: execution
             )
         )
         let envelope: NativeLivePrepareEnvelope = try await request(
@@ -200,6 +315,7 @@ final class LeileiAPIClient {
     func prepareNativeLiveRetry(
         conversationID: UUID,
         targetUserMessageID: String,
+        execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
     ) async throws -> NativeLivePrepareResult {
         let body = try JSONEncoder().encode(
@@ -208,7 +324,8 @@ final class LeileiAPIClient {
                 requestId: requestID.uuidString.lowercased(),
                 operation: "retry",
                 conversationId: conversationID.uuidString.lowercased(),
-                targetUserMessageId: targetUserMessageID
+                targetUserMessageId: targetUserMessageID,
+                execution: execution
             )
         )
         let envelope: NativeLivePrepareEnvelope = try await request(
@@ -224,6 +341,7 @@ final class LeileiAPIClient {
         conversationID: UUID,
         targetUserMessageID: String,
         text: String,
+        execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
     ) async throws -> NativeLivePrepareResult {
         let body = try JSONEncoder().encode(
@@ -233,7 +351,8 @@ final class LeileiAPIClient {
                 operation: "edit",
                 conversationId: conversationID.uuidString.lowercased(),
                 targetUserMessageId: targetUserMessageID,
-                text: text
+                text: text,
+                execution: execution
             )
         )
         let envelope: NativeLivePrepareEnvelope = try await request(
@@ -416,6 +535,10 @@ private struct CreateNativeLiveConversationBody: Encodable, Sendable {
     let title: String?
 }
 
+private struct RenameNativeLiveConversationBody: Encodable, Sendable {
+    let title: String
+}
+
 private struct NativeLivePrepareEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLivePrepareResult
@@ -433,6 +556,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
     let conversationId: String
     let expectedHeadMessageId: String?
     let text: String
+    let execution: NativeLiveExecutionSelection?
 
     enum CodingKeys: String, CodingKey {
         case dispatchTarget = "dispatch_target"
@@ -441,6 +565,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         case conversationId = "conversation_id"
         case expectedHeadMessageId = "expected_head_message_id"
         case text
+        case execution
     }
 
     func encode(to encoder: Encoder) throws {
@@ -458,6 +583,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
             try container.encodeNil(forKey: .expectedHeadMessageId)
         }
         try container.encode(text, forKey: .text)
+        try container.encodeIfPresent(execution, forKey: .execution)
     }
 }
 
@@ -467,6 +593,7 @@ private struct NativeLiveRetryBody: Encodable, Sendable {
     let operation: String
     let conversationId: String
     let targetUserMessageId: String
+    let execution: NativeLiveExecutionSelection?
 
     enum CodingKeys: String, CodingKey {
         case dispatchTarget = "dispatch_target"
@@ -474,6 +601,7 @@ private struct NativeLiveRetryBody: Encodable, Sendable {
         case operation
         case conversationId = "conversation_id"
         case targetUserMessageId = "target_user_message_id"
+        case execution
     }
 }
 
@@ -484,6 +612,7 @@ private struct NativeLiveEditBody: Encodable, Sendable {
     let conversationId: String
     let targetUserMessageId: String
     let text: String
+    let execution: NativeLiveExecutionSelection?
 
     enum CodingKeys: String, CodingKey {
         case dispatchTarget = "dispatch_target"
@@ -492,6 +621,7 @@ private struct NativeLiveEditBody: Encodable, Sendable {
         case conversationId = "conversation_id"
         case targetUserMessageId = "target_user_message_id"
         case text
+        case execution
     }
 }
 
