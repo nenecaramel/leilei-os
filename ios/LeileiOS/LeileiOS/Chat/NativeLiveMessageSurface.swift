@@ -154,7 +154,7 @@ struct NativeLiveMessageSurface: View {
                     isAwayFromBottom = awayFromBottom
                 }
             }
-            .onChange(of: snapshot.syncToken) { _, _ in
+            .onChange(of: snapshot?.syncToken) { _, _ in
                 scrollToBottom(proxy)
             }
             .overlay(alignment: .top) {
@@ -250,11 +250,12 @@ struct NativeLiveMessageSurface: View {
     private func editedTextOverride(
         for message: NativeLiveCurrentPathMessage
     ) -> String? {
-        guard case .edit(
-            let targetUserMessageID,
-            let text
-        ) = pendingOperation,
-        message.id == targetUserMessageID else {
+        guard let pendingOperation,
+              case .edit(
+                  let targetUserMessageID,
+                  let text
+              ) = pendingOperation,
+              message.id == targetUserMessageID else {
             return nil
         }
 
