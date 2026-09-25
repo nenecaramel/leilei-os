@@ -473,11 +473,11 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         input: { userId, prepareId },
       }]);
 
-      const waited = await fetch(
+      const read = await fetch(
         `${baseUrl}/api/v1/native-live/turns/${prepareId}`,
         { headers: { "x-test-user": "owner" } },
       );
-      assert.equal(waited.status, 200);
+      assert.equal(read.status, 200);
       const readPayload = await read.json() as {
         data: {
           canonicalStatus: string;
