@@ -6,6 +6,9 @@ struct SidebarView: View {
     let menuButtonCenterY: CGFloat?
     let onNewSession: () -> Void
     let newSessionEnabled: Bool
+    let conversations: [NativeLiveConversationSummary]
+    let activeConversationID: UUID?
+    let onOpenConversation: (NativeLiveConversationSummary) -> Void
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
@@ -26,10 +29,8 @@ struct SidebarView: View {
                             title: nil,
                             pages: [
                                 .home,
-                                .chat,
                                 .diary,
                                 .daySpace,
-                                .conversations,
                                 .universe,
                                 .sentinel
                             ],
@@ -40,6 +41,7 @@ struct SidebarView: View {
                         )
                         .offset(y: 9)
 
+                        recentConversations
                     }
                     .padding(.horizontal, 22)
                     .padding(.bottom, 40)
@@ -88,6 +90,78 @@ struct SidebarView: View {
                 .padding()
             }
         }
+    }
+
+
+    private var recentConversations: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Recents")
+                .font(.caption)
+                .foregroundStyle(.secondary.opacity(0.7))
+                .padding(.horizontal, 10)
+                .offset(x: titleHorizontalOffset - 10, y: 2)
+
+            ForEach(conversations) { conversation in
+                Button {
+                    selectedPage = .chat
+                    onSelect()
+                    onOpenConversation(conversation)
+                } label: {
+                    HStack {
+                        Text(displayTitle(for: conversation))
+                            .font(.body.weight(.medium))
+                            .lineLimit(1)
+                            .offset(
+                                x: titleHorizontalOffset - navigationRowHorizontalInset,
+                                y: 2
+                            )
+
+                        Spacer()
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: 44,
+                        alignment: .leading
+                    )
+                    .contentShape(Rectangle())
+                    .background {
+                        if isActiveConversation(conversation) {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.primary.opacity(0.05))
+                                .padding(
+                                    .leading,
+                                    titleHorizontalOffset - 15
+                                )
+                                .padding(.trailing, -2)
+                                .offset(y: 2)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func displayTitle(
+        for conversation: NativeLiveConversationSummary
+    ) -> String {
+        let title = conversation.title?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return title?.isEmpty == false ? title! : "New Conversation"
+    }
+
+    private func isActiveConversation(
+        _ conversation: NativeLiveConversationSummary
+    ) -> Bool {
+        guard selectedPage == .chat,
+              let activeConversationID,
+              let conversationID = UUID(uuidString: conversation.id) else {
+            return false
+        }
+
+        return activeConversationID == conversationID
     }
 
     private func localY(
