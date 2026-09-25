@@ -90,6 +90,7 @@ import {
 } from "../domains/runtime/claude-code-distillation-model.js";
 import {
   NativeLiveBackgroundWorkflowCoordinator,
+  type NativeLiveBackgroundWorkflowAdvancer,
 } from "../domains/bridge/native-live-background-workflow-coordinator.js";
 import {
   ProactivityWakeCrossDeviceCoordinator,
@@ -210,6 +211,44 @@ import {
 
 type DatabaseResource = ReturnType<typeof createDatabase>;
 
+type BackgroundWorkflowKind =
+  | "distillation"
+  | "proactivity_wake"
+  | "topic_resurface";
+
+function observeBackgroundWorkflowAdvancer(
+  workflowKind: BackgroundWorkflowKind,
+  advancer: NativeLiveBackgroundWorkflowAdvancer,
+  logger: SafeLogger,
+): NativeLiveBackgroundWorkflowAdvancer {
+  return {
+    async advanceNextForUser(input) {
+      try {
+        const result = await advancer.advanceNextForUser(input);
+        const outcome =
+          result
+          && typeof result === "object"
+          && "outcome" in result
+          && typeof (result as { outcome?: unknown }).outcome === "string"
+            ? (result as { outcome: string }).outcome
+            : "unknown";
+        logger.info("native_live_background_workflow_advance", {
+          workflowKind,
+          outcome,
+        });
+        return result;
+      } catch (error) {
+        logger.warn("native_live_background_workflow_advance_failed", {
+          workflowKind,
+          errorName:
+            error instanceof Error ? error.name : "UnknownError",
+        });
+        throw error;
+      }
+    },
+  };
+}
+
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
   driveSatisfactionService: DriveSatisfactionService;
@@ -280,6 +319,32 @@ export function createProcessRuntime(
     maxRunsPerCycle: 4,
     maxCostPerCycle: 4,
     maxConcurrent: 2,
+  }, (event) => {
+    if (event.name === "background_loop_job_failed") {
+      logger.warn(event.name, {
+        kind: event.kind,
+        priority: event.priority,
+        errorName: event.errorName,
+      });
+      return;
+    }
+    if (event.name === "background_loop_cycle_budget_exhausted") {
+      logger.info(event.name, {
+        pending: event.pending,
+        runsStarted: event.runsStarted,
+        costStarted: event.costStarted,
+      });
+      return;
+    }
+    logger.info(event.name, {
+      kind: event.kind,
+      ...(event.name === "background_loop_job_started"
+        ? {
+            priority: event.priority,
+            cost: event.cost,
+          }
+        : {}),
+    });
   });
   const topicResurfaceOpportunityConfig =
     getTopicResurfaceOpportunityConfig(runtimeEnv);
@@ -340,6 +405,17 @@ export function createProcessRuntime(
       {
         priority: distillationPlan.priority,
         cost: distillationPlan.cost,
+      },
+      (event) => {
+        if (event.name === "distillation_cross_device_background_error") {
+          logger.warn(event.name, {
+            errorName: event.errorName,
+          });
+          return;
+        }
+        logger.info(event.name, {
+          outcome: event.result.outcome,
+        });
       },
     );
   const subjectStateBackgroundMaintenance =
@@ -419,6 +495,17 @@ export function createProcessRuntime(
       runtimeEffectDeliveryCoordinator,
       runtimeMessageEffectDeliveryAdapter,
       randomUUID(),
+      (event) => {
+        const { name, ...fields } = event;
+        if (
+          name === "runtime_effect_delivery_unknown"
+          || name === "runtime_effect_delivery_failed"
+        ) {
+          logger.warn(name, fields);
+          return;
+        }
+        logger.info(name, fields);
+      },
     );
   const runtimeEffectDeliveryRecovery =
     proactivityWakeOpportunityConfig
@@ -504,9 +591,21 @@ export function createProcessRuntime(
     );
   const nativeLiveBackgroundWorkflowCoordinator =
     new NativeLiveBackgroundWorkflowCoordinator([
-      distillationCrossDeviceCoordinator,
-      proactivityWakeCrossDeviceCoordinator,
-      topicResurfaceCrossDeviceCoordinator,
+      observeBackgroundWorkflowAdvancer(
+        "distillation",
+        distillationCrossDeviceCoordinator,
+        logger,
+      ),
+      observeBackgroundWorkflowAdvancer(
+        "proactivity_wake",
+        proactivityWakeCrossDeviceCoordinator,
+        logger,
+      ),
+      observeBackgroundWorkflowAdvancer(
+        "topic_resurface",
+        topicResurfaceCrossDeviceCoordinator,
+        logger,
+      ),
     ]);
   const topicResurfaceCrossDeviceOpportunity =
     topicResurfaceOpportunityConfig
