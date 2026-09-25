@@ -29,7 +29,9 @@ assert.equal(
   "Set RUN_PRODUCTION_EXECUTION_READBACK_ACCEPTANCE=1 explicitly.",
 );
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl =
+  process.env.ACCEPTANCE_DATABASE_URL
+  ?? process.env.DATABASE_URL;
 const userId = process.env.MCP_USER_ID;
 assert.ok(
   databaseUrl,
@@ -314,7 +316,7 @@ try {
     }
   }
 
-  if (terminalObserved) {
+  if (terminalObserved || prepareId === null) {
     await cleanupConversation();
     conversationId = null;
   }
@@ -328,7 +330,7 @@ try {
       errorName: error instanceof Error ? error.name : "UnknownError",
       message: error instanceof Error ? error.message : String(error),
       cleanup:
-        terminalObserved
+        terminalObserved || prepareId === null
           ? "completed"
           : "deferred_to_avoid_racing_active_turn",
     }) + "\n",
