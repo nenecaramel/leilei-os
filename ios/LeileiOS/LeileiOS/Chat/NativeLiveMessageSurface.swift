@@ -501,6 +501,11 @@ private struct NativeLiveMessageRow: View {
                                 ? "checkmark"
                                 : "square.on.square"
                         )
+                        .rotationEffect(
+                            isCopied
+                                ? .degrees(0)
+                                : .degrees(180)
+                        )
                         .frame(width: 22, height: 22)
                     }
                 }
