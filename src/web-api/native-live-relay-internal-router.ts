@@ -1330,6 +1330,9 @@ function sendRelayError(response: Response, error: unknown): void {
       success: false,
       error: {
         code: error.code,
+        ...(error.finalizeCode
+          ? { finalizeCode: error.finalizeCode }
+          : {}),
         message:
           error.code === "LISTENER_BUSY"
             ? "Another native live listener owns the active lease."
