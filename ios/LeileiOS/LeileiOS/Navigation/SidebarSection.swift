@@ -26,13 +26,17 @@ struct SidebarSection: View {
                     selectedPage = page
                     onSelect()
                 } label: {
-                    HStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: page.sidebarSystemImage)
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 18, alignment: .leading)
+
                         Text(page.rawValue)
-                            .font(.body.weight(.medium))
-                            .offset(x: textLeadingOffset, y: 2)
+                            .font(.system(size: 17.5, weight: .medium))
 
                         Spacer()
                     }
+                    .offset(x: textLeadingOffset, y: 2)
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -49,6 +53,26 @@ struct SidebarSection: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+}
+
+
+private extension AppPage {
+    var sidebarSystemImage: String {
+        switch self {
+        case .home:
+            return "house"
+        case .diary:
+            return "book.closed"
+        case .daySpace:
+            return "calendar"
+        case .universe:
+            return "sparkles"
+        case .sentinel:
+            return "shield"
+        default:
+            return "circle"
         }
     }
 }
