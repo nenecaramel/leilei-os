@@ -23,6 +23,11 @@ import {
 import {
   NativeLiveMacCompanionScheduler,
 } from "../src/domains/bridge/native-live-mac-companion-scheduler.js";
+import {
+  acquireNativeLiveMacDaemonLock,
+} from "../src/domains/bridge/native-live-mac-daemon-lock.js";
+
+const daemonLock = acquireNativeLiveMacDaemonLock();
 
 const {
   relayBaseUrl,
@@ -211,3 +216,5 @@ while (!stopping) {
     await sleep(5_000);
   }
 }
+
+daemonLock.release();
