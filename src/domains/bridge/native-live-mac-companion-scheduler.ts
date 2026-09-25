@@ -48,6 +48,14 @@ export class NativeLiveMacCompanionScheduler {
     private readonly listenerInstanceId: string,
     private readonly intervalMs: number,
     private readonly now: () => number = () => Date.now(),
+    private readonly onOpportunityResult:
+      | ((
+          result: Exclude<
+            NativeLiveMacCompanionSchedulerResult,
+            { outcome: "not_due" }
+          >,
+        ) => void | Promise<void>)
+      | null = null,
   ) {
     if (!listenerInstanceId.trim()) {
       throw new Error(
@@ -85,30 +93,49 @@ export class NativeLiveMacCompanionScheduler {
         dispatchTarget: "claude_code",
         reason,
       })
-      .then(() => {
+      .then(async () => {
         const completedAt = normalizeNow(this.now());
         this.startupPending = false;
         if (this.dirtyVersion === dirtyVersionAtStart) {
           this.clearedDirtyVersion = this.dirtyVersion;
         }
         this.nextEligibleAtMs = completedAt + this.intervalMs;
-        return {
+        const result = {
           outcome: "offered" as const,
           reason,
           nextEligibleAt:
             new Date(this.nextEligibleAtMs).toISOString(),
         };
+        await this.observeOpportunityResult(result);
+        return result;
       })
-      .catch(() => ({
-        outcome: "failed" as const,
-        reason,
-      }))
+      .catch(async () => {
+        const result = {
+          outcome: "failed" as const,
+          reason,
+        };
+        await this.observeOpportunityResult(result);
+        return result;
+      })
       .finally(() => {
         if (this.inFlight === run) this.inFlight = null;
       });
 
     this.inFlight = run;
     return run;
+  }
+
+  private async observeOpportunityResult(
+    result: Exclude<
+      NativeLiveMacCompanionSchedulerResult,
+      { outcome: "not_due" }
+    >,
+  ): Promise<void> {
+    try {
+      await this.onOpportunityResult?.(result);
+    } catch {
+      // Acceptance observability must never change scheduler semantics.
+    }
   }
 
   private reasonAt(

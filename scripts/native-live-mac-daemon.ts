@@ -45,6 +45,22 @@ const companionScheduler = new NativeLiveMacCompanionScheduler(
   relay,
   listenerInstanceId,
   companionBackgroundIntervalMs,
+  () => Date.now(),
+  (result) => {
+    process.stdout.write(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        outcome: "companion_background",
+        companionOutcome: result.outcome,
+        reason: result.reason,
+        ...(
+          result.outcome === "offered"
+            ? { nextEligibleAt: result.nextEligibleAt }
+            : {}
+        ),
+      }) + "\n",
+    );
+  },
 );
 const {
   kind: claudeTransportKind,
