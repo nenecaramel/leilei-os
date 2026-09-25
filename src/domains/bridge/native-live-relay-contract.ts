@@ -1,4 +1,5 @@
 import {
+  NativeLiveExecutionSelectionError,
   parseNativeLiveExecutionSelection,
   type NativeLiveExecutionSelection,
 } from "./native-live-execution-selection.js";
@@ -112,7 +113,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       text: normalizeText(body.text),
       ...(body.execution === undefined
         ? {}
-        : { execution: parseNativeLiveExecutionSelection(body.execution) }),
+        : { execution: parseExecution(body.execution) }),
     };
   }
 
@@ -135,7 +136,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       ),
       ...(body.execution === undefined
         ? {}
-        : { execution: parseNativeLiveExecutionSelection(body.execution) }),
+        : { execution: parseExecution(body.execution) }),
     };
   }
 
@@ -160,11 +161,23 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       text: normalizeText(body.text),
       ...(body.execution === undefined
         ? {}
-        : { execution: parseNativeLiveExecutionSelection(body.execution) }),
+        : { execution: parseExecution(body.execution) }),
     };
   }
 
   throw new NativeLiveRelayContractError("Native live relay operation is invalid.");
+}
+
+
+function parseExecution(value: unknown): NativeLiveExecutionSelection {
+  try {
+    return parseNativeLiveExecutionSelection(value);
+  } catch (error) {
+    if (error instanceof NativeLiveExecutionSelectionError) {
+      throw new NativeLiveRelayContractError(error.message);
+    }
+    throw error;
+  }
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {
