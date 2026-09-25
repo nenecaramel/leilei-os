@@ -66,7 +66,7 @@ function createRemoteUniverseAdapter(api: WebApiClient): UniverseAdapter {
 }
 
 /** Remote implementation of the frozen standalone UniverseAdapter contract. */
-export class LeileiOSAdapter implements UniverseAdapter {
+class LeileiOSAdapter implements UniverseAdapter {
   private readonly delegate: UniverseAdapter;
 
   constructor(api: WebApiClient) {
@@ -92,5 +92,3 @@ export class LeileiOSAdapter implements UniverseAdapter {
 export function createLeileiOSUniverseAdapter(api: WebApiClient): UniverseAdapter {
   return new LeileiOSAdapter(api);
 }
-
-export const createUniverseAdapter = createLeileiOSUniverseAdapter;

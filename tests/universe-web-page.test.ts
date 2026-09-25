@@ -12,7 +12,7 @@ test("/universe renders the spatial Universe integration rather than a placehold
   assert.match(appSource, /path="universe"[\s\S]*element=\{<UniversePage \/>\}/);
   assert.doesNotMatch(appSource, /path="universe" element=\{<PlaceholderPage/);
   assert.match(pageSource, /UniverseMobileMap/);
-  assert.match(pageSource, /LeileiOSUniverseService/);
+  assert.match(pageSource, /createLeileiOSUniverseService/);
 });
 
 test("ready state keeps the spatial map and paper structure", () => {

@@ -127,8 +127,6 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
   };
 }
 
-export const createUniverseService = createLeileiOSUniverseService;
-export const LeileiOSUniverseService = createLeileiOSUniverseService;
 
 export function isUniverseVersionConflict(error: unknown): boolean {
   return (error as WebApiError | undefined)?.code === "VERSION_CONFLICT";

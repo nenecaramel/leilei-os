@@ -94,7 +94,3 @@ export function ModuleStateMessage({
     />
   );
 }
-
-// Compatibility alias for search-only callers while module pages migrate to the
-// presentation-level name.
-export const ModuleSearchStateMessage = ModuleStateMessage;
