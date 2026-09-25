@@ -188,6 +188,45 @@ test("native live turns accept validated optional execution selection", () => {
     },
   );
 
+  assert.deepEqual(
+    parseNativeLiveRelayRequest({
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversationId,
+      expected_head_message_id: headId,
+      text: "opus 5",
+      execution: {
+        model: "claude-opus-5",
+        thinking: "adaptive",
+        effort: "max",
+      },
+    }).execution,
+    {
+      model: "claude-opus-5",
+      thinking: "adaptive",
+      effort: "max",
+    },
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRelayRequest({
+        dispatch_target: "claude_code",
+        request_id: requestId,
+        operation: "send",
+        conversation_id: conversationId,
+        expected_head_message_id: headId,
+        text: "opus 5 disabled max",
+        execution: {
+          model: "claude-opus-5",
+          thinking: "disabled",
+          effort: "max",
+        },
+      }),
+    /only supported up to effort=high/i,
+  );
+
   assert.throws(
     () =>
       parseNativeLiveRelayRequest({

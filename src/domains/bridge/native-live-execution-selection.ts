@@ -1,5 +1,6 @@
 export const NATIVE_LIVE_CLAUDE_MODELS = [
   "claude-opus-5-5",
+  "claude-opus-5",
   "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
@@ -40,6 +41,10 @@ const CAPABILITIES: Record<
 > = {
   "claude-opus-5-5": {
     thinking: ["adaptive"],
+    effort: ["low", "medium", "high", "xhigh", "max"],
+  },
+  "claude-opus-5": {
+    thinking: ["adaptive", "disabled"],
     effort: ["low", "medium", "high", "xhigh", "max"],
   },
   "claude-opus-4-6": {
@@ -126,6 +131,16 @@ export function parseNativeLiveExecutionSelection(
   ) {
     throw new NativeLiveExecutionSelectionError(
       "execution.effort is not supported by the selected model.",
+    );
+  }
+
+  if (
+    model === "claude-opus-5"
+    && thinking === "disabled"
+    && (effort === "xhigh" || effort === "max")
+  ) {
+    throw new NativeLiveExecutionSelectionError(
+      "execution.thinking=disabled is only supported up to effort=high by claude-opus-5.",
     );
   }
 
