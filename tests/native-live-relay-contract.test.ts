@@ -156,3 +156,51 @@ test("native live requests reject legacy host targeting and malformed identifier
     /request_id must be a UUID/,
   );
 });
+
+
+test("native live turns accept validated optional execution selection", () => {
+  assert.deepEqual(
+    parseNativeLiveRelayRequest({
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversationId,
+      expected_head_message_id: headId,
+      text: "hello",
+      execution: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "medium",
+      },
+    }),
+    {
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversationId,
+      expected_head_message_id: headId,
+      text: "hello",
+      execution: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "medium",
+      },
+    },
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRelayRequest({
+        dispatch_target: "claude_code",
+        request_id: requestId,
+        operation: "retry",
+        conversation_id: conversationId,
+        target_user_message_id: userMessageId,
+        execution: {
+          model: "claude-opus-4-6",
+          effort: "xhigh",
+        },
+      }),
+    /effort is not supported/i,
+  );
+});
