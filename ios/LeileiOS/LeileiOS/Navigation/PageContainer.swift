@@ -3,7 +3,9 @@ import SwiftUI
 struct PageContainer: View {
     @EnvironmentObject private var appModel: AppModel
 
-    @State private var renameDraft: ConversationRenameDraft?
+    @State private var renameTitle = ""
+    @State private var showingRenameAlert = false
+    @State private var renameErrorMessage: String?
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
 
@@ -53,9 +55,8 @@ struct PageContainer: View {
                                     guard appModel.activeNativeLiveConversationID != nil else {
                                         return
                                     }
-                                    renameDraft = ConversationRenameDraft(
-                                        title: activeConversationEditableTitle
-                                    )
+                                    renameTitle = activeConversationEditableTitle
+                                    showingRenameAlert = true
                                 } label: {
                                     Text("Rename")
                                 }
@@ -90,12 +91,49 @@ struct PageContainer: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
-        .sheet(item: $renameDraft) { draft in
-            NativeLiveRenameSheet(
-                initialTitle: draft.title
-            ) { title in
-                try await appModel.renameActiveNativeLiveConversation(title)
+        .alert(
+            "Rename conversation",
+            isPresented: $showingRenameAlert
+        ) {
+            TextField("Title", text: $renameTitle)
+                .textInputAutocapitalization(.sentences)
+
+            Button("Cancel", role: .cancel) {
             }
+
+            Button("Save") {
+                let title = renameTitle.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                Task { @MainActor in
+                    do {
+                        try await appModel
+                            .renameActiveNativeLiveConversation(title)
+                    } catch {
+                        renameErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+            .disabled(!canRename)
+        } message: {
+            Text("Enter a new title for this conversation.")
+        }
+        .alert(
+            "Rename failed",
+            isPresented: Binding(
+                get: { renameErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        renameErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                renameErrorMessage = nil
+            }
+        } message: {
+            Text(renameErrorMessage ?? "")
         }
         .appConfirmationAlert(
             title: "Delete conversation?",
@@ -155,6 +193,13 @@ struct PageContainer: View {
         return ""
     }
 
+    private var canRename: Bool {
+        let normalized = renameTitle.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return !normalized.isEmpty && normalized.count <= 200
+    }
+
     private var activeConversationTitle: String {
         if let activeConversationID = appModel.activeNativeLiveConversationID,
            let conversation = appModel.nativeLiveConversations.first(where: {
@@ -176,86 +221,6 @@ struct PageContainer: View {
         guard let title else { return nil }
         let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? nil : normalized
-    }
-}
-
-
-private struct ConversationRenameDraft: Identifiable {
-    let id = UUID()
-    let title: String
-}
-
-private struct NativeLiveRenameSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var title: String
-    @State private var isSaving = false
-    @State private var failed = false
-
-    let onSave: (String) async throws -> Void
-
-    init(
-        initialTitle: String,
-        onSave: @escaping (String) async throws -> Void
-    ) {
-        _title = State(initialValue: initialTitle)
-        self.onSave = onSave
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Title", text: $title)
-                    .textInputAutocapitalization(.sentences)
-
-                if failed {
-                    Text("Failed")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .navigationTitle("Rename Session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving…" : "Save") {
-                        save()
-                    }
-                    .disabled(!canSave || isSaving)
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-
-    private var canSave: Bool {
-        let normalized = title.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        return !normalized.isEmpty && normalized.count <= 200
-    }
-
-    private func save() {
-        guard canSave, !isSaving else { return }
-
-        isSaving = true
-        failed = false
-
-        Task { @MainActor in
-            do {
-                try await onSave(title)
-                dismiss()
-            } catch {
-                failed = true
-                isSaving = false
-            }
-        }
     }
 }
 
