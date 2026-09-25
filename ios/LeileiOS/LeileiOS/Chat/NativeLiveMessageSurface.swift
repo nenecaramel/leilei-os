@@ -62,41 +62,45 @@ struct NativeLiveMessageSurface: View {
     ) -> some View {
         ScrollViewReader { proxy in
             GeometryReader { viewport in
+                let isInitiallyPositioned =
+                    initiallyPositionedConversationID
+                    == snapshot.conversationId
+
                 ZStack {
                     ScrollView {
                         LazyVStack(spacing: 18) {
-                        ForEach(snapshot.messages) { message in
-                            NativeLiveMessageRow(
-                                message: message,
-                                isTurnInFlight: isTurnInFlight,
-                                onRetryMessage: onRetryMessage,
-                                onEditMessage: onEditMessage
-                            )
-                            .id(message.id)
-                        }
-
-                        Color.clear
-                            .frame(height: 1)
-                            .background {
-                                GeometryReader { geometry in
-                                    Color.clear.preference(
-                                        key: NativeLiveBottomYPreferenceKey.self,
-                                        value: geometry.frame(
-                                            in: .named(scrollCoordinateSpace)
-                                        ).maxY
-                                    )
-                                }
+                            ForEach(snapshot.messages) { message in
+                                NativeLiveMessageRow(
+                                    message: message,
+                                    isTurnInFlight: isTurnInFlight,
+                                    onRetryMessage: onRetryMessage,
+                                    onEditMessage: onEditMessage
+                                )
+                                .id(message.id)
                             }
-                            .id(bottomAnchorID)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
+
+                            Color.clear
+                                .frame(height: 1)
+                                .background {
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(
+                                            key: NativeLiveBottomYPreferenceKey.self,
+                                            value: geometry.frame(
+                                                in: .named(scrollCoordinateSpace)
+                                            ).maxY
+                                        )
+                                    }
+                                }
+                                .id(bottomAnchorID)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
                         .padding(.bottom, 8)
                     }
                     .coordinateSpace(name: scrollCoordinateSpace)
-                .refreshable {
-                    await onRefresh()
-                }
+                    .refreshable {
+                        await onRefresh()
+                    }
                     .onChange(of: snapshot.syncToken) { _, _ in
                         guard initiallyPositionedConversationID
                             == snapshot.conversationId else {
@@ -104,58 +108,59 @@ struct NativeLiveMessageSurface: View {
                         }
                         scrollToBottom(proxy)
                     }
-                .onPreferenceChange(
-                    NativeLiveBottomYPreferenceKey.self
-                ) { bottomY in
-                    guard bottomY > 0 else {
-                        return
-                    }
-
-                    let away = bottomY > viewport.size.height + 56
-                    guard away != isAwayFromBottom else { return }
-
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        isAwayFromBottom = away
-                    }
-                }
-                    .opacity(
-                        initiallyPositionedConversationID
-                            == snapshot.conversationId ? 1 : 0
-                    )
-                    .overlay(alignment: .bottom) {
-                        if isAwayFromBottom
-                            && initiallyPositionedConversationID
-                                == snapshot.conversationId {
-                            Button {
-                            withAnimation(.snappy) {
-                                proxy.scrollTo(
-                                    bottomAnchorID,
-                                    anchor: .bottom
-                                )
-                            }
-                        } label: {
-                            Image(systemName: "arrow.down")
-                                .font(.system(
-                                    size: 14,
-                                    weight: .semibold
-                                ))
-                                .foregroundStyle(Color.primary.opacity(0.78))
-                                .frame(width: 38, height: 38)
-                                .glassEffect(
-                                    .regular,
-                                    in: Circle()
-                                )
-                                .overlay {
-                                    Circle()
-                                        .stroke(
-                                            Color.primary.opacity(0.08),
-                                            lineWidth: 0.6
-                                        )
-                                }
+                    .onPreferenceChange(
+                        NativeLiveBottomYPreferenceKey.self
+                    ) { bottomY in
+                        guard isInitiallyPositioned,
+                              bottomY > 0 else {
+                            return
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Scroll to latest")
-                        .offset(y: 18)
+
+                        let away =
+                            bottomY > viewport.size.height + 56
+                        guard away != isAwayFromBottom else {
+                            return
+                        }
+
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            isAwayFromBottom = away
+                        }
+                    }
+                    .opacity(isInitiallyPositioned ? 1 : 0)
+                    .overlay(alignment: .bottom) {
+                        if isAwayFromBottom && isInitiallyPositioned {
+                            Button {
+                                withAnimation(.snappy) {
+                                    proxy.scrollTo(
+                                        bottomAnchorID,
+                                        anchor: .bottom
+                                    )
+                                }
+                            } label: {
+                                Image(systemName: "arrow.down")
+                                    .font(.system(
+                                        size: 14,
+                                        weight: .semibold
+                                    ))
+                                    .foregroundStyle(
+                                        Color.primary.opacity(0.78)
+                                    )
+                                    .frame(width: 38, height: 38)
+                                    .glassEffect(
+                                        .regular,
+                                        in: Circle()
+                                    )
+                                    .overlay {
+                                        Circle()
+                                            .stroke(
+                                                Color.primary.opacity(0.08),
+                                                lineWidth: 0.6
+                                            )
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Scroll to latest")
+                            .offset(y: 18)
                             .transition(
                                 .scale(scale: 0.9)
                                     .combined(with: .opacity)
@@ -163,8 +168,7 @@ struct NativeLiveMessageSurface: View {
                         }
                     }
 
-                    if initiallyPositionedConversationID
-                        != snapshot.conversationId {
+                    if !isInitiallyPositioned {
                         ProgressView()
                     }
                 }
@@ -174,6 +178,7 @@ struct NativeLiveMessageSurface: View {
                         return
                     }
 
+                    isAwayFromBottom = false
                     await Task.yield()
 
                     var transaction = Transaction()
