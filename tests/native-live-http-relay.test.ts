@@ -62,11 +62,36 @@ class FakeTurnReader {
       conversationId,
       operation: "send" as const,
       canonicalUserMessageId: userMessageId,
+      executionSelection: {
+        model: "claude-opus-5-5" as const,
+        thinking: "adaptive" as const,
+        effort: "high" as const,
+      },
       canonicalStatus: "finalized_success" as const,
       dispatchStatus: "completed" as const,
       semanticStatus: null,
       semanticFallbackCode: null,
       failureCode: null,
+      runtimeMetadata: {
+        context_usage: null,
+        compaction_advisory: null,
+        compaction: null,
+        execution: {
+          readback: {
+            requested: {
+              model: "claude-opus-5-5",
+              thinking: "adaptive",
+              effort: "high",
+            },
+            applied: {
+              model: "claude-opus-5-5",
+              effort: "high",
+            },
+            capability: null,
+          },
+          readback_error: null,
+        },
+      },
       assistantMessage: {
         id: "77777777-7777-4777-8777-777777777777",
         conversationId,
@@ -435,11 +460,35 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         data: {
           canonicalStatus: string;
           dispatchStatus: string;
+          executionSelection: {
+            model: string;
+            thinking?: string;
+            effort?: string;
+          } | null;
+          runtimeMetadata: {
+            execution?: {
+              readback: {
+                applied: {
+                  model: string | null;
+                  effort: string | null;
+                };
+              };
+            } | null;
+          } | null;
           assistantMessage: { blocks: Array<{ text: string | null }> } | null;
         };
       };
       assert.equal(readPayload.data.canonicalStatus, "finalized_success");
       assert.equal(readPayload.data.dispatchStatus, "completed");
+      assert.deepEqual(readPayload.data.executionSelection, {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "high",
+      });
+      assert.equal(
+        readPayload.data.runtimeMetadata?.execution?.readback.applied.model,
+        "claude-opus-5-5",
+      );
       assert.equal(readPayload.data.assistantMessage?.blocks[0]?.text, "VISIBLE");
       assert.deepEqual(turnReader.calls, [{ userId, prepareId }]);
     },
