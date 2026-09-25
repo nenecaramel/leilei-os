@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   NativeLiveDaemonLeaseState,
   NativeLiveDaemonRejectCode,
@@ -211,6 +212,70 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async requestRuntimeInteraction(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    kind: "permission" | "question";
+    request: Record<string, unknown>;
+    signal: AbortSignal | null;
+  }): Promise<Record<string, unknown>> {
+    const interactionId = randomUUID();
+    try {
+      await this.post(
+        `/reservations/${encodeURIComponent(input.reservationId)}/interactions`,
+        {
+          listener_instance_id: input.listenerInstanceId,
+          interaction_id: interactionId,
+          kind: input.kind,
+          request: input.request,
+        },
+        input.signal,
+      );
+
+      while (true) {
+        if (input.signal?.aborted) {
+          throw abortedInteractionError();
+        }
+        const data = await this.post(
+          `/reservations/${encodeURIComponent(input.reservationId)}/interactions/${encodeURIComponent(interactionId)}/read`,
+          {
+            listener_instance_id: input.listenerInstanceId,
+          },
+          input.signal,
+        );
+        const interaction = readRecord(readRecord(data).interaction);
+        if (interaction.status === "resolved") {
+          return readRecord(interaction.response);
+        }
+        if (interaction.status === "cancelled") {
+          throw abortedInteractionError();
+        }
+        if (interaction.status !== "pending") {
+          throw new Error(
+            "Native live runtime interaction returned an invalid status.",
+          );
+        }
+        await sleepWithSignal(400, input.signal);
+      }
+    } catch (error) {
+      if (input.signal?.aborted || isAbortedInteraction(error)) {
+        try {
+          await this.post(
+            `/reservations/${encodeURIComponent(input.reservationId)}/interactions/${encodeURIComponent(interactionId)}/cancel`,
+            {
+              listener_instance_id: input.listenerInstanceId,
+            },
+          );
+        } catch {
+          // Cancellation cleanup is best-effort; the preparation lifecycle
+          // still bounds orphaned interaction rows.
+        }
+        throw abortedInteractionError();
+      }
+      throw error;
+    }
+  }
+
   async submitResult(input: {
     listenerInstanceId: string;
     reservationId: string;
@@ -249,7 +314,11 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
-  private async post(path: string, body: unknown): Promise<unknown> {
+  private async post(
+    path: string,
+    body: unknown,
+    signal: AbortSignal | null = null,
+  ): Promise<unknown> {
     const response = await this.fetchImpl(
       `${this.baseUrl}/internal/native-live-relay${path}`,
       {
@@ -259,6 +328,7 @@ implements NativeLiveMacDaemonRelayClient {
           "content-type": "application/json",
         },
         body: JSON.stringify(body),
+        ...(signal ? { signal } : {}),
       },
     );
 
@@ -282,4 +352,45 @@ function readRecord(value: unknown): Record<string, unknown> {
     throw new Error("Native live relay response is invalid.");
   }
   return value as Record<string, unknown>;
+}
+
+
+function abortedInteractionError(): Error {
+  return Object.assign(
+    new Error("Native live runtime interaction was aborted."),
+    { runtimeCode: "ABORTED" },
+  );
+}
+
+function isAbortedInteraction(error: unknown): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "runtimeCode" in error
+    && (error as { runtimeCode?: unknown }).runtimeCode === "ABORTED"
+  );
+}
+
+function sleepWithSignal(
+  milliseconds: number,
+  signal: AbortSignal | null,
+): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(abortedInteractionError());
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(abortedInteractionError());
+    };
+    const cleanup = () => {
+      signal?.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

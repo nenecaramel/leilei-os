@@ -14,6 +14,14 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
       ) => void | Promise<void>;
+      permissionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
+      questionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
     },
   ) => Promise<NativeLiveRuntimeResult>;
 };
@@ -34,6 +42,14 @@ export class NativeLiveMacRuntimeExecutor {
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
       ) => void | Promise<void>;
+      permissionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
+      questionHandler?: (
+        request: Record<string, unknown>,
+        context: { signal: AbortSignal | null },
+      ) => Promise<Record<string, unknown>>;
     } = {},
   ): Promise<NativeLiveRuntimeExecutionResult> {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
@@ -52,6 +68,18 @@ export class NativeLiveMacRuntimeExecutor {
                 ? {
                     onNormalizedEvent:
                       options.onNormalizedEvent,
+                  }
+                : {}),
+              ...(options.permissionHandler
+                ? {
+                    permissionHandler:
+                      options.permissionHandler,
+                  }
+                : {}),
+              ...(options.questionHandler
+                ? {
+                    questionHandler:
+                      options.questionHandler,
                   }
                 : {}),
             },

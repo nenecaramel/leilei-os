@@ -634,3 +634,106 @@ test("interactive foreground event delivery failure is observability-only", asyn
   assert.equal(attempts, 3);
   assert.equal(failures.length, 1);
 });
+
+
+test("interactive foreground execution binds permission and question host callbacks", async () => {
+  const sdkDecisions = [];
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: ({ options }) => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        sdkDecisions.push(
+          await options.canUseTool(
+            "Write",
+            { file_path: "/tmp/a", content: "x" },
+            {
+              toolUseID: "tool-write-1",
+              requestId: "request-write-1",
+            },
+          ),
+        );
+        sdkDecisions.push(
+          await options.canUseTool(
+            "AskUserQuestion",
+            {
+              questions: [{
+                question: "Theme",
+                options: [
+                  { label: "Light" },
+                  { label: "Dark" },
+                ],
+              }],
+            },
+            {
+              toolUseID: "tool-question-1",
+              requestId: "request-question-1",
+            },
+          ),
+        );
+        for (const message of successFixture("provider-interactions")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const requests = [];
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      permissionHandler: async (request) => {
+        requests.push(["permission", request]);
+        return {
+          decision: "allow",
+          updatedInput: {
+            file_path: "/allowed/a",
+            content: "rewritten",
+          },
+        };
+      },
+      questionHandler: async (request) => {
+        requests.push(["question", request]);
+        return {
+          decision: "answer",
+          answers: {
+            Theme: "Dark",
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-interactions");
+  assert.deepEqual(
+    requests.map(([kind]) => kind),
+    ["permission", "question"],
+  );
+  assert.deepEqual(sdkDecisions, [
+    {
+      behavior: "allow",
+      updatedInput: {
+        file_path: "/allowed/a",
+        content: "rewritten",
+      },
+    },
+    {
+      behavior: "allow",
+      updatedInput: {
+        questions: [{
+          question: "Theme",
+          options: [
+            { label: "Light" },
+            { label: "Dark" },
+          ],
+        }],
+        answers: {
+          Theme: "Dark",
+        },
+      },
+    },
+  ]);
+});
