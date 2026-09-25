@@ -78,7 +78,7 @@ export type NativeLiveRelayInternalDependencies = {
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
-    "append"
+    "appendBatch"
   >;
   runtimeInteractionService?: Pick<
     NativeLiveRuntimeInteractionService,
@@ -160,8 +160,8 @@ export function createNativeLiveRelayInternalRouter(
   );
   if (dependencies.runtimeEventService) {
     router.post(
-      "/reservations/:reservationId/events",
-      appendRuntimeEventHandler(dependencies),
+      "/reservations/:reservationId/events/batch",
+      appendRuntimeEventBatchHandler(dependencies),
     );
   }
   if (dependencies.runtimeInteractionService) {
@@ -838,7 +838,7 @@ function cancelRuntimeInteractionHandler(
   };
 }
 
-function appendRuntimeEventHandler(
+function appendRuntimeEventBatchHandler(
   dependencies: NativeLiveRelayInternalDependencies,
 ): RequestHandler {
   return async (request, response) => {
@@ -846,7 +846,7 @@ function appendRuntimeEventHandler(
     if (!userId || !dependencies.runtimeEventService) return;
     const reservationId =
       parseReservationId(request.params.reservationId);
-    const body = parseRuntimeEventBody(request.body);
+    const body = parseRuntimeEventBatchBody(request.body);
     if (!reservationId || !body) {
       sendInvalid(response);
       return;
@@ -854,14 +854,13 @@ function appendRuntimeEventHandler(
 
     try {
       const outcome =
-        await dependencies.runtimeEventService.append({
+        await dependencies.runtimeEventService.appendBatch({
           userId,
           listenerInstanceId: body.listener_instance_id,
           reservationId,
-          sequence: body.sequence,
-          event: body.event,
+          events: body.events,
         });
-      response.status(outcome === "created" ? 201 : 200).json({
+      response.status(outcome.created > 0 ? 201 : 200).json({
         success: true,
         data: { outcome },
       });
@@ -1191,33 +1190,58 @@ function parseRuntimeInteractionCreateBody(
   };
 }
 
-function parseRuntimeEventBody(
+function parseRuntimeEventBatchBody(
   value: unknown,
 ): {
   listener_instance_id: string;
-  sequence: number;
-  event: NativeLiveNormalizedEvent;
+  events: Array<{
+    sequence: number;
+    event: NativeLiveNormalizedEvent;
+  }>;
 } | null {
   const record = exactRecord(value, [
     "listener_instance_id",
-    "sequence",
-    "event",
+    "events",
   ]);
   if (
     !record
     || !isUuid(record.listener_instance_id)
-    || !Number.isInteger(record.sequence)
-    || (record.sequence as number) < 1
-    || !record.event
-    || typeof record.event !== "object"
-    || Array.isArray(record.event)
+    || !Array.isArray(record.events)
+    || record.events.length < 1
+    || record.events.length > 32
   ) {
     return null;
   }
+
+  const events: Array<{
+    sequence: number;
+    event: NativeLiveNormalizedEvent;
+  }> = [];
+  for (const item of record.events) {
+    const eventRecord = exactRecord(item, [
+      "sequence",
+      "event",
+    ]);
+    if (
+      !eventRecord
+      || !Number.isInteger(eventRecord.sequence)
+      || (eventRecord.sequence as number) < 1
+      || !eventRecord.event
+      || typeof eventRecord.event !== "object"
+      || Array.isArray(eventRecord.event)
+    ) {
+      return null;
+    }
+    events.push({
+      sequence: eventRecord.sequence as number,
+      event:
+        eventRecord.event as NativeLiveNormalizedEvent,
+    });
+  }
+
   return {
     listener_instance_id: record.listener_instance_id,
-    sequence: record.sequence as number,
-    event: record.event as NativeLiveNormalizedEvent,
+    events,
   };
 }
 
