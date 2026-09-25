@@ -155,3 +155,55 @@ test("dirty signal arriving during an in-flight startup offer is not lost", asyn
   assert.equal(next.reason, "dirty");
   assert.equal(client.calls.length, 2);
 });
+
+
+test("opportunity observer records offered and failed remote attempts without not-due noise", async () => {
+  let now = Date.parse("2026-09-25T00:00:00.000Z");
+  const client = new FakeClient();
+  const observed: unknown[] = [];
+  const scheduler = new NativeLiveMacCompanionScheduler(
+    client,
+    listenerInstanceId,
+    60_000,
+    () => now,
+    (result) => {
+      observed.push(result);
+    },
+  );
+
+  assert.equal((await scheduler.offer()).outcome, "offered");
+  now += 30_000;
+  assert.equal((await scheduler.offer()).outcome, "not_due");
+  assert.deepEqual(observed, [{
+    outcome: "offered",
+    reason: "startup",
+    nextEligibleAt: "2026-09-25T00:01:00.000Z",
+  }]);
+
+  now += 30_000;
+  client.error = new Error("relay unavailable");
+  assert.equal((await scheduler.offer()).outcome, "failed");
+  assert.deepEqual(observed.at(-1), {
+    outcome: "failed",
+    reason: "due",
+  });
+});
+
+test("opportunity observer failure is acceptance-only and never changes scheduler outcome", async () => {
+  const client = new FakeClient();
+  const scheduler = new NativeLiveMacCompanionScheduler(
+    client,
+    listenerInstanceId,
+    60_000,
+    () => Date.parse("2026-09-25T00:00:00.000Z"),
+    () => {
+      throw new Error("observer unavailable");
+    },
+  );
+
+  assert.deepEqual(await scheduler.offer(), {
+    outcome: "offered",
+    reason: "startup",
+    nextEligibleAt: "2026-09-25T00:01:00.000Z",
+  });
+});
