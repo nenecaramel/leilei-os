@@ -1,5 +1,6 @@
 export const LEILEIOS_CLAUDE_MODELS = Object.freeze([
   "claude-opus-5-5",
+  "claude-opus-5",
   "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
@@ -21,6 +22,10 @@ export const LEILEIOS_THINKING_MODES = Object.freeze([
 const CAPABILITIES = Object.freeze({
   "claude-opus-5-5": Object.freeze({
     thinking: Object.freeze(["adaptive"]),
+    effort: Object.freeze(["low", "medium", "high", "xhigh", "max"]),
+  }),
+  "claude-opus-5": Object.freeze({
+    thinking: Object.freeze(["adaptive", "disabled"]),
     effort: Object.freeze(["low", "medium", "high", "xhigh", "max"]),
   }),
   "claude-opus-4-6": Object.freeze({
@@ -88,6 +93,16 @@ export function normalizeAgentSdkExecutionSelection(selection = null) {
     && !isOneOf(effort, capabilities.effort)
   ) {
     invalid(`Effort ${String(effort)} is not supported by ${model}.`);
+  }
+
+  if (
+    model === "claude-opus-5"
+    && thinking === "disabled"
+    && (effort === "xhigh" || effort === "max")
+  ) {
+    invalid(
+      "Thinking mode disabled is only supported up to effort=high by claude-opus-5.",
+    );
   }
 
   return {
