@@ -169,15 +169,20 @@ struct ChatComposer: View {
         }
     }
 
-    @ViewBuilder
     private func menuRow(
         _ title: String,
         selected: Bool
     ) -> some View {
-        if selected {
-            Label(title, systemImage: "checkmark")
-        } else {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark")
+                .opacity(selected ? 1 : 0)
+                .frame(width: 16, alignment: .leading)
+
             Text(title)
+
+            Spacer(minLength: 12)
         }
+        .frame(minWidth: 150, minHeight: 30, alignment: .leading)
+        .padding(.vertical, 2)
     }
 }
