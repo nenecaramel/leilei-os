@@ -4,6 +4,7 @@ import UIKit
 struct SidebarView: View {
     @Binding var selectedPage: AppPage
     let menuButtonCenterY: CGFloat?
+    let onNewSession: () -> Void
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
@@ -60,16 +61,26 @@ struct SidebarView: View {
                     )
                 )
             }
-            .overlay(alignment: .bottomTrailing) {
-                FloatingGlassButton(
-                    symbol: "gearshape",
-                    accessibilityLabel: "Settings"
-                ) {
-                    if let onSettings {
-                        onSettings()
-                    } else {
-                        selectedPage = .account
-                        onSelect()
+            .overlay(alignment: .bottom) {
+                HStack {
+                    FloatingGlassButton(
+                        symbol: "square.and.pencil",
+                        accessibilityLabel: "New Session",
+                        action: onNewSession
+                    )
+
+                    Spacer()
+
+                    FloatingGlassButton(
+                        symbol: "gearshape",
+                        accessibilityLabel: "Settings"
+                    ) {
+                        if let onSettings {
+                            onSettings()
+                        } else {
+                            selectedPage = .account
+                            onSelect()
+                        }
                     }
                 }
                 .padding()
