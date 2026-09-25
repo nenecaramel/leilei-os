@@ -210,9 +210,9 @@ test(
         canonicalMessageId: firstFinalize.assistantMessageId,
       });
     assert.ok(finalizedCheckpoint);
-    assert.deepEqual(
-      finalizedCheckpoint.runtimeMetadata,
-      runtimeMetadata,
+    assert.equal(
+      finalizedCheckpoint.providerSessionId,
+      "provider-first",
     );
 
     const finalizeReplay = await coordinator.finalize(user.id, {
