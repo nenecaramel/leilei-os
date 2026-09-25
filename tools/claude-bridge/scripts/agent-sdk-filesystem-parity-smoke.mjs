@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { query as agentSdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
@@ -39,6 +40,22 @@ function toolNames(result) {
     .filter((event) => event.type === "tool_use")
     .map((event) => event.payload?.tool_name)
     .filter((value) => typeof value === "string");
+}
+
+function queryWithDedicatedSearchTools({ prompt, options }) {
+  const allowedTools = Array.isArray(options?.allowedTools)
+    ? options.allowedTools
+    : [];
+  return agentSdkQuery({
+    prompt,
+    options: {
+      ...options,
+      // Native Agent SDK builds stopped registering dedicated Glob/Grep by
+      // default in 0.3.162. This smoke explicitly opts them back in because
+      // it validates those SDK filesystem tools rather than Bash fallback.
+      allowedTools: [...new Set([...allowedTools, "Glob", "Grep"])],
+    },
+  });
 }
 
 async function run() {
@@ -145,6 +162,7 @@ async function run() {
     const transport = new AgentSdkClaudeTransport({
       cwd: root,
       environment: process.env,
+      queryImpl: queryWithDedicatedSearchTools,
     });
 
     let filesystemInit = null;
