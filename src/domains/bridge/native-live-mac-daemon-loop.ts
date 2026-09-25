@@ -127,11 +127,13 @@ export interface NativeLiveMacDaemonRelayClient {
     reservationId: string;
   }): Promise<void>;
 
-  appendRuntimeEvent?(input: {
+  appendRuntimeEvents?(input: {
     listenerInstanceId: string;
     reservationId: string;
-    sequence: number;
-    event: NativeLiveNormalizedEvent;
+    events: ReadonlyArray<{
+      sequence: number;
+      event: NativeLiveNormalizedEvent;
+    }>;
   }): Promise<void>;
 
   requestRuntimeInteraction?(input: {
@@ -369,25 +371,48 @@ export class NativeLiveMacDaemonLoop {
       let result: NativeLiveRuntimeExecutionResult;
       let eventSequence = 0;
       let eventDeliveryFailures = 0;
+      let pendingRuntimeEvents: Array<{
+        sequence: number;
+        event: NativeLiveNormalizedEvent;
+      }> = [];
+      const flushRuntimeEvents = async (): Promise<void> => {
+        if (
+          !this.relay.appendRuntimeEvents
+          || pendingRuntimeEvents.length === 0
+        ) {
+          return;
+        }
+        const batch = pendingRuntimeEvents;
+        pendingRuntimeEvents = [];
+        try {
+          await this.relay.appendRuntimeEvents({
+            listenerInstanceId:
+              this.listenerInstanceId,
+            reservationId:
+              reservation.reservationId,
+            events: batch,
+          });
+        } catch {
+          // Runtime events are observability/UI data; the canonical terminal
+          // result still carries the complete normalized event stream.
+          // Do not blind-retry an ambiguously delivered batch.
+          eventDeliveryFailures += batch.length;
+        }
+      };
       try {
         result = await this.executor.execute(
           reservation.command,
           {
-            ...(this.relay.appendRuntimeEvent
+            ...(this.relay.appendRuntimeEvents
               ? {
                   onNormalizedEvent: async (event: NativeLiveNormalizedEvent) => {
                     eventSequence += 1;
-                    try {
-                      await this.relay.appendRuntimeEvent!({
-                        listenerInstanceId:
-                          this.listenerInstanceId,
-                        reservationId:
-                          reservation.reservationId,
-                        sequence: eventSequence,
-                        event,
-                      });
-                    } catch {
-                      eventDeliveryFailures += 1;
+                    pendingRuntimeEvents.push({
+                      sequence: eventSequence,
+                      event,
+                    });
+                    if (pendingRuntimeEvents.length >= 8) {
+                      await flushRuntimeEvents();
                     }
                   },
                 }
@@ -438,7 +463,9 @@ export class NativeLiveMacDaemonLoop {
               : {}),
           },
         );
+        await flushRuntimeEvents();
       } catch {
+        await flushRuntimeEvents();
         await this.bestEffortReject(reservation.reservationId, "INVALID_COMMAND");
         return {
           outcome: "rejected",
