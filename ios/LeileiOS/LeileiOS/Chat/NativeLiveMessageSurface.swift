@@ -12,6 +12,9 @@ struct NativeLiveMessageSurface: View {
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
     private let bottomAnchorID = "native-live-chat-bottom"
+    private let scrollCoordinateSpace = "native-live-chat-scroll"
+
+    @State private var isAwayFromBottom = false
 
     var body: some View {
         Group {
@@ -53,34 +56,96 @@ struct NativeLiveMessageSurface: View {
         _ snapshot: NativeLiveCurrentPathSnapshot
     ) -> some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 18) {
-                    ForEach(snapshot.messages) { message in
-                        NativeLiveMessageRow(
-                            message: message,
-                            isTurnInFlight: isTurnInFlight,
-                            onRetryMessage: onRetryMessage,
-                            onEditMessage: onEditMessage
-                        )
-                        .id(message.id)
-                    }
+            GeometryReader { viewport in
+                ScrollView {
+                    LazyVStack(spacing: 18) {
+                        ForEach(snapshot.messages) { message in
+                            NativeLiveMessageRow(
+                                message: message,
+                                isTurnInFlight: isTurnInFlight,
+                                onRetryMessage: onRetryMessage,
+                                onEditMessage: onEditMessage
+                            )
+                            .id(message.id)
+                        }
 
-                    Color.clear
-                        .frame(height: 1)
-                        .id(bottomAnchorID)
+                        Color.clear
+                            .frame(height: 1)
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear.preference(
+                                        key: NativeLiveBottomYPreferenceKey.self,
+                                        value: geometry.frame(
+                                            in: .named(scrollCoordinateSpace)
+                                        ).maxY
+                                    )
+                                }
+                            }
+                            .id(bottomAnchorID)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
-            }
-            .refreshable {
-                await onRefresh()
-            }
-            .onAppear {
-                scrollToBottom(proxy)
-            }
-            .onChange(of: snapshot.syncToken) { _, _ in
-                scrollToBottom(proxy)
+                .coordinateSpace(name: scrollCoordinateSpace)
+                .refreshable {
+                    await onRefresh()
+                }
+                .onAppear {
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: snapshot.syncToken) { _, _ in
+                    scrollToBottom(proxy)
+                }
+                .onPreferenceChange(
+                    NativeLiveBottomYPreferenceKey.self
+                ) { bottomY in
+                    let away = bottomY > viewport.size.height + 56
+                    guard away != isAwayFromBottom else { return }
+
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isAwayFromBottom = away
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if isAwayFromBottom {
+                        Button {
+                            withAnimation(.snappy) {
+                                proxy.scrollTo(
+                                    bottomAnchorID,
+                                    anchor: .bottom
+                                )
+                            }
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(
+                                    size: 14,
+                                    weight: .semibold
+                                ))
+                                .foregroundStyle(.primary)
+                                .frame(width: 38, height: 38)
+                                .background(
+                                    .regularMaterial,
+                                    in: Circle()
+                                )
+                                .overlay {
+                                    Circle()
+                                        .stroke(
+                                            Color.primary.opacity(0.08),
+                                            lineWidth: 0.6
+                                        )
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Scroll to latest")
+                        .padding(.trailing, 18)
+                        .padding(.bottom, 14)
+                        .transition(
+                            .scale(scale: 0.9)
+                                .combined(with: .opacity)
+                        )
+                    }
+                }
             }
         }
     }
@@ -94,6 +159,18 @@ struct NativeLiveMessageSurface: View {
         }
     }
 }
+
+private struct NativeLiveBottomYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(
+        value: inout CGFloat,
+        nextValue: () -> CGFloat
+    ) {
+        value = nextValue()
+    }
+}
+
 
 private struct NativeLiveMessageRow: View {
     let message: NativeLiveCurrentPathMessage
@@ -126,6 +203,7 @@ private struct NativeLiveMessageRow: View {
                             LightweightContextMenuInteraction(
                                 title: "Edit",
                                 systemImage: "pencil",
+                                copyText: copyText,
                                 isDisabled: isTurnInFlight,
                                 cornerRadius: 18
                             ) {
@@ -151,6 +229,7 @@ private struct NativeLiveMessageRow: View {
                                 LightweightContextMenuInteraction(
                                     title: "Retry",
                                     systemImage: "arrow.clockwise",
+                                    copyText: copyText,
                                     isDisabled: isTurnInFlight,
                                     cornerRadius: 12
                                 ) {
@@ -209,6 +288,15 @@ private struct NativeLiveMessageRow: View {
         }
     }
 
+    private var copyText: String? {
+        let text = message.blocks
+            .sorted { $0.ordinal < $1.ordinal }
+            .compactMap { normalizedText($0.text) }
+            .joined(separator: "\n\n")
+
+        return text.isEmpty ? nil : text
+    }
+
     private func normalizedText(_ text: String?) -> String? {
         guard let text else { return nil }
         let normalized = text.trimmingCharacters(
@@ -221,6 +309,7 @@ private struct NativeLiveMessageRow: View {
 private struct LightweightContextMenuInteraction: UIViewRepresentable {
     let title: String
     let systemImage: String
+    let copyText: String?
     let isDisabled: Bool
     let cornerRadius: CGFloat
     let action: () -> Void
@@ -229,6 +318,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
         Coordinator(
             title: title,
             systemImage: systemImage,
+            copyText: copyText,
             isDisabled: isDisabled,
             cornerRadius: cornerRadius,
             action: action
@@ -254,6 +344,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
     ) {
         context.coordinator.title = title
         context.coordinator.systemImage = systemImage
+        context.coordinator.copyText = copyText
         context.coordinator.isDisabled = isDisabled
         context.coordinator.cornerRadius = cornerRadius
         context.coordinator.action = action
@@ -265,6 +356,7 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
 
         var title: String
         var systemImage: String
+        var copyText: String?
         var isDisabled: Bool
         var cornerRadius: CGFloat
         var action: () -> Void
@@ -272,12 +364,14 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
         init(
             title: String,
             systemImage: String,
+            copyText: String?,
             isDisabled: Bool,
             cornerRadius: CGFloat,
             action: @escaping () -> Void
         ) {
             self.title = title
             self.systemImage = systemImage
+            self.copyText = copyText
             self.isDisabled = isDisabled
             self.cornerRadius = cornerRadius
             self.action = action
@@ -295,6 +389,19 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
                     return UIMenu(children: [])
                 }
 
+                var children: [UIMenuElement] = []
+
+                if let copyText = self.copyText,
+                   !copyText.isEmpty {
+                    let copyAction = UIAction(
+                        title: "Copy",
+                        image: UIImage(systemName: "doc.on.doc")
+                    ) { _ in
+                        UIPasteboard.general.string = copyText
+                    }
+                    children.append(copyAction)
+                }
+
                 let attributes: UIMenuElement.Attributes =
                     self.isDisabled ? [.disabled] : []
 
@@ -306,7 +413,8 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
                     self?.action()
                 }
 
-                return UIMenu(children: [action])
+                children.append(action)
+                return UIMenu(children: children)
             }
         }
 
