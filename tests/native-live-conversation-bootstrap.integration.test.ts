@@ -10,6 +10,9 @@ import {
 import {
   NativeLiveConversationService,
 } from "../src/domains/conversation/native-live-conversation-service.js";
+import {
+  DrizzleNativeLiveCurrentPathReader,
+} from "../src/domains/conversation/native-live-current-path-read-repository.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_BOOTSTRAP_DATABASE_TEST === "1";
@@ -118,6 +121,8 @@ test(
     const service = new NativeLiveConversationService(
       new DrizzleNativeLiveConversationRepository(database.db),
     );
+    const currentPathReader =
+      new DrizzleNativeLiveCurrentPathReader(database.db);
 
     const older = await service.createConversation({
       userId: userA,
@@ -187,5 +192,57 @@ test(
       listedB.map((conversation) => conversation.id),
       [otherTenant.id],
     );
+
+    const deleted = await service.deleteConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(deleted.outcome, "deleted");
+
+    const repeated = await service.deleteConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(repeated.outcome, "already_deleted");
+
+    const listedAfterDelete = await service.listConversations({
+      userId: userA,
+      limit: 10,
+    });
+    assert.deepEqual(
+      listedAfterDelete.map((conversation) => conversation.id),
+      [older.id],
+    );
+
+    const storedDeleted = await service.getConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(storedDeleted?.lifecycleStatus, "deleted");
+
+    assert.equal(
+      await currentPathReader.readCurrentPath({
+        userId: userA,
+        conversationId: newer.id,
+        limit: 100,
+      }),
+      null,
+    );
+
+    await assert.rejects(
+      service.appendUserMessage({
+        userId: userA,
+        conversationId: newer.id,
+        parentMessageId: null,
+        blocks: [{ kind: "text", text: "must not revive deleted chat" }],
+      }),
+      /not found/i,
+    );
+
+    const crossTenantDelete = await service.deleteConversation({
+      userId: userB,
+      conversationId: older.id,
+    });
+    assert.equal(crossTenantDelete.outcome, "not_found");
   },
 );
