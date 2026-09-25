@@ -47,6 +47,10 @@ struct ChatView: View {
             }
         }
         .contentShape(Rectangle())
+        .ignoresSafeArea(
+            .keyboard,
+            edges: isComposerFocused ? [] : .bottom
+        )
         .onTapGesture {
             isComposerFocused = false
         }
