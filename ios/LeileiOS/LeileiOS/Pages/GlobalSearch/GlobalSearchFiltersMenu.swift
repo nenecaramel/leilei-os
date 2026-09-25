@@ -9,15 +9,10 @@ struct GlobalSearchFiltersMenu: View {
         Menu {
             Menu("Modules") {
                 ForEach(GlobalSearchModule.allCases) { module in
-                    Button {
-                        if modules.contains(module) {
-                            modules.remove(module)
-                        } else {
-                            modules.insert(module)
-                        }
-                    } label: {
-                        Label(module.title, systemImage: modules.contains(module) ? "checkmark" : "")
-                    }
+                    Toggle(
+                        module.title,
+                        isOn: moduleSelectionBinding(module)
+                    )
                     .menuActionDismissBehavior(.disabled)
                 }
             }
@@ -49,6 +44,21 @@ struct GlobalSearchFiltersMenu: View {
                 .font(.system(size: 18, weight: .medium))
         }
         .accessibilityLabel("Search filters")
+    }
+
+    private func moduleSelectionBinding(
+        _ module: GlobalSearchModule
+    ) -> Binding<Bool> {
+        Binding(
+            get: { modules.contains(module) },
+            set: { isSelected in
+                if isSelected {
+                    modules.insert(module)
+                } else {
+                    modules.remove(module)
+                }
+            }
+        )
     }
 
     private var filtersAreDefault: Bool {
