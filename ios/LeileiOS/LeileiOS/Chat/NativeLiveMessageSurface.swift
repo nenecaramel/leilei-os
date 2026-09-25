@@ -69,7 +69,7 @@ struct NativeLiveMessageSurface: View {
 
                 ZStack {
                     ScrollView {
-                        LazyVStack(spacing: 18) {
+                        VStack(spacing: 18) {
                             ForEach(snapshot.messages) { message in
                                 NativeLiveMessageRow(
                                     message: message,
