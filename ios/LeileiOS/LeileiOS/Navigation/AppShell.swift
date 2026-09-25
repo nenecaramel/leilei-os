@@ -150,6 +150,7 @@ struct AppShell: View {
                 )
 
             }
+            .coordinateSpace(name: "sidebar-drag-space")
         }
         .ignoresSafeArea(.container)
     }
@@ -159,7 +160,7 @@ struct AppShell: View {
     ) -> some Gesture {
         DragGesture(
             minimumDistance: 8,
-            coordinateSpace: .local
+            coordinateSpace: .named("sidebar-drag-space")
         )
         .updating($sidebarDragTranslation) { value, state, _ in
             guard isSidebarDragEligible(value) else {
