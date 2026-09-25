@@ -28,11 +28,11 @@ struct SidebarSection: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: page.sidebarSystemImage)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: 16, weight: .regular))
                             .frame(width: 18, alignment: .center)
 
                         Text(page.rawValue)
-                            .font(.system(size: 17.5, weight: .medium))
+                            .font(.system(size: 17.5, weight: .regular))
 
                         Spacer()
                     }
@@ -46,7 +46,7 @@ struct SidebarSection: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(.primary.opacity(0.05))
                                 .padding(.leading, selectedBackgroundLeadingOffset)
-                                .padding(.trailing, -2)
+                                .padding(.trailing, 1)
                                 .offset(y: 2)
                         }
                     }
