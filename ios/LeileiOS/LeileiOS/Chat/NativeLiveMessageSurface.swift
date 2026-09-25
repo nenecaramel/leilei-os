@@ -84,6 +84,9 @@ struct NativeLiveMessageSurface: View {
             .refreshable {
                 await onRefresh()
             }
+            .onChange(of: snapshot.conversationId) { _, _ in
+                isAwayFromBottom = false
+            }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.visibleRect.maxY
                     < geometry.contentSize.height - 12
@@ -102,6 +105,7 @@ struct NativeLiveMessageSurface: View {
             .overlay(alignment: .bottom) {
                 if isAwayFromBottom {
                     Button {
+                        isAwayFromBottom = false
                         withAnimation(.snappy) {
                             proxy.scrollTo(
                                 bottomAnchorID,
