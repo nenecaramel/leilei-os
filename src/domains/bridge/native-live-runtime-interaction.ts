@@ -273,6 +273,31 @@ export class DrizzleNativeLiveRuntimeInteractionRepository {
         );
       }
 
+      const [preparation] = await transaction
+        .select({
+          dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+        })
+        .from(nativeLiveTurnPreparations)
+        .where(
+          and(
+            eq(nativeLiveTurnPreparations.id, input.prepareId),
+            eq(nativeLiveTurnPreparations.userId, input.userId),
+          ),
+        )
+        .limit(1);
+      if (
+        !preparation
+        || (
+          preparation.dispatchStatus !== "executing"
+          && preparation.dispatchStatus !== "delivery_unknown"
+        )
+      ) {
+        throw new NativeLiveRuntimeInteractionError(
+          "INTERACTION_CONFLICT",
+          "Native live interaction is no longer attached to an active turn.",
+        );
+      }
+
       const now = new Date();
       const [updated] = await transaction
         .update(nativeLiveRuntimeInteractions)
