@@ -798,29 +798,46 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webBridgeService: bridgeService,
-      webNativeLiveCoordinator: nativeLiveRelayPrepareCoordinator,
-      webNativeLiveTurnReader: nativeLiveTurnPort,
-      webNativeLiveCurrentPathReader:
-        new DrizzleNativeLiveCurrentPathReader(db),
-      webNativeLiveConversationService:
-        nativeLiveConversationService,
-      nativeLiveRelayService,
-      nativeLiveWorkWaitService,
-      nativeLiveRuntimeEventService,
-      nativeLiveRuntimeInteractionService,
-      nativeLiveRuntimeControlService,
-      nativeLiveSemanticService,
-      nativeLiveBackgroundModelService,
-      nativeLiveBackgroundModelCoordinator:
-        nativeLiveBackgroundWorkflowCoordinator,
-      ...(topicResurfaceCrossDeviceOpportunity
-        ? {
-            nativeLiveBackgroundModelOpportunity:
-              topicResurfaceCrossDeviceOpportunity,
-          }
-        : {}),
-      nativeLiveCompanionBackgroundOpportunity:
-        companionBackgroundOpportunity,
+      nativeLiveProduction: {
+        web: {
+          coordinator: nativeLiveRelayPrepareCoordinator,
+          relayService: nativeLiveRelayService,
+          turnReader: nativeLiveTurnPort,
+          currentPathReader:
+            new DrizzleNativeLiveCurrentPathReader(db),
+          conversationService:
+            nativeLiveConversationService,
+          runtimeEventService:
+            nativeLiveRuntimeEventService,
+          runtimeInteractionService:
+            nativeLiveRuntimeInteractionService,
+          runtimeControlService:
+            nativeLiveRuntimeControlService,
+        },
+        internal: {
+          relayService: nativeLiveRelayService,
+          workWaitService: nativeLiveWorkWaitService,
+          semanticService: nativeLiveSemanticService,
+          backgroundModelService:
+            nativeLiveBackgroundModelService,
+          backgroundModelCoordinator:
+            nativeLiveBackgroundWorkflowCoordinator,
+          ...(topicResurfaceCrossDeviceOpportunity
+            ? {
+                backgroundModelOpportunity:
+                  topicResurfaceCrossDeviceOpportunity,
+              }
+            : {}),
+          runtimeEventService:
+            nativeLiveRuntimeEventService,
+          runtimeInteractionService:
+            nativeLiveRuntimeInteractionService,
+          runtimeControlService:
+            nativeLiveRuntimeControlService,
+          companionBackgroundOpportunity:
+            companionBackgroundOpportunity,
+        },
+      },
       webSentinelService: sentinelService,
       webConversationImportService: conversationImportService,
       webConversationArchiveReadService: conversationArchiveReadService,
