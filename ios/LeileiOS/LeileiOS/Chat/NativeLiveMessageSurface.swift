@@ -15,6 +15,7 @@ struct NativeLiveMessageSurface: View {
     private let scrollCoordinateSpace = "native-live-chat-scroll"
 
     @State private var isAwayFromBottom = false
+    @State private var initiallyPositionedConversationID: String?
 
     var body: some View {
         Group {
@@ -61,8 +62,9 @@ struct NativeLiveMessageSurface: View {
     ) -> some View {
         ScrollViewReader { proxy in
             GeometryReader { viewport in
-                ScrollView {
-                    LazyVStack(spacing: 18) {
+                ZStack {
+                    ScrollView {
+                        LazyVStack(spacing: 18) {
                         ForEach(snapshot.messages) { message in
                             NativeLiveMessageRow(
                                 message: message,
@@ -89,16 +91,19 @@ struct NativeLiveMessageSurface: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 8)
-                }
-                .defaultScrollAnchor(.bottom)
-                .coordinateSpace(name: scrollCoordinateSpace)
+                        .padding(.bottom, 8)
+                    }
+                    .coordinateSpace(name: scrollCoordinateSpace)
                 .refreshable {
                     await onRefresh()
                 }
-                .onChange(of: snapshot.syncToken) { _, _ in
-                    scrollToBottom(proxy)
-                }
+                    .onChange(of: snapshot.syncToken) { _, _ in
+                        guard initiallyPositionedConversationID
+                            == snapshot.conversationId else {
+                            return
+                        }
+                        scrollToBottom(proxy)
+                    }
                 .onPreferenceChange(
                     NativeLiveBottomYPreferenceKey.self
                 ) { bottomY in
@@ -113,9 +118,15 @@ struct NativeLiveMessageSurface: View {
                         isAwayFromBottom = away
                     }
                 }
-                .overlay(alignment: .bottom) {
-                    if isAwayFromBottom {
-                        Button {
+                    .opacity(
+                        initiallyPositionedConversationID
+                            == snapshot.conversationId ? 1 : 0
+                    )
+                    .overlay(alignment: .bottom) {
+                        if isAwayFromBottom
+                            && initiallyPositionedConversationID
+                                == snapshot.conversationId {
+                            Button {
                             withAnimation(.snappy) {
                                 proxy.scrollTo(
                                     bottomAnchorID,
@@ -145,11 +156,38 @@ struct NativeLiveMessageSurface: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Scroll to latest")
                         .offset(y: 18)
-                        .transition(
-                            .scale(scale: 0.9)
-                                .combined(with: .opacity)
+                            .transition(
+                                .scale(scale: 0.9)
+                                    .combined(with: .opacity)
+                            )
+                        }
+                    }
+
+                    if initiallyPositionedConversationID
+                        != snapshot.conversationId {
+                        ProgressView()
+                    }
+                }
+                .task(id: snapshot.conversationId) {
+                    guard initiallyPositionedConversationID
+                        != snapshot.conversationId else {
+                        return
+                    }
+
+                    await Task.yield()
+
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        proxy.scrollTo(
+                            bottomAnchorID,
+                            anchor: .bottom
                         )
                     }
+
+                    await Task.yield()
+                    initiallyPositionedConversationID =
+                        snapshot.conversationId
                 }
             }
         }
