@@ -64,8 +64,9 @@ enum NativeLiveCurrentPathFetchResult: Sendable, Equatable {
 
 enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
     case opus55 = "claude-opus-5-5"
-    case opus46 = "claude-opus-4-6"
+    case opus5 = "claude-opus-5"
     case sonnet5 = "claude-sonnet-5"
+    case opus46 = "claude-opus-4-6"
     case sonnet46 = "claude-sonnet-4-6"
 
     var id: String { rawValue }
@@ -74,10 +75,12 @@ enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, 
         switch self {
         case .opus55:
             return "Opus 5.5"
-        case .opus46:
-            return "Opus 4.6"
+        case .opus5:
+            return "Opus 5"
         case .sonnet5:
             return "Sonnet 5"
+        case .opus46:
+            return "Opus 4.6"
         case .sonnet46:
             return "Sonnet 4.6"
         }
@@ -87,15 +90,21 @@ enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, 
         switch self {
         case .opus55:
             return [.adaptive]
-        case .opus46, .sonnet5, .sonnet46:
+        case .opus5, .sonnet5, .opus46, .sonnet46:
             return [.adaptive, .disabled]
         }
     }
 
-    var supportedEffortLevels: [NativeLiveEffortLevel] {
+    func supportedEffortLevels(
+        thinking: NativeLiveThinkingMode
+    ) -> [NativeLiveEffortLevel] {
         switch self {
         case .opus55, .sonnet5:
             return [.low, .medium, .high, .xhigh, .max]
+        case .opus5:
+            return thinking == .disabled
+                ? [.low, .medium, .high]
+                : [.low, .medium, .high, .xhigh, .max]
         case .opus46, .sonnet46:
             return [.low, .medium, .high, .max]
         }
