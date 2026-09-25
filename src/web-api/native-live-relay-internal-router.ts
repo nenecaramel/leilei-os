@@ -43,6 +43,9 @@ import {
   NativeLiveRuntimeControlError,
   type NativeLiveRuntimeControlService,
 } from "../domains/bridge/native-live-runtime-control.js";
+import type {
+  CompanionBackgroundOpportunityService,
+} from "../domains/runtime/companion-background-opportunity.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -82,6 +85,10 @@ export type NativeLiveRelayInternalDependencies = {
     NativeLiveRuntimeControlService,
     "reserveNextForListener" | "completeForListener"
   >;
+  companionBackgroundOpportunity?: Pick<
+    CompanionBackgroundOpportunityService,
+    "offer"
+  >;
 };
 
 const UUID_PATTERN =
@@ -108,6 +115,12 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/semantic/reservations/:reservationId/fallback",
       submitSemanticFallbackHandler(dependencies),
+    );
+  }
+  if (dependencies.companionBackgroundOpportunity) {
+    router.post(
+      "/background/opportunity",
+      companionBackgroundOpportunityHandler(dependencies),
     );
   }
   if (dependencies.backgroundModelService) {
@@ -276,6 +289,41 @@ function submitSemanticFallbackHandler(
       response.json({ success: true, data: { accepted: true } });
     } catch (error) {
       sendSemanticError(response, error);
+    }
+  };
+}
+
+function companionBackgroundOpportunityHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.companionBackgroundOpportunity) return;
+    const body = parseCompanionBackgroundOpportunityBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const result =
+        await dependencies.companionBackgroundOpportunity.offer({
+          userId,
+          reason: body.reason,
+        });
+      response.json({
+        success: true,
+        data: result,
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_COMPANION_BACKGROUND_UNAVAILABLE",
+          message:
+            "Companion background opportunity is temporarily unavailable.",
+        },
+      });
     }
   };
 }
@@ -769,6 +817,37 @@ function rejectReservationHandler(
     } catch (error) {
       sendRelayError(response, error);
     }
+  };
+}
+
+function parseCompanionBackgroundOpportunityBody(
+  value: unknown,
+): {
+  listener_instance_id: string;
+  dispatch_target: "claude_code";
+  reason: "startup" | "dirty" | "due";
+} | null {
+  const record = exactRecord(value, [
+    "listener_instance_id",
+    "dispatch_target",
+    "reason",
+  ]);
+  if (
+    !record
+    || !isUuid(record.listener_instance_id)
+    || record.dispatch_target !== "claude_code"
+    || (
+      record.reason !== "startup"
+      && record.reason !== "dirty"
+      && record.reason !== "due"
+    )
+  ) {
+    return null;
+  }
+  return {
+    listener_instance_id: record.listener_instance_id,
+    dispatch_target: "claude_code",
+    reason: record.reason,
   };
 }
 
