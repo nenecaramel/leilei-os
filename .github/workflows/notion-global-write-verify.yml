@@ -9,7 +9,7 @@ on:
       - src/mcp/server/register-notion-writes.ts
       - src/mcp/tools/**
       - tests/notion-*.test.ts
-      - tests/mcp-read-contract.test.ts
+      - tests/notion-read-schema-surface.test.ts
       - tests/mcp-error-contract.test.ts
       - package.json
       - pnpm-lock.yaml
@@ -24,7 +24,7 @@ on:
       - src/mcp/server/register-notion-writes.ts
       - src/mcp/tools/**
       - tests/notion-*.test.ts
-      - tests/mcp-read-contract.test.ts
+      - tests/notion-read-schema-surface.test.ts
       - tests/mcp-error-contract.test.ts
       - package.json
       - pnpm-lock.yaml
@@ -69,7 +69,7 @@ jobs:
           tests/notion-write-server-wiring.test.ts
           tests/notion-mcp-tools.test.ts
           tests/notion-server-wiring.test.ts
-          tests/mcp-read-contract.test.ts
+          tests/notion-read-schema-surface.test.ts
       - name: Run deterministic canonical test suite
         run: pnpm test
       - run: pnpm typecheck
