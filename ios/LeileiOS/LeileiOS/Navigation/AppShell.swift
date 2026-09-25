@@ -10,7 +10,7 @@ struct AppShell: View {
     @State private var isDraftConversation = false
     @State private var draftConversationID = UUID()
     @State private var floatingControlCenters: [String: CGFloat] = [:]
-    @GestureState private var sidebarDragTranslation: CGFloat = 0
+    @State private var sidebarDragTranslation: CGFloat = 0
 
     var body: some View {
         Group {
@@ -162,18 +162,18 @@ struct AppShell: View {
             minimumDistance: 8,
             coordinateSpace: .named("sidebar-drag-space")
         )
-        .updating($sidebarDragTranslation) { value, state, _ in
+        .onChanged { value in
             guard isSidebarDragEligible(value) else {
                 return
             }
 
             if menuOpen {
-                state = max(
+                sidebarDragTranslation = max(
                     -revealOffset,
                     min(0, value.translation.width)
                 )
             } else {
-                state = max(
+                sidebarDragTranslation = max(
                     0,
                     min(revealOffset, value.translation.width)
                 )
@@ -181,19 +181,24 @@ struct AppShell: View {
         }
         .onEnded { value in
             guard isSidebarDragEligible(value) else {
+                sidebarDragTranslation = 0
                 return
             }
 
             let threshold = revealOffset * 0.33
+            let shouldOpen: Bool
+
+            if menuOpen {
+                shouldOpen =
+                    value.translation.width > -threshold
+            } else {
+                shouldOpen =
+                    value.translation.width > threshold
+            }
 
             withAnimation(.snappy) {
-                if menuOpen {
-                    menuOpen =
-                        value.translation.width > -threshold
-                } else {
-                    menuOpen =
-                        value.translation.width > threshold
-                }
+                menuOpen = shouldOpen
+                sidebarDragTranslation = 0
             }
         }
     }
