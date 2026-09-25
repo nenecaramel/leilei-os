@@ -141,7 +141,7 @@ struct AppShell: View {
 
             }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container)
     }
 
     private var iPadLayout: some View {
