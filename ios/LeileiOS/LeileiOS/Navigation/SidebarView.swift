@@ -25,23 +25,27 @@ struct SidebarView: View {
                             .padding(.top, 18)
                             .offset(x: titleHorizontalOffset - 2, y: 20)
 
-                        SidebarSection(
-                            title: nil,
-                            pages: [
-                                .home,
-                                .diary,
-                                .daySpace,
-                                .universe,
-                                .sentinel
-                            ],
-                            selectedPage: $selectedPage,
-                            textLeadingOffset: titleHorizontalOffset - navigationRowHorizontalInset,
-                            selectedBackgroundLeadingOffset: titleHorizontalOffset - 15,
-                            onSelect: onSelect
-                        )
-                        .offset(y: 9)
+                        VStack(alignment: .leading, spacing: 28) {
+                            SidebarSection(
+                                title: nil,
+                                pages: [
+                                    .home,
+                                    .diary,
+                                    .daySpace,
+                                    .universe,
+                                    .sentinel
+                                ],
+                                selectedPage: $selectedPage,
+                                textLeadingOffset: titleHorizontalOffset - navigationRowHorizontalInset,
+                                selectedBackgroundLeadingOffset: titleHorizontalOffset - 15,
+                                onSelect: onSelect
+                            )
+                            .offset(y: 9)
 
-                        recentConversations
+                            recentConversations
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offset(y: 7)
                     }
                     .padding(.horizontal, 22)
                     .padding(.bottom, 92)
