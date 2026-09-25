@@ -102,20 +102,6 @@ private struct NativeLiveMessageRow: View {
 
     var body: some View {
         rowContent
-            .contextMenu {
-                if message.role == "user" {
-                    Button("Edit") {
-                        onEditMessage(message)
-                    }
-                    .disabled(isTurnInFlight)
-                } else if message.role == "assistant",
-                          let targetUserMessageID = message.parentMessageId {
-                    Button("Retry") {
-                        onRetryMessage(targetUserMessageID)
-                    }
-                    .disabled(isTurnInFlight)
-                }
-            }
     }
 
     @ViewBuilder
@@ -135,16 +121,21 @@ private struct NativeLiveMessageRow: View {
                                 style: .continuous
                             )
                         )
+                        .contentShape(
+                            .contextMenuPreview,
+                            RoundedRectangle(
+                                cornerRadius: 18,
+                                style: .continuous
+                            )
+                        )
+                        .contextMenu {
+                            Button("Edit") {
+                                onEditMessage(message)
+                            }
+                            .disabled(isTurnInFlight)
+                        }
 
                     messageStatus
-
-                    Button("Edit") {
-                        onEditMessage(message)
-                    }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .disabled(isTurnInFlight)
                 }
             }
         } else {
@@ -157,17 +148,23 @@ private struct NativeLiveMessageRow: View {
                         .foregroundStyle(.secondary)
 
                     messageContent
-                    messageStatus
-
-                    if let targetUserMessageID = message.parentMessageId {
-                        Button("Retry") {
-                            onRetryMessage(targetUserMessageID)
+                        .contentShape(
+                            .contextMenuPreview,
+                            RoundedRectangle(
+                                cornerRadius: 12,
+                                style: .continuous
+                            )
+                        )
+                        .contextMenu {
+                            if let targetUserMessageID = message.parentMessageId {
+                                Button("Retry") {
+                                    onRetryMessage(targetUserMessageID)
+                                }
+                                .disabled(isTurnInFlight)
+                            }
                         }
-                        .font(.caption)
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .disabled(isTurnInFlight)
-                    }
+
+                    messageStatus
                 }
 
                 Spacer(minLength: 24)
