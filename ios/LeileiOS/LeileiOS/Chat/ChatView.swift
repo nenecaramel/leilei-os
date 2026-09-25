@@ -170,8 +170,12 @@ struct ChatView: View {
             return
         }
 
-        pendingOperation = .retry(
-            targetUserMessageID: targetUserMessageID
+        pendingOperation = NativeLivePendingOperation(
+            kind: .retry(
+                targetUserMessageID: targetUserMessageID
+            ),
+            baselineSyncToken:
+                appModel.nativeLiveCurrentPath?.syncToken
         )
 
         Task { @MainActor in
@@ -239,9 +243,13 @@ struct ChatView: View {
         }
 
         if let draft = editDraft {
-            pendingOperation = .edit(
-                targetUserMessageID: draft.targetUserMessageID,
-                text: pendingText
+            pendingOperation = NativeLivePendingOperation(
+                kind: .edit(
+                    targetUserMessageID: draft.targetUserMessageID,
+                    text: pendingText
+                ),
+                baselineSyncToken:
+                    appModel.nativeLiveCurrentPath?.syncToken
             )
             editDraft = nil
             messageText = ""
@@ -272,9 +280,10 @@ struct ChatView: View {
         }
 
         let shouldCreateConversation = isDraftConversation
-        pendingOperation = .send(
-            id: UUID(),
-            text: pendingText
+        pendingOperation = NativeLivePendingOperation(
+            kind: .send(text: pendingText),
+            baselineSyncToken:
+                appModel.nativeLiveCurrentPath?.syncToken
         )
         messageText = ""
         isComposerFocused = false
@@ -286,6 +295,13 @@ struct ChatView: View {
                     _ = try await appModel.createNativeLiveConversation(
                         title: "New Conversation"
                     )
+
+                    if let pendingOperation {
+                        self.pendingOperation = pendingOperation.rebased(
+                            to: appModel.nativeLiveCurrentPath?.syncToken
+                        )
+                    }
+
                     onDraftCommitted()
                 }
 
