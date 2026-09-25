@@ -20,6 +20,7 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
     relayToken: "dedicated-token",
     listenerInstanceId:
       "11111111-1111-4111-8111-111111111111",
+    companionBackgroundIntervalMs: 3_600_000,
   });
 });
 
@@ -43,6 +44,31 @@ test("Mac daemon config falls back to MCP server URL/token and derives a stable 
   assert.match(
     first.listenerInstanceId,
     /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  );
+});
+
+test("Mac daemon config accepts an explicit companion background cadence", () => {
+  const config = resolveNativeLiveMacDaemonConfig({
+    MCP_SERVER_URL: "https://leilei-os.example/",
+    MCP_AUTH_TOKEN: "internal-token",
+    LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS: "90",
+  }, {
+    hostname: () => "Leilei-Mac",
+    homedir: () => "/Users/leilei",
+  });
+
+  assert.equal(config.companionBackgroundIntervalMs, 90_000);
+
+  assert.throws(
+    () => resolveNativeLiveMacDaemonConfig({
+      MCP_SERVER_URL: "https://leilei-os.example/",
+      MCP_AUTH_TOKEN: "internal-token",
+      LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS: "0",
+    }, {
+      hostname: () => "Leilei-Mac",
+      homedir: () => "/Users/leilei",
+    }),
+    /positive integer/u,
   );
 });
 
