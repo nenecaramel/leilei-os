@@ -15,7 +15,7 @@ import {
 
 type NavigationIcon = ComponentType<{ className?: string }>;
 
-export type NavigationEntry = {
+type NavigationEntry = {
   label: string;
   to?: string;
   icon: NavigationIcon;
@@ -23,7 +23,7 @@ export type NavigationEntry = {
   disabled?: boolean;
 };
 
-export type NavigationGroup = {
+type NavigationGroup = {
   label: "Core" | "Utilities" | "System";
   entries: NavigationEntry[];
 };
