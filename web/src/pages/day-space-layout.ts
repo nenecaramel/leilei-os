@@ -3,9 +3,9 @@ export type DaySpaceLayoutInput = {
   density?: number;
 };
 
-export type DaySpacePaperSize = "small" | "medium" | "large";
+type DaySpacePaperSize = "small" | "medium" | "large";
 
-export type DaySpaceLayoutItem = {
+type DaySpaceLayoutItem = {
   id: string;
   left: number;
   top: number;
