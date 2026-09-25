@@ -32,17 +32,6 @@ import type {
   UniverseSnapshot,
 } from "./universe/universe-types";
 
-export const UNIVERSE_NODE_TYPES = [
-  "concept",
-  "question",
-  "claim",
-  "experience",
-  "project",
-  "source",
-  "reflection",
-] as const;
-
-export const UNIVERSE_IMPORTANCE_OPTIONS = ["anchor", "major", "normal"] as const;
 
 type UniverseState =
   | { status: "loading" }
@@ -428,18 +417,6 @@ function UniverseStatus({ onRetry }: { onRetry?: () => void }) {
       className="universe-cosmos universe-cosmos-state"
     />
   );
-}
-
-export function toggleUniverseGalaxyMemberships(
-  current: UniverseNode["galaxies"],
-  galaxyId: string,
-  weight?: number,
-): UniverseNode["galaxies"] {
-  if (current.some((membership) => membership.id === galaxyId)) {
-    return current.filter((membership) => membership.id !== galaxyId);
-  }
-  if (typeof weight !== "number" || !Number.isFinite(weight)) return current;
-  return [...current, { id: galaxyId, weight }];
 }
 
 function formatUniverseNotice(message: string): string {

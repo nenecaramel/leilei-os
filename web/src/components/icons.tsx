@@ -62,11 +62,6 @@ export const ArchiveIcon = (props: IconProps) => (
   </IconBase>
 );
 
-export const TrashIcon = (props: IconProps) => (
-  <IconBase {...props}>
-    <path d="M5 7h14l-1 14H6L5 7ZM9 7V4h6v3M3 7h18M10 11v6M14 11v6" />
-  </IconBase>
-);
 
 export const PenIcon = (props: IconProps) => (
   <IconBase {...props}>
@@ -91,12 +86,6 @@ export const MoodIcon = (props: IconProps) => (
   </IconBase>
 );
 
-export const StatusIcon = (props: IconProps) => (
-  <IconBase {...props}>
-    <circle cx="12" cy="12" r="8.5" />
-    <circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none" />
-  </IconBase>
-);
 
 export const ScopeIcon = (props: IconProps) => (
   <IconBase {...props}>
@@ -119,12 +108,6 @@ export const UniverseIcon = (props: IconProps) => (
   </IconBase>
 );
 
-export const SettingsIcon = (props: IconProps) => (
-  <IconBase {...props}>
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
-  </IconBase>
-);
 
 export const AccountIcon = (props: IconProps) => (
   <IconBase {...props}>
