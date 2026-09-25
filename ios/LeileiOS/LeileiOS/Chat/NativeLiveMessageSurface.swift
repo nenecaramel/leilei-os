@@ -85,10 +85,8 @@ struct NativeLiveMessageSurface: View {
                 await onRefresh()
             }
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                let distanceFromBottom =
-                    geometry.contentSize.height
-                    - (geometry.contentOffset.y + geometry.containerSize.height)
-                return distanceFromBottom > 56
+                geometry.visibleRect.maxY
+                    < geometry.contentSize.height - 12
             } action: { _, awayFromBottom in
                 guard awayFromBottom != isAwayFromBottom else {
                     return
@@ -147,6 +145,7 @@ struct NativeLiveMessageSurface: View {
     private func scrollToBottom(
         _ proxy: ScrollViewProxy
     ) {
+        isAwayFromBottom = false
         Task { @MainActor in
             await Task.yield()
             proxy.scrollTo(bottomAnchorID, anchor: .bottom)
@@ -258,7 +257,7 @@ private struct NativeLiveMessageRow: View {
                     .frame(minHeight: 20)
             }
         } else {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 ForEach(visibleBlocks) { block in
                     NativeLiveBlockView(
                         block: block,
@@ -463,9 +462,9 @@ private struct NativeLiveBlockView: View {
 
             case "tool_use", "tool_result", "attachment":
                 Text(text)
-                    .font(.system(size: 15.5))
+                    .font(.system(size: 15))
                     .tracking(0.15)
-                    .lineSpacing(2)
+                    .lineSpacing(3)
                     .foregroundStyle(.secondary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
@@ -492,10 +491,10 @@ private struct ChatMarkdownView: View {
     let text: String
     let fillsAvailableWidth: Bool
 
-    private let baseFontSize: CGFloat = 17
+    private let baseFontSize: CGFloat = 16.5
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             ForEach(
                 Array(ChatMarkdownParser.blocks(from: text).enumerated()),
                 id: \.offset
@@ -518,7 +517,7 @@ private struct ChatMarkdownView: View {
             inlineText(text)
                 .font(.system(size: baseFontSize))
                 .tracking(0.15)
-                .lineSpacing(2)
+                .lineSpacing(3)
 
         case .heading(let level, let text):
             inlineText(text)
@@ -527,14 +526,14 @@ private struct ChatMarkdownView: View {
                     weight: level <= 2 ? .semibold : .medium
                 ))
                 .tracking(0.15)
-                .lineSpacing(2)
+                .lineSpacing(3)
                 .padding(.top, level == 1 ? 2 : 0)
 
         case .quote(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
                 .tracking(0.15)
-                .lineSpacing(2)
+                .lineSpacing(3)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
@@ -552,7 +551,7 @@ private struct ChatMarkdownView: View {
                 inlineText(text)
                     .font(.system(size: baseFontSize))
                     .tracking(0.15)
-                    .lineSpacing(2)
+                    .lineSpacing(3)
             }
 
         case .orderedItem(let number, let text):
@@ -565,14 +564,14 @@ private struct ChatMarkdownView: View {
                 inlineText(text)
                     .font(.system(size: baseFontSize))
                     .tracking(0.15)
-                    .lineSpacing(2)
+                    .lineSpacing(3)
             }
 
         case .codeBlock(let code):
             Text(code)
-                .font(.system(size: 14.5, design: .monospaced))
+                .font(.system(size: 14, design: .monospaced))
                 .tracking(0.12)
-                .lineSpacing(2)
+                .lineSpacing(3)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -607,13 +606,13 @@ private struct ChatMarkdownView: View {
     private func headingSize(_ level: Int) -> CGFloat {
         switch level {
         case 1:
-            return 21
+            return 20.5
         case 2:
-            return 19
+            return 18.5
         case 3:
-            return 18
+            return 17.5
         default:
-            return 17
+            return 16.5
         }
     }
 }
