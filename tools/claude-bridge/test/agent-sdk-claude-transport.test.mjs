@@ -838,3 +838,42 @@ test("interactive foreground control pump projects graceful interrupt as INTERRU
     (error) => error.runtimeCode === "INTERRUPTED",
   );
 });
+
+
+test("interactive foreground execution applies model thinking and effort selection", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successFixture("provider-selected-interactive")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      execution: {
+        model: "claude-sonnet-5",
+        thinking: "adaptive",
+        effort: "xhigh",
+      },
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-selected-interactive");
+  assert.equal(call.options.model, "claude-sonnet-5");
+  assert.deepEqual(call.options.thinking, { type: "adaptive" });
+  assert.equal(call.options.effort, "xhigh");
+  assert.equal(call.options.verbatimPrompts, true);
+});
