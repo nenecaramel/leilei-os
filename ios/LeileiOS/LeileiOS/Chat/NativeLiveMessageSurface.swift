@@ -244,7 +244,7 @@ private struct NativeLiveMessageRow: View {
                             Button {
                                 onRetryMessage(targetUserMessageID)
                             } label: {
-                                Image(systemName: "arrow.clockwise")
+                                Image(systemName: "arrow.triangle.branch")
                                     .frame(width: 24, height: 24)
                             }
                             .disabled(isTurnInFlight)
