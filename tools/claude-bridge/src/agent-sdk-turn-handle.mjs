@@ -125,6 +125,7 @@ export async function createAgentSdkTurnHandle({
   questionHandler = null,
   streaming = false,
   midTurnInput = false,
+  executionReadback = false,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -139,6 +140,9 @@ export async function createAgentSdkTurnHandle({
   }
   if (typeof midTurnInput !== "boolean") {
     throw new Error("Agent SDK turn midTurnInput must be boolean.");
+  }
+  if (typeof executionReadback !== "boolean") {
+    throw new Error("Agent SDK turn executionReadback must be boolean.");
   }
   if (
     streaming
@@ -277,6 +281,7 @@ export async function createAgentSdkTurnHandle({
     events,
     inputQueue,
     midTurnInput,
+    executionReadback,
   });
 }
 
@@ -288,6 +293,7 @@ export class AgentSdkTurnHandle {
     events = new EventEmitter(),
     inputQueue = null,
     midTurnInput = false,
+    executionReadback = false,
   }) {
     this.query = query;
     this.mode = mode;
@@ -295,6 +301,7 @@ export class AgentSdkTurnHandle {
     this.events = events;
     this.inputQueue = inputQueue;
     this.midTurnInput = midTurnInput;
+    this.executionReadback = executionReadback;
     this.providerSessionId = null;
     this.interruptReceipt = null;
     this.interruptRequested = false;
@@ -304,6 +311,10 @@ export class AgentSdkTurnHandle {
     this.completion = null;
     this.rawContextUsage = null;
     this.contextUsageError = null;
+    this.rawExecutionSettings = null;
+    this.rawSupportedModels = null;
+    this.executionReadbackError = null;
+    this.executionReadbackSampled = false;
   }
 
   start() {
@@ -441,6 +452,32 @@ export class AgentSdkTurnHandle {
         }
 
         if (
+          this.executionReadback
+          && !this.executionReadbackSampled
+          && message?.type === "assistant"
+        ) {
+          this.executionReadbackSampled = true;
+          try {
+            if (typeof this.query.getSettings === "function") {
+              this.rawExecutionSettings =
+                await this.query.getSettings();
+            } else {
+              throw new Error(
+                "Claude Agent SDK Query does not expose getSettings().",
+              );
+            }
+
+            if (typeof this.query.supportedModels === "function") {
+              this.rawSupportedModels =
+                await this.query.supportedModels();
+            }
+          } catch (cause) {
+            this.executionReadbackError =
+              cause instanceof Error ? cause.message : String(cause);
+          }
+        }
+
+        if (
           message?.type === "assistant"
           && typeof this.query.getContextUsage === "function"
         ) {
@@ -562,6 +599,9 @@ export class AgentSdkTurnHandle {
       result: terminalResult,
       rawContextUsage: this.rawContextUsage,
       contextUsageError: this.contextUsageError,
+      rawExecutionSettings: this.rawExecutionSettings,
+      rawSupportedModels: this.rawSupportedModels,
+      executionReadbackError: this.executionReadbackError,
     };
   }
 }

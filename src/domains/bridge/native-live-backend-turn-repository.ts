@@ -48,6 +48,7 @@ export type NativeLiveBackendTurnReadModel = {
   conversationId: string;
   operation: "send" | "retry" | "edit";
   canonicalUserMessageId: string;
+  executionSelection: NativeLiveExecutionSelection | null;
   canonicalStatus:
     | "prepared"
     | "finalized_success"
@@ -450,6 +451,8 @@ implements NativeLiveBackendTurnPort {
         operation: nativeLiveTurnPreparations.operation,
         canonicalUserMessageId:
           nativeLiveTurnPreparations.canonicalUserMessageId,
+        executionSelection:
+          nativeLiveTurnPreparations.executionSelection,
         canonicalStatus: nativeLiveTurnPreparations.status,
         dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
         assistantMessageId: nativeLiveTurnPreparations.assistantMessageId,
@@ -504,6 +507,12 @@ implements NativeLiveBackendTurnPort {
       conversationId: row.conversationId,
       operation: row.operation,
       canonicalUserMessageId: row.canonicalUserMessageId,
+      executionSelection:
+        row.executionSelection === null
+          ? null
+          : parseNativeLiveExecutionSelection(
+              row.executionSelection,
+            ),
       canonicalStatus: row.canonicalStatus,
       dispatchStatus: row.dispatchStatus,
       assistantMessage,

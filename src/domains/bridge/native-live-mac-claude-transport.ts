@@ -7,6 +7,7 @@ import type { NativeLiveExecutionSelection } from "./native-live-execution-selec
 import type {
   NativeLiveRuntimeCompactionAdvisory,
   NativeLiveRuntimeContextUsage,
+  NativeLiveRuntimeExecutionReadback,
 } from "./native-live-runtime-protocol.js";
 
 export type NativeLiveMacClaudeTransportKind =
@@ -50,6 +51,9 @@ export type NativeLiveMacClaudeTransport =
       contextUsage?: NativeLiveRuntimeContextUsage | null;
       compactionAdvisory?:
         NativeLiveRuntimeCompactionAdvisory | null;
+      executionReadback?:
+        NativeLiveRuntimeExecutionReadback | null;
+      executionReadbackError?: string | null;
     }>;
     compact?(
       sessionId: string,

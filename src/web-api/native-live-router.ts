@@ -725,6 +725,7 @@ export function readNativeLiveTurnHandler(
           conversationId: turn.conversationId,
           operation: turn.operation,
           userMessageId: turn.canonicalUserMessageId,
+          executionSelection: turn.executionSelection,
           canonicalStatus: turn.canonicalStatus,
           dispatchStatus: turn.dispatchStatus,
           semanticStatus: turn.semanticStatus,
