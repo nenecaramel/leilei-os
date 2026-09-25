@@ -10,7 +10,8 @@ export type NativeLiveWorkKind =
   | "semantic"
   | "foreground"
   | "background_model"
-  | "runtime_control";
+  | "runtime_control"
+  | "runtime_interaction";
 
 type NativeLiveWorkWakeInput =
   | {
@@ -21,6 +22,11 @@ type NativeLiveWorkWakeInput =
       userId: string;
       kind: "runtime_control";
       reservationId: string;
+    }
+  | {
+      userId: string;
+      kind: "runtime_interaction";
+      interactionId: string;
     };
 
 export type NativeLiveWorkWaitOutcome =
@@ -36,6 +42,9 @@ export class DrizzleNativeLiveWorkWakePublisher {
       kind: input.kind,
       ...(input.kind === "runtime_control"
         ? { reservation_id: input.reservationId }
+        : {}),
+      ...(input.kind === "runtime_interaction"
+        ? { interaction_id: input.interactionId }
         : {}),
     });
     try {
@@ -192,6 +201,33 @@ export class NativeLiveWorkWakeBroker {
     });
   }
 
+  interactionVersion(
+    userId: string,
+    interactionId: string,
+  ): number {
+    return this.versionForKey(
+      interactionWakeKey(userId, interactionId),
+    );
+  }
+
+  waitForInteractionChange(input: {
+    userId: string;
+    interactionId: string;
+    afterVersion: number;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<NativeLiveWorkWaitOutcome> {
+    return this.waitForKey({
+      key: interactionWakeKey(
+        input.userId,
+        input.interactionId,
+      ),
+      afterVersion: input.afterVersion,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -313,6 +349,20 @@ export class NativeLiveWorkWakeBroker {
       return;
     }
 
+    if (kind === "runtime_interaction") {
+      const interactionId = record.interaction_id;
+      if (
+        typeof interactionId !== "string"
+        || !interactionId.trim()
+      ) {
+        return;
+      }
+      this.signalKey(
+        interactionWakeKey(userId, interactionId),
+      );
+      return;
+    }
+
     if (
       kind === "semantic"
       || kind === "foreground"
@@ -359,4 +409,11 @@ function controlWakeKey(
   reservationId: string,
 ): string {
   return `control:${userId}:${reservationId}`;
+}
+
+function interactionWakeKey(
+  userId: string,
+  interactionId: string,
+): string {
+  return `interaction:${userId}:${interactionId}`;
 }
