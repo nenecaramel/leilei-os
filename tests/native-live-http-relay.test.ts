@@ -212,7 +212,7 @@ class FakeRelayService {
 
 class FakeRuntimeInteractionService {
   createCalls: unknown[] = [];
-  readCalls: unknown[] = [];
+  waitCalls: unknown[] = [];
   listCalls: unknown[] = [];
   resolveCalls: unknown[] = [];
   cancelCalls: unknown[] = [];
@@ -240,8 +240,48 @@ class FakeRuntimeInteractionService {
     };
   }
 
-  async readForListener(input: unknown) {
-    this.readCalls.push(input);
+  async waitForListener(input: unknown) {
+    const value = input as {
+      userId: string;
+      listenerInstanceId: string;
+      reservationId: string;
+      interactionId: string;
+      timeoutMs: number;
+      signal?: AbortSignal | null;
+    };
+    this.waitCalls.push({
+      userId: value.userId,
+      listenerInstanceId: value.listenerInstanceId,
+      reservationId: value.reservationId,
+      interactionId: value.interactionId,
+      timeoutMs: value.timeoutMs,
+      hasSignal: value.signal instanceof AbortSignal,
+    });
+    return {
+      outcome: "terminal" as const,
+      interaction: this.resolvedInteraction(),
+    };
+  }
+
+  async listForUser(input: unknown) {
+    this.listCalls.push(input);
+    return [this.resolvedInteraction()];
+  }
+
+  async resolve(input: unknown) {
+    this.resolveCalls.push(input);
+    return {
+      outcome: "resolved" as const,
+      interaction: this.resolvedInteraction(),
+    };
+  }
+
+  async cancelForListener(input: unknown) {
+    this.cancelCalls.push(input);
+    return "cancelled" as const;
+  }
+
+  private resolvedInteraction() {
     return {
       interactionId:
         "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -258,24 +298,6 @@ class FakeRuntimeInteractionService {
       resolvedAt: "2026-09-25T00:00:01.000Z",
       cancelledAt: null,
     };
-  }
-
-  async listForUser(input: unknown) {
-    this.listCalls.push(input);
-    return [await this.readForListener(input)];
-  }
-
-  async resolve(input: unknown) {
-    this.resolveCalls.push(input);
-    return {
-      outcome: "resolved" as const,
-      interaction: await this.readForListener(input),
-    };
-  }
-
-  async cancelForListener(input: unknown) {
-    this.cancelCalls.push(input);
-    return "cancelled" as const;
   }
 }
 
@@ -451,11 +473,11 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         input: { userId, prepareId },
       }]);
 
-      const read = await fetch(
+      const waited = await fetch(
         `${baseUrl}/api/v1/native-live/turns/${prepareId}`,
         { headers: { "x-test-user": "owner" } },
       );
-      assert.equal(read.status, 200);
+      assert.equal(waited.status, 200);
       const readPayload = await read.json() as {
         data: {
           canonicalStatus: string;
@@ -1299,7 +1321,7 @@ test("web runtime event reads are owner scoped and cursor bounded", async () => 
 });
 
 
-test("internal relay creates and reads listener-owned runtime interactions", async () => {
+test("internal relay creates and waits for listener-owned runtime interactions", async () => {
   const relayService = new FakeRelayService();
   const interactions = new FakeRuntimeInteractionService();
   const interactionId =
@@ -1339,7 +1361,7 @@ test("internal relay creates and reads listener-owned runtime interactions", asy
       assert.equal(created.status, 201);
 
       const read = await fetch(
-        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/interactions/${interactionId}/read`,
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/interactions/${interactionId}/wait`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1360,7 +1382,14 @@ test("internal relay creates and reads listener-owned runtime interactions", asy
           input: { file_path: "/tmp/a" },
         },
       }]);
-      assert.equal(interactions.readCalls.length, 1);
+      assert.deepEqual(interactions.waitCalls, [{
+        userId,
+        listenerInstanceId: listenerId,
+        reservationId: prepareId,
+        interactionId,
+        timeoutMs: 25_000,
+        hasSignal: true,
+      }]);
     },
   );
 });
