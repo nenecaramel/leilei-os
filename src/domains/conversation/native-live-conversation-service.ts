@@ -38,6 +38,14 @@ export class NativeLiveConversationService {
     return this.repository.getConversation(input);
   }
 
+  renameConversation(input: {
+    userId: string;
+    conversationId: string;
+    title: string;
+  }): Promise<NativeLiveConversationSummary | null> {
+    return this.repository.renameConversation(input);
+  }
+
   deleteConversation(input: {
     userId: string;
     conversationId: string;
