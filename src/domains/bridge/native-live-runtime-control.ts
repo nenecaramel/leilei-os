@@ -5,6 +5,10 @@ import {
   eq,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
+import type {
+  DrizzleNativeLiveWorkWakePublisher,
+  NativeLiveWorkWakeBroker,
+} from "./native-live-work-wake.js";
 import {
   nativeLiveRuntimeControls,
   nativeLiveTurnPreparations,
@@ -342,14 +346,33 @@ export class NativeLiveRuntimeControlService {
   constructor(
     private readonly repository:
       DrizzleNativeLiveRuntimeControlRepository,
+    private readonly wakePublisher?:
+      Pick<DrizzleNativeLiveWorkWakePublisher, "notify">,
+    private readonly wakeBroker?:
+      Pick<
+        NativeLiveWorkWakeBroker,
+        "start" | "controlVersion" | "waitForControlChange"
+      >,
   ) {}
 
-  createForUser(
+  async createForUser(
     input: Parameters<
       DrizzleNativeLiveRuntimeControlRepository["createForUser"]
     >[0],
   ) {
-    return this.repository.createForUser(input);
+    const result = await this.repository.createForUser(input);
+    if (result.control.status === "pending") {
+      try {
+        await this.wakePublisher?.notify({
+          userId: input.userId,
+          kind: "runtime_control",
+          reservationId: input.prepareId,
+        });
+      } catch {
+        // Durable control state is authoritative; notification is advisory.
+      }
+    }
+    return result;
   }
 
   reserveNextForListener(
@@ -358,6 +381,70 @@ export class NativeLiveRuntimeControlService {
     >[0],
   ) {
     return this.repository.reserveNextForListener(input);
+  }
+
+  async waitNextForListener(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<
+    | {
+        outcome: "reserved";
+        control: NativeLiveRuntimeControlRecord;
+      }
+    | { outcome: "timeout" }
+  > {
+    const immediate =
+      await this.repository.reserveNextForListener({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+      });
+    if (immediate) {
+      return { outcome: "reserved", control: immediate };
+    }
+    if (!this.wakeBroker) {
+      return { outcome: "timeout" };
+    }
+
+    await this.wakeBroker.start();
+    const version = this.wakeBroker.controlVersion(
+      input.userId,
+      input.reservationId,
+    );
+
+    const raced =
+      await this.repository.reserveNextForListener({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+      });
+    if (raced) {
+      return { outcome: "reserved", control: raced };
+    }
+
+    const wake = await this.wakeBroker.waitForControlChange({
+      userId: input.userId,
+      reservationId: input.reservationId,
+      afterVersion: version,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
+    });
+    if (wake.outcome !== "ready") {
+      return { outcome: "timeout" };
+    }
+
+    const control =
+      await this.repository.reserveNextForListener({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+      });
+    return control
+      ? { outcome: "reserved", control }
+      : { outcome: "timeout" };
   }
 
   completeForListener(

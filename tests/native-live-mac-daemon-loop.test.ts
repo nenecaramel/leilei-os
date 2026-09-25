@@ -774,8 +774,8 @@ test("daemon applies reserved mid-turn and interrupt controls exactly once on th
       },
     ];
 
-    async reserveRuntimeControl(input: unknown) {
-      this.calls.push({ name: "reserveRuntimeControl", input });
+    async waitRuntimeControl(input: unknown) {
+      this.calls.push({ name: "waitRuntimeControl", input });
       return this.controls.shift() ?? null;
     }
 
@@ -853,13 +853,13 @@ test("daemon applies reserved mid-turn and interrupt controls exactly once on th
 
 test("daemon never blindly reapplies a provider control when completion delivery is ambiguous", async () => {
   class AmbiguousControlRelay extends FakeRelay {
-    reserveCount = 0;
+    waitCount = 0;
     completeCount = 0;
 
-    async reserveRuntimeControl(input: unknown) {
-      this.calls.push({ name: "reserveRuntimeControl", input });
-      this.reserveCount += 1;
-      return this.reserveCount === 1
+    async waitRuntimeControl(input: unknown) {
+      this.calls.push({ name: "waitRuntimeControl", input });
+      this.waitCount += 1;
+      return this.waitCount === 1
         ? {
             controlId: "99999999-9999-4999-8999-999999999999",
             kind: "interrupt" as const,
@@ -905,5 +905,5 @@ test("daemon never blindly reapplies a provider control when completion delivery
   assert.equal((await loop.runOnce()).outcome, "completed");
   assert.equal(interrupts, 1);
   assert.equal(relay.completeCount, 1);
-  assert.equal(relay.reserveCount, 1);
+  assert.equal(relay.waitCount, 1);
 });

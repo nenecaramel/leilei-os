@@ -481,6 +481,8 @@ export function createProcessRuntime(
   const nativeLiveRuntimeControlService =
     new NativeLiveRuntimeControlService(
       new DrizzleNativeLiveRuntimeControlRepository(db),
+      nativeLiveWorkWakePublisher,
+      nativeLiveWorkWakeBroker,
     );
   const proactivityWakeRepository =
     new DrizzleProactivityWakeRepository(db);

@@ -1438,26 +1438,45 @@ test("web owner can list and resolve a pending runtime interaction", async () =>
 });
 
 
-test("internal relay reserves and completes listener-owned foreground controls", async () => {
+test("internal relay waits for and completes listener-owned foreground controls", async () => {
   const relayService = new FakeRelayService();
   const controlId =
     "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const calls = [];
   const runtimeControlService = {
-    async reserveNextForListener(input: unknown) {
-      calls.push({ name: "reserve", input });
+    async waitNextForListener(input: unknown) {
+      const value = input as {
+        userId: string;
+        listenerInstanceId: string;
+        reservationId: string;
+        timeoutMs: number;
+        signal?: AbortSignal | null;
+      };
+      calls.push({
+        name: "wait",
+        input: {
+          userId: value.userId,
+          listenerInstanceId: value.listenerInstanceId,
+          reservationId: value.reservationId,
+          timeoutMs: value.timeoutMs,
+          hasSignal: value.signal instanceof AbortSignal,
+        },
+      });
       return {
-        controlId,
-        prepareId,
-        kind: "mid_turn_input" as const,
-        payload: { text: "steer" },
-        status: "reserved" as const,
-        reservedBy: listenerId,
-        receipt: null,
-        failureCode: null,
-        createdAt: "2026-09-25T00:00:00.000Z",
-        updatedAt: "2026-09-25T00:00:00.000Z",
-        appliedAt: null,
+        outcome: "reserved" as const,
+        control: {
+          controlId,
+          prepareId,
+          kind: "mid_turn_input" as const,
+          payload: { text: "steer" },
+          status: "reserved" as const,
+          reservedBy: listenerId,
+          receipt: null,
+          failureCode: null,
+          createdAt: "2026-09-25T00:00:00.000Z",
+          updatedAt: "2026-09-25T00:00:00.000Z",
+          appliedAt: null,
+        },
       };
     },
     async completeForListener(input: unknown) {
@@ -1481,8 +1500,8 @@ test("internal relay reserves and completes listener-owned foreground controls",
       );
     },
     async (baseUrl) => {
-      const reserved = await fetch(
-        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/controls/reserve`,
+      const waited = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/controls/wait`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -1491,9 +1510,10 @@ test("internal relay reserves and completes listener-owned foreground controls",
           }),
         },
       );
-      assert.equal(reserved.status, 200);
-      const reservedPayload = await reserved.json() as {
+      assert.equal(waited.status, 200);
+      const waitedPayload = await waited.json() as {
         data: {
+          outcome: string;
           control: {
             controlId: string;
             kind: string;
@@ -1501,7 +1521,8 @@ test("internal relay reserves and completes listener-owned foreground controls",
           };
         };
       };
-      assert.deepEqual(reservedPayload.data.control, {
+      assert.equal(waitedPayload.data.outcome, "reserved");
+      assert.deepEqual(waitedPayload.data.control, {
         controlId,
         prepareId,
         kind: "mid_turn_input",
@@ -1532,11 +1553,13 @@ test("internal relay reserves and completes listener-owned foreground controls",
       assert.equal(completed.status, 200);
       assert.deepEqual(calls, [
         {
-          name: "reserve",
+          name: "wait",
           input: {
             userId,
             listenerInstanceId: listenerId,
             reservationId: prepareId,
+            timeoutMs: 25_000,
+            hasSignal: true,
           },
         },
         {

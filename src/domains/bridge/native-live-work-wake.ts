@@ -9,7 +9,19 @@ const WORK_WAKE_CHANNEL = "leileios_native_live_work_ready";
 export type NativeLiveWorkKind =
   | "semantic"
   | "foreground"
-  | "background_model";
+  | "background_model"
+  | "runtime_control";
+
+type NativeLiveWorkWakeInput =
+  | {
+      userId: string;
+      kind: "semantic" | "foreground" | "background_model";
+    }
+  | {
+      userId: string;
+      kind: "runtime_control";
+      reservationId: string;
+    };
 
 export type NativeLiveWorkWaitOutcome =
   | { outcome: "ready"; version: number }
@@ -18,21 +30,21 @@ export type NativeLiveWorkWaitOutcome =
 export class DrizzleNativeLiveWorkWakePublisher {
   constructor(private readonly db: Database) {}
 
-  async notify(input: {
-    userId: string;
-    kind: NativeLiveWorkKind;
-  }): Promise<void> {
+  async notify(input: NativeLiveWorkWakeInput): Promise<void> {
     const payload = JSON.stringify({
       user_id: input.userId,
       kind: input.kind,
+      ...(input.kind === "runtime_control"
+        ? { reservation_id: input.reservationId }
+        : {}),
     });
     try {
       await this.db.execute(sql`
         SELECT pg_notify(${WORK_WAKE_CHANNEL}, ${payload})
       `);
     } catch {
-      // Wake-up is advisory. Durable queue state remains authoritative and
-      // wait-side availability checks recover missed notifications.
+      // Wake-up is advisory. Durable state remains authoritative and
+      // wait-side reads recover missed notifications.
     }
   }
 }
@@ -136,18 +148,74 @@ export class NativeLiveWorkWakeBroker {
   }
 
   version(userId: string): number {
-    return this.versions.get(userId) ?? 0;
+    return this.versionForKey(userWakeKey(userId));
   }
 
-  async waitForChange(input: {
+  controlVersion(
+    userId: string,
+    reservationId: string,
+  ): number {
+    return this.versionForKey(
+      controlWakeKey(userId, reservationId),
+    );
+  }
+
+  waitForChange(input: {
     userId: string;
+    afterVersion: number;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<NativeLiveWorkWaitOutcome> {
+    return this.waitForKey({
+      key: userWakeKey(input.userId),
+      afterVersion: input.afterVersion,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
+    });
+  }
+
+  waitForControlChange(input: {
+    userId: string;
+    reservationId: string;
+    afterVersion: number;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<NativeLiveWorkWaitOutcome> {
+    return this.waitForKey({
+      key: controlWakeKey(
+        input.userId,
+        input.reservationId,
+      ),
+      afterVersion: input.afterVersion,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
+    });
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    for (const [key, bucket] of this.waiters) {
+      for (const waiter of [...bucket]) {
+        waiter.resolve({
+          outcome: "timeout",
+          version: this.versionForKey(key),
+        });
+      }
+    }
+    this.waiters.clear();
+    await this.client.end({ timeout: 5 });
+  }
+
+  private async waitForKey(input: {
+    key: string;
     afterVersion: number;
     timeoutMs: number;
     signal?: AbortSignal | null;
   }): Promise<NativeLiveWorkWaitOutcome> {
     await this.start();
 
-    const current = this.version(input.userId);
+    const current = this.versionForKey(input.key);
     if (current !== input.afterVersion) {
       return { outcome: "ready", version: current };
     }
@@ -157,10 +225,10 @@ export class NativeLiveWorkWakeBroker {
 
     return new Promise((resolve) => {
       const finish = (outcome: NativeLiveWorkWaitOutcome) => {
-        const bucket = this.waiters.get(input.userId);
+        const bucket = this.waiters.get(input.key);
         if (bucket) {
           bucket.delete(waiter);
-          if (bucket.size === 0) this.waiters.delete(input.userId);
+          if (bucket.size === 0) this.waiters.delete(input.key);
         }
         clearTimeout(waiter.timer);
         waiter.abortCleanup?.();
@@ -172,7 +240,7 @@ export class NativeLiveWorkWakeBroker {
         timer: setTimeout(() => {
           finish({
             outcome: "timeout",
-            version: this.version(input.userId),
+            version: this.versionForKey(input.key),
           });
         }, input.timeoutMs),
         abortCleanup: null,
@@ -182,7 +250,7 @@ export class NativeLiveWorkWakeBroker {
         const onAbort = () => {
           finish({
             outcome: "timeout",
-            version: this.version(input.userId),
+            version: this.versionForKey(input.key),
           });
         };
         input.signal.addEventListener("abort", onAbort, { once: true });
@@ -190,30 +258,30 @@ export class NativeLiveWorkWakeBroker {
           input.signal?.removeEventListener("abort", onAbort);
       }
 
-      const bucket = this.waiters.get(input.userId) ?? new Set<Waiter>();
+      const bucket =
+        this.waiters.get(input.key) ?? new Set<Waiter>();
       bucket.add(waiter);
-      this.waiters.set(input.userId, bucket);
+      this.waiters.set(input.key, bucket);
 
-      const latest = this.version(input.userId);
+      const latest = this.versionForKey(input.key);
       if (latest !== input.afterVersion) {
         finish({ outcome: "ready", version: latest });
       }
     });
   }
 
-  async close(): Promise<void> {
-    if (this.closed) return;
-    this.closed = true;
-    for (const [userId, bucket] of this.waiters) {
-      for (const waiter of [...bucket]) {
-        waiter.resolve({
-          outcome: "timeout",
-          version: this.version(userId),
-        });
-      }
+  private versionForKey(key: string): number {
+    return this.versions.get(key) ?? 0;
+  }
+
+  private signalKey(key: string): void {
+    const version = this.versionForKey(key) + 1;
+    this.versions.set(key, version);
+    const bucket = this.waiters.get(key);
+    if (!bucket) return;
+    for (const waiter of [...bucket]) {
+      waiter.resolve({ outcome: "ready", version });
     }
-    this.waiters.clear();
-    await this.client.end({ timeout: 5 });
   }
 
   private handleNotification(payload: string): void {
@@ -226,15 +294,31 @@ export class NativeLiveWorkWakeBroker {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return;
     }
-    const userId = (parsed as Record<string, unknown>).user_id;
+    const record = parsed as Record<string, unknown>;
+    const userId = record.user_id;
+    const kind = record.kind;
     if (typeof userId !== "string" || !userId.trim()) return;
 
-    const version = (this.versions.get(userId) ?? 0) + 1;
-    this.versions.set(userId, version);
-    const bucket = this.waiters.get(userId);
-    if (!bucket) return;
-    for (const waiter of [...bucket]) {
-      waiter.resolve({ outcome: "ready", version });
+    if (kind === "runtime_control") {
+      const reservationId = record.reservation_id;
+      if (
+        typeof reservationId !== "string"
+        || !reservationId.trim()
+      ) {
+        return;
+      }
+      this.signalKey(
+        controlWakeKey(userId, reservationId),
+      );
+      return;
+    }
+
+    if (
+      kind === "semantic"
+      || kind === "foreground"
+      || kind === "background_model"
+    ) {
+      this.signalKey(userWakeKey(userId));
     }
   }
 }
@@ -264,4 +348,15 @@ export class NativeLiveWorkWaitService {
       signal: input.signal,
     });
   }
+}
+
+function userWakeKey(userId: string): string {
+  return `user:${userId}`;
+}
+
+function controlWakeKey(
+  userId: string,
+  reservationId: string,
+): string {
+  return `control:${userId}:${reservationId}`;
 }
