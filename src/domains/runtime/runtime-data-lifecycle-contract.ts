@@ -75,7 +75,15 @@ export function subjectStateRetentionPolicy(
         automaticForgetting: false,
         mechanism: "explicit_invalidation_only",
       };
+    default:
+      return assertNeverSubjectStateKind(kind);
   }
+}
+
+function assertNeverSubjectStateKind(value: never): never {
+  throw new Error(
+    "Unhandled Subject State retention kind: " + String(value),
+  );
 }
 
 /**
