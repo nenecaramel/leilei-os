@@ -400,6 +400,7 @@ export function createProcessRuntime(
       ),
       {
         surfaceLimit: DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
+        minSourceMessages: 8,
         maxMemoriesPerRun: 3,
         ruleVersion: "distill-rule-v1",
         processVersion: distillationProcessVersion,
