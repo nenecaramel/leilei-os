@@ -1117,6 +1117,8 @@ export const nativeLiveTurnPreparations = pgTable(
       .notNull(),
     resultHash: varchar("result_hash", { length: 64 }),
     providerSessionId: text("provider_session_id"),
+    runtimeMetadata: jsonb("runtime_metadata")
+      .$type<Record<string, unknown> | null>(),
     assistantMessageId: uuid("assistant_message_id"),
     failureCode: varchar("failure_code", { length: 64 }),
     dispatchStatus: varchar("dispatch_status", { length: 32 })
