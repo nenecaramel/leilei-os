@@ -9,6 +9,9 @@ type NativeLiveForegroundRuntimeResult =
     contextUsage?: NativeLiveRuntimeContextUsage | null;
     compactionAdvisory?:
       NativeLiveRuntimeCompactionAdvisory | null;
+    executionReadback?:
+      NativeLiveRuntimeExecutionReadback | null;
+    executionReadbackError?: string | null;
   };
 
 type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
@@ -58,6 +61,7 @@ import {
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeCompactionAdvisory,
   type NativeLiveRuntimeContextUsage,
+  type NativeLiveRuntimeExecutionReadback,
   type NativeLiveRuntimeExecutionResult,
   type NativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeMetadata,
@@ -173,14 +177,23 @@ export class NativeLiveMacRuntimeExecutor {
   ): Promise<NativeLiveRuntimeMetadata | null> {
     const advisory = runtimeResult.compactionAdvisory ?? null;
     const contextUsage = runtimeResult.contextUsage ?? null;
+    const execution =
+      runtimeResult.executionReadback
+        ? {
+            readback: runtimeResult.executionReadback,
+            readback_error:
+              runtimeResult.executionReadbackError ?? null,
+          }
+        : null;
 
-    if (!advisory && !contextUsage) return null;
+    if (!advisory && !contextUsage && !execution) return null;
 
     if (!advisory) {
       return {
         context_usage: contextUsage,
         compaction_advisory: null,
         compaction: null,
+        ...(execution ? { execution } : {}),
       };
     }
 
@@ -196,6 +209,7 @@ export class NativeLiveMacRuntimeExecutor {
           summary: null,
           failure_code: null,
         },
+        ...(execution ? { execution } : {}),
       };
     }
 
@@ -211,6 +225,7 @@ export class NativeLiveMacRuntimeExecutor {
           summary: null,
           failure_code: "COMPACT_UNSUPPORTED",
         },
+        ...(execution ? { execution } : {}),
       };
     }
 
@@ -245,6 +260,7 @@ export class NativeLiveMacRuntimeExecutor {
           ),
           failure_code: null,
         },
+        ...(execution ? { execution } : {}),
       };
     } catch {
       return {
@@ -258,6 +274,7 @@ export class NativeLiveMacRuntimeExecutor {
           summary: null,
           failure_code: "COMPACT_FAILED",
         },
+        ...(execution ? { execution } : {}),
       };
     }
   }
