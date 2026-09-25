@@ -32,7 +32,7 @@ struct PageContainer: View {
                     PlaceholderPage(page: selectedPage)
                 }
             }
-            .navigationTitle(pageTitle)
+            .navigationTitle(selectedPage == .chat ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -92,10 +92,10 @@ struct PageContainer: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .alert(
-            "Rename conversation",
+            "Rename",
             isPresented: $showingRenameAlert
         ) {
-            TextField("Title", text: $renameTitle)
+            TextField("New name", text: $renameTitle)
                 .textInputAutocapitalization(.sentences)
 
             Button("Cancel", role: .cancel) {
@@ -116,7 +116,7 @@ struct PageContainer: View {
             }
             .disabled(!canRename)
         } message: {
-            Text("Enter a new title for this conversation.")
+            Text("Enter a new name")
         }
         .alert(
             "Rename failed",
