@@ -57,14 +57,7 @@ struct AppShell: View {
     private var iPhoneLayout: some View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
-            let currentOffset = sidebarOffset(
-                revealOffset: revealOffset
-            )
-            let revealProgress = max(
-                0,
-                min(currentOffset / revealOffset, 1)
-            )
-            let cardCornerRadius = 50 * revealProgress
+            let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
 
             ZStack(alignment: .leading) {
                 Rectangle()
@@ -129,10 +122,10 @@ struct AppShell: View {
                     )
                 )
                 .shadow(
-                    color: .black.opacity(0.08 * revealProgress),
-                    radius: 12 * revealProgress,
-                    x: -2 * revealProgress,
-                    y: 4 * revealProgress
+                    color: .black.opacity(menuOpen ? 0.08 : 0),
+                    radius: 12,
+                    x: -2,
+                    y: 4
                 )
                 .overlay {
                     if menuOpen {
@@ -145,7 +138,11 @@ struct AppShell: View {
                         }
                     }
                 }
-                .offset(x: currentOffset)
+                .offset(
+                    x:
+                        (menuOpen ? revealOffset : 0)
+                        + sidebarDragTranslation
+                )
                 .simultaneousGesture(
                     sidebarDragGesture(
                         revealOffset: revealOffset
@@ -157,31 +154,6 @@ struct AppShell: View {
         .ignoresSafeArea(.container)
     }
 
-    private func sidebarOffset(
-        revealOffset: CGFloat
-    ) -> CGFloat {
-        let baseOffset = menuOpen ? revealOffset : 0
-        let rawOffset = baseOffset + sidebarDragTranslation
-
-        if rawOffset < 0 {
-            return -rubberBand(-rawOffset)
-        }
-
-        if rawOffset > revealOffset {
-            return revealOffset
-                + rubberBand(rawOffset - revealOffset)
-        }
-
-        return rawOffset
-    }
-
-    private func rubberBand(
-        _ distance: CGFloat
-    ) -> CGFloat {
-        let constant: CGFloat = 72
-        return constant * distance / (constant + distance)
-    }
-
     private func sidebarDragGesture(
         revealOffset: CGFloat
     ) -> some Gesture {
@@ -191,25 +163,36 @@ struct AppShell: View {
         )
         .updating($sidebarDragTranslation) { value, state, _ in
             guard isSidebarDragEligible(value) else {
-                state = 0
                 return
             }
 
-            state = value.translation.width
+            if menuOpen {
+                state = max(
+                    -revealOffset,
+                    min(0, value.translation.width)
+                )
+            } else {
+                state = max(
+                    0,
+                    min(revealOffset, value.translation.width)
+                )
+            }
         }
         .onEnded { value in
             guard isSidebarDragEligible(value) else {
                 return
             }
 
-            let baseOffset = menuOpen ? revealOffset : 0
-            let projectedOffset = baseOffset
-                + value.predictedEndTranslation.width
-            let shouldOpen =
-                projectedOffset > revealOffset * 0.5
+            let threshold = revealOffset * 0.33
 
             withAnimation(.snappy) {
-                menuOpen = shouldOpen
+                if menuOpen {
+                    menuOpen =
+                        value.translation.width > -threshold
+                } else {
+                    menuOpen =
+                        value.translation.width > threshold
+                }
             }
         }
     }
