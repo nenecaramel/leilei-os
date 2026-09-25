@@ -1,6 +1,6 @@
 # Claude Code → Agent SDK capability parity
 
-Date: 2026-09-24
+Date: 2026-09-25
 
 This checklist governs the LeileiOS migration from `claude -p` to
 `@anthropic-ai/claude-agent-sdk`.
@@ -16,47 +16,68 @@ disposable provider execution state.
 
 - **CONTRACT** — LeileiOS adapter/unit contract exists.
 - **REAL SDK** — verified against the pinned real SDK on the Mac.
+- **RUNTIME** — wired through the durable LeileiOS production Runtime;
+  native presentation may still wait for the single UI / Productization task.
 - **PRODUCT** — wired through LeileiOS Runtime and, where applicable, visible
   through a native product surface.
+- **DEFERRED** — intentionally not a current core gate; the product decision
+  and authority boundary are explicit rather than accidentally missing.
 
 A capability is not considered migrated merely because upstream documentation
-says the SDK supports it.
+says the SDK supports it. The table below is the current truth; the dated
+slice sections later in this file are historical acceptance evidence and may
+describe an earlier pre-integration state.
 
 | Capability | Current level | Required LeileiOS acceptance |
 | --- | --- | --- |
-| New session | REAL SDK | Real SDK returns provider session + normalized terminal result |
-| Resume session | REAL SDK | Real SDK preserves provider session identity |
-| Fork session | REAL SDK | Real SDK creates a distinct provider session from the canonical parent checkpoint |
-| Abort / hard stop | REAL SDK | Real SDK active Query close/abort maps to `ABORTED` and interrupts an in-flight Bash turn; later SDK interrupt still requires timeout + hard-stop fallback |
-| Failure mapping | REAL SDK | Real SDK invalid-session failure maps to `CLAUDE_PROCESS_FAILED` without pretending canonical success |
-| Claude Code system prompt | CONTRACT | Real SDK smoke proves Claude Code preset is active |
+| New session | RUNTIME | Agent SDK is the default Mac transport; production foreground can create a provider session |
+| Resume session | REAL SDK | Real SDK preserves provider session identity; native/live product continuation currently uses exact checkpoint fork semantics rather than exposing resume as product identity |
+| Fork session | RUNTIME | Retry/Edit and historical continuation fork from the exact canonical parent checkpoint into a distinct provider session |
+| Abort / hard stop | REAL SDK | Hard abort remains the accepted fallback; product control is kept distinct from graceful interrupt |
+| Failure mapping | RUNTIME | Provider/runtime failures stay bounded and cannot be finalized as canonical success |
+| Claude Code system prompt | CONTRACT | Claude Code preset is configured; an independent semantic fingerprint/readback is still absent |
 | CLAUDE.md | REAL SDK | Controlled project fixture proves project memory is loaded |
-| user / project / local settings | REAL SDK (partial) | `project` + `local` controlled fixtures proved applied; `user` source is selected but user-level content is intentionally not mutated by smoke |
-| Skills | PENDING | Enumerate/load controlled skill and observe execution/event evidence |
-| Slash commands | PENDING | Enumerate/execute supported command without parsing terminal UI |
-| Subagents | PENDING | Spawn controlled subagent; observe structured progress/result events |
-| Plugins | PENDING | Load/reload controlled local plugin and observe status |
-| MCP | PENDING | Connect controlled MCP server; call tool; observe structured tool result |
-| Hooks | PENDING | Controlled hook fires at expected lifecycle boundary |
+| user / project / local settings | REAL SDK (partial) | project + local fixtures are proven; user source is selected but user-level content is intentionally not mutated by smoke |
+| Skills | PENDING REAL SDK | Controlled project-Skill smoke is now checked in; run it on the Mac before claiming parity |
+| Slash commands | DEFERRED | Normal user turns deliberately remain verbatim; slash-command dispatch must be an explicit non-verbatim Runtime control rather than magic user-text parsing |
+| Subagents | PENDING REAL SDK | Controlled project-subagent smoke is now checked in; require structured delegation evidence |
+| Plugins | PENDING | Load/reload a controlled local plugin and observe status before claiming parity |
+| MCP | PENDING | Connect a controlled MCP server and observe structured tool result through the production-compatible Agent SDK path |
+| Hooks | PENDING REAL SDK | Controlled local PostToolUse hook smoke is now checked in |
 | Read | REAL SDK | Read controlled fixture file and observe tool event/result |
-| Write | PENDING | Write controlled temp file with explicit permission policy and verify bytes |
-| Edit | PENDING | Edit controlled temp file after read-state requirements and verify diff |
+| Write | REAL SDK | Real permission smoke proved deny plus allow-with-rewritten Write bytes |
+| Edit | PENDING REAL SDK | Controlled filesystem parity smoke is now checked in |
 | Bash | REAL SDK | Run inert controlled command and verify stdout |
-| Glob / Grep | PENDING | Query controlled fixture tree and verify results |
-| Permission callbacks | PENDING | Permission request reaches host callback and decision is honored |
-| AskUserQuestion | PENDING | Host receives structured question/options and can answer programmatically |
-| Context usage | REAL SDK | `getContextUsage()` structured readback succeeds while Query is live; Runtime persistence/UI wiring remains later |
-| Compact | REAL SDK | Manual `/compact`, compact boundary, PreCompact/PostCompact, generated summary, same-session continuation, and durable-marker continuity all passed on the real SDK |
-| Model selection | REAL SDK | Selected model executes and `getSettings().applied.model` matches the requested per-turn model |
-| Thinking / effort | REAL SDK (partial) | Applied effort readback is proven for Sonnet 5 xhigh and Opus 5.5 medium; adaptive thinking is accepted by the query contract, but exact applied thinking is not independently exposed and discovery aliases may be incomplete |
-| Runtime model switch | REAL SDK | Same provider session switches Sonnet 5 → Opus 5.5 across turns while runtime-applied model/effort readback changes and provider session identity remains stable |
-| Background task state | PENDING | Structured background task membership/progress is observed |
-| Thinking token usage | PENDING | Usage readback reaches Runtime observability without becoming canonical message content |
-| Interrupt current turn | REAL SDK (raw capability) | Query.interrupt() interrupts an in-flight Bash turn and preserves same provider session continuity; transport/runtime projection remains next |
-| Normalized event compatibility | REAL SDK | Real SDK Read/Bash `tool_use` and two `tool_result` blocks survive normalization with raw/normalized count parity |
-| Subscription-auth boundary | REAL SDK | Self-hosted Mac smoke succeeds with existing Claude login and no `ANTHROPIC_API_KEY` |
-| Default Mac daemon transport | REAL SDK | Daemon defaults to Agent SDK through one shared factory, preserves explicit headless rollback, and passes real foreground/background executor smoke |
-| Canonical authority | PRODUCT | Provider session/transcript can be discarded without losing LeileiOS product truth |
+| Glob / Grep | PENDING REAL SDK | Controlled filesystem parity smoke is now checked in |
+| Streaming output | RUNTIME | Partial text is normalized, durably relayed, owner-scoped, and terminal result remains authoritative |
+| Permission callbacks | RUNTIME | Real SDK deny/allow-rewrite is proven and production uses durable owner/listener-scoped interactions |
+| AskUserQuestion | RUNTIME | Real SDK answer round-trip is proven and production uses durable owner/listener-scoped interactions |
+| Mid-turn user input | RUNTIME | Same-query steering is proven and production uses durable exact-turn controls |
+| Context usage | RUNTIME | Interactive foreground usage is sampled, bounded, persisted in runtime metadata, and readable by turn |
+| Compact | RUNTIME | Manual compact is REAL SDK; deterministic 75% turn-boundary auto-compact is deployed, with real >75% production acceptance still pending |
+| Model selection | RUNTIME | Requested selection is persisted; interactive applied-model readback is bounded and persisted |
+| Thinking / effort | RUNTIME (partial) | Applied effort is readable/persisted; exact applied thinking is not independently claimed because SDK has no unambiguous readback |
+| Runtime model switch | REAL SDK + RUNTIME contract | Same provider session model switch is REAL SDK; production per-turn selection/readback is wired, cross-device switch acceptance remains |
+| Execution readback | RUNTIME | requested/applied/capability readback is persisted; raw local SDK errors collapse to READBACK_UNAVAILABLE |
+| Background task / subagent progress | PENDING | Structured background/subagent membership/progress must be observed and projected without becoming canonical chat truth |
+| Thinking token usage | CONTRACT | Context category pipeline is durable, but no independent real-SDK thinking-category acceptance is claimed |
+| Interrupt current turn | RUNTIME | Graceful interrupt is REAL SDK and production exposes a durable exact-active-turn control; hard abort remains separate fallback |
+| Normalized event compatibility | RUNTIME | Real tool event parity is proven; production foreground event stream persists bounded normalized events |
+| Subscription-auth boundary | REAL SDK | Existing Claude subscription login succeeds with ANTHROPIC_API_KEY forbidden |
+| Default Mac daemon transport | RUNTIME | Agent SDK is default with explicit headless rollback |
+| Canonical authority | PRODUCT | Provider session/transcript/control state can be discarded without becoming product truth |
+
+### Current integration audit — 2026-09-25
+
+- #499 moved foreground execution onto the dedicated Agent SDK turn handle.
+- #500 added the durable foreground normalized-event stream.
+- #501 bound Permission and AskUserQuestion to durable exact-turn interactions.
+- #502 bound mid-turn user input and graceful interrupt to durable exact-turn controls.
+- #503/#504 added per-turn model/thinking/effort selection to the production relay/runtime path.
+- #505 deployed deterministic turn-boundary auto-compact plus durable context/compaction metadata.
+- #506 deployed bounded interactive execution readback and requested execution selection readback.
+- The remaining parity gate is therefore not Phase-2 transport plumbing. It is the explicit audit of filesystem capabilities (Skills / Hooks / Edit / Glob / Grep / project subagents), MCP, plugins, and background/subagent progress, plus the separately deferred slash-command product semantics.
+
 
 ## Compaction discipline
 
