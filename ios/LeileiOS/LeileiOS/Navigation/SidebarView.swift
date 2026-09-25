@@ -12,7 +12,7 @@ struct SidebarView: View {
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
-    private let titleHorizontalOffset: CGFloat = -12
+    private let titleHorizontalOffset: CGFloat = -10
     private let navigationRowHorizontalInset: CGFloat = 12
 
     var body: some View {
@@ -23,7 +23,7 @@ struct SidebarView: View {
                         Text("Leilei OS")
                             .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .padding(.top, 18)
-                            .offset(x: titleHorizontalOffset, y: 20)
+                            .offset(x: titleHorizontalOffset - 2, y: 20)
 
                         SidebarSection(
                             title: nil,
