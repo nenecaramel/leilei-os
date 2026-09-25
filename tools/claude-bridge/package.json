@@ -20,7 +20,8 @@
     "smoke:agent-sdk-filesystem-parity": "node scripts/agent-sdk-filesystem-parity-smoke.mjs",
     "smoke:agent-sdk-mcp": "node scripts/agent-sdk-mcp-parity-smoke.mjs",
     "smoke:agent-sdk-background-task": "node scripts/agent-sdk-background-task-parity-smoke.mjs",
-    "smoke:agent-sdk-plugin": "node scripts/agent-sdk-plugin-parity-smoke.mjs"
+    "smoke:agent-sdk-plugin": "node scripts/agent-sdk-plugin-parity-smoke.mjs",
+    "smoke:agent-sdk-pending-parity": "node scripts/agent-sdk-pending-parity-suite.mjs"
   },
   "engines": {
     "node": ">=20"
