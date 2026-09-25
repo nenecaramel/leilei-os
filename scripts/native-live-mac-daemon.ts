@@ -80,8 +80,10 @@ const loop = new NativeLiveMacDaemonLoop(
 );
 
 let stopping = false;
+let activeWorkWaitController: AbortController | null = null;
 const stop = () => {
   stopping = true;
+  activeWorkWaitController?.abort();
   runtime.abort();
 };
 process.once("SIGINT", stop);
@@ -89,6 +91,30 @@ process.once("SIGTERM", stop);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForWork(): Promise<
+  "ready" | "timeout" | "busy" | "stopped"
+> {
+  if (stopping) return "stopped";
+  const controller = new AbortController();
+  activeWorkWaitController = controller;
+  try {
+    const outcome = await relay.waitForWork({
+      listenerInstanceId,
+      dispatchTarget: "claude_code",
+      signal: controller.signal,
+    });
+    if (stopping || controller.signal.aborted) return "stopped";
+    return outcome;
+  } catch (error) {
+    if (stopping || controller.signal.aborted) return "stopped";
+    throw error;
+  } finally {
+    if (activeWorkWaitController === controller) {
+      activeWorkWaitController = null;
+    }
+  }
 }
 
 while (!stopping) {
@@ -144,12 +170,41 @@ while (!stopping) {
     ) {
       continue;
     }
+
+    if (outcome.outcome === "idle") {
+      while (!stopping) {
+        const wake = await waitForWork();
+        if (wake === "stopped") break;
+        if (wake === "ready") {
+          process.stdout.write(
+            JSON.stringify({
+              at: new Date().toISOString(),
+              outcome: "work_wake",
+              claudeTransport: claudeTransportKind,
+            }) + "\n",
+          );
+          break;
+        }
+        if (wake === "busy") {
+          await sleep(5_000);
+          break;
+        }
+
+        // A long-poll timeout is not a queue scan. It only gives the
+        // timer-free Companion scheduler a chance to run if its cadence is due,
+        // then immediately re-enters the event-driven wait.
+        await companionScheduler.offer();
+      }
+      continue;
+    }
+
     await sleep(outcome.outcome === "busy" ? 5_000 : 1_500);
   } catch (error) {
+    if (stopping) break;
     process.stderr.write(
       JSON.stringify({
         at: new Date().toISOString(),
-        outcome: "poll_error",
+        outcome: "wake_or_poll_error",
         errorName: error instanceof Error ? error.name : "UnknownError",
       }) + "\n",
     );
