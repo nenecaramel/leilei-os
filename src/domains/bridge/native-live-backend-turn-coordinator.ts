@@ -26,6 +26,7 @@ import {
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeExecutionResult,
   type NativeLiveRuntimeFailureCode,
+  type NativeLiveRuntimeMetadata,
   type NativeLiveRuntimeMode,
 } from "./native-live-runtime-protocol.js";
 
@@ -200,6 +201,7 @@ export interface NativeLiveBackendTurnPort {
     providerSessionId: string;
     blocks: NativeLiveContentBlockInput[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
+    runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp: NativeLiveMindFollowUpPayload | null;
   }): Promise<NativeLiveFinalizeSuccessPortResult>;
 
@@ -428,6 +430,7 @@ export class NativeLiveBackendTurnCoordinator {
         providerSessionId: result.provider_session_id,
         blocks: parsedMind.visibleBlocks,
         normalizedEvents: result.normalized_events,
+        runtimeMetadata: result.runtime_metadata ?? null,
         mindFollowUp: this.mind && this.postFinalize
           ? { intents: parsedMind.intents }
           : null,
