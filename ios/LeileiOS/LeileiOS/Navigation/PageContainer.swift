@@ -96,7 +96,6 @@ struct PageContainer: View {
             ) { title in
                 try await appModel.renameActiveNativeLiveConversation(title)
             }
-            .presentationDetents([.height(210)])
         }
         .confirmationDialog(
             "Delete conversation?",
@@ -196,7 +195,7 @@ private struct NativeLiveRenameSheet: View {
 
     @State private var title: String
     @State private var isSaving = false
-    @State private var errorMessage: String?
+    @State private var failed = false
 
     let onSave: (String) async throws -> Void
 
@@ -210,20 +209,16 @@ private struct NativeLiveRenameSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
-                TextField("Conversation name", text: $title)
-                    .textFieldStyle(.roundedBorder)
+            Form {
+                TextField("Title", text: $title)
+                    .textInputAutocapitalization(.sentences)
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
+                if failed {
+                    Text("Failed")
                         .foregroundStyle(.secondary)
                 }
-
-                Spacer(minLength: 0)
             }
-            .padding(16)
-            .navigationTitle("Rename")
+            .navigationTitle("Rename Session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -234,13 +229,14 @@ private struct NativeLiveRenameSheet: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(isSaving ? "Saving…" : "Save") {
                         save()
                     }
                     .disabled(!canSave || isSaving)
                 }
             }
         }
+        .presentationDetents([.medium])
     }
 
     private var canSave: Bool {
@@ -254,14 +250,14 @@ private struct NativeLiveRenameSheet: View {
         guard canSave, !isSaving else { return }
 
         isSaving = true
-        errorMessage = nil
+        failed = false
 
         Task { @MainActor in
             do {
                 try await onSave(title)
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
+                failed = true
                 isSaving = false
             }
         }
