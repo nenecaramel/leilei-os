@@ -142,7 +142,7 @@ struct NativeLiveMessageSurface: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Scroll to latest")
-                        .offset(y: 10)
+                        .offset(y: 18)
                         .transition(
                             .scale(scale: 0.9)
                                 .combined(with: .opacity)
