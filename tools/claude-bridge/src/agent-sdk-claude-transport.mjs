@@ -243,7 +243,19 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         });
       }
 
-      const result = await completion;
+      const handleResult = await completion;
+      const contextUsage =
+        normalizeAgentSdkContextUsage(handleResult.rawContextUsage);
+      const compactionAdvisory =
+        evaluateTurnBoundaryCompaction(handleResult.rawContextUsage, {
+          thresholdPercent: this.compactionThresholdPercent,
+        });
+      const {
+        rawContextUsage: _rawContextUsage,
+        contextUsageError,
+        ...result
+      } = handleResult;
+
       if (!result.providerSessionId) {
         throw runtimeError(
           "Claude Agent SDK interactive turn returned no provider session id.",
@@ -273,6 +285,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       });
       return {
         ...result,
+        contextUsage,
+        contextUsageError,
+        compactionAdvisory,
         stdout: "",
         stderr: "",
         exitCode: 0,
