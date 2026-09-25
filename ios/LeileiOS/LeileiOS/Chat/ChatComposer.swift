@@ -46,9 +46,11 @@ struct ChatComposer: View {
                 }
 
                 Menu {
-                    Section("Thinking") {
-                        Picker("", selection: thinkingSelection) {
-                            ForEach(model.supportedThinkingModes) { option in
+                    Section("Model") {
+                        Picker("", selection: modelSelection) {
+                            ForEach(
+                                Array(NativeLiveClaudeModel.allCases.reversed())
+                            ) { option in
                                 Text(option.displayName)
                                     .tag(option)
                             }
@@ -59,7 +61,9 @@ struct ChatComposer: View {
 
                     Section("Effort") {
                         Picker("", selection: $effort) {
-                            ForEach(availableEffortLevels) { option in
+                            ForEach(
+                                Array(availableEffortLevels.reversed())
+                            ) { option in
                                 Text(option.displayName)
                                     .tag(option)
                             }
@@ -68,9 +72,11 @@ struct ChatComposer: View {
                         .pickerStyle(.inline)
                     }
 
-                    Section("Model") {
-                        Picker("", selection: modelSelection) {
-                            ForEach(NativeLiveClaudeModel.allCases) { option in
+                    Section("Thinking") {
+                        Picker("", selection: thinkingSelection) {
+                            ForEach(
+                                Array(model.supportedThinkingModes.reversed())
+                            ) { option in
                                 Text(option.displayName)
                                     .tag(option)
                             }
