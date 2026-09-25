@@ -44,7 +44,7 @@ struct SidebarView: View {
                         recentConversations
                     }
                     .padding(.horizontal, 22)
-                    .padding(.bottom, 40)
+                    .padding(.bottom, 92)
                 }
                 .padding(.top, topContentOffset)
 
