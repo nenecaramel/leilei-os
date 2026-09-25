@@ -235,10 +235,7 @@ private struct NativeLiveMessageRow: View {
                             Button {
                                 UIPasteboard.general.string = copyText
                             } label: {
-                                Label(
-                                    "Copy",
-                                    systemImage: "doc.on.doc"
-                                )
+                                Image(systemName: "doc.on.doc")
                             }
                         }
 
@@ -246,10 +243,7 @@ private struct NativeLiveMessageRow: View {
                             Button {
                                 onRetryMessage(targetUserMessageID)
                             } label: {
-                                Label(
-                                    "Retry",
-                                    systemImage: "arrow.clockwise"
-                                )
+                                Image(systemName: "arrow.clockwise")
                             }
                             .disabled(isTurnInFlight)
                         }
