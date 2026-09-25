@@ -757,3 +757,153 @@ test("runOnce rejects reentrant polling while an execution is in flight", async 
   resolveExecute(success());
   assert.equal((await first).outcome, "completed");
 });
+
+
+test("daemon applies reserved mid-turn and interrupt controls exactly once on the active turn", async () => {
+  class FakeControlRelay extends FakeRelay {
+    controls = [
+      {
+        controlId: "77777777-7777-4777-8777-777777777777",
+        kind: "mid_turn_input" as const,
+        payload: { text: "steer this turn" },
+      },
+      {
+        controlId: "88888888-8888-4888-8888-888888888888",
+        kind: "interrupt" as const,
+        payload: {},
+      },
+    ];
+
+    async reserveRuntimeControl(input: unknown) {
+      this.calls.push({ name: "reserveRuntimeControl", input });
+      return this.controls.shift() ?? null;
+    }
+
+    async completeRuntimeControl(input: unknown) {
+      this.calls.push({ name: "completeRuntimeControl", input });
+    }
+  }
+
+  const relay = new FakeControlRelay();
+  const providerCalls: unknown[] = [];
+  const executor: NativeLivePreparedCommandExecutor = {
+    async execute(_input, options) {
+      const pump = options?.controlPump;
+      assert.ok(pump);
+      const abort = new AbortController();
+      await pump(
+        {
+          sendUserMessage(text: string) {
+            providerCalls.push(["mid_turn_input", text]);
+            return { status: "queued" };
+          },
+          async interrupt() {
+            providerCalls.push(["interrupt"]);
+            return { still_queued: [] };
+          },
+        },
+        { signal: abort.signal },
+      );
+      abort.abort();
+      return success();
+    },
+  };
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+  );
+
+  const outcome = await loop.runOnce();
+  assert.equal(outcome.outcome, "completed");
+  assert.deepEqual(providerCalls, [
+    ["mid_turn_input", "steer this turn"],
+    ["interrupt"],
+  ]);
+
+  const completions = relay.calls
+    .filter((entry) => entry.name === "completeRuntimeControl")
+    .map((entry) => entry.input as {
+      controlId: string;
+      outcome: {
+        status: string;
+        receipt: Record<string, unknown>;
+      };
+    });
+  assert.deepEqual(
+    completions.map((entry) => [
+      entry.controlId,
+      entry.outcome.status,
+      entry.outcome.receipt,
+    ]),
+    [
+      [
+        "77777777-7777-4777-8777-777777777777",
+        "applied",
+        { status: "queued" },
+      ],
+      [
+        "88888888-8888-4888-8888-888888888888",
+        "applied",
+        { still_queued: [] },
+      ],
+    ],
+  );
+});
+
+test("daemon never blindly reapplies a provider control when completion delivery is ambiguous", async () => {
+  class AmbiguousControlRelay extends FakeRelay {
+    reserveCount = 0;
+    completeCount = 0;
+
+    async reserveRuntimeControl(input: unknown) {
+      this.calls.push({ name: "reserveRuntimeControl", input });
+      this.reserveCount += 1;
+      return this.reserveCount === 1
+        ? {
+            controlId: "99999999-9999-4999-8999-999999999999",
+            kind: "interrupt" as const,
+            payload: {},
+          }
+        : null;
+    }
+
+    async completeRuntimeControl(input: unknown) {
+      this.calls.push({ name: "completeRuntimeControl", input });
+      this.completeCount += 1;
+      throw new Error("timeout after control completion write");
+    }
+  }
+
+  const relay = new AmbiguousControlRelay();
+  let interrupts = 0;
+  const executor: NativeLivePreparedCommandExecutor = {
+    async execute(_input, options) {
+      const pump = options?.controlPump;
+      assert.ok(pump);
+      await pump(
+        {
+          sendUserMessage() {
+            throw new Error("unexpected mid-turn input");
+          },
+          async interrupt() {
+            interrupts += 1;
+            return { still_queued: [] };
+          },
+        },
+        { signal: new AbortController().signal },
+      );
+      return success();
+    },
+  };
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    executor,
+  );
+
+  assert.equal((await loop.runOnce()).outcome, "completed");
+  assert.equal(interrupts, 1);
+  assert.equal(relay.completeCount, 1);
+  assert.equal(relay.reserveCount, 1);
+});
