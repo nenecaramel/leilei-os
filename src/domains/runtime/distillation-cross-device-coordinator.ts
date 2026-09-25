@@ -108,6 +108,7 @@ export class DistillationCrossDeviceCoordinator {
     const window = planDistillationWindow({
       conversation,
       surfaceLimit: this.config.surfaceLimit,
+      minSourceMessages: this.config.minSourceMessages,
       previousWatermarkMessageId,
     });
     if (!window) return { outcome: "idle" };
@@ -240,6 +241,7 @@ export class DistillationCrossDeviceCoordinator {
       currentWindow = planDistillationWindow({
         conversation,
         surfaceLimit: this.config.surfaceLimit,
+        minSourceMessages: this.config.minSourceMessages,
         previousWatermarkMessageId:
           window.expectedPreviousWatermarkMessageId,
       });

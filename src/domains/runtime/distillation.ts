@@ -54,6 +54,7 @@ export interface DistillationRuntimePort {
 
 export type DistillationConfig = {
   surfaceLimit: number;
+  minSourceMessages?: number;
   maxMemoriesPerRun: number;
   ruleVersion: string;
   processVersion: string;
@@ -84,6 +85,7 @@ export class DistillationPlanningError extends Error {
   constructor(
     readonly code:
       | "INVALID_SURFACE_LIMIT"
+      | "INVALID_BATCH_SIZE"
       | "INVALID_CANONICAL_TURN"
       | "UNSETTLED_SOURCE",
     message: string,
@@ -110,12 +112,25 @@ function messageText(message: NativeLiveMessage): string {
 export function planDistillationWindow(input: {
   conversation: NativeLiveConversation;
   surfaceLimit: number;
+  minSourceMessages?: number;
   previousWatermarkMessageId: string | null;
 }): DistillationWindow | null {
   if (!Number.isInteger(input.surfaceLimit) || input.surfaceLimit < 1) {
     throw new DistillationPlanningError(
       "INVALID_SURFACE_LIMIT",
       "Distillation surfaceLimit must be a positive integer.",
+    );
+  }
+  const minSourceMessages =
+    input.minSourceMessages ?? 2;
+  if (
+    !Number.isInteger(minSourceMessages)
+    || minSourceMessages < 2
+    || minSourceMessages % 2 !== 0
+  ) {
+    throw new DistillationPlanningError(
+      "INVALID_BATCH_SIZE",
+      "Distillation minSourceMessages must be an even integer of at least 2.",
     );
   }
 
@@ -171,6 +186,8 @@ export function planDistillationWindow(input: {
       );
     }
   }
+
+  if (source.length < minSourceMessages) return null;
 
   const last = source[source.length - 1]!;
   if (!path.slice(endIndex + 1).some((message) => message.role === "user")) {
@@ -342,6 +359,7 @@ export class DistillationService {
     const window = planDistillationWindow({
       conversation: input.conversation,
       surfaceLimit: this.config.surfaceLimit,
+      minSourceMessages: this.config.minSourceMessages,
       previousWatermarkMessageId,
     });
     if (!window) return { outcome: "idle" };
