@@ -7,6 +7,7 @@ struct AppShell: View {
     @State private var selectedPage: AppPage = .chat
     @State private var menuOpen = false
     @State private var settingsPresented = false
+    @State private var newSessionPresented = false
     @State private var floatingControlCenters: [String: CGFloat] = [:]
 
     var body: some View {
@@ -24,6 +25,12 @@ struct AppShell: View {
         .sheet(isPresented: $settingsPresented) {
             SettingsSheetView(appModel: appModel)
         }
+        .sheet(isPresented: $newSessionPresented) {
+            ConversationCreateSheet {
+                selectedPage = .chat
+            }
+            .environmentObject(appModel)
+        }
     }
 
     private var iPhoneLayout: some View {
@@ -39,6 +46,12 @@ struct AppShell: View {
                 SidebarView(
                     selectedPage: $selectedPage,
                     menuButtonCenterY: floatingControlCenters[FloatingControlCenter.menu],
+                    onNewSession: {
+                        withAnimation(.snappy) {
+                            menuOpen = false
+                        }
+                        newSessionPresented = true
+                    },
                     onSettings: {
                         settingsPresented = true
                     },
@@ -103,6 +116,9 @@ struct AppShell: View {
             SidebarView(
                 selectedPage: $selectedPage,
                 menuButtonCenterY: nil,
+                onNewSession: {
+                    newSessionPresented = true
+                },
                 onSettings: nil,
                 onSelect: {}
             )
