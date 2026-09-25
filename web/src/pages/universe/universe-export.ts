@@ -13,7 +13,7 @@ export type UniverseDownloadDependencies = {
   now?: () => Date;
 };
 
-export function createUniverseExport(snapshot: UniverseSnapshot, now = new Date()) {
+function createUniverseExport(snapshot: UniverseSnapshot, now = new Date()) {
   return {
     ...snapshot,
     meta: {
@@ -23,7 +23,7 @@ export function createUniverseExport(snapshot: UniverseSnapshot, now = new Date(
   };
 }
 
-export function universeExportFilename(now = new Date()): string {
+function universeExportFilename(now = new Date()): string {
   return `蕾蕾宇宙备份-${now.toISOString().slice(0, 10)}.json`;
 }
 

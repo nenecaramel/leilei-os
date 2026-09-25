@@ -1,4 +1,4 @@
-export type BridgeEventStatus = "pending" | "reserved" | "host_sent" | "delivery_unknown";
+type BridgeEventStatus = "pending" | "reserved" | "host_sent" | "delivery_unknown";
 
 export type BridgeEventReceipt = {
   id: string;

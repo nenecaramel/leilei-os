@@ -27,9 +27,9 @@ const LEGACY_HOME_SEED_ENTRIES: Record<
   ],
 };
 
-export type TodoMigrationTerminalState = "migrated" | "server-wins" | "invalid";
+type TodoMigrationTerminalState = "migrated" | "server-wins" | "invalid";
 export type TodoMigrationNotice = { date: string; author: LegacyTodoAuthor; state: "server-wins" };
-export type LegacyTodoCandidate = { author: LegacyTodoAuthor; date: string; key: string };
+type LegacyTodoCandidate = { author: LegacyTodoAuthor; date: string; key: string };
 
 export function legacyTodoPaperKey(author: LegacyTodoAuthor, date: string): string {
   return `${LEGACY_PREFIX}:${date}:${author}`;
