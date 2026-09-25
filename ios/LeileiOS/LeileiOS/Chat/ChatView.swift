@@ -14,6 +14,7 @@ struct ChatView: View {
     @State private var thinking: NativeLiveThinkingMode = .adaptive
     @State private var effort: NativeLiveEffortLevel = .high
     @State private var editDraft: NativeLiveEditDraft?
+    @State private var pendingOperation: NativeLivePendingOperation?
     @State private var isDraftCommitInFlight = false
     @State private var isSystemKeyboardVisible = false
     @FocusState private var isComposerFocused: Bool
@@ -23,17 +24,23 @@ struct ChatView: View {
             Color(.systemBackground)
                 .ignoresSafeArea()
 
-            if isDraftConversation {
+            if isDraftConversation && pendingOperation == nil {
                 Color.clear
             } else {
                 NativeLiveMessageSurface(
-                    snapshot: appModel.nativeLiveCurrentPath,
+                    snapshot:
+                        isDraftConversation
+                            ? nil
+                            : appModel.nativeLiveCurrentPath,
                     syncState: appModel.chatSyncState,
                     isAuthenticated: appModel.isAuthenticated,
                     hasActiveConversation:
-                        appModel.activeNativeLiveConversationID != nil,
+                        !isDraftConversation
+                            && appModel.activeNativeLiveConversationID != nil,
                     isTurnInFlight:
-                        appModel.chatSendState == .sending,
+                        appModel.chatSendState == .sending
+                            || pendingOperation != nil,
+                    pendingOperation: pendingOperation,
                     onRefresh: {
                         await appModel.refreshNativeLiveCurrentPath(force: true)
                     },
@@ -71,6 +78,7 @@ struct ChatView: View {
         .onChange(of: draftConversationID) { _, _ in
             messageText = ""
             editDraft = nil
+            pendingOperation = nil
             isComposerFocused = false
         }
         .onChange(of: isDraftConversation) { wasDraft, isDraft in
@@ -88,6 +96,9 @@ struct ChatView: View {
                 isSending:
                     appModel.chatSendState == .sending
                         || isDraftCommitInFlight
+                        || pendingOperation != nil,
+                isEditing: editDraft != nil,
+                onCancelEdit: cancelEditing
             ) {
                 sendMessage()
             }
@@ -136,21 +147,11 @@ struct ChatView: View {
                     .ignoresSafeArea()
             }
         }
-        .sheet(item: $editDraft) { draft in
-            NativeLiveEditSheet(
-                originalText: draft.text
-            ) { replacement in
-                try await appModel.editNativeLiveMessage(
-                    targetUserMessageID: draft.targetUserMessageID,
-                    text: replacement,
-                    execution: executionSelection
-                )
-            }
-        }
     }
 
     private var isConversationLoading: Bool {
-        guard !isDraftConversation,
+        guard pendingOperation == nil,
+              !isDraftConversation,
               appModel.isAuthenticated,
               appModel.activeNativeLiveConversationID != nil,
               appModel.nativeLiveCurrentPath == nil else {
@@ -164,13 +165,25 @@ struct ChatView: View {
     private func retryMessage(
         _ targetUserMessageID: String
     ) {
-        guard appModel.chatSendState != .sending else { return }
+        guard pendingOperation == nil,
+              appModel.chatSendState != .sending else {
+            return
+        }
+
+        pendingOperation = .retry(
+            targetUserMessageID: targetUserMessageID
+        )
 
         Task { @MainActor in
-            try? await appModel.retryNativeLiveMessage(
-                targetUserMessageID: targetUserMessageID,
-                execution: executionSelection
-            )
+            do {
+                try await appModel.retryNativeLiveMessage(
+                    targetUserMessageID: targetUserMessageID,
+                    execution: executionSelection
+                )
+            } catch {
+            }
+
+            pendingOperation = nil
         }
     }
 
@@ -178,6 +191,7 @@ struct ChatView: View {
         _ message: NativeLiveCurrentPathMessage
     ) {
         guard message.role == "user",
+              pendingOperation == nil,
               appModel.chatSendState != .sending else {
             return
         }
@@ -191,6 +205,18 @@ struct ChatView: View {
             targetUserMessageID: message.id,
             text: text
         )
+        messageText = text
+
+        Task { @MainActor in
+            await Task.yield()
+            isComposerFocused = true
+        }
+    }
+
+    private func cancelEditing() {
+        editDraft = nil
+        messageText = ""
+        isComposerFocused = false
     }
 
     private var executionSelection: NativeLiveExecutionSelection {
@@ -206,13 +232,50 @@ struct ChatView: View {
             in: .whitespacesAndNewlines
         )
         guard !pendingText.isEmpty,
+              pendingOperation == nil,
               !isDraftCommitInFlight,
               appModel.chatSendState != .sending else {
             return
         }
 
-        let shouldCreateConversation = isDraftConversation
+        if let draft = editDraft {
+            pendingOperation = .edit(
+                targetUserMessageID: draft.targetUserMessageID,
+                text: pendingText
+            )
+            editDraft = nil
+            messageText = ""
+            isComposerFocused = false
 
+            Task { @MainActor in
+                do {
+                    try await appModel.editNativeLiveMessage(
+                        targetUserMessageID: draft.targetUserMessageID,
+                        text: pendingText,
+                        execution: executionSelection
+                    )
+                    pendingOperation = nil
+                } catch {
+                    pendingOperation = nil
+                    editDraft = draft
+
+                    if messageText.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty {
+                        messageText = pendingText
+                    }
+
+                    isComposerFocused = true
+                }
+            }
+            return
+        }
+
+        let shouldCreateConversation = isDraftConversation
+        pendingOperation = .send(
+            id: UUID(),
+            text: pendingText
+        )
         messageText = ""
         isComposerFocused = false
 
@@ -230,7 +293,10 @@ struct ChatView: View {
                     pendingText,
                     execution: executionSelection
                 )
+                pendingOperation = nil
             } catch {
+                pendingOperation = nil
+
                 if messageText.trimmingCharacters(
                     in: .whitespacesAndNewlines
                 ).isEmpty {
@@ -244,100 +310,7 @@ struct ChatView: View {
 }
 
 
-private struct NativeLiveEditDraft: Identifiable {
-    let id = UUID()
+private struct NativeLiveEditDraft {
     let targetUserMessageID: String
     let text: String
-}
-
-private struct NativeLiveEditSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var text: String
-    @State private var isSaving = false
-    @State private var failed = false
-
-    let onSave: (String) async throws -> Void
-
-    init(
-        originalText: String,
-        onSave: @escaping (String) async throws -> Void
-    ) {
-        _text = State(initialValue: originalText)
-        self.onSave = onSave
-    }
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
-                TextEditor(text: $text)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(10)
-                    .background(
-                        Color.primary.opacity(0.05),
-                        in: RoundedRectangle(
-                            cornerRadius: 14,
-                            style: .continuous
-                        )
-                    )
-
-                if failed {
-                    Text("Failed")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding()
-            .navigationTitle("Edit message")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving…" : "Save") {
-                        save()
-                    }
-                    .disabled(
-                        isSaving
-                            || normalizedText.isEmpty
-                            || normalizedText.count > 4_000
-                    )
-                }
-            }
-        }
-    }
-
-    private var normalizedText: String {
-        text.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-    }
-
-    private func save() {
-        let replacement = normalizedText
-        guard !replacement.isEmpty,
-              replacement.count <= 4_000,
-              !isSaving else {
-            return
-        }
-
-        isSaving = true
-        failed = false
-
-        Task { @MainActor in
-            do {
-                try await onSave(replacement)
-                dismiss()
-            } catch {
-                failed = true
-                isSaving = false
-            }
-        }
-    }
 }
