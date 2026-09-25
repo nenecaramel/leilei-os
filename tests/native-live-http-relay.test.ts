@@ -779,6 +779,75 @@ test("internal relay reserve and result endpoints preserve listener ownership da
   );
 });
 
+test("internal relay work wait renews the listener lease and waits in authenticated user scope", async () => {
+  const relayService = new FakeRelayService();
+  const waitCalls: unknown[] = [];
+  const workWaitService = {
+    async wait(input: {
+      userId: string;
+      timeoutMs: number;
+      signal?: AbortSignal | null;
+    }) {
+      waitCalls.push({
+        userId: input.userId,
+        timeoutMs: input.timeoutMs,
+        aborted: input.signal?.aborted ?? false,
+      });
+      return {
+        outcome: "ready" as const,
+        version: 7,
+      };
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          workWaitService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/work/wait`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        (await response.json() as { data: unknown }).data,
+        { outcome: "ready", version: 7 },
+      );
+      assert.deepEqual(relayService.calls[0], {
+        name: "renewLease",
+        input: {
+          userId,
+          listenerInstanceId: listenerId,
+          dispatchTarget: "claude_code",
+        },
+      });
+      assert.deepEqual(waitCalls, [{
+        userId,
+        timeoutMs: 45_000,
+        aborted: false,
+      }]);
+    },
+  );
+});
+
 test("internal relay semantic endpoints preserve the bounded candidate snapshot and score ids", async () => {
   const relayService = new FakeRelayService();
   const semanticService = new FakeSemanticService();

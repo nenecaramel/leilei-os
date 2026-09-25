@@ -137,6 +137,12 @@ import {
   NativeLiveBackendRelayService,
 } from "../domains/bridge/native-live-backend-relay.js";
 import {
+  DrizzleNativeLiveWorkAvailability,
+  DrizzleNativeLiveWorkWakePublisher,
+  NativeLiveWorkWakeBroker,
+  NativeLiveWorkWaitService,
+} from "../domains/bridge/native-live-work-wake.js";
+import {
   DrizzleNativeLiveRuntimeEventRepository,
   NativeLiveRuntimeEventService,
 } from "../domains/bridge/native-live-runtime-event-stream.js";
@@ -294,6 +300,15 @@ export function createProcessRuntime(
   const observeLifecycle = createMcpLifecycleObserver(logger);
   const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
   const { db } = database;
+  const nativeLiveWorkWakePublisher =
+    new DrizzleNativeLiveWorkWakePublisher(db);
+  const nativeLiveWorkWakeBroker =
+    new NativeLiveWorkWakeBroker(runtimeEnv.DATABASE_URL);
+  const nativeLiveWorkWaitService =
+    new NativeLiveWorkWaitService(
+      new DrizzleNativeLiveWorkAvailability(db),
+      nativeLiveWorkWakeBroker,
+    );
   const diaryService = new DiaryService(new DrizzleDiaryRepository(db));
   const diaryCommentService = new DiaryCommentService(
     new DrizzleDiaryCommentRepository(db),
@@ -372,6 +387,7 @@ export function createProcessRuntime(
   const nativeLiveBackgroundModelService =
     new NativeLiveBackgroundModelQueueService(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
+      nativeLiveWorkWakePublisher,
     );
   const distillationProcessVersion = "distill-process-v1";
   const distillationCrossDeviceCoordinator =
@@ -452,6 +468,7 @@ export function createProcessRuntime(
   const nativeLiveRelayService = new NativeLiveBackendRelayService(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
+    nativeLiveWorkWakePublisher,
   );
   const nativeLiveRuntimeEventService =
     new NativeLiveRuntimeEventService(
@@ -635,6 +652,7 @@ export function createProcessRuntime(
     nativeLiveTurnPort,
     nativeLiveBackendMind,
     nativeLiveRelayService,
+    nativeLiveWorkWakePublisher,
   );
   const nativeLiveSemanticScheduler =
     createNativeLiveSemanticCompletionScheduler({
@@ -782,6 +800,7 @@ export function createProcessRuntime(
       webNativeLiveConversationService:
         nativeLiveConversationService,
       nativeLiveRelayService,
+      nativeLiveWorkWaitService,
       nativeLiveRuntimeEventService,
       nativeLiveRuntimeInteractionService,
       nativeLiveRuntimeControlService,
@@ -853,6 +872,9 @@ export function createProcessRuntime(
       // Wait for that cycle before closing the shared database resource.
       await backgroundLoopOrchestrator.drain();
     },
-    closeDatabase: database.close,
+    closeDatabase: async () => {
+      await nativeLiveWorkWakeBroker.close();
+      await database.close();
+    },
   };
 }

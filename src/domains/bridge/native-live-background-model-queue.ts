@@ -531,15 +531,30 @@ export class NativeLiveBackgroundModelQueueService {
   constructor(
     private readonly repository:
       DrizzleNativeLiveBackgroundModelQueueRepository,
+    private readonly workWake?: {
+      notify(input: {
+        userId: string;
+        kind: "background_model";
+      }): Promise<void>;
+    },
   ) {}
 
-  stage(input: {
+  async stage(input: {
     userId: string;
     subjectId: string;
     command: NativeLiveBackgroundModelCommand;
     workflow?: NativeLiveBackgroundModelWorkflow;
   }): Promise<NativeLiveBackgroundModelJob> {
-    return this.repository.stage(input);
+    const job = await this.repository.stage(input);
+    try {
+      await this.workWake?.notify({
+        userId: input.userId,
+        kind: "background_model",
+      });
+    } catch {
+      // Durable background queue state is authoritative.
+    }
+    return job;
   }
 
   reserveNext(input: {

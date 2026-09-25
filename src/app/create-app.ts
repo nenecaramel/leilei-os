@@ -110,6 +110,8 @@ export type AppDependencies = {
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
+  nativeLiveWorkWaitService?:
+    NativeLiveRelayInternalDependencies["workWaitService"];
   nativeLiveSemanticService?:
     NativeLiveRelayInternalDependencies["semanticService"];
   nativeLiveBackgroundModelService?:
@@ -425,6 +427,12 @@ export function createApp(
               nativeLive: {
                 coordinator: webNativeLiveCoordinator,
                 relayService: dependencies.nativeLiveRelayService,
+          ...(dependencies.nativeLiveWorkWaitService
+            ? {
+                workWaitService:
+                  dependencies.nativeLiveWorkWaitService,
+              }
+            : {}),
                 turnReader: webNativeLiveTurnReader,
                 ...(webNativeLiveCurrentPathReader
                   ? {

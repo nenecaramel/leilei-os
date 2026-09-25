@@ -182,6 +182,30 @@ implements NativeLiveMacDaemonRelayClient {
     return state;
   }
 
+  async waitForWork(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+    signal?: AbortSignal | null;
+  }): Promise<"ready" | "timeout" | "busy"> {
+    const data = await this.post(
+      "/work/wait",
+      {
+        listener_instance_id: input.listenerInstanceId,
+        dispatch_target: input.dispatchTarget,
+      },
+      input.signal ?? null,
+    );
+    const outcome = readRecord(data).outcome;
+    if (
+      outcome !== "ready"
+      && outcome !== "timeout"
+      && outcome !== "busy"
+    ) {
+      throw new Error("Native live work wait returned an invalid outcome.");
+    }
+    return outcome;
+  }
+
   async reserveNext(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";

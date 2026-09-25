@@ -46,6 +46,9 @@ import {
 import type {
   CompanionBackgroundOpportunityService,
 } from "../domains/runtime/companion-background-opportunity.js";
+import type {
+  NativeLiveWorkWaitService,
+} from "../domains/bridge/native-live-work-wake.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -98,6 +101,7 @@ export type NativeLiveRelayInternalDependencies = {
     topicResurfaceOffered: boolean;
     failureCount: number;
   }) => void;
+  workWaitService?: Pick<NativeLiveWorkWaitService, "wait">;
 };
 
 const UUID_PATTERN =
@@ -112,6 +116,9 @@ export function createNativeLiveRelayInternalRouter(
     next();
   });
   router.post("/lease/renew", renewLeaseHandler(dependencies));
+  if (dependencies.workWaitService) {
+    router.post("/work/wait", waitForWorkHandler(dependencies));
+  }
   if (dependencies.semanticService) {
     router.post(
       "/semantic/reserve",
@@ -217,6 +224,67 @@ function renewLeaseHandler(
       response.json({ success: true, data: { state } });
     } catch (error) {
       sendRelayError(response, error);
+    }
+  };
+}
+
+function waitForWorkHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.workWaitService) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const lease = await dependencies.relayService.renewLease({
+        userId,
+        listenerInstanceId: body.listener_instance_id,
+        dispatchTarget: "claude_code",
+      });
+      if (lease === "busy") {
+        response.json({
+          success: true,
+          data: { outcome: "busy" },
+        });
+        return;
+      }
+
+      const controller = new AbortController();
+      const onClose = () => controller.abort();
+      response.once("close", onClose);
+      try {
+        const result = await dependencies.workWaitService.wait({
+          userId,
+          timeoutMs: 45_000,
+          signal: controller.signal,
+        });
+        if (!response.writableEnded && !controller.signal.aborted) {
+          response.json({
+            success: true,
+            data: result,
+          });
+        }
+      } finally {
+        response.off("close", onClose);
+      }
+    } catch (error) {
+      if (response.writableEnded) return;
+      if (error instanceof NativeLiveBackendRelayError) {
+        sendRelayError(response, error);
+        return;
+      }
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_WORK_WAIT_UNAVAILABLE",
+          message: "Native live work wait is temporarily unavailable.",
+        },
+      });
     }
   };
 }
