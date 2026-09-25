@@ -96,7 +96,9 @@ export class DistillationCrossDeviceCoordinator {
       userId,
       conversationId,
     });
-    if (!conversation) return { outcome: "idle" };
+    if (!conversation || conversation.lifecycleStatus !== "active") {
+      return { outcome: "idle" };
+    }
 
     const previousWatermarkMessageId = await this.port.getWatermark({
       userId,
@@ -204,7 +206,7 @@ export class DistillationCrossDeviceCoordinator {
       userId: input.userId,
       conversationId: window.conversationId,
     });
-    if (!conversation) {
+    if (!conversation || conversation.lifecycleStatus !== "active") {
       await this.queue.markConsumed({
         userId: input.userId,
         taskId: job.id,
