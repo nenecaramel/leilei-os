@@ -1,12 +1,30 @@
 import SwiftUI
 import UIKit
 
+enum NativeLivePendingOperation: Equatable {
+    case send(id: UUID, text: String)
+    case retry(targetUserMessageID: String)
+    case edit(targetUserMessageID: String, text: String)
+
+    var scrollIdentity: String {
+        switch self {
+        case .send(let id, _):
+            return "send-\(id.uuidString)"
+        case .retry(let targetUserMessageID):
+            return "retry-\(targetUserMessageID)"
+        case .edit(let targetUserMessageID, _):
+            return "edit-\(targetUserMessageID)"
+        }
+    }
+}
+
 struct NativeLiveMessageSurface: View {
     let snapshot: NativeLiveCurrentPathSnapshot?
     let syncState: AppModel.ChatSyncState
     let isAuthenticated: Bool
     let hasActiveConversation: Bool
     let isTurnInFlight: Bool
+    let pendingOperation: NativeLivePendingOperation?
     let onRefresh: () async -> Void
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
@@ -20,6 +38,8 @@ struct NativeLiveMessageSurface: View {
         Group {
             if !isAuthenticated {
                 AppStateSurface(title: "Sign in")
+            } else if pendingOperation != nil {
+                messageList(snapshot)
             } else if !hasActiveConversation {
                 AppStateSurface(title: "Nothing here")
             } else if let snapshot {
@@ -53,14 +73,20 @@ struct NativeLiveMessageSurface: View {
     }
 
     private func messageList(
-        _ snapshot: NativeLiveCurrentPathSnapshot
+        _ snapshot: NativeLiveCurrentPathSnapshot?
     ) -> some View {
-        ScrollViewReader { proxy in
+        let messages = displayedMessages(
+            snapshot?.messages ?? []
+        )
+
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 21) {
-                    ForEach(snapshot.messages) { message in
+                    ForEach(messages) { message in
                         NativeLiveMessageRow(
                             message: message,
+                            displayTextOverride:
+                                editedTextOverride(for: message),
                             isTurnInFlight: isTurnInFlight,
                             isCopied: copiedMessageID == message.id,
                             onCopyMessage: { text in
@@ -75,6 +101,22 @@ struct NativeLiveMessageSurface: View {
                         .id(message.id)
                     }
 
+                    if let pendingOperation {
+                        if case .send(_, let text) = pendingOperation {
+                            NativeLiveOptimisticUserRow(text: text)
+                                .id(
+                                    "pending-user-"
+                                        + pendingOperation.scrollIdentity
+                                )
+                        }
+
+                        AssistantTypingIndicatorRow()
+                            .id(
+                                "pending-assistant-"
+                                    + pendingOperation.scrollIdentity
+                            )
+                    }
+
                     Color.clear
                         .frame(height: 1)
                         .id(bottomAnchorID)
@@ -83,14 +125,22 @@ struct NativeLiveMessageSurface: View {
                 .padding(.top, 8)
                 .padding(.bottom, 8)
             }
-            .id(snapshot.conversationId)
+            .id(
+                snapshot?.conversationId
+                    ?? pendingOperation?.scrollIdentity
+                    ?? "native-live-empty"
+            )
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
                 await onRefresh()
             }
-            .onChange(of: snapshot.conversationId) { _, _ in
+            .onChange(of: snapshot?.conversationId) { _, _ in
                 isAwayFromBottom = false
+            }
+            .onChange(of: pendingOperation) { _, operation in
+                guard operation != nil else { return }
+                scrollToBottom(proxy)
             }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.visibleRect.maxY
@@ -169,6 +219,48 @@ struct NativeLiveMessageSurface: View {
         }
     }
 
+    private func displayedMessages(
+        _ messages: [NativeLiveCurrentPathMessage]
+    ) -> [NativeLiveCurrentPathMessage] {
+        guard let pendingOperation else {
+            return messages
+        }
+
+        let targetUserMessageID: String?
+        switch pendingOperation {
+        case .send:
+            targetUserMessageID = nil
+        case .retry(let target):
+            targetUserMessageID = target
+        case .edit(let target, _):
+            targetUserMessageID = target
+        }
+
+        guard let targetUserMessageID,
+              let targetIndex = messages.firstIndex(where: {
+                  $0.id == targetUserMessageID
+                      && $0.role == "user"
+              }) else {
+            return messages
+        }
+
+        return Array(messages.prefix(through: targetIndex))
+    }
+
+    private func editedTextOverride(
+        for message: NativeLiveCurrentPathMessage
+    ) -> String? {
+        guard case .edit(
+            let targetUserMessageID,
+            let text
+        ) = pendingOperation,
+        message.id == targetUserMessageID else {
+            return nil
+        }
+
+        return text
+    }
+
     private func copyMessage(
         _ text: String,
         messageID: String
@@ -206,6 +298,7 @@ struct NativeLiveMessageSurface: View {
 
 private struct NativeLiveMessageRow: View {
     let message: NativeLiveCurrentPathMessage
+    let displayTextOverride: String?
     let isTurnInFlight: Bool
     let isCopied: Bool
     let onCopyMessage: (String) -> Void
@@ -247,6 +340,9 @@ private struct NativeLiveMessageRow: View {
                     messageStatus
                 }
             }
+        } else if message.status == "pending"
+                    || message.status == "streaming" {
+            AssistantTypingIndicatorRow()
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 Text(MessageTimestampFormatter.string(
@@ -299,6 +395,14 @@ private struct NativeLiveMessageRow: View {
 
     @ViewBuilder
     private var messageContent: some View {
+        if let override = normalizedText(displayTextOverride) {
+            ChatMarkdownView(
+                text: override,
+                fillsAvailableWidth: message.role != "user",
+                lineSpacing: message.role == "user" ? 5 : 6,
+                paragraphSpacing: message.role == "user" ? 19 : 22
+            )
+        } else {
         let blocks = message.blocks.sorted {
             $0.ordinal < $1.ordinal
         }
@@ -327,6 +431,7 @@ private struct NativeLiveMessageRow: View {
                 }
             }
         }
+        }
     }
 
     @ViewBuilder
@@ -344,6 +449,10 @@ private struct NativeLiveMessageRow: View {
     }
 
     private var copyText: String? {
+        if let override = normalizedText(displayTextOverride) {
+            return override
+        }
+
         let text = message.blocks
             .sorted { $0.ordinal < $1.ordinal }
             .compactMap { normalizedText($0.text) }
@@ -360,6 +469,63 @@ private struct NativeLiveMessageRow: View {
         return normalized.isEmpty ? nil : normalized
     }
 }
+
+private struct NativeLiveOptimisticUserRow: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            Spacer(minLength: 48)
+
+            ChatMarkdownView(
+                text: text,
+                fillsAvailableWidth: false,
+                lineSpacing: 5,
+                paragraphSpacing: 19
+            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                Color.chatSoftFill,
+                in: RoundedRectangle(
+                    cornerRadius: 18,
+                    style: .continuous
+                )
+            )
+        }
+    }
+}
+
+
+private struct AssistantTypingIndicatorRow: View {
+    var body: some View {
+        TimelineView(
+            .animation(minimumInterval: 0.18)
+        ) { context in
+            let phase = Int(
+                context.date.timeIntervalSinceReferenceDate / 0.18
+            ) % 3
+
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(
+                            Color.secondary.opacity(
+                                phase == index ? 0.82 : 0.24
+                            )
+                        )
+                        .frame(width: 5, height: 5)
+                        .scaleEffect(
+                            phase == index ? 1.08 : 0.92
+                        )
+                }
+            }
+            .frame(height: 22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 
 private struct LightweightContextMenuInteraction: UIViewRepresentable {
     let title: String
