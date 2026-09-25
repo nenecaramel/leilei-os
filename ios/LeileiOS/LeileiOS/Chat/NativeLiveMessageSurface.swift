@@ -16,6 +16,7 @@ struct NativeLiveMessageSurface: View {
 
     @State private var isAwayFromBottom = false
     @State private var initiallyPositionedConversationID: String?
+    @State private var initialPositioningConversationID: String?
 
     var body: some View {
         Group {
@@ -111,8 +112,43 @@ struct NativeLiveMessageSurface: View {
                     .onPreferenceChange(
                         NativeLiveBottomYPreferenceKey.self
                     ) { bottomY in
-                        guard isInitiallyPositioned,
-                              bottomY > 0 else {
+                        guard bottomY > 0 else {
+                            return
+                        }
+
+                        if !isInitiallyPositioned {
+                            guard initialPositioningConversationID
+                                != snapshot.conversationId else {
+                                return
+                            }
+
+                            initialPositioningConversationID =
+                                snapshot.conversationId
+                            isAwayFromBottom = false
+
+                            if bottomY <= viewport.size.height + 1 {
+                                initiallyPositionedConversationID =
+                                    snapshot.conversationId
+                                initialPositioningConversationID = nil
+                            } else {
+                                Task { @MainActor in
+                                    await Task.yield()
+
+                                    var transaction = Transaction()
+                                    transaction.disablesAnimations = true
+                                    withTransaction(transaction) {
+                                        proxy.scrollTo(
+                                            bottomAnchorID,
+                                            anchor: .bottom
+                                        )
+                                    }
+
+                                    await Task.yield()
+                                    initiallyPositionedConversationID =
+                                        snapshot.conversationId
+                                    initialPositioningConversationID = nil
+                                }
+                            }
                             return
                         }
 
@@ -171,28 +207,6 @@ struct NativeLiveMessageSurface: View {
                     if !isInitiallyPositioned {
                         ProgressView()
                     }
-                }
-                .task(id: snapshot.conversationId) {
-                    guard initiallyPositionedConversationID
-                        != snapshot.conversationId else {
-                        return
-                    }
-
-                    isAwayFromBottom = false
-                    await Task.yield()
-
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        proxy.scrollTo(
-                            bottomAnchorID,
-                            anchor: .bottom
-                        )
-                    }
-
-                    await Task.yield()
-                    initiallyPositionedConversationID =
-                        snapshot.conversationId
                 }
             }
         }
