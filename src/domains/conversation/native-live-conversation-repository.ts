@@ -530,6 +530,7 @@ implements NativeLiveConversationRepository {
         canonicalMessageId: input.canonicalMessageId,
         provider: input.checkpoint.provider,
         providerSessionId: input.checkpoint.providerSessionId,
+        runtimeMetadata: input.checkpoint.runtimeMetadata ?? null,
         providerCheckpointId: input.checkpoint.providerCheckpointId ?? null,
       })
       .returning();
@@ -542,6 +543,7 @@ implements NativeLiveConversationRepository {
       canonicalMessageId: row.canonicalMessageId,
       provider: row.provider,
       providerSessionId: row.providerSessionId,
+      runtimeMetadata: row.runtimeMetadata,
       providerCheckpointId: row.providerCheckpointId,
       createdAt: row.createdAt.toISOString(),
     };
@@ -561,6 +563,8 @@ implements NativeLiveConversationRepository {
         provider: conversationProviderSessionCheckpoints.provider,
         providerSessionId:
           conversationProviderSessionCheckpoints.providerSessionId,
+        runtimeMetadata:
+          conversationProviderSessionCheckpoints.runtimeMetadata,
         providerCheckpointId:
           conversationProviderSessionCheckpoints.providerCheckpointId,
         createdAt: conversationProviderSessionCheckpoints.createdAt,
@@ -606,6 +610,7 @@ implements NativeLiveConversationRepository {
           canonicalMessageId: row.canonicalMessageId,
           provider: row.provider,
           providerSessionId: row.providerSessionId,
+          runtimeMetadata: row.runtimeMetadata,
           providerCheckpointId: row.providerCheckpointId,
           createdAt: row.createdAt.toISOString(),
         }
