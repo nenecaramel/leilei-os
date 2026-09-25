@@ -29,11 +29,7 @@ struct NativeLiveMessageSurface: View {
             } else {
                 switch syncState {
                 case .idle, .loading:
-                    ProgressView()
-                        .frame(
-                            maxWidth: .infinity,
-                            maxHeight: .infinity
-                        )
+                    Color.clear
 
                 case .ready:
                     AppStateSurface(title: "Nothing here")
@@ -177,7 +173,7 @@ private struct NativeLiveMessageRow: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     messageContent
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 12)
                         .background(
                             Color.chatSoftFill,
                             in: RoundedRectangle(
@@ -261,7 +257,7 @@ private struct NativeLiveMessageRow: View {
                     .frame(minHeight: 20)
             }
         } else {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 19) {
                 ForEach(visibleBlocks) { block in
                     NativeLiveBlockView(
                         block: block,
@@ -468,7 +464,7 @@ private struct NativeLiveBlockView: View {
                 Text(text)
                     .font(.system(size: 15))
                     .tracking(0.15)
-                    .lineSpacing(3)
+                    .lineSpacing(5)
                     .foregroundStyle(.secondary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
@@ -498,7 +494,7 @@ private struct ChatMarkdownView: View {
     private let baseFontSize: CGFloat = 16.5
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 19) {
             ForEach(
                 Array(ChatMarkdownParser.blocks(from: text).enumerated()),
                 id: \.offset
@@ -521,7 +517,7 @@ private struct ChatMarkdownView: View {
             inlineText(text)
                 .font(.system(size: baseFontSize))
                 .tracking(0.15)
-                .lineSpacing(3)
+                .lineSpacing(5)
 
         case .heading(let level, let text):
             inlineText(text)
@@ -530,14 +526,14 @@ private struct ChatMarkdownView: View {
                     weight: level <= 2 ? .semibold : .medium
                 ))
                 .tracking(0.15)
-                .lineSpacing(3)
+                .lineSpacing(5)
                 .padding(.top, level == 1 ? 2 : 0)
 
         case .quote(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
                 .tracking(0.15)
-                .lineSpacing(3)
+                .lineSpacing(5)
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
@@ -555,7 +551,7 @@ private struct ChatMarkdownView: View {
                 inlineText(text)
                     .font(.system(size: baseFontSize))
                     .tracking(0.15)
-                    .lineSpacing(3)
+                    .lineSpacing(5)
             }
 
         case .orderedItem(let number, let text):
@@ -568,14 +564,14 @@ private struct ChatMarkdownView: View {
                 inlineText(text)
                     .font(.system(size: baseFontSize))
                     .tracking(0.15)
-                    .lineSpacing(3)
+                    .lineSpacing(5)
             }
 
         case .codeBlock(let code):
             Text(code)
                 .font(.system(size: 14, design: .monospaced))
                 .tracking(0.12)
-                .lineSpacing(3)
+                .lineSpacing(5)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
