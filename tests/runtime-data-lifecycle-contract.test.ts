@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   isTerminalSubjectStateDisposition,
   requiresFullSubjectStatePayload,
+  subjectStateRetentionPolicy,
   validateRuntimeRetentionSpec,
 } from "../src/domains/runtime/runtime-data-lifecycle-contract.js";
 
@@ -89,4 +90,32 @@ test("archived is explicitly non-terminal while forgotten and purged are termina
   assert.equal(requiresFullSubjectStatePayload("archived"), true);
   assert.equal(requiresFullSubjectStatePayload("forgotten"), false);
   assert.equal(requiresFullSubjectStatePayload("purged"), false);
+});
+
+
+test("Subject State retention audit forbids generic forgetting outside Memory and Feel", () => {
+  for (const kind of ["memory", "feel"] as const) {
+    assert.deepEqual(subjectStateRetentionPolicy(kind), {
+      automaticForgetting: true,
+      mechanism: "decay_forget_purge",
+    });
+  }
+
+  for (const kind of ["thought", "drive", "topic"] as const) {
+    assert.deepEqual(subjectStateRetentionPolicy(kind), {
+      automaticForgetting: false,
+      mechanism: "domain_evolution",
+    });
+  }
+
+  assert.deepEqual(subjectStateRetentionPolicy("bedrock"), {
+    automaticForgetting: false,
+    mechanism: "subject_authorized_durable",
+  });
+  for (const kind of ["dream", "curiosity"] as const) {
+    assert.deepEqual(subjectStateRetentionPolicy(kind), {
+      automaticForgetting: false,
+      mechanism: "explicit_invalidation_only",
+    });
+  }
 });
