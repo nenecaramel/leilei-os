@@ -10,9 +10,6 @@ import { loadTodoDay, listTodoDates } from "./todo-api";
 import { migrateLegacyTodoPapers } from "./todo-legacy-migration";
 import type { TodoAuthor, TodoDay } from "./todo-types";
 
-export function formatHomeDate(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(date);
-}
 
 const defaultNow = () => new Date();
 
