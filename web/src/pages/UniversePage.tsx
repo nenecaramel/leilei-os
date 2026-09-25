@@ -45,7 +45,7 @@ export function UniversePage({ api }: { api: WebApiClient }) {
   return <UniversePageContent api={api} />;
 }
 
-export function UniversePageContent({ api }: { api: WebApiClient }) {
+function UniversePageContent({ api }: { api: WebApiClient }) {
   const service = useMemo(
     () => createLeileiOSUniverseService({ adapter: createLeileiOSUniverseAdapter(api) }),
     [api],
