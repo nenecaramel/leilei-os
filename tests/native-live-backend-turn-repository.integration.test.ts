@@ -146,6 +146,27 @@ test(
     if (!replayAfterMind.ok) throw new Error("expected replay after Mind");
     assert.equal(replayAfterMind.command.prompt, "ASSEMBLED hello");
 
+    const runtimeMetadata = {
+      context_usage: null,
+      compaction_advisory: null,
+      compaction: null,
+      execution: {
+        readback: {
+          requested: {
+            model: "claude-sonnet-5",
+            thinking: "adaptive",
+            effort: "low",
+          },
+          applied: {
+            model: "claude-sonnet-5",
+            effort: "low",
+          },
+          capability: null,
+        },
+        readback_error: null,
+      },
+    };
+
     const firstFinalize = await coordinator.finalize(user.id, {
       protocol_version: 1,
       prepare_id: firstPrepare.command.prepare_id,
@@ -160,6 +181,7 @@ test(
           payload: { status: "success", final_text: "first answer" },
         },
       ],
+      runtime_metadata: runtimeMetadata,
     });
     assert.equal(firstFinalize.ok, true);
     if (!firstFinalize.ok) throw new Error("expected first finalize success");
@@ -179,6 +201,19 @@ test(
       finalizedRead.assistantMessage?.blocks[0]?.text,
       "first answer",
     );
+    assert.deepEqual(finalizedRead.runtimeMetadata, runtimeMetadata);
+
+    const finalizedCheckpoint =
+      await conversationService.getProviderCheckpointForHead({
+        userId: user.id,
+        conversationId: conversation.id,
+        canonicalMessageId: firstFinalize.assistantMessageId,
+      });
+    assert.ok(finalizedCheckpoint);
+    assert.deepEqual(
+      finalizedCheckpoint.runtimeMetadata,
+      runtimeMetadata,
+    );
 
     const finalizeReplay = await coordinator.finalize(user.id, {
       protocol_version: 1,
@@ -194,6 +229,7 @@ test(
           payload: { status: "success", final_text: "first answer" },
         },
       ],
+      runtime_metadata: runtimeMetadata,
     });
     assert.equal(finalizeReplay.ok, true);
     if (!finalizeReplay.ok) throw new Error("expected idempotent finalize");
