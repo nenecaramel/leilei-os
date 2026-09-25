@@ -31,7 +31,11 @@ struct NativeLiveMessageSurface: View {
             } else {
                 switch syncState {
                 case .idle, .loading:
-                    AppStateSurface(title: "Loading…")
+                    ProgressView()
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
 
                 case .ready:
                     AppStateSurface(title: "Nothing here")
