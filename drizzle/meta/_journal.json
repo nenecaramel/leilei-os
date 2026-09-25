@@ -463,6 +463,13 @@
       "when": 1790310800000,
       "tag": "0065_native_live_execution_selection",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1790314400000,
+      "tag": "0066_native_live_runtime_metadata",
+      "breakpoints": true
     }
   ]
 }
