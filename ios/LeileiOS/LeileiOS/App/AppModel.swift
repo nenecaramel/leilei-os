@@ -235,7 +235,98 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func sendNativeLiveMessage(_ text: String) async throws {
+    func renameActiveNativeLiveConversation(
+        _ title: String
+    ) async throws {
+        guard isAuthenticated,
+              let conversationID = activeNativeLiveConversationID else {
+            throw NativeLiveConversationLifecycleError.notReady
+        }
+
+        let normalized = title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty, normalized.count <= 200 else {
+            throw NativeLiveConversationLifecycleError.invalidTitle
+        }
+
+        do {
+            let renamed = try await api.renameNativeLiveConversation(
+                conversationID: conversationID,
+                title: normalized
+            )
+
+            nativeLiveConversations.removeAll {
+                $0.id.caseInsensitiveCompare(renamed.id) == .orderedSame
+            }
+            nativeLiveConversations.insert(renamed, at: 0)
+
+            nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
+            await refreshNativeLiveCurrentPath(force: true)
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
+    }
+
+    func deleteActiveNativeLiveConversation() async throws {
+        guard isAuthenticated,
+              let conversationID = activeNativeLiveConversationID else {
+            throw NativeLiveConversationLifecycleError.notReady
+        }
+        guard !chatSendInFlight else {
+            throw NativeLiveConversationLifecycleError.busy
+        }
+
+        do {
+            try await api.deleteNativeLiveConversation(
+                conversationID: conversationID
+            )
+
+            nativeLiveConversations.removeAll {
+                guard let id = UUID(uuidString: $0.id) else {
+                    return false
+                }
+                return id == conversationID
+            }
+            nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
+
+            if activeNativeLiveConversationID == conversationID {
+                activeNativeLiveConversationID = nil
+                nativeLiveCurrentPath = nil
+                chatSyncState = .idle
+                UserDefaults.standard.removeObject(
+                    forKey: Self.activeNativeLiveConversationDefaultsKey
+                )
+            }
+
+            await refreshNativeLiveConversations()
+
+            if activeNativeLiveConversationID == nil,
+               let next = nativeLiveConversations.first,
+               let nextID = UUID(uuidString: next.id) {
+                await openNativeLiveConversation(nextID)
+            }
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
+    }
+
+    func sendNativeLiveMessage(
+        _ text: String,
+        execution: NativeLiveExecutionSelection? = nil
+    ) async throws {
         guard isAuthenticated,
               !chatSendInFlight,
               let conversationID = activeNativeLiveConversationID,
@@ -263,7 +354,8 @@ final class AppModel: ObservableObject {
             let prepared = try await api.prepareNativeLiveSend(
                 conversationID: conversationID,
                 expectedHeadMessageID: snapshot.currentHeadMessageId,
-                text: normalized
+                text: normalized,
+                execution: execution
             )
 
             guard prepared.conversationId.caseInsensitiveCompare(
@@ -302,7 +394,8 @@ final class AppModel: ObservableObject {
     }
 
     func retryNativeLiveMessage(
-        targetUserMessageID: String
+        targetUserMessageID: String,
+        execution: NativeLiveExecutionSelection? = nil
     ) async throws {
         guard isAuthenticated,
               !chatSendInFlight,
@@ -327,7 +420,8 @@ final class AppModel: ObservableObject {
         do {
             let prepared = try await api.prepareNativeLiveRetry(
                 conversationID: conversationID,
-                targetUserMessageID: targetUserMessageID
+                targetUserMessageID: targetUserMessageID,
+                execution: execution
             )
 
             try await completePreparedNativeLiveTurn(
@@ -351,7 +445,8 @@ final class AppModel: ObservableObject {
 
     func editNativeLiveMessage(
         targetUserMessageID: String,
-        text: String
+        text: String,
+        execution: NativeLiveExecutionSelection? = nil
     ) async throws {
         guard isAuthenticated,
               !chatSendInFlight,
@@ -384,7 +479,8 @@ final class AppModel: ObservableObject {
             let prepared = try await api.prepareNativeLiveEdit(
                 conversationID: conversationID,
                 targetUserMessageID: targetUserMessageID,
-                text: normalized
+                text: normalized,
+                execution: execution
             )
 
             try await completePreparedNativeLiveTurn(
@@ -632,6 +728,23 @@ final class AppModel: ObservableObject {
         chatRefreshInFlight = false
         chatRefreshPendingForce = false
         chatSendState = .idle
+    }
+}
+
+private enum NativeLiveConversationLifecycleError: LocalizedError {
+    case notReady
+    case invalidTitle
+    case busy
+
+    var errorDescription: String? {
+        switch self {
+        case .notReady:
+            return "No active conversation is available."
+        case .invalidTitle:
+            return "Conversation title must contain 1-200 characters."
+        case .busy:
+            return "Wait for the current turn to finish before deleting this conversation."
+        }
     }
 }
 
