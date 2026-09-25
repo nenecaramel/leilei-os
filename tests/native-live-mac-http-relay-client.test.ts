@@ -139,6 +139,53 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   }
 });
 
+test("Mac HTTP relay client waits for event-driven work without exposing user identity", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        outcome: "ready",
+        version: 3,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const controller = new AbortController();
+  assert.equal(
+    await client.waitForWork({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+      signal: controller.signal,
+    }),
+    "ready",
+  );
+  assert.deepEqual(calls, [{
+    url:
+      "https://relay.example/internal/native-live-relay/work/wait",
+    body: {
+      listener_instance_id: listenerId,
+      dispatch_target: "claude_code",
+    },
+  }]);
+  assert.equal(
+    JSON.stringify(calls[0]?.body).includes("user"),
+    false,
+  );
+});
+
 test("Mac HTTP relay client transports semantic candidate snapshots and score callbacks", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const responses = [
