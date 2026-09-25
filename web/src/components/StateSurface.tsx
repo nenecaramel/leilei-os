@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-export type StateSurfaceState = "loading" | "empty" | "error";
-export type StateSurfacePlacement = "page" | "module" | "paper" | "inline";
+type StateSurfaceState = "loading" | "empty" | "error";
+type StateSurfacePlacement = "page" | "module" | "paper" | "inline";
 
 type StateSurfaceProps = {
   state: StateSurfaceState;
