@@ -725,7 +725,10 @@ export class NativeLiveBackendRelayService {
       input.userId,
       input.result,
     );
-    if (!isAcceptedTerminalFinalize(finalized)) {
+    if (
+      !finalized.ok
+      && !isAcceptedTerminalFinalize(finalized)
+    ) {
       throw new NativeLiveBackendRelayError(
         "FINALIZE_REJECTED",
         "Native live backend rejected the runtime result.",
