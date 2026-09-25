@@ -651,6 +651,12 @@ export class NativeLiveBackendRelayService {
       NativeLiveBackendTurnCoordinator,
       "finalize"
     >,
+    private readonly workWake?: {
+      notify(input: {
+        userId: string;
+        kind: "foreground";
+      }): Promise<void>;
+    },
   ) {}
 
   async enqueuePreparation(input: {
@@ -659,6 +665,7 @@ export class NativeLiveBackendRelayService {
   }): Promise<void> {
     const outcome = await this.repository.enqueuePreparation(input);
     this.requireMutation(outcome);
+    await this.bestEffortWake(input.userId, "foreground");
   }
 
   async renewLease(input: {
@@ -758,6 +765,17 @@ export class NativeLiveBackendRelayService {
   }): Promise<void> {
     const outcome = await this.repository.rejectReservation(input);
     this.requireMutation(outcome);
+  }
+
+  private async bestEffortWake(
+    userId: string,
+    kind: "foreground",
+  ): Promise<void> {
+    try {
+      await this.workWake?.notify({ userId, kind });
+    } catch {
+      // Durable queue state is authoritative; wake delivery is advisory.
+    }
   }
 
   private requireMutation(outcome: RelayMutationOutcome): void {
