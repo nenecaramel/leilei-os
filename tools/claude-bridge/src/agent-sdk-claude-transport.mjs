@@ -192,6 +192,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       streaming,
       permissionHandler,
       questionHandler,
+      midTurnInput: Boolean(controlPump),
     });
 
     this.activeTurnHandle = handle;
