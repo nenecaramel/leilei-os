@@ -5,6 +5,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -51,9 +52,21 @@ function toolUses(result) {
     .filter((value) => typeof value.name === "string");
 }
 
-function resolveRequestedPath(root, value) {
+async function resolveRequestedPath(root, value) {
   if (typeof value !== "string" || !value.trim()) return null;
-  return path.resolve(root, value);
+  const resolved = path.isAbsolute(value)
+    ? value
+    : path.resolve(root, value);
+  try {
+    const canonicalParent =
+      await realpath(path.dirname(resolved));
+    return path.join(
+      canonicalParent,
+      path.basename(resolved),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function createFilesystemPermissionHandler({
@@ -78,11 +91,21 @@ function createFilesystemPermissionHandler({
       || request.toolName === "Edit"
     ) {
       const requestedPath =
-        resolveRequestedPath(
+        await resolveRequestedPath(
           root,
-          request.input?.file_path,
+          request.input?.file_path
+            ?? request.input?.path,
         );
-      if (requestedPath === parityPath) {
+      const allowedPath =
+        await resolveRequestedPath(
+          root,
+          parityPath,
+        );
+      if (
+        requestedPath
+        && allowedPath
+        && requestedPath === allowedPath
+      ) {
         return { decision: "allow" };
       }
     }
