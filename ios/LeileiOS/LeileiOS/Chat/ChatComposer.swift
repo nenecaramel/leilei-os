@@ -20,7 +20,7 @@ struct ChatComposer: View {
             )
             .focused(isFocused)
             .font(.system(size: 17.5, weight: .regular))
-            .foregroundStyle(Color.primary.opacity(0.68))
+            .foregroundStyle(.primary)
             .lineLimit(1...6)
 
             HStack(spacing: 8) {
@@ -42,7 +42,7 @@ struct ChatComposer: View {
                 } label: {
                     ComposerCircleButton(
                         systemName: "plus",
-                        weight: .regular
+                        weight: .light
                     )
                 }
 
@@ -124,7 +124,12 @@ struct ChatComposer: View {
                         )
                         .font(.system(
                             size: 15,
-                            weight: .semibold
+                            weight:
+                                text.trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                ).isEmpty
+                                ? .semibold
+                                : .regular
                         ))
                         .foregroundStyle(.white)
                     }
