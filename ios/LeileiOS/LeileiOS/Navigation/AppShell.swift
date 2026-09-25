@@ -33,6 +33,19 @@ struct AppShell: View {
         }
     }
 
+
+    private func openConversationFromSidebar(
+        _ conversation: NativeLiveConversationSummary
+    ) {
+        guard let conversationID = UUID(uuidString: conversation.id) else {
+            return
+        }
+
+        Task { @MainActor in
+            await appModel.openNativeLiveConversation(conversationID)
+        }
+    }
+
     private var iPhoneLayout: some View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
@@ -53,6 +66,9 @@ struct AppShell: View {
                         newSessionPresented = true
                     },
                     newSessionEnabled: appModel.isAuthenticated,
+                    conversations: appModel.nativeLiveConversations,
+                    activeConversationID: appModel.activeNativeLiveConversationID,
+                    onOpenConversation: openConversationFromSidebar,
                     onSettings: {
                         settingsPresented = true
                     },
@@ -121,6 +137,9 @@ struct AppShell: View {
                     newSessionPresented = true
                 },
                 newSessionEnabled: appModel.isAuthenticated,
+                conversations: appModel.nativeLiveConversations,
+                activeConversationID: appModel.activeNativeLiveConversationID,
+                onOpenConversation: openConversationFromSidebar,
                 onSettings: nil,
                 onSelect: {}
             )
