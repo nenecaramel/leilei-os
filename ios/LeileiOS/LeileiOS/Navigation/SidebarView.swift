@@ -5,6 +5,7 @@ struct SidebarView: View {
     @Binding var selectedPage: AppPage
     let menuButtonCenterY: CGFloat?
     let onNewSession: () -> Void
+    let newSessionEnabled: Bool
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
@@ -68,6 +69,7 @@ struct SidebarView: View {
                         accessibilityLabel: "New Session",
                         action: onNewSession
                     )
+                    .disabled(!newSessionEnabled)
 
                     Spacer()
 
