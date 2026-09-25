@@ -1,5 +1,6 @@
 import type { NativeLiveNormalizedEvent } from "../conversation/native-live-conversation-orchestrator.js";
 import {
+  NativeLiveExecutionSelectionError,
   parseNativeLiveExecutionSelection,
   type NativeLiveExecutionSelection,
 } from "./native-live-execution-selection.js";
@@ -128,7 +129,7 @@ export function parseNativeLiveRuntimeCommand(
       body.execution_selection === undefined
         || body.execution_selection === null
         ? null
-        : parseNativeLiveExecutionSelection(
+        : parseExecutionSelection(
             body.execution_selection,
           ),
     prompt: normalizePrompt(body.prompt),
@@ -226,6 +227,19 @@ export function assertRuntimeResultMatchesCommand(
     throw new NativeLiveRuntimeProtocolError(
       "Fork result must use a new provider session id.",
     );
+  }
+}
+
+function parseExecutionSelection(
+  value: unknown,
+): NativeLiveExecutionSelection {
+  try {
+    return parseNativeLiveExecutionSelection(value);
+  } catch (error) {
+    if (error instanceof NativeLiveExecutionSelectionError) {
+      throw new NativeLiveRuntimeProtocolError(error.message);
+    }
+    throw error;
   }
 }
 
