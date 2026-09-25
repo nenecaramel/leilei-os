@@ -14,6 +14,14 @@ const source = readFileSync(
   "utf8",
 );
 
+const schemaSource = readFileSync(
+  new URL(
+    "../src/database/schema.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
 test("runtime operational retention declares a bounded TTL", () => {
   assert.equal(RUNTIME_OPERATIONAL_RETENTION_DAYS, 30);
   assert.deepEqual(RUNTIME_OPERATIONAL_RETENTION_SPEC, {
@@ -61,4 +69,22 @@ test("context manifests and stale listener leases are bounded operational data",
     /DELETE FROM native_live_runtime_listener_leases/,
   );
   assert.match(source, /DELETE FROM bridge_listener_leases/);
+});
+
+
+test("foreground runtime event, interaction and control records inherit the bounded turn TTL by cascade", () => {
+  for (const foreignKeyName of [
+    "native_live_runtime_events_preparation_user_fk",
+    "native_live_runtime_interactions_preparation_user_fk",
+    "native_live_runtime_controls_preparation_user_fk",
+  ]) {
+    const marker = 'name: "' + foreignKeyName + '"';
+    const start = schemaSource.indexOf(marker);
+    assert.notEqual(start, -1);
+    const foreignKeyBlock = schemaSource.slice(start, start + 180);
+    assert.match(
+      foreignKeyBlock,
+      /\.onDelete\("cascade"\)/u,
+    );
+  }
 });
