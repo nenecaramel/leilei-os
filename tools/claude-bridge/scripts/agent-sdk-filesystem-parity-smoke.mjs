@@ -11,7 +11,6 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { query as agentSdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
@@ -42,20 +41,14 @@ function toolNames(result) {
     .filter((value) => typeof value === "string");
 }
 
-function queryWithDedicatedSearchTools({ prompt, options }) {
-  const allowedTools = Array.isArray(options?.allowedTools)
-    ? options.allowedTools
-    : [];
-  return agentSdkQuery({
-    prompt,
-    options: {
-      ...options,
-      // Native Agent SDK builds stopped registering dedicated Glob/Grep by
-      // default in 0.3.162. This smoke explicitly opts them back in because
-      // it validates those SDK filesystem tools rather than Bash fallback.
-      allowedTools: [...new Set([...allowedTools, "Glob", "Grep"])],
-    },
-  });
+function toolUses(result) {
+  return result.normalizedEvents
+    .filter((event) => event.type === "tool_use")
+    .map((event) => ({
+      name: event.payload?.tool_name,
+      input: event.payload?.input,
+    }))
+    .filter((value) => typeof value.name === "string");
 }
 
 async function run() {
@@ -162,7 +155,6 @@ async function run() {
     const transport = new AgentSdkClaudeTransport({
       cwd: root,
       environment: process.env,
-      queryImpl: queryWithDedicatedSearchTools,
     });
 
     let filesystemInit = null;
@@ -179,9 +171,10 @@ async function run() {
         "Use the project skill named leileios-parity to learn the exact skill sentinel.",
         `Use Write to create ./workspace/parity.txt with exactly: ${writeSentinel}`,
         `Use Edit to replace that exact text with exactly: ${editSentinel}`,
-        "Use Glob to find ./workspace/*.txt.",
-        `Use Grep to search ./workspace for the exact edited text ${editSentinel}.`,
-        "Do not use Bash to perform any of those four file operations.",
+        "Inspect the available tools from this native SDK session before searching.",
+        "If dedicated Glob and Grep are available, use Glob to find ./workspace/*.txt and Grep to search ./workspace for the exact edited text.",
+        `If dedicated Glob/Grep are not available, use Bash only for the two search operations: find ./workspace -name 'parity.txt' and grep for the exact edited text ${editSentinel} in ./workspace/parity.txt.`,
+        "Do not use Bash for the Write or Edit operations.",
         "After the required tools complete, reply with exactly the skill sentinel and nothing else.",
       ].join("\n"),
     );
@@ -193,13 +186,23 @@ async function run() {
       && filesystemInit.skills.includes("leileios-parity"),
       `project Skill was not advertised in init: ${JSON.stringify(filesystemInit.skills)}`,
     );
-    for (const required of ["Write", "Edit", "Glob", "Grep", "Skill"]) {
+    for (const required of ["Write", "Edit", "Skill"]) {
       assert.ok(
         Array.isArray(filesystemInit.tools)
         && filesystemInit.tools.includes(required),
         `init did not expose built-in ${required}: ${JSON.stringify(filesystemInit.tools)}`,
       );
     }
+
+    const dedicatedSearch =
+      filesystemInit.tools.includes("Glob")
+      && filesystemInit.tools.includes("Grep");
+    const nativeBashSearch =
+      !dedicatedSearch && filesystemInit.tools.includes("Bash");
+    assert.ok(
+      dedicatedSearch || nativeBashSearch,
+      `init exposed neither dedicated Glob/Grep nor native Bash search: ${JSON.stringify(filesystemInit.tools)}`,
+    );
 
     assert.equal(
       finalText(filesystem),
@@ -208,10 +211,33 @@ async function run() {
     );
 
     const names = toolNames(filesystem);
-    for (const required of ["Write", "Edit", "Glob", "Grep"]) {
+    const uses = toolUses(filesystem);
+    for (const required of ["Write", "Edit"]) {
       assert.ok(
         names.includes(required),
         `required built-in tool ${required} was not observed: ${JSON.stringify(names)}`,
+      );
+    }
+
+    if (dedicatedSearch) {
+      for (const required of ["Glob", "Grep"]) {
+        assert.ok(
+          names.includes(required),
+          `dedicated search tool ${required} was not observed: ${JSON.stringify(names)}`,
+        );
+      }
+    } else {
+      const bashCommands = uses
+        .filter((use) => use.name === "Bash")
+        .map((use) => use.input?.command)
+        .filter((value) => typeof value === "string");
+      assert.ok(
+        bashCommands.some((command) => /\bfind\b/u.test(command)),
+        `native search did not exercise find through Bash: ${JSON.stringify(bashCommands)}`,
+      );
+      assert.ok(
+        bashCommands.some((command) => /\bgrep\b/u.test(command)),
+        `native search did not exercise grep through Bash: ${JSON.stringify(bashCommands)}`,
       );
     }
 
@@ -294,12 +320,13 @@ async function run() {
             projectSkill: true,
             write: true,
             edit: true,
-            glob: true,
-            grep: true,
+            filesystemSearch: dedicatedSearch ? "dedicated_glob_grep" : "native_bash_find_grep",
             localPostToolUseHook: true,
             projectSubagent: true,
           },
           filesystemToolNames: names,
+          filesystemSearchMode:
+            dedicatedSearch ? "dedicated_glob_grep" : "native_bash_find_grep",
           subagentToolNames: subagentTools,
           hookEvents,
           init: {
