@@ -1,12 +1,18 @@
 import SwiftUI
 
+extension Color {
+    static var chatSoftFill: Color {
+        Color(uiColor: .quaternarySystemFill)
+    }
+}
+
 struct ComposerCircleButton: View {
     let systemName: String
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(uiColor: .tertiarySystemFill))
+                .fill(Color.chatSoftFill)
                 .frame(width: 36, height: 36)
 
             Image(systemName: systemName)
@@ -37,7 +43,7 @@ struct CombinedModelCapsule: View {
         .frame(height: 36)
         .background(
             Capsule()
-                .fill(Color(uiColor: .tertiarySystemFill))
+                .fill(Color.chatSoftFill)
         )
     }
 }
