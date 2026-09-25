@@ -103,7 +103,7 @@ struct ChatView: View {
                 )
                 .ignoresSafeArea()
             }
-            .safeAreaPadding(.bottom, 10)
+            .offset(y: 10)
         }
         .overlay {
             if isConversationLoading {
