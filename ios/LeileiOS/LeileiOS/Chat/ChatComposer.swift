@@ -2,8 +2,9 @@ import SwiftUI
 
 struct ChatComposer: View {
     @Binding var text: String
-    @Binding var model: String
-    @Binding var effort: String
+    @Binding var model: NativeLiveClaudeModel
+    @Binding var thinking: NativeLiveThinkingMode
+    @Binding var effort: NativeLiveEffortLevel
     var isFocused: FocusState<Bool>.Binding
     var isSending = false
     var onSend: (() -> Void)? = nil
@@ -46,36 +47,47 @@ struct ChatComposer: View {
 
                 Menu {
                     Section("Model") {
-                        Button("Opus 5") {
-                            model = "Opus 5"
-                        }
-
-                        Button("Sonnet 5") {
-                            model = "Sonnet 5"
-                        }
-
-                        Button("Default") {
-                            model = "Default"
+                        ForEach(NativeLiveClaudeModel.allCases) { option in
+                            Button {
+                                selectModel(option)
+                            } label: {
+                                menuRow(
+                                    option.displayName,
+                                    selected: model == option
+                                )
+                            }
                         }
                     }
 
                     Section("Thinking") {
-                        Button("Low") {
-                            effort = "Low"
+                        ForEach(model.supportedThinkingModes) { option in
+                            Button {
+                                thinking = option
+                            } label: {
+                                menuRow(
+                                    option.displayName,
+                                    selected: thinking == option
+                                )
+                            }
                         }
+                    }
 
-                        Button("Medium") {
-                            effort = "Medium"
-                        }
-
-                        Button("High") {
-                            effort = "High"
+                    Section("Effort") {
+                        ForEach(model.supportedEffortLevels) { option in
+                            Button {
+                                effort = option
+                            } label: {
+                                menuRow(
+                                    option.displayName,
+                                    selected: effort == option
+                                )
+                            }
                         }
                     }
                 } label: {
                     CombinedModelCapsule(
-                        model: model,
-                        effort: effort
+                        model: model.displayName,
+                        effort: effort.displayName
                     )
                 }
 
@@ -138,6 +150,34 @@ struct ChatComposer: View {
                 style: .continuous
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
+        }
+    }
+
+    private func selectModel(
+        _ selection: NativeLiveClaudeModel
+    ) {
+        model = selection
+
+        if !selection.supportedThinkingModes.contains(thinking) {
+            thinking = selection.supportedThinkingModes[0]
+        }
+
+        if !selection.supportedEffortLevels.contains(effort) {
+            effort = selection.supportedEffortLevels.contains(.high)
+                ? .high
+                : selection.supportedEffortLevels[0]
+        }
+    }
+
+    @ViewBuilder
+    private func menuRow(
+        _ title: String,
+        selected: Bool
+    ) -> some View {
+        if selected {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
         }
     }
 }
