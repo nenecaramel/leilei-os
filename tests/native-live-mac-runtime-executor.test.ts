@@ -511,3 +511,153 @@ test("auto-compact failure is fail-soft and preserves the successful user turn",
     ["result"],
   );
 });
+
+
+test("foreground execution readback is persisted as bounded runtime metadata", async () => {
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      return {
+        providerSessionId: "provider-readback",
+        normalizedEvents: [],
+        contextUsage: null,
+        compactionAdvisory: null,
+        executionReadback: {
+          requested: {
+            model: "claude-opus-5-5",
+            thinking: "adaptive",
+            effort: "high",
+          },
+          applied: {
+            model: "claude-opus-5-5",
+            effort: "high",
+          },
+          capability: {
+            value: "claude-opus-5-5",
+            display_name: "Claude Opus 5.5",
+            description: "test model",
+            supports_effort: true,
+            supported_effort_levels: [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+            ],
+            supports_adaptive_thinking: true,
+            supports_fast_mode: false,
+            supports_auto_mode: false,
+          },
+          supported_models: [{
+            value: "claude-opus-5-5",
+          }],
+        },
+        executionReadbackError: null,
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
+    command({
+      execution_selection: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "high",
+      },
+    }),
+  );
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(result.runtime_metadata?.execution, {
+    readback: {
+      requested: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "high",
+      },
+      applied: {
+        model: "claude-opus-5-5",
+        effort: "high",
+      },
+      capability: {
+        value: "claude-opus-5-5",
+        display_name: "Claude Opus 5.5",
+        description: "test model",
+        supports_effort: true,
+        supported_effort_levels: [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+        ],
+        supports_adaptive_thinking: true,
+        supports_fast_mode: false,
+        supports_auto_mode: false,
+      },
+    },
+    readback_error: null,
+  });
+  assert.equal(
+    "supported_models" in (
+      result.runtime_metadata?.execution?.readback
+      ?? {}
+    ),
+    false,
+  );
+});
+
+test("foreground execution readback errors are persisted as bounded codes only", async () => {
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      return {
+        providerSessionId: "provider-readback-error",
+        normalizedEvents: [],
+        contextUsage: null,
+        compactionAdvisory: null,
+        executionReadback: {
+          requested: {
+            model: "claude-opus-5-5",
+            thinking: "adaptive",
+            effort: "medium",
+          },
+          applied: {
+            model: null,
+            effort: null,
+          },
+          capability: null,
+          supported_models: [],
+        },
+        executionReadbackError:
+          "private /Users/Admin1/sdk settings failure",
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
+    command({
+      execution_selection: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "medium",
+      },
+    }),
+  );
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(
+    result.runtime_metadata?.execution?.readback_error,
+    "READBACK_UNAVAILABLE",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(result.runtime_metadata),
+    /Admin1|sdk settings failure/,
+  );
+});
