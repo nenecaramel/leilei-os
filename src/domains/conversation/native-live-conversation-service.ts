@@ -6,7 +6,10 @@ import type {
   NativeLiveProviderCheckpoint,
   NativeLiveProviderCheckpointInput,
 } from "./native-live-conversation-types.js";
-import type { NativeLiveConversationRepository } from "./native-live-conversation-repository.js";
+import type {
+  NativeLiveConversationDeleteResult,
+  NativeLiveConversationRepository,
+} from "./native-live-conversation-repository.js";
 
 export class NativeLiveConversationService {
   constructor(private readonly repository: NativeLiveConversationRepository) {}
@@ -33,6 +36,13 @@ export class NativeLiveConversationService {
     conversationId: string;
   }): Promise<NativeLiveConversation | null> {
     return this.repository.getConversation(input);
+  }
+
+  deleteConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationDeleteResult> {
+    return this.repository.deleteConversation(input);
   }
 
   async appendUserMessage(input: {

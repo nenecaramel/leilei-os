@@ -187,7 +187,10 @@ implements NativeLiveBackendTurnPort {
           userId: input.userId,
           conversationId: input.conversationId,
         });
-        if (!conversation) {
+        if (
+          !conversation
+          || conversation.lifecycleStatus !== "active"
+        ) {
           return { ok: false as const, code: "CONVERSATION_NOT_FOUND" as const };
         }
         if (
@@ -286,7 +289,10 @@ implements NativeLiveBackendTurnPort {
           userId: input.userId,
           conversationId: input.conversationId,
         });
-        if (!conversation) {
+        if (
+          !conversation
+          || conversation.lifecycleStatus !== "active"
+        ) {
           return { ok: false as const, code: "CONVERSATION_NOT_FOUND" as const };
         }
 
@@ -370,7 +376,10 @@ implements NativeLiveBackendTurnPort {
           userId: input.userId,
           conversationId: input.conversationId,
         });
-        if (!conversation) {
+        if (
+          !conversation
+          || conversation.lifecycleStatus !== "active"
+        ) {
           return { ok: false as const, code: "CONVERSATION_NOT_FOUND" as const };
         }
 

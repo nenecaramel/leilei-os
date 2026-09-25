@@ -309,3 +309,31 @@ test("cross-device Distillation discards a model result when its staged canonica
   assert.deepEqual(port.states, []);
   assert.ok(job.consumedAt);
 });
+
+
+test("cross-device Distillation treats a deleted native live conversation as unavailable", async () => {
+  const queue = new Queue();
+  const port = new MemoryPort();
+  const deleted = {
+    ...linearConversation(),
+    lifecycleStatus: "deleted" as const,
+  };
+  const coordinator = new DistillationCrossDeviceCoordinator(
+    queue,
+    {
+      async getConversation() {
+        return deleted;
+      },
+    },
+    port,
+    config(),
+  );
+
+  const start = await coordinator.start({
+    userId,
+    subjectId: "G",
+    conversationId,
+  });
+  assert.equal(start.outcome, "idle");
+  assert.equal(queue.jobs.length, 0);
+});
