@@ -48,6 +48,7 @@
     "test:native-live-semantic-db": "RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST=1 tsx --test tests/native-live-semantic-handshake.integration.test.ts",
     "smoke:runtime-breath-e5-cross-device": "tsx scripts/runtime-breath-e5-cross-device-smoke.ts",
     "smoke:runtime-topic-resurface-production": "tsx scripts/runtime-topic-resurface-production-acceptance.ts",
+    "smoke:runtime-true-forgetting-production": "tsx scripts/runtime-true-forgetting-production-acceptance.ts",
     "test:runtime-thought-db": "RUN_RUNTIME_THOUGHT_DATABASE_TEST=1 tsx --test tests/runtime-thought-evolution-repository.integration.test.ts tests/runtime-topic-resurface-thought-materialization-repository.integration.test.ts tests/runtime-topic-resurface-background-pipeline.integration.test.ts tests/runtime-topic-resurface-cross-device-coordinator.integration.test.ts",
     "test:runtime-drive-db": "RUN_RUNTIME_DRIVE_DATABASE_TEST=1 tsx --test tests/runtime-drive-satisfaction-repository.integration.test.ts",
     "test:runtime-topic-db": "RUN_RUNTIME_TOPIC_DATABASE_TEST=1 tsx --test tests/runtime-topic-evolution-repository.integration.test.ts tests/runtime-curiosity-topic-projection-repository.integration.test.ts tests/runtime-topic-resurface-candidate-repository.integration.test.ts",
