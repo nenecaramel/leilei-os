@@ -7,10 +7,44 @@ struct ChatComposer: View {
     @Binding var effort: NativeLiveEffortLevel
     var isFocused: FocusState<Bool>.Binding
     var isSending = false
+    var isEditing = false
+    var onCancelEdit: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if isEditing {
+                HStack(spacing: 8) {
+                    Text("Edit message")
+                        .font(.system(size: 13.5, weight: .regular))
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        onCancelEdit?()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .light))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel edit")
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 6)
+                .frame(height: 34)
+                .background(
+                    Color.chatSoftFill,
+                    in: RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous
+                    )
+                )
+                .transition(.opacity)
+            }
+
             TextField(
                 "",
                 text: $text,
