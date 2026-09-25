@@ -167,6 +167,7 @@ function isRuntimeFailureCode(
     value === "CLAUDE_PROCESS_FAILED"
     || value === "MALFORMED_STREAM"
     || value === "ABORTED"
+    || value === "INTERRUPTED"
     || value === "NO_PROVIDER_SESSION"
     || value === "PROVIDER_SESSION_CONFLICT"
     || value === "RUNTIME_UNAVAILABLE"
