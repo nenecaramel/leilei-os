@@ -8,6 +8,7 @@ extension Color {
 
 struct ComposerCircleButton: View {
     let systemName: String
+    var weight: Font.Weight = .medium
 
     var body: some View {
         ZStack {
@@ -18,7 +19,7 @@ struct ComposerCircleButton: View {
             Image(systemName: systemName)
                 .font(.system(
                     size: 15,
-                    weight: .medium
+                    weight: weight
                 ))
                 .foregroundStyle(.primary)
         }
@@ -32,13 +33,13 @@ struct CombinedModelCapsule: View {
     var body: some View {
         HStack(spacing: 5) {
             Text(model)
-                .fontWeight(.medium)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.primary)
 
             Text(effort)
-                .foregroundStyle(.primary.opacity(0.80))
+                .font(.system(size: 11.5, weight: .regular))
+                .foregroundStyle(.primary.opacity(0.55))
         }
-        .font(.system(size: 13))
-        .foregroundStyle(.primary)
         .padding(.horizontal, 10)
         .frame(height: 36)
         .background(
