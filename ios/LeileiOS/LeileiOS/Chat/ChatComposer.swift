@@ -46,19 +46,8 @@ struct ChatComposer: View {
                 }
 
                 Menu {
-                    Section("Model") {
-                        Picker("", selection: modelSelection) {
-                            ForEach(NativeLiveClaudeModel.allCases) { option in
-                                Text(option.displayName)
-                                    .tag(option)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.inline)
-                    }
-
                     Section("Thinking") {
-                        Picker("", selection: $thinking) {
+                        Picker("", selection: thinkingSelection) {
                             ForEach(model.supportedThinkingModes) { option in
                                 Text(option.displayName)
                                     .tag(option)
@@ -70,7 +59,18 @@ struct ChatComposer: View {
 
                     Section("Effort") {
                         Picker("", selection: $effort) {
-                            ForEach(model.supportedEffortLevels) { option in
+                            ForEach(availableEffortLevels) { option in
+                                Text(option.displayName)
+                                    .tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.inline)
+                    }
+
+                    Section("Model") {
+                        Picker("", selection: modelSelection) {
+                            ForEach(NativeLiveClaudeModel.allCases) { option in
                                 Text(option.displayName)
                                     .tag(option)
                             }
@@ -156,17 +156,42 @@ struct ChatComposer: View {
             thinking = selection.supportedThinkingModes[0]
         }
 
-        if !selection.supportedEffortLevels.contains(effort) {
-            effort = selection.supportedEffortLevels.contains(.high)
+        let allowedEfforts = selection.supportedEffortLevels(
+            thinking: thinking
+        )
+        if !allowedEfforts.contains(effort) {
+            effort = allowedEfforts.contains(.high)
                 ? .high
-                : selection.supportedEffortLevels[0]
+                : allowedEfforts[0]
         }
+    }
+
+    private var availableEffortLevels: [NativeLiveEffortLevel] {
+        model.supportedEffortLevels(thinking: thinking)
     }
 
     private var modelSelection: Binding<NativeLiveClaudeModel> {
         Binding(
             get: { model },
             set: { selectModel($0) }
+        )
+    }
+
+    private var thinkingSelection: Binding<NativeLiveThinkingMode> {
+        Binding(
+            get: { thinking },
+            set: { selection in
+                thinking = selection
+
+                let allowedEfforts = model.supportedEffortLevels(
+                    thinking: selection
+                )
+                if !allowedEfforts.contains(effort) {
+                    effort = allowedEfforts.contains(.high)
+                        ? .high
+                        : allowedEfforts[0]
+                }
+            }
         )
     }
 }
