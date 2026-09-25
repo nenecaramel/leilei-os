@@ -78,7 +78,8 @@ export class NativeLiveMacCompanionScheduler {
     }
 
     const dirtyVersionAtStart = this.dirtyVersion;
-    const run = this.client
+    let run!: Promise<NativeLiveMacCompanionSchedulerResult>;
+    run = this.client
       .offerCompanionBackgroundOpportunity({
         listenerInstanceId: this.listenerInstanceId,
         dispatchTarget: "claude_code",
