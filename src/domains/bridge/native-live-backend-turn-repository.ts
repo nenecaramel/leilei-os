@@ -24,6 +24,10 @@ import type {
 import type {
   NativeLiveNormalizedEvent,
 } from "../conversation/native-live-conversation-orchestrator.js";
+import {
+  parseNativeLiveExecutionSelection,
+  type NativeLiveExecutionSelection,
+} from "./native-live-execution-selection.js";
 import type {
   NativeLiveRuntimeFailureCode,
   NativeLiveRuntimeMode,
@@ -76,6 +80,7 @@ type PreparationRow = {
   canonicalUserMessageId: string;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
+  executionSelection: Record<string, unknown> | null;
   prompt: string;
   mindPrepared: boolean;
   status: "prepared" | "finalized_success" | "finalized_failure";
@@ -104,6 +109,9 @@ function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     canonicalUserMessageId: row.canonicalUserMessageId,
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
+    executionSelection: row.executionSelection === null
+      ? null
+      : parseNativeLiveExecutionSelection(row.executionSelection),
     prompt: row.prompt,
     mindPrepared: row.mindPrepared,
   };
@@ -143,12 +151,14 @@ implements NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     const requestHash = hashJson(REQUEST_HASH_VERSION, {
       operation: "send",
       conversationId: input.conversationId,
       expectedHeadMessageId: input.expectedHeadMessageId,
       text: input.text,
+      executionSelection: input.executionSelection,
     });
 
     return this.prepareWithRaceRecovery(
@@ -220,6 +230,7 @@ implements NativeLiveBackendTurnPort {
           canonicalUserMessageId: userMessage.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          executionSelection: input.executionSelection,
           prompt: input.text,
         });
 
@@ -238,11 +249,13 @@ implements NativeLiveBackendTurnPort {
     requestId: string;
     conversationId: string;
     targetUserMessageId: string;
+    executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     const requestHash = hashJson(REQUEST_HASH_VERSION, {
       operation: "retry",
       conversationId: input.conversationId,
       targetUserMessageId: input.targetUserMessageId,
+      executionSelection: input.executionSelection,
     });
 
     return this.prepareWithRaceRecovery(
@@ -297,6 +310,7 @@ implements NativeLiveBackendTurnPort {
           canonicalUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          executionSelection: input.executionSelection,
           prompt,
         });
 
@@ -316,12 +330,14 @@ implements NativeLiveBackendTurnPort {
     conversationId: string;
     targetUserMessageId: string;
     text: string;
+    executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     const requestHash = hashJson(REQUEST_HASH_VERSION, {
       operation: "edit",
       conversationId: input.conversationId,
       targetUserMessageId: input.targetUserMessageId,
       text: input.text,
+      executionSelection: input.executionSelection,
     });
 
     return this.prepareWithRaceRecovery(
@@ -392,6 +408,7 @@ implements NativeLiveBackendTurnPort {
           canonicalUserMessageId: editedUser.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          executionSelection: input.executionSelection,
           prompt: input.text,
         });
 
@@ -835,6 +852,7 @@ implements NativeLiveBackendTurnPort {
       canonicalUserMessageId: string;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
+      executionSelection: NativeLiveExecutionSelection | null;
       prompt: string;
     },
   ): Promise<NativeLivePreparedTurn> {
@@ -850,6 +868,7 @@ implements NativeLiveBackendTurnPort {
         canonicalUserMessageId: input.canonicalUserMessageId,
         runtimeMode: input.runtimeMode,
         parentProviderSessionId: input.parentProviderSessionId,
+        executionSelection: input.executionSelection,
         prompt: input.prompt,
         mindPrepared: false,
         status: "prepared",
@@ -951,6 +970,7 @@ implements NativeLiveBackendTurnPort {
       runtimeMode: nativeLiveTurnPreparations.runtimeMode,
       parentProviderSessionId:
         nativeLiveTurnPreparations.parentProviderSessionId,
+      executionSelection: nativeLiveTurnPreparations.executionSelection,
       prompt: nativeLiveTurnPreparations.prompt,
       mindPrepared: nativeLiveTurnPreparations.mindPrepared,
       status: nativeLiveTurnPreparations.status,
