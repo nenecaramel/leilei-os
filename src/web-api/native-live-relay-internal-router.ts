@@ -86,7 +86,7 @@ export type NativeLiveRelayInternalDependencies = {
   >;
   runtimeControlService?: Pick<
     NativeLiveRuntimeControlService,
-    "reserveNextForListener" | "completeForListener"
+    "waitNextForListener" | "completeForListener"
   >;
   companionBackgroundOpportunity?: Pick<
     CompanionBackgroundOpportunityService,
@@ -180,8 +180,8 @@ export function createNativeLiveRelayInternalRouter(
   }
   if (dependencies.runtimeControlService) {
     router.post(
-      "/reservations/:reservationId/controls/reserve",
-      reserveRuntimeControlHandler(dependencies),
+      "/reservations/:reservationId/controls/wait",
+      waitRuntimeControlHandler(dependencies),
     );
     router.post(
       "/reservations/:reservationId/controls/:controlId/complete",
@@ -614,7 +614,7 @@ function executionStartedHandler(
   };
 }
 
-function reserveRuntimeControlHandler(
+function waitRuntimeControlHandler(
   dependencies: NativeLiveRelayInternalDependencies,
 ): RequestHandler {
   return async (request, response) => {
@@ -629,19 +629,45 @@ function reserveRuntimeControlHandler(
     }
 
     try {
-      const control =
-        await dependencies.runtimeControlService.reserveNextForListener({
-          userId,
-          listenerInstanceId: body.listener_instance_id,
-          reservationId,
-        });
-      response.json({
-        success: true,
-        data: control
-          ? { control }
-          : null,
+      const lease = await dependencies.relayService.renewLease({
+        userId,
+        listenerInstanceId: body.listener_instance_id,
+        dispatchTarget: "claude_code",
       });
+      if (lease === "busy") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: "RESERVATION_CONFLICT",
+            message: "Native live listener lease is no longer owned by this daemon.",
+          },
+        });
+        return;
+      }
+
+      const controller = new AbortController();
+      const onClose = () => controller.abort();
+      response.once("close", onClose);
+      try {
+        const result =
+          await dependencies.runtimeControlService.waitNextForListener({
+            userId,
+            listenerInstanceId: body.listener_instance_id,
+            reservationId,
+            timeoutMs: 25_000,
+            signal: controller.signal,
+          });
+        if (!response.writableEnded && !controller.signal.aborted) {
+          response.json({
+            success: true,
+            data: result,
+          });
+        }
+      } finally {
+        response.off("close", onClose);
+      }
     } catch (error) {
+      if (response.writableEnded) return;
       sendRuntimeControlError(response, error);
     }
   };
