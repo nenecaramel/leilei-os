@@ -198,6 +198,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       permissionHandler,
       questionHandler,
       midTurnInput: Boolean(controlPump),
+      executionReadback: Boolean(execution),
     });
 
     this.activeTurnHandle = handle;
@@ -250,9 +251,20 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         evaluateTurnBoundaryCompaction(handleResult.rawContextUsage, {
           thresholdPercent: this.compactionThresholdPercent,
         });
+      const executionReadback =
+        execution
+          ? normalizeAgentSdkExecutionReadback({
+              requested: execution,
+              settings: handleResult.rawExecutionSettings,
+              supportedModels: handleResult.rawSupportedModels,
+            })
+          : null;
       const {
         rawContextUsage: _rawContextUsage,
         contextUsageError,
+        rawExecutionSettings: _rawExecutionSettings,
+        rawSupportedModels: _rawSupportedModels,
+        executionReadbackError,
         ...result
       } = handleResult;
 
@@ -288,6 +300,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         contextUsage,
         contextUsageError,
         compactionAdvisory,
+        executionReadback,
+        executionReadbackError,
         stdout: "",
         stderr: "",
         exitCode: 0,
