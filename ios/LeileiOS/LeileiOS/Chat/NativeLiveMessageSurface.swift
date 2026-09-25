@@ -126,10 +126,10 @@ struct NativeLiveMessageSurface: View {
                                     size: 14,
                                     weight: .semibold
                                 ))
-                                .foregroundStyle(Color.black.opacity(0.78))
+                                .foregroundStyle(Color.primary.opacity(0.78))
                                 .frame(width: 38, height: 38)
-                                .background(
-                                    Color.white,
+                                .glassEffect(
+                                    .regular,
                                     in: Circle()
                                 )
                                 .overlay {
@@ -142,7 +142,7 @@ struct NativeLiveMessageSurface: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Scroll to latest")
-                        .padding(.bottom, 6)
+                        .offset(y: 10)
                         .transition(
                             .scale(scale: 0.9)
                                 .combined(with: .opacity)
