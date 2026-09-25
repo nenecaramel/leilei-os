@@ -877,3 +877,78 @@ test("interactive foreground execution applies model thinking and effort selecti
   assert.equal(call.options.effort, "xhigh");
   assert.equal(call.options.verbatimPrompts, true);
 });
+
+
+test("interactive foreground returns turn-boundary context usage and compaction advisory", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async getContextUsage() {
+        return {
+          model: "claude-opus-5-5",
+          totalTokens: 760000,
+          maxTokens: 1000000,
+          rawMaxTokens: 1000000,
+          percentage: 76,
+          categories: [{
+            name: "Messages",
+            tokens: 700000,
+            kind: "used",
+            isDeferred: false,
+          }],
+        };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-context-interactive",
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-context-interactive",
+          message: {
+            content: [{ type: "text", text: "done" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-context-interactive",
+          result: "done",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+    },
+  );
+
+  assert.deepEqual(result.contextUsage, {
+    model: "claude-opus-5-5",
+    total_tokens: 760000,
+    max_tokens: 1000000,
+    raw_max_tokens: 1000000,
+    percentage: 76,
+    categories: [{
+      name: "Messages",
+      tokens: 700000,
+      kind: "used",
+      is_deferred: false,
+    }],
+  });
+  assert.equal(result.contextUsageError, null);
+  assert.deepEqual(result.compactionAdvisory, {
+    due: true,
+    threshold_percent: 75,
+    observed_percent: 76,
+    reason: "turn_boundary_threshold_reached",
+  });
+});
