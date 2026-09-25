@@ -87,6 +87,8 @@ final class AuthSessionController {
             throw AuthSessionError.notConfigured
         }
 
+        try? credentialsManager.clear()
+
         let credentials = try await Auth0
             .webAuth(
                 clientId: clientID,
@@ -95,7 +97,7 @@ final class AuthSessionController {
             .useCredentialsManager(credentialsManager)
             .audience(audience)
             .scope("openid profile email offline_access \(scope)")
-            .parameters(["prompt": "select_account"])
+            .parameters(["prompt": "login"])
             .useEphemeralSession()
             .start()
 
@@ -126,7 +128,7 @@ final class AuthSessionController {
             .useCredentialsManager(credentialsManager)
             .audience(audience)
             .scope("openid profile email offline_access \(scope)")
-            .parameters(["prompt": "select_account"])
+            .parameters(["prompt": "login"])
             .useEphemeralSession()
             .start()
 
