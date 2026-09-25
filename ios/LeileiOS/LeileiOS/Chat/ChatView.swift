@@ -67,7 +67,7 @@ struct ChatView: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 18)
-            .padding(.bottom, isComposerFocused ? 16 : 8)
+            .padding(.bottom, isComposerFocused ? 18 : 8)
             .background {
                 LinearGradient(
                     colors: [
