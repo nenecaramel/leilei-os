@@ -302,6 +302,8 @@ export class AgentSdkTurnHandle {
     this.closed = false;
     this.started = false;
     this.completion = null;
+    this.rawContextUsage = null;
+    this.contextUsageError = null;
   }
 
   start() {
@@ -438,6 +440,23 @@ export class AgentSdkTurnHandle {
           this.events.emit("normalized-event", event);
         }
 
+        if (
+          message?.type === "assistant"
+          && typeof this.query.getContextUsage === "function"
+        ) {
+          try {
+            this.rawContextUsage = await this.query.getContextUsage({
+              detail: "summary",
+            });
+            this.contextUsageError = null;
+          } catch (cause) {
+            if (!this.rawContextUsage) {
+              this.contextUsageError =
+                cause instanceof Error ? cause.message : String(cause);
+            }
+          }
+        }
+
         if (message?.type === "result") {
           terminalResult = message;
           this.inputQueue?.end();
@@ -541,6 +560,8 @@ export class AgentSdkTurnHandle {
       events: parsedEvents,
       normalizedEvents,
       result: terminalResult,
+      rawContextUsage: this.rawContextUsage,
+      contextUsageError: this.contextUsageError,
     };
   }
 }
