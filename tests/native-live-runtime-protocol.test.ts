@@ -160,6 +160,101 @@ test("success result accepts bounded runtime compaction metadata", () => {
   );
 });
 
+test("runtime metadata accepts bounded execution readback while remaining backward compatible", () => {
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      compaction_advisory: null,
+      compaction: null,
+      execution: {
+        readback: {
+          requested: {
+            model: "claude-opus-5-5",
+            thinking: "adaptive",
+            effort: "medium",
+          },
+          applied: {
+            model: "claude-opus-5-5",
+            effort: "medium",
+          },
+          capability: null,
+        },
+        readback_error: null,
+      },
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(
+    result.runtime_metadata?.execution?.readback.applied.model,
+    "claude-opus-5-5",
+  );
+
+  const legacy = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      compaction_advisory: null,
+      compaction: null,
+    },
+  });
+  assert.equal(legacy.status, "success");
+  if (legacy.status !== "success") throw new Error("expected success");
+  assert.equal(
+    Object.hasOwn(
+      legacy.runtime_metadata ?? {},
+      "execution",
+    ),
+    false,
+  );
+});
+
+test("runtime metadata rejects unbounded execution readback errors", () => {
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeExecutionResult({
+        protocol_version: 1,
+        prepare_id: prepareId,
+        request_id: requestId,
+        conversation_id: conversationId,
+        status: "success",
+        provider_session_id: "provider-child",
+        normalized_events: [],
+        runtime_metadata: {
+          context_usage: null,
+          compaction_advisory: null,
+          compaction: null,
+          execution: {
+            readback: {
+              requested: null,
+              applied: {
+                model: null,
+                effort: null,
+              },
+              capability: null,
+            },
+            readback_error: "private raw error",
+          },
+        },
+      }),
+    /execution\.readback_error is invalid/,
+  );
+});
+
 test("failure result exposes only a bounded safe error code", () => {
   assert.deepEqual(
     parseNativeLiveRuntimeExecutionResult({
