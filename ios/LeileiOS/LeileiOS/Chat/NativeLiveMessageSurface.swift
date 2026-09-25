@@ -144,6 +144,10 @@ struct NativeLiveMessageSurface: View {
                                     }
 
                                     await Task.yield()
+                                    guard initialPositioningConversationID
+                                        == snapshot.conversationId else {
+                                        return
+                                    }
                                     initiallyPositionedConversationID =
                                         snapshot.conversationId
                                     initialPositioningConversationID = nil
