@@ -30,6 +30,7 @@ import {
 } from "./native-live-execution-selection.js";
 import type {
   NativeLiveRuntimeFailureCode,
+  NativeLiveRuntimeMetadata,
   NativeLiveRuntimeMode,
 } from "./native-live-runtime-protocol.js";
 
@@ -60,6 +61,7 @@ export type NativeLiveBackendTurnReadModel = {
     | "completed"
     | "rejected";
   assistantMessage: NativeLiveMessage | null;
+  runtimeMetadata: NativeLiveRuntimeMetadata | null;
   failureCode: string | null;
   semanticStatus:
     | "pending"
@@ -86,6 +88,7 @@ type PreparationRow = {
   status: "prepared" | "finalized_success" | "finalized_failure";
   resultHash: string | null;
   providerSessionId: string | null;
+  runtimeMetadata: Record<string, unknown> | null;
   assistantMessageId: string | null;
   failureCode: string | null;
 };
@@ -450,6 +453,7 @@ implements NativeLiveBackendTurnPort {
         canonicalStatus: nativeLiveTurnPreparations.status,
         dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
         assistantMessageId: nativeLiveTurnPreparations.assistantMessageId,
+        runtimeMetadata: nativeLiveTurnPreparations.runtimeMetadata,
         failureCode: nativeLiveTurnPreparations.failureCode,
       })
       .from(nativeLiveTurnPreparations)
@@ -503,6 +507,8 @@ implements NativeLiveBackendTurnPort {
       canonicalStatus: row.canonicalStatus,
       dispatchStatus: row.dispatchStatus,
       assistantMessage,
+      runtimeMetadata:
+        row.runtimeMetadata as NativeLiveRuntimeMetadata | null,
       failureCode: row.failureCode,
       semanticStatus: semantic?.status ?? null,
       semanticFallbackCode: semantic?.fallbackCode ?? null,
@@ -582,6 +588,7 @@ implements NativeLiveBackendTurnPort {
       status: "success",
       providerSessionId: input.providerSessionId,
       normalizedEvents: input.normalizedEvents,
+      runtimeMetadata: input.runtimeMetadata,
     });
 
     try {
@@ -661,6 +668,8 @@ implements NativeLiveBackendTurnPort {
               status: "finalized_success",
               resultHash,
               providerSessionId: input.providerSessionId,
+              runtimeMetadata:
+                input.runtimeMetadata as Record<string, unknown> | null,
               assistantMessageId: assistantMessage.id,
               failureCode: null,
               finalizedAt,
@@ -982,6 +991,7 @@ implements NativeLiveBackendTurnPort {
       status: nativeLiveTurnPreparations.status,
       resultHash: nativeLiveTurnPreparations.resultHash,
       providerSessionId: nativeLiveTurnPreparations.providerSessionId,
+      runtimeMetadata: nativeLiveTurnPreparations.runtimeMetadata,
       assistantMessageId: nativeLiveTurnPreparations.assistantMessageId,
       failureCode: nativeLiveTurnPreparations.failureCode,
     };
