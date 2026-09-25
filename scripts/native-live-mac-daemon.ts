@@ -20,11 +20,15 @@ import {
 import {
   createNativeLiveMacClaudeTransport,
 } from "../src/domains/bridge/native-live-mac-claude-transport.js";
+import {
+  NativeLiveMacCompanionScheduler,
+} from "../src/domains/bridge/native-live-mac-companion-scheduler.js";
 
 const {
   relayBaseUrl,
   relayToken,
   listenerInstanceId,
+  companionBackgroundIntervalMs,
 } = resolveNativeLiveMacDaemonConfig(process.env);
 
 if (process.env.ANTHROPIC_API_KEY) {
@@ -36,6 +40,11 @@ if (process.env.ANTHROPIC_API_KEY) {
 const relay = new NativeLiveMacHttpRelayClient(
   relayBaseUrl,
   relayToken,
+);
+const companionScheduler = new NativeLiveMacCompanionScheduler(
+  relay,
+  listenerInstanceId,
+  companionBackgroundIntervalMs,
 );
 const {
   kind: claudeTransportKind,
@@ -50,14 +59,7 @@ const loop = new NativeLiveMacDaemonLoop(
   relay,
   executor,
   semanticScorer,
-  {
-    async offer() {
-      await relay.offerTopicResurfaceOpportunity({
-        listenerInstanceId,
-        dispatchTarget: "claude_code",
-      });
-    },
-  },
+  companionScheduler,
   backgroundModelExecutor,
 );
 
@@ -103,6 +105,13 @@ while (!stopping) {
           : {}),
       }) + "\n",
     );
+
+    if (
+      outcome.outcome === "completed"
+      && outcome.result.status === "success"
+    ) {
+      companionScheduler.markDirty();
+    }
 
     if (
       outcome.outcome === "completed"

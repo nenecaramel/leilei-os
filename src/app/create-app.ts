@@ -118,6 +118,8 @@ export type AppDependencies = {
     NativeLiveRelayInternalDependencies["backgroundModelCoordinator"];
   nativeLiveBackgroundModelOpportunity?:
     NativeLiveRelayInternalDependencies["backgroundModelOpportunity"];
+  nativeLiveCompanionBackgroundOpportunity?:
+    NativeLiveRelayInternalDependencies["companionBackgroundOpportunity"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -510,6 +512,12 @@ export function createApp(
             ? {
                 backgroundModelOpportunity:
                   dependencies.nativeLiveBackgroundModelOpportunity,
+              }
+            : {}),
+          ...(dependencies.nativeLiveCompanionBackgroundOpportunity
+            ? {
+                companionBackgroundOpportunity:
+                  dependencies.nativeLiveCompanionBackgroundOpportunity,
               }
             : {}),
           ...(dependencies.nativeLiveRuntimeEventService

@@ -524,30 +524,41 @@ export class ProactivityWakeOpportunityProducer {
     let scheduled = 0;
     for (const userId of users) {
       try {
-        const opportunity =
-          await this.source.buildOpportunity({
-            userId,
-            subjectId: this.subjectId,
-            offeredAt: this.now(),
-          });
-        if (!opportunity) continue;
-
-        this.orchestrator.schedule({
-          key: "proactivity-wake:" + opportunity.gate.wakeId,
-          kind: "proactivity_wake",
-          priority: this.plan.priority,
-          cost: this.plan.cost,
-          mutexKeys: [
-            "proactivity:" + userId + ":\u0000:" + this.subjectId,
-          ],
-          run: () => this.coordinator.start(opportunity),
-        });
-        scheduled += 1;
+        scheduled += await this.scheduleUser(userId);
       } catch {
         // One user's wake opportunity must never block later users.
       }
     }
     return scheduled;
+  }
+
+  async scheduleUser(userId: string): Promise<0 | 1> {
+    const normalizedUserId = userId.trim();
+    if (!normalizedUserId) {
+      throw new Error(
+        "Proactivity wake opportunity user id must not be blank.",
+      );
+    }
+
+    const opportunity =
+      await this.source.buildOpportunity({
+        userId: normalizedUserId,
+        subjectId: this.subjectId,
+        offeredAt: this.now(),
+      });
+    if (!opportunity) return 0;
+
+    this.orchestrator.schedule({
+      key: "proactivity-wake:" + opportunity.gate.wakeId,
+      kind: "proactivity_wake",
+      priority: this.plan.priority,
+      cost: this.plan.cost,
+      mutexKeys: [
+        "proactivity:" + normalizedUserId + ":\u0000:" + this.subjectId,
+      ],
+      run: () => this.coordinator.start(opportunity),
+    });
+    return 1;
   }
 }
 

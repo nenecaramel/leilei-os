@@ -304,6 +304,63 @@ test("Mac HTTP relay client transports background model reservations without use
 });
 
 
+test("Mac HTTP relay client offers one scoped companion background opportunity", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        reason: "dirty",
+        maintenanceKinds: ["decay"],
+        effectDeliveryScheduled: true,
+        proactivityScheduled: false,
+        topicResurfaceOffered: true,
+        failures: [],
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const result = await client.offerCompanionBackgroundOpportunity({
+    listenerInstanceId: listenerId,
+    dispatchTarget: "claude_code",
+    reason: "dirty",
+  });
+
+  assert.deepEqual(result, {
+    reason: "dirty",
+    maintenanceKinds: ["decay"],
+    effectDeliveryScheduled: true,
+    proactivityScheduled: false,
+    topicResurfaceOffered: true,
+    failures: [],
+  });
+  assert.deepEqual(calls, [{
+    url:
+      "https://relay.example/internal/native-live-relay/background/opportunity",
+    body: {
+      listener_instance_id: listenerId,
+      dispatch_target: "claude_code",
+      reason: "dirty",
+    },
+  }]);
+  assert.equal(
+    JSON.stringify(calls[0]?.body).includes("user"),
+    false,
+  );
+});
+
 test("Mac HTTP relay client offers Topic resurface opportunity without user identity", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const fakeFetch: typeof fetch = async (input, init) => {

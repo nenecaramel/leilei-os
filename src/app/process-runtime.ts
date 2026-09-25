@@ -67,6 +67,9 @@ import {
   NativeLivePostTurnBackgroundOpportunity,
 } from "../domains/runtime/native-live-background-opportunity.js";
 import {
+  CompanionBackgroundOpportunityService,
+} from "../domains/runtime/companion-background-opportunity.js";
+import {
   BackgroundOpportunityPolicy,
 } from "../domains/runtime/background-opportunity-policy.js";
 import {
@@ -521,6 +524,14 @@ export function createProcessRuntime(
           },
         )
       : undefined;
+  const companionBackgroundOpportunity =
+    new CompanionBackgroundOpportunityService(
+      subjectStateBackgroundMaintenance,
+      backgroundOpportunityPolicy,
+      runtimeEffectDeliveryWorker,
+      proactivityWakeOpportunityProducer,
+      topicResurfaceCrossDeviceOpportunity ?? null,
+    );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
     nativeLiveTurnPort,
@@ -686,6 +697,8 @@ export function createProcessRuntime(
               topicResurfaceCrossDeviceOpportunity,
           }
         : {}),
+      nativeLiveCompanionBackgroundOpportunity:
+        companionBackgroundOpportunity,
       webSentinelService: sentinelService,
       webConversationImportService: conversationImportService,
       webConversationArchiveReadService: conversationArchiveReadService,

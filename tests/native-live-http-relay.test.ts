@@ -959,6 +959,78 @@ test("internal relay background model endpoints preserve authenticated user scop
 });
 
 
+test("internal relay companion background opportunity uses authenticated user scope", async () => {
+  const relayService = new FakeRelayService();
+  const calls: unknown[] = [];
+  const companionBackgroundOpportunity = {
+    async offer(input: unknown) {
+      calls.push(input);
+      return {
+        reason: "startup" as const,
+        maintenanceKinds: ["thought_evolution"],
+        effectDeliveryScheduled: true,
+        proactivityScheduled: false,
+        topicResurfaceOffered: true,
+        failures: [],
+      };
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          companionBackgroundOpportunity,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/background/opportunity`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+            reason: "startup",
+          }),
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(calls, [{
+        userId,
+        reason: "startup",
+      }]);
+      const payload = await response.json() as {
+        data: { reason: string };
+      };
+      assert.equal(payload.data.reason, "startup");
+
+      const malformed = await fetch(
+        `${baseUrl}/internal/native-live-relay/background/opportunity`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+            reason: "later",
+          }),
+        },
+      );
+      assert.equal(malformed.status, 400);
+      assert.equal(calls.length, 1);
+    },
+  );
+});
+
 test("internal relay Topic resurface opportunity uses authenticated user scope and supports disabled mode", async () => {
   const relayService = new FakeRelayService();
   const backgroundModelService = new FakeBackgroundModelService();
