@@ -96,6 +96,7 @@ final class AuthSessionController {
             .audience(audience)
             .scope("openid profile email offline_access \(scope)")
             .parameters(["prompt": "select_account"])
+            .useEphemeralSession()
             .start()
 
         guard credentials.refreshToken != nil else {
@@ -126,6 +127,7 @@ final class AuthSessionController {
             .audience(audience)
             .scope("openid profile email offline_access \(scope)")
             .parameters(["prompt": "select_account"])
+            .useEphemeralSession()
             .start()
 
         guard credentials.refreshToken != nil else {
