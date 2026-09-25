@@ -46,7 +46,7 @@ struct SidebarSection: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(.primary.opacity(0.05))
                                 .padding(.leading, selectedBackgroundLeadingOffset)
-                                .padding(.trailing, 1)
+                                .padding(.trailing, 3)
                                 .offset(y: 2)
                         }
                     }
