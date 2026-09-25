@@ -487,29 +487,26 @@ private struct DiaryArchivedDetailView: View {
                 .disabled(isRestoring || isDeleting)
             }
         }
-        .alert(
-            "Restore this diary?",
+        .appConfirmationAlert(
+            title: "Restore diary?",
+            message: "This diary will be returned to your active diary.",
+            actionTitle: "Restore",
             isPresented: $showingRestoreConfirmation
         ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Restore") {
-                Task {
-                    await restoreDiary()
-                }
+            Task {
+                await restoreDiary()
             }
         }
-        .alert(
-            "Delete this diary permanently?",
+        .appConfirmationAlert(
+            title: "Delete diary?",
+            message: "This diary will be permanently deleted. This cannot be undone.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
             isPresented: $showingDeleteConfirmation
         ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                Task {
-                    await deleteDiary()
-                }
+            Task {
+                await deleteDiary()
             }
-        } message: {
-            Text("This cannot be undone.")
         }
         .task(id: diaryID) {
             await loadDetail()
@@ -893,7 +890,7 @@ private struct DiaryDetailView: View {
                             commentEditorMode = .create
                         }
 
-                        Button("Archive", role: .destructive) {
+                        Button("Archive") {
                             showingArchiveConfirmation = true
                         }
                     } label: {
@@ -905,15 +902,14 @@ private struct DiaryDetailView: View {
                 }
             }
         }
-        .alert(
-            "Archive this diary?",
+        .appConfirmationAlert(
+            title: "Archive diary?",
+            message: "You can restore it later from Archive.",
+            actionTitle: "Archive",
             isPresented: $showingArchiveConfirmation
         ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Archive", role: .destructive) {
-                Task {
-                    await archiveDiary()
-                }
+            Task {
+                await archiveDiary()
             }
         }
         .sheet(item: $commentEditorMode) { mode in
@@ -1214,22 +1210,20 @@ private struct DiaryCommentsSection: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .alert(
-            "Delete this comment?",
+        .appConfirmationAlert(
+            title: "Delete comment?",
+            message: "This comment will be permanently deleted. This cannot be undone.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }
             )
         ) {
-            Button("Cancel", role: .cancel) {
-                pendingDelete = nil
+            if let pendingDelete {
+                onDelete(pendingDelete)
             }
-            Button("Delete", role: .destructive) {
-                if let pendingDelete {
-                    onDelete(pendingDelete)
-                }
-                pendingDelete = nil
-            }
+            pendingDelete = nil
         }
     }
 }
