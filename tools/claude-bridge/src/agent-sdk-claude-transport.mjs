@@ -238,13 +238,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       }
 
       const result = await completion;
-      await eventDelivery;
-      if (eventDeliveryError) {
-        this.events.emit(
-          "event-delivery-error",
-          eventDeliveryError,
-        );
-      }
       if (!result.providerSessionId) {
         throw runtimeError(
           "Claude Agent SDK interactive turn returned no provider session id.",
