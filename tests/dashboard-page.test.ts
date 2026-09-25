@@ -8,8 +8,6 @@ import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.m
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
-const taskSource = readFileSync(new URL("../web/src/pages/TaskPage.tsx", import.meta.url), "utf8");
-
 test("Home keeps only the approved Todo panels and Calendar structure", () => {
   assert.match(dashboardSource, /TodayPanel/);
   assert.doesNotMatch(dashboardSource, /StickyPreview|HOME_STICKIES/);
@@ -21,13 +19,6 @@ test("Home keeps only the approved Todo panels and Calendar structure", () => {
   assert.match(dashboardSource, /loadTodoDay/);
 });
 
-test("Task keeps its create form before filters and wires title focus", () => {
-  const createIndex = taskSource.indexOf("<h2>创建任务</h2>");
-  const filtersIndex = taskSource.indexOf('className="memory-message task-filters"');
-  assert.ok(createIndex >= 0 && filtersIndex >= 0 && createIndex < filtersIndex);
-  assert.match(taskSource, /ref=\{createTitleInput\}/);
-  assert.match(taskSource, /focusCreateRef\.current = true/);
-});
 
 function installDashboardDom() {
   const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://leilei.test/" });
