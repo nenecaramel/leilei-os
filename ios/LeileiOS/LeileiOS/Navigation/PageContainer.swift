@@ -10,6 +10,9 @@ struct PageContainer: View {
     @State private var deleteErrorMessage: String?
 
     let selectedPage: AppPage
+    let isDraftConversation: Bool
+    let draftConversationID: UUID
+    let onDraftCommitted: () -> Void
     let onMenu: (() -> Void)?
     let onOpenConversation: () -> Void
 
@@ -17,7 +20,11 @@ struct PageContainer: View {
         NavigationStack {
             Group {
                 if selectedPage == .chat {
-                    ChatView()
+                    ChatView(
+                        isDraftConversation: isDraftConversation,
+                        draftConversationID: draftConversationID,
+                        onDraftCommitted: onDraftCommitted
+                    )
                 } else if selectedPage == .globalSearch {
                     GlobalSearchView()
                 } else if selectedPage == .diary {
@@ -50,7 +57,8 @@ struct PageContainer: View {
                     && selectedPage != .conversations {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
-                            Menu {
+                            if !isDraftConversation {
+                                Menu {
                                 Button {
                                     guard appModel.activeNativeLiveConversationID != nil else {
                                         return
@@ -76,8 +84,9 @@ struct PageContainer: View {
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 18, weight: .medium))
+                                }
+                                .accessibilityLabel("Conversation menu")
                             }
-                            .accessibilityLabel("Conversation menu")
                         } else {
                             Button {
                             } label: {
