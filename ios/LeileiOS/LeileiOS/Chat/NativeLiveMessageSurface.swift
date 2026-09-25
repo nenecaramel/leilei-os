@@ -223,8 +223,9 @@ private struct NativeLiveMessageRow: View {
                     Text(MessageTimestampFormatter.string(
                         from: message.completedAt ?? message.createdAt
                     ))
-                        .font(.caption)
+                        .font(.system(size: 13.5))
                         .foregroundStyle(.secondary)
+                        .padding(.bottom, 4)
 
                     messageContent
                         .textSelection(.enabled)
@@ -255,7 +256,7 @@ private struct NativeLiveMessageRow: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
                     .buttonStyle(.plain)
-                    .padding(.top, 4)
+                    .padding(.top, 7)
                 }
 
                 Spacer(minLength: 24)
@@ -485,7 +486,7 @@ private struct NativeLiveBlockView: View {
             switch block.kind {
             case "text":
                 Text(text)
-                    .font(.body)
+                    .font(.system(size: 18.5))
                     .foregroundStyle(.primary)
                     .frame(
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
