@@ -205,3 +205,108 @@ test("stateful normalizer preserves sequence and partial accumulation across str
   assert.deepEqual(events.slice(1, 3).map((event) => event.payload.accumulated_length), [3, 5]);
   assert.deepEqual(events.map((event) => event.event_id), ["event-1", "event-2", "event-3", "event-4"]);
 });
+
+
+test("normalizes Agent SDK task lifecycle and background task level signals without local paths", () => {
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "system",
+        subtype: "task_started",
+        session_id: "s",
+        task_id: "task-1",
+        tool_use_id: "tool-1",
+        description: "inspect repository",
+        subagent_type: "Explore",
+        task_type: "local_agent",
+        ambient: false,
+      },
+      {
+        type: "system",
+        subtype: "task_progress",
+        session_id: "s",
+        task_id: "task-1",
+        description: "reading files",
+        usage: {
+          total_tokens: 1200,
+          tool_uses: 4,
+          duration_ms: 2500,
+        },
+        last_tool_name: "Read",
+        summary: "Found the target module",
+      },
+      {
+        type: "system",
+        subtype: "task_updated",
+        session_id: "s",
+        task_id: "task-1",
+        patch: {
+          status: "running",
+          is_backgrounded: true,
+          error: "/private/local/path should not persist",
+        },
+      },
+      {
+        type: "system",
+        subtype: "background_tasks_changed",
+        session_id: "s",
+        tasks: [{
+          task_id: "task-1",
+          task_type: "local_agent",
+          description: "inspect repository",
+        }],
+      },
+      {
+        type: "system",
+        subtype: "task_notification",
+        session_id: "s",
+        task_id: "task-1",
+        tool_use_id: "tool-1",
+        status: "completed",
+        output_file: "/private/local/task-output.txt",
+        summary: "Repository inspection complete",
+        usage: {
+          total_tokens: 2400,
+          tool_uses: 8,
+          duration_ms: 5000,
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["session", "task", "task", "task", "task", "task"],
+  );
+  assert.deepEqual(
+    events.slice(1).map((event) => event.payload.phase),
+    [
+      "started",
+      "progress",
+      "updated",
+      "active_set",
+      "notification",
+    ],
+  );
+  assert.deepEqual(events[2].payload.usage, {
+    total_tokens: 1200,
+    tool_uses: 4,
+    duration_ms: 2500,
+  });
+  assert.equal(events[3].payload.patch.has_error, true);
+  assert.equal("error" in events[3].payload.patch, false);
+  assert.deepEqual(events[4].payload, {
+    phase: "active_set",
+    replace: true,
+    tasks: [{
+      task_id: "task-1",
+      task_type: "local_agent",
+      description: "inspect repository",
+      ambient: false,
+    }],
+  });
+  assert.equal(events[5].payload.has_output_file, true);
+  assert.equal("output_file" in events[5].payload, false);
+});

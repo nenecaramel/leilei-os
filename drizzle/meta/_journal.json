@@ -470,6 +470,13 @@
       "when": 1790314400000,
       "tag": "0066_native_live_runtime_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790318000000,
+      "tag": "0067_native_live_task_events",
+      "breakpoints": true
     }
   ]
 }

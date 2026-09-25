@@ -82,6 +82,99 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "system" && raw.subtype === "task_started") {
+      emit("task", this.sessionId, {
+        phase: "started",
+        task_id: safeString(raw.task_id),
+        tool_use_id: safeString(raw.tool_use_id),
+        description: clippedString(raw.description, 2_000),
+        subagent_type: safeString(raw.subagent_type),
+        task_type: safeString(raw.task_type),
+        workflow_name: safeString(raw.workflow_name),
+        hidden_from_transcript: raw.skip_transcript === true,
+        ambient: raw.ambient === true,
+      });
+      return output;
+    }
+
+    if (raw.type === "system" && raw.subtype === "task_progress") {
+      emit("task", this.sessionId, {
+        phase: "progress",
+        task_id: safeString(raw.task_id),
+        tool_use_id: safeString(raw.tool_use_id),
+        description: clippedString(raw.description, 2_000),
+        subagent_type: safeString(raw.subagent_type),
+        usage: normalizedTaskUsage(raw.usage),
+        last_tool_name: safeString(raw.last_tool_name),
+        summary: clippedString(raw.summary, 4_000),
+      });
+      return output;
+    }
+
+    if (raw.type === "system" && raw.subtype === "task_updated") {
+      const patch =
+        raw.patch && typeof raw.patch === "object" && !Array.isArray(raw.patch)
+          ? raw.patch
+          : {};
+      emit("task", this.sessionId, {
+        phase: "updated",
+        task_id: safeString(raw.task_id),
+        patch: {
+          status: safeString(patch.status),
+          description: clippedString(patch.description, 2_000),
+          end_time:
+            Number.isFinite(patch.end_time) ? patch.end_time : null,
+          total_paused_ms:
+            Number.isFinite(patch.total_paused_ms)
+              ? patch.total_paused_ms
+              : null,
+          is_backgrounded:
+            typeof patch.is_backgrounded === "boolean"
+              ? patch.is_backgrounded
+              : null,
+          has_error:
+            typeof patch.error === "string" && patch.error.length > 0,
+        },
+      });
+      return output;
+    }
+
+    if (raw.type === "system" && raw.subtype === "task_notification") {
+      emit("task", this.sessionId, {
+        phase: "notification",
+        task_id: safeString(raw.task_id),
+        tool_use_id: safeString(raw.tool_use_id),
+        status: safeString(raw.status),
+        summary: clippedString(raw.summary, 4_000),
+        usage: normalizedTaskUsage(raw.usage),
+        hidden_from_transcript: raw.skip_transcript === true,
+        ambient: raw.ambient === true,
+        has_output_file:
+          typeof raw.output_file === "string" && raw.output_file.length > 0,
+      });
+      return output;
+    }
+
+    if (
+      raw.type === "system"
+      && raw.subtype === "background_tasks_changed"
+    ) {
+      const tasks = Array.isArray(raw.tasks)
+        ? raw.tasks.slice(0, 64).map((task) => ({
+            task_id: safeString(task?.task_id),
+            task_type: safeString(task?.task_type),
+            description: clippedString(task?.description, 2_000),
+            ambient: task?.ambient === true,
+          }))
+        : [];
+      emit("task", this.sessionId, {
+        phase: "active_set",
+        replace: true,
+        tasks,
+      });
+      return output;
+    }
+
     if (raw.type === "stream_event") {
       const event = raw.event;
       if (
@@ -179,4 +272,38 @@ export function normalizeClaudeEvents(
     parentProviderSessionId,
   });
   return rawEvents.flatMap((raw) => normalizer.normalize(raw));
+}
+
+
+function safeString(value) {
+  return typeof value === "string" && value.length > 0
+    ? value
+    : null;
+}
+
+function clippedString(value, maxChars) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  return value.length <= maxChars
+    ? value
+    : value.slice(0, maxChars);
+}
+
+function normalizedTaskUsage(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return {
+    total_tokens:
+      Number.isFinite(value.total_tokens) && value.total_tokens >= 0
+        ? value.total_tokens
+        : null,
+    tool_uses:
+      Number.isFinite(value.tool_uses) && value.tool_uses >= 0
+        ? value.tool_uses
+        : null,
+    duration_ms:
+      Number.isFinite(value.duration_ms) && value.duration_ms >= 0
+        ? value.duration_ms
+        : null,
+  };
 }

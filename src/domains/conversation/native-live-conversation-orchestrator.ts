@@ -14,6 +14,7 @@ export type NativeLiveNormalizedEventType =
   | "tool_use"
   | "tool_result"
   | "attachment"
+  | "task"
   | "result"
   | "error"
   | "runtime";
