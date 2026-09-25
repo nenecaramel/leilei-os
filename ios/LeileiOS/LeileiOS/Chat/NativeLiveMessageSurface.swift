@@ -1,20 +1,76 @@
 import SwiftUI
 import UIKit
 
-enum NativeLivePendingOperation: Equatable {
-    case send(id: UUID, text: String)
-    case retry(targetUserMessageID: String)
-    case edit(targetUserMessageID: String, text: String)
+struct NativeLivePendingOperation: Equatable {
+    enum Kind: Equatable {
+        case send(text: String)
+        case retry(targetUserMessageID: String)
+        case edit(targetUserMessageID: String, text: String)
+    }
 
-    var scrollIdentity: String {
-        switch self {
-        case .send(let id, _):
-            return "send-\(id.uuidString)"
+    let id: UUID
+    let kind: Kind
+    let baselineSyncToken: String?
+
+    init(
+        kind: Kind,
+        baselineSyncToken: String?
+    ) {
+        self.id = UUID()
+        self.kind = kind
+        self.baselineSyncToken = baselineSyncToken
+    }
+
+    private init(
+        id: UUID,
+        kind: Kind,
+        baselineSyncToken: String?
+    ) {
+        self.id = id
+        self.kind = kind
+        self.baselineSyncToken = baselineSyncToken
+    }
+
+    func rebased(
+        to syncToken: String?
+    ) -> NativeLivePendingOperation {
+        NativeLivePendingOperation(
+            id: id,
+            kind: kind,
+            baselineSyncToken: syncToken
+        )
+    }
+
+    var targetUserMessageID: String? {
+        switch kind {
+        case .send:
+            return nil
         case .retry(let targetUserMessageID):
-            return "retry-\(targetUserMessageID)"
+            return targetUserMessageID
         case .edit(let targetUserMessageID, _):
-            return "edit-\(targetUserMessageID)"
+            return targetUserMessageID
         }
+    }
+
+    var editedText: String? {
+        guard case .edit(_, let text) = kind else {
+            return nil
+        }
+        return text
+    }
+
+    var sendText: String? {
+        guard case .send(let text) = kind else {
+            return nil
+        }
+        return text
+    }
+
+    var isSend: Bool {
+        if case .send = kind {
+            return true
+        }
+        return false
     }
 }
 
@@ -75,9 +131,14 @@ struct NativeLiveMessageSurface: View {
     private func messageList(
         _ snapshot: NativeLiveCurrentPathSnapshot?
     ) -> some View {
-        let messages = displayedMessages(
-            snapshot?.messages ?? []
-        )
+        let messages = snapshot?.messages ?? []
+        let pendingIsActive = pendingPresentationIsActive(snapshot)
+        let replacementAssistantID =
+            pendingIsActive
+                ? pendingAssistantMessageID(
+                    in: messages
+                )
+                : nil
 
         return ScrollViewReader { proxy in
             ScrollView {
@@ -86,7 +147,12 @@ struct NativeLiveMessageSurface: View {
                         NativeLiveMessageRow(
                             message: message,
                             displayTextOverride:
-                                editedTextOverride(for: message),
+                                editedTextOverride(
+                                    for: message,
+                                    pendingIsActive: pendingIsActive
+                                ),
+                            showPendingReplacement:
+                                message.id == replacementAssistantID,
                             isTurnInFlight: isTurnInFlight,
                             isCopied: copiedMessageID == message.id,
                             onCopyMessage: { text in
@@ -99,21 +165,35 @@ struct NativeLiveMessageSurface: View {
                             onEditMessage: onEditMessage
                         )
                         .id(message.id)
-                    }
 
-                    if let pendingOperation {
-                        if case .send(_, let text) = pendingOperation {
-                            NativeLiveOptimisticUserRow(text: text)
+                        if pendingIsActive,
+                           replacementAssistantID == nil,
+                           let targetUserMessageID =
+                                pendingOperation?.targetUserMessageID,
+                           message.id == targetUserMessageID {
+                            AssistantTypingIndicatorRow()
                                 .id(
-                                    "pending-user-"
-                                        + pendingOperation.scrollIdentity
+                                    "pending-assistant-"
+                                        + (pendingOperation?.id.uuidString ?? "")
                                 )
                         }
+                    }
+
+                    if pendingIsActive,
+                       let pendingOperation,
+                       let sendText = pendingOperation.sendText {
+                        NativeLiveOptimisticUserRow(
+                            text: sendText
+                        )
+                        .id(
+                            "pending-user-"
+                                + pendingOperation.id.uuidString
+                        )
 
                         AssistantTypingIndicatorRow()
                             .id(
                                 "pending-assistant-"
-                                    + pendingOperation.scrollIdentity
+                                    + pendingOperation.id.uuidString
                             )
                     }
 
@@ -127,19 +207,22 @@ struct NativeLiveMessageSurface: View {
             }
             .id(
                 snapshot?.conversationId
-                    ?? pendingOperation?.scrollIdentity
                     ?? "native-live-empty"
             )
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
+                guard !isTurnInFlight else { return }
                 await onRefresh()
             }
             .onChange(of: snapshot?.conversationId) { _, _ in
                 isAwayFromBottom = false
             }
             .onChange(of: pendingOperation) { _, operation in
-                guard operation != nil else { return }
+                guard let operation,
+                      operation.isSend else {
+                    return
+                }
                 scrollToBottom(proxy)
             }
             .onScrollGeometryChange(for: Bool.self) { geometry in
@@ -155,6 +238,9 @@ struct NativeLiveMessageSurface: View {
                 }
             }
             .onChange(of: snapshot?.syncToken) { _, _ in
+                guard pendingOperation?.isSend == true else {
+                    return
+                }
                 scrollToBottom(proxy)
             }
             .overlay(alignment: .top) {
@@ -219,42 +305,41 @@ struct NativeLiveMessageSurface: View {
         }
     }
 
-    private func displayedMessages(
-        _ messages: [NativeLiveCurrentPathMessage]
-    ) -> [NativeLiveCurrentPathMessage] {
+    private func pendingPresentationIsActive(
+        _ snapshot: NativeLiveCurrentPathSnapshot?
+    ) -> Bool {
         guard let pendingOperation else {
-            return messages
+            return false
         }
 
-        let targetUserMessageID: String?
-        switch pendingOperation {
-        case .send:
-            targetUserMessageID = nil
-        case .retry(let target):
-            targetUserMessageID = target
-        case .edit(let target, _):
-            targetUserMessageID = target
+        return snapshot?.syncToken
+            == pendingOperation.baselineSyncToken
+    }
+
+    private func pendingAssistantMessageID(
+        in messages: [NativeLiveCurrentPathMessage]
+    ) -> String? {
+        guard let targetUserMessageID =
+                pendingOperation?.targetUserMessageID else {
+            return nil
         }
 
-        guard let targetUserMessageID,
-              let targetIndex = messages.firstIndex(where: {
-                  $0.id == targetUserMessageID
-                      && $0.role == "user"
-              }) else {
-            return messages
-        }
-
-        return Array(messages.prefix(through: targetIndex))
+        return messages.first(where: {
+            $0.role == "assistant"
+                && $0.parentMessageId == targetUserMessageID
+        })?.id
     }
 
     private func editedTextOverride(
-        for message: NativeLiveCurrentPathMessage
+        for message: NativeLiveCurrentPathMessage,
+        pendingIsActive: Bool
     ) -> String? {
-        guard let pendingOperation,
+        guard pendingIsActive,
+              let pendingOperation,
               case .edit(
                   let targetUserMessageID,
                   let text
-              ) = pendingOperation,
+              ) = pendingOperation.kind,
               message.id == targetUserMessageID else {
             return nil
         }
@@ -300,6 +385,7 @@ struct NativeLiveMessageSurface: View {
 private struct NativeLiveMessageRow: View {
     let message: NativeLiveCurrentPathMessage
     let displayTextOverride: String?
+    let showPendingReplacement: Bool
     let isTurnInFlight: Bool
     let isCopied: Bool
     let onCopyMessage: (String) -> Void
@@ -341,57 +427,70 @@ private struct NativeLiveMessageRow: View {
                     messageStatus
                 }
             }
+        } else if showPendingReplacement {
+            ZStack(alignment: .topLeading) {
+                assistantContent
+                    .hidden()
+                    .accessibilityHidden(true)
+
+                AssistantTypingIndicatorRow()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else if message.status == "pending"
                     || message.status == "streaming" {
             AssistantTypingIndicatorRow()
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(MessageTimestampFormatter.string(
-                    from: message.completedAt ?? message.createdAt
-                ))
-                    .font(.system(size: 13.5))
-                    .tracking(0.12)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 4)
+            assistantContent
+        }
+    }
 
-                messageContent
-                    .textSelection(.enabled)
+    private var assistantContent: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(MessageTimestampFormatter.string(
+                from: message.completedAt ?? message.createdAt
+            ))
+                .font(.system(size: 13.5))
+                .tracking(0.12)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 4)
 
-                messageStatus
+            messageContent
+                .textSelection(.enabled)
 
-                HStack(spacing: 12) {
-                    if let copyText {
-                        Button {
-                            onCopyMessage(copyText)
-                        } label: {
-                            Image(
-                                systemName:
-                                    isCopied
-                                    ? "checkmark"
-                                    : "square.on.square"
-                            )
-                            .frame(width: 22, height: 22)
-                        }
-                    }
+            messageStatus
 
-                    if let targetUserMessageID = message.parentMessageId {
-                        Button {
-                            onRetryMessage(targetUserMessageID)
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .rotationEffect(.degrees(45))
-                                .frame(width: 22, height: 22)
-                        }
-                        .disabled(isTurnInFlight)
+            HStack(spacing: 12) {
+                if let copyText {
+                    Button {
+                        onCopyMessage(copyText)
+                    } label: {
+                        Image(
+                            systemName:
+                                isCopied
+                                ? "checkmark"
+                                : "square.on.square"
+                        )
+                        .frame(width: 22, height: 22)
                     }
                 }
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.secondary)
-                .buttonStyle(.plain)
-                .padding(.top, 7)
+
+                if let targetUserMessageID = message.parentMessageId {
+                    Button {
+                        onRetryMessage(targetUserMessageID)
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .rotationEffect(.degrees(45))
+                            .frame(width: 22, height: 22)
+                    }
+                    .disabled(isTurnInFlight)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .font(.system(size: 14, weight: .regular))
+            .foregroundStyle(.secondary)
+            .buttonStyle(.plain)
+            .padding(.top, 7)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -404,34 +503,32 @@ private struct NativeLiveMessageRow: View {
                 paragraphSpacing: message.role == "user" ? 19 : 22
             )
         } else {
-        let blocks = message.blocks.sorted {
-            $0.ordinal < $1.ordinal
-        }
-        let visibleBlocks = blocks.filter {
-            normalizedText($0.text) != nil
-        }
-
-        if visibleBlocks.isEmpty {
-            if message.status == "pending"
-                || message.status == "streaming" {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(minHeight: 20)
+            let blocks = message.blocks.sorted {
+                $0.ordinal < $1.ordinal
             }
-        } else {
-            VStack(
-                alignment: .leading,
-                spacing: message.role == "user" ? 19 : 22
-            ) {
-                ForEach(visibleBlocks) { block in
-                    NativeLiveBlockView(
-                        block: block,
-                        fillsAvailableWidth: message.role != "user",
-                        isUserMessage: message.role == "user"
-                    )
+            let visibleBlocks = blocks.filter {
+                normalizedText($0.text) != nil
+            }
+
+            if visibleBlocks.isEmpty {
+                if message.status == "pending"
+                    || message.status == "streaming" {
+                    AssistantTypingIndicatorRow()
+                }
+            } else {
+                VStack(
+                    alignment: .leading,
+                    spacing: message.role == "user" ? 19 : 22
+                ) {
+                    ForEach(visibleBlocks) { block in
+                        NativeLiveBlockView(
+                            block: block,
+                            fillsAvailableWidth: message.role != "user",
+                            isUserMessage: message.role == "user"
+                        )
+                    }
                 }
             }
-        }
         }
     }
 
@@ -439,11 +536,6 @@ private struct NativeLiveMessageRow: View {
     private var messageStatus: some View {
         if message.status == "error" {
             Text("Failed")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else if message.status == "pending"
-                    || message.status == "streaming" {
-            Text("Loading…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -470,6 +562,7 @@ private struct NativeLiveMessageRow: View {
         return normalized.isEmpty ? nil : normalized
     }
 }
+
 
 private struct NativeLiveOptimisticUserRow: View {
     let text: String
