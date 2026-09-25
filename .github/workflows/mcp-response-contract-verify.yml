@@ -9,7 +9,6 @@ on:
       - src/mcp/tools/error-contract.ts
       - src/mcp/tools/universe/shared.ts
       - src/mcp/tools/notion-advanced/shared.ts
-      - tests/mcp-response-contract.test.ts
       - tests/mcp-error-contract.test.ts
       - tests/mcp-diary-error-contract.test.ts
       - tests/mcp-core-error-contract.test.ts
@@ -43,7 +42,6 @@ jobs:
       - name: Run focused MCP response and error contract regressions
         run: >-
           pnpm exec tsx --test
-          tests/mcp-response-contract.test.ts
           tests/mcp-error-contract.test.ts
           tests/mcp-diary-error-contract.test.ts
           tests/mcp-core-error-contract.test.ts

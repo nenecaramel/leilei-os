@@ -1,19 +1,6 @@
 name: Bridge feature verification
 
 on:
-  push:
-    branches:
-      - feat/mcp-app-message-bridge
-    paths:
-      - src/**
-      - drizzle/**
-      - tests/**
-      - web/**
-      - scripts/build-bridge-browser.mjs
-      - scripts/generate-web-icons.mjs
-      - package.json
-      - pnpm-lock.yaml
-      - .github/workflows/bridge-dev.yml
   pull_request:
     branches:
       - main
@@ -50,13 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      - name: Verify exact event head
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify exact PR head
         run: |
           actual="$(git rev-parse HEAD)"
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.event.pull_request.head.sha }}"
           test "$actual" = "$expected"
-          echo "Checked out exact event head: $actual"
+          echo "Checked out exact PR head: $actual"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.9.0
