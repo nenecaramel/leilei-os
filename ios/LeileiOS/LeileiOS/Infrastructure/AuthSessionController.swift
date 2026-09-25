@@ -95,6 +95,7 @@ final class AuthSessionController {
             .useCredentialsManager(credentialsManager)
             .audience(audience)
             .scope("openid profile email offline_access \(scope)")
+            .parameters(["prompt": "select_account"])
             .start()
 
         guard credentials.refreshToken != nil else {
