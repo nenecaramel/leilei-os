@@ -41,7 +41,7 @@ describe an earlier pre-integration state.
 | Skills | PENDING REAL SDK | Controlled project-Skill smoke is now checked in; run it on the Mac before claiming parity |
 | Slash commands | DEFERRED | Normal user turns deliberately remain verbatim; slash-command dispatch must be an explicit non-verbatim Runtime control rather than magic user-text parsing |
 | Subagents | PENDING REAL SDK | Controlled project-subagent smoke is now checked in; require structured delegation evidence |
-| Plugins | PENDING | Load/reload a controlled local plugin and observe status before claiming parity |
+| Plugins | PENDING REAL SDK | Controlled local-plugin Skill smoke is checked in; require init plugin/skill registration + structured Skill use + hidden sentinel before claiming parity |
 | MCP | PENDING REAL SDK | Controlled in-process SDK MCP smoke is checked in; require a real qualified MCP tool call + hidden handler sentinel before claiming parity |
 | Hooks | PENDING REAL SDK | Controlled local PostToolUse hook smoke is now checked in |
 | Read | REAL SDK | Read controlled fixture file and observe tool event/result |
@@ -89,6 +89,13 @@ describe an earlier pre-integration state.
 - The sentinel is unavailable to the parent prompt; acceptance requires exactly one handler invocation, a structured qualified `mcp__...` tool-use event, and an exact terminal echo of the tool result.
 - The smoke keeps existing Claude subscription auth and rejects `ANTHROPIC_API_KEY`.
 - Passing this proves the Agent SDK host can carry SDK-owned MCP tools. Product-specific remote MCP trust/credential policy remains a separate runtime configuration concern.
+
+### Local plugin
+
+- `smoke:agent-sdk-plugin` builds one disposable local plugin under a temp directory with a manifest and one namespaced Skill.
+- Acceptance requires the plugin name in `system/init.plugins`, the namespaced skill in `system/init.skills`, a structured `Skill` tool invocation, and exact terminal output of a sentinel stored only inside the plugin Skill.
+- This avoids using slash-command dispatch, which remains intentionally deferred for normal LeileiOS user turns.
+- The plugin is deleted after the smoke and no user/global plugin installation is mutated.
 
 ### Background subagent task lifecycle
 
