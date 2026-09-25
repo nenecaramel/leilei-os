@@ -91,11 +91,6 @@ struct PageContainer: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
-        .modifier(
-            RenameKeyboardIsolationModifier(
-                enabled: showingRenameAlert
-            )
-        )
         .alert(
             "Rename",
             isPresented: $showingRenameAlert
@@ -226,20 +221,6 @@ struct PageContainer: View {
         guard let title else { return nil }
         let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? nil : normalized
-    }
-}
-
-
-private struct RenameKeyboardIsolationModifier: ViewModifier {
-    let enabled: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if enabled {
-            content.ignoresSafeArea(.keyboard, edges: .bottom)
-        } else {
-            content
-        }
     }
 }
 
