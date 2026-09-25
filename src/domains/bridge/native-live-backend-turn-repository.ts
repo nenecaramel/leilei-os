@@ -589,7 +589,9 @@ implements NativeLiveBackendTurnPort {
       status: "success",
       providerSessionId: input.providerSessionId,
       normalizedEvents: input.normalizedEvents,
-      runtimeMetadata: input.runtimeMetadata,
+      ...(input.runtimeMetadata
+        ? { runtimeMetadata: input.runtimeMetadata }
+        : {}),
     });
 
     try {
