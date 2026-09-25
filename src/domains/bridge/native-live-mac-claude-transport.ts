@@ -10,9 +10,7 @@ import type {
   NativeLiveRuntimeExecutionReadback,
 } from "./native-live-runtime-protocol.js";
 
-export type NativeLiveMacClaudeTransportKind =
-  | "agent_sdk"
-  | "headless";
+export type NativeLiveMacClaudeTransportKind = "agent_sdk";
 
 export type NativeLiveMacActiveTurnController = {
   sendUserMessage(text: string): Record<string, unknown>;
@@ -76,13 +74,12 @@ export function resolveNativeLiveMacClaudeTransportKind(
       ?.trim()
       .toLowerCase();
 
-  if (!configured) return "agent_sdk";
-  if (configured === "agent_sdk" || configured === "headless") {
-    return configured;
+  if (!configured || configured === "agent_sdk") {
+    return "agent_sdk";
   }
 
   throw new Error(
-    "LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT must be agent_sdk or headless.",
+    "LEILEI_NATIVE_LIVE_CLAUDE_TRANSPORT is retired; native live uses agent_sdk only.",
   );
 }
 
@@ -95,40 +92,22 @@ export async function createNativeLiveMacClaudeTransport(
 }> {
   const kind =
     resolveNativeLiveMacClaudeTransportKind(environment);
-
-  if (kind === "agent_sdk") {
-    const agentSdkModulePath =
-      "../../../tools/claude-bridge/src/agent-sdk-claude-transport.mjs";
-    const { AgentSdkClaudeTransport } = (await import(
-      agentSdkModulePath
-    )) as {
-      AgentSdkClaudeTransport: new (options: {
-        environment: NodeJS.ProcessEnv;
-        cwd: string;
-      }) => NativeLiveMacClaudeTransport;
-    };
-    return {
-      kind,
-      runtime: new AgentSdkClaudeTransport({
-        environment,
-        cwd,
-      }),
-    };
-  }
-
-  const headlessModulePath =
-    "../../../tools/claude-bridge/src/headless-claude-transport.mjs";
-  const { HeadlessClaudeTransport } = (await import(
-    headlessModulePath
+  const agentSdkModulePath =
+    "../../../tools/claude-bridge/src/agent-sdk-claude-transport.mjs";
+  const { AgentSdkClaudeTransport } = (await import(
+    agentSdkModulePath
   )) as {
-    HeadlessClaudeTransport: new (options: {
+    AgentSdkClaudeTransport: new (options: {
       environment: NodeJS.ProcessEnv;
+      cwd: string;
     }) => NativeLiveMacClaudeTransport;
   };
+
   return {
     kind,
-    runtime: new HeadlessClaudeTransport({
+    runtime: new AgentSdkClaudeTransport({
       environment,
+      cwd,
     }),
   };
 }
