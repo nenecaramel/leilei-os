@@ -341,7 +341,7 @@ implements NativeLiveBackendRelayPort {
         input.userId,
         reserved[0].id,
       );
-      return row ? mapPreparation(row) : null;
+      return row;
     });
   }
 
