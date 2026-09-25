@@ -89,7 +89,7 @@ struct ChatView: View {
             ) {
                 sendMessage()
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .padding(.top, 18)
             .padding(.bottom, 10)
             .background {
@@ -105,6 +105,17 @@ struct ChatView: View {
             }
             .offset(y: 10)
         }
+        .overlay {
+            if isConversationLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+                    .ignoresSafeArea()
+            }
+        }
         .sheet(item: $editDraft) { draft in
             NativeLiveEditSheet(
                 originalText: draft.text
@@ -116,6 +127,18 @@ struct ChatView: View {
                 )
             }
         }
+    }
+
+    private var isConversationLoading: Bool {
+        guard !isDraftConversation,
+              appModel.isAuthenticated,
+              appModel.activeNativeLiveConversationID != nil,
+              appModel.nativeLiveCurrentPath == nil else {
+            return false
+        }
+
+        return appModel.chatSyncState == .idle
+            || appModel.chatSyncState == .loading
     }
 
     private func retryMessage(
