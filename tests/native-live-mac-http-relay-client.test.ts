@@ -186,6 +186,55 @@ test("Mac HTTP relay client waits for event-driven work without exposing user id
   );
 });
 
+test("Mac HTTP relay client waits for active-turn controls without polling", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        outcome: "reserved",
+        control: {
+          controlId: "77777777-7777-4777-8777-777777777777",
+          kind: "mid_turn_input",
+          payload: { text: "steer" },
+        },
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const controller = new AbortController();
+  const control = await client.waitRuntimeControl({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    signal: controller.signal,
+  });
+
+  assert.deepEqual(control, {
+    controlId: "77777777-7777-4777-8777-777777777777",
+    kind: "mid_turn_input",
+    payload: { text: "steer" },
+  });
+  assert.deepEqual(calls, [{
+    url:
+      `https://relay.example/internal/native-live-relay/reservations/${prepareId}/controls/wait`,
+    body: {
+      listener_instance_id: listenerId,
+    },
+  }]);
+});
+
 test("Mac HTTP relay client transports semantic candidate snapshots and score callbacks", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const responses = [
