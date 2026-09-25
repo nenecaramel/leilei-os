@@ -127,6 +127,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       mode = "new",
       parentProviderSessionId = null,
       streaming = true,
+      execution = null,
       onNormalizedEvent = null,
       permissionHandler = null,
       questionHandler = null,
@@ -174,6 +175,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
+    const executionOptions =
+      normalizeAgentSdkExecutionSelection(execution);
+
     const handle = await createAgentSdkTurnHandle({
       prompt,
       mode,
@@ -188,6 +192,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       cwd: this.cwd,
       queryOptions: {
         verbatimPrompts: true,
+        ...executionOptions,
       },
       streaming,
       permissionHandler,
