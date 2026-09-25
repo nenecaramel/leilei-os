@@ -180,9 +180,18 @@ export class NativeLiveMacRuntimeExecutor {
     const execution =
       runtimeResult.executionReadback
         ? {
-            readback: runtimeResult.executionReadback,
+            readback: {
+              requested:
+                runtimeResult.executionReadback.requested,
+              applied:
+                runtimeResult.executionReadback.applied,
+              capability:
+                runtimeResult.executionReadback.capability,
+            },
             readback_error:
-              runtimeResult.executionReadbackError ?? null,
+              runtimeResult.executionReadbackError
+                ? "READBACK_UNAVAILABLE" as const
+                : null,
           }
         : null;
 
