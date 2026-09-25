@@ -487,14 +487,28 @@ implements NativeLiveSemanticPreparationStager {
       NativeLiveBackendRelayService,
       "enqueuePreparation"
     >,
+    private readonly workWake?: {
+      notify(input: {
+        userId: string;
+        kind: "semantic";
+      }): Promise<void>;
+    },
   ) {}
 
-  stage(input: {
+  async stage(input: {
     userId: string;
     preparation: NativeLivePreparedTurn;
     plan: NativeLiveMindSemanticPlan;
   }): Promise<void> {
-    return this.repository.stage(input);
+    await this.repository.stage(input);
+    try {
+      await this.workWake?.notify({
+        userId: input.userId,
+        kind: "semantic",
+      });
+    } catch {
+      // Durable semantic queue state is authoritative.
+    }
   }
 
   async readPlan(input: {
