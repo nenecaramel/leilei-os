@@ -158,7 +158,9 @@ implements NativeLiveBackendTurnPort {
       conversationId: input.conversationId,
       expectedHeadMessageId: input.expectedHeadMessageId,
       text: input.text,
-      executionSelection: input.executionSelection,
+      ...(input.executionSelection
+        ? { executionSelection: input.executionSelection }
+        : {}),
     });
 
     return this.prepareWithRaceRecovery(
@@ -255,7 +257,9 @@ implements NativeLiveBackendTurnPort {
       operation: "retry",
       conversationId: input.conversationId,
       targetUserMessageId: input.targetUserMessageId,
-      executionSelection: input.executionSelection,
+      ...(input.executionSelection
+        ? { executionSelection: input.executionSelection }
+        : {}),
     });
 
     return this.prepareWithRaceRecovery(
@@ -337,7 +341,9 @@ implements NativeLiveBackendTurnPort {
       conversationId: input.conversationId,
       targetUserMessageId: input.targetUserMessageId,
       text: input.text,
-      executionSelection: input.executionSelection,
+      ...(input.executionSelection
+        ? { executionSelection: input.executionSelection }
+        : {}),
     });
 
     return this.prepareWithRaceRecovery(
