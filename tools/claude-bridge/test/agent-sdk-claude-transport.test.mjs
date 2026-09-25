@@ -952,3 +952,118 @@ test("interactive foreground returns turn-boundary context usage and compaction 
     reason: "turn_boundary_threshold_reached",
   });
 });
+
+
+test("interactive foreground returns execution readback for the exact requested selection", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async getSettings() {
+        return {
+          applied: {
+            model: "claude-opus-5-5",
+            effort: "high",
+          },
+        };
+      },
+      async supportedModels() {
+        return [{
+          value: "claude-opus-5-5",
+          displayName: "Claude Opus 5.5",
+          description: "test model",
+          supportsEffort: true,
+          supportedEffortLevels: [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+          ],
+          supportsAdaptiveThinking: true,
+          supportsFastMode: false,
+          supportsAutoMode: false,
+        }];
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-execution-readback",
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-execution-readback",
+          message: {
+            content: [{ type: "text", text: "done" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-execution-readback",
+          result: "done",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      execution: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "high",
+      },
+    },
+  );
+
+  assert.equal(result.executionReadbackError, null);
+  assert.deepEqual(result.executionReadback, {
+    requested: {
+      model: "claude-opus-5-5",
+      thinking: "adaptive",
+      effort: "high",
+    },
+    applied: {
+      model: "claude-opus-5-5",
+      effort: "high",
+    },
+    capability: {
+      value: "claude-opus-5-5",
+      display_name: "Claude Opus 5.5",
+      description: "test model",
+      supports_effort: true,
+      supported_effort_levels: [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ],
+      supports_adaptive_thinking: true,
+      supports_fast_mode: false,
+      supports_auto_mode: false,
+    },
+    supported_models: [{
+      value: "claude-opus-5-5",
+      display_name: "Claude Opus 5.5",
+      description: "test model",
+      supports_effort: true,
+      supported_effort_levels: [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ],
+      supports_adaptive_thinking: true,
+      supports_fast_mode: false,
+      supports_auto_mode: false,
+    }],
+  });
+});
