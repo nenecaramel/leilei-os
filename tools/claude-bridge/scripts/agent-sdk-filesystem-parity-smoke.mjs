@@ -51,6 +51,61 @@ function toolUses(result) {
     .filter((value) => typeof value.name === "string");
 }
 
+function resolveRequestedPath(root, value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return path.resolve(root, value);
+}
+
+function createFilesystemPermissionHandler({
+  root,
+  parityPath,
+  findCommand,
+  grepCommand,
+  requests,
+}) {
+  return async (request) => {
+    requests.push({
+      toolName: request.toolName,
+      input: request.input,
+    });
+
+    if (request.toolName === "Skill") {
+      return { decision: "allow" };
+    }
+
+    if (
+      request.toolName === "Write"
+      || request.toolName === "Edit"
+    ) {
+      const requestedPath =
+        resolveRequestedPath(
+          root,
+          request.input?.file_path,
+        );
+      if (requestedPath === parityPath) {
+        return { decision: "allow" };
+      }
+    }
+
+    if (
+      request.toolName === "Bash"
+      && (
+        request.input?.command === findCommand
+        || request.input?.command === grepCommand
+      )
+    ) {
+      return { decision: "allow" };
+    }
+
+    return {
+      decision: "deny",
+      message:
+        "LEILEIOS_FILESYSTEM_PARITY_SCOPE_DENIED",
+      interrupt: false,
+    };
+  };
+}
+
 async function run() {
   const root = await mkdtemp(
     path.join(tmpdir(), "leileios-agent-sdk-filesystem-parity-"),
@@ -59,6 +114,13 @@ async function run() {
   const agentSentinel = token("LEILEIOS_SUBAGENT");
   const writeSentinel = token("LEILEIOS_WRITE");
   const editSentinel = token("LEILEIOS_EDIT");
+  const parityPath =
+    path.join(root, "workspace", "parity.txt");
+  const findCommand =
+    "find ./workspace -name 'parity.txt'";
+  const grepCommand =
+    `grep -F '${editSentinel}' ./workspace/parity.txt`;
+  const filesystemPermissionRequests = [];
 
   try {
     await mkdir(path.join(root, ".claude", "skills", "leileios-parity"), {
@@ -165,7 +227,7 @@ async function run() {
     };
     transport.events.on("event", onFilesystemRaw);
 
-    const filesystem = await transport.sendNew(
+    const filesystem = await transport.executeTurn(
       [
         "This is a deterministic LeileiOS Agent SDK filesystem parity smoke.",
         "Use the project skill named leileios-parity to learn the exact skill sentinel.",
@@ -173,10 +235,22 @@ async function run() {
         `Use Edit to replace that exact text with exactly: ${editSentinel}`,
         "Inspect the available tools from this native SDK session before searching.",
         "If dedicated Glob and Grep are available, use Glob to find ./workspace/*.txt and Grep to search ./workspace for the exact edited text.",
-        `If dedicated Glob/Grep are not available, use Bash only for the two search operations: find ./workspace -name 'parity.txt' and grep for the exact edited text ${editSentinel} in ./workspace/parity.txt.`,
+        `If dedicated Glob/Grep are not available, use Bash for the two search operations with exactly these commands, separately and without wrappers: ${findCommand} ; ${grepCommand}`,
         "Do not use Bash for the Write or Edit operations.",
         "After the required tools complete, reply with exactly the skill sentinel and nothing else.",
       ].join("\n"),
+      {
+        streaming: false,
+        permissionHandler:
+          createFilesystemPermissionHandler({
+            root,
+            parityPath,
+            findCommand,
+            grepCommand,
+            requests:
+              filesystemPermissionRequests,
+          }),
+      },
     );
     transport.events.off("event", onFilesystemRaw);
 
@@ -244,7 +318,7 @@ async function run() {
     assert.equal(
       (
         await readFile(
-          path.join(root, "workspace", "parity.txt"),
+          parityPath,
           "utf8",
         )
       ).trim(),
@@ -327,6 +401,10 @@ async function run() {
           filesystemToolNames: names,
           filesystemSearchMode:
             dedicatedSearch ? "dedicated_glob_grep" : "native_bash_find_grep",
+          filesystemPermissionRequests:
+            filesystemPermissionRequests.map(
+              (request) => request.toolName,
+            ),
           subagentToolNames: subagentTools,
           hookEvents,
           init: {
