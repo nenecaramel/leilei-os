@@ -49,7 +49,12 @@ export class NativeLiveMacCompanionScheduler {
     private readonly intervalMs: number,
     private readonly now: () => number = () => Date.now(),
     private readonly onOpportunityResult:
-      | ((result: Exclude<NativeLiveMacCompanionSchedulerResult, { outcome: "not_due" }>) => void | Promise<void>)
+      | ((
+          result: Exclude<
+            NativeLiveMacCompanionSchedulerResult,
+            { outcome: "not_due" }
+          >,
+        ) => void | Promise<void>)
       | null = null,
   ) {
     if (!listenerInstanceId.trim()) {
