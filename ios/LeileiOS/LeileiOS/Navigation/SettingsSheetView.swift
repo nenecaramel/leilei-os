@@ -263,13 +263,15 @@ private struct SettingsHomeContent: View {
             Button("Cancel", role: .cancel) {}
         }
         .alert(
-            "Unavailable",
+            "Authentication failed",
             isPresented: Binding(
                 get: { authErrorMessage != nil },
                 set: { if !$0 { authErrorMessage = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
+        } message: {
+            Text(authErrorMessage ?? "")
         }
     }
 
@@ -291,7 +293,7 @@ private struct SettingsHomeContent: View {
         do {
             try await appModel.signIn()
         } catch {
-            authErrorMessage = "Unavailable"
+            authErrorMessage = error.localizedDescription
         }
     }
 
@@ -300,7 +302,7 @@ private struct SettingsHomeContent: View {
         do {
             try await appModel.signOut()
         } catch {
-            authErrorMessage = "Unavailable"
+            authErrorMessage = error.localizedDescription
         }
     }
 
