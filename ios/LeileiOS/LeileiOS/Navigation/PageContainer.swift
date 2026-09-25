@@ -57,7 +57,7 @@ struct PageContainer: View {
                                         title: activeConversationEditableTitle
                                     )
                                 } label: {
-                                    Label("Rename", systemImage: "pencil")
+                                    Text("Rename")
                                 }
                                 .disabled(
                                     appModel.activeNativeLiveConversationID == nil
@@ -66,7 +66,7 @@ struct PageContainer: View {
                                 Button(role: .destructive) {
                                     showingDeleteConfirmation = true
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Text("Delete")
                                 }
                                 .disabled(
                                     appModel.activeNativeLiveConversationID == nil
@@ -97,11 +97,13 @@ struct PageContainer: View {
                 try await appModel.renameActiveNativeLiveConversation(title)
             }
         }
-        .confirmationDialog(
+        .alert(
             "Delete conversation?",
-            isPresented: $showingDeleteConfirmation,
-            titleVisibility: .visible
+            isPresented: $showingDeleteConfirmation
         ) {
+            Button("Cancel", role: .cancel) {
+            }
+
             Button("Delete", role: .destructive) {
                 Task { @MainActor in
                     do {
@@ -110,9 +112,6 @@ struct PageContainer: View {
                         deleteErrorMessage = error.localizedDescription
                     }
                 }
-            }
-
-            Button("Cancel", role: .cancel) {
             }
         } message: {
             Text("This conversation will be removed from Recents.")
