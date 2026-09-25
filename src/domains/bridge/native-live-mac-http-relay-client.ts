@@ -235,18 +235,19 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
-  async appendRuntimeEvent(input: {
+  async appendRuntimeEvents(input: {
     listenerInstanceId: string;
     reservationId: string;
-    sequence: number;
-    event: import("../conversation/native-live-conversation-orchestrator.js").NativeLiveNormalizedEvent;
+    events: ReadonlyArray<{
+      sequence: number;
+      event: import("../conversation/native-live-conversation-orchestrator.js").NativeLiveNormalizedEvent;
+    }>;
   }): Promise<void> {
     await this.post(
-      `/reservations/${encodeURIComponent(input.reservationId)}/events`,
+      `/reservations/${encodeURIComponent(input.reservationId)}/events/batch`,
       {
         listener_instance_id: input.listenerInstanceId,
-        sequence: input.sequence,
-        event: input.event,
+        events: input.events,
       },
     );
   }

@@ -539,8 +539,8 @@ test("ambiguous semantic callback is surfaced without executing Claude", async (
 class FakeRuntimeEventRelay extends FakeRelay {
   eventSubmitError: Error | null = null;
 
-  async appendRuntimeEvent(input: unknown) {
-    this.calls.push({ name: "appendRuntimeEvent", input });
+  async appendRuntimeEvents(input: unknown) {
+    this.calls.push({ name: "appendRuntimeEvents", input });
     if (this.eventSubmitError) throw this.eventSubmitError;
   }
 }
@@ -596,23 +596,76 @@ test("foreground normalized events are delivered in reservation-local sequence b
       "renewLease",
       "reserveNext",
       "markExecutionStarted",
-      "appendRuntimeEvent",
-      "appendRuntimeEvent",
+      "appendRuntimeEvents",
       "submitResult",
     ],
   );
-  const events = relay.calls
-    .filter((entry) => entry.name === "appendRuntimeEvent")
-    .map((entry) => entry.input as {
-      sequence: number;
-      event: { type: string };
-    });
+  const batch = relay.calls
+    .find((entry) => entry.name === "appendRuntimeEvents")
+    ?.input as {
+      events: Array<{
+        sequence: number;
+        event: { type: string };
+      }>;
+    };
   assert.deepEqual(
-    events.map((entry) => [entry.sequence, entry.event.type]),
+    batch.events.map((entry) => [
+      entry.sequence,
+      entry.event.type,
+    ]),
     [
       [1, "partial_text"],
       [2, "result"],
     ],
+  );
+});
+
+test("foreground runtime event buffering flushes in bounded batches", async () => {
+  class NineEventExecutor implements NativeLivePreparedCommandExecutor {
+    async execute(
+      _input: unknown,
+      options?: {
+        onNormalizedEvent?: (
+          event: NativeLiveNormalizedEvent,
+        ) => void | Promise<void>;
+      },
+    ) {
+      for (let index = 1; index <= 9; index += 1) {
+        await options?.onNormalizedEvent?.({
+          type: "partial_text",
+          payload: {
+            delta: String(index),
+            accumulated_length: index,
+          },
+        });
+      }
+      return success();
+    }
+  }
+
+  const relay = new FakeRuntimeEventRelay();
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new NineEventExecutor(),
+  );
+
+  assert.equal((await loop.runOnce()).outcome, "completed");
+  const batches = relay.calls
+    .filter((entry) => entry.name === "appendRuntimeEvents")
+    .map((entry) => (
+      entry.input as {
+        events: Array<{ sequence: number }>;
+      }
+    ).events);
+
+  assert.deepEqual(
+    batches.map((batch) => batch.length),
+    [8, 1],
+  );
+  assert.deepEqual(
+    batches.flat().map((event) => event.sequence),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9],
   );
 });
 
