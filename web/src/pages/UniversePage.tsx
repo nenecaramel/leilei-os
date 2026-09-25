@@ -7,7 +7,7 @@ import {
   createLeileiOSUniverseAdapter,
 } from "./universe/universe-adapter";
 import {
-  LeileiOSUniverseService,
+  createLeileiOSUniverseService,
   isUniverseNotInitialized,
   isUniverseVersionConflict,
 } from "./universe/universe-service";
@@ -58,7 +58,7 @@ export function UniversePage({ api }: { api: WebApiClient }) {
 
 export function UniversePageContent({ api }: { api: WebApiClient }) {
   const service = useMemo(
-    () => LeileiOSUniverseService({ adapter: createLeileiOSUniverseAdapter(api) }),
+    () => createLeileiOSUniverseService({ adapter: createLeileiOSUniverseAdapter(api) }),
     [api],
   );
   const location = useLocation();
