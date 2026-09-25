@@ -9,6 +9,7 @@ export type NativeLiveMacDaemonConfig = {
   relayBaseUrl: string;
   relayToken: string;
   listenerInstanceId: string;
+  companionBackgroundIntervalMs: number;
 };
 
 export function resolveNativeLiveMacDaemonConfig(
@@ -68,10 +69,19 @@ export function resolveNativeLiveMacDaemonConfig(
     );
   }
 
+  const companionBackgroundIntervalSeconds =
+    parsePositiveIntegerEnv(
+      environment.LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS,
+      3_600,
+      "LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS",
+    );
+
   return {
     relayBaseUrl: relayBaseUrl.replace(/\/+$/u, ""),
     relayToken,
     listenerInstanceId,
+    companionBackgroundIntervalMs:
+      companionBackgroundIntervalSeconds * 1_000,
   };
 }
 
@@ -177,4 +187,21 @@ function firstNonBlank(...values: Array<string | undefined>): string | null {
     if (normalized) return normalized;
   }
   return null;
+}
+
+
+function parsePositiveIntegerEnv(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+): number {
+  if (value === undefined || value.trim() === "") return fallback;
+  if (!/^[1-9][0-9]*$/u.test(value.trim())) {
+    throw new Error(name + " must be a positive integer.");
+  }
+  const parsed = Number(value.trim());
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(name + " must be a safe positive integer.");
+  }
+  return parsed;
 }
