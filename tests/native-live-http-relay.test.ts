@@ -962,6 +962,7 @@ test("internal relay background model endpoints preserve authenticated user scop
 test("internal relay companion background opportunity uses authenticated user scope", async () => {
   const relayService = new FakeRelayService();
   const calls: unknown[] = [];
+  const observed: unknown[] = [];
   const companionBackgroundOpportunity = {
     async offer(input: unknown) {
       calls.push(input);
@@ -987,6 +988,9 @@ test("internal relay companion background opportunity uses authenticated user sc
         createNativeLiveRelayInternalRouter({
           relayService,
           companionBackgroundOpportunity,
+          observeCompanionBackgroundOpportunity(event) {
+            observed.push(event);
+          },
         }),
       );
     },
@@ -1012,6 +1016,15 @@ test("internal relay companion background opportunity uses authenticated user sc
         data: { reason: string };
       };
       assert.equal(payload.data.reason, "startup");
+      assert.deepEqual(observed, [{
+        outcome: "offered",
+        reason: "startup",
+        maintenanceKindCount: 1,
+        effectDeliveryScheduled: true,
+        proactivityScheduled: false,
+        topicResurfaceOffered: true,
+        failureCount: 0,
+      }]);
 
       const malformed = await fetch(
         `${baseUrl}/internal/native-live-relay/background/opportunity`,
@@ -1027,6 +1040,7 @@ test("internal relay companion background opportunity uses authenticated user sc
       );
       assert.equal(malformed.status, 400);
       assert.equal(calls.length, 1);
+      assert.equal(observed.length, 1);
     },
   );
 });
