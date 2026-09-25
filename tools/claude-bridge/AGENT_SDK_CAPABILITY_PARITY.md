@@ -42,7 +42,7 @@ describe an earlier pre-integration state.
 | Slash commands | DEFERRED | Normal user turns deliberately remain verbatim; slash-command dispatch must be an explicit non-verbatim Runtime control rather than magic user-text parsing |
 | Subagents | PENDING REAL SDK | Controlled project-subagent smoke is now checked in; require structured delegation evidence |
 | Plugins | PENDING | Load/reload a controlled local plugin and observe status before claiming parity |
-| MCP | PENDING | Connect a controlled MCP server and observe structured tool result through the production-compatible Agent SDK path |
+| MCP | PENDING REAL SDK | Controlled in-process SDK MCP smoke is checked in; require a real qualified MCP tool call + hidden handler sentinel before claiming parity |
 | Hooks | PENDING REAL SDK | Controlled local PostToolUse hook smoke is now checked in |
 | Read | REAL SDK | Read controlled fixture file and observe tool event/result |
 | Write | REAL SDK | Real permission smoke proved deny plus allow-with-rewritten Write bytes |
@@ -59,7 +59,7 @@ describe an earlier pre-integration state.
 | Thinking / effort | RUNTIME (partial) | Applied effort is readable/persisted; exact applied thinking is not independently claimed because SDK has no unambiguous readback |
 | Runtime model switch | REAL SDK + RUNTIME contract | Same provider session model switch is REAL SDK; production per-turn selection/readback is wired, cross-device switch acceptance remains |
 | Execution readback | RUNTIME | requested/applied/capability readback is persisted; raw local SDK errors collapse to READBACK_UNAVAILABLE |
-| Background task / subagent progress | PENDING | Structured background/subagent membership/progress must be observed and projected without becoming canonical chat truth |
+| Background task / subagent progress | RUNTIME + PENDING REAL SDK | Production durable task-event contract now projects Agent SDK task lifecycle without becoming canonical chat truth; controlled real background-subagent smoke is checked in |
 | Thinking token usage | CONTRACT | Context category pipeline is durable, but no independent real-SDK thinking-category acceptance is claimed |
 | Interrupt current turn | RUNTIME | Graceful interrupt is REAL SDK and production exposes a durable exact-active-turn control; hard abort remains separate fallback |
 | Normalized event compatibility | RUNTIME | Real tool event parity is proven; production foreground event stream persists bounded normalized events |
@@ -76,8 +76,27 @@ describe an earlier pre-integration state.
 - #503/#504 added per-turn model/thinking/effort selection to the production relay/runtime path.
 - #505 deployed deterministic turn-boundary auto-compact plus durable context/compaction metadata.
 - #506 deployed bounded interactive execution readback and requested execution selection readback.
-- The remaining parity gate is therefore not Phase-2 transport plumbing. It is the explicit audit of filesystem capabilities (Skills / Hooks / Edit / Glob / Grep / project subagents), MCP, plugins, and background/subagent progress, plus the separately deferred slash-command product semantics.
+- #510 deployed bounded durable Agent SDK task lifecycle projection for background/subagent progress.
+- Controlled REAL SDK smokes are now checked in for filesystem parity, in-process MCP, and a forced-background custom subagent task lifecycle. None of these new smokes count as REAL SDK PASS until run on the Mac subscription-auth environment.
+- The remaining parity gate is therefore not Phase-2 transport plumbing. It is REAL execution of those controlled smokes, explicit plugin acceptance, and the separately deferred slash-command product semantics.
 
+
+## Remaining controlled parity smokes — pending REAL SDK
+
+### MCP
+
+- `smoke:agent-sdk-mcp` creates a disposable in-process SDK MCP server with one hidden-sentinel tool.
+- The sentinel is unavailable to the parent prompt; acceptance requires exactly one handler invocation, a structured qualified `mcp__...` tool-use event, and an exact terminal echo of the tool result.
+- The smoke keeps existing Claude subscription auth and rejects `ANTHROPIC_API_KEY`.
+- Passing this proves the Agent SDK host can carry SDK-owned MCP tools. Product-specific remote MCP trust/credential policy remains a separate runtime configuration concern.
+
+### Background subagent task lifecycle
+
+- `smoke:agent-sdk-background-task` defines a custom subagent with `background: true` and enables `agentProgressSummaries`.
+- Acceptance requires real `task_started` and terminal `task_notification` system events from SDK 0.3.281, then runs those raw messages through the production `ClaudeEventNormalizer` and requires normalized `task` started / notification phases.
+- The parent must receive the subagent-only hidden sentinel, proving the delegated background task actually completed.
+- Additional `task_progress / task_updated / background_tasks_changed` frames are recorded when emitted but are not required for a very short deterministic task.
+- Durable production projection intentionally stores bounded structured task state and omits local output-file paths / raw error text.
 
 ## Compaction discipline
 
