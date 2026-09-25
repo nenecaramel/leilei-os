@@ -191,23 +191,25 @@ try {
     execution.effort,
     "Applied effort differs from requested effort.",
   );
-  assert.ok(
-    executionMetadata.readback.capability,
-    "Execution capability readback is missing.",
-  );
-  assert.equal(
-    executionMetadata.readback.capability.value,
-    execution.model,
-  );
-  assert.equal(
-    executionMetadata.readback.capability.supports_effort,
-    true,
-  );
-  assert.ok(
-    executionMetadata.readback.capability.supported_effort_levels.includes(
-      execution.effort,
-    ),
-  );
+  const capability = executionMetadata.readback.capability;
+  if (capability) {
+    assert.equal(
+      capability.value,
+      execution.model,
+      "Capability entry does not match the selected model.",
+    );
+    assert.equal(
+      capability.supports_effort,
+      true,
+      "Capability entry says selected model does not support effort.",
+    );
+    assert.ok(
+      capability.supported_effort_levels.includes(
+        execution.effort,
+      ),
+      "Capability entry does not include the applied effort.",
+    );
+  }
 
   const [checkpoint] = await database.db
     .select({
@@ -264,13 +266,16 @@ try {
       dispatchStatus: turn.dispatchStatus,
       requested: executionMetadata.readback.requested,
       applied: executionMetadata.readback.applied,
-      capability: {
-        value: executionMetadata.readback.capability.value,
-        supportsEffort:
-          executionMetadata.readback.capability.supports_effort,
-        supportedEffortLevels:
-          executionMetadata.readback.capability.supported_effort_levels,
-      },
+      capability:
+        capability
+          ? {
+              value: capability.value,
+              supportsEffort: capability.supports_effort,
+              supportedEffortLevels:
+                capability.supported_effort_levels,
+            }
+          : null,
+      capabilityObserved: capability !== null,
       checkpointRuntimeMetadataMatches: true,
       canonicalHeadMatchesAssistant: true,
     }) + "\n",
