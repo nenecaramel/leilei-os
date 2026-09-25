@@ -12,7 +12,7 @@ struct SidebarView: View {
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
     private let topContentOffset: CGFloat = 18
-    private let titleHorizontalOffset: CGFloat = -10
+    private let titleHorizontalOffset: CGFloat = -12
     private let navigationRowHorizontalInset: CGFloat = 12
 
     var body: some View {
@@ -23,7 +23,7 @@ struct SidebarView: View {
                         Text("Leilei OS")
                             .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .padding(.top, 18)
-                            .offset(x: titleHorizontalOffset, y: 18)
+                            .offset(x: titleHorizontalOffset, y: 20)
 
                         SidebarSection(
                             title: nil,
@@ -96,8 +96,8 @@ struct SidebarView: View {
     private var recentConversations: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Recents")
-                .font(.caption)
-                .foregroundStyle(.secondary.opacity(0.7))
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundStyle(.secondary.opacity(0.9))
                 .padding(.horizontal, 10)
                 .offset(x: titleHorizontalOffset - 10, y: 2)
 
@@ -109,7 +109,7 @@ struct SidebarView: View {
                 } label: {
                     HStack {
                         Text(displayTitle(for: conversation))
-                            .font(.body.weight(.medium))
+                            .font(.system(size: 17.5, weight: .medium))
                             .lineLimit(1)
                             .offset(
                                 x: titleHorizontalOffset - navigationRowHorizontalInset,
