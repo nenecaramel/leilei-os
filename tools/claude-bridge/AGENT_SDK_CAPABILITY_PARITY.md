@@ -83,6 +83,13 @@ describe an earlier pre-integration state.
 
 ## Remaining controlled parity smokes — pending REAL SDK
 
+Run the remaining core REAL SDK gate from `tools/claude-bridge` with:
+
+`pnpm smoke:agent-sdk-pending-parity`
+
+The suite stops on first failure and runs the controlled filesystem/Skill/Hook/project-subagent, MCP, background-task, and local-plugin smokes under the existing Claude subscription-auth environment.
+
+
 ### MCP
 
 - `smoke:agent-sdk-mcp` creates a disposable in-process SDK MCP server with one hidden-sentinel tool.
