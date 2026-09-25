@@ -18,6 +18,7 @@ import type {
 import type {
   NativeLiveRuntimeExecutionResult,
 } from "./native-live-runtime-protocol.js";
+import { parseNativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -95,6 +96,7 @@ const preparationSelection = {
   runtimeMode: nativeLiveTurnPreparations.runtimeMode,
   parentProviderSessionId:
     nativeLiveTurnPreparations.parentProviderSessionId,
+  executionSelection: nativeLiveTurnPreparations.executionSelection,
   prompt: nativeLiveTurnPreparations.prompt,
   mindPrepared: nativeLiveTurnPreparations.mindPrepared,
   dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
@@ -110,6 +112,7 @@ type SelectedRelayPreparationRow = {
   canonicalUserMessageId: string;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
+  executionSelection: Record<string, unknown> | null;
   prompt: string;
   mindPrepared: boolean;
   dispatchStatus: RelayPreparationRow["dispatchStatus"];
@@ -119,7 +122,12 @@ type SelectedRelayPreparationRow = {
 function mapPreparation(
   row: SelectedRelayPreparationRow,
 ): RelayPreparationRow {
-  return { ...row };
+  return {
+    ...row,
+    executionSelection: row.executionSelection === null
+      ? null
+      : parseNativeLiveExecutionSelection(row.executionSelection),
+  };
 }
 
 export class NativeLiveBackendRelayError extends Error {

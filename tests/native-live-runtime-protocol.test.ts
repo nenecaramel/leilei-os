@@ -55,6 +55,32 @@ test("fork runtime command requires an exact parent provider session", () => {
   );
 });
 
+test("runtime command carries optional validated execution selection", () => {
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 1,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    execution_selection: {
+      model: "claude-sonnet-5",
+      thinking: "adaptive",
+      effort: "xhigh",
+    },
+    prompt: "hello",
+  });
+
+  assert.deepEqual(command.execution_selection, {
+    model: "claude-sonnet-5",
+    thinking: "adaptive",
+    effort: "xhigh",
+  });
+});
+
 test("success result carries provider session and normalized events only", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
     protocol_version: 1,

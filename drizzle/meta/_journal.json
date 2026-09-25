@@ -456,6 +456,13 @@
       "when": 1790307200000,
       "tag": "0064_native_live_runtime_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1790310800000,
+      "tag": "0065_native_live_execution_selection",
+      "breakpoints": true
     }
   ]
 }

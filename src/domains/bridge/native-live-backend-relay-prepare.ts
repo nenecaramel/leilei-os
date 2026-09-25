@@ -81,6 +81,7 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          executionSelection: request.execution ?? null,
         });
       } else if (request.operation === "retry") {
         prepared = await this.port.prepareRetry({
@@ -89,6 +90,7 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           requestId: request.request_id,
           conversationId: request.conversation_id,
           targetUserMessageId: request.target_user_message_id,
+          executionSelection: request.execution ?? null,
         });
       } else {
         prepared = await this.port.prepareEdit({
@@ -98,6 +100,7 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           conversationId: request.conversation_id,
           targetUserMessageId: request.target_user_message_id,
           text: request.text,
+          executionSelection: request.execution ?? null,
         });
       }
     } catch {

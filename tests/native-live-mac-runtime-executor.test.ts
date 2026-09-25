@@ -244,3 +244,51 @@ test("interactive foreground runtime is preferred and receives streaming branch 
     ["partial_text", "result"],
   );
 });
+
+
+test("interactive foreground runtime receives the exact prepared execution selection", async () => {
+  let received: unknown = null;
+  const runtime = {
+    async sendNew() {
+      throw new Error("phase-1 sendNew must not be used");
+    },
+    async resume() {
+      throw new Error("phase-1 resume must not be used");
+    },
+    async fork() {
+      throw new Error("phase-1 fork must not be used");
+    },
+    async executeTurn(
+      _prompt: string,
+      options: Record<string, unknown>,
+    ) {
+      received = options;
+      return {
+        providerSessionId: "provider-selected",
+        normalizedEvents: [],
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
+    command({
+      execution_selection: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "medium",
+      },
+    }),
+  );
+
+  assert.equal(result.status, "success");
+  assert.deepEqual(received, {
+    mode: "new",
+    parentProviderSessionId: null,
+    streaming: true,
+    execution: {
+      model: "claude-opus-5-5",
+      thinking: "adaptive",
+      effort: "medium",
+    },
+  });
+});

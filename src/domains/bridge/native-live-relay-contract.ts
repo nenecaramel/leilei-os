@@ -1,3 +1,9 @@
+import {
+  NativeLiveExecutionSelectionError,
+  parseNativeLiveExecutionSelection,
+  type NativeLiveExecutionSelection,
+} from "./native-live-execution-selection.js";
+
 export const BRIDGE_DISPATCH_TARGETS = [
   "chatgpt_host",
   "claude_code",
@@ -15,6 +21,7 @@ export type NativeLiveRelaySendRequest = {
   conversation_id: string;
   expected_head_message_id: string | null;
   text: string;
+  execution?: NativeLiveExecutionSelection;
 };
 
 export type NativeLiveRelayRetryRequest = {
@@ -23,6 +30,7 @@ export type NativeLiveRelayRetryRequest = {
   operation: "retry";
   conversation_id: string;
   target_user_message_id: string;
+  execution?: NativeLiveExecutionSelection;
 };
 
 export type NativeLiveRelayEditRequest = {
@@ -32,6 +40,7 @@ export type NativeLiveRelayEditRequest = {
   conversation_id: string;
   target_user_message_id: string;
   text: string;
+  execution?: NativeLiveExecutionSelection;
 };
 
 export type NativeLiveRelayRequest =
@@ -91,7 +100,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "conversation_id",
       "expected_head_message_id",
       "text",
-    ]);
+    ], ["execution"]);
     return {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -102,6 +111,9 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
           ? null
           : requireUuid(body.expected_head_message_id, "expected_head_message_id"),
       text: normalizeText(body.text),
+      ...(body.execution === undefined
+        ? {}
+        : { execution: parseExecution(body.execution) }),
     };
   }
 
@@ -112,7 +124,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "operation",
       "conversation_id",
       "target_user_message_id",
-    ]);
+    ], ["execution"]);
     return {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -122,6 +134,9 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
         body.target_user_message_id,
         "target_user_message_id",
       ),
+      ...(body.execution === undefined
+        ? {}
+        : { execution: parseExecution(body.execution) }),
     };
   }
 
@@ -133,7 +148,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "conversation_id",
       "target_user_message_id",
       "text",
-    ]);
+    ], ["execution"]);
     return {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -144,10 +159,25 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
         "target_user_message_id",
       ),
       text: normalizeText(body.text),
+      ...(body.execution === undefined
+        ? {}
+        : { execution: parseExecution(body.execution) }),
     };
   }
 
   throw new NativeLiveRelayContractError("Native live relay operation is invalid.");
+}
+
+
+function parseExecution(value: unknown): NativeLiveExecutionSelection {
+  try {
+    return parseNativeLiveExecutionSelection(value);
+  } catch (error) {
+    if (error instanceof NativeLiveExecutionSelectionError) {
+      throw new NativeLiveRelayContractError(error.message);
+    }
+    throw error;
+  }
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {
@@ -161,9 +191,10 @@ function requireRecord(value: unknown): Record<string, unknown> {
 
 function requireExactKeys(
   value: Record<string, unknown>,
-  allowed: readonly string[],
+  required: readonly string[],
+  optional: readonly string[] = [],
 ): void {
-  const allowedKeys = new Set(allowed);
+  const allowedKeys = new Set([...required, ...optional]);
   for (const key of Object.keys(value)) {
     if (!allowedKeys.has(key)) {
       throw new NativeLiveRelayContractError(
@@ -171,7 +202,7 @@ function requireExactKeys(
       );
     }
   }
-  for (const key of allowed) {
+  for (const key of required) {
     if (!(key in value)) {
       throw new NativeLiveRelayContractError(
         `Missing native live relay field: ${key}`,

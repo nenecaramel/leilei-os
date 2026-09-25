@@ -12,6 +12,7 @@ import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
 import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
+import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import {
   NativeLiveRelayContractError,
   parseNativeLiveRelayRequest,
@@ -37,6 +38,7 @@ export type NativeLivePreparedTurn = {
   canonicalUserMessageId: string;
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
+  executionSelection?: NativeLiveExecutionSelection | null;
   prompt: string;
   mindPrepared: boolean;
 };
@@ -159,6 +161,7 @@ export interface NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
 
   prepareRetry(input: {
@@ -167,6 +170,7 @@ export interface NativeLiveBackendTurnPort {
     requestId: string;
     conversationId: string;
     targetUserMessageId: string;
+    executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
 
   prepareEdit(input: {
@@ -176,6 +180,7 @@ export interface NativeLiveBackendTurnPort {
     conversationId: string;
     targetUserMessageId: string;
     text: string;
+    executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
 
   getPreparation(input: {
@@ -250,6 +255,7 @@ export class NativeLiveBackendTurnCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          executionSelection: request.execution ?? null,
         });
       } else if (request.operation === "retry") {
         prepared = await this.port.prepareRetry({
@@ -258,6 +264,7 @@ export class NativeLiveBackendTurnCoordinator {
           requestId: request.request_id,
           conversationId: request.conversation_id,
           targetUserMessageId: request.target_user_message_id,
+          executionSelection: request.execution ?? null,
         });
       } else {
         prepared = await this.port.prepareEdit({
@@ -267,6 +274,7 @@ export class NativeLiveBackendTurnCoordinator {
           conversationId: request.conversation_id,
           targetUserMessageId: request.target_user_message_id,
           text: request.text,
+          executionSelection: request.execution ?? null,
         });
       }
     } catch {
@@ -485,6 +493,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
     canonical_user_message_id: preparation.canonicalUserMessageId,
     runtime_mode: preparation.runtimeMode,
     parent_provider_session_id: preparation.parentProviderSessionId,
+    execution_selection: preparation.executionSelection ?? null,
     prompt: preparation.prompt,
   };
   return command;
