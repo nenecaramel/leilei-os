@@ -143,6 +143,36 @@ test("Distillation plans only settled turns that have fallen outside Surface", (
   assert.equal(planned.sourceHeadMessageId, "a2");
 });
 
+test("Distillation waits for an explicit source batch instead of running every turn", () => {
+  const base = linearConversation();
+  const tooSmall = planDistillationWindow({
+    conversation: base,
+    surfaceLimit: 2,
+    minSourceMessages: 6,
+    previousWatermarkMessageId: null,
+  });
+  assert.equal(tooSmall, null);
+
+  const u4 = message("u4", "user", "a3", "第四轮继续");
+  const a4 = message("a4", "assistant", "u4", "第四轮回答");
+  const batched = planDistillationWindow({
+    conversation: conversation(
+      [...base.messages, u4, a4],
+      "a4",
+    ),
+    surfaceLimit: 2,
+    minSourceMessages: 6,
+    previousWatermarkMessageId: null,
+  });
+
+  assert.ok(batched);
+  assert.deepEqual(
+    batched.transcript.map((message) => message.messageId),
+    ["u1", "a1", "u2", "a2", "u3", "a3"],
+  );
+  assert.equal(batched.sourceHeadMessageId, "a3");
+});
+
 test("Distillation excludes abandoned Retry siblings from its source transcript", () => {
   const u1 = message("u1", "user", null, "root");
   const a1 = message("a1", "assistant", "u1", "first");
