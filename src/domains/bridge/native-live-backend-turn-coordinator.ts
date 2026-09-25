@@ -38,7 +38,7 @@ export type NativeLivePreparedTurn = {
   canonicalUserMessageId: string;
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
-  executionSelection: NativeLiveExecutionSelection | null;
+  executionSelection?: NativeLiveExecutionSelection | null;
   prompt: string;
   mindPrepared: boolean;
 };
@@ -493,7 +493,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
     canonical_user_message_id: preparation.canonicalUserMessageId,
     runtime_mode: preparation.runtimeMode,
     parent_provider_session_id: preparation.parentProviderSessionId,
-    execution_selection: preparation.executionSelection,
+    execution_selection: preparation.executionSelection ?? null,
     prompt: preparation.prompt,
   };
   return command;
