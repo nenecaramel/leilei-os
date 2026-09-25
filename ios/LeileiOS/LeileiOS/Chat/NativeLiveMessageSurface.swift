@@ -227,21 +227,36 @@ private struct NativeLiveMessageRow: View {
                         .foregroundStyle(.secondary)
 
                     messageContent
-                        .overlay {
-                            if let targetUserMessageID = message.parentMessageId {
-                                LightweightContextMenuInteraction(
-                                    title: "Retry",
-                                    systemImage: "arrow.clockwise",
-                                    copyText: copyText,
-                                    isDisabled: isTurnInFlight,
-                                    cornerRadius: 12
-                                ) {
-                                    onRetryMessage(targetUserMessageID)
-                                }
+
+                    messageStatus
+
+                    HStack(spacing: 14) {
+                        if let copyText {
+                            Button {
+                                UIPasteboard.general.string = copyText
+                            } label: {
+                                Label(
+                                    "Copy",
+                                    systemImage: "doc.on.doc"
+                                )
                             }
                         }
 
-                    messageStatus
+                        if let targetUserMessageID = message.parentMessageId {
+                            Button {
+                                onRetryMessage(targetUserMessageID)
+                            } label: {
+                                Label(
+                                    "Retry",
+                                    systemImage: "arrow.clockwise"
+                                )
+                            }
+                            .disabled(isTurnInFlight)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
                 }
 
                 Spacer(minLength: 24)
