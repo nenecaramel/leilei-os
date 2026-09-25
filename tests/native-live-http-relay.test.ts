@@ -302,12 +302,12 @@ class FakeRuntimeInteractionService {
 }
 
 class FakeRuntimeEventService {
-  appendCalls: unknown[] = [];
+  appendBatchCalls: unknown[] = [];
   listCalls: unknown[] = [];
 
-  async append(input: unknown) {
-    this.appendCalls.push(input);
-    return "created" as const;
+  async appendBatch(input: unknown) {
+    this.appendBatchCalls.push(input);
+    return { created: 2, idempotent: 0 };
   }
 
   async list(input: unknown) {
@@ -1211,7 +1211,7 @@ test("internal relay Topic resurface opportunity uses authenticated user scope a
 });
 
 
-test("internal relay persists authenticated foreground runtime events", async () => {
+test("internal relay persists authenticated foreground runtime event batches", async () => {
   const relayService = new FakeRelayService();
   const runtimeEvents = new FakeRuntimeEventService();
 
@@ -1230,37 +1230,45 @@ test("internal relay persists authenticated foreground runtime events", async ()
       );
     },
     async (baseUrl) => {
+      const events = [
+        {
+          sequence: 1,
+          event: {
+            type: "partial_text" as const,
+            payload: {
+              delta: "hel",
+              accumulated_length: 3,
+            },
+          },
+        },
+        {
+          sequence: 2,
+          event: {
+            type: "result" as const,
+            payload: {
+              status: "success",
+              final_text: "hello",
+            },
+          },
+        },
+      ];
       const response = await fetch(
-        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/events`,
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/events/batch`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             listener_instance_id: listenerId,
-            sequence: 1,
-            event: {
-              type: "partial_text",
-              payload: {
-                delta: "hel",
-                accumulated_length: 3,
-              },
-            },
+            events,
           }),
         },
       );
       assert.equal(response.status, 201);
-      assert.deepEqual(runtimeEvents.appendCalls, [{
+      assert.deepEqual(runtimeEvents.appendBatchCalls, [{
         userId,
         listenerInstanceId: listenerId,
         reservationId: prepareId,
-        sequence: 1,
-        event: {
-          type: "partial_text",
-          payload: {
-            delta: "hel",
-            accumulated_length: 3,
-          },
-        },
+        events,
       }]);
     },
   );
