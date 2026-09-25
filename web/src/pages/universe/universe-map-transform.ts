@@ -16,7 +16,6 @@ export type UniversePoint = {
 
 export const MIN_UNIVERSE_SCALE = 0.2;
 export const MAX_UNIVERSE_SCALE = 4;
-export const UNIVERSE_VIEWPORT_STORAGE_KEY = "leileios.universe.viewport.v1";
 
 // Canonical positions are percentages in a 0..100 logical coordinate space.
 // Keeping the conversion in one place lets the renderer use a larger world
