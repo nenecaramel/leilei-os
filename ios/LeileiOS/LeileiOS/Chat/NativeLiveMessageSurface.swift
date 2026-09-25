@@ -273,9 +273,6 @@ private struct NativeLiveMessageRow: View {
                                     ? "checkmark"
                                     : "square.on.square"
                             )
-                            .contentTransition(
-                                .symbolEffect(.replace)
-                            )
                             .frame(width: 22, height: 22)
                         }
                     }
@@ -585,7 +582,7 @@ private struct ChatMarkdownView: View {
         case .paragraph(let text):
             inlineText(text)
                 .font(.system(size: baseFontSize))
-                .tracking(0.08)
+                .tracking(0.10)
                 .lineSpacing(lineSpacing)
 
         case .heading(let level, let text):
@@ -639,7 +636,7 @@ private struct ChatMarkdownView: View {
         case .codeBlock(let code):
             Text(code)
                 .font(.system(size: 14, design: .monospaced))
-                .tracking(0.10)
+                .tracking(0.08)
                 .lineSpacing(lineSpacing)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
