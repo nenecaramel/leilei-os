@@ -5,6 +5,7 @@ import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
   conversations,
+  nativeLiveTurnPreparations,
 } from "../../database/schema.js";
 import type {
   NativeLiveContentBlock,
@@ -34,6 +35,14 @@ function notFound(): Error {
   });
 }
 
+export type NativeLiveConversationDeleteResult =
+  | {
+      outcome: "deleted" | "already_deleted";
+      deletedAt: string;
+    }
+  | { outcome: "busy" }
+  | { outcome: "not_found" };
+
 export interface NativeLiveConversationRepository {
   withTransaction<T>(
     work: (repository: NativeLiveConversationRepository) => Promise<T>,
@@ -53,6 +62,11 @@ export interface NativeLiveConversationRepository {
     userId: string;
     conversationId: string;
   }): Promise<NativeLiveConversation | null>;
+
+  deleteConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationDeleteResult>;
 
   appendUserMessage(input: {
     userId: string;
@@ -310,6 +324,111 @@ implements NativeLiveConversationRepository {
       updatedAt: conversation.updatedAt.toISOString(),
       messages,
     };
+  }
+
+  async deleteConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationDeleteResult> {
+    return this.db.transaction(
+      async (transaction) => {
+        const rows = await transaction
+          .select({
+            id: conversations.id,
+            lifecycleStatus: conversations.lifecycleStatus,
+            deletedAt: conversations.deletedAt,
+          })
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.userId, input.userId),
+              eq(conversations.id, input.conversationId),
+              eq(conversations.origin, "native_live"),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        const conversation = rows[0];
+        if (!conversation) return { outcome: "not_found" as const };
+
+        if (conversation.lifecycleStatus === "deleted") {
+          if (!conversation.deletedAt) {
+            throw new Error(
+              "Deleted native live conversation is missing deleted_at.",
+            );
+          }
+          return {
+            outcome: "already_deleted" as const,
+            deletedAt: conversation.deletedAt.toISOString(),
+          };
+        }
+
+        if (conversation.lifecycleStatus !== "active") {
+          return { outcome: "not_found" as const };
+        }
+
+        const activeTurns = await transaction
+          .select({ id: nativeLiveTurnPreparations.id })
+          .from(nativeLiveTurnPreparations)
+          .where(
+            and(
+              eq(nativeLiveTurnPreparations.userId, input.userId),
+              eq(
+                nativeLiveTurnPreparations.conversationId,
+                input.conversationId,
+              ),
+              inArray(
+                nativeLiveTurnPreparations.dispatchStatus,
+                [
+                  "staged",
+                  "pending",
+                  "reserved",
+                  "executing",
+                  "delivery_unknown",
+                ],
+              ),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        if (activeTurns.length > 0) {
+          return { outcome: "busy" as const };
+        }
+
+        const deletedAt = new Date();
+        const updated = await transaction
+          .update(conversations)
+          .set({
+            lifecycleStatus: "deleted",
+            archivedAt: null,
+            deletedAt,
+            updatedAt: deletedAt,
+          })
+          .where(
+            and(
+              eq(conversations.userId, input.userId),
+              eq(conversations.id, input.conversationId),
+              eq(conversations.origin, "native_live"),
+              eq(conversations.lifecycleStatus, "active"),
+            ),
+          )
+          .returning({ id: conversations.id });
+
+        if (updated.length !== 1) {
+          throw new Error(
+            "Native live conversation delete lost its lifecycle lock.",
+          );
+        }
+
+        return {
+          outcome: "deleted" as const,
+          deletedAt: deletedAt.toISOString(),
+        };
+      },
+      { isolationLevel: "serializable" },
+    );
   }
 
   async appendUserMessage(input: {
@@ -632,6 +751,7 @@ implements NativeLiveConversationRepository {
           eq(conversations.userId, userId),
           eq(conversations.id, conversationId),
           eq(conversations.origin, "native_live"),
+          eq(conversations.lifecycleStatus, "active"),
         ),
       )
       .limit(1);
