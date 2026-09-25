@@ -737,3 +737,104 @@ test("interactive foreground execution binds permission and question host callba
     },
   ]);
 });
+
+
+test("interactive foreground control pump can queue a mid-turn user message on the same SDK query", async () => {
+  const seenUserMessages = [];
+  const receipts = [];
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: ({ prompt }) => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        const iterator = prompt[Symbol.asyncIterator]();
+        const first = await iterator.next();
+        seenUserMessages.push(
+          first.value.message.content[0].text,
+        );
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-controlled",
+        };
+        const second = await iterator.next();
+        seenUserMessages.push(
+          second.value.message.content[0].text,
+        );
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-controlled",
+          result: "UPDATED",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "initial",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      controlPump: async (controller) => {
+        await new Promise((resolve) => setImmediate(resolve));
+        receipts.push(
+          controller.sendUserMessage("mid-turn update"),
+        );
+      },
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-controlled");
+  assert.deepEqual(seenUserMessages, [
+    "initial",
+    "mid-turn update",
+  ]);
+  assert.deepEqual(receipts, [{ status: "queued" }]);
+});
+
+test("interactive foreground control pump projects graceful interrupt as INTERRUPTED", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {
+        release();
+      },
+      async interrupt() {
+        release();
+        return { still_queued: [] };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-interrupt-control",
+        };
+        await gate;
+        throw new Error("provider interrupted execution");
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      transport.executeTurn(
+        "long task",
+        {
+          mode: "new",
+          parentProviderSessionId: null,
+          streaming: true,
+          controlPump: async (controller) => {
+            await new Promise((resolve) => setImmediate(resolve));
+            await controller.interrupt();
+          },
+        },
+      ),
+    (error) => error.runtimeCode === "INTERRUPTED",
+  );
+});

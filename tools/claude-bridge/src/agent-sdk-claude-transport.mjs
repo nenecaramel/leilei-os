@@ -130,6 +130,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       onNormalizedEvent = null,
       permissionHandler = null,
       questionHandler = null,
+      controlPump = null,
     } = {},
   ) {
     if (this.activeQuery || this.activeTurnHandle) {
@@ -191,6 +192,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       streaming,
       permissionHandler,
       questionHandler,
+      midTurnInput: Boolean(controlPump),
     });
 
     this.activeTurnHandle = handle;
@@ -215,15 +217,28 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       forwardNormalized,
     );
 
+    const controlAbort = new AbortController();
+    let controlPumpError = null;
+    let controlPumpPromise = Promise.resolve();
+
     try {
-      const result = await handle.start();
-      await eventDelivery;
-      if (eventDeliveryError) {
-        this.events.emit(
-          "event-delivery-error",
-          eventDeliveryError,
-        );
+      const completion = handle.start();
+      if (controlPump) {
+        controlPumpPromise = Promise.resolve(
+          controlPump(
+            {
+              sendUserMessage: (text) =>
+                handle.sendUserMessage(text),
+              interrupt: () => handle.interrupt(),
+            },
+            { signal: controlAbort.signal },
+          ),
+        ).catch((cause) => {
+          controlPumpError ??= cause;
+        });
       }
+
+      const result = await completion;
       if (!result.providerSessionId) {
         throw runtimeError(
           "Claude Agent SDK interactive turn returned no provider session id.",
@@ -259,6 +274,21 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         signal: null,
       };
     } finally {
+      controlAbort.abort();
+      await controlPumpPromise;
+      await eventDelivery;
+      if (controlPumpError) {
+        this.events.emit(
+          "control-pump-error",
+          controlPumpError,
+        );
+      }
+      if (eventDeliveryError) {
+        this.events.emit(
+          "event-delivery-error",
+          eventDeliveryError,
+        );
+      }
       handle.events.off("event", forwardRaw);
       handle.events.off(
         "normalized-event",

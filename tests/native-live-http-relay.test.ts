@@ -1232,3 +1232,228 @@ test("web owner can list and resolve a pending runtime interaction", async () =>
     },
   );
 });
+
+
+test("internal relay reserves and completes listener-owned foreground controls", async () => {
+  const relayService = new FakeRelayService();
+  const controlId =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const calls = [];
+  const runtimeControlService = {
+    async reserveNextForListener(input: unknown) {
+      calls.push({ name: "reserve", input });
+      return {
+        controlId,
+        prepareId,
+        kind: "mid_turn_input" as const,
+        payload: { text: "steer" },
+        status: "reserved" as const,
+        reservedBy: listenerId,
+        receipt: null,
+        failureCode: null,
+        createdAt: "2026-09-25T00:00:00.000Z",
+        updatedAt: "2026-09-25T00:00:00.000Z",
+        appliedAt: null,
+      };
+    },
+    async completeForListener(input: unknown) {
+      calls.push({ name: "complete", input });
+      return "applied" as const;
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          runtimeControlService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const reserved = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/controls/reserve`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+          }),
+        },
+      );
+      assert.equal(reserved.status, 200);
+      const reservedPayload = await reserved.json() as {
+        data: {
+          control: {
+            controlId: string;
+            kind: string;
+            payload: Record<string, unknown>;
+          };
+        };
+      };
+      assert.deepEqual(reservedPayload.data.control, {
+        controlId,
+        prepareId,
+        kind: "mid_turn_input",
+        payload: { text: "steer" },
+        status: "reserved",
+        reservedBy: listenerId,
+        receipt: null,
+        failureCode: null,
+        createdAt: "2026-09-25T00:00:00.000Z",
+        updatedAt: "2026-09-25T00:00:00.000Z",
+        appliedAt: null,
+      });
+
+      const completed = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/controls/${controlId}/complete`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            outcome: {
+              status: "applied",
+              receipt: { status: "queued" },
+            },
+          }),
+        },
+      );
+      assert.equal(completed.status, 200);
+      assert.deepEqual(calls, [
+        {
+          name: "reserve",
+          input: {
+            userId,
+            listenerInstanceId: listenerId,
+            reservationId: prepareId,
+          },
+        },
+        {
+          name: "complete",
+          input: {
+            userId,
+            listenerInstanceId: listenerId,
+            reservationId: prepareId,
+            controlId,
+            outcome: {
+              status: "applied",
+              receipt: { status: "queued" },
+            },
+          },
+        },
+      ]);
+    },
+  );
+});
+
+test("web owner can create and list foreground mid-turn and interrupt controls", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+  const controlId =
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const calls = [];
+  const control = {
+    controlId,
+    prepareId,
+    kind: "interrupt" as const,
+    payload: {},
+    status: "pending" as const,
+    reservedBy: null,
+    receipt: null,
+    failureCode: null,
+    createdAt: "2026-09-25T00:00:00.000Z",
+    updatedAt: "2026-09-25T00:00:00.000Z",
+    appliedAt: null,
+  };
+  const runtimeControlService = {
+    async createForUser(input: unknown) {
+      calls.push({ name: "create", input });
+      return {
+        outcome: "created" as const,
+        control,
+      };
+    },
+    async listForUser(input: unknown) {
+      calls.push({ name: "list", input });
+      return [control];
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator,
+          relayService,
+          turnReader,
+          runtimeControlService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const created = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/controls`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-test-user": "owner",
+          },
+          body: JSON.stringify({
+            control_id: controlId,
+            kind: "interrupt",
+            payload: {},
+          }),
+        },
+      );
+      assert.equal(created.status, 201);
+
+      const listed = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/controls?limit=10`,
+        {
+          headers: { "x-test-user": "owner" },
+        },
+      );
+      assert.equal(listed.status, 200);
+      assert.equal(
+        listed.headers.get("cache-control"),
+        "private, no-store",
+      );
+      assert.deepEqual(calls, [
+        {
+          name: "create",
+          input: {
+            userId,
+            prepareId,
+            controlId,
+            kind: "interrupt",
+            payload: {},
+          },
+        },
+        {
+          name: "list",
+          input: {
+            userId,
+            prepareId,
+            limit: 10,
+          },
+        },
+      ]);
+    },
+  );
+});

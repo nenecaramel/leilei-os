@@ -109,6 +109,21 @@ test("failure result exposes only a bounded safe error code", () => {
   );
 });
 
+test("graceful interrupt is a bounded runtime failure code", () => {
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure",
+    error_code: "INTERRUPTED",
+  });
+
+  assert.equal(result.status, "failure");
+  if (result.status !== "failure") throw new Error("expected failure");
+  assert.equal(result.error_code, "INTERRUPTED");
+});
+
 test("result identity must match the exact prepared command", () => {
   const command = parseNativeLiveRuntimeCommand({
     protocol_version: 1,

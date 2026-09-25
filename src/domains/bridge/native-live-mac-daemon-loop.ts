@@ -16,6 +16,9 @@ import type {
 import type {
   NativeLiveNormalizedEvent,
 } from "../conversation/native-live-conversation-orchestrator.js";
+import type {
+  NativeLiveMacActiveTurnController,
+} from "./native-live-mac-claude-transport.js";
 
 export type NativeLiveDaemonLeaseState = "acquired" | "renewed" | "busy";
 
@@ -27,6 +30,12 @@ export type NativeLiveDaemonReservation = {
 export type NativeLiveBackgroundModelReservation = {
   reservationId: string;
   command: NativeLiveBackgroundModelCommand;
+};
+
+export type NativeLiveRuntimeControlReservation = {
+  controlId: string;
+  kind: "mid_turn_input" | "interrupt";
+  payload: Record<string, unknown>;
 };
 
 export type NativeLiveDaemonRejectCode =
@@ -131,6 +140,26 @@ export interface NativeLiveMacDaemonRelayClient {
     signal: AbortSignal | null;
   }): Promise<Record<string, unknown>>;
 
+  reserveRuntimeControl?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<NativeLiveRuntimeControlReservation | null>;
+
+  completeRuntimeControl?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    controlId: string;
+    outcome:
+      | {
+          status: "applied";
+          receipt: Record<string, unknown>;
+        }
+      | {
+          status: "failed";
+          failureCode: string;
+        };
+  }): Promise<void>;
+
   submitResult(input: {
     listenerInstanceId: string;
     reservationId: string;
@@ -164,6 +193,10 @@ export interface NativeLivePreparedCommandExecutor {
         request: Record<string, unknown>,
         context: { signal: AbortSignal | null },
       ) => Promise<Record<string, unknown>>;
+      controlPump?: (
+        controller: NativeLiveMacActiveTurnController,
+        context: { signal: AbortSignal },
+      ) => Promise<void>;
     },
   ): Promise<NativeLiveRuntimeExecutionResult>;
 }
@@ -386,6 +419,20 @@ export class NativeLiveMacDaemonLoop {
                     }),
                 }
               : {}),
+            ...(this.relay.reserveRuntimeControl
+              && this.relay.completeRuntimeControl
+              ? {
+                  controlPump: (
+                    controller: NativeLiveMacActiveTurnController,
+                    context: { signal: AbortSignal },
+                  ) =>
+                    this.runRuntimeControlPump(
+                      reservation.reservationId,
+                      controller,
+                      context.signal,
+                    ),
+                }
+              : {}),
           },
         );
       } catch {
@@ -425,6 +472,79 @@ export class NativeLiveMacDaemonLoop {
       };
     } finally {
       this.running = false;
+    }
+  }
+
+  private async runRuntimeControlPump(
+    reservationId: string,
+    controller: NativeLiveMacActiveTurnController,
+    signal: AbortSignal,
+  ): Promise<void> {
+    while (!signal.aborted) {
+      let control: NativeLiveRuntimeControlReservation | null;
+      try {
+        control = await this.relay.reserveRuntimeControl!({
+          listenerInstanceId: this.listenerInstanceId,
+          reservationId,
+        });
+      } catch {
+        await delayWithAbort(400, signal);
+        continue;
+      }
+
+      if (!control) {
+        await delayWithAbort(250, signal);
+        continue;
+      }
+
+      try {
+        let receipt: Record<string, unknown>;
+        if (control.kind === "mid_turn_input") {
+          const text = control.payload.text;
+          if (typeof text !== "string" || text.trim().length === 0) {
+            throw Object.assign(
+              new Error("Invalid mid-turn control payload."),
+              { controlCode: "INVALID_CONTROL_PAYLOAD" },
+            );
+          }
+          receipt = controller.sendUserMessage(text);
+        } else {
+          receipt = await controller.interrupt();
+        }
+
+        try {
+          await this.relay.completeRuntimeControl!({
+            listenerInstanceId: this.listenerInstanceId,
+            reservationId,
+            controlId: control.controlId,
+            outcome: {
+              status: "applied",
+              receipt,
+            },
+          });
+        } catch {
+          // The control was already applied to the provider. Never re-apply
+          // after an ambiguous completion callback.
+        }
+
+        if (control.kind === "interrupt") return;
+      } catch (error) {
+        try {
+          await this.relay.completeRuntimeControl!({
+            listenerInstanceId: this.listenerInstanceId,
+            reservationId,
+            controlId: control.controlId,
+            outcome: {
+              status: "failed",
+              failureCode:
+                runtimeControlFailureCode(error),
+            },
+          });
+        } catch {
+          // Failure reporting is idempotent but best-effort. The reserved row
+          // prevents a blind re-application of an uncertain provider control.
+        }
+      }
     }
   }
 
@@ -493,3 +613,46 @@ function semanticFallbackCode(
     : "E5_SCORING_FAILED";
 }
 
+
+
+function runtimeControlFailureCode(error: unknown): string {
+  if (
+    typeof error === "object"
+    && error !== null
+    && "controlCode" in error
+    && typeof (error as { controlCode?: unknown }).controlCode === "string"
+  ) {
+    return (error as { controlCode: string }).controlCode;
+  }
+  if (
+    typeof error === "object"
+    && error !== null
+    && "runtimeCode" in error
+    && typeof (error as { runtimeCode?: unknown }).runtimeCode === "string"
+  ) {
+    return (error as { runtimeCode: string }).runtimeCode;
+  }
+  return "CONTROL_APPLICATION_FAILED";
+}
+
+function delayWithAbort(
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}

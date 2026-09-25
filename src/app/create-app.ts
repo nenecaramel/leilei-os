@@ -104,6 +104,9 @@ export type AppDependencies = {
   nativeLiveRuntimeInteractionService?:
     NativeLiveRelayInternalDependencies["runtimeInteractionService"]
     & NativeLiveApiDependencies["runtimeInteractionService"];
+  nativeLiveRuntimeControlService?:
+    NativeLiveRelayInternalDependencies["runtimeControlService"]
+    & NativeLiveApiDependencies["runtimeControlService"];
   nativeLiveRelayService?:
     NativeLiveRelayInternalDependencies["relayService"]
     & NativeLiveApiDependencies["relayService"];
@@ -445,6 +448,12 @@ export function createApp(
                         dependencies.nativeLiveRuntimeInteractionService,
                     }
                   : {}),
+                ...(dependencies.nativeLiveRuntimeControlService
+                  ? {
+                      runtimeControlService:
+                        dependencies.nativeLiveRuntimeControlService,
+                    }
+                  : {}),
               },
             }
           : {}),
@@ -513,6 +522,12 @@ export function createApp(
             ? {
                 runtimeInteractionService:
                   dependencies.nativeLiveRuntimeInteractionService,
+              }
+            : {}),
+          ...(dependencies.nativeLiveRuntimeControlService
+            ? {
+                runtimeControlService:
+                  dependencies.nativeLiveRuntimeControlService,
               }
             : {}),
         }),

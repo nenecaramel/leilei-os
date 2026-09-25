@@ -22,9 +22,16 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         request: Record<string, unknown>,
         context: { signal: AbortSignal | null },
       ) => Promise<Record<string, unknown>>;
+      controlPump?: (
+        controller: NativeLiveMacActiveTurnController,
+        context: { signal: AbortSignal },
+      ) => Promise<void>;
     },
   ) => Promise<NativeLiveRuntimeResult>;
 };
+import type {
+  NativeLiveMacActiveTurnController,
+} from "./native-live-mac-claude-transport.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -50,6 +57,10 @@ export class NativeLiveMacRuntimeExecutor {
         request: Record<string, unknown>,
         context: { signal: AbortSignal | null },
       ) => Promise<Record<string, unknown>>;
+      controlPump?: (
+        controller: NativeLiveMacActiveTurnController,
+        context: { signal: AbortSignal },
+      ) => Promise<void>;
     } = {},
   ): Promise<NativeLiveRuntimeExecutionResult> {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
@@ -80,6 +91,12 @@ export class NativeLiveMacRuntimeExecutor {
                 ? {
                     questionHandler:
                       options.questionHandler,
+                  }
+                : {}),
+              ...(options.controlPump
+                ? {
+                    controlPump:
+                      options.controlPump,
                   }
                 : {}),
             },
@@ -150,6 +167,7 @@ function isRuntimeFailureCode(
     value === "CLAUDE_PROCESS_FAILED"
     || value === "MALFORMED_STREAM"
     || value === "ABORTED"
+    || value === "INTERRUPTED"
     || value === "NO_PROVIDER_SESSION"
     || value === "PROVIDER_SESSION_CONFLICT"
     || value === "RUNTIME_UNAVAILABLE"

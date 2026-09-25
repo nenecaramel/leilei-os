@@ -276,6 +276,62 @@ implements NativeLiveMacDaemonRelayClient {
     }
   }
 
+  async reserveRuntimeControl(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<import("./native-live-mac-daemon-loop.js").NativeLiveRuntimeControlReservation | null> {
+    const data = await this.post(
+      `/reservations/${encodeURIComponent(input.reservationId)}/controls/reserve`,
+      {
+        listener_instance_id: input.listenerInstanceId,
+      },
+    );
+    if (data === null) return null;
+    const control = readRecord(readRecord(data).control);
+    if (
+      typeof control.controlId !== "string"
+      || (
+        control.kind !== "mid_turn_input"
+        && control.kind !== "interrupt"
+      )
+      || !control.payload
+      || typeof control.payload !== "object"
+      || Array.isArray(control.payload)
+    ) {
+      throw new Error(
+        "Native live runtime control reservation is invalid.",
+      );
+    }
+    return {
+      controlId: control.controlId,
+      kind: control.kind,
+      payload: control.payload as Record<string, unknown>,
+    };
+  }
+
+  async completeRuntimeControl(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    controlId: string;
+    outcome:
+      | {
+          status: "applied";
+          receipt: Record<string, unknown>;
+        }
+      | {
+          status: "failed";
+          failureCode: string;
+        };
+  }): Promise<void> {
+    await this.post(
+      `/reservations/${encodeURIComponent(input.reservationId)}/controls/${encodeURIComponent(input.controlId)}/complete`,
+      {
+        listener_instance_id: input.listenerInstanceId,
+        outcome: input.outcome,
+      },
+    );
+  }
+
   async submitResult(input: {
     listenerInstanceId: string;
     reservationId: string;

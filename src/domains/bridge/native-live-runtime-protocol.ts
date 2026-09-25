@@ -21,6 +21,7 @@ export type NativeLiveRuntimeFailureCode =
   | "CLAUDE_PROCESS_FAILED"
   | "MALFORMED_STREAM"
   | "ABORTED"
+  | "INTERRUPTED"
   | "NO_PROVIDER_SESSION"
   | "PROVIDER_SESSION_CONFLICT"
   | "RUNTIME_UNAVAILABLE";
@@ -221,6 +222,7 @@ function isFailureCode(value: unknown): value is NativeLiveRuntimeFailureCode {
     value === "CLAUDE_PROCESS_FAILED"
     || value === "MALFORMED_STREAM"
     || value === "ABORTED"
+    || value === "INTERRUPTED"
     || value === "NO_PROVIDER_SESSION"
     || value === "PROVIDER_SESSION_CONFLICT"
     || value === "RUNTIME_UNAVAILABLE"
