@@ -125,6 +125,93 @@ test("Breath ranking can use lifecycle salience without turning recall into rein
   assert.equal(hits[1]?.state.id, "fading");
 });
 
+test("Breath salience weight 0.1 stays a relevance-preserving bias", () => {
+  const candidates = [
+    state("more-relevant-low-salience", "unrelated lexical text", {
+      status: "fading",
+      salience: 0.2,
+      lastRecalledAt: null,
+    }),
+    state("less-relevant-high-salience", "different lexical text", {
+      status: "active",
+      salience: 1,
+      lastRecalledAt: null,
+    }),
+  ];
+  const semanticScores = new Map([
+    ["more-relevant-low-salience", 0.90],
+    ["less-relevant-high-salience", 0.82],
+  ]);
+
+  const noBias = recallBreath("semantic only query", candidates, {
+    ...baseInput,
+    salienceWeight: 0,
+    semanticWeight: 0.65,
+    semanticMinScore: 0.8,
+    semanticScores,
+  });
+  const conservative = recallBreath("semantic only query", candidates, {
+    ...baseInput,
+    salienceWeight: 0.1,
+    semanticWeight: 0.65,
+    semanticMinScore: 0.8,
+    semanticScores,
+  });
+  const stronger = recallBreath("semantic only query", candidates, {
+    ...baseInput,
+    salienceWeight: 0.2,
+    semanticWeight: 0.65,
+    semanticMinScore: 0.8,
+    semanticScores,
+  });
+
+  assert.deepEqual(
+    noBias.map((hit) => hit.state.id),
+    ["more-relevant-low-salience", "less-relevant-high-salience"],
+  );
+  assert.deepEqual(
+    conservative.map((hit) => hit.state.id),
+    ["more-relevant-low-salience", "less-relevant-high-salience"],
+  );
+  assert.deepEqual(
+    stronger.map((hit) => hit.state.id),
+    ["less-relevant-high-salience", "more-relevant-low-salience"],
+  );
+});
+
+test("Breath salience weight 0.1 breaks near relevance ties toward stronger lifecycle state", () => {
+  const hits = recallBreath(
+    "semantic tie query",
+    [
+      state("fading-tie", "no lexical overlap one", {
+        status: "fading",
+        salience: 0.4,
+        lastRecalledAt: null,
+      }),
+      state("active-tie", "no lexical overlap two", {
+        status: "active",
+        salience: 1,
+        lastRecalledAt: null,
+      }),
+    ],
+    {
+      ...baseInput,
+      salienceWeight: 0.1,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      semanticScores: new Map([
+        ["fading-tie", 0.86],
+        ["active-tie", 0.84],
+      ]),
+    },
+  );
+
+  assert.deepEqual(
+    hits.map((hit) => hit.state.id),
+    ["active-tie", "fading-tie"],
+  );
+});
+
 test("Breath exact-content dedupe keeps only the strongest duplicate", () => {
   const hits = recallBreath(
     "连续记忆",
