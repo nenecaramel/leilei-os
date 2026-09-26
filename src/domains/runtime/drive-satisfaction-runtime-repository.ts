@@ -26,7 +26,12 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
 
 export type DriveSatisfactionEvidence =
   | {
-      kind: "user_message" | "assistant_message";
+      kind: "user_message";
+      conversationId: string;
+      messageId: string;
+    }
+  | {
+      kind: "assistant_message";
       conversationId: string;
       messageId: string;
     }
