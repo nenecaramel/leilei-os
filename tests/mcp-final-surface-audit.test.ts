@@ -131,7 +131,6 @@ test("default production public surface stays compact and reports final inventor
     "get_universe_diary_sources",
     "get_universe_node",
     "get_universe_relations",
-    "get_weather_context",
     "global_search",
     "list_conversations",
     "list_diary_comments",
@@ -159,7 +158,7 @@ test("default production public surface stays compact and reports final inventor
     expectedPublicNames,
     "default public inventory must stay exact",
   );
-  assert.equal(tools.length, 39);
+  assert.equal(tools.length, 38);
   assert.ok(
     tools.length < fullTools.length,
     "default public surface must be smaller than internal full",
@@ -221,7 +220,6 @@ test("default production public surface stays compact and reports final inventor
 
   const names = new Set(tools.map((tool) => tool.name));
   for (const hidden of [
-    "render_note_card",
     "render_working_note",
     "render_thinking_block",
     "write_memory",
