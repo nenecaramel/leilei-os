@@ -32,8 +32,6 @@ import {
   type ToyCommandToolDependencies,
 } from "../tools/toy-command/register.js";
 import { GlobalSearchAuthenticationError, registerGlobalSearchTool, type GlobalSearchToolDependencies } from "../tools/global-search/register.js";
-import { ConversationArchiveAuthenticationError, registerConversationArchiveTools, type ConversationArchiveMcpToolDependencies } from "../tools/conversation-archive/register.js";
-import { registerConversationRecoveryInspectionTools, type ConversationRecoveryInspectionToolDependencies } from "../tools/conversation-recovery-inspection/register.js";
 import {
   registerSearchNotionTool,
   SearchNotionAuthenticationError,
@@ -215,25 +213,6 @@ const productionGlobalSearchDependencies: GlobalSearchToolDependencies = {
   getAuthenticatedUserId: () => { throw new GlobalSearchAuthenticationError(); },
 };
 
-const productionConversationArchiveDependencies: ConversationArchiveMcpToolDependencies = {
-  conversationArchiveReadService: {
-    list: (input) => missingDatabaseService(),
-    search: (input) => missingDatabaseService(),
-    modelView: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
-};
-
-const productionConversationRecoveryInspectionDependencies: ConversationRecoveryInspectionToolDependencies = {
-  conversationExclusionManagementService: {
-    list: (input) => missingDatabaseService(),
-    restoreCandidates: (input) => missingDatabaseService(),
-    restoreEvidence: (input) => missingDatabaseService(),
-    restore: (input) => missingDatabaseService(),
-  },
-  getAuthenticatedUserId: () => { throw new ConversationArchiveAuthenticationError(); },
-};
-
 const productionUniverseService: GetUniverseNodeToolDependencies["universeService"] & ListUniverseNodesToolDependencies["universeService"] & GetUniverseRelationsToolDependencies["universeService"] &
   CreateUniverseNodeToolDependencies["universeService"] & UpdateUniverseNodeToolDependencies["universeService"] &
   CreateUniverseRelationToolDependencies["universeService"] & DeleteUniverseRelationToolDependencies["relationService"] &
@@ -335,9 +314,6 @@ export type McpServerDependencies = {
   diaryComments?: DiaryCommentToolDependencies;
   toyCommand?: ToyCommandToolDependencies;
   globalSearch?: GlobalSearchToolDependencies;
-  conversationArchiveTools?: ConversationArchiveMcpToolDependencies;
-  conversationRecoveryInspection?: ConversationRecoveryInspectionToolDependencies;
-  includeConversationRecoveryTools?: boolean;
   todoTools?: TodoToolsDependencies;
   notionTools?: NotionToolsDependencies;
   notionRead?: NotionReadDependencies;
@@ -433,27 +409,8 @@ export function createMcpServer(
       return authenticatedUserId;
     },
   });
-  registerConversationArchiveTools(server, dependencies.conversationArchiveTools ?? {
-    ...productionConversationArchiveDependencies,
-    getAuthenticatedUserId: () => {
-      if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
-      return authenticatedUserId;
-    },
-  });
   }
 
-  if (
-    mcpToolSurfaceEnabled(toolExposure, "conversation_recovery")
-    && dependencies.includeConversationRecoveryTools !== false
-  ) {
-    registerConversationRecoveryInspectionTools(server, dependencies.conversationRecoveryInspection ?? {
-      ...productionConversationRecoveryInspectionDependencies,
-      getAuthenticatedUserId: () => {
-        if (!authenticatedUserId) throw new ConversationArchiveAuthenticationError();
-        return authenticatedUserId;
-      },
-    });
-  }
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {
   const universeTools = dependencies.universeTools ?? {
     universeService: productionUniverseService,

@@ -18,16 +18,9 @@ test("Global Search URL state exposes only active modules", () => {
       "?q=%E2%98%95&modules=diary,todo,conversation&scope=all",
     ),
     {
+      ...DEFAULT_GLOBAL_SEARCH_FILTERS,
       q: "☕",
-      modules: [
-        "diary",
-        "todo",
-        "conversation",
-      ],
       scope: "all",
-      mode: "normal",
-      dateFrom: "",
-      dateTo: "",
     },
   );
 
@@ -44,7 +37,6 @@ test("Global Search URL state exposes only active modules", () => {
       "diary",
       "universe",
       "todo",
-      "conversation",
     ],
   );
 });
@@ -61,13 +53,13 @@ test("Global Search URL serialization keeps the compact default module set", () 
     createGlobalSearchLocation({
       ...DEFAULT_GLOBAL_SEARCH_FILTERS,
       q: "计划",
-      modules: ["conversation"],
+      modules: ["todo"],
       scope: "archived",
       mode: "phrase",
       dateFrom: "2026-08-01",
       dateTo: "",
     }),
-    "/search?q=%E8%AE%A1%E5%88%92&modules=conversation&scope=archived&mode=phrase&date_from=2026-08-01",
+    "/search?q=%E8%AE%A1%E5%88%92&modules=todo&scope=archived&mode=phrase&date_from=2026-08-01",
   );
 });
 
@@ -115,11 +107,9 @@ function result(
     time_basis:
       entity_type === "todo"
         ? "todo_date"
-        : entity_type === "conversation"
-          ? "message_time"
-          : entity_type === "diary"
-            ? "diary_date"
-            : "updated_at",
+        : entity_type === "diary"
+          ? "diary_date"
+          : "updated_at",
     updated_at:
       "2026-08-01T00:00:00.000Z",
     author:
@@ -131,9 +121,7 @@ function result(
         ? "get_diary"
         : entity_type === "todo"
           ? "read_todo_day"
-          : entity_type === "universe"
-            ? "get_universe_node"
-            : "read_conversation",
+          : "get_universe_node",
     detail_arguments:
       entity_type === "diary"
         ? {
@@ -143,23 +131,7 @@ function result(
           }
         : entity_type === "todo"
           ? { date: "2026-08-01" }
-          : entity_type === "universe"
-            ? { id: "node-1" }
-            : {
-                conversation_id:
-                  "00000000-0000-4000-8000-000000000002",
-                message_id:
-                  "00000000-0000-4000-8000-000000000001",
-                view: "default",
-              },
-    conversation_id:
-      entity_type === "conversation"
-        ? "00000000-0000-4000-8000-000000000002"
-        : null,
-    conversation_view:
-      entity_type === "conversation"
-        ? "default"
-        : null,
+          : { id: "node-1" },
   };
 }
 
@@ -191,11 +163,4 @@ test("Global Search deep links target active product surfaces", () => {
     "/universe?node=node-1",
   );
 
-  assert.match(
-    createGlobalSearchResultDetailLocation(
-      result("conversation"),
-      returnTo,
-    ),
-    /^\/conversations\//,
-  );
 });

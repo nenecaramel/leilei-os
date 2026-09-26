@@ -87,10 +87,6 @@ test("stable MCP defaults are explicit in tools/list", async () => {
     search_todo: 50,
     list_todo_dates: 50,
     list_universe_nodes: 25,
-    search_conversations: 20,
-    read_conversation: 40,
-    list_conversation_exclusions: 50,
-    inspect_conversation_restore_path: 40,
   };
   for (const [name, expected] of Object.entries(expectedLimits)) {
     const tool = byName.get(name);
@@ -133,7 +129,7 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   const globalSearch = byName.get("global_search");
   assert.ok(globalSearch?.description);
-  assert.match(globalSearch.description, /LeileiOS modules/iu);
+  assert.match(globalSearch.description, /LeileiOS Diary, Todo, and Universe/iu);
   assert.match(globalSearch.description, /domain search when the domain is known/iu);
   const globalMode = property(globalSearch, "mode");
   assert.match(String(globalMode.description ?? ""), /normal collapses runs of whitespace/iu);
@@ -143,7 +139,6 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
     ["search_diary", "get_diary"],
     ["search_todo", "read_todo_day"],
     ["list_universe_nodes", "get_universe_node"],
-    ["search_conversations", "read_conversation"],
   ] as const;
 
   for (const [name, detailTool] of dedicatedDiscovery) {
@@ -154,14 +149,6 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   assert.match(byName.get("search_todo")?.description ?? "", /date is already known/iu);
   assert.match(byName.get("search_todo")?.description ?? "", /use read_todo_day directly/iu);
-
-  for (const name of ["list_conversations", "search_conversations", "read_conversation"] as const) {
-    assert.match(
-      byName.get(name)?.description ?? "",
-      /^LeileiOS Conversation Archive:/u,
-      `${name} must disambiguate LeileiOS archive tools from host conversation tools`,
-    );
-  }
 
   const galaxies = byName.get("list_universe_galaxies");
   assert.ok(galaxies?.description);

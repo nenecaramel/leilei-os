@@ -22,10 +22,6 @@ const DIARY_ID =
   "00000000-0000-4000-8000-000000000001";
 const TODO_ID =
   "00000000-0000-4000-8000-000000000002";
-const CONVERSATION_ID =
-  "00000000-0000-4000-8000-000000000003";
-const MESSAGE_ID =
-  "00000000-0000-4000-8000-000000000004";
 
 function row(
   overrides: Partial<GlobalSearchRow> = {},
@@ -46,8 +42,6 @@ function row(
     rank: 4,
     author: "C",
     businessDate: null,
-    conversationId: null,
-    conversationView: null,
     ...overrides,
   };
 }
@@ -102,6 +96,7 @@ test("Global Search rejects retired modules", async () => {
     "memory",
     "task",
     "shared_paper",
+    "conversation",
   ]) {
     await assert.rejects(
       service.search({
@@ -135,16 +130,6 @@ test("Global Search maps active modules to canonical detail pointers", async () 
       timeBasis: "updated_at",
       author: null,
     }),
-    row({
-      entityType: "conversation",
-      entityId: MESSAGE_ID,
-      stableName: "Conversation",
-      matchedField: "text",
-      timeBasis: "message_time",
-      author: null,
-      conversationId: CONVERSATION_ID,
-      conversationView: "default",
-    }),
   ];
 
   const result = await new GlobalSearchService(
@@ -156,7 +141,6 @@ test("Global Search maps active modules to canonical detail pointers", async () 
       "diary",
       "todo",
       "universe",
-      "conversation",
     ],
     limit: 10,
   });
@@ -191,14 +175,6 @@ test("Global Search maps active modules to canonical detail pointers", async () 
     { id: "node-1" },
   );
 
-  assert.equal(
-    result.results[3]?.detail_tool,
-    "read_conversation",
-  );
-  assert.equal(
-    result.results[3]?.conversation_id,
-    CONVERSATION_ID,
-  );
 });
 
 test("Global Search preserves cursor request binding", async () => {
@@ -269,8 +245,6 @@ test("MCP global_search exposes only active search modules", async (t) => {
         id: DIARY_ID,
         scope: "active",
       },
-      conversation_id: null,
-      conversation_view: null,
     }],
     metadata: {
       count: 1,

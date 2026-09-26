@@ -2,12 +2,12 @@ import { sql, type SQL } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import type { ContentAuthor } from "../content-author.js";
 
-export type GlobalSearchModule = "diary" | "todo" | "universe" | "conversation";
+export type GlobalSearchModule = "diary" | "todo" | "universe";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
 export type GlobalSearchMatchedField = "title" | "content" | "tags" | "mood" | "text";
-export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "todo_date" | "message_time";
+export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "todo_date";
 
 export type GlobalSearchUser = { status: "active" | "disabled"; timezone: string };
 export type GlobalSearchCursorTuple = { rank: number; businessTime: string; updatedAt: string; entityType: GlobalSearchModule; entityId: string };
@@ -38,8 +38,6 @@ export type GlobalSearchRow = {
   author: ContentAuthor | null;
   /** Raw Todo business date for read_todo_day pointers; never infer it from businessTime. */
   businessDate?: string | null;
-  conversationId?: string | null;
-  conversationView?: "default" | "all" | null;
 };
 
 export interface GlobalSearchRepository {
@@ -69,9 +67,6 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
-    if (input.modules.includes("conversation")) {
-      moduleQueries.push(conversationQuery(input, queryText, pattern));
-    }
     if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
     const result = await this.db.execute(sql<GlobalSearchRow>`
@@ -80,7 +75,6 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
         matched_field as "matchedField", matched_value as "matchedValue", match_reason as "matchReason",
         lifecycle_status as "lifecycleStatus", business_time as "businessTime", time_basis as "timeBasis",
         updated_at as "updatedAt", business_date as "businessDate",
-        conversation_id as "conversationId", conversation_view as "conversationView",
         rank, author
       from ranked
       order by rank asc, business_time desc, updated_at desc, entity_type asc, entity_id asc
@@ -148,8 +142,6 @@ function bounded(
         module_candidates.time_basis,
         date_trunc('milliseconds', module_candidates.updated_at) as updated_at,
         module_candidates.business_date,
-        module_candidates.conversation_id,
-        module_candidates.conversation_view,
         ${rankExpression()} as rank
       from (${query}) module_candidates
     ) ranked_module_candidates
@@ -180,7 +172,7 @@ function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, pr
   const fields = [{ name: "title" as const, value: sql`d.title` }, { name: "content" as const, value: sql`d.content` }, { name: "tags" as const, value: tags }, { name: "mood" as const, value: mood }];
   return bounded(sql`select 'diary'::text entity_type, d.id::text entity_id, d.title stable_name,
     ${reasonAndField(sql`d.title`, fields, input.mode, query, pattern, prefix)}, d.status::text lifecycle_status,
-    d.author::text author, (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at, null::date business_date, null::text conversation_id, null::text conversation_view
+    d.author::text author, (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at, null::date business_date
     from diary_entries d where d.user_id=${input.userId}::uuid and ${lifecycle(sql`d.status`, input.scope)}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(sql`d.date`, input)}`, input);
 }
@@ -197,7 +189,7 @@ function todoQuery(input: GlobalSearchQuery, query: string, pattern: string): SQ
     (p.business_date::timestamp at time zone ${input.timezone}) business_time,
     'todo_date'::text time_basis,
     p.updated_at,
-    p.business_date business_date, null::text conversation_id, null::text conversation_view
+    p.business_date business_date
     from todo_entries e
     inner join todo_papers p on p.id=e.paper_id
     where p.user_id=${input.userId}::uuid
@@ -216,7 +208,7 @@ function universeQuery(input: GlobalSearchQuery, query: string, pattern: string,
   const businessDate = sql`(n.updated_at at time zone ${input.timezone})::date`;
   return bounded(sql`select 'universe'::text entity_type, n.id::text entity_id, n.title stable_name,
     ${reasonAndField(sql`n.title`, fields, input.mode, query, pattern, prefix)},
-    'active'::text lifecycle_status, null::text author, n.updated_at business_time, 'updated_at'::text time_basis, n.updated_at, null::date business_date, null::text conversation_id, null::text conversation_view
+    'active'::text lifecycle_status, null::text author, n.updated_at business_time, 'updated_at'::text time_basis, n.updated_at, null::date business_date
     from universe_nodes n
     inner join universe_meta um on um.user_id = n.user_id
     where n.user_id=${input.userId}::uuid
@@ -224,62 +216,3 @@ function universeQuery(input: GlobalSearchQuery, query: string, pattern: string,
       and ${dates(businessDate, input)}`, input);
 }
 
-function conversationQuery(
-  input: GlobalSearchQuery,
-  query: string,
-  pattern: string,
-): SQL {
-  const text = normalized(sql`m.display_text`, input.mode);
-  const effectiveTime = sql`coalesce(m.source_created_at, m.created_at)`;
-  const businessDate = sql`(${effectiveTime} at time zone ${input.timezone})::date`;
-  const lifecycleStatus = sql`case when c.archived_at is null then 'active' else 'archived' end`;
-  return bounded(sql`select
-    'conversation'::text entity_type,
-    m.id::text entity_id,
-    coalesce(nullif(btrim(c.title), ''), 'Untitled conversation') stable_name,
-    'text'::text matched_field,
-    m.display_text matched_value,
-    case when ${text} = lower(${query}) then 'exact_phrase' else 'field_match' end::text match_reason,
-    ${lifecycleStatus}::text lifecycle_status,
-    null::text author,
-    ${effectiveTime} business_time,
-    'message_time'::text time_basis,
-    m.updated_at,
-    null::date business_date,
-    c.id::text conversation_id,
-    case
-      when c.provider = 'chatgpt' and m.is_current_path = false then 'all'
-      else 'default'
-    end::text conversation_view
-    from conversation_messages m
-    inner join conversations c
-      on c.id = m.conversation_id
-      and c.user_id = m.user_id
-    where m.user_id = ${input.userId}::uuid
-      and c.origin = 'legacy_import'
-      and c.deleted_at is null
-      and ${lifecycle(lifecycleStatus, input.scope)}
-      and m.is_primary = true
-      and m.role in ('user', 'assistant')
-      and not exists (
-        select 1
-        from conversation_deleted_branches deleted_branch
-        where deleted_branch.user_id = m.user_id
-          and deleted_branch.conversation_id = m.conversation_id
-          and exists (
-            with recursive branch_nodes(source_node_id) as (
-              select deleted_branch.source_node_id
-              union all
-              select descendant.source_node_id
-              from conversation_messages descendant
-              join branch_nodes parent on descendant.parent_source_node_id = parent.source_node_id
-              where descendant.conversation_id = deleted_branch.conversation_id
-            )
-            select 1
-            from branch_nodes
-            where branch_nodes.source_node_id = m.source_node_id
-          )
-      )
-      and ${text} like ${pattern} escape '\\'
-      and ${dates(businessDate, input)}`, input);
-}

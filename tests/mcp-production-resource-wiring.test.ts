@@ -26,11 +26,7 @@ async function listTools(server: McpServer, clientName: string): Promise<string[
   }
 }
 
-function productionFactory(input: {
-  conversationArchiveReadService?: unknown;
-  conversationExclusionManagementService?: unknown;
-  conversationRecoveryVisibility?: "public-enabled" | "internal-only";
-} = {}) {
+function productionFactory() {
   return createProductionMcpSessionServerFactory({
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
     diaryService: {} as never,
@@ -39,11 +35,23 @@ function productionFactory(input: {
     todoService: {} as never,
     universeService: {} as never,
     healthService: {} as never,
-    conversationArchiveReadService: input.conversationArchiveReadService as never,
-    conversationExclusionManagementService: input.conversationExclusionManagementService as never,
-    conversationRecoveryVisibility: input.conversationRecoveryVisibility,
   });
 }
+
+const retiredConversationTools = [
+  "list_conversations",
+  "search_conversations",
+  "read_conversation",
+  "list_conversation_exclusions",
+  "inspect_conversation_restore_candidates",
+  "inspect_conversation_restore_path",
+  "restore_conversation_exclusion",
+  "list_deleted_conversation_branches",
+  "archive_conversation",
+  "delete_conversation_item",
+  "restore_conversation_item",
+  "permanently_delete_conversation_item",
+] as const;
 
 test("production MCP server composition cannot create database pools", () => {
   assert.doesNotMatch(createServerSource, /createDatabase/);
@@ -62,19 +70,23 @@ test("direct MCP server keeps operational connectivity outside its model surface
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production public surface exposes canonical Conversation reads and no retired tools", async () => {
-  const createSessionServer = productionFactory({
-    conversationArchiveReadService: {},
-  });
+test("production public surface exposes current core resources and no retired Conversation Archive tools", async () => {
+  const createSessionServer = productionFactory();
   const names = await listTools(createSessionServer("user-1", "public"), "mcp-production-public");
 
-  for (const name of ["list_conversations", "search_conversations", "read_conversation", "list_universe_galaxies", "render_note_card"]) {
+  for (const name of [
+    "global_search",
+    "search_diary",
+    "read_todo_day",
+    "list_universe_galaxies",
+    "get_health",
+    "render_note_card",
+  ]) {
     assert.equal(names.includes(name), true, `${name} must remain public`);
   }
 
-  assert.equal(names.includes("render_note_card"), false);
-
   for (const retired of [
+    ...retiredConversationTools,
     "sentinel_get_state",
     "sentinel_claim_current_wake",
     "complete_sentinel_wake",
@@ -85,11 +97,6 @@ test("production public surface exposes canonical Conversation reads and no reti
     "archive_diary",
     "restore_diary",
     "permanently_delete_diary",
-    "list_deleted_conversation_branches",
-    "archive_conversation",
-    "delete_conversation_item",
-    "restore_conversation_item",
-    "permanently_delete_conversation_item",
     "search_universe",
     "write_diary",
     "write_todo_paper",
@@ -102,68 +109,27 @@ test("production public surface exposes canonical Conversation reads and no reti
     assert.equal(names.includes(retired), false, `${retired} must stay retired`);
   }
 
-  for (const hidden of [
-    "bridge_listener_open",
-    "list_conversation_exclusions",
-    "search_notion",
-  ]) {
-    assert.equal(names.includes(hidden), false, `public default must hide ${hidden}`);
-  }
+  assert.equal(names.includes("search_notion"), false);
 });
 
-test("production internal full exposes supported maintenance profiles without retired runtime bridge tools", async () => {
-  const createSessionServer = productionFactory({
-    conversationArchiveReadService: {},
-    conversationExclusionManagementService: {},
-  });
+test("production internal surface keeps current maintenance tools without retired Conversation Archive recovery", async () => {
+  const createSessionServer = productionFactory();
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-production-internal");
 
   for (const required of [
-    "list_conversation_exclusions",
-    "search_notion",
+    "global_search",
+    "search_diary",
+    "read_todo_day",
+    "create_notion_page",
+    "write_notion_page",
     "get_notion_connection",
   ]) {
-    assert.equal(names.includes(required), true, `internal full must expose ${required}`);
+    assert.equal(names.includes(required), true, `internal default must expose ${required}`);
   }
 
-  for (const retired of [
-    "sentinel_get_state",
-    "sentinel_claim_current_wake",
-    "complete_sentinel_wake",
-    "read_memory",
-    "write_memory",
-    "create_task",
-    "get_task",
-    "list_shared_papers",
-    "delete_shared_paper",
-    "archive_diary",
-    "delete_diary",
-    "archive_conversation",
-    "permanently_delete_conversation_item",
-    "search_universe",
-    "write_diary",
-    "write_todo_paper",
-    "render_working_note",
-    "render_thinking_block",
-  ]) {
-    assert.equal(names.includes(retired), false, `internal full must not revive ${retired}`);
-  }
-});
+  assert.equal(names.includes("render_note_card"), false);
 
-test("Conversation recovery visibility can be internal-only while canonical reads remain public", async () => {
-  const createSessionServer = productionFactory({
-    conversationArchiveReadService: {},
-    conversationExclusionManagementService: {},
-    conversationRecoveryVisibility: "internal-only",
-  });
-  const publicNames = await listTools(createSessionServer("user-1", "public"), "mcp-public-recovery-hidden");
-  const internalNames = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-recovery-present");
-
-  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates", "inspect_conversation_restore_path", "restore_conversation_exclusion"]) {
-    assert.equal(publicNames.includes(name), false, `${name} must be hidden publicly`);
-    assert.equal(internalNames.includes(name), true, `${name} must remain internal`);
-  }
-  for (const name of ["list_conversations", "search_conversations", "read_conversation"]) {
-    assert.equal(publicNames.includes(name), true, `${name} must remain public`);
+  for (const retired of retiredConversationTools) {
+    assert.equal(names.includes(retired), false, `retired Conversation tool must stay absent: ${retired}`);
   }
 });

@@ -13,7 +13,7 @@ import type {
 } from "./global-search-repository.js";
 
 const DEFAULT_MODULES = ["diary", "todo", "universe"] as const;
-const MODULES = [...DEFAULT_MODULES, "conversation"] as const;
+const MODULES = DEFAULT_MODULES;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
 const CURSOR_FINGERPRINT = /^[0-9a-f]{64}$/;
@@ -46,15 +46,12 @@ export type GlobalSearchItem = {
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
   author: ContentAuthor | null;
-  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | "read_conversation" | null;
+  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | null;
   detail_arguments:
     | { id: string; scope: "active" | "archived" }
     | { id: string }
     | { date: string }
-    | { conversation_id: string; message_id: string; view: "default" | "all" }
     | null;
-  conversation_id?: string | null;
-  conversation_view?: "default" | "all" | null;
 };
 
 export type GlobalSearchResult = {
@@ -127,12 +124,6 @@ export class GlobalSearchService {
         author: row.author,
         detail_tool: detailTool(row.entityType),
         detail_arguments: detailArguments(row),
-        conversation_id: row.entityType === "conversation"
-          ? row.conversationId ?? null
-          : null,
-        conversation_view: row.entityType === "conversation"
-          ? row.conversationView ?? "default"
-          : null,
       })),
       metadata: {
         count: page.length,
@@ -156,7 +147,6 @@ export class GlobalSearchService {
 function detailTool(
   entityType: GlobalSearchModule,
 ): GlobalSearchItem["detail_tool"] {
-  if (entityType === "conversation") return "read_conversation";
   if (entityType === "universe") return "get_universe_node";
   if (entityType === "todo") return "read_todo_day";
   return "get_diary";
@@ -165,17 +155,6 @@ function detailTool(
 function detailArguments(
   row: GlobalSearchRow,
 ): GlobalSearchItem["detail_arguments"] {
-  if (row.entityType === "conversation") {
-    if (!row.conversationId) {
-      throw new Error("Global Search Conversation row is missing its conversation id.");
-    }
-    return {
-      conversation_id: row.conversationId,
-      message_id: row.entityId,
-      view: row.conversationView ?? "default",
-      scope: row.lifecycleStatus,
-    };
-  }
   if (row.entityType === "universe") {
     return { id: row.entityId };
   }
