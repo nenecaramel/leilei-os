@@ -27,6 +27,11 @@ export type NativeLiveDaemonReservation = {
   command: NativeLiveRuntimeCommand;
 };
 
+export type NativeLiveProviderSessionCleanupReservation = {
+  reservationId: string;
+  providerSessionId: string;
+};
+
 export type NativeLiveBackgroundModelReservation = {
   reservationId: string;
   command: NativeLiveBackgroundModelCommand;
@@ -73,6 +78,18 @@ export type NativeLiveDaemonRunOutcome =
       eventDeliveryFailures?: number;
     }
   | {
+      outcome: "provider_session_cleanup_completed";
+      reservationId: string;
+    }
+  | {
+      outcome: "provider_session_cleanup_failed";
+      reservationId: string;
+    }
+  | {
+      outcome: "provider_session_cleanup_delivery_unknown";
+      reservationId: string;
+    }
+  | {
       outcome: "background_completed";
       reservationId: string;
       result: NativeLiveBackgroundModelExecutionResult;
@@ -84,6 +101,19 @@ export type NativeLiveDaemonRunOutcome =
     };
 
 export interface NativeLiveMacDaemonRelayClient {
+  reserveProviderSessionCleanup?(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<NativeLiveProviderSessionCleanupReservation | null>;
+
+  submitProviderSessionCleanupResult?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | { status: "success" }
+      | { status: "failure"; failureCode: string };
+  }): Promise<void>;
+
   reserveBackgroundModel?(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
@@ -210,6 +240,10 @@ export interface NativeLiveDaemonIdleOpportunity {
   offer(): void | Promise<void>;
 }
 
+export interface NativeLiveProviderSessionCleanupExecutor {
+  deleteSession(sessionId: string): Promise<void>;
+}
+
 export interface NativeLiveBackgroundModelExecutor {
   execute(
     command: unknown,
@@ -228,6 +262,8 @@ export class NativeLiveMacDaemonLoop {
       NativeLiveDaemonIdleOpportunity | null = null,
     private readonly backgroundModelExecutor:
       NativeLiveBackgroundModelExecutor | null = null,
+    private readonly providerSessionCleanupExecutor:
+      NativeLiveProviderSessionCleanupExecutor | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -309,6 +345,64 @@ export class NativeLiveMacDaemonLoop {
             outcome: "semantic_completed",
             reservationId: semanticReservationId,
           };
+        }
+
+        if (
+          this.providerSessionCleanupExecutor
+          && this.relay.reserveProviderSessionCleanup
+          && this.relay.submitProviderSessionCleanupResult
+        ) {
+          const cleanup =
+            await this.relay.reserveProviderSessionCleanup({
+              listenerInstanceId: this.listenerInstanceId,
+              dispatchTarget: "claude_code",
+            });
+          if (cleanup) {
+            try {
+              await this.providerSessionCleanupExecutor.deleteSession(
+                cleanup.providerSessionId,
+              );
+            } catch {
+              try {
+                await this.relay.submitProviderSessionCleanupResult({
+                  listenerInstanceId: this.listenerInstanceId,
+                  reservationId: cleanup.reservationId,
+                  outcome: {
+                    status: "failure",
+                    failureCode: "DELETE_SESSION_FAILED",
+                  },
+                });
+              } catch {
+                return {
+                  outcome:
+                    "provider_session_cleanup_delivery_unknown",
+                  reservationId: cleanup.reservationId,
+                };
+              }
+              return {
+                outcome: "provider_session_cleanup_failed",
+                reservationId: cleanup.reservationId,
+              };
+            }
+
+            try {
+              await this.relay.submitProviderSessionCleanupResult({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: cleanup.reservationId,
+                outcome: { status: "success" },
+              });
+            } catch {
+              return {
+                outcome:
+                  "provider_session_cleanup_delivery_unknown",
+                reservationId: cleanup.reservationId,
+              };
+            }
+            return {
+              outcome: "provider_session_cleanup_completed",
+              reservationId: cleanup.reservationId,
+            };
+          }
         }
 
         if (
