@@ -3,7 +3,6 @@ import UIKit
 
 struct SidebarView: View {
     @Binding var selectedPage: AppPage
-    let menuButtonCenterY: CGFloat?
     let onNewSession: () -> Void
     let newSessionEnabled: Bool
     let conversations: [NativeLiveConversationSummary]
@@ -64,11 +63,7 @@ struct SidebarView: View {
                 .position(
                     x: proxy.size.width
                         - trailingFloatingControlCenterInset,
-                    y: localY(
-                        menuButtonCenterY,
-                        in: proxy,
-                        fallback: proxy.safeAreaInsets.top + 22
-                    )
+                    y: 22
                 )
             }
             .overlay(alignment: .bottom) {
@@ -175,15 +170,6 @@ struct SidebarView: View {
         }
 
         return activeConversationID == conversationID
-    }
-
-    private func localY(
-        _ globalY: CGFloat?,
-        in proxy: GeometryProxy,
-        fallback: CGFloat
-    ) -> CGFloat {
-        guard let globalY else { return fallback }
-        return globalY - proxy.frame(in: .global).minY
     }
 }
 
