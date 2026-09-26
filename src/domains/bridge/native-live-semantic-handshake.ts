@@ -30,7 +30,6 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   : never;
 
 const SEMANTIC_RESERVATION_LEASE_MS = 300_000;
-const SEMANTIC_COMPLETION_INTERVAL_MS = 2_000;
 
 export type NativeLiveSemanticScoringReservation = {
   reservationId: string;
