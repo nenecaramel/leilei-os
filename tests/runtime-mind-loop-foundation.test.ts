@@ -214,13 +214,15 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
       ["drive", "我还想把这条 runtime 主线继续推进"],
       ["thought", "下一步验证 recall"],
       ["curiosity", "为什么 Topic 会再次浮起来"],
-      ["topic", "下次继续看 Topic Pool"],
     ],
   );
   assert.equal(parsed.visibleText.includes("<feel>"), false);
   assert.equal(parsed.visibleText.includes("<drive>"), false);
   assert.equal(parsed.visibleText.includes("<curiosity>"), false);
-  assert.equal(parsed.visibleText.includes("<topic>"), false);
+  assert.equal(
+    parsed.visibleText.includes("<topic>下次继续看 Topic Pool</topic>"),
+    true,
+  );
   assert.equal(
     parsed.visibleText.includes("<dream>这个标签已经退出架构</dream>"),
     true,
