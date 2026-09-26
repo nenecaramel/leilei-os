@@ -14,7 +14,7 @@ struct DaySpaceView: View {
     @State private var todoState: DaySpaceModuleState<DaySpaceTodoDay> = .loading(nil)
     @State private var diaryState: DaySpaceModuleState<[DaySpaceDiary]> = .loading(nil)
     @State private var selection: DaySpacePaperSelection?
-    @State private var createPresented = false
+    @State private var createSelection: DaySpaceTodoCreateSelection?
     @State private var datePickerPresented = false
     @State private var datePickerDraft = Date.now
     @State private var generation = 0
@@ -103,16 +103,21 @@ struct DaySpaceView: View {
 
                 ToolbarItem(placement: .bottomBar) {
                     Button {
-                        createPresented = true
+                        guard let selectedDate else {
+                            return
+                        }
+
+                        createSelection = DaySpaceTodoCreateSelection(
+                            date: selectedDate,
+                            unavailableAuthors: unavailableTodoAuthors
+                        )
                     } label: {
                         Image(systemName: "square.and.pencil")
                     }
                     .accessibilityLabel("New Todo")
+                    .disabled(!canCreateTodo)
                 }
             }
-        }
-        .navigationDestination(isPresented: $createPresented) {
-            DaySpaceTodoCreatePlaceholder()
         }
         .sheet(isPresented: $datePickerPresented) {
             DaySpaceDatePickerSheet(
@@ -120,6 +125,26 @@ struct DaySpaceView: View {
             ) {
                 selectDate(DaySpaceDate.businessDate(datePickerDraft))
             }
+        }
+        .fullScreenCover(item: $createSelection) { draft in
+            DaySpaceTodoPaperDetail(
+                date: draft.date,
+                unavailableAuthors: draft.unavailableAuthors,
+                onSaved: { committed in
+                    applyTodo(committed)
+                    Task {
+                        await refreshTodoAfterSave(
+                            date: committed.date,
+                            committed: committed
+                        )
+                    }
+                },
+                onClosed: {
+                    createSelection = nil
+                }
+            )
+            .presentationBackground(.clear)
+            .interactiveDismissDisabled()
         }
         .fullScreenCover(item: $selection) { paper in
             Group {
@@ -304,6 +329,22 @@ struct DaySpaceView: View {
         }
 
         return result
+    }
+
+    private var unavailableTodoAuthors: [DaySpaceAuthor] {
+        guard let day = todoState.value else {
+            return []
+        }
+
+        return DaySpaceAuthor.allCases.filter { author in
+            day.papers[author] != nil
+        }
+    }
+
+    private var canCreateTodo: Bool {
+        selectedDate != nil
+            && todoState.value != nil
+            && unavailableTodoAuthors.count < DaySpaceAuthor.allCases.count
     }
 
     private func selectDate(_ date: String) {
@@ -604,13 +645,10 @@ struct DaySpaceView: View {
     }
 }
 
-private struct DaySpaceTodoCreatePlaceholder: View {
-    var body: some View {
-        Color(.systemBackground)
-            .ignoresSafeArea()
-            .navigationTitle("New Todo")
-            .navigationBarTitleDisplayMode(.inline)
-    }
+private struct DaySpaceTodoCreateSelection: Identifiable {
+    let id = UUID()
+    let date: String
+    let unavailableAuthors: [DaySpaceAuthor]
 }
 
 private enum DaySpaceTodoSearchState {
@@ -1087,12 +1125,15 @@ private struct DaySpaceDiaryPreview: View {
 
 
 private struct DaySpaceTodoPaperDetail: View {
-    let paper: DaySpaceTodoPaper
+    let paper: DaySpaceTodoPaper?
+    let date: String
+    let unavailableAuthors: [DaySpaceAuthor]
     let onSaved: (DaySpaceTodoPaper) -> Void
     let onClosed: () -> Void
 
     @EnvironmentObject private var appModel: AppModel
 
+    @State private var author: DaySpaceAuthor
     @State private var rows: [DaySpaceEditableTodoEntry]
     @State private var focusRequest: DaySpaceTodoFocusRequest?
     @State private var isSaving = false
@@ -1104,8 +1145,11 @@ private struct DaySpaceTodoPaperDetail: View {
         onClosed: @escaping () -> Void
     ) {
         self.paper = paper
+        self.date = paper.date
+        self.unavailableAuthors = []
         self.onSaved = onSaved
         self.onClosed = onClosed
+        _author = State(initialValue: paper.author)
         _rows = State(
             initialValue: DaySpaceEditableTodoEntry.initialRows(
                 author: paper.author,
@@ -1114,9 +1158,35 @@ private struct DaySpaceTodoPaperDetail: View {
         )
     }
 
+    init(
+        date: String,
+        unavailableAuthors: [DaySpaceAuthor],
+        onSaved: @escaping (DaySpaceTodoPaper) -> Void,
+        onClosed: @escaping () -> Void
+    ) {
+        let initialAuthor = DaySpaceAuthor.allCases.first { candidate in
+            !unavailableAuthors.contains {
+                $0.rawValue == candidate.rawValue
+            }
+        } ?? .L
+
+        self.paper = nil
+        self.date = date
+        self.unavailableAuthors = unavailableAuthors
+        self.onSaved = onSaved
+        self.onClosed = onClosed
+        _author = State(initialValue: initialAuthor)
+        _rows = State(
+            initialValue: DaySpaceEditableTodoEntry.initialRows(
+                author: initialAuthor,
+                entries: []
+            )
+        )
+    }
+
     var body: some View {
         DaySpacePaperDetailLayer(
-            dateLabel: DaySpaceDate.paperLabel(paper.date),
+            dateLabel: DaySpaceDate.paperLabel(date),
             errorMessage: errorMessage,
             onRequestClose: {
                 Task {
@@ -1127,19 +1197,58 @@ private struct DaySpaceTodoPaperDetail: View {
                 EmptyView()
             },
             signature: {
-                Text(paper.author.rawValue)
-                    .font(
-                        .system(
-                            size: 20,
-                            weight: .medium,
-                            design: .serif
+                if paper == nil {
+                    Menu {
+                        ForEach(DaySpaceAuthor.allCases) { candidate in
+                            Button {
+                                author = candidate
+                                errorMessage = nil
+                            } label: {
+                                HStack {
+                                    Text(candidate.rawValue)
+
+                                    if candidate.rawValue == author.rawValue {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                            .disabled(
+                                unavailableAuthors.contains {
+                                    $0.rawValue == candidate.rawValue
+                                }
+                            )
+                        }
+                    } label: {
+                        Text(author.rawValue)
+                            .font(
+                                .system(
+                                    size: 20,
+                                    weight: .medium,
+                                    design: .serif
+                                )
+                            )
+                            .foregroundStyle(
+                                Color(
+                                    white: 0.52
+                                )
+                            )
+                    }
+                    .accessibilityLabel("Todo author \(author.rawValue)")
+                } else {
+                    Text(author.rawValue)
+                        .font(
+                            .system(
+                                size: 20,
+                                weight: .medium,
+                                design: .serif
+                            )
                         )
-                    )
-                    .foregroundStyle(
-                        Color(
-                            white: 0.52
+                        .foregroundStyle(
+                            Color(
+                                white: 0.52
+                            )
                         )
-                    )
+                }
             }
         ) {
             LazyVStack(spacing: 0) {
@@ -1241,6 +1350,10 @@ private struct DaySpaceTodoPaperDetail: View {
 
     private var isDirty: Bool {
         let current = normalizedEntries
+
+        guard let paper else {
+            return !current.isEmpty
+        }
 
         guard current.count == paper.entries.count else {
             return true
@@ -1628,7 +1741,7 @@ private struct DaySpaceTodoPaperDetail: View {
 
         do {
             let request = DaySpaceTodoReplaceRequest(
-                revision: paper.revision,
+                revision: paper?.revision,
                 entries: normalizedEntries
             )
             let body = try JSONEncoder().encode(
@@ -1636,7 +1749,7 @@ private struct DaySpaceTodoPaperDetail: View {
             )
             let response: DaySpaceTodoPaperEnvelope =
                 try await appModel.api.request(
-                    path: "/api/v1/todo/\(paper.date)/\(paper.author.rawValue)",
+                    path: "/api/v1/todo/\(date)/\(author.rawValue)",
                     method: "PUT",
                     body: body
                 )
