@@ -170,13 +170,11 @@ struct DiaryView: View {
         state = .loading
 
         do {
-            let response: DiaryListEnvelope = try await appModel.api.request(
-                path: diaryPath(for: query)
-            )
+            let result = try await loadAllDiaryPages(for: query)
             if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                diaryCount = response.data.metadata.count
+                diaryCount = result.count
             }
-            state = .loaded(response.data.diaries)
+            state = .loaded(result.diaries)
         } catch LeileiAPIError.missingAccessToken {
             state = .authRequired("Sign in")
         } catch LeileiAPIError.unauthorized {
@@ -203,14 +201,62 @@ struct DiaryView: View {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func diaryPath(for query: String) -> String {
+    private func loadAllDiaryPages(
+        for query: String
+    ) async throws -> (diaries: [DiaryEntry], count: Int) {
+        let pageSize = 100
+        var offset = 0
+        var totalCount = 0
+        var diaries: [DiaryEntry] = []
+        var seenIDs = Set<String>()
+
+        while true {
+            try Task.checkCancellation()
+
+            let response: DiaryListEnvelope = try await appModel.api.request(
+                path: diaryPath(
+                    for: query,
+                    limit: pageSize,
+                    offset: offset
+                )
+            )
+            totalCount = response.data.metadata.count
+
+            let newDiaries = response.data.diaries.filter {
+                seenIDs.insert($0.id).inserted
+            }
+            diaries.append(contentsOf: newDiaries)
+
+            if diaries.count >= totalCount
+                || response.data.diaries.isEmpty
+                || newDiaries.isEmpty {
+                break
+            }
+
+            offset += response.data.diaries.count
+        }
+
+        return (diaries, totalCount)
+    }
+
+    private func diaryPath(
+        for query: String,
+        limit: Int,
+        offset: Int
+    ) -> String {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalized.isEmpty else { return "/api/v1/diary" }
 
         var components = URLComponents()
         components.queryItems = [
-            URLQueryItem(name: "q", value: normalized)
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset)),
         ]
+        if !normalized.isEmpty {
+            components.queryItems?.append(
+                URLQueryItem(name: "q", value: normalized)
+            )
+        }
+
         return "/api/v1/diary?\(components.percentEncodedQuery ?? "")"
     }
 
