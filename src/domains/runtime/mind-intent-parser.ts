@@ -17,17 +17,23 @@ export type MindWriteIntentKind =
   | CurrentMindWriteIntentKind
   | LegacyMindWriteIntentKind;
 
-export type MindWriteIntent = {
-  kind: MindWriteIntentKind;
+export type MindWriteIntentShape<
+  K extends MindWriteIntentKind = MindWriteIntentKind,
+> = {
+  kind: K;
   text: string;
   sourceStart: number;
   sourceEnd: number;
   raw: string;
 };
 
+export type MindWriteIntent = MindWriteIntentShape<MindWriteIntentKind>;
+export type CurrentMindWriteIntent =
+  MindWriteIntentShape<CurrentMindWriteIntentKind>;
+
 export type ParsedMindIntents = {
   visibleText: string;
-  intents: MindWriteIntent[];
+  intents: CurrentMindWriteIntent[];
 };
 
 const TAG_PATTERN = /<(feel|memory|drive|thought|curiosity)>([\s\S]*?)<\/\1>/gi;
@@ -41,7 +47,7 @@ const NESTED_TAG_PATTERN = /<\/?(feel|memory|drive|thought|curiosity|topic)>/i;
  * delete a memory.
  */
 export function parseMindWriteIntents(source: string): ParsedMindIntents {
-  const intents: MindWriteIntent[] = [];
+  const intents: CurrentMindWriteIntent[] = [];
   const removable: Array<{ start: number; end: number }> = [];
 
   for (const match of source.matchAll(TAG_PATTERN)) {
