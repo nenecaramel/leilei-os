@@ -31,6 +31,7 @@ import {
 } from "./breath-semantic-recall.js";
 import { filterBreathEligibleStates } from "./breath-recall.js";
 import { canonicalPathToHead } from "./surface-projector.js";
+import { expandCausalStateReferences } from "./persistent-reference-scan.js";
 
 export type SubjectStateTransition = {
   stateId: string;
@@ -184,6 +185,7 @@ export class NativeLiveMindLoopService {
     surfaceHeadMessageId?: string | null;
     semanticScores?: ReadonlyMap<string, number>;
     semanticCandidates?: readonly BreathSemanticCandidate[];
+    excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<AssembledTurnContext> {
     if (this.port.loadContextManifest) {
       const persisted = await this.port.loadContextManifest({
@@ -218,11 +220,15 @@ export class NativeLiveMindLoopService {
       }
     }
 
-    const states = await this.port.list({
+    const listedStates = await this.port.list({
       userId: input.userId,
       subjectId: input.subjectId,
       conversationId: input.conversation.id,
     });
+    const states = excludeCausalStates(
+      listedStates,
+      input.excludedReferenceIds,
+    );
 
     const configuredSemanticWeight =
       this.config.breathSemanticWeight ?? 0;
@@ -333,17 +339,22 @@ export class NativeLiveMindLoopService {
     userText: string;
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<{
     query: string;
     candidates: BreathSemanticCandidate[];
   } | null> {
     if ((this.config.breathSemanticWeight ?? 0) <= 0) return null;
 
-    const states = await this.port.list({
+    const listedStates = await this.port.list({
       userId: input.userId,
       subjectId: input.subjectId,
       conversationId: input.conversation.id,
     });
+    const states = excludeCausalStates(
+      listedStates,
+      input.excludedReferenceIds,
+    );
 
     return this.semanticPlanFromStates({
       ...input,
@@ -561,4 +572,19 @@ function hasCompleteSemanticScores(
       && score <= 1
     );
   });
+}
+
+
+function excludeCausalStates(
+  states: readonly SubjectStateWrite[],
+  excludedReferenceIds: ReadonlySet<string> | undefined,
+): SubjectStateWrite[] {
+  if (!excludedReferenceIds || excludedReferenceIds.size === 0) {
+    return [...states];
+  }
+  const excludedStateIds = expandCausalStateReferences({
+    states,
+    rootIds: excludedReferenceIds,
+  });
+  return states.filter((state) => !excludedStateIds.has(state.id));
 }

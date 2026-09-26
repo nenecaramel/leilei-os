@@ -16,6 +16,7 @@ const conversationId = "33333333-3333-4333-8333-333333333333";
 const userMessageId = "44444444-4444-4444-8444-444444444444";
 const parentId = "55555555-5555-4555-8555-555555555555";
 const assistantId = "66666666-6666-4666-8666-666666666666";
+const oldAssistantId = "77777777-7777-4777-8777-777777777777";
 const now = "2026-09-22T11:00:00.000Z";
 
 function userMessage(): NativeLiveMessage {
@@ -39,6 +40,32 @@ function userMessage(): NativeLiveMessage {
   };
 }
 
+function parentAssistant(): NativeLiveMessage {
+  return {
+    id: parentId,
+    conversationId,
+    parentMessageId: null,
+    role: "assistant",
+    status: "completed",
+    createdAt: now,
+    completedAt: now,
+    blocks: [],
+  };
+}
+
+function oldAssistant(): NativeLiveMessage {
+  return {
+    id: oldAssistantId,
+    conversationId,
+    parentMessageId: userMessageId,
+    role: "assistant",
+    status: "completed",
+    createdAt: now,
+    completedAt: now,
+    blocks: [],
+  };
+}
+
 function conversation(head: string | null = parentId): NativeLiveConversation {
   return {
     id: conversationId,
@@ -48,7 +75,7 @@ function conversation(head: string | null = parentId): NativeLiveConversation {
     currentHeadMessageId: head,
     createdAt: now,
     updatedAt: now,
-    messages: [userMessage()],
+    messages: [parentAssistant(), userMessage(), oldAssistant()],
   };
 }
 
@@ -62,6 +89,8 @@ function prepared(
     conversationId,
     operation,
     canonicalUserMessageId: userMessageId,
+    replacementTargetUserMessageId:
+      operation === "send" ? null : userMessageId,
     runtimeMode: "fork",
     parentProviderSessionId: "provider-parent",
     prompt: "hello",
@@ -81,6 +110,7 @@ class Reader {
 
 class Mind implements NativeLiveMindRuntime {
   calls: string[] = [];
+  excludedReferenceIds: string[][] = [];
   transitions: Awaited<
     ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
   > = [];
@@ -88,9 +118,13 @@ class Mind implements NativeLiveMindRuntime {
   async prepareUserTurn(input: {
     surfaceHeadMessageId: string | null;
     userText: string;
+    excludedReferenceIds?: ReadonlySet<string>;
   }) {
     this.calls.push(
       `prepare:${input.surfaceHeadMessageId}:${input.userText}`,
+    );
+    this.excludedReferenceIds.push(
+      [...(input.excludedReferenceIds ?? [])].sort(),
     );
     return "ASSEMBLED_PROMPT";
   }
@@ -153,10 +187,12 @@ test("send preparation settles the continued path, runs targeted catch-up, then 
     userId,
     transitions: mind.transitions,
   }]);
+  assert.deepEqual(mind.excludedReferenceIds, [[]]);
 });
 
-test("retry preparation uses the historical parent without pre-reconciling the selected path", async () => {
+test("retry preparation excludes the old assistant suffix before replacement generation", async () => {
   const reader = new Reader();
+  reader.value = conversation(oldAssistantId);
   const mind = new Mind();
   const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
 
@@ -168,6 +204,7 @@ test("retry preparation uses the historical parent without pre-reconciling the s
   assert.deepEqual(mind.calls, [
     `prepare:${parentId}:hello`,
   ]);
+  assert.deepEqual(mind.excludedReferenceIds, [[oldAssistantId]]);
 });
 
 test("branch finalize records intents and then reconciles the finalized canonical head", async () => {

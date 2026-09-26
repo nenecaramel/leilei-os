@@ -13,6 +13,7 @@ import type { NativeLivePreparedTurn } from "./native-live-backend-turn-coordina
 import type {
   SubjectStateSettlementCatchUp,
 } from "../runtime/subject-state-settlement-catch-up.js";
+import { planReplacementMessagePurge } from "./native-live-replacement-purge.js";
 
 export interface NativeLiveBackendMindConversationReader {
   getConversation(input: {
@@ -108,12 +109,19 @@ implements NativeLiveBackendMindRuntime {
       await this.runSettlementCatchUp(input.userId, transitions);
     }
 
+    const excludedReferenceIds =
+      this.replacementExcludedReferenceIds(
+        conversation,
+        input.preparation,
+      );
+
     return this.mind.prepareUserTurn({
       userId: input.userId,
       conversation,
       userMessage,
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
+      excludedReferenceIds,
     });
   }
 
@@ -143,12 +151,19 @@ implements NativeLiveBackendMindRuntime {
       await this.runSettlementCatchUp(input.userId, transitions);
     }
 
+    const excludedReferenceIds =
+      this.replacementExcludedReferenceIds(
+        conversation,
+        input.preparation,
+      );
+
     return this.mind.planSemanticUserTurn({
       userId: input.userId,
       conversation,
       userMessage,
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
+      excludedReferenceIds,
     });
   }
 
@@ -171,15 +186,48 @@ implements NativeLiveBackendMindRuntime {
       input.preparation.canonicalUserMessageId,
     );
 
+    const excludedReferenceIds =
+      this.replacementExcludedReferenceIds(
+        conversation,
+        input.preparation,
+      );
+
     return this.mind.prepareUserTurnFromSemanticPlan({
       userId: input.userId,
       conversation,
       userMessage,
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
+      excludedReferenceIds,
       plan: input.plan,
       scores: input.scores,
     });
+  }
+
+  private replacementExcludedReferenceIds(
+    conversation: NativeLiveConversation,
+    preparation: NativeLivePreparedTurn,
+  ): ReadonlySet<string> | undefined {
+    if (preparation.operation === "send") return undefined;
+
+    const targetUserMessageId =
+      preparation.replacementTargetUserMessageId
+      ?? (
+        preparation.operation === "retry"
+          ? preparation.canonicalUserMessageId
+          : null
+      );
+    const plan = planReplacementMessagePurge({
+      operation: preparation.operation,
+      conversation,
+      targetUserMessageId,
+    });
+    if (!plan) {
+      throw new Error(
+        "Replacement branch is no longer a valid current-path target.",
+      );
+    }
+    return new Set(plan.messageIds);
   }
 
   parseAssistantBlocks(

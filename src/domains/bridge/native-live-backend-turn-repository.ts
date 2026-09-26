@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationMessages,
+  nativeLiveBackgroundModelJobs,
   nativeLiveMindFollowUps,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
+  runtimeDistillationWatermarks,
+  runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
   DrizzleNativeLiveConversationRepository,
@@ -33,6 +37,13 @@ import type {
   NativeLiveRuntimeMetadata,
   NativeLiveRuntimeMode,
 } from "./native-live-runtime-protocol.js";
+import {
+  planCausalSubjectStatePurge,
+  planReplacementMessagePurge,
+  planSubjectStateEvolutionRepairs,
+  workflowReferencesAnyId,
+  type ReplacementPurgePlan,
+} from "./native-live-replacement-purge.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (
@@ -81,6 +92,7 @@ type PreparationRow = {
   operation: "send" | "retry" | "edit";
   requestHash: string;
   canonicalUserMessageId: string;
+  replacementTargetUserMessageId: string | null;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
   executionSelection: Record<string, unknown> | null;
@@ -111,6 +123,7 @@ function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     conversationId: row.conversationId,
     operation: row.operation,
     canonicalUserMessageId: row.canonicalUserMessageId,
+    replacementTargetUserMessageId: row.replacementTargetUserMessageId,
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
     executionSelection: row.executionSelection === null
@@ -237,6 +250,7 @@ implements NativeLiveBackendTurnPort {
           operation: "send",
           requestHash,
           canonicalUserMessageId: userMessage.id,
+          replacementTargetUserMessageId: null,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           executionSelection: input.executionSelection,
@@ -302,7 +316,14 @@ implements NativeLiveBackendTurnPort {
             && message.role === "user",
         );
         const prompt = target ? readUserText(target) : null;
-        if (!target || !prompt) {
+        const purgePlan = target
+          ? planReplacementMessagePurge({
+              operation: "retry",
+              conversation,
+              targetUserMessageId: target.id,
+            })
+          : null;
+        if (!target || !prompt || !purgePlan) {
           return { ok: false as const, code: "BRANCH_POINT_INVALID" as const };
         }
 
@@ -322,6 +343,7 @@ implements NativeLiveBackendTurnPort {
           operation: "retry",
           requestHash,
           canonicalUserMessageId: target.id,
+          replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           executionSelection: input.executionSelection,
@@ -388,7 +410,14 @@ implements NativeLiveBackendTurnPort {
             message.id === input.targetUserMessageId
             && message.role === "user",
         );
-        if (!target) {
+        const purgePlan = target
+          ? planReplacementMessagePurge({
+              operation: "edit",
+              conversation,
+              targetUserMessageId: target.id,
+            })
+          : null;
+        if (!target || !purgePlan) {
           return { ok: false as const, code: "BRANCH_POINT_INVALID" as const };
         }
 
@@ -425,6 +454,7 @@ implements NativeLiveBackendTurnPort {
           operation: "edit",
           requestHash,
           canonicalUserMessageId: editedUser.id,
+          replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           executionSelection: input.executionSelection,
@@ -647,6 +677,36 @@ implements NativeLiveBackendTurnPort {
             new DrizzleNativeLiveConversationRepository(
               transaction as Transaction,
             );
+
+          let replacementPurgePlan: ReplacementPurgePlan | null = null;
+          if (row.operation !== "send") {
+            const conversation = await conversations.getConversation({
+              userId: input.userId,
+              conversationId: row.conversationId,
+            });
+            if (!conversation) {
+              throw new Error(
+                "Replacement finalization conversation was not found.",
+              );
+            }
+            replacementPurgePlan = planReplacementMessagePurge({
+              operation: row.operation,
+              conversation,
+              targetUserMessageId:
+                row.replacementTargetUserMessageId
+                ?? (
+                  row.operation === "retry"
+                    ? row.canonicalUserMessageId
+                    : null
+                ),
+            });
+            if (!replacementPurgePlan) {
+              throw new Error(
+                "Replacement finalization target is no longer on the current path.",
+              );
+            }
+          }
+
           const assistantMessage = await conversations.appendAssistantMessage({
             userId: input.userId,
             conversationId: row.conversationId,
@@ -707,6 +767,17 @@ implements NativeLiveBackendTurnPort {
 
           if (updated.length !== 1) {
             throw new Error("Native live turn finalization lost its preparation lock.");
+          }
+
+          if (
+            replacementPurgePlan
+            && replacementPurgePlan.rootMessageIds.length > 0
+          ) {
+            await this.purgeReplacementArtifacts(
+              transaction as Transaction,
+              row,
+              replacementPurgePlan,
+            );
           }
 
           if (input.mindFollowUp) {
@@ -812,6 +883,154 @@ implements NativeLiveBackendTurnPort {
     }
   }
 
+  private async purgeReplacementArtifacts(
+    transaction: Transaction,
+    row: PreparationRow,
+    plan: ReplacementPurgePlan,
+  ): Promise<void> {
+    const purgeMessageIds = new Set(plan.messageIds);
+    if (purgeMessageIds.size === 0) return;
+
+    const watermarks = await transaction
+      .select({
+        lastSourceMessageId:
+          runtimeDistillationWatermarks.lastSourceMessageId,
+      })
+      .from(runtimeDistillationWatermarks)
+      .where(
+        and(
+          eq(runtimeDistillationWatermarks.userId, row.userId),
+          eq(
+            runtimeDistillationWatermarks.conversationId,
+            row.conversationId,
+          ),
+        ),
+      );
+
+    const resetDistillation = watermarks.some((watermark) =>
+      purgeMessageIds.has(watermark.lastSourceMessageId)
+    );
+
+    const states = await transaction
+      .select({
+        id: runtimeSubjectStates.id,
+        kind: runtimeSubjectStates.kind,
+        payload: runtimeSubjectStates.payload,
+        envelope: runtimeSubjectStates.envelope,
+        scopeConversationId: runtimeSubjectStates.scopeConversationId,
+        scopePathHeadMessageId:
+          runtimeSubjectStates.scopePathHeadMessageId,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, row.userId));
+
+    const purgeStateIds = planCausalSubjectStatePurge({
+      conversationId: row.conversationId,
+      purgeMessageIds,
+      resetDistillation,
+      states,
+    });
+    const purgeStateIdSet = new Set(purgeStateIds);
+    const evolutionRepairs = planSubjectStateEvolutionRepairs({
+      states,
+      purgeMessageIds,
+      purgeStateIds: purgeStateIdSet,
+    });
+    const causalIds = new Set<string>([
+      ...purgeMessageIds,
+      ...purgeStateIds,
+    ]);
+
+    const backgroundJobs = await transaction
+      .select({
+        id: nativeLiveBackgroundModelJobs.id,
+        workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
+        workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
+      })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(eq(nativeLiveBackgroundModelJobs.userId, row.userId));
+
+    const purgeBackgroundJobIds = backgroundJobs
+      .filter((job) => {
+        if (
+          resetDistillation
+          && job.workflowKind === "distillation"
+          && job.workflowPayload?.conversation_id === row.conversationId
+        ) {
+          return true;
+        }
+        return workflowReferencesAnyId(
+          job.workflowPayload,
+          causalIds,
+        );
+      })
+      .map((job) => job.id);
+
+    if (purgeBackgroundJobIds.length > 0) {
+      await transaction
+        .delete(nativeLiveBackgroundModelJobs)
+        .where(
+          and(
+            eq(nativeLiveBackgroundModelJobs.userId, row.userId),
+            inArray(
+              nativeLiveBackgroundModelJobs.id,
+              purgeBackgroundJobIds,
+            ),
+          ),
+        );
+    }
+
+    if (resetDistillation) {
+      await transaction
+        .delete(runtimeDistillationWatermarks)
+        .where(
+          and(
+            eq(runtimeDistillationWatermarks.userId, row.userId),
+            eq(
+              runtimeDistillationWatermarks.conversationId,
+              row.conversationId,
+            ),
+          ),
+        );
+    }
+
+    if (purgeStateIds.length > 0) {
+      await transaction
+        .delete(runtimeSubjectStates)
+        .where(
+          and(
+            eq(runtimeSubjectStates.userId, row.userId),
+            inArray(runtimeSubjectStates.id, purgeStateIds),
+          ),
+        );
+    }
+
+    for (const repair of evolutionRepairs) {
+      await transaction
+        .update(runtimeSubjectStates)
+        .set({
+          payload: repair.nextPayload,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(runtimeSubjectStates.userId, row.userId),
+            eq(runtimeSubjectStates.id, repair.stateId),
+          ),
+        );
+    }
+
+    await transaction
+      .delete(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.userId, row.userId),
+          eq(conversationMessages.conversationId, row.conversationId),
+          inArray(conversationMessages.id, plan.rootMessageIds),
+        ),
+      );
+  }
+
   private async prepareWithRaceRecovery(
     userId: string,
     requestId: string,
@@ -886,6 +1105,7 @@ implements NativeLiveBackendTurnPort {
       operation: "send" | "retry" | "edit";
       requestHash: string;
       canonicalUserMessageId: string;
+      replacementTargetUserMessageId: string | null;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
@@ -902,6 +1122,7 @@ implements NativeLiveBackendTurnPort {
         operation: input.operation,
         requestHash: input.requestHash,
         canonicalUserMessageId: input.canonicalUserMessageId,
+        replacementTargetUserMessageId: input.replacementTargetUserMessageId,
         runtimeMode: input.runtimeMode,
         parentProviderSessionId: input.parentProviderSessionId,
         executionSelection: input.executionSelection,
@@ -1003,6 +1224,8 @@ implements NativeLiveBackendTurnPort {
       requestHash: nativeLiveTurnPreparations.requestHash,
       canonicalUserMessageId:
         nativeLiveTurnPreparations.canonicalUserMessageId,
+      replacementTargetUserMessageId:
+        nativeLiveTurnPreparations.replacementTargetUserMessageId,
       runtimeMode: nativeLiveTurnPreparations.runtimeMode,
       parentProviderSessionId:
         nativeLiveTurnPreparations.parentProviderSessionId,
