@@ -26,7 +26,7 @@ export type BackgroundOpportunityPolicyConfig = {
   maintenancePulseIntervalMs: number;
   decayEnabled: boolean;
   proactivityWakeEnabled: boolean;
-  topicResurfaceMinIntervalMs: number | null;
+  topicResurfaceEnabled: boolean;
 };
 
 export const DEFAULT_BACKGROUND_TARGET_PLANS = {
@@ -87,12 +87,6 @@ export class BackgroundOpportunityPolicy {
       "maintenance_pulse",
       config.maintenancePulseIntervalMs,
     );
-    if (config.topicResurfaceMinIntervalMs !== null) {
-      requirePositiveCadence(
-        "mac_idle",
-        config.topicResurfaceMinIntervalMs,
-      );
-    }
   }
 
   decide(input: {
@@ -124,7 +118,7 @@ export class BackgroundOpportunityPolicy {
       case "mac_idle":
         return {
           opportunity: input.opportunity,
-          targets: this.config.topicResurfaceMinIntervalMs !== null
+          targets: this.config.topicResurfaceEnabled
             ? [DEFAULT_BACKGROUND_TARGET_PLANS.topicResurface]
             : [],
         };
@@ -140,7 +134,8 @@ export class BackgroundOpportunityPolicy {
       case "maintenance_pulse":
         return this.config.maintenancePulseIntervalMs;
       case "mac_idle":
-        return this.config.topicResurfaceMinIntervalMs;
+        // Mac Companion owns idle cadence. Policy only decides eligibility.
+        return null;
     }
   }
 
