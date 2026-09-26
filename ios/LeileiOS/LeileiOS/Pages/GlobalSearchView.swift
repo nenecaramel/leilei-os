@@ -217,8 +217,22 @@ private struct GlobalSearchResultsList: View {
         List {
             ForEach(groups) { group in
                 Section(group.module.title) {
-                    ForEach(group.items) { result in
+                    ForEach(
+                        Array(group.items.enumerated()),
+                        id: \.element.id
+                    ) { index, result in
                         GlobalSearchResultRow(result: result)
+                            .listRowBackground(Color(.systemBackground))
+                            .listRowSeparator(
+                                index == 0 ? .hidden : .visible,
+                                edges: .top
+                            )
+                            .listRowSeparator(
+                                index == group.items.count - 1
+                                    ? .hidden
+                                    : .visible,
+                                edges: .bottom
+                            )
                     }
                 }
             }
@@ -290,6 +304,7 @@ private struct GlobalSearchDiaryRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .truncationMode(.tail)
             }
 
             GlobalSearchMetadataLine(
@@ -348,6 +363,7 @@ private struct GlobalSearchUniverseRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .truncationMode(.tail)
             }
 
             GlobalSearchMetadataLine(
@@ -374,6 +390,7 @@ private struct GlobalSearchConversationRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .truncationMode(.tail)
             }
 
             GlobalSearchMetadataLine(
@@ -427,10 +444,16 @@ private enum GlobalSearchDate {
             return ""
         }
 
-        return date.formatted(
-            .dateTime
-                .month(.defaultDigits)
-                .day()
+        let components = Calendar.current.dateComponents(
+            [.month, .day],
+            from: date
         )
+        guard let month = components.month,
+              let day = components.day
+        else {
+            return ""
+        }
+
+        return "\(month)/\(day)"
     }
 }
