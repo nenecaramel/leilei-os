@@ -1714,12 +1714,7 @@ private struct DaySpaceTodoLineEditor: UIViewRepresentable {
         let textView = DaySpaceTodoNativeTextView()
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
-        textView.textContainerInset = UIEdgeInsets(
-            top: verticalTextInset,
-            left: 0,
-            bottom: 0,
-            right: 0
-        )
+        textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.delegate = context.coordinator
         textView.autocorrectionType = .default
@@ -1808,18 +1803,8 @@ private struct DaySpaceTodoLineEditor: UIViewRepresentable {
             width: width,
             height: max(
                 30,
-                ceil(
-                    fitting.height
-                        - verticalTextInset
-                )
+                ceil(fitting.height)
             )
-        )
-    }
-
-    private var verticalTextInset: CGFloat {
-        max(
-            0,
-            (30 - UIFont.systemFont(ofSize: 14).lineHeight) / 2
         )
     }
 
@@ -2365,18 +2350,8 @@ private struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
             width: width,
             height: max(
                 420,
-                ceil(
-                    fitting.height
-                        - verticalTextInset
-                )
+                ceil(fitting.height)
             )
-        )
-    }
-
-    private var verticalTextInset: CGFloat {
-        max(
-            0,
-            (30 - UIFont.systemFont(ofSize: 14).lineHeight) / 2
         )
     }
 
