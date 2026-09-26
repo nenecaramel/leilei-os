@@ -302,8 +302,11 @@ test("Edit causal purge removes only Memory recall contribution from the purged 
   assert.equal(repairs.length, 1);
   assert.equal(repairs[0]?.stateId, "memory-anchor");
   assert.equal(
-    (repairs[0]?.nextPayload?.lifecycle_v1 as { salience: number }).salience,
-    0.58,
+    Math.abs(
+      (repairs[0]?.nextPayload?.lifecycle_v1 as { salience: number }).salience
+        - 0.58,
+    ) < 1e-12,
+    true,
   );
   assert.deepEqual(
     (
