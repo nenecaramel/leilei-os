@@ -77,8 +77,7 @@ const baseEnvSchema = z.object({
   MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
   MCP_PUBLIC_TOOL_PROFILES: z.string().optional(),
   MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
-  NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS:
-    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
   NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS:
@@ -271,7 +270,6 @@ export type McpGovernanceConfig = {
 };
 
 export type TopicResurfaceOpportunityConfig = {
-  minIntervalMs: number;
   candidateLimit: number;
 };
 
@@ -402,26 +400,26 @@ export function getMemoryDecayConfig(
 export function getTopicResurfaceOpportunityConfig(
   environment: Pick<
     RuntimeEnv,
-    | "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS"
+    | "NATIVE_LIVE_TOPIC_RESURFACE_ENABLED"
     | "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT"
   >,
 ): TopicResurfaceOpportunityConfig | undefined {
-  const interval =
-    environment.NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS;
+  const enabled =
+    environment.NATIVE_LIVE_TOPIC_RESURFACE_ENABLED === true;
   const limit =
     environment.NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT;
 
-  if (interval === undefined && limit === undefined) {
+  if (!enabled) {
+    if (limit !== undefined) {
+      throw new Error(
+        "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT requires NATIVE_LIVE_TOPIC_RESURFACE_ENABLED=true.",
+      );
+    }
     return undefined;
   }
-  if (interval === undefined || limit === undefined) {
-    throw new Error(
-      "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS and NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT must be configured together.",
-    );
-  }
+
   return {
-    minIntervalMs: interval * 1_000,
-    candidateLimit: limit,
+    candidateLimit: limit ?? 5,
   };
 }
 
