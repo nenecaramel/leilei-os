@@ -80,6 +80,8 @@ private struct SettingsActivityRow: View {
                 Text(record.source)
                 Spacer()
                 Text(record.result)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
