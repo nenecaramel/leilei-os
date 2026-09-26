@@ -14,6 +14,7 @@ const policy: DriveEvolutionPolicy = {
   basePressure: 0.4,
   reinforcementBoost: 0.2,
   activeThreshold: 0.1,
+  dormantAfterSatisfiedHours: 24,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
@@ -163,10 +164,10 @@ test("duplicate Drive tags from one assistant message count as one reinforcement
   assert.equal(port.updates[0]?.evolution.pressure, 0.6);
 });
 
-test("satisfaction stored on the anchor lowers pressure and later reinforcement can reactivate it", async () => {
+test("later reinforcement can reactivate a dormant Drive", async () => {
   const anchorId = "11111111-1111-4111-8111-111111111111";
   const satisfiedPayload = writeDriveEvolution(null, {
-    phase: "satisfied",
+    phase: "dormant",
     role: "anchor",
     threadKey: driveThreadKey("keep exploring"),
     anchorStateId: anchorId,
@@ -177,6 +178,7 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
     lastEvolvedAt: "2026-09-22T12:00:00.000Z",
     lastReinforcedAt: "2026-09-22T11:00:00.000Z",
     lastSatisfiedAt: "2026-09-22T12:00:00.000Z",
+    dormantAt: "2026-09-22T13:00:00.000Z",
   });
   const port = new Port([
     candidate(
@@ -216,5 +218,165 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
   assert.ok(anchor);
   assert.ok(Math.abs(anchor.evolution.pressure - 0.15) < 1e-9);
   assert.equal(anchor.evolution.phase, "active");
+  assert.equal(anchor.evolution.dormantAt, null);
   assert.equal(anchor.evolution.satisfactionTotal, 0.65);
+});
+
+
+test("satisfied Drive becomes dormant only after the configured inactivity window", async () => {
+  const anchorId = "44444444-4444-4444-8444-444444444444";
+  const satisfiedPayload = writeDriveEvolution(null, {
+    phase: "satisfied",
+    role: "anchor",
+    threadKey: driveThreadKey("finish the runtime cleanup"),
+    anchorStateId: anchorId,
+    pressure: 0,
+    reinforcementCount: 1,
+    reinforcementSources: ["m1"],
+    satisfactionTotal: 0.5,
+    lastEvolvedAt: "2026-09-22T12:00:00.000Z",
+    lastReinforcedAt: "2026-09-22T10:00:00.000Z",
+    lastSatisfiedAt: "2026-09-22T12:00:00.000Z",
+    dormantAt: null,
+  });
+  const port = new Port([
+    candidate(
+      anchorId,
+      "finish the runtime cleanup",
+      "m1",
+      "2026-09-22T10:00:00.000Z",
+      satisfiedPayload,
+    ),
+  ]);
+  const service = new DriveEvolutionService(port, policy);
+
+  const before = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-23T11:59:59.000Z",
+  });
+  assert.equal(before.satisfied, 1);
+  assert.equal(before.dormant, 0);
+  assert.equal(port.updates[0]?.evolution.phase, "satisfied");
+  assert.equal(port.updates[0]?.evolution.dormantAt, null);
+
+  port.updates = [];
+  const after = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-23T12:00:00.000Z",
+  });
+  assert.equal(after.satisfied, 0);
+  assert.equal(after.dormant, 1);
+  assert.equal(port.updates[0]?.evolution.phase, "dormant");
+  assert.equal(
+    port.updates[0]?.evolution.dormantAt,
+    "2026-09-23T12:00:00.000Z",
+  );
+});
+
+test("Drive dormancy remains disabled when no dormancy window is configured", async () => {
+  const anchorId = "55555555-5555-4555-8555-555555555555";
+  const satisfiedPayload = {
+    drive_v1: {
+      phase: "satisfied",
+      role: "anchor",
+      threadKey: driveThreadKey("keep this explicit"),
+      anchorStateId: anchorId,
+      pressure: 0,
+      reinforcementCount: 1,
+      reinforcementSources: ["m1"],
+      satisfactionTotal: 0.5,
+      lastEvolvedAt: "2026-09-01T12:00:00.000Z",
+      lastReinforcedAt: "2026-09-01T10:00:00.000Z",
+      lastSatisfiedAt: "2026-09-01T12:00:00.000Z",
+    },
+  };
+  const port = new Port([
+    candidate(
+      anchorId,
+      "keep this explicit",
+      "m1",
+      "2026-09-01T10:00:00.000Z",
+      satisfiedPayload,
+    ),
+  ]);
+  const service = new DriveEvolutionService(port, {
+    basePressure: 0.4,
+    reinforcementBoost: 0.2,
+    activeThreshold: 0.1,
+    minEvolutionIntervalHours: 6,
+    maxReinforcementSources: 16,
+  });
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-20T12:00:00.000Z",
+  });
+
+  assert.equal(result.satisfied, 1);
+  assert.equal(result.dormant, 0);
+  assert.equal(port.updates[0]?.evolution.phase, "satisfied");
+  assert.equal(port.updates[0]?.evolution.dormantAt, null);
+});
+
+
+test("Drive dormancy policy rejects a non-positive window", () => {
+  assert.throws(
+    () => new DriveEvolutionService(new Port([]), {
+      ...policy,
+      dormantAfterSatisfiedHours: 0,
+    }),
+    /dormant-after-satisfied hours must be positive/,
+  );
+});
+
+
+test("fresh reinforcement postpones dormancy even when pressure stays satisfied", async () => {
+  const anchorId = "66666666-6666-4666-8666-666666666666";
+  const satisfiedPayload = writeDriveEvolution(null, {
+    phase: "satisfied",
+    role: "anchor",
+    threadKey: driveThreadKey("ship the cleanup"),
+    anchorStateId: anchorId,
+    pressure: 0,
+    reinforcementCount: 1,
+    reinforcementSources: ["m1"],
+    satisfactionTotal: 1,
+    lastEvolvedAt: "2026-09-20T12:00:00.000Z",
+    lastReinforcedAt: "2026-09-20T10:00:00.000Z",
+    lastSatisfiedAt: "2026-09-20T12:00:00.000Z",
+    dormantAt: null,
+  });
+  const port = new Port([
+    candidate(
+      anchorId,
+      "ship the cleanup",
+      "m1",
+      "2026-09-20T10:00:00.000Z",
+      satisfiedPayload,
+    ),
+    candidate(
+      "77777777-7777-4777-8777-777777777777",
+      "ship the cleanup",
+      "m2",
+      "2026-09-23T11:00:00.000Z",
+    ),
+  ]);
+  const service = new DriveEvolutionService(port, policy);
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-23T12:00:00.000Z",
+  });
+
+  assert.equal(result.satisfied, 1);
+  assert.equal(result.dormant, 0);
+  assert.equal(port.updates[0]?.evolution.phase, "satisfied");
+  assert.equal(
+    port.updates[0]?.evolution.lastReinforcedAt,
+    "2026-09-23T11:00:00.000Z",
+  );
 });

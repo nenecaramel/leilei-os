@@ -3,7 +3,7 @@ import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
 
-export type DrivePhase = "active" | "satisfied";
+export type DrivePhase = "active" | "satisfied" | "dormant";
 export type DriveRole = "anchor" | "reinforcement";
 
 export type DriveEvolutionState = {
@@ -18,12 +18,14 @@ export type DriveEvolutionState = {
   lastEvolvedAt: string;
   lastReinforcedAt: string;
   lastSatisfiedAt: string | null;
+  dormantAt: string | null;
 };
 
 export type DriveEvolutionPolicy = {
   basePressure: number;
   reinforcementBoost: number;
   activeThreshold: number;
+  dormantAfterSatisfiedHours?: number;
   minEvolutionIntervalHours: number;
   maxReinforcementSources: number;
 };
@@ -70,6 +72,7 @@ export type DriveEvolutionRunResult = {
   recalculated: number;
   active: number;
   satisfied: number;
+  dormant: number;
 };
 
 const DRIVE_KEY = "drive_v1";
@@ -99,12 +102,14 @@ export class DriveEvolutionService {
     const updates: DriveEvolutionUpdate[] = [];
     let active = 0;
     let satisfied = 0;
+    let dormant = 0;
 
     for (const group of groups.values()) {
       const evaluated = evaluateThread(group, now, this.policy);
       updates.push(...evaluated.updates);
       if (evaluated.phase === "active") active += 1;
-      else satisfied += 1;
+      else if (evaluated.phase === "satisfied") satisfied += 1;
+      else dormant += 1;
     }
 
     const selectedUpdates =
@@ -131,6 +136,7 @@ export class DriveEvolutionService {
       recalculated: selectedUpdates.filter((update) => update.reason === "recalculate").length,
       active,
       satisfied,
+      dormant,
     };
   }
 }
@@ -146,7 +152,11 @@ export function readDriveEvolution(
 
   const phase = value.phase;
   const role = value.role;
-  if (phase !== "active" && phase !== "satisfied") {
+  if (
+    phase !== "active"
+    && phase !== "satisfied"
+    && phase !== "dormant"
+  ) {
     throw new Error("Drive phase is invalid.");
   }
   if (role !== "anchor" && role !== "reinforcement") {
@@ -178,6 +188,17 @@ export function readDriveEvolution(
     throw new Error("Drive reinforcement sources are invalid.");
   }
 
+  const dormantAt =
+    value.dormantAt === undefined || value.dormantAt === null
+      ? null
+      : normalizeIso(value.dormantAt, "dormantAt");
+  if (phase === "dormant" && dormantAt === null) {
+    throw new Error("Dormant Drive requires dormantAt.");
+  }
+  if (phase !== "dormant" && dormantAt !== null) {
+    throw new Error("Non-dormant Drive must not retain dormantAt.");
+  }
+
   return {
     phase,
     role,
@@ -194,6 +215,7 @@ export function readDriveEvolution(
       value.lastSatisfiedAt === null
         ? null
         : normalizeIso(value.lastSatisfiedAt, "lastSatisfiedAt"),
+    dormantAt,
   };
 }
 
@@ -295,8 +317,36 @@ function evaluateThread(
     + policy.reinforcementBoost * Math.max(0, reinforcementCount - 1)
     - satisfactionTotal,
   );
+  const priorDormantAt = priorStates
+    .map((state) => state.dormantAt)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+  const activityAnchorAt = [lastSatisfiedAt, normalizeIso(latest.createdAt, "createdAt")]
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null;
+  const inactiveSatisfiedHours = activityAnchorAt
+    ? Math.max(
+        0,
+        (Date.parse(now) - Date.parse(activityAnchorAt)) / 3_600_000,
+      )
+    : 0;
+  const wasDormant = priorStates.some((state) => state.phase === "dormant");
   const phase: DrivePhase =
-    pressure > policy.activeThreshold ? "active" : "satisfied";
+    pressure > policy.activeThreshold
+      ? "active"
+      : wasDormant
+        ? "dormant"
+        : policy.dormantAfterSatisfiedHours !== undefined
+          && lastSatisfiedAt !== null
+          && inactiveSatisfiedHours >= policy.dormantAfterSatisfiedHours
+          ? "dormant"
+          : "satisfied";
+  const dormantAt =
+    phase === "dormant"
+      ? priorDormantAt ?? now
+      : null;
 
   const updates: DriveEvolutionUpdate[] = [];
   for (const candidate of candidates) {
@@ -315,6 +365,7 @@ function evaluateThread(
       lastEvolvedAt: now,
       lastReinforcedAt: normalizeIso(latest.createdAt, "createdAt"),
       lastSatisfiedAt,
+      dormantAt,
     };
     const reason = evolutionReason(current, evolution, policy, now);
     if (!reason) continue;
@@ -375,6 +426,17 @@ function validatePolicy(policy: DriveEvolutionPolicy): void {
   requirePolicyUnit(policy.basePressure, "base pressure");
   requirePolicyUnit(policy.reinforcementBoost, "reinforcement boost");
   requirePolicyUnit(policy.activeThreshold, "active threshold");
+  if (
+    policy.dormantAfterSatisfiedHours !== undefined
+    && (
+      !Number.isFinite(policy.dormantAfterSatisfiedHours)
+      || policy.dormantAfterSatisfiedHours <= 0
+    )
+  ) {
+    throw new Error(
+      "Drive dormant-after-satisfied hours must be positive when configured.",
+    );
+  }
   if (
     !Number.isFinite(policy.minEvolutionIntervalHours)
     || policy.minEvolutionIntervalHours < 0
