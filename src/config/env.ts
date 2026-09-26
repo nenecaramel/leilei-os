@@ -69,7 +69,6 @@ const baseEnvSchema = z.object({
   LEILEI_HEALTH_SYNC_KEY: z.string().min(32).optional(),
   LEILEI_HEALTH_SYNC_USER_ID: z.string().uuid().optional(),
   NOTION_PAT: z.string().trim().min(16).optional(),
-  BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: booleanEnv.optional(),
   MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),
   MCP_SESSION_ABSOLUTE_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   MCP_SESSION_MAX_PER_USER: z.coerce.number().int().positive().default(8),
@@ -150,7 +149,6 @@ const oauthEnvSchema = baseEnvSchema
     AUTH0_JWKS_URI: httpsUrl,
     AUTH0_REQUIRED_SCOPE: z.string().trim().min(1),
     AUTH0_ALLOWED_SUBJECT: z.string().trim().min(1),
-    BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: z.boolean().optional(),
     OAUTH_AS_ENABLED: z.boolean().optional(),
   })
   .superRefine((config, context) => {

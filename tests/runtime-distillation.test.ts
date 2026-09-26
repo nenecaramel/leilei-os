@@ -114,7 +114,7 @@ function service(
 ): DistillationService {
   let nextState = 0;
   return new DistillationService(port, distillationModel, {
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     maxMemoriesPerRun: 3,
     ruleVersion: "distill-rule-v1",
     processVersion: "distill-process-v1",
@@ -128,10 +128,10 @@ function service(
   });
 }
 
-test("Distillation plans only settled turns that have fallen outside Surface", () => {
+test("Distillation plans only settled turns that have fallen outside the settlement lag", () => {
   const planned = planDistillationWindow({
     conversation: linearConversation(),
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     previousWatermarkMessageId: null,
   });
 
@@ -147,7 +147,7 @@ test("Distillation waits for an explicit source batch instead of running every t
   const base = linearConversation();
   const tooSmall = planDistillationWindow({
     conversation: base,
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     minSourceMessages: 6,
     previousWatermarkMessageId: null,
   });
@@ -160,7 +160,7 @@ test("Distillation waits for an explicit source batch instead of running every t
       [...base.messages, u4, a4],
       "a4",
     ),
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     minSourceMessages: 6,
     previousWatermarkMessageId: null,
   });
@@ -187,7 +187,7 @@ test("Distillation excludes abandoned Retry siblings from its source transcript"
       [u1, a1, u2, abandoned, selected, u3, a3],
       "a3",
     ),
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     previousWatermarkMessageId: null,
   });
 
@@ -287,7 +287,7 @@ test("model failure never advances the Distillation watermark", async () => {
   assert.equal(port.commits, 0);
 });
 
-test("successful no-op Distillation still advances watermark so the same old Surface is not reprocessed", async () => {
+test("successful no-op Distillation still advances watermark so the same old settled window is not reprocessed", async () => {
   const port = new MemoryPort();
   const calls: Array<{ ids: string[] }> = [];
   const distill = service(port, model(calls, []));
@@ -326,7 +326,7 @@ test("Retry before the old watermark resets planning onto the newly selected bra
       [u1, oldA1, oldU2, oldA2, newA1, newU2, newA2, newU3, newA3],
       "a-new-3",
     ),
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     previousWatermarkMessageId: "a-old-2",
   });
 

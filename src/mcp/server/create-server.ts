@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { env } from "../../config/env.js";
 import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
 import { NotionIntegration } from "../../domains/notion/notion-read-integration.js";
-import { registerGetWeatherContextTool } from "../tools/get-weather-context/register.js";
 import {
   registerCreateDiaryTool,
   WriteDiaryAuthenticationError,
@@ -360,10 +359,6 @@ export function createMcpServer(
   const activeUserAuthorization =
     dependencies.activeUserAuthorization ??
     createMissingActiveUserAuthorizer(authenticatedUserId);
-
-  if (mcpToolSurfaceEnabled(toolExposure, "device")) {
-    registerGetWeatherContextTool(server);
-  }
 
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {
   registerCreateDiaryTool(

@@ -4,13 +4,6 @@ import { dirname, resolve } from "node:path";
 
 const bundles = [
   {
-    name: "Bridge browser runtime",
-    entryPoint:
-      "src/mcp/tools/bridge-listener/browser-runtime.ts",
-    output:
-      "dist/mcp/tools/bridge-listener/browser-runtime.js",
-  },
-  {
     name: "Note Card browser runtime",
     entryPoint:
       "src/mcp/tools/render-thinking-block/browser-runtime.ts",

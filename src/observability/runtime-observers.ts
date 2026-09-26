@@ -1,7 +1,6 @@
 import type { RetentionCoordinatorEvent } from "../domains/retention/retention-coordinator.js";
 import type { McpSessionObserverEvent } from "../mcp/server/session-registry.js";
 import type { SafeLogFields, SafeLogger } from "./logger.js";
-import type { BridgeServiceObserverEvent } from "../domains/bridge/bridge-service.js";
 
 type LegacyIdempotencyCleanupObserverEvent =
   | { name: "mcp_idempotency_cleanup_completed"; deletedRows: number; durationMs: number }
@@ -90,38 +89,6 @@ export function createRetentionObserver(
     } catch {
       // Logging is observational and must never affect retention correctness.
     }
-  };
-}
-
-const BRIDGE_OBSERVABLE_FIELDS = new Set([
-  "eventId",
-  "status",
-  "state",
-  "released",
-  "outcome",
-  "processingState",
-  "reconciled",
-  "operation",
-  "transportStatus",
-  "awaitingHostCallback",
-  "reconciliation",
-  "claimLatencyMs",
-  "completionLatencyMs",
-]);
-
-export function projectBridgeEvent(event: BridgeServiceObserverEvent): SafeLogFields {
-  const projected: Record<string, string | number | boolean | null> = {};
-  for (const [key, value] of Object.entries(event)) {
-    if (!BRIDGE_OBSERVABLE_FIELDS.has(key)) continue;
-    if (value === null || typeof value === "string" || typeof value === "boolean") projected[key] = value;
-    else if (typeof value === "number" && Number.isFinite(value)) projected[key] = value;
-  }
-  return projected;
-}
-
-export function createBridgeObserver(logger: SafeLogger): (event: BridgeServiceObserverEvent) => void {
-  return (event) => {
-    try { logger.info(event.name, projectBridgeEvent(event)); } catch { /* safe logging is best effort */ }
   };
 }
 

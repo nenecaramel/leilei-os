@@ -7,14 +7,9 @@ import type { TodoService } from "../../domains/todo/todo-service.js";
 import type { ToyCommandService } from "../../domains/toy/toy-command-service.js";
 import type { UniverseService } from "../../domains/universe/universe-service.js";
 import type { McpSessionNamespace } from "./session-registry.js";
-import type { BridgeService } from "../../domains/bridge/bridge-service.js";
-import type { SafeLogger } from "../../observability/logger.js";
 import type { HealthService } from "../../domains/health-v2/health-service.js";
 import type { ConversationArchiveReadService } from "../../domains/conversation/conversation-archive-read-service.js";
 import type { ConversationExclusionManagementService } from "../../domains/conversation/conversation-exclusion-management-service.js";
-import { registerBridgeListenerTools } from "../tools/bridge-listener/register.js";
-import { registerBridgeListenerResource } from "../tools/bridge-listener/listener-resource.js";
-import { registerBridgeProcessingTools } from "../tools/bridge-processing/register.js";
 import {
   createActiveUserAuthorizer,
   createMcpServer,
@@ -51,9 +46,6 @@ export function createProductionMcpSessionServerFactory(input: {
   conversationArchiveReadService?: ConversationArchiveReadService;
   conversationExclusionManagementService?: ConversationExclusionManagementService;
   conversationRecoveryVisibility?: "public-enabled" | "internal-only";
-  bridgeService?: BridgeService;
-  bridgeAmbiguityAcceptanceEnabled?: boolean;
-  logger?: SafeLogger;
   publicToolProfiles?: readonly McpToolProfileName[];
   internalToolProfiles?: readonly McpToolProfileName[];
 }): McpSessionServerFactory {
@@ -159,24 +151,6 @@ export function createProductionMcpSessionServerFactory(input: {
     if (mcpToolSurfaceEnabled(toolExposure, "ui")) {
       registerNoteCardResource(server);
       registerRenderNoteCardTool(server);
-    }
-    if (
-      mcpToolSurfaceEnabled(toolExposure, "runtime_internal")
-      && input.bridgeService
-    ) {
-      registerBridgeListenerResource(server, {
-        ambiguityAcceptanceEnabled: input.bridgeAmbiguityAcceptanceEnabled === true,
-      });
-      registerBridgeListenerTools(server, {
-        bridgeService: input.bridgeService,
-        getAuthenticatedUserId,
-      });
-      registerBridgeProcessingTools(server, {
-        bridgeService: input.bridgeService,
-        getAuthenticatedUserId,
-        requireActiveUser: activeUserAuthorization,
-        logger: input.logger,
-      });
     }
     return server;
   };

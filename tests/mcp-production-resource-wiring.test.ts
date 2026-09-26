@@ -30,7 +30,6 @@ function productionFactory(input: {
   conversationArchiveReadService?: unknown;
   conversationExclusionManagementService?: unknown;
   conversationRecoveryVisibility?: "public-enabled" | "internal-only";
-  bridgeService?: unknown;
 } = {}) {
   return createProductionMcpSessionServerFactory({
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
@@ -43,7 +42,6 @@ function productionFactory(input: {
     conversationArchiveReadService: input.conversationArchiveReadService as never,
     conversationExclusionManagementService: input.conversationExclusionManagementService as never,
     conversationRecoveryVisibility: input.conversationRecoveryVisibility,
-    bridgeService: input.bridgeService as never,
   });
 }
 
@@ -74,6 +72,8 @@ test("production public surface exposes canonical Conversation reads and no reti
     assert.equal(names.includes(name), true, `${name} must remain public`);
   }
 
+  assert.equal(names.includes("render_note_card"), false);
+
   for (const retired of [
     "sentinel_get_state",
     "sentinel_claim_current_wake",
@@ -95,6 +95,9 @@ test("production public surface exposes canonical Conversation reads and no reti
     "write_todo_paper",
     "render_working_note",
     "render_thinking_block",
+    "bridge_listener_open",
+    "bridge_event_claim",
+    "bridge_event_complete",
   ]) {
     assert.equal(names.includes(retired), false, `${retired} must stay retired`);
   }
@@ -108,17 +111,14 @@ test("production public surface exposes canonical Conversation reads and no reti
   }
 });
 
-test("production internal full exposes maintenance/runtime profiles without reviving retired tools", async () => {
+test("production internal full exposes supported maintenance profiles without retired runtime bridge tools", async () => {
   const createSessionServer = productionFactory({
     conversationArchiveReadService: {},
     conversationExclusionManagementService: {},
-    bridgeService: {},
   });
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-production-internal");
 
   for (const required of [
-    "render_note_card",
-    "bridge_listener_open",
     "list_conversation_exclusions",
     "search_notion",
     "get_notion_connection",

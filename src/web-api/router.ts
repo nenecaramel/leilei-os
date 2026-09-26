@@ -13,7 +13,6 @@ import { createTodoApiRouter, type TodoApiDependencies } from "./todo-router.js"
 import { createExportApiRouter, type ExportApiDependencies } from "./export-router.js";
 import { createImportApiRouter, type ImportApiDependencies } from "./import-router.js";
 import { createUniverseApiRouter, type UniverseApiDependencies } from "./universe-router.js";
-import { createBridgeApiRouter, type BridgeApiDependencies } from "./bridge-router.js";
 import { createConversationImportApiRouter, type ConversationImportApiDependencies } from "./conversation-import-router.js";
 import { createConversationArchiveReadApiRouter, type ConversationArchiveReadApiDependencies } from "./conversation-archive-read-router.js";
 import { createConversationPruningApiRouter, type ConversationPruningApiDependencies } from "./conversation-pruning-router.js";
@@ -32,7 +31,6 @@ export type WebApiRouterDependencies = {
   export?: ExportApiDependencies;
   import?: ImportApiDependencies;
   universe?: UniverseApiDependencies;
-  bridge?: BridgeApiDependencies;
   conversationImport?: ConversationImportApiDependencies;
   conversationRead?: ConversationArchiveReadApiDependencies;
   conversationPruning?: ConversationPruningApiDependencies;
@@ -85,7 +83,6 @@ export function createWebApiRouter(
   if (dependencies.export) router.use("/system/export", createExportApiRouter(dependencies.export));
   if (dependencies.import) router.use("/system/import", createImportApiRouter(dependencies.import));
   if (dependencies.universe) router.use("/universe", createUniverseApiRouter(dependencies.universe));
-  if (dependencies.bridge) router.use("/bridge", createBridgeApiRouter(dependencies.bridge));
   if (dependencies.conversationFavorite) router.use("/conversations", createConversationFavoriteApiRouter(dependencies.conversationFavorite));
   if (dependencies.conversationExclusionManagement) router.use("/conversations", createConversationExclusionManagementApiRouter(dependencies.conversationExclusionManagement));
   if (dependencies.conversationImportHistory) router.use("/conversations", createConversationImportHistoryApiRouter(dependencies.conversationImportHistory));
