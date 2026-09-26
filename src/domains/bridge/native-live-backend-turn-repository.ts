@@ -10,6 +10,7 @@ import {
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
   runtimeDistillationWatermarks,
+  runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
@@ -960,6 +961,24 @@ implements NativeLiveBackendTurnPort {
       purgeMessageIds.has(watermark.lastSourceMessageId)
     );
 
+    const affectedDriveSatisfaction = await transaction
+      .select({
+        driveStateId: runtimeDriveSatisfactionEvents.driveStateId,
+      })
+      .from(runtimeDriveSatisfactionEvents)
+      .where(
+        and(
+          eq(runtimeDriveSatisfactionEvents.userId, row.userId),
+          inArray(
+            runtimeDriveSatisfactionEvents.evidenceMessageId,
+            [...purgeMessageIds],
+          ),
+        ),
+      );
+    const actionProjectionCausalIds = new Set(
+      affectedDriveSatisfaction.map((event) => event.driveStateId),
+    );
+
     const states = await transaction
       .select({
         id: runtimeSubjectStates.id,
@@ -984,6 +1003,7 @@ implements NativeLiveBackendTurnPort {
       states,
       purgeMessageIds,
       purgeStateIds: purgeStateIdSet,
+      additionalEvolutionCausalIds: actionProjectionCausalIds,
     });
     const causalIds = new Set<string>([
       ...purgeMessageIds,
