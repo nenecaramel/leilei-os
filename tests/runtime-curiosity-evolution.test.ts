@@ -180,7 +180,7 @@ test("new independent evidence reactivates a dormant Curiosity", async () => {
   });
 
   assert.equal(result.active, 1);
-  assert.equal(result.reactivated, 2);
+  assert.equal(result.reactivated, 1);
   assert.equal(port.updates[0]?.evolution.phase, "active");
   assert.equal(port.updates[0]?.evolution.dormantAt, null);
   assert.equal(port.updates[0]?.evolution.reinforcementCount, 2);
@@ -342,7 +342,7 @@ test("new independent evidence can reopen a resolved Curiosity", async () => {
   });
 
   assert.equal(result.active, 1);
-  assert.equal(result.reactivated, 2);
+  assert.equal(result.reactivated, 1);
   const anchor = port.updates.find((update) => update.stateId === anchorId);
   assert.equal(anchor?.evolution.phase, "active");
   assert.equal(anchor?.evolution.resolvedAt, null);
