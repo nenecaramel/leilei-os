@@ -62,6 +62,11 @@ enum NativeLiveCurrentPathFetchResult: Sendable, Equatable {
     case notModified
 }
 
+enum NativeLiveTurnWaitResult: Sendable, Equatable {
+    case terminal(NativeLiveTurnSnapshot)
+    case timeout
+}
+
 enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
     case opus55 = "claude-opus-5-5"
     case opus5 = "claude-opus-5"
@@ -383,6 +388,31 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func waitNativeLiveTurn(
+        prepareID: String
+    ) async throws -> NativeLiveTurnWaitResult {
+        let envelope: NativeLiveTurnWaitEnvelope = try await request(
+            path: "/api/v1/native-live/turns/\(prepareID)/wait",
+            method: "POST",
+            authenticated: true
+        )
+
+        switch envelope.data.outcome {
+        case "terminal":
+            guard let turn = envelope.data.turn else {
+                throw LeileiAPIError.invalidResponse
+            }
+            return .terminal(turn)
+        case "timeout":
+            guard envelope.data.turn == nil else {
+                throw LeileiAPIError.invalidResponse
+            }
+            return .timeout
+        default:
+            throw LeileiAPIError.invalidResponse
+        }
+    }
+
     func nativeLiveCurrentPath(
         conversationID: UUID,
         limit: Int = 100,
@@ -556,6 +586,16 @@ private struct NativeLivePrepareEnvelope: Decodable, Sendable {
 private struct NativeLiveTurnEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLiveTurnSnapshot
+}
+
+private struct NativeLiveTurnWaitEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: WaitData
+
+    struct WaitData: Decodable, Sendable {
+        let outcome: String
+        let turn: NativeLiveTurnSnapshot?
+    }
 }
 
 private struct NativeLiveSendBody: Encodable, Sendable {
