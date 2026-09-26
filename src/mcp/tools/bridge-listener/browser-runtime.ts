@@ -39,7 +39,6 @@ declare global {
 }
 
 const POLL_MS = 10_000;
-const RENEW_MS = 30_000;
 const TIMEOUT_MS = 18_000;
 const DIAG_LIMIT = 24;
 const DEFAULT_AMBIGUITY_PREFIX = "PHASE2 AMBIGUOUS E2E ";
@@ -69,7 +68,6 @@ function startBridgeListener(): void {
   let eventInFlight: { event: BridgeEvent; messageAttempted: boolean } | null = null;
   let pendingSyncReservation: Promise<BridgeEvent | undefined> | null = null;
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
-  let renewTimer: ReturnType<typeof setInterval> | null = null;
 
   const startButton = document.querySelector<HTMLButtonElement>("[data-bridge-start]");
   const stopButton = document.querySelector<HTMLButtonElement>("[data-bridge-stop]");
@@ -292,25 +290,10 @@ function startBridgeListener(): void {
     }
   };
 
-  const renew = async (source: string): Promise<void> => {
-    if (!running || tearingDown) return;
-    recordDiag(`renew tick source=${source}`);
-    try {
-      await appCall("bridge_listener_start");
-      await sync(source);
-    } catch (error) {
-      recordDiag(`renew failed source=${source} ${errorSummary(error)}`);
-    }
-  };
-
   const stopTimers = (): void => {
     if (pollTimer) {
       window.clearTimeout(pollTimer);
       pollTimer = null;
-    }
-    if (renewTimer) {
-      window.clearInterval(renewTimer);
-      renewTimer = null;
     }
   };
 
@@ -371,7 +354,6 @@ function startBridgeListener(): void {
         running = true;
         starting = false;
         setUiState("running");
-        renewTimer = window.setInterval(() => { void renew("timer"); }, RENEW_MS) as unknown as ReturnType<typeof setInterval>;
         await sync("start");
       } catch (error) {
         recordDiag(`start failed ${errorSummary(error)}`);
@@ -389,8 +371,8 @@ function startBridgeListener(): void {
   startButton?.addEventListener("click", () => { void window.bridgeListener?.start().catch(() => undefined); });
   stopButton?.addEventListener("click", () => { void window.bridgeListener?.stop(); });
   syncButton?.addEventListener("click", () => { void window.bridgeListener?.sync("manual"); });
-  window.addEventListener("focus", () => { if (running) void renew("focus"); });
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && running) void renew("visibility"); });
+  window.addEventListener("focus", () => { if (running) void sync("focus"); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && running) void sync("visibility"); });
   recordDiag("iframe ready");
   void initializeHost().catch(() => undefined);
 }
