@@ -118,7 +118,6 @@ test("production internal full exposes maintenance/runtime profiles without revi
 
   for (const required of [
     "render_note_card",
-    "sentinel_get_state",
     "bridge_listener_open",
     "list_conversation_exclusions",
     "search_notion",
@@ -128,6 +127,9 @@ test("production internal full exposes maintenance/runtime profiles without revi
   }
 
   for (const retired of [
+    "sentinel_get_state",
+    "sentinel_claim_current_wake",
+    "complete_sentinel_wake",
     "read_memory",
     "write_memory",
     "create_task",
