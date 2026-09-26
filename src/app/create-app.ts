@@ -155,10 +155,10 @@ export function createApp(
   const config = requireOAuthConfig(env);
   if (
     dependencies.nativeLiveProduction
-    && !config.MCP_AUTH_TOKEN
+    && !config.NATIVE_LIVE_RELAY_AUTH_TOKEN
   ) {
     throw new Error(
-      "Native Live production requires internal MCP authentication.",
+      "Native Live production requires a dedicated relay credential.",
     );
   }
   const oauthAuthorizationServerConfig = getOAuthAuthorizationServerConfig(env);
@@ -520,7 +520,7 @@ export function createApp(
       app.use(
         "/internal/native-live-relay",
         createInternalAuthMiddleware(
-          config.MCP_AUTH_TOKEN,
+          config.NATIVE_LIVE_RELAY_AUTH_TOKEN!,
           config.MCP_USER_ID,
         ),
         databaseReadinessMiddleware,
@@ -550,7 +550,7 @@ export function createApp(
       app.use(
         "/internal/native-live-relay",
         createInternalAuthMiddleware(
-          config.MCP_AUTH_TOKEN,
+          config.NATIVE_LIVE_RELAY_AUTH_TOKEN!,
           config.MCP_USER_ID,
         ),
         databaseReadinessMiddleware,
