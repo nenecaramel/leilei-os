@@ -13,6 +13,10 @@ struct GlobalSearchFiltersMenu: View {
                         module.title,
                         isOn: moduleSelectionBinding(module)
                     )
+                    .disabled(
+                        modules.count == 1
+                            && modules.contains(module)
+                    )
                     .menuActionDismissBehavior(.disabled)
                 }
             }
