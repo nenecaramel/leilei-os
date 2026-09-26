@@ -244,17 +244,6 @@ function observeBackgroundWorkflowAdvancer(
 
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
-  driveSatisfactionService: DriveSatisfactionService;
-  topicResurfaceCrossDeviceCoordinator:
-    TopicResurfaceCrossDeviceCoordinator;
-  distillationCrossDeviceCoordinator:
-    DistillationCrossDeviceCoordinator;
-  proactivityWakeCrossDeviceCoordinator:
-    ProactivityWakeCrossDeviceCoordinator;
-  runtimeEffectDeliveryCoordinator:
-    RuntimeEffectDeliveryCoordinator;
-  runtimeEffectDeliveryWorker:
-    RuntimeEffectDeliveryWorker;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -703,12 +692,6 @@ export function createProcessRuntime(
   return {
     mcpSessionRegistry,
     logger,
-    driveSatisfactionService,
-    topicResurfaceCrossDeviceCoordinator,
-    distillationCrossDeviceCoordinator,
-    proactivityWakeCrossDeviceCoordinator,
-    runtimeEffectDeliveryCoordinator,
-    runtimeEffectDeliveryWorker,
     appDependencies: {
       logger,
       webDiaryService: diaryService,
