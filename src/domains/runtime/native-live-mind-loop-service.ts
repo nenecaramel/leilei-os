@@ -101,6 +101,7 @@ export type MindLoopConfig = {
   driveLimit?: number;
   thoughtLimit?: number;
   thoughtMinStrength?: number;
+  curiosityLimit?: number;
   topicLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
