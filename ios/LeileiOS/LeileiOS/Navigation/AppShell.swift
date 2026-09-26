@@ -9,7 +9,6 @@ struct AppShell: View {
     @State private var settingsPresented = false
     @State private var isDraftConversation = false
     @State private var draftConversationID = UUID()
-    @State private var floatingControlCenters: [String: CGFloat] = [:]
     @State private var sidebarDragTranslation: CGFloat = 0
 
     var body: some View {
@@ -21,9 +20,6 @@ struct AppShell: View {
             }
         }
         .tint(.primary)
-        .onPreferenceChange(FloatingControlCenterPreferenceKey.self) {
-            floatingControlCenters = $0
-        }
         .sheet(isPresented: $settingsPresented) {
             SettingsSheetView(
                 appModel: appModel,
@@ -65,11 +61,10 @@ struct AppShell: View {
             ZStack(alignment: .leading) {
                 Rectangle()
                     .fill(Color(red: 0.98, green: 0.98, blue: 0.98))
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(.container)
 
                 SidebarView(
                     selectedPage: $selectedPage,
-                    menuButtonCenterY: floatingControlCenters[FloatingControlCenter.menu],
                     onNewSession: {
                         withAnimation(.snappy) {
                             menuOpen = false
@@ -229,7 +224,6 @@ struct AppShell: View {
         HStack(spacing: 0) {
             SidebarView(
                 selectedPage: $selectedPage,
-                menuButtonCenterY: nil,
                 onNewSession: {
                     beginNewSession()
                 },
@@ -276,7 +270,7 @@ private struct MainPageLayer: View {
     var body: some View {
         ZStack {
             Color(.systemBackground)
-                .ignoresSafeArea()
+                .ignoresSafeArea(.container)
 
             PageContainer(
                 selectedPage: selectedPage,
