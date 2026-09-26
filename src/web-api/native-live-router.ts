@@ -50,7 +50,7 @@ export type NativeLiveApiDependencies = {
   currentPathReader?: NativeLiveCurrentPathReader;
   conversationService?: Pick<
     NativeLiveConversationService,
-    "listConversations" | "createConversation" | "renameConversation" | "deleteConversation"
+    "listConversations" | "listConversationPage" | "createConversation" | "renameConversation" | "deleteConversation"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
@@ -150,6 +150,18 @@ export function listNativeLiveConversationsHandler(
       return;
     }
 
+    const cursor = parseOptionalCursorQuery(request.query.cursor);
+    if (cursor === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_CURSOR",
+          message: "Conversation list cursor must be a single non-empty string.",
+        },
+      });
+      return;
+    }
+
     const service = dependencies.conversationService;
     if (!service) {
       response.status(503).json({
@@ -163,20 +175,24 @@ export function listNativeLiveConversationsHandler(
     }
 
     try {
-      const conversations = await service.listConversations({
+      const page = await service.listConversationPage({
         userId: request.webUserId,
         limit,
+        ...(cursor ? { cursor } : {}),
       });
       response.json({
         success: true,
-        data: { conversations },
+        data: {
+          conversations: page.conversations,
+          nextCursor: page.nextCursor,
+        },
       });
     } catch (error) {
       if (error instanceof RangeError) {
         response.status(400).json({
           success: false,
           error: {
-            code: "INVALID_NATIVE_LIVE_CURRENT_PATH_CURSOR",
+            code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_CURSOR",
             message: error.message,
           },
         });
@@ -1147,7 +1163,17 @@ export function readNativeLiveCurrentPathHandler(
           messages: snapshot.messages,
         },
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof RangeError) {
+        response.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_NATIVE_LIVE_CURRENT_PATH_CURSOR",
+            message: error.message,
+          },
+        });
+        return;
+      }
       response.status(503).json({
         success: false,
         error: {
@@ -1261,6 +1287,14 @@ function parseCreateConversationBody(
     return { ok: false };
   }
   return { ok: true, title: trimmed };
+}
+
+function parseOptionalCursorQuery(
+  value: unknown,
+): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value;
 }
 
 function parseOptionalUuidQuery(

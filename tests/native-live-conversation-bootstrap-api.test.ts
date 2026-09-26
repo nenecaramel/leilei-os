@@ -36,14 +36,21 @@ class FakeConversationService {
     };
 
   async listConversations(input: unknown) {
+    return (await this.listConversationPage(input)).conversations;
+  }
+
+  async listConversationPage(input: unknown) {
     this.listCalls.push(input);
-    return [{
-      id: conversationId,
-      title: "Existing",
-      currentHeadMessageId: null,
-      createdAt: "2026-09-24T00:00:00.000Z",
-      updatedAt: "2026-09-24T01:00:00.000Z",
-    }];
+    return {
+      conversations: [{
+        id: conversationId,
+        title: "Existing",
+        currentHeadMessageId: null,
+        createdAt: "2026-09-24T00:00:00.000Z",
+        updatedAt: "2026-09-24T01:00:00.000Z",
+      }],
+      nextCursor: "next-page",
+    };
   }
 
   async createConversation(input: {
@@ -135,12 +142,31 @@ test("native live bootstrap lists owner-scoped active summaries with a bounded l
     );
     assert.equal(response.status, 200);
     const payload = await response.json() as {
-      data: { conversations: Array<Record<string, unknown>> };
+      data: {
+        conversations: Array<Record<string, unknown>>;
+        nextCursor: string | null;
+      };
     };
     assert.equal(payload.data.conversations.length, 1);
+    assert.equal(payload.data.nextCursor, "next-page");
     assert.equal(payload.data.conversations[0]?.id, conversationId);
     assert.equal("userId" in (payload.data.conversations[0] ?? {}), false);
     assert.deepEqual(service.listCalls, [{ userId, limit: 2 }]);
+  });
+});
+
+test("native live bootstrap forwards an opaque pagination cursor", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations?limit=2&cursor=opaque-next`,
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(service.listCalls, [{
+      userId,
+      limit: 2,
+      cursor: "opaque-next",
+    }]);
   });
 });
 
