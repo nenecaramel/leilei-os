@@ -7,8 +7,8 @@ import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
 import type {
-  NativeLiveBackgroundOpportunity,
-} from "../runtime/native-live-background-opportunity.js";
+  NativeLiveDistillationTrigger,
+} from "../runtime/distillation-trigger-contract.js";
 import type {
   NativeLiveBackendTurnPort,
   NativeLivePostFinalizeRunner,
@@ -180,7 +180,7 @@ implements NativeLivePostFinalizeRunner {
     private readonly mind: NativeLiveBackendMindRuntime,
     workerId: string = randomUUID(),
     private readonly backgroundOpportunity:
-      NativeLiveBackgroundOpportunity | null = null,
+      Pick<NativeLiveDistillationTrigger, "schedule"> | null = null,
   ) {
     this.workerId = workerId;
   }
