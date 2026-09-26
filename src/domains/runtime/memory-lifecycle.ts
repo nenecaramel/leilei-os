@@ -58,6 +58,12 @@ export type MemoryLifecyclePurge = {
   expectedUpdatedAt: string;
 };
 
+export type MemoryRecallReinforcementContribution = {
+  sourceMessageId: string;
+  recalledAt: string;
+  currentValue: number;
+};
+
 export type MemoryRecallReinforcementUpdate = {
   stateId: string;
   nextPayload: Record<string, unknown>;
@@ -124,6 +130,7 @@ export type MemoryLifecycleRunResult = {
 };
 
 const LIFECYCLE_KEY = "lifecycle_v1";
+const RECALL_REINFORCEMENT_KEY = "recall_reinforcement_v1";
 export const DEFAULT_MEMORY_FORGET_AFTER_HOURS = 30 * 24;
 export const DEFAULT_MEMORY_PURGE_AFTER_HOURS = 30 * 24;
 
@@ -264,7 +271,11 @@ export function evaluateLifecycle(
     return {
       stateId: candidate.stateId,
       expectedUpdatedAt: candidate.updatedAt,
-      nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
+      nextPayload: writeLifecycleAndRecallReinforcement(
+        candidate.payload,
+        lifecycle,
+        readRecallReinforcementContributions(candidate.payload),
+      ),
       lifecycle,
       reason: "protected_freeze",
     };
@@ -272,10 +283,15 @@ export function evaluateLifecycle(
 
   const elapsedHours = (nowMs - lastMs) / 3_600_000;
   const halfLifeHours = policy.halfLifeHours[candidate.kind];
-  const salience = clamp01(
-    current.salience * Math.pow(0.5, elapsedHours / halfLifeHours),
-  );
+  const decayFactor = Math.pow(0.5, elapsedHours / halfLifeHours);
+  const salience = clamp01(current.salience * decayFactor);
   const status = lifecycleStatusForSalience(salience, policy);
+  const contributions = readRecallReinforcementContributions(
+    candidate.payload,
+  ).map((contribution) => ({
+    ...contribution,
+    currentValue: clamp01(contribution.currentValue * decayFactor),
+  }));
 
   const lifecycle: SubjectStateLifecycle = {
     ...current,
@@ -289,7 +305,11 @@ export function evaluateLifecycle(
   return {
     stateId: candidate.stateId,
     expectedUpdatedAt: candidate.updatedAt,
-    nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
+    nextPayload: writeLifecycleAndRecallReinforcement(
+      candidate.payload,
+      lifecycle,
+      contributions,
+    ),
     lifecycle,
     reason: "decay",
   };
@@ -299,9 +319,14 @@ export function evaluateRecallReinforcement(
   candidate: MemoryLifecycleCandidate,
   recalledAtIso: string,
   salienceBoost: number,
+  sourceMessageId: string,
   policy?: MemoryLifecyclePolicy,
 ): MemoryRecallReinforcementUpdate | null {
   const recalledAt = normalizeIso(recalledAtIso, "recalledAt");
+  const sourceId = sourceMessageId.trim();
+  if (!sourceId) {
+    throw new Error("Recall sourceMessageId must not be blank.");
+  }
   if (
     !Number.isFinite(salienceBoost)
     || salienceBoost < 0
@@ -318,65 +343,90 @@ export function evaluateRecallReinforcement(
   ) {
     return null;
   }
+
+  const existingContributions =
+    readRecallReinforcementContributions(candidate.payload);
+  const existingIndex = existingContributions.findIndex(
+    (contribution) => contribution.sourceMessageId === sourceId,
+  );
+
   if (
-    current?.lastRecalledAt
+    existingIndex < 0
+    && current?.lastRecalledAt
     && Date.parse(recalledAt) <= Date.parse(current.lastRecalledAt)
   ) {
     return null;
   }
-
-  if (!current) {
-    const lifecycle: SubjectStateLifecycle = {
-      status: "active",
-      salience: 1,
-      protected: false,
-      lastDecayedAt: recalledAt,
-      lastRecalledAt: recalledAt,
-      archivedAt: null,
-      forgottenAt: null,
-    };
-    return {
-      stateId: candidate.stateId,
-      nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
-      lifecycle,
-    };
+  if (
+    existingIndex >= 0
+    && Date.parse(recalledAt)
+      <= Date.parse(existingContributions[existingIndex]!.recalledAt)
+  ) {
+    return null;
   }
 
+  const lifecycleBase: SubjectStateLifecycle = current ?? {
+    status: "active",
+    salience: 1,
+    protected: false,
+    lastDecayedAt: recalledAt,
+    lastRecalledAt: null,
+    archivedAt: null,
+    forgottenAt: null,
+  };
+
   const recallMs = Date.parse(recalledAt);
-  const lastDecayMs = Date.parse(current.lastDecayedAt);
-  let nextLastDecayedAt = current.lastDecayedAt;
-  let salience = current.salience;
+  const lastDecayMs = Date.parse(lifecycleBase.lastDecayedAt);
+  let nextLastDecayedAt = lifecycleBase.lastDecayedAt;
+  let salience = lifecycleBase.salience;
+  let contributions = existingContributions.map((value) => ({ ...value }));
+  let effectiveBoost = existingIndex >= 0 ? 0 : salienceBoost;
 
   if (policy) {
     const halfLifeHours = policy.halfLifeHours[candidate.kind];
-    if (!current.protected && recallMs > lastDecayMs) {
+    if (!lifecycleBase.protected && recallMs > lastDecayMs) {
       const elapsedHours = (recallMs - lastDecayMs) / 3_600_000;
-      salience *= Math.pow(0.5, elapsedHours / halfLifeHours);
+      const decayFactor = Math.pow(0.5, elapsedHours / halfLifeHours);
+      salience = clamp01(salience * decayFactor);
+      contributions = contributions.map((contribution) => ({
+        ...contribution,
+        currentValue: clamp01(
+          contribution.currentValue * decayFactor,
+        ),
+      }));
       nextLastDecayedAt = recalledAt;
-      salience = clamp01(salience + salienceBoost);
-    } else if (!current.protected && recallMs < lastDecayMs) {
+    } else if (!lifecycleBase.protected && recallMs < lastDecayMs) {
       const elapsedHours = (lastDecayMs - recallMs) / 3_600_000;
-      const caughtUpBoost =
-        salienceBoost * Math.pow(0.5, elapsedHours / halfLifeHours);
-      salience = clamp01(salience + caughtUpBoost);
-    } else {
-      if (recallMs > lastDecayMs) nextLastDecayedAt = recalledAt;
-      salience = clamp01(salience + salienceBoost);
-    }
-  } else {
-    salience = clamp01(salience + salienceBoost);
-    if (recallMs > lastDecayMs) {
-      // Decay is disabled, so advancing the checkpoint establishes a new
-      // non-retroactive baseline rather than silently aging the state later.
+      effectiveBoost *= Math.pow(0.5, elapsedHours / halfLifeHours);
+    } else if (recallMs > lastDecayMs) {
       nextLastDecayedAt = recalledAt;
     }
+  } else if (recallMs > lastDecayMs) {
+    // Decay is disabled, so advancing the checkpoint establishes a new
+    // non-retroactive baseline rather than silently aging the state later.
+    nextLastDecayedAt = recalledAt;
+  }
+
+  if (existingIndex >= 0) {
+    contributions[existingIndex] = {
+      ...contributions[existingIndex]!,
+      recalledAt,
+    };
+  } else {
+    const beforeBoost = salience;
+    salience = clamp01(salience + effectiveBoost);
+    contributions.push({
+      sourceMessageId: sourceId,
+      recalledAt,
+      currentValue: salience - beforeBoost,
+    });
   }
 
   const status = policy
     ? lifecycleStatusForSalience(salience, policy)
-    : current.status;
+    : lifecycleBase.status;
   const lifecycle: SubjectStateLifecycle = {
-    ...current,
+    ...lifecycleBase,
     status,
     salience,
     lastDecayedAt: nextLastDecayedAt,
@@ -387,7 +437,79 @@ export function evaluateRecallReinforcement(
 
   return {
     stateId: candidate.stateId,
-    nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
+    nextPayload: writeLifecycleAndRecallReinforcement(
+      candidate.payload,
+      lifecycle,
+      contributions,
+    ),
+    lifecycle,
+  };
+}
+
+export function removeRecallReinforcementSources(
+  payload: Record<string, unknown> | null | undefined,
+  sourceMessageIds: ReadonlySet<string>,
+  policy?: MemoryLifecyclePolicy,
+  repairedAtIso?: string,
+): {
+  nextPayload: Record<string, unknown>;
+  lifecycle: SubjectStateLifecycle;
+} | null {
+  if (sourceMessageIds.size === 0) return null;
+  if (policy) validatePolicy(policy);
+  const current = readSubjectStateLifecycle(payload);
+  if (!current || current.status === "forgotten") return null;
+
+  const contributions = readRecallReinforcementContributions(payload);
+  const removed = contributions.filter((contribution) =>
+    sourceMessageIds.has(contribution.sourceMessageId)
+  );
+  if (removed.length === 0) return null;
+
+  const surviving = contributions.filter((contribution) =>
+    !sourceMessageIds.has(contribution.sourceMessageId)
+  );
+  const removedValue = removed.reduce(
+    (sum, contribution) => sum + contribution.currentValue,
+    0,
+  );
+  const salience = clamp01(current.salience - removedValue);
+  const status = policy
+    ? lifecycleStatusForSalience(salience, policy)
+    : current.status;
+  const repairAt = repairedAtIso
+    ? normalizeIso(repairedAtIso, "repairedAt")
+    : current.lastDecayedAt;
+  const removedLatestRecall = removed.some(
+    (contribution) => contribution.recalledAt === current.lastRecalledAt,
+  );
+  const lastRecalledAt = removedLatestRecall
+    ? (
+        surviving
+          .map((contribution) => contribution.recalledAt)
+          .sort()
+          .at(-1)
+        ?? null
+      )
+    : current.lastRecalledAt;
+  const lifecycle: SubjectStateLifecycle = {
+    ...current,
+    status,
+    salience,
+    lastRecalledAt,
+    archivedAt:
+      status === "archived"
+        ? current.archivedAt ?? repairAt
+        : null,
+    forgottenAt: null,
+  };
+
+  return {
+    nextPayload: writeLifecycleAndRecallReinforcement(
+      payload,
+      lifecycle,
+      surviving,
+    ),
     lifecycle,
   };
 }
@@ -522,6 +644,61 @@ export function writeSubjectStateLifecycle(
     ...(payload ?? {}),
     [LIFECYCLE_KEY]: lifecycle,
   };
+}
+
+export function readRecallReinforcementContributions(
+  payload: Record<string, unknown> | null | undefined,
+): MemoryRecallReinforcementContribution[] {
+  if (!payload || !(RECALL_REINFORCEMENT_KEY in payload)) return [];
+  const value = payload[RECALL_REINFORCEMENT_KEY];
+  if (!isRecord(value) || !Array.isArray(value.contributions)) {
+    throw new Error("Recall reinforcement payload must contain contributions.");
+  }
+
+  return value.contributions.map((candidate) => {
+    if (!isRecord(candidate)) {
+      throw new Error("Recall reinforcement contribution must be an object.");
+    }
+    const sourceMessageId =
+      typeof candidate.sourceMessageId === "string"
+        ? candidate.sourceMessageId.trim()
+        : "";
+    if (!sourceMessageId) {
+      throw new Error("Recall reinforcement sourceMessageId is invalid.");
+    }
+    const recalledAt = normalizeIso(candidate.recalledAt, "recalledAt");
+    if (
+      typeof candidate.currentValue !== "number"
+      || !Number.isFinite(candidate.currentValue)
+      || candidate.currentValue < 0
+      || candidate.currentValue > 1
+    ) {
+      throw new Error("Recall reinforcement currentValue is invalid.");
+    }
+    return {
+      sourceMessageId,
+      recalledAt,
+      currentValue: candidate.currentValue,
+    };
+  });
+}
+
+function writeLifecycleAndRecallReinforcement(
+  payload: Record<string, unknown> | null | undefined,
+  lifecycle: SubjectStateLifecycle,
+  contributions: readonly MemoryRecallReinforcementContribution[],
+): Record<string, unknown> {
+  const next = writeSubjectStateLifecycle(payload, lifecycle);
+  if (contributions.length === 0) {
+    delete next[RECALL_REINFORCEMENT_KEY];
+    return next;
+  }
+  next[RECALL_REINFORCEMENT_KEY] = {
+    contributions: contributions.map((contribution) => ({
+      ...contribution,
+    })),
+  };
+  return next;
 }
 
 export function forgottenSubjectStatePayload(
