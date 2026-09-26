@@ -5,6 +5,7 @@ import type { createDatabase } from "../../database/client.js";
 type Database = ReturnType<typeof createDatabase>["db"];
 
 const WORK_WAKE_CHANNEL = "leileios_native_live_work_ready";
+const TRANSIENT_WAKE_VERSION_TTL_MS = 120_000;
 
 export type NativeLiveWorkKind =
   | "semantic"
@@ -137,6 +138,10 @@ export class NativeLiveWorkWakeBroker {
   private readonly client: ReturnType<typeof postgres>;
   private readonly versions = new Map<string, number>();
   private readonly waiters = new Map<string, Set<Waiter>>();
+  private readonly versionExpiryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private startPromise: Promise<void> | null = null;
   private closed = false;
 
@@ -276,6 +281,11 @@ export class NativeLiveWorkWakeBroker {
       }
     }
     this.waiters.clear();
+    for (const timer of this.versionExpiryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.versionExpiryTimers.clear();
+    this.versions.clear();
     await this.client.end({ timeout: 5 });
   }
 
@@ -349,11 +359,29 @@ export class NativeLiveWorkWakeBroker {
   private signalKey(key: string): void {
     const version = this.versionForKey(key) + 1;
     this.versions.set(key, version);
+    this.scheduleTransientVersionExpiry(key);
+
     const bucket = this.waiters.get(key);
     if (!bucket) return;
     for (const waiter of [...bucket]) {
       waiter.resolve({ outcome: "ready", version });
     }
+  }
+
+  private scheduleTransientVersionExpiry(key: string): void {
+    if (!isTransientWakeKey(key)) return;
+
+    const existing = this.versionExpiryTimers.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.versionExpiryTimers.delete(key);
+      if (!this.waiters.has(key)) {
+        this.versions.delete(key);
+      }
+    }, TRANSIENT_WAKE_VERSION_TTL_MS);
+    timer.unref?.();
+    this.versionExpiryTimers.set(key, timer);
   }
 
   private handleNotification(payload: string): void {
@@ -473,4 +501,12 @@ function turnWakeKey(
   prepareId: string,
 ): string {
   return `turn:${userId}:${prepareId}`;
+}
+
+function isTransientWakeKey(key: string): boolean {
+  return (
+    key.startsWith("control:")
+    || key.startsWith("interaction:")
+    || key.startsWith("turn:")
+  );
 }
