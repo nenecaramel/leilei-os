@@ -680,6 +680,41 @@ test("persisted Context Manifest reconstructs the exact prompt without re-select
   assert.deepEqual(replayed.breathStateIds, assembled.breathStateIds);
 });
 
+test("retired authored Topic remains materializable for durable replay compatibility", () => {
+  const [legacyTopic] = materializeMindWrites({
+    userId: "u1",
+    subjectId: "G",
+    conversationId: "c1",
+    assistantMessageId: "a-legacy",
+    intents: [{
+      kind: "topic",
+      text: "历史 queued Topic intent",
+      sourceStart: 0,
+      sourceEnd: 30,
+      raw: "<topic>历史 queued Topic intent</topic>",
+    }],
+    createId: () => "legacy-topic-state",
+    producer: { kind: "model", id: "claude-code" },
+    committer: { kind: "service", id: "leileios-runtime" },
+    sourceStatus: {
+      generationStatus: "committed",
+      presentationStatus: "presented",
+      pathStatus: "current",
+      settlementStatus: "unsettled",
+      validityStatus: "valid",
+    },
+    ruleVersion: "mind-v1",
+    processVersion: "subject-write-v1",
+    visibility: "subject_private",
+    sensitivity: "normal",
+    audience: ["G"],
+  });
+
+  assert.ok(legacyTopic);
+  assert.equal(legacyTopic.kind, "topic");
+  assert.equal(legacyTopic.text, "历史 queued Topic intent");
+});
+
 test("explicit Mind write can move from emitted intent to settled Breath recall", () => {
   const parsed = parseMindWriteIntents(
     "正文。<memory>我们把 Runtime 的第一条记忆闭环接起来了</memory>",
