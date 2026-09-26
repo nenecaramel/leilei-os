@@ -349,6 +349,9 @@ export class NativeLiveWorkWakeBroker {
     if (this.stopPromise) {
       await this.stopPromise;
     }
+    if (this.closed) {
+      throw new Error("Native live work wake broker is closed.");
+    }
     if (this.startPromise) {
       await this.startPromise;
       return;
