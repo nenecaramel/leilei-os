@@ -11,7 +11,7 @@ import {
 export type ParsedAssistantBlocks = {
   visibleBlocks: NativeLiveContentBlockInput[];
   intents: CurrentMindWriteIntent[];
-  actions: MindSemanticAction[];
+  actions?: MindSemanticAction[];
 };
 
 /**
