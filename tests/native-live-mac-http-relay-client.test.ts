@@ -24,6 +24,7 @@ function command() {
     canonical_user_message_id: userMessageId,
     runtime_mode: "new",
     parent_provider_session_id: null,
+    execution_selection: null,
     prompt: "hello",
   };
 }
