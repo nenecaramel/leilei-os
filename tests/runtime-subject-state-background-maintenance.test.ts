@@ -47,7 +47,8 @@ test("Subject State maintenance adapts existing decay/evolution services onto on
       decay: runner("decay"),
       thoughtEvolution: runner("thought"),
       driveEvolution: runner("drive"),
-      curiosityTopicProjection: runner("curiosity"),
+      curiosityEvolution: runner("curiosity-evolution"),
+      curiosityTopicProjection: runner("curiosity-projection"),
       topicEvolution: runner("topic"),
       mindRetirement: runner("retirement"),
     },
@@ -90,13 +91,14 @@ test("Subject State maintenance adapts existing decay/evolution services onto on
     "decay:u1:G:2026-09-23T06:30:00.000Z:20",
     "thought:u1:G:2026-09-23T06:30:00.000Z:30",
     "drive:u1:G:2026-09-23T06:30:00.000Z:40",
-    "curiosity:u1:G:2026-09-23T06:30:00.000Z:50",
+    "curiosity-evolution:u1:G:2026-09-23T06:30:00.000Z:50",
+    "curiosity-projection:u1:G:2026-09-23T06:30:00.000Z:50",
     "topic:u1:G:2026-09-23T06:30:00.000Z:50",
     "retirement:u1:G:2026-09-23T06:30:00.000Z:60",
   ]);
 });
 
-test("Topic lifecycle keeps Curiosity projection before Topic evolution inside one job", async () => {
+test("Topic lifecycle runs Curiosity evolution before projection and Topic evolution", async () => {
   const calls: string[] = [];
   const orchestrator = new BackgroundLoopOrchestrator({
     maxRunsPerCycle: 1,
@@ -108,9 +110,14 @@ test("Topic lifecycle keeps Curiosity projection before Topic evolution inside o
     orchestrator,
     "G",
     {
+      curiosityEvolution: {
+        async runOnce() {
+          calls.push("curiosity-evolution");
+        },
+      },
       curiosityTopicProjection: {
         async runOnce() {
-          calls.push("curiosity");
+          calls.push("curiosity-projection");
         },
       },
       topicEvolution: {
@@ -129,7 +136,11 @@ test("Topic lifecycle keeps Curiosity projection before Topic evolution inside o
 
   maintenance.schedule({ userId: "u1" });
   await orchestrator.drain();
-  assert.deepEqual(calls, ["curiosity", "topic"]);
+  assert.deepEqual(calls, [
+    "curiosity-evolution",
+    "curiosity-projection",
+    "topic",
+  ]);
 });
 
 test("Subject State maintenance requires explicit plans instead of inventing cadence or cost", () => {
