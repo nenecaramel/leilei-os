@@ -299,14 +299,6 @@ private struct GlobalSearchDiaryRow: View {
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
 
-            if !result.snippet.isEmpty {
-                Text(result.snippet)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-            }
-
             GlobalSearchMetadataLine(
                 left: GlobalSearchDate.row(result.businessTime),
                 right: [
@@ -357,14 +349,6 @@ private struct GlobalSearchUniverseRow: View {
             Text(result.stableName)
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
-
-            if !result.snippet.isEmpty {
-                Text(result.snippet)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-            }
 
             GlobalSearchMetadataLine(
                 left: GlobalSearchDate.row(result.businessTime),
