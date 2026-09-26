@@ -4,15 +4,7 @@ import {
   type NativeLiveExecutionSelection,
 } from "./native-live-execution-selection.js";
 
-export const BRIDGE_DISPATCH_TARGETS = [
-  "chatgpt_host",
-  "claude_code",
-] as const;
-
-export type BridgeDispatchTarget = (typeof BRIDGE_DISPATCH_TARGETS)[number];
-
-export const LEGACY_BRIDGE_DISPATCH_TARGET: BridgeDispatchTarget = "chatgpt_host";
-export const NATIVE_LIVE_DISPATCH_TARGET: BridgeDispatchTarget = "claude_code";
+export const NATIVE_LIVE_DISPATCH_TARGET = "claude_code" as const;
 
 export type NativeLiveRelaySendRequest = {
   dispatch_target: "claude_code";
@@ -62,27 +54,9 @@ export class NativeLiveRelayContractError extends Error {
   }
 }
 
-/**
- * Existing Bridge rows predate dispatch targets. Until the DB migration lands,
- * an absent target is interpreted only as the legacy ChatGPT host target.
- * New native/live requests must always send an explicit target.
- */
-export function resolveBridgeDispatchTarget(
-  value: unknown,
-  options: { allowLegacyMissing?: boolean } = {},
-): BridgeDispatchTarget {
-  if (value === undefined || value === null) {
-    if (options.allowLegacyMissing) return LEGACY_BRIDGE_DISPATCH_TARGET;
-    throw new NativeLiveRelayContractError("Dispatch target is required.");
-  }
-  if (value === "chatgpt_host" || value === "claude_code") return value;
-  throw new NativeLiveRelayContractError("Dispatch target is invalid.");
-}
-
 export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequest {
   const body = requireRecord(value);
-  const target = resolveBridgeDispatchTarget(body.dispatch_target);
-  if (target !== NATIVE_LIVE_DISPATCH_TARGET) {
+  if (body.dispatch_target !== NATIVE_LIVE_DISPATCH_TARGET) {
     throw new NativeLiveRelayContractError(
       "Native live relay requests must target Claude Code.",
     );
