@@ -63,6 +63,8 @@ private extension AppPage {
         switch self {
         case .home:
             return "house"
+        case .projects:
+            return "folder"
         case .diary:
             return "book.closed"
         case .daySpace:
