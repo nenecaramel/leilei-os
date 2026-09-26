@@ -47,6 +47,7 @@ const baseEnvSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DATABASE_URL: z.string().url().optional(),
   MCP_AUTH_TOKEN: z.string().min(16).optional(),
+  NATIVE_LIVE_RELAY_AUTH_TOKEN: z.string().min(32).optional(),
   MCP_USER_ID: z.string().uuid().optional(),
   MCP_SERVER_URL: httpsUrl.optional(),
   AUTH0_ISSUER: httpsUrl.optional(),
