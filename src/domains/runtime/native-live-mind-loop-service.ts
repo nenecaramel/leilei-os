@@ -308,6 +308,7 @@ export class NativeLiveMindLoopService {
       driveLimit: this.config.driveLimit ?? 0,
       thoughtLimit: this.config.thoughtLimit ?? 0,
       thoughtMinStrength: this.config.thoughtMinStrength ?? 0,
+      curiosityLimit: this.config.curiosityLimit ?? 0,
       topicLimit: this.config.topicLimit ?? 0,
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
