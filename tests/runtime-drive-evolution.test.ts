@@ -14,6 +14,7 @@ const policy: DriveEvolutionPolicy = {
   basePressure: 0.4,
   reinforcementBoost: 0.2,
   activeThreshold: 0.1,
+  dormantAfterSatisfiedHours: 24,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
@@ -177,6 +178,7 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
     lastEvolvedAt: "2026-09-22T12:00:00.000Z",
     lastReinforcedAt: "2026-09-22T11:00:00.000Z",
     lastSatisfiedAt: "2026-09-22T12:00:00.000Z",
+    dormantAt: null,
   });
   const port = new Port([
     candidate(
@@ -217,4 +219,103 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
   assert.ok(Math.abs(anchor.evolution.pressure - 0.15) < 1e-9);
   assert.equal(anchor.evolution.phase, "active");
   assert.equal(anchor.evolution.satisfactionTotal, 0.65);
+});
+
+
+test("satisfied Drive becomes dormant only after the configured inactivity window", async () => {
+  const anchorId = "44444444-4444-4444-8444-444444444444";
+  const satisfiedPayload = writeDriveEvolution(null, {
+    phase: "satisfied",
+    role: "anchor",
+    threadKey: driveThreadKey("finish the runtime cleanup"),
+    anchorStateId: anchorId,
+    pressure: 0,
+    reinforcementCount: 1,
+    reinforcementSources: ["m1"],
+    satisfactionTotal: 0.5,
+    lastEvolvedAt: "2026-09-22T12:00:00.000Z",
+    lastReinforcedAt: "2026-09-22T10:00:00.000Z",
+    lastSatisfiedAt: "2026-09-22T12:00:00.000Z",
+    dormantAt: null,
+  });
+  const port = new Port([
+    candidate(
+      anchorId,
+      "finish the runtime cleanup",
+      "m1",
+      "2026-09-22T10:00:00.000Z",
+      satisfiedPayload,
+    ),
+  ]);
+  const service = new DriveEvolutionService(port, policy);
+
+  const before = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-23T11:59:59.000Z",
+  });
+  assert.equal(before.satisfied, 1);
+  assert.equal(before.dormant, 0);
+  assert.equal(port.updates[0]?.evolution.phase, "satisfied");
+  assert.equal(port.updates[0]?.evolution.dormantAt, null);
+
+  port.updates = [];
+  const after = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-23T12:00:00.000Z",
+  });
+  assert.equal(after.satisfied, 0);
+  assert.equal(after.dormant, 1);
+  assert.equal(port.updates[0]?.evolution.phase, "dormant");
+  assert.equal(
+    port.updates[0]?.evolution.dormantAt,
+    "2026-09-23T12:00:00.000Z",
+  );
+});
+
+test("Drive dormancy remains disabled when no dormancy window is configured", async () => {
+  const anchorId = "55555555-5555-4555-8555-555555555555";
+  const satisfiedPayload = {
+    drive_v1: {
+      phase: "satisfied",
+      role: "anchor",
+      threadKey: driveThreadKey("keep this explicit"),
+      anchorStateId: anchorId,
+      pressure: 0,
+      reinforcementCount: 1,
+      reinforcementSources: ["m1"],
+      satisfactionTotal: 0.5,
+      lastEvolvedAt: "2026-09-01T12:00:00.000Z",
+      lastReinforcedAt: "2026-09-01T10:00:00.000Z",
+      lastSatisfiedAt: "2026-09-01T12:00:00.000Z",
+    },
+  };
+  const port = new Port([
+    candidate(
+      anchorId,
+      "keep this explicit",
+      "m1",
+      "2026-09-01T10:00:00.000Z",
+      satisfiedPayload,
+    ),
+  ]);
+  const service = new DriveEvolutionService(port, {
+    basePressure: 0.4,
+    reinforcementBoost: 0.2,
+    activeThreshold: 0.1,
+    minEvolutionIntervalHours: 6,
+    maxReinforcementSources: 16,
+  });
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-20T12:00:00.000Z",
+  });
+
+  assert.equal(result.satisfied, 1);
+  assert.equal(result.dormant, 0);
+  assert.equal(port.updates[0]?.evolution.phase, "satisfied");
+  assert.equal(port.updates[0]?.evolution.dormantAt, null);
 });
