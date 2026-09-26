@@ -71,6 +71,8 @@ private extension AppPage {
             return "calendar"
         case .universe:
             return "sparkles"
+        case .sentinel:
+            return "shield"
         default:
             return "circle"
         }

@@ -35,7 +35,8 @@ struct SidebarView: View {
                                     .projects,
                                     .diary,
                                     .daySpace,
-                                    .universe
+                                    .universe,
+                                    .sentinel
                                 ],
                                 selectedPage: $selectedPage,
                                 textLeadingOffset: titleHorizontalOffset - navigationRowHorizontalInset,
