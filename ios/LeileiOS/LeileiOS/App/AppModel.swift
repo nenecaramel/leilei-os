@@ -621,31 +621,39 @@ final class AppModel: ObservableObject {
         prepareID: String,
         conversationID: UUID
     ) async throws {
-        // This is bounded foreground completion waiting for one user turn,
-        // not background/runtime polling.
-        for attempt in 0..<300 {
+        // Backend holds the completion wait. A timeout only renews the
+        // bounded wait for the same durable prepare id; it does not poll.
+        for _ in 0..<12 {
             try Task.checkCancellation()
 
             do {
-                let turn = try await api.nativeLiveTurn(
+                let result = try await api.waitNativeLiveTurn(
                     prepareID: prepareID
                 )
 
-                guard turn.conversationId.caseInsensitiveCompare(
-                    conversationID.uuidString
-                ) == .orderedSame else {
+                switch result {
+                case .timeout:
+                    continue
+
+                case .terminal(let turn):
+                    guard turn.conversationId.caseInsensitiveCompare(
+                        conversationID.uuidString
+                    ) == .orderedSame else {
+                        throw LeileiAPIError.invalidResponse
+                    }
+
+                    if turn.canonicalStatus == "finalized_success" {
+                        return
+                    }
+
+                    if turn.canonicalStatus == "finalized_failure"
+                        || turn.dispatchStatus == "rejected" {
+                        throw NativeLiveSendError.failed(
+                            code: turn.failureCode
+                        )
+                    }
+
                     throw LeileiAPIError.invalidResponse
-                }
-
-                if turn.canonicalStatus == "finalized_success" {
-                    return
-                }
-
-                if turn.canonicalStatus == "finalized_failure"
-                    || turn.dispatchStatus == "rejected" {
-                    throw NativeLiveSendError.failed(
-                        code: turn.failureCode
-                    )
                 }
             } catch LeileiAPIError.missingAccessToken {
                 throw LeileiAPIError.missingAccessToken
@@ -658,22 +666,16 @@ final class AppModel: ObservableObject {
             } catch let error as LeileiAPIError {
                 if case .backend(let status, _, _) = error,
                    status >= 500 {
-                    // A prepared turn may still be running while a
-                    // foreground status read briefly fails. Keep waiting
-                    // for the same prepare id instead of creating a
-                    // duplicate send.
-                } else {
-                    throw error
+                    // Preserve the same prepare id across transient server
+                    // failures. Never create a duplicate send.
+                    continue
                 }
+                throw error
             } catch let error as NativeLiveSendError {
                 throw error
             } catch {
-                // Transport failure: preserve the same prepare id and retry
-                // this foreground completion read.
-            }
-
-            if attempt < 299 {
-                try await Task.sleep(for: .seconds(1))
+                // Network interruption: reconnect the same bounded wait.
+                continue
             }
         }
 
