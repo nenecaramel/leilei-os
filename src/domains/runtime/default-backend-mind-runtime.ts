@@ -82,6 +82,7 @@ const DEFAULT_THOUGHT_EVOLUTION_POLICY = {
   halfLifeHours: 168,
   baseStrength: 0.35,
   reinforcementBoost: 0.25,
+  dormantBelowStrength: 0.1,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
