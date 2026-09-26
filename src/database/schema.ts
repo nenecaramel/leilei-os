@@ -1104,6 +1104,7 @@ export const nativeLiveTurnPreparations = pgTable(
       .notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     canonicalUserMessageId: uuid("canonical_user_message_id").notNull(),
+    replacementTargetUserMessageId: uuid("replacement_target_user_message_id"),
     runtimeMode: varchar("runtime_mode", { length: 16 })
       .$type<NativeLiveTurnRuntimeMode>()
       .notNull(),
