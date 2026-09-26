@@ -331,3 +331,52 @@ test("Drive dormancy policy rejects a non-positive window", () => {
     /dormant-after-satisfied hours must be positive/,
   );
 });
+
+
+test("fresh reinforcement postpones dormancy even when pressure stays satisfied", async () => {
+  const anchorId = "66666666-6666-4666-8666-666666666666";
+  const satisfiedPayload = writeDriveEvolution(null, {
+    phase: "satisfied",
+    role: "anchor",
+    threadKey: driveThreadKey("ship the cleanup"),
+    anchorStateId: anchorId,
+    pressure: 0,
+    reinforcementCount: 1,
+    reinforcementSources: ["m1"],
+    satisfactionTotal: 1,
+    lastEvolvedAt: "2026-09-20T12:00:00.000Z",
+    lastReinforcedAt: "2026-09-20T10:00:00.000Z",
+    lastSatisfiedAt: "2026-09-20T12:00:00.000Z",
+    dormantAt: null,
+  });
+  const port = new Port([
+    candidate(
+      anchorId,
+      "ship the cleanup",
+      "m1",
+      "2026-09-20T10:00:00.000Z",
+      satisfiedPayload,
+    ),
+    candidate(
+      "77777777-7777-4777-8777-777777777777",
+      "ship the cleanup",
+      "m2",
+      "2026-09-23T11:00:00.000Z",
+    ),
+  ]);
+  const service = new DriveEvolutionService(port, policy);
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-23T12:00:00.000Z",
+  });
+
+  assert.equal(result.satisfied, 1);
+  assert.equal(result.dormant, 0);
+  assert.equal(port.updates[0]?.evolution.phase, "satisfied");
+  assert.equal(
+    port.updates[0]?.evolution.lastReinforcedAt,
+    "2026-09-23T11:00:00.000Z",
+  );
+});
