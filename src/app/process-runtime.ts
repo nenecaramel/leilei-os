@@ -190,11 +190,6 @@ import { DrizzleConversationExclusionManagementRepository } from "../domains/con
 import { ConversationExclusionManagementService } from "../domains/conversation/conversation-exclusion-management-service.js";
 import { DrizzleConversationImportHistoryRepository } from "../domains/conversation/conversation-import-history-repository.js";
 import { ConversationImportHistoryService } from "../domains/conversation/conversation-import-history-service.js";
-import {
-  createSentinelScheduler as buildSentinelScheduler,
-  type SentinelScheduler,
-  type SentinelSchedulerRepository,
-} from "../domains/sentinel/sentinel-scheduler.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import {
@@ -274,9 +269,6 @@ export type ProcessRuntimeFactoryDependencies = {
   environment?: RuntimeEnv;
   createDatabaseResource?: (databaseUrl: string) => DatabaseResource;
   createLogger?: (level: RuntimeEnv["LOG_LEVEL"]) => SafeLogger;
-  createSentinelScheduler?: (
-    repository: SentinelSchedulerRepository,
-  ) => SentinelScheduler;
 };
 
 export function createProcessRuntime(
@@ -631,9 +623,6 @@ export function createProcessRuntime(
   const conversationImportHistoryService = new ConversationImportHistoryService(
     new DrizzleConversationImportHistoryRepository(db),
   );
-  const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
-    buildSentinelScheduler({ repository })))(sentinelRepository);
-
   const governance = getMcpGovernanceConfig(runtimeEnv);
   const mcpSessionRegistry = new McpSessionRegistry({
     idleTtlMs: governance.idleTtlSeconds * 1_000,
@@ -807,14 +796,12 @@ export function createProcessRuntime(
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
-      sentinelScheduler.stopScheduling();
       nativeLiveMindFollowUpRecovery.stop();
       nativeLiveSemanticRecovery.stop();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
         retentionCoordinator.drain(),
-        sentinelScheduler.drain(),
         nativeLiveMindFollowUpRecovery.drain(),
         nativeLiveSemanticRecovery.drain(),
       ]);
