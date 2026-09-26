@@ -9,7 +9,7 @@ test("background opportunity policy keeps post-turn consolidation separate from 
     maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: false,
     proactivityWakeEnabled: false,
-    topicResurfaceMinIntervalMs: 90_000,
+    topicResurfaceEnabled: true,
   });
 
   assert.deepEqual(
@@ -36,7 +36,7 @@ test("background opportunity policy keeps post-turn consolidation separate from 
   );
   assert.equal(policy.cadenceMs("post_turn"), null);
   assert.equal(policy.cadenceMs("maintenance_pulse"), 3_600_000);
-  assert.equal(policy.cadenceMs("mac_idle"), 90_000);
+  assert.equal(policy.cadenceMs("mac_idle"), null);
 });
 
 test("Decay is opt-in and Breath is not a schedulable background target", () => {
@@ -44,7 +44,7 @@ test("Decay is opt-in and Breath is not a schedulable background target", () => 
     maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: true,
     proactivityWakeEnabled: false,
-    topicResurfaceMinIntervalMs: null,
+    topicResurfaceEnabled: false,
   });
 
   const kinds = [
@@ -64,7 +64,7 @@ test("background opportunity policy rejects invalid source cadence", () => {
     () => new BackgroundOpportunityPolicy({
       maintenancePulseIntervalMs: 0,
       decayEnabled: false,
-      topicResurfaceMinIntervalMs: null,
+      topicResurfaceEnabled: false,
     }),
     /maintenance_pulse cadence/,
   );
@@ -76,7 +76,7 @@ test("Proactivity wake is an explicit maintenance-pulse opportunity, not a secon
     maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: false,
     proactivityWakeEnabled: true,
-    topicResurfaceMinIntervalMs: null,
+    topicResurfaceEnabled: false,
   });
 
   assert.deepEqual(

@@ -4,7 +4,7 @@ import {
   TopicResurfaceCrossDeviceOpportunity,
 } from "../src/domains/runtime/topic-resurface-cross-device-opportunity.js";
 
-test("cross-device opportunity attempts immediately then enforces injected cadence", async () => {
+test("cross-device opportunity attempts whenever Companion offers a due cadence", async () => {
   const calls: unknown[] = [];
   let now = "2026-09-23T04:00:00.000Z";
   const opportunity = new TopicResurfaceCrossDeviceOpportunity(
@@ -15,34 +15,25 @@ test("cross-device opportunity attempts immediately then enforces injected caden
       },
     },
     "G",
-    { minIntervalMs: 60_000, candidateLimit: 5 },
+    { candidateLimit: 5 },
     () => now,
   );
 
   assert.deepEqual(await opportunity.offer({ userId: " user-1 " }), {
     outcome: "attempted",
     attemptedAt: "2026-09-23T04:00:00.000Z",
-    nextEligibleAt: "2026-09-23T04:01:00.000Z",
     result: { outcome: "idle" },
   });
-  assert.deepEqual(calls, [{
-    userId: "user-1",
-    subjectId: "G",
-    now: "2026-09-23T04:00:00.000Z",
-    candidateLimit: 5,
-  }]);
 
   now = "2026-09-23T04:00:30.000Z";
-  assert.deepEqual(await opportunity.offer({ userId: "user-1" }), {
-    outcome: "not_due",
-    lastAttemptAt: "2026-09-23T04:00:00.000Z",
-    nextEligibleAt: "2026-09-23T04:01:00.000Z",
-  });
-  assert.equal(calls.length, 1);
+  assert.equal(
+    (await opportunity.offer({ userId: "user-1" })).outcome,
+    "attempted",
+  );
+  assert.equal(calls.length, 2);
 });
 
-test("idle and waiting coordinator outcomes consume cadence but infrastructure failure does not", async () => {
-  let now = "2026-09-23T04:00:00.000Z";
+test("infrastructure failure does not install a second cadence gate", async () => {
   let fail = true;
   let calls = 0;
   const opportunity = new TopicResurfaceCrossDeviceOpportunity(
@@ -54,8 +45,7 @@ test("idle and waiting coordinator outcomes consume cadence but infrastructure f
       },
     },
     "G",
-    { minIntervalMs: 60_000, candidateLimit: 3 },
-    () => now,
+    { candidateLimit: 3 },
   );
 
   await assert.rejects(
@@ -64,38 +54,23 @@ test("idle and waiting coordinator outcomes consume cadence but infrastructure f
   );
 
   fail = false;
-  now = "2026-09-23T04:00:01.000Z";
   assert.equal(
     (await opportunity.offer({ userId: "user-1" })).outcome,
     "attempted",
   );
-  now = "2026-09-23T04:00:02.000Z";
-  assert.equal(
-    (await opportunity.offer({ userId: "user-1" })).outcome,
-    "not_due",
-  );
   assert.equal(calls, 2);
 });
 
-test("cross-device opportunity requires explicit cadence and candidate policy", () => {
+test("cross-device opportunity requires a positive candidate policy", () => {
   assert.throws(
     () => new TopicResurfaceCrossDeviceOpportunity(
       { async start() { return { outcome: "idle" as const }; } },
       "G",
-      { minIntervalMs: 0, candidateLimit: 5 },
-    ),
-    /minIntervalMs/,
-  );
-  assert.throws(
-    () => new TopicResurfaceCrossDeviceOpportunity(
-      { async start() { return { outcome: "idle" as const }; } },
-      "G",
-      { minIntervalMs: 1_000, candidateLimit: 0 },
+      { candidateLimit: 0 },
     ),
     /candidateLimit/,
   );
 });
-
 
 test("cross-device opportunity coalesces concurrent offers for the same identity", async () => {
   let release!: () => void;
@@ -112,7 +87,7 @@ test("cross-device opportunity coalesces concurrent offers for the same identity
       },
     },
     "G",
-    { minIntervalMs: 60_000, candidateLimit: 5 },
+    { candidateLimit: 5 },
     () => "2026-09-23T04:00:00.000Z",
   );
 

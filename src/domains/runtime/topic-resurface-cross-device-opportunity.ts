@@ -4,35 +4,25 @@ import type {
 } from "./topic-resurface-cross-device-coordinator.js";
 
 export type TopicResurfaceCrossDeviceOpportunityPolicy = {
-  minIntervalMs: number;
   candidateLimit: number;
 };
 
-export type TopicResurfaceCrossDeviceOpportunityResult =
-  | {
-      outcome: "not_due";
-      lastAttemptAt: string;
-      nextEligibleAt: string;
-    }
-  | {
-      outcome: "attempted";
-      attemptedAt: string;
-      nextEligibleAt: string;
-      result: TopicResurfaceCrossDeviceResult;
-    };
+export type TopicResurfaceCrossDeviceOpportunityResult = {
+  outcome: "attempted";
+  attemptedAt: string;
+  result: TopicResurfaceCrossDeviceResult;
+};
 
 type Coordinator = Pick<TopicResurfaceCrossDeviceCoordinator, "start">;
 
 /**
- * Idle-opportunity producer for the durable cross-device Topic workflow.
+ * Due-opportunity producer for the durable cross-device Topic workflow.
  *
- * This intentionally stays outside the in-process BackgroundLoopOrchestrator:
- * coordinator.start() creates backend-owned durable queue work; it does not run
- * Claude locally. The Mac daemon gives foreground Native Live work priority and
- * only reserves background-model jobs while foreground is idle.
+ * Cadence is owned once, by Mac Companion. This adapter only coalesces
+ * concurrent offers and stages backend-owned durable work; it owns no clock
+ * history or duplicate interval gate.
  */
 export class TopicResurfaceCrossDeviceOpportunity {
-  private readonly lastAttemptAt = new Map<string, string>();
   private readonly inFlight = new Map<
     string,
     Promise<TopicResurfaceCrossDeviceOpportunityResult>
@@ -46,14 +36,6 @@ export class TopicResurfaceCrossDeviceOpportunity {
   ) {
     if (!subjectId.trim()) {
       throw new Error("Topic resurface opportunity subject id must not be blank.");
-    }
-    if (
-      !Number.isFinite(policy.minIntervalMs)
-      || policy.minIntervalMs <= 0
-    ) {
-      throw new Error(
-        "Topic resurface opportunity minIntervalMs must be positive and finite.",
-      );
     }
     if (
       !Number.isInteger(policy.candidateLimit)
@@ -73,31 +55,15 @@ export class TopicResurfaceCrossDeviceOpportunity {
       throw new Error("Topic resurface opportunity user id must not be blank.");
     }
 
-    const at = normalizeIso(this.now());
     const key = `${userId}:\u0000:${this.subjectId}`;
-    const previous = this.lastAttemptAt.get(key);
-    if (previous) {
-      const nextEligibleAt = new Date(
-        Date.parse(previous) + this.policy.minIntervalMs,
-      ).toISOString();
-      if (Date.parse(at) < Date.parse(nextEligibleAt)) {
-        return {
-          outcome: "not_due",
-          lastAttemptAt: previous,
-          nextEligibleAt,
-        };
-      }
-    }
-
     const existingAttempt = this.inFlight.get(key);
     if (existingAttempt) {
       return existingAttempt;
     }
 
     const attempt = this.attempt({
-      key,
       userId,
-      at,
+      at: normalizeIso(this.now()),
     });
     this.inFlight.set(key, attempt);
     try {
@@ -108,8 +74,8 @@ export class TopicResurfaceCrossDeviceOpportunity {
       }
     }
   }
+
   private async attempt(input: {
-    key: string;
     userId: string;
     at: string;
   }): Promise<TopicResurfaceCrossDeviceOpportunityResult> {
@@ -120,17 +86,9 @@ export class TopicResurfaceCrossDeviceOpportunity {
       candidateLimit: this.policy.candidateLimit,
     });
 
-    // This timestamp is intentionally soft in-process operational state.
-    // Infrastructure failure throws before this point and therefore does not
-    // consume cadence. A valid idle/waiting attempt does consume cadence.
-    this.lastAttemptAt.set(input.key, input.at);
-
     return {
       outcome: "attempted",
       attemptedAt: input.at,
-      nextEligibleAt: new Date(
-        Date.parse(input.at) + this.policy.minIntervalMs,
-      ).toISOString(),
       result,
     };
   }
