@@ -123,7 +123,7 @@ function setup(
     }): void;
   } | null = null,
   semanticActions: {
-    execute(input: unknown): Promise<unknown>;
+    execute(input: unknown): Promise<any>;
   } | null = null,
 ) {
   const port = new FakePort();
