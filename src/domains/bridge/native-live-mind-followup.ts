@@ -3,6 +3,11 @@ import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { nativeLiveMindFollowUps } from "../../database/schema.js";
 import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
+import type { MindSemanticAction } from "../runtime/mind-semantic-action.js";
+import type {
+  MindSemanticActionReceipt,
+  NativeLiveMindSemanticActionExecutor,
+} from "./native-live-mind-semantic-action.js";
 import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
@@ -25,6 +30,7 @@ export type NativeLiveMindFollowUpJob = {
   assistantMessageId: string;
   operation: "send" | "retry" | "edit";
   intents: MindWriteIntent[];
+  actions: MindSemanticAction[];
 };
 
 export interface NativeLiveMindFollowUpPort {
@@ -41,6 +47,7 @@ export interface NativeLiveMindFollowUpPort {
   complete(input: {
     prepareId: string;
     workerId: string;
+    receipts: readonly MindSemanticActionReceipt[];
   }): Promise<boolean>;
 
   releaseFailure(input: {
@@ -57,6 +64,7 @@ type RawFollowUpRow = {
   assistant_message_id: string;
   operation: string;
   intents: unknown;
+  actions: unknown;
 };
 
 export class DrizzleNativeLiveMindFollowUpRepository
@@ -83,7 +91,7 @@ implements NativeLiveMindFollowUpPort {
           (status = 'processing' AND locked_until <= now())
         )
       RETURNING prepare_id, user_id, conversation_id, assistant_message_id,
-        operation, intents
+        operation, intents, actions
     `);
     return rows[0] ? parseJob(rows[0]) : null;
   }
@@ -113,7 +121,7 @@ implements NativeLiveMindFollowUpPort {
       WHERE follow_up.prepare_id = candidate.prepare_id
       RETURNING follow_up.prepare_id, follow_up.user_id,
         follow_up.conversation_id, follow_up.assistant_message_id,
-        follow_up.operation, follow_up.intents
+        follow_up.operation, follow_up.intents, follow_up.actions
     `);
     return rows[0] ? parseJob(rows[0]) : null;
   }
