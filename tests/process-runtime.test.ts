@@ -85,12 +85,6 @@ test("process runtime owns retention scheduling and drains it before the databas
       databaseFactoryCalls += 1;
       return resource;
     },
-    createSentinelScheduler: () => ({
-      start: () => undefined,
-      stopScheduling: () => undefined,
-      drain: async () => undefined,
-      runOnce: async () => 0,
-    }),
   });
 
   runtime.startBackgroundWork();
@@ -119,37 +113,15 @@ test("process runtime owns retention scheduling and drains it before the databas
   ]);
 });
 
-test("process runtime keeps periodic cloud schedulers off by default", async () => {
-  const { createProcessRuntime } = await import("../src/app/process-runtime.js");
-  const calls: string[] = [];
-  const resource = {
-    db: {} as never,
-    probe: async () => [],
-    close: async () => undefined,
-  };
-  const runtime = createProcessRuntime({
-    environment: {
-      DATABASE_URL: "postgres://runtime.test/leilei",
-      MCP_SESSION_IDLE_TTL_SECONDS: 7_200,
-      MCP_SESSION_ABSOLUTE_TTL_SECONDS: 86_400,
-      MCP_SESSION_MAX_PER_USER: 8,
-      MCP_SESSION_MAX_TOTAL: 32,
-      MCP_IDEMPOTENCY_RETENTION_DAYS: 30,
-      MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: 24,
-    } as never,
-    createDatabaseResource: () => resource,
-    createSentinelScheduler: () => ({
-      start: () => calls.push("start"),
-      stopScheduling: () => calls.push("stop"),
-      drain: async () => calls.push("drain"),
-      runOnce: async () => 0,
-    }),
-  });
-
-  runtime.startBackgroundWork();
-  runtime.stopBackgroundWork();
-  await runtime.drainBackgroundWork();
-  assert.deepEqual(calls, ["stop", "drain"]);
+test("process runtime does not wire the retired Sentinel poller", () => {
+  assert.doesNotMatch(
+    processRuntimeSource,
+    /createSentinelScheduler|sentinelScheduler/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /state:\s*"startup_recovery_only"/,
+  );
 });
 
 test("process runtime creates one shared safe logger for app and observers", async () => {
