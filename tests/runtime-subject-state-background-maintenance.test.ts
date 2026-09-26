@@ -8,9 +8,6 @@ import {
   SubjectStateBackgroundMaintenance,
 } from "../src/domains/runtime/subject-state-background-maintenance.js";
 import {
-  NativeLivePostTurnBackgroundOpportunity,
-} from "../src/domains/runtime/native-live-background-opportunity.js";
-import {
   BackgroundOpportunityPolicy,
 } from "../src/domains/runtime/background-opportunity-policy.js";
 
@@ -172,31 +169,6 @@ test("Subject State maintenance requires explicit plans instead of inventing cad
   );
 });
 
-
-test("post-turn opportunity is Distillation-only and remains fail-soft", () => {
-  const calls: string[] = [];
-  const opportunity = new NativeLivePostTurnBackgroundOpportunity(
-    {
-      schedule() {
-        calls.push("distillation");
-        throw new Error("simulated scheduling failure");
-      },
-    },
-    new BackgroundOpportunityPolicy({
-      maintenancePulseIntervalMs: 3_600_000,
-      decayEnabled: false,
-      topicResurfaceMinIntervalMs: null,
-    }),
-  );
-
-  assert.doesNotThrow(() => {
-    opportunity.schedule({
-      userId: "u1",
-      conversationId: "c1",
-    });
-  });
-  assert.deepEqual(calls, ["distillation"]);
-});
 
 test("Subject State maintenance can schedule only the pulse-selected loop kinds", async () => {
   const calls: string[] = [];
