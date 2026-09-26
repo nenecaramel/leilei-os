@@ -109,8 +109,8 @@ test("Thought, Curiosity, and Topic can go dormant and later reactivate", () => 
   );
 });
 
-test("Topic is explicitly derived while semantic Mind kinds remain authored", () => {
-  assert.equal(mindLifecycleProfile("topic").ownership, "derived");
+test("Topic ownership stays hybrid until the authored Topic entry point is retired", () => {
+  assert.equal(mindLifecycleProfile("topic").ownership, "hybrid");
   for (const kind of [
     "feel",
     "memory",
