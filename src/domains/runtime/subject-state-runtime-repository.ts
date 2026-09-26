@@ -20,8 +20,8 @@ import {
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
 import {
-  readSubjectStateLifecycle,
-  writeSubjectStateLifecycle,
+  evaluateRecallReinforcement,
+  type MemoryLifecyclePolicy,
 } from "./memory-lifecycle.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -287,6 +287,9 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     subjectId: string;
     stateIds: readonly string[];
     recalledAt: string;
+    salienceBoost: number;
+    sourceMessageId: string;
+    lifecyclePolicy?: MemoryLifecyclePolicy;
   }): Promise<void> {
     if (input.stateIds.length === 0) return;
     const recalledAt = new Date(input.recalledAt);
@@ -301,6 +304,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
             id: runtimeSubjectStates.id,
             kind: runtimeSubjectStates.kind,
             payload: runtimeSubjectStates.payload,
+            updatedAt: runtimeSubjectStates.updatedAt,
           })
           .from(runtimeSubjectStates)
           .where(
@@ -318,30 +322,29 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
 
         if (!row || (row.kind !== "memory" && row.kind !== "feel")) continue;
 
-        let current;
+        let update;
         try {
-          current = readSubjectStateLifecycle(row.payload);
+          update = evaluateRecallReinforcement(
+            {
+              stateId: row.id,
+              kind: row.kind,
+              payload: row.payload,
+              updatedAt: row.updatedAt.toISOString(),
+            },
+            recalledAt.toISOString(),
+            input.salienceBoost,
+            input.sourceMessageId,
+            input.lifecyclePolicy,
+          );
         } catch {
           continue;
         }
-        if (current?.status === "archived") continue;
-
-        const lifecycle = current
-          ? { ...current, lastRecalledAt: recalledAt.toISOString() }
-          : {
-              status: "active" as const,
-              salience: 1,
-              protected: false,
-              lastDecayedAt: recalledAt.toISOString(),
-              lastRecalledAt: recalledAt.toISOString(),
-              archivedAt: null,
-              forgottenAt: null,
-            };
+        if (!update) continue;
 
         await transaction
           .update(runtimeSubjectStates)
           .set({
-            payload: writeSubjectStateLifecycle(row.payload, lifecycle),
+            payload: update.nextPayload,
             updatedAt: new Date(),
           })
           .where(
@@ -349,6 +352,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
               eq(runtimeSubjectStates.id, stateId),
               eq(runtimeSubjectStates.userId, input.userId),
               eq(runtimeSubjectStates.subjectId, input.subjectId),
+              eq(runtimeSubjectStates.validityStatus, "valid"),
             ),
           );
       }
