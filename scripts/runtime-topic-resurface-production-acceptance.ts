@@ -26,6 +26,12 @@ import type {
   SubjectStateWrite,
 } from "../src/domains/runtime/subject-state-contract.js";
 
+assert.equal(
+  process.env.RUN_PRODUCTION_TOPIC_RESURFACE_ACCEPTANCE,
+  "1",
+  "Set RUN_PRODUCTION_TOPIC_RESURFACE_ACCEPTANCE=1 explicitly.",
+);
+
 const databaseUrl = process.env.DATABASE_URL;
 const userId = process.env.MCP_USER_ID;
 assert.ok(
