@@ -67,6 +67,7 @@ import {
 } from "../domains/runtime/companion-background-opportunity.js";
 import {
   BackgroundOpportunityPolicy,
+  DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "../domains/runtime/background-opportunity-policy.js";
 import {
   DistillationCrossDeviceCoordinator,
@@ -358,20 +359,9 @@ export function createProcessRuntime(
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     decayEnabled: Boolean(memoryDecayConfig),
-    proactivityWakeEnabled:
-      Boolean(proactivityWakeOpportunityConfig),
-    topicResurfaceEnabled:
-      Boolean(topicResurfaceOpportunityConfig),
   });
-  const distillationPlan = backgroundOpportunityPolicy.plan(
-    "post_turn",
-    "distillation",
-  );
-  if (!distillationPlan) {
-    throw new Error(
-      "Production background policy must allow post-turn Distillation.",
-    );
-  }
+  const distillationPlan =
+    DEFAULT_BACKGROUND_TARGET_PLANS.distillation;
   const nativeLiveBackgroundModelService =
     new NativeLiveBackgroundModelQueueService(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
@@ -530,10 +520,7 @@ export function createProcessRuntime(
     );
   const proactivityWakePlan =
     proactivityWakeOpportunityConfig
-      ? backgroundOpportunityPolicy.plan(
-          "companion_due",
-          "proactivity_wake",
-        )
+      ? DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake
       : null;
   const proactivityWakeOpportunityProducer =
     proactivityWakeOpportunityConfig
@@ -589,10 +576,6 @@ export function createProcessRuntime(
     ]);
   const topicResurfaceCrossDeviceOpportunity =
     topicResurfaceOpportunityConfig
-      && backgroundOpportunityPolicy.plan(
-        "mac_idle",
-        "topic_resurface",
-      )
       ? new TopicResurfaceCrossDeviceOpportunity(
           topicResurfaceCrossDeviceCoordinator,
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
