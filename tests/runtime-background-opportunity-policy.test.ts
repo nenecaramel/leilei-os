@@ -8,6 +8,7 @@ import {
 test("background opportunity policy owns only Companion timed maintenance", () => {
   const policy = new BackgroundOpportunityPolicy({
     decayEnabled: false,
+    mindRetirementEnabled: false,
   });
 
   assert.deepEqual(
@@ -36,9 +37,11 @@ test("background opportunity policy owns only Companion timed maintenance", () =
 test("Decay is opt-in and Breath is not a schedulable Companion target", () => {
   const disabled = new BackgroundOpportunityPolicy({
     decayEnabled: false,
+    mindRetirementEnabled: false,
   });
   const enabled = new BackgroundOpportunityPolicy({
     decayEnabled: true,
+    mindRetirementEnabled: false,
   });
 
   const disabledKinds =
@@ -63,5 +66,34 @@ test("Decay is opt-in and Breath is not a schedulable Companion target", () => {
   assert.equal(
     enabledKinds.includes("topic_resurface"),
     false,
+  );
+});
+
+
+test("Mind retirement is an explicit opt-in Companion target", () => {
+  const disabled = new BackgroundOpportunityPolicy({
+    decayEnabled: false,
+    mindRetirementEnabled: false,
+  });
+  const enabled = new BackgroundOpportunityPolicy({
+    decayEnabled: false,
+    mindRetirementEnabled: true,
+  });
+
+  assert.equal(
+    disabled.decide().targets.some((target) => target.kind === "mind_retirement"),
+    false,
+  );
+  assert.equal(
+    enabled.decide().targets.some((target) => target.kind === "mind_retirement"),
+    true,
+  );
+  assert.deepEqual(
+    DEFAULT_BACKGROUND_TARGET_PLANS.mindRetirement,
+    {
+      kind: "mind_retirement",
+      priority: "maintenance",
+      cost: 1,
+    },
   );
 });
