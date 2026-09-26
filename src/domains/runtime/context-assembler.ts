@@ -289,6 +289,7 @@ export function assembleTurnContext(input: {
         const evolution = readThoughtEvolution(state.payload);
         return Boolean(
           evolution
+          && evolution.phase === "active"
           && evolution.role === "anchor"
           && evolution.strength >= thoughtMinStrength,
         );
