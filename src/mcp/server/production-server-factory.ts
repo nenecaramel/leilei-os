@@ -8,7 +8,6 @@ import type { ToyCommandService } from "../../domains/toy/toy-command-service.js
 import type { UniverseService } from "../../domains/universe/universe-service.js";
 import type { McpSessionNamespace } from "./session-registry.js";
 import type { BridgeService } from "../../domains/bridge/bridge-service.js";
-import type { SentinelService } from "../../domains/sentinel/sentinel-service.js";
 import type { SafeLogger } from "../../observability/logger.js";
 import type { HealthService } from "../../domains/health-v2/health-service.js";
 import type { ConversationArchiveReadService } from "../../domains/conversation/conversation-archive-read-service.js";
@@ -23,7 +22,6 @@ import {
 } from "./create-server.js";
 import { registerProductionNotionExplicitWriteTools } from "./register-notion-explicit-writes.js";
 import { registerProductionNotionTypedWriteTools } from "./register-notion-typed-writes.js";
-import { registerSentinelTools } from "../tools/sentinel/register.js";
 import { registerRenderNoteCardTool } from "../tools/render-thinking-block/register.js";
 import { registerNoteCardResource } from "../tools/render-thinking-block/resource.js";
 import { registerGetHealthTool } from "../tools/get-health/register.js";
@@ -56,7 +54,6 @@ export function createProductionMcpSessionServerFactory(input: {
   bridgeService?: BridgeService;
   bridgeAmbiguityAcceptanceEnabled?: boolean;
   logger?: SafeLogger;
-  sentinelService?: SentinelService;
   publicToolProfiles?: readonly McpToolProfileName[];
   internalToolProfiles?: readonly McpToolProfileName[];
 }): McpSessionServerFactory {
@@ -162,16 +159,6 @@ export function createProductionMcpSessionServerFactory(input: {
     if (mcpToolSurfaceEnabled(toolExposure, "ui")) {
       registerNoteCardResource(server);
       registerRenderNoteCardTool(server);
-    }
-    if (
-      mcpToolSurfaceEnabled(toolExposure, "runtime_internal")
-      && input.sentinelService
-    ) {
-      registerSentinelTools(server, {
-        sentinelService: input.sentinelService,
-        getAuthenticatedUserId,
-        requireActiveUser: activeUserAuthorization,
-      });
     }
     if (
       mcpToolSurfaceEnabled(toolExposure, "runtime_internal")

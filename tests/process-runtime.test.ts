@@ -113,17 +113,6 @@ test("process runtime owns retention scheduling and drains it before the databas
   ]);
 });
 
-test("process runtime does not wire the retired Sentinel poller", () => {
-  assert.doesNotMatch(
-    processRuntimeSource,
-    /createSentinelScheduler|sentinelScheduler/,
-  );
-  assert.match(
-    processRuntimeSource,
-    /state:\s*"startup_recovery_only"/,
-  );
-});
-
 test("process runtime creates one shared safe logger for app and observers", async () => {
   const { createProcessRuntime } = await import("../src/app/process-runtime.js");
   let loggerCalls = 0;

@@ -37,7 +37,6 @@ export const NAV_GROUPS: NavigationGroup[] = [
       { label: "Day Space", to: "/day-space", icon: DashboardIcon },
       { label: "Conversations", to: "/conversations", icon: ConversationIcon },
       { label: "Universe", to: "/universe", icon: UniverseIcon },
-      { label: "Sentinel", to: "/sentinel", icon: ActivityIcon },
     ],
   },
   {
