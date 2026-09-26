@@ -579,6 +579,7 @@ export function createProcessRuntime(
       runtimeEffectDeliveryWorker,
       proactivityWakeOpportunityProducer,
       topicResurfaceCrossDeviceOpportunity ?? null,
+      Boolean(proactivityWakeOpportunityConfig),
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),

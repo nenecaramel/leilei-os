@@ -226,3 +226,34 @@ test("startup catch-up runs maintenance and proactivity without Topic resurfacin
   assert.deepEqual(proactivityCalls, ["user-1"]);
   assert.deepEqual(topicCalls, []);
 });
+
+
+test("dirty opportunity is a no-op when no effect producer is enabled", async () => {
+  const service = new CompanionBackgroundOpportunityService(
+    {
+      schedule() {
+        throw new Error("dirty must not schedule maintenance");
+      },
+    } as never,
+    {
+      decide() {
+        throw new Error("dirty must not consult timed policy");
+      },
+    },
+    null,
+    null,
+    null,
+  );
+
+  assert.deepEqual(await service.offer({
+    userId: "user-1",
+    reason: "dirty",
+  }), {
+    reason: "dirty",
+    maintenanceKinds: [],
+    effectDeliveryScheduled: false,
+    proactivityScheduled: false,
+    topicResurfaceOffered: false,
+    failures: [],
+  });
+});

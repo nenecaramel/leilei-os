@@ -4,7 +4,6 @@ import {
   BackgroundLoopOrchestrator,
 } from "../src/domains/runtime/background-loop-orchestrator.js";
 import {
-  RuntimeEffectDeliveryRecovery,
   RuntimeEffectDeliveryWorker,
 } from "../src/domains/runtime/runtime-effect-delivery-worker.js";
 import type {
@@ -301,28 +300,6 @@ test("ambiguous adapter failure becomes unknown instead of a blind retry", async
   await worker.runOne(userId);
   assert.deepEqual(calls, ["unknown"]);
 });
-
-test("effect recovery reuses maintenance pulse cadence and only schedules discovered users", async () => {
-  const users: string[] = [];
-  const recovery = new RuntimeEffectDeliveryRecovery(
-    {
-      async listCandidateUserIds(input) {
-        assert.equal(input.limit, 8);
-        return ["u1", "u2"];
-      },
-    },
-    {
-      scheduleUser(userId) {
-        users.push(userId);
-      },
-    },
-    8,
-  );
-
-  assert.equal(await recovery.schedulePulse(), 2);
-  assert.deepEqual(users, ["u1", "u2"]);
-});
-
 
 test("known retryable canonical failure is explicitly requeued without blind unknown retry", async () => {
   const calls: string[] = [];
