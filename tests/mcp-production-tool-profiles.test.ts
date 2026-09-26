@@ -45,7 +45,7 @@ function runtime(input: {
   });
 }
 
-test("production public MCP defaults expose note card UI but hide runtime, recovery, and Notion tools", async () => {
+test("production public MCP defaults expose current core, device, and UI tools only", async () => {
   const process = runtime();
   const factory = process.appDependencies.createMcpSessionServer;
   assert.ok(factory);
@@ -65,8 +65,6 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
     "update_diary",
     "read_todo_day",
     "append_todo_entries",
-    "search_conversations",
-    "read_conversation",
     "get_health",
     "get_current_time",
     "list_universe_galaxies",
@@ -83,6 +81,9 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
     "sentinel_get_state",
     "sentinel_claim_current_wake",
     "complete_sentinel_wake",
+    "list_conversations",
+    "search_conversations",
+    "read_conversation",
     "list_conversation_exclusions",
     "inspect_conversation_restore_candidates",
     "inspect_conversation_restore_path",
@@ -111,7 +112,7 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
   }
 });
 
-test("production internal MCP defaults preserve supported maintenance inventory", async () => {
+test("production internal MCP defaults expose current advanced maintenance inventory", async () => {
   const process = runtime();
   const factory = process.appDependencies.createMcpSessionServer;
   assert.ok(factory);
@@ -128,7 +129,6 @@ test("production internal MCP defaults preserve supported maintenance inventory"
     "create_notion_page",
     "write_notion_page",
     "get_notion_connection",
-    "list_conversation_exclusions",
     "create_diary",
     "replace_todo_paper",
   ]) {
@@ -144,6 +144,13 @@ test("production internal MCP defaults preserve supported maintenance inventory"
     "sentinel_get_state",
     "sentinel_claim_current_wake",
     "complete_sentinel_wake",
+    "list_conversations",
+    "search_conversations",
+    "read_conversation",
+    "list_conversation_exclusions",
+    "inspect_conversation_restore_candidates",
+    "inspect_conversation_restore_path",
+    "restore_conversation_exclusion",
   ]) {
     assert.equal(
       names.includes(retired),
