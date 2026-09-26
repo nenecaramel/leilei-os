@@ -3,9 +3,11 @@ import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
 
+export type ThoughtPhase = "active" | "dormant";
 export type ThoughtEvolutionRole = "anchor" | "reinforcement";
 
 export type ThoughtEvolutionState = {
+  phase: ThoughtPhase;
   role: ThoughtEvolutionRole;
   threadKey: string;
   anchorStateId: string;
@@ -14,12 +16,14 @@ export type ThoughtEvolutionState = {
   reinforcementSources: string[];
   lastEvolvedAt: string;
   lastReinforcedAt: string;
+  dormantAt: string | null;
 };
 
 export type ThoughtEvolutionPolicy = {
   halfLifeHours: number;
   baseStrength: number;
   reinforcementBoost: number;
+  dormantBelowStrength?: number;
   minEvolutionIntervalHours: number;
   maxReinforcementSources: number;
 };
@@ -39,7 +43,12 @@ export type ThoughtEvolutionUpdate = {
   expectedPayload: Record<string, unknown> | null;
   nextPayload: Record<string, unknown>;
   evolution: ThoughtEvolutionState;
-  reason: "initialize" | "decay" | "reinforce";
+  reason:
+    | "initialize"
+    | "decay"
+    | "reinforce"
+    | "dormant"
+    | "reactivate";
 };
 
 export interface ThoughtEvolutionRuntimePort {
@@ -64,6 +73,10 @@ export type ThoughtEvolutionRunResult = {
   initialized: number;
   reinforced: number;
   decayed: number;
+  dormantTransitions: number;
+  reactivated: number;
+  active: number;
+  dormant: number;
 };
 
 const THOUGHT_KEY = "thought_v1";
@@ -92,15 +105,20 @@ export class ThoughtEvolutionService {
 
     const grouped = groupCandidates(candidates);
     const updates: ThoughtEvolutionUpdate[] = [];
+    let active = 0;
+    let dormant = 0;
     for (const group of grouped.values()) {
       const evaluated = evaluateThread(group, now, this.policy);
       updates.push(...evaluated.updates);
+      if (evaluated.phase === "active") active += 1;
+      else dormant += 1;
     }
 
     const selectedUpdates =
       input.mode === "settlement_catch_up"
         ? updates.filter((update) =>
             update.reason !== "decay"
+            && update.reason !== "dormant"
           )
         : updates;
 
@@ -118,6 +136,12 @@ export class ThoughtEvolutionService {
       initialized: selectedUpdates.filter((update) => update.reason === "initialize").length,
       reinforced: selectedUpdates.filter((update) => update.reason === "reinforce").length,
       decayed: selectedUpdates.filter((update) => update.reason === "decay").length,
+      dormantTransitions:
+        selectedUpdates.filter((update) => update.reason === "dormant").length,
+      reactivated:
+        selectedUpdates.filter((update) => update.reason === "reactivate").length,
+      active,
+      dormant,
     };
   }
 }
@@ -129,6 +153,12 @@ export function readThoughtEvolution(
   const value = payload[THOUGHT_KEY];
   if (!isRecord(value)) {
     throw new Error("Thought evolution payload must be an object.");
+  }
+
+  const phase =
+    value.phase === undefined ? "active" : value.phase;
+  if (phase !== "active" && phase !== "dormant") {
+    throw new Error("Thought phase is invalid.");
   }
 
   const role = value.role;
@@ -160,7 +190,18 @@ export function readThoughtEvolution(
   const lastEvolvedAt = normalizeIso(value.lastEvolvedAt, "lastEvolvedAt");
   const lastReinforcedAt =
     normalizeIso(value.lastReinforcedAt, "lastReinforcedAt");
+  const dormantAt =
+    value.dormantAt === undefined || value.dormantAt === null
+      ? null
+      : normalizeIso(value.dormantAt, "dormantAt");
+  if (phase === "dormant" && dormantAt === null) {
+    throw new Error("Dormant Thought requires dormantAt.");
+  }
+  if (phase === "active" && dormantAt !== null) {
+    throw new Error("Active Thought must not retain dormantAt.");
+  }
   return {
+    phase,
     role,
     threadKey,
     anchorStateId,
@@ -169,6 +210,7 @@ export function readThoughtEvolution(
     reinforcementSources: [...value.reinforcementSources],
     lastEvolvedAt,
     lastReinforcedAt,
+    dormantAt,
   };
 }
 
@@ -232,7 +274,7 @@ function evaluateThread(
   updates: ThoughtEvolutionUpdate[];
 } {
   if (candidates.length === 0) {
-    return { updates: [] };
+    return { phase: "active", updates: [] };
   }
 
   const anchor = candidates[0]!;
@@ -272,6 +314,36 @@ function evaluateThread(
   );
 
   const strength = decayedStrength;
+  const currentAnchor = safeReadThoughtEvolution(anchor.payload);
+  const hasNewIndependentEvidence = Boolean(
+    currentAnchor
+    && (
+      reinforcementCount > currentAnchor.reinforcementCount
+      || sources.some(
+        (source) => !currentAnchor.reinforcementSources.includes(source),
+      )
+    ),
+  );
+  const dormantThreshold = policy.dormantBelowStrength;
+  const phase: ThoughtPhase =
+    !currentAnchor
+      ? dormantThreshold !== undefined && strength < dormantThreshold
+        ? "dormant"
+        : "active"
+      : currentAnchor.phase === "dormant"
+        ? hasNewIndependentEvidence
+          && (dormantThreshold === undefined || strength >= dormantThreshold)
+          ? "active"
+          : "dormant"
+        : dormantThreshold !== undefined && strength < dormantThreshold
+          ? "dormant"
+          : "active";
+  const dormantAt =
+    phase === "dormant"
+      ? currentAnchor?.phase === "dormant"
+        ? currentAnchor.dormantAt
+        : now
+      : null;
 
   const updates: ThoughtEvolutionUpdate[] = [];
   for (const candidate of candidates) {
@@ -279,6 +351,7 @@ function evaluateThread(
     const role: ThoughtEvolutionRole =
       candidate.stateId === anchor.stateId ? "anchor" : "reinforcement";
     const evolution: ThoughtEvolutionState = {
+      phase,
       role,
       threadKey: key,
       anchorStateId: anchor.stateId,
@@ -287,6 +360,7 @@ function evaluateThread(
       reinforcementSources: sources,
       lastEvolvedAt: now,
       lastReinforcedAt: normalizeIso(latest.createdAt, "createdAt"),
+      dormantAt,
     };
 
     const reason = evolutionReason(
@@ -307,7 +381,7 @@ function evaluateThread(
     });
   }
 
-  return { updates };
+  return { phase, updates };
 }
 
 function evolutionReason(
@@ -317,6 +391,12 @@ function evolutionReason(
   now: string,
 ): ThoughtEvolutionUpdate["reason"] | null {
   if (!current) return "initialize";
+  if (current.phase === "active" && next.phase === "dormant") {
+    return "dormant";
+  }
+  if (current.phase === "dormant" && next.phase === "active") {
+    return "reactivate";
+  }
   if (
     current.reinforcementCount !== next.reinforcementCount
     || current.anchorStateId !== next.anchorStateId
@@ -360,6 +440,18 @@ function validatePolicy(policy: ThoughtEvolutionPolicy): void {
     if (!Number.isFinite(value) || value < 0 || value > 1) {
       throw new Error(`Thought ${label} must be between zero and one.`);
     }
+  }
+  if (
+    policy.dormantBelowStrength !== undefined
+    && (
+      !Number.isFinite(policy.dormantBelowStrength)
+      || policy.dormantBelowStrength <= 0
+      || policy.dormantBelowStrength > 1
+    )
+  ) {
+    throw new Error(
+      "Thought dormant-below strength must be in (0, 1].",
+    );
   }
   if (
     !Number.isFinite(policy.minEvolutionIntervalHours)
