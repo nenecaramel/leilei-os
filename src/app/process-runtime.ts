@@ -171,20 +171,6 @@ import {
 } from "../domains/retention/retention-policy.js";
 import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
 import { HealthService } from "../domains/health-v2/health-service.js";
-import { DrizzleConversationImportRepository } from "../domains/conversation/conversation-import-repository.js";
-import { DrizzleConversationArchiveStateRepository } from "../domains/conversation/conversation-state-repository.js";
-import { ConversationImportService } from "../domains/conversation/conversation-import-service.js";
-import { DrizzleConversationImportExecutor } from "../domains/conversation/conversation-import-executor.js";
-import { DrizzleConversationArchiveReadRepository } from "../domains/conversation/conversation-archive-read-repository.js";
-import { ConversationArchiveReadService } from "../domains/conversation/conversation-archive-read-service.js";
-import { DrizzleConversationPruningRepository } from "../domains/conversation/conversation-pruning-repository.js";
-import { ConversationPruningService } from "../domains/conversation/conversation-pruning-service.js";
-import { DrizzleConversationFavoriteRepository } from "../domains/conversation/conversation-favorite-repository.js";
-import { ConversationFavoriteService } from "../domains/conversation/conversation-favorite-service.js";
-import { DrizzleConversationExclusionManagementRepository } from "../domains/conversation/conversation-exclusion-management-repository.js";
-import { ConversationExclusionManagementService } from "../domains/conversation/conversation-exclusion-management-service.js";
-import { DrizzleConversationImportHistoryRepository } from "../domains/conversation/conversation-import-history-repository.js";
-import { ConversationImportHistoryService } from "../domains/conversation/conversation-import-history-service.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import {
@@ -602,27 +588,6 @@ export function createProcessRuntime(
       nativeLiveSemanticService,
     );
   const healthService = new HealthService(new DrizzleHealthRepository(db));
-  const conversationImportService = new ConversationImportService(
-    new DrizzleConversationImportRepository(db),
-    new DrizzleConversationArchiveStateRepository(db),
-    new DrizzleConversationImportExecutor(db),
-  );
-  const conversationArchiveReadService = new ConversationArchiveReadService(
-    new DrizzleConversationArchiveReadRepository(db),
-  );
-  const conversationPruningService = new ConversationPruningService(
-    new DrizzleConversationPruningRepository(db),
-  );
-  const conversationFavoriteService = new ConversationFavoriteService(
-    new DrizzleConversationFavoriteRepository(db),
-  );
-  const conversationExclusionManagementService = new ConversationExclusionManagementService(
-    new DrizzleConversationExclusionManagementRepository(db),
-    conversationImportService,
-  );
-  const conversationImportHistoryService = new ConversationImportHistoryService(
-    new DrizzleConversationImportHistoryRepository(db),
-  );
   const governance = getMcpGovernanceConfig(runtimeEnv);
   const mcpSessionRegistry = new McpSessionRegistry({
     idleTtlMs: governance.idleTtlSeconds * 1_000,
@@ -686,8 +651,6 @@ export function createProcessRuntime(
     diaryCommentService,
     toyCommandService,
     globalSearchService,
-    conversationArchiveReadService,
-    conversationExclusionManagementService,
     todoService,
     universeService,
     healthService,
@@ -750,16 +713,6 @@ export function createProcessRuntime(
             companionBackgroundOpportunity,
         },
       },
-      webConversationImportService: conversationImportService,
-      webConversationArchiveReadService: conversationArchiveReadService,
-      webConversationPruningService: conversationPruningService,
-      webConversationLifecycle: {
-        conversationPruningService,
-        conversationArchiveReadService,
-      },
-      webConversationFavoriteService: conversationFavoriteService,
-      webConversationExclusionManagementService: conversationExclusionManagementService,
-      webConversationImportHistoryService: conversationImportHistoryService,
       healthSyncService: healthService,
       databaseReadinessProbe: database.probe,
       mcpSessionRegistry,
