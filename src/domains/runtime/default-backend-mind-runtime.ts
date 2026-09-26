@@ -78,6 +78,7 @@ import {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export const DEFAULT_NATIVE_LIVE_SUBJECT_ID = "G";
+export const DEFAULT_BREATH_RECALL_SALIENCE_BOOST = 0.08;
 // Used by background Distillation only; foreground Claude prompt assembly no longer injects canonical Surface.
 export const DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES = 8;
 export const DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE = "Asia/Shanghai";
@@ -131,6 +132,7 @@ export const DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG:
 
 export function createDefaultBackendMindRuntime(
   db: Database,
+  memoryLifecyclePolicy?: MemoryLifecyclePolicy,
 ): DefaultNativeLiveBackendMindRuntime {
   const conversations = new DrizzleNativeLiveConversationRepository(db);
   const subjectState = new DrizzleSubjectStateRuntimePort(db);
@@ -145,6 +147,8 @@ export function createDefaultBackendMindRuntime(
       breathLimit: 4,
       breathCooldownHours: 0,
       breathSalienceWeight: 0,
+      breathRecallSalienceBoost: DEFAULT_BREATH_RECALL_SALIENCE_BOOST,
+      ...(memoryLifecyclePolicy ? { memoryLifecyclePolicy } : {}),
       breathSemanticWeight: 0.65,
       breathSemanticMinScore: 0.80,
       breathSemanticCandidateLimit: 64,
