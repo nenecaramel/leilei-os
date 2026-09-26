@@ -129,6 +129,7 @@ implements NativeLiveMindFollowUpPort {
   async complete(input: {
     prepareId: string;
     workerId: string;
+    receipts: readonly MindSemanticActionReceipt[];
   }): Promise<boolean> {
     const rows = await this.db
       .update(nativeLiveMindFollowUps)
@@ -137,6 +138,7 @@ implements NativeLiveMindFollowUpPort {
         lockedBy: null,
         lockedUntil: null,
         lastErrorName: null,
+        receipts: input.receipts.map((receipt) => ({ ...receipt })),
         completedAt: sql`now()`,
         updatedAt: sql`now()`,
       })
@@ -187,6 +189,8 @@ implements NativeLivePostFinalizeRunner {
     workerId: string = randomUUID(),
     private readonly backgroundOpportunity:
       Pick<NativeLiveDistillationTrigger, "schedule"> | null = null,
+    private readonly semanticActions:
+      Pick<NativeLiveMindSemanticActionExecutor, "execute"> | null = null,
   ) {
     this.workerId = workerId;
   }
@@ -239,9 +243,27 @@ implements NativeLivePostFinalizeRunner {
         ),
       });
 
+      if (job.actions.length > 0 && !this.semanticActions) {
+        throw new Error("NativeLiveMindSemanticActionExecutorMissing");
+      }
+      const receipts: MindSemanticActionReceipt[] = [];
+      for (const [actionIndex, action] of job.actions.entries()) {
+        receipts.push(
+          await this.semanticActions!.execute({
+            userId: job.userId,
+            conversationId: job.conversationId,
+            assistantMessageId: job.assistantMessageId,
+            prepareId: job.prepareId,
+            actionIndex,
+            action,
+          }),
+        );
+      }
+
       const completed = await this.port.complete({
         prepareId: job.prepareId,
         workerId: this.workerId,
+        receipts,
       });
       if (!completed) {
         throw new Error("NativeLiveMindFollowUpCompletionLost");
