@@ -55,17 +55,19 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var activeNativeLiveConversationID: UUID?
     @Published private(set) var nativeLiveConversations: [NativeLiveConversationSummary] = []
+    @Published private(set) var nativeLiveConversationNextCursor: String?
     @Published private(set) var conversationBootstrapState: ConversationBootstrapState = .idle
     @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
     @Published private(set) var chatSyncState: ChatSyncState = .idle
     @Published private(set) var chatSendState: ChatSendState = .idle
     @Published private(set) var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
 
-    private var nativeLiveCurrentPathETags: [UUID: String] = [:]
     private var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
     private var conversationBootstrapInFlight = false
+    private var conversationPaginationInFlight = false
     private var chatRefreshInFlight = false
+    private var chatOlderHistoryInFlight = false
     private var chatRefreshPendingForce = false
     private var chatSendInFlight = false
     private static let activeNativeLiveConversationDefaultsKey =
@@ -189,7 +191,9 @@ final class AppModel: ObservableObject {
         }
 
         do {
-            nativeLiveConversations = try await api.nativeLiveConversations()
+            let page = try await api.nativeLiveConversationPage()
+            nativeLiveConversations = page.conversations
+            nativeLiveConversationNextCursor = page.nextCursor
             conversationBootstrapState = .ready
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
@@ -199,6 +203,41 @@ final class AppModel: ObservableObject {
             conversationBootstrapState = .unavailable(
                 error.localizedDescription
             )
+        }
+    }
+
+    func loadMoreNativeLiveConversations() async {
+        guard isAuthenticated,
+              !conversationBootstrapInFlight,
+              !conversationPaginationInFlight,
+              let cursor = nativeLiveConversationNextCursor else {
+            return
+        }
+
+        conversationPaginationInFlight = true
+        defer {
+            conversationPaginationInFlight = false
+        }
+
+        do {
+            let page = try await api.nativeLiveConversationPage(
+                cursor: cursor
+            )
+            let existingIDs = Set(
+                nativeLiveConversations.map { $0.id.lowercased() }
+            )
+            nativeLiveConversations.append(
+                contentsOf: page.conversations.filter {
+                    !existingIDs.contains($0.id.lowercased())
+                }
+            )
+            nativeLiveConversationNextCursor = page.nextCursor
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            return
         }
     }
 
@@ -264,7 +303,6 @@ final class AppModel: ObservableObject {
             }
             nativeLiveConversations.insert(renamed, at: 0)
 
-            nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
             await refreshNativeLiveCurrentPath(force: true)
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
@@ -297,7 +335,6 @@ final class AppModel: ObservableObject {
                 }
                 return id == conversationID
             }
-            nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
             nativeLiveRuntimeMetadataByConversationID.removeValue(
                 forKey: conversationID
             )
@@ -538,21 +575,19 @@ final class AppModel: ObservableObject {
             return
         }
 
-        var nextForce = force
-
         while isAuthenticated,
               let conversationID = activeNativeLiveConversationID {
             chatRefreshInFlight = true
-            if nativeLiveCurrentPath == nil {
+            let existingSnapshot = nativeLiveCurrentPath
+            if existingSnapshot == nil {
                 chatSyncState = .loading
             }
 
             do {
+                let deltaAnchor = existingSnapshot?.currentHeadMessageId
                 let result = try await api.nativeLiveCurrentPath(
                     conversationID: conversationID,
-                    etag: nextForce
-                        ? nil
-                        : nativeLiveCurrentPathETags[conversationID]
+                    afterMessageID: deltaAnchor
                 )
 
                 guard activeNativeLiveConversationID == conversationID else {
@@ -564,20 +599,22 @@ final class AppModel: ObservableObject {
                 case .notModified:
                     chatSyncState = .ready
 
-                case .modified(let snapshot, let etag):
-                    nativeLiveCurrentPath = snapshot
-                    if let etag {
-                        nativeLiveCurrentPathETags[conversationID] = etag
-                    } else {
-                        nativeLiveCurrentPathETags.removeValue(
-                            forKey: conversationID
+                case .modified(let snapshot, _):
+                    if let existingSnapshot,
+                       deltaAnchor != nil,
+                       !snapshot.resetRequired {
+                        nativeLiveCurrentPath = mergeNativeLiveDelta(
+                            existing: existingSnapshot,
+                            delta: snapshot
                         )
+                    } else {
+                        nativeLiveCurrentPath = snapshot
                     }
+                    reflectCurrentPathInConversationList()
                     chatSyncState = .ready
                 }
             } catch LeileiAPIError.backend(let status, _, _) where status == 404 {
                 nativeLiveCurrentPath = nil
-                nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
                 activeNativeLiveConversationID = nil
                 UserDefaults.standard.removeObject(
                     forKey: Self.activeNativeLiveConversationDefaultsKey
@@ -601,11 +638,76 @@ final class AppModel: ObservableObject {
             }
 
             chatRefreshPendingForce = false
-            nextForce = true
         }
 
         chatRefreshInFlight = false
         chatRefreshPendingForce = false
+    }
+
+    func loadOlderNativeLiveMessages() async {
+        guard isAuthenticated,
+              !chatRefreshInFlight,
+              !chatOlderHistoryInFlight,
+              let conversationID = activeNativeLiveConversationID,
+              let current = nativeLiveCurrentPath,
+              let olderCursor = current.olderCursor else {
+            return
+        }
+
+        chatOlderHistoryInFlight = true
+        let baseSyncToken = current.syncToken
+        defer {
+            chatOlderHistoryInFlight = false
+        }
+
+        do {
+            let result = try await api.nativeLiveCurrentPath(
+                conversationID: conversationID,
+                beforeMessageID: olderCursor
+            )
+
+            guard activeNativeLiveConversationID == conversationID,
+                  let latest = nativeLiveCurrentPath,
+                  latest.syncToken == baseSyncToken else {
+                return
+            }
+
+            switch result {
+            case .notModified:
+                return
+
+            case .modified(let page, _):
+                if page.resetRequired {
+                    nativeLiveCurrentPath = page
+                    reflectCurrentPathInConversationList()
+                    chatSyncState = .ready
+                    return
+                }
+
+                let known = Set(latest.messages.map(\.id))
+                let olderMessages = page.messages.filter {
+                    !known.contains($0.id)
+                }
+                nativeLiveCurrentPath = NativeLiveCurrentPathSnapshot(
+                    conversationId: latest.conversationId,
+                    title: latest.title,
+                    currentHeadMessageId: latest.currentHeadMessageId,
+                    updatedAt: latest.updatedAt,
+                    syncToken: latest.syncToken,
+                    truncated: page.truncated,
+                    olderCursor: page.olderCursor,
+                    resetRequired: false,
+                    messages: olderMessages + latest.messages
+                )
+                chatSyncState = .ready
+            }
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            return
+        }
     }
 
     private func completePreparedNativeLiveTurn(
@@ -623,7 +725,6 @@ final class AppModel: ObservableObject {
             conversationID: conversationID
         )
         await refreshNativeLiveCurrentPath(force: true)
-        await refreshNativeLiveConversations()
     }
 
     private func waitForNativeLiveTurn(
@@ -701,6 +802,48 @@ final class AppModel: ObservableObject {
         throw NativeLiveSendError.completionUnknown
     }
 
+    private func mergeNativeLiveDelta(
+        existing: NativeLiveCurrentPathSnapshot,
+        delta: NativeLiveCurrentPathSnapshot
+    ) -> NativeLiveCurrentPathSnapshot {
+        let known = Set(existing.messages.map(\.id))
+        let appended = delta.messages.filter {
+            !known.contains($0.id)
+        }
+        return NativeLiveCurrentPathSnapshot(
+            conversationId: delta.conversationId,
+            title: delta.title,
+            currentHeadMessageId: delta.currentHeadMessageId,
+            updatedAt: delta.updatedAt,
+            syncToken: delta.syncToken,
+            truncated: existing.truncated,
+            olderCursor: existing.olderCursor,
+            resetRequired: false,
+            messages: existing.messages + appended
+        )
+    }
+
+    private func reflectCurrentPathInConversationList() {
+        guard let snapshot = nativeLiveCurrentPath,
+              let index = nativeLiveConversations.firstIndex(where: {
+                  $0.id.caseInsensitiveCompare(snapshot.conversationId)
+                      == .orderedSame
+              }) else {
+            return
+        }
+
+        let previous = nativeLiveConversations[index]
+        let updated = NativeLiveConversationSummary(
+            id: previous.id,
+            title: snapshot.title,
+            currentHeadMessageId: snapshot.currentHeadMessageId,
+            createdAt: previous.createdAt,
+            updatedAt: snapshot.updatedAt
+        )
+        nativeLiveConversations.remove(at: index)
+        nativeLiveConversations.insert(updated, at: 0)
+    }
+
     func refreshConnectivity() async {
         backendState = .checking
         sessionState = .checking
@@ -741,13 +884,15 @@ final class AppModel: ObservableObject {
 
     private func clearNativeLiveSessionData() {
         nativeLiveConversations = []
+        nativeLiveConversationNextCursor = nil
         conversationBootstrapState = .idle
         nativeLiveCurrentPath = nil
-        nativeLiveCurrentPathETags.removeAll()
         nativeLiveRuntimeMetadata = nil
         nativeLiveRuntimeMetadataByConversationID.removeAll()
         chatSyncState = .idle
+        conversationPaginationInFlight = false
         chatRefreshInFlight = false
+        chatOlderHistoryInFlight = false
         chatRefreshPendingForce = false
         chatSendState = .idle
     }

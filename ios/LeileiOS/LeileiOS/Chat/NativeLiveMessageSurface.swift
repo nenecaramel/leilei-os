@@ -82,6 +82,7 @@ struct NativeLiveMessageSurface: View {
     let isTurnInFlight: Bool
     let pendingOperation: NativeLivePendingOperation?
     let onRefresh: () async -> Void
+    let onLoadOlder: () async -> Void
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
@@ -213,7 +214,11 @@ struct NativeLiveMessageSurface: View {
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
                 guard !isTurnInFlight else { return }
-                await onRefresh()
+                if snapshot?.olderCursor != nil {
+                    await onLoadOlder()
+                } else {
+                    await onRefresh()
+                }
             }
             .onChange(of: snapshot?.conversationId) { _, _ in
                 isAwayFromBottom = false

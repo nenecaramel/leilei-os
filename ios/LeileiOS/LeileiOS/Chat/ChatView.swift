@@ -45,6 +45,9 @@ struct ChatView: View {
                     onRefresh: {
                         await appModel.refreshNativeLiveCurrentPath(force: true)
                     },
+                    onLoadOlder: {
+                        await appModel.loadOlderNativeLiveMessages()
+                    },
                     onRetryMessage: { targetUserMessageID in
                         retryMessage(targetUserMessageID)
                     },
