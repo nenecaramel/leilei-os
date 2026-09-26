@@ -4,7 +4,6 @@ enum GlobalSearchModule: String, CaseIterable, Identifiable, Hashable, Codable {
     case diary
     case todo
     case universe
-    case conversation
 
     static let defaultModules: Set<GlobalSearchModule> = [
         .diary, .todo, .universe,
@@ -17,7 +16,6 @@ enum GlobalSearchModule: String, CaseIterable, Identifiable, Hashable, Codable {
         case .diary: "Diary"
         case .todo: "Todo"
         case .universe: "Universe"
-        case .conversation: "Conversations"
         }
     }
 }
@@ -107,8 +105,6 @@ struct GlobalSearchResultItem: Identifiable, Decodable {
     let author: String?
     let detailTool: String?
     let detailArguments: [String: String]?
-    let conversationID: String?
-    let conversationView: String?
 
     var id: String { "\(entityType.rawValue):\(entityID)" }
 
@@ -126,8 +122,6 @@ struct GlobalSearchResultItem: Identifiable, Decodable {
         case author
         case detailTool = "detail_tool"
         case detailArguments = "detail_arguments"
-        case conversationID = "conversation_id"
-        case conversationView = "conversation_view"
     }
 }
 
