@@ -81,7 +81,7 @@ implements NativeLiveBackendMindRuntime {
     private readonly mind: NativeLiveMindRuntime,
     private readonly settlementCatchUp: Pick<
       SubjectStateSettlementCatchUp,
-      "run"
+      "run" | "refreshAfterReplacement"
     > | null = null,
   ) {}
 
@@ -263,6 +263,13 @@ implements NativeLiveBackendMindRuntime {
       userId: input.userId,
       conversation,
     });
+    try {
+      await this.settlementCatchUp?.refreshAfterReplacement({
+        userId: input.userId,
+      });
+    } catch {
+      // Branch repair is derived and fail-soft after canonical replacement.
+    }
   }
 
   private async runSettlementCatchUp(
