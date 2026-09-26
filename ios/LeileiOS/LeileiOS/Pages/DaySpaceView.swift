@@ -1971,11 +1971,10 @@ private final class DaySpaceTodoNativeTextView: UITextView {
             return
         }
 
-        let input = key.charactersIgnoringModifiers
         let textLength = text.utf16.count
         let collapsed = selectedRange.length == 0
 
-        if (input == "\r" || input == "\n"),
+        if key.keyCode == .keyboardReturn,
            key.modifierFlags.contains(.shift) {
             shiftReturnPending = true
             super.pressesBegan(
@@ -1985,35 +1984,35 @@ private final class DaySpaceTodoNativeTextView: UITextView {
             return
         }
 
-        if input == UIKeyCommand.inputDeleteForward,
+        if key.keyCode == .keyboardDeleteForward,
            collapsed,
            selectedRange.location == textLength,
            onDeleteForwardAtEnd?() == true {
             return
         }
 
-        if input == UIKeyCommand.inputLeftArrow,
+        if key.keyCode == .keyboardLeftArrow,
            collapsed,
            selectedRange.location == 0,
            onMovePrevious?() == true {
             return
         }
 
-        if input == UIKeyCommand.inputRightArrow,
+        if key.keyCode == .keyboardRightArrow,
            collapsed,
            selectedRange.location == textLength,
            onMoveNext?() == true {
             return
         }
 
-        if input == UIKeyCommand.inputUpArrow,
+        if key.keyCode == .keyboardUpArrow,
            collapsed,
            selectedRange.location == 0,
            onMovePrevious?() == true {
             return
         }
 
-        if input == UIKeyCommand.inputDownArrow,
+        if key.keyCode == .keyboardDownArrow,
            collapsed,
            selectedRange.location == textLength,
            onMoveNext?() == true {
