@@ -1243,26 +1243,16 @@ private struct DaySpaceDiaryPaperDetail: View {
                 .foregroundStyle(Color.secondary)
             },
             signature: {
-                Menu {
-                    ForEach(DaySpaceAuthor.allCases) { value in
-                        Button(value.rawValue) {
-                            author = value
-                            errorMessage = nil
-                        }
-                    }
-                } label: {
-                    Text(author?.rawValue ?? "—")
-                        .font(
-                            .system(
-                                size: 20,
-                                weight: .medium,
-                                design: .serif
-                            )
+                Text(author?.rawValue ?? "—")
+                    .font(
+                        .system(
+                            size: 20,
+                            weight: .medium,
+                            design: .serif
                         )
-                        .foregroundStyle(Color.secondary)
-                        .frame(minWidth: 32, minHeight: 28)
-                }
-                .buttonStyle(.plain)
+                    )
+                    .foregroundStyle(Color.secondary)
+                    .frame(minWidth: 32, minHeight: 28)
             }
         ) {
             VStack(alignment: .leading, spacing: 0) {
