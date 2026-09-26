@@ -23,7 +23,7 @@ struct ChatView: View {
     var body: some View {
         ZStack {
             Color(.systemBackground)
-                .ignoresSafeArea()
+                .ignoresSafeArea(.container)
 
             if isDraftConversation && pendingOperation == nil {
                 Color.clear
@@ -122,7 +122,7 @@ struct ChatView: View {
                     startPoint: .top,
                     endPoint: .center
                 )
-                .ignoresSafeArea()
+                .ignoresSafeArea(.container)
             }
             .offset(
                 y: isSystemKeyboardVisible
@@ -155,7 +155,7 @@ struct ChatView: View {
                         maxWidth: .infinity,
                         maxHeight: .infinity
                     )
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(.container)
             }
         }
     }
