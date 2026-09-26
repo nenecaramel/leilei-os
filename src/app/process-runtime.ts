@@ -172,8 +172,6 @@ import {
   DATA_IMPORT_RETENTION_DAYS,
   NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS,
 } from "../domains/retention/retention-policy.js";
-import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-repository.js";
-import { SentinelService } from "../domains/sentinel/sentinel-service.js";
 import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
 import { HealthService } from "../domains/health-v2/health-service.js";
 import { DrizzleConversationImportRepository } from "../domains/conversation/conversation-import-repository.js";
@@ -599,8 +597,6 @@ export function createProcessRuntime(
       nativeLiveBackendMind,
       nativeLiveSemanticService,
     );
-  const sentinelRepository = new DrizzleSentinelRepository(db);
-  const sentinelService = new SentinelService(sentinelRepository);
   const healthService = new HealthService(new DrizzleHealthRepository(db));
   const conversationImportService = new ConversationImportService(
     new DrizzleConversationImportRepository(db),
@@ -696,7 +692,6 @@ export function createProcessRuntime(
     todoService,
     universeService,
     healthService,
-    sentinelService,
     bridgeService,
     bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
     publicToolProfiles,
@@ -766,7 +761,6 @@ export function createProcessRuntime(
             companionBackgroundOpportunity,
         },
       },
-      webSentinelService: sentinelService,
       webConversationImportService: conversationImportService,
       webConversationArchiveReadService: conversationArchiveReadService,
       webConversationPruningService: conversationPruningService,
