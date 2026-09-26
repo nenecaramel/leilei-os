@@ -217,8 +217,6 @@ try {
     .select({
       providerSessionId:
         conversationProviderSessionCheckpoints.providerSessionId,
-      runtimeMetadata:
-        conversationProviderSessionCheckpoints.runtimeMetadata,
     })
     .from(conversationProviderSessionCheckpoints)
     .where(
@@ -240,11 +238,9 @@ try {
     .limit(1);
 
   assert.ok(checkpoint, "Provider checkpoint was not persisted.");
-  assert.ok(checkpoint.providerSessionId.trim());
-  assert.deepEqual(
-    checkpoint.runtimeMetadata,
-    turn.runtimeMetadata,
-    "Checkpoint runtime metadata differs from authoritative turn readback.",
+  assert.ok(
+    checkpoint.providerSessionId.trim(),
+    "Provider checkpoint session id is blank.",
   );
 
   const canonical = await conversationService.getConversation({
@@ -278,7 +274,8 @@ try {
             }
           : null,
       capabilityObserved: capability !== null,
-      checkpointRuntimeMetadataMatches: true,
+      checkpointProviderSessionPersisted: true,
+      runtimeMetadataAuthority: "turn",
       canonicalHeadMatchesAssistant: true,
     }) + "\n",
   );

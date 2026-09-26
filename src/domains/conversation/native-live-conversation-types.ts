@@ -63,7 +63,6 @@ export type NativeLiveProviderCheckpoint = {
   canonicalMessageId: string;
   provider: ConversationRuntimeProvider;
   providerSessionId: string;
-  runtimeMetadata: Record<string, unknown> | null;
   providerCheckpointId: string | null;
   createdAt: string;
 };
@@ -71,6 +70,5 @@ export type NativeLiveProviderCheckpoint = {
 export type NativeLiveProviderCheckpointInput = {
   provider: ConversationRuntimeProvider;
   providerSessionId: string;
-  runtimeMetadata?: Record<string, unknown> | null;
   providerCheckpointId?: string | null;
 };

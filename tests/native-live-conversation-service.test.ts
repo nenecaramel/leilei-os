@@ -105,7 +105,6 @@ class FakeRepository implements NativeLiveConversationRepository {
       canonicalMessageId: "a1",
       provider: "claude_code",
       providerSessionId: "session-1",
-      runtimeMetadata: null,
       providerCheckpointId: "checkpoint-1",
       createdAt: "2026-09-21T00:00:00.000Z",
     };
