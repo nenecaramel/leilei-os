@@ -107,7 +107,7 @@ export const MIND_LIFECYCLE_PROFILES = {
     initialState: "active",
     transitions: {
       active: ["resolved", "dormant"],
-      resolved: ["dormant"],
+      resolved: ["active", "dormant"],
       dormant: ["active"],
     },
     purgeFrom: ["dormant"],

@@ -6,6 +6,7 @@ import type {
 export type SubjectStateEvolutionRunners = {
   thoughtEvolution?: SubjectStateEvolutionRunner | null;
   driveEvolution?: SubjectStateEvolutionRunner | null;
+  curiosityEvolution?: SubjectStateEvolutionRunner | null;
   curiosityTopicProjection?: SubjectStateEvolutionRunner | null;
   topicEvolution?: SubjectStateEvolutionRunner | null;
 };
@@ -64,6 +65,11 @@ export class SubjectStateSettlementCatchUp {
 
     const settledCuriosity = settledKinds.has("curiosity");
     if (settledCuriosity) {
+      await this.runOne(
+        this.runners.curiosityEvolution,
+        input.userId,
+        now,
+      );
       await this.runOne(
         this.runners.curiosityTopicProjection,
         input.userId,

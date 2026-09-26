@@ -117,6 +117,14 @@ test("Thought, Curiosity, and Topic can go dormant and later reactivate", () => 
     }),
     true,
   );
+  assert.equal(
+    isMindLifecycleTransitionAllowed({
+      kind: "curiosity",
+      from: "resolved",
+      to: "active",
+    }),
+    true,
+  );
 });
 
 test("Topic ownership stays hybrid until the authored Topic entry point is retired", () => {

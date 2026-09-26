@@ -48,7 +48,8 @@ test("settlement catch-up runs only derived processes needed by newly settled ki
     {
       driveEvolution: runner("drive"),
       thoughtEvolution: runner("thought"),
-      curiosityTopicProjection: runner("curiosity"),
+      curiosityEvolution: runner("curiosity-evolution"),
+      curiosityTopicProjection: runner("curiosity-projection"),
       topicEvolution: runner("topic"),
     },
     () => now,
@@ -68,7 +69,8 @@ test("settlement catch-up runs only derived processes needed by newly settled ki
   assert.deepEqual(calls, [
     "drive:u1:G:2026-09-23T07:35:00.000Z:settlement_catch_up",
     "thought:u1:G:2026-09-23T07:35:00.000Z:settlement_catch_up",
-    "curiosity:u1:G:2026-09-23T07:35:00.000Z:settlement_catch_up",
+    "curiosity-evolution:u1:G:2026-09-23T07:35:00.000Z:settlement_catch_up",
+    "curiosity-projection:u1:G:2026-09-23T07:35:00.000Z:settlement_catch_up",
     "topic:u1:G:2026-09-23T07:35:00.000Z:settlement_catch_up",
   ]);
 });
@@ -121,9 +123,14 @@ test("settlement catch-up is fail-soft per process and continues later required 
           calls.push("thought");
         },
       },
+      curiosityEvolution: {
+        async runOnce() {
+          calls.push("curiosity-evolution");
+        },
+      },
       curiosityTopicProjection: {
         async runOnce() {
-          calls.push("curiosity");
+          calls.push("curiosity-projection");
           throw new Error("simulated curiosity projection failure");
         },
       },
@@ -146,5 +153,11 @@ test("settlement catch-up is fail-soft per process and continues later required 
       ],
     })
   );
-  assert.deepEqual(calls, ["drive", "thought", "curiosity", "topic"]);
+  assert.deepEqual(calls, [
+    "drive",
+    "thought",
+    "curiosity-evolution",
+    "curiosity-projection",
+    "topic",
+  ]);
 });
