@@ -63,9 +63,6 @@ import {
   BackgroundLoopOrchestrator,
 } from "../domains/runtime/background-loop-orchestrator.js";
 import {
-  NativeLivePostTurnBackgroundOpportunity,
-} from "../domains/runtime/native-live-background-opportunity.js";
-import {
   CompanionBackgroundOpportunityService,
 } from "../domains/runtime/companion-background-opportunity.js";
 import {
@@ -431,11 +428,6 @@ export function createProcessRuntime(
       backgroundLoopOrchestrator,
       memoryDecayConfig,
     );
-  const nativeLivePostTurnBackgroundOpportunity =
-    new NativeLivePostTurnBackgroundOpportunity(
-      distillationCrossDeviceBackgroundTrigger,
-      backgroundOpportunityPolicy,
-    );
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
   );
@@ -450,7 +442,7 @@ export function createProcessRuntime(
     nativeLiveTurnPort,
     nativeLiveBackendMind,
     undefined,
-    nativeLivePostTurnBackgroundOpportunity,
+    distillationCrossDeviceBackgroundTrigger,
   );
   const nativeLiveMindFollowUpScheduler =
     createNativeLiveMindFollowUpScheduler({
