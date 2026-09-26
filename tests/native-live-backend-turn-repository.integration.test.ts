@@ -5,6 +5,8 @@ import { createDatabase } from "../src/database/client.js";
 import {
   nativeLiveTurnPreparations,
   conversations,
+  runtimeDistillationWatermarks,
+  runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
 import {
@@ -282,50 +284,192 @@ test(
       secondPrepare.command.parent_provider_session_id,
       "provider-first",
     );
+    const secondUserId = secondPrepare.command.canonical_user_message_id;
 
-    const failure = await coordinator.finalize(user.id, {
+    const secondFinalize = await coordinator.finalize(user.id, {
       protocol_version: 1,
       prepare_id: secondPrepare.command.prepare_id,
       request_id: secondRequestId,
       conversation_id: conversation.id,
-      status: "failure",
-      error_code: "CLAUDE_PROCESS_FAILED",
+      status: "success",
+      provider_session_id: "provider-second",
+      normalized_events: [
+        { type: "text", payload: { text: "second answer" } },
+        {
+          type: "result",
+          payload: { status: "success", final_text: "second answer" },
+        },
+      ],
     });
-    assert.equal(failure.ok, false);
-    if (failure.ok) throw new Error("expected runtime failure result");
-    assert.equal(failure.code, "CLAUDE_PROCESS_FAILED");
+    assert.equal(secondFinalize.ok, true);
+    if (!secondFinalize.ok) throw new Error("expected second finalize success");
+    const oldSecondAssistantId = secondFinalize.assistantMessageId;
 
-    const failedRead = await port.readTurn({
+    const causalStateId = crypto.randomUUID();
+    const safeStateId = crypto.randomUUID();
+    const distilledStateId = crypto.randomUUID();
+
+    await database.db.insert(runtimeSubjectStates).values([
+      {
+        id: causalStateId,
+        userId: user.id,
+        subjectId: "G",
+        kind: "drive",
+        text: "old branch drive",
+        payload: null,
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          semanticActor: { kind: "subject", id: "G" },
+          producer: { kind: "model", id: "test" },
+          committer: { kind: "runtime", id: "test" },
+          authority: "subject_authorized",
+          scope: {
+            userId: user.id,
+            subjectId: "G",
+            applicability: "global",
+            conversationId: null,
+            pathHeadMessageId: null,
+            visibility: "subject_private",
+            sensitivity: "normal",
+            audience: ["G"],
+          },
+          status: {
+            generationStatus: "committed",
+            presentationStatus: "presented",
+            pathStatus: "current",
+            settlementStatus: "settled",
+            validityStatus: "valid",
+          },
+          provenance: {
+            sources: [{ kind: "message", id: oldSecondAssistantId }],
+            causedBy: oldSecondAssistantId,
+            derivedFrom: [],
+          },
+          versions: {
+            schemaVersion: 1,
+            ruleVersion: "test",
+            processVersion: "test",
+          },
+        },
+      },
+      {
+        id: safeStateId,
+        userId: user.id,
+        subjectId: "G",
+        kind: "memory",
+        text: "surviving first branch memory",
+        payload: null,
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          semanticActor: { kind: "subject", id: "G" },
+          producer: { kind: "model", id: "test" },
+          committer: { kind: "runtime", id: "test" },
+          authority: "subject_authorized",
+          scope: {
+            userId: user.id,
+            subjectId: "G",
+            applicability: "global",
+            conversationId: null,
+            pathHeadMessageId: null,
+            visibility: "subject_private",
+            sensitivity: "normal",
+            audience: ["G"],
+          },
+          status: {
+            generationStatus: "committed",
+            presentationStatus: "presented",
+            pathStatus: "current",
+            settlementStatus: "settled",
+            validityStatus: "valid",
+          },
+          provenance: {
+            sources: [{
+              kind: "message",
+              id: firstFinalize.assistantMessageId,
+            }],
+            causedBy: firstFinalize.assistantMessageId,
+            derivedFrom: [],
+          },
+          versions: {
+            schemaVersion: 1,
+            ruleVersion: "test",
+            processVersion: "test",
+          },
+        },
+      },
+      {
+        id: distilledStateId,
+        userId: user.id,
+        subjectId: "G",
+        kind: "memory",
+        text: "distilled before replacement",
+        payload: {
+          formation: "distillation",
+          source_message_count: 2,
+        },
+        scopeApplicability: "path",
+        scopeConversationId: conversation.id,
+        scopePathHeadMessageId: firstFinalize.assistantMessageId,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          semanticActor: { kind: "process", id: "distillation" },
+          producer: { kind: "model", id: "test" },
+          committer: { kind: "runtime", id: "test" },
+          authority: "derived",
+          scope: {
+            userId: user.id,
+            subjectId: "G",
+            applicability: "path",
+            conversationId: conversation.id,
+            pathHeadMessageId: firstFinalize.assistantMessageId,
+            visibility: "subject_private",
+            sensitivity: "normal",
+            audience: ["G"],
+          },
+          status: {
+            generationStatus: "committed",
+            presentationStatus: "presented",
+            pathStatus: "current",
+            settlementStatus: "settled",
+            validityStatus: "valid",
+          },
+          provenance: {
+            sources: [{
+              kind: "message",
+              id: firstFinalize.assistantMessageId,
+            }],
+            causedBy: firstFinalize.assistantMessageId,
+            derivedFrom: [firstFinalize.assistantMessageId],
+            processRunId: crypto.randomUUID(),
+          },
+          versions: {
+            schemaVersion: 1,
+            ruleVersion: "test",
+            processVersion: "test",
+          },
+        },
+      },
+    ]);
+
+    await database.db.insert(runtimeDistillationWatermarks).values({
       userId: user.id,
-      prepareId: secondPrepare.command.prepare_id,
-    });
-    assert.ok(failedRead);
-    assert.equal(failedRead.canonicalStatus, "finalized_failure");
-    assert.equal(failedRead.failureCode, "CLAUDE_PROCESS_FAILED");
-    assert.equal(failedRead.assistantMessage, null);
-
-    const failureReplay = await coordinator.finalize(user.id, {
-      protocol_version: 1,
-      prepare_id: secondPrepare.command.prepare_id,
-      request_id: secondRequestId,
-      conversation_id: conversation.id,
-      status: "failure",
-      error_code: "CLAUDE_PROCESS_FAILED",
-    });
-    assert.equal(failureReplay.ok, false);
-    if (failureReplay.ok) throw new Error("expected failure replay result");
-    assert.equal(failureReplay.code, "CLAUDE_PROCESS_FAILED");
-
-    const afterFailure = await conversationService.getConversation({
-      userId: user.id,
+      subjectId: "G",
       conversationId: conversation.id,
+      lastSourceMessageId: oldSecondAssistantId,
+      processVersion: "test",
     });
-    assert.ok(afterFailure);
-    assert.equal(afterFailure.messages.length, 3);
-    assert.equal(
-      afterFailure.currentHeadMessageId,
-      firstFinalize.assistantMessageId,
-    );
 
     const retryRequestId =
       "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -334,8 +478,7 @@ test(
       request_id: retryRequestId,
       operation: "retry",
       conversation_id: conversation.id,
-      target_user_message_id:
-        secondPrepare.command.canonical_user_message_id,
+      target_user_message_id: secondUserId,
     });
     assert.equal(retry.ok, true);
     if (!retry.ok) throw new Error("expected retry prepare success");
@@ -346,6 +489,109 @@ test(
     );
     assert.equal(retry.command.prompt, "second");
 
+    const retryFinalize = await coordinator.finalize(user.id, {
+      protocol_version: 1,
+      prepare_id: retry.command.prepare_id,
+      request_id: retryRequestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "provider-retry",
+      normalized_events: [
+        { type: "text", payload: { text: "retry answer" } },
+        {
+          type: "result",
+          payload: { status: "success", final_text: "retry answer" },
+        },
+      ],
+    });
+    assert.equal(retryFinalize.ok, true);
+    if (!retryFinalize.ok) throw new Error("expected retry finalize success");
+
+    const afterRetry = await conversationService.getConversation({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(afterRetry);
+    assert.equal(
+      afterRetry.messages.some((message) => message.id === oldSecondAssistantId),
+      false,
+    );
+    assert.equal(
+      afterRetry.messages.some((message) => message.id === secondUserId),
+      true,
+    );
+    assert.equal(
+      afterRetry.currentHeadMessageId,
+      retryFinalize.assistantMessageId,
+    );
+
+    const statesAfterRetry = await database.db
+      .select({ id: runtimeSubjectStates.id })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, user.id));
+    const stateIdsAfterRetry = new Set(statesAfterRetry.map((row) => row.id));
+    assert.equal(stateIdsAfterRetry.has(causalStateId), false);
+    assert.equal(stateIdsAfterRetry.has(distilledStateId), false);
+    assert.equal(stateIdsAfterRetry.has(safeStateId), true);
+
+    const watermarksAfterRetry = await database.db
+      .select({ conversationId: runtimeDistillationWatermarks.conversationId })
+      .from(runtimeDistillationWatermarks)
+      .where(eq(runtimeDistillationWatermarks.userId, user.id));
+    assert.equal(watermarksAfterRetry.length, 0);
+
+    const retryCausalStateId = crypto.randomUUID();
+    await database.db.insert(runtimeSubjectStates).values({
+      id: retryCausalStateId,
+      userId: user.id,
+      subjectId: "G",
+      kind: "thought",
+      text: "retry branch thought",
+      payload: null,
+      scopeApplicability: "global",
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+      settlementStatus: "settled",
+      pathStatus: "current",
+      validityStatus: "valid",
+      envelope: {
+        semanticActor: { kind: "subject", id: "G" },
+        producer: { kind: "model", id: "test" },
+        committer: { kind: "runtime", id: "test" },
+        authority: "subject_authorized",
+        scope: {
+          userId: user.id,
+          subjectId: "G",
+          applicability: "global",
+          conversationId: null,
+          pathHeadMessageId: null,
+          visibility: "subject_private",
+          sensitivity: "normal",
+          audience: ["G"],
+        },
+        status: {
+          generationStatus: "committed",
+          presentationStatus: "presented",
+          pathStatus: "current",
+          settlementStatus: "settled",
+          validityStatus: "valid",
+        },
+        provenance: {
+          sources: [{
+            kind: "message",
+            id: retryFinalize.assistantMessageId,
+          }],
+          causedBy: retryFinalize.assistantMessageId,
+          derivedFrom: [],
+        },
+        versions: {
+          schemaVersion: 1,
+          ruleVersion: "test",
+          processVersion: "test",
+        },
+      },
+    });
+
     const editRequestId =
       "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const edit = await coordinator.prepare(user.id, {
@@ -353,8 +599,7 @@ test(
       request_id: editRequestId,
       operation: "edit",
       conversation_id: conversation.id,
-      target_user_message_id:
-        secondPrepare.command.canonical_user_message_id,
+      target_user_message_id: secondUserId,
       text: "second edited",
     });
     assert.equal(edit.ok, true);
@@ -364,31 +609,99 @@ test(
       edit.command.parent_provider_session_id,
       "provider-first",
     );
-    assert.notEqual(
-      edit.command.canonical_user_message_id,
-      secondPrepare.command.canonical_user_message_id,
+    assert.notEqual(edit.command.canonical_user_message_id, secondUserId);
+
+    const editedUserId = edit.command.canonical_user_message_id;
+    const editFinalize = await coordinator.finalize(user.id, {
+      protocol_version: 1,
+      prepare_id: edit.command.prepare_id,
+      request_id: editRequestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "provider-edit",
+      normalized_events: [
+        { type: "text", payload: { text: "edited answer" } },
+        {
+          type: "result",
+          payload: { status: "success", final_text: "edited answer" },
+        },
+      ],
+    });
+    assert.equal(editFinalize.ok, true);
+    if (!editFinalize.ok) throw new Error("expected edit finalize success");
+
+    const afterEdit = await conversationService.getConversation({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(afterEdit);
+    const afterEditIds = new Set(afterEdit.messages.map((message) => message.id));
+    assert.equal(afterEditIds.has(secondUserId), false);
+    assert.equal(afterEditIds.has(retryFinalize.assistantMessageId), false);
+    assert.equal(afterEditIds.has(editedUserId), true);
+    assert.equal(afterEditIds.has(editFinalize.assistantMessageId), true);
+    assert.equal(
+      afterEdit.currentHeadMessageId,
+      editFinalize.assistantMessageId,
     );
+
+    const statesAfterEdit = await database.db
+      .select({ id: runtimeSubjectStates.id })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, user.id));
+    const stateIdsAfterEdit = new Set(statesAfterEdit.map((row) => row.id));
+    assert.equal(stateIdsAfterEdit.has(retryCausalStateId), false);
+    assert.equal(stateIdsAfterEdit.has(safeStateId), true);
+
+    const failureRequestId =
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const failurePrepare = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: failureRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: editFinalize.assistantMessageId,
+      text: "will fail",
+    });
+    assert.equal(failurePrepare.ok, true);
+    if (!failurePrepare.ok) throw new Error("expected failure prepare success");
+
+    const failure = await coordinator.finalize(user.id, {
+      protocol_version: 1,
+      prepare_id: failurePrepare.command.prepare_id,
+      request_id: failureRequestId,
+      conversation_id: conversation.id,
+      status: "failure",
+      error_code: "CLAUDE_PROCESS_FAILED",
+    });
+    assert.equal(failure.ok, false);
+    if (failure.ok) throw new Error("expected runtime failure result");
+    assert.equal(failure.code, "CLAUDE_PROCESS_FAILED");
 
     const preparations = await database.db
       .select({
+        operation: nativeLiveTurnPreparations.operation,
         status: nativeLiveTurnPreparations.status,
-        mindPrepared: nativeLiveTurnPreparations.mindPrepared,
       })
       .from(nativeLiveTurnPreparations)
       .where(eq(nativeLiveTurnPreparations.userId, user.id));
 
-    assert.equal(preparations.length, 4);
     assert.equal(
-      preparations.filter((row) => row.status === "finalized_success").length,
-      1,
+      preparations.some((row) =>
+        row.operation === "retry" && row.status === "finalized_success"
+      ),
+      false,
+      "Edit purge must cascade the superseded Retry preparation",
     );
     assert.equal(
-      preparations.filter((row) => row.status === "finalized_failure").length,
-      1,
+      preparations.some((row) =>
+        row.operation === "edit" && row.status === "finalized_success"
+      ),
+      true,
     );
     assert.equal(
-      preparations.filter((row) => row.mindPrepared).length,
-      1,
+      preparations.some((row) => row.status === "finalized_failure"),
+      true,
     );
   },
 );
