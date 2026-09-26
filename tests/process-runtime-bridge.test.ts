@@ -27,6 +27,9 @@ test("process runtime exposes bridge service from the shared database resource",
     runtime.appDependencies.nativeLiveProduction.web.turnReader,
   );
   assert.ok(
+    runtime.appDependencies.nativeLiveProduction.web.turnWaitService,
+  );
+  assert.ok(
     runtime.appDependencies.nativeLiveProduction.web.currentPathReader,
   );
   assert.ok(
