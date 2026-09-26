@@ -5,6 +5,7 @@ struct DiaryView: View {
 
     @State private var query = ""
     @State private var timeFilter: DiaryTimeFilter = .anyTime
+    @State private var authorFilter: DiaryAuthorFilter = .any
     @State private var archivePresented = false
     @State private var createPresented = false
     @State private var customDateRangePresented = false
@@ -127,6 +128,22 @@ struct DiaryView: View {
                     }
                     .pickerStyle(.menu)
                     .menuActionDismissBehavior(.disabled)
+
+                    Picker("Author", selection: $authorFilter) {
+                        Text("Any Author")
+                            .tag(DiaryAuthorFilter.any)
+
+                        Text("L")
+                            .tag(DiaryAuthorFilter.l)
+
+                        Text("G")
+                            .tag(DiaryAuthorFilter.g)
+
+                        Text("C")
+                            .tag(DiaryAuthorFilter.c)
+                    }
+                    .pickerStyle(.menu)
+                    .menuActionDismissBehavior(.disabled)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .medium))
@@ -149,16 +166,8 @@ struct DiaryView: View {
                 }
             }
         }
-        .task(id: query) {
-            do {
-                try await Task.sleep(for: .milliseconds(250))
-                try Task.checkCancellation()
-                await loadDiary()
-            } catch is CancellationError {
-                return
-            } catch {
-                return
-            }
+        .task {
+            await loadDiary()
         }
         .refreshable {
             await loadDiary()
@@ -170,10 +179,8 @@ struct DiaryView: View {
         state = .loading
 
         do {
-            let result = try await loadAllDiaryPages(for: query)
-            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                diaryCount = result.count
-            }
+            let result = try await loadAllDiaryPages()
+            diaryCount = result.count
             state = .loaded(result.diaries)
         } catch LeileiAPIError.missingAccessToken {
             state = .authRequired("Sign in")
@@ -201,9 +208,7 @@ struct DiaryView: View {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func loadAllDiaryPages(
-        for query: String
-    ) async throws -> (diaries: [DiaryEntry], count: Int) {
+    private func loadAllDiaryPages() async throws -> (diaries: [DiaryEntry], count: Int) {
         let pageSize = 100
         var offset = 0
         var totalCount = 0
@@ -215,7 +220,6 @@ struct DiaryView: View {
 
             let response: DiaryListEnvelope = try await appModel.api.request(
                 path: diaryPath(
-                    for: query,
                     limit: pageSize,
                     offset: offset
                 )
@@ -240,22 +244,14 @@ struct DiaryView: View {
     }
 
     private func diaryPath(
-        for query: String,
         limit: Int,
         offset: Int
     ) -> String {
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
         var components = URLComponents()
         components.queryItems = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "offset", value: String(offset)),
         ]
-        if !normalized.isEmpty {
-            components.queryItems?.append(
-                URLQueryItem(name: "q", value: normalized)
-            )
-        }
 
         return "/api/v1/diary?\(components.percentEncodedQuery ?? "")"
     }
@@ -277,14 +273,43 @@ struct DiaryView: View {
     }
 
     private func filteredDiaries(_ diaries: [DiaryEntry]) -> [DiaryEntry] {
-        guard timeFilter == .custom else { return diaries }
-
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let dateFrom = DiaryDate.apiDate(customStartDate)
         let dateTo = DiaryDate.apiDate(customEndDate)
 
         return diaries.filter { diary in
-            diary.date >= dateFrom && diary.date <= dateTo
+            if timeFilter == .custom
+                && (diary.date < dateFrom || diary.date > dateTo) {
+                return false
+            }
+
+            if let author = authorFilter.author,
+               diary.author != author {
+                return false
+            }
+
+            guard !normalizedQuery.isEmpty else {
+                return true
+            }
+
+            return diary.title.localizedCaseInsensitiveContains(normalizedQuery)
+                || (diary.content?.localizedCaseInsensitiveContains(normalizedQuery) ?? false)
+                || (diary.mood?.localizedCaseInsensitiveContains(normalizedQuery) ?? false)
+                || diary.tags.contains {
+                    $0.localizedCaseInsensitiveContains(normalizedQuery)
+                }
         }
+    }
+}
+
+private enum DiaryAuthorFilter: String, CaseIterable {
+    case any
+    case l = "L"
+    case g = "G"
+    case c = "C"
+
+    var author: String? {
+        self == .any ? nil : rawValue
     }
 }
 
