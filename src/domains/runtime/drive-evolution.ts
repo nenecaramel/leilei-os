@@ -37,6 +37,8 @@ export type DriveEvolutionCandidate = {
   sourceId: string;
   createdAt: string;
   updatedAt: string;
+  durableSatisfactionTotal?: number;
+  durableLastSatisfiedAt?: string | null;
 };
 
 export type DriveEvolutionUpdate = {
@@ -302,15 +304,32 @@ function evaluateThread(
   const priorStates = candidates
     .map((candidate) => safeReadDriveEvolution(candidate.payload))
     .filter((value): value is DriveEvolutionState => Boolean(value));
-  const satisfactionTotal = Math.max(
-    0,
-    ...priorStates.map((state) => state.satisfactionTotal),
+  const hasDurableSatisfactionProjection = candidates.some(
+    (candidate) => candidate.durableSatisfactionTotal !== undefined,
   );
-  const lastSatisfiedAt = priorStates
-    .map((state) => state.lastSatisfiedAt)
-    .filter((value): value is string => Boolean(value))
-    .sort()
-    .at(-1) ?? null;
+  const satisfactionTotal = hasDurableSatisfactionProjection
+    ? canonicalizeDriveNumber(
+        candidates.reduce(
+          (sum, candidate) =>
+            sum + (candidate.durableSatisfactionTotal ?? 0),
+          0,
+        ),
+      )
+    : Math.max(
+        0,
+        ...priorStates.map((state) => state.satisfactionTotal),
+      );
+  const lastSatisfiedAt = hasDurableSatisfactionProjection
+    ? candidates
+        .map((candidate) => candidate.durableLastSatisfiedAt ?? null)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) ?? null
+    : priorStates
+        .map((state) => state.lastSatisfiedAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) ?? null;
 
   const pressure = clampDrivePressure(
     policy.basePressure
