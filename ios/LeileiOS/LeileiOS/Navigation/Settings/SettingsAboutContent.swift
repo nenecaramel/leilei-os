@@ -17,8 +17,6 @@ struct SettingsAboutContent: View {
                 LabeledContent("Leilei OS", value: "Leilei OS")
                 LabeledContent("Version", value: version)
                 LabeledContent("Build", value: build)
-                LabeledContent("Commit", value: "Unavailable")
-                LabeledContent("Environment", value: "Unavailable")
             }
         }
         .formStyle(.grouped)
