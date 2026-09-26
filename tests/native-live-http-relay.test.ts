@@ -724,7 +724,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
       assert.equal(widerWindow.status, 200);
       assert.equal(
         widerWindow.headers.get("etag"),
-        '"head:77777777-7777-4777-8777-777777777777:limit:3"',
+        '"head:77777777-7777-4777-8777-777777777777:limit:3:before:-:after:-"',
       );
       assert.deepEqual(
         currentPathReader.calls[2],
