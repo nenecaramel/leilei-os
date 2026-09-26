@@ -498,6 +498,13 @@
       "when": 1790423280000,
       "tag": "0070_retire_fixation",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1790425260000,
+      "tag": "0071_native_live_replacement_purge",
+      "breakpoints": true
     }
   ]
 }
