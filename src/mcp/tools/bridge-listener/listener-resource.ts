@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
 import {
   registerAppResource,
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeEventRecord } from "../../../domains/bridge/bridge-event-types.js";
+import { loadMcpBrowserBundle } from "../browser-bundle-loader.js";
 
 export const BRIDGE_RESOURCE_URI = "ui://leileios/message-bridge/v5";
 export const BRIDGE_AMBIGUITY_ACCEPTANCE_PREFIX = "PHASE2 AMBIGUOUS E2E ";
@@ -13,50 +13,9 @@ export type BridgeListenerResourceOptions = {
   ambiguityAcceptanceEnabled?: boolean;
 };
 
-export type SentinelWakeRoutingMetadata = {
-  eventId: string;
-  wakeId: string;
-  sentinelId: string;
-  controlRevision: number;
-  scheduledFor: string;
-  reservedAt: string | null;
-  dispatchStartedAt: string | null;
-};
-
-export function getSentinelWakeRoutingMetadata(
-  event: Pick<BridgeEventRecord, "id" | "kind" | "source" | "modelContext" | "reservedAt" | "dispatchStartedAt">,
-): SentinelWakeRoutingMetadata | null {
-  if (event.kind !== "wake" || event.source !== "leileios_sentinel") return null;
-  const match = event.modelContext.match(
-    /wakeId=([^;]+); sentinelId=([^;]+); controlRevision=(\d+); scheduledFor=([^ ]+)\./,
-  );
-  if (!match) return null;
-  return {
-    eventId: event.id,
-    wakeId: match[1]!,
-    sentinelId: match[2]!,
-    controlRevision: Number(match[3]),
-    scheduledFor: match[4]!,
-    reservedAt: event.reservedAt?.toISOString() ?? null,
-    dispatchStartedAt: event.dispatchStartedAt?.toISOString() ?? null,
-  };
-}
-
 export function composeBridgeDispatchContext(
-  event: Pick<BridgeEventRecord, "id" | "modelContext"> & {
-    kind?: BridgeEventRecord["kind"];
-    source?: BridgeEventRecord["source"];
-    wakeMetadata?: {
-      wakeId: string;
-      sentinelId: string;
-      controlRevision: number;
-      scheduledFor: string;
-    };
-  },
+  event: Pick<BridgeEventRecord, "id" | "modelContext">,
 ): string {
-  if (event.kind === "wake" && event.source === "leileios_sentinel" && event.wakeMetadata) {
-    return `LeileiOS Sentinel event metadata: eventId=${event.id}; wakeId=${event.wakeMetadata.wakeId}; sentinelId=${event.wakeMetadata.sentinelId}; controlRevision=${event.wakeMetadata.controlRevision}; scheduledFor=${event.wakeMetadata.scheduledFor}.`;
-  }
   return `${event.modelContext}\n\nLeileiOS Bridge event metadata: eventId=${event.id}.`;
 }
 
@@ -69,7 +28,10 @@ const BRIDGE_RESOURCE_META = {
   },
 } as const;
 
-const BRIDGE_BROWSER_BUNDLE = readFileSync(new URL("./browser-runtime.js", import.meta.url), "utf8");
+const BRIDGE_BROWSER_BUNDLE = loadMcpBrowserBundle({
+  compiledUrl: new URL("./browser-runtime.js", import.meta.url),
+  sourceUrl: new URL("./browser-runtime.ts", import.meta.url),
+});
 
 function escapeInlineScript(script: string): string {
   return script.replaceAll("</script", "<\\/script");
