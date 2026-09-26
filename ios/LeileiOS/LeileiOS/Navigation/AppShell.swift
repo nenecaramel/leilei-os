@@ -9,7 +9,6 @@ struct AppShell: View {
     @State private var settingsPresented = false
     @State private var isDraftConversation = false
     @State private var draftConversationID = UUID()
-    @State private var sidebarSearchCenterY: CGFloat?
     @State private var sidebarDragTranslation: CGFloat = 0
 
     var body: some View {
@@ -21,16 +20,6 @@ struct AppShell: View {
             }
         }
         .tint(.primary)
-        .onPreferenceChange(FloatingControlCenterPreferenceKey.self) { centers in
-            guard sidebarSearchCenterY == nil,
-                  selectedPage == .chat,
-                  let centerY = centers[FloatingControlCenter.menu]
-            else {
-                return
-            }
-
-            sidebarSearchCenterY = centerY
-        }
         .sheet(isPresented: $settingsPresented) {
             SettingsSheetView(
                 appModel: appModel,
@@ -76,7 +65,6 @@ struct AppShell: View {
 
                 SidebarView(
                     selectedPage: $selectedPage,
-                    menuButtonCenterY: sidebarSearchCenterY,
                     onNewSession: {
                         withAnimation(.snappy) {
                             menuOpen = false
@@ -236,7 +224,6 @@ struct AppShell: View {
         HStack(spacing: 0) {
             SidebarView(
                 selectedPage: $selectedPage,
-                menuButtonCenterY: nil,
                 onNewSession: {
                     beginNewSession()
                 },
