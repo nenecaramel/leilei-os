@@ -81,7 +81,7 @@ export class CompanionBackgroundOpportunityService {
       input.reason === "startup" || input.reason === "due";
     const maintenanceKinds = runsTimedMaintenance
       ? this.policy
-          .decide({ opportunity: "maintenance_pulse" })
+          .decide({ opportunity: "companion_due" })
           .targets
           .map((target) => toMaintenanceKind(target.kind))
           .filter(
