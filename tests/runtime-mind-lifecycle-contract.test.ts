@@ -127,8 +127,8 @@ test("Thought, Curiosity, and Topic can go dormant and later reactivate", () => 
   );
 });
 
-test("Topic ownership stays hybrid until the authored Topic entry point is retired", () => {
-  assert.equal(mindLifecycleProfile("topic").ownership, "hybrid");
+test("Topic ownership is derived-only after authored Topic retirement", () => {
+  assert.equal(mindLifecycleProfile("topic").ownership, "derived");
   for (const kind of [
     "feel",
     "memory",

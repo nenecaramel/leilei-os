@@ -11,8 +11,7 @@ export type MindLifecycleState =
 
 export type MindLifecycleOwnership =
   | "authored"
-  | "derived"
-  | "hybrid";
+  | "derived";
 
 export type MindLifecycleDriver =
   | "time_decay"
@@ -44,9 +43,10 @@ export type MindLifecycleProfile = ManagedMindLifecycleProfile;
  * - E5 may inform semantic grouping/relevance but never lifecycle.
  * - Numeric thresholds/half-lives remain runtime policy and are not frozen here.
  *
- * Topic remains hybrid while production still accepts authored <topic> intents
- * alongside deterministic Curiosity projection. It can become derived-only
- * only when that authored entry point is actually retired.
+ * Topic is derived-only. Live authored <topic> parsing is retired; historical
+ * persisted Topic rows and durable queued Topic intents remain readable for
+ * compatibility, while new Topic state is produced by deterministic runtime
+ * projection.
  *
  * Dream is retired. Legacy persisted Dream rows remain a storage/replay
  * compatibility concern and are intentionally outside this current lifecycle
@@ -114,7 +114,7 @@ export const MIND_LIFECYCLE_PROFILES = {
   },
   topic: {
     management: "managed",
-    ownership: "hybrid",
+    ownership: "derived",
     drivers: ["reinforcement", "inactivity"],
     initialState: "active",
     transitions: {

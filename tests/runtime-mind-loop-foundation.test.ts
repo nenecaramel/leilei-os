@@ -214,13 +214,15 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
       ["drive", "我还想把这条 runtime 主线继续推进"],
       ["thought", "下一步验证 recall"],
       ["curiosity", "为什么 Topic 会再次浮起来"],
-      ["topic", "下次继续看 Topic Pool"],
     ],
   );
   assert.equal(parsed.visibleText.includes("<feel>"), false);
   assert.equal(parsed.visibleText.includes("<drive>"), false);
   assert.equal(parsed.visibleText.includes("<curiosity>"), false);
-  assert.equal(parsed.visibleText.includes("<topic>"), false);
+  assert.equal(
+    parsed.visibleText.includes("<topic>下次继续看 Topic Pool</topic>"),
+    true,
+  );
   assert.equal(
     parsed.visibleText.includes("<dream>这个标签已经退出架构</dream>"),
     true,
@@ -676,6 +678,41 @@ test("persisted Context Manifest reconstructs the exact prompt without re-select
   assert.equal(replayed.prompt, assembled.prompt);
   assert.equal(replayed.contextData, assembled.contextData);
   assert.deepEqual(replayed.breathStateIds, assembled.breathStateIds);
+});
+
+test("retired authored Topic remains materializable for durable replay compatibility", () => {
+  const [legacyTopic] = materializeMindWrites({
+    userId: "u1",
+    subjectId: "G",
+    conversationId: "c1",
+    assistantMessageId: "a-legacy",
+    intents: [{
+      kind: "topic",
+      text: "历史 queued Topic intent",
+      sourceStart: 0,
+      sourceEnd: 30,
+      raw: "<topic>历史 queued Topic intent</topic>",
+    }],
+    createId: () => "legacy-topic-state",
+    producer: { kind: "model", id: "claude-code" },
+    committer: { kind: "service", id: "leileios-runtime" },
+    sourceStatus: {
+      generationStatus: "committed",
+      presentationStatus: "presented",
+      pathStatus: "current",
+      settlementStatus: "unsettled",
+      validityStatus: "valid",
+    },
+    ruleVersion: "mind-v1",
+    processVersion: "subject-write-v1",
+    visibility: "subject_private",
+    sensitivity: "normal",
+    audience: ["G"],
+  });
+
+  assert.ok(legacyTopic);
+  assert.equal(legacyTopic.kind, "topic");
+  assert.equal(legacyTopic.text, "历史 queued Topic intent");
 });
 
 test("explicit Mind write can move from emitted intent to settled Breath recall", () => {

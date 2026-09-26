@@ -1,12 +1,12 @@
 import type { NativeLiveContentBlockInput } from "../conversation/native-live-conversation-types.js";
 import {
   parseMindWriteIntents,
-  type MindWriteIntent,
+  type CurrentMindWriteIntent,
 } from "./mind-intent-parser.js";
 
 export type ParsedAssistantBlocks = {
   visibleBlocks: NativeLiveContentBlockInput[];
-  intents: MindWriteIntent[];
+  intents: CurrentMindWriteIntent[];
 };
 
 /**
@@ -17,7 +17,7 @@ export function parseMindWriteIntentsFromBlocks(
   blocks: readonly NativeLiveContentBlockInput[],
 ): ParsedAssistantBlocks {
   const visibleBlocks: NativeLiveContentBlockInput[] = [];
-  const intents: MindWriteIntent[] = [];
+  const intents: CurrentMindWriteIntent[] = [];
 
   for (const block of blocks) {
     if (block.kind !== "text" || !block.text) {
