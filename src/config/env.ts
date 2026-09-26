@@ -81,10 +81,6 @@ const baseEnvSchema = z.object({
   NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
-  NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS:
-    z.coerce.number().int().positive().optional(),
-  NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT:
-    z.coerce.number().int().positive().max(1_000).optional(),
   NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS:
     z.coerce.number().positive().optional(),
   NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS:
@@ -98,8 +94,6 @@ const baseEnvSchema = z.object({
     z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
     z.coerce.number().int().positive().optional(),
-  NATIVE_LIVE_PROACTIVITY_USER_LIMIT:
-    z.coerce.number().int().positive().max(1_000).optional(),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -274,11 +268,6 @@ export type TopicResurfaceOpportunityConfig = {
   candidateLimit: number;
 };
 
-export type BackgroundMaintenancePulseConfig = {
-  intervalMs: number;
-  userLimit: number;
-};
-
 export type MemoryDecayConfig = {
   halfLifeHours: {
     memory: number;
@@ -291,25 +280,7 @@ export type MemoryDecayConfig = {
 export type ProactivityWakeOpportunityConfig = {
   minIdleMs: number;
   cooldownMs: number;
-  userLimit: number;
 };
-
-export function getBackgroundMaintenancePulseConfig(
-  environment: Pick<
-    RuntimeEnv,
-    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS"
-    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT"
-  >,
-): BackgroundMaintenancePulseConfig {
-  return {
-    intervalMs:
-      (environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS
-        ?? 3_600) * 1_000,
-    userLimit:
-      environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT
-      ?? 64,
-  };
-}
 
 export function getProactivityWakeOpportunityConfig(
   environment: Pick<
@@ -317,14 +288,12 @@ export function getProactivityWakeOpportunityConfig(
     | "NATIVE_LIVE_PROACTIVITY_ENABLED"
     | "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS"
     | "NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS"
-    | "NATIVE_LIVE_PROACTIVITY_USER_LIMIT"
   >,
 ): ProactivityWakeOpportunityConfig | undefined {
   const enabled = environment.NATIVE_LIVE_PROACTIVITY_ENABLED;
   const values = [
     environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS,
     environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS,
-    environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT,
   ];
 
   if (enabled !== true) {
@@ -338,7 +307,7 @@ export function getProactivityWakeOpportunityConfig(
 
   if (values.some((value) => value === undefined)) {
     throw new Error(
-      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS, NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS, and NATIVE_LIVE_PROACTIVITY_USER_LIMIT are required when Proactivity is enabled.",
+      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS and NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS are required when Proactivity is enabled.",
     );
   }
 
@@ -347,8 +316,6 @@ export function getProactivityWakeOpportunityConfig(
       environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS! * 1_000,
     cooldownMs:
       environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS! * 1_000,
-    userLimit:
-      environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT!,
   };
 }
 
