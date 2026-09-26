@@ -92,6 +92,9 @@ async function withServer(
   conversationService: FakeConversationService,
   callback: (baseUrl: string) => Promise<void>,
   authenticated = true,
+  currentPathReader?: {
+    readCurrentPath(input: unknown): Promise<unknown>;
+  },
 ): Promise<void> {
   const app = express();
   app.use(express.json());
@@ -118,6 +121,7 @@ async function withServer(
         },
       },
       conversationService,
+      currentPathReader: currentPathReader as never,
     }),
   );
 
@@ -185,6 +189,75 @@ test("native live bootstrap defaults list limit and rejects an invalid limit", a
     assert.equal(invalid.status, 400);
     assert.equal(service.listCalls.length, 1);
   });
+});
+
+test("native live current path forwards delta cursor and returns pagination metadata", async () => {
+  const service = new FakeConversationService();
+  const calls: unknown[] = [];
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const afterMessageId = "66666666-6666-4666-8666-666666666666";
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?limit=25&after_message_id=${afterMessageId}`,
+      );
+      assert.equal(response.status, 200);
+      const payload = await response.json() as {
+        data: {
+          olderCursor: string | null;
+          resetRequired: boolean;
+          messages: unknown[];
+        };
+      };
+      assert.equal(payload.data.olderCursor, null);
+      assert.equal(payload.data.resetRequired, false);
+      assert.equal(payload.data.messages.length, 0);
+      assert.deepEqual(calls, [{
+        userId,
+        conversationId,
+        limit: 25,
+        afterMessageId,
+      }]);
+    },
+    true,
+    {
+      async readCurrentPath(input: unknown) {
+        calls.push(input);
+        return {
+          conversationId,
+          title: "Existing",
+          currentHeadMessageId: "77777777-7777-4777-8777-777777777777",
+          updatedAt: "2026-09-26T08:00:00.000Z",
+          syncToken: "head:77777777-7777-4777-8777-777777777777",
+          truncated: false,
+          olderCursor: null,
+          resetRequired: false,
+          messages: [],
+        };
+      },
+    },
+  );
+});
+
+test("native live current path rejects simultaneous older and delta cursors", async () => {
+  const service = new FakeConversationService();
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const beforeMessageId = "66666666-6666-4666-8666-666666666666";
+      const afterMessageId = "77777777-7777-4777-8777-777777777777";
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?before_message_id=${beforeMessageId}&after_message_id=${afterMessageId}`,
+      );
+      assert.equal(response.status, 400);
+    },
+    true,
+    {
+      async readCurrentPath() {
+        throw new Error("must not be called");
+      },
+    },
+  );
 });
 
 test("native live bootstrap creates for the authenticated owner and trims title", async () => {
