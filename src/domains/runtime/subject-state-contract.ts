@@ -3,6 +3,28 @@ import {
   type PersistentWriteEnvelope,
 } from "./persistent-write-envelope.js";
 
+export const CURRENT_SUBJECT_STATE_KINDS = [
+  "feel",
+  "memory",
+  "drive",
+  "thought",
+  "curiosity",
+  "topic",
+] as const;
+
+export type CurrentSubjectStateKind =
+  (typeof CURRENT_SUBJECT_STATE_KINDS)[number];
+
+export const LEGACY_SUBJECT_STATE_KINDS = ["dream"] as const;
+
+export type LegacySubjectStateKind =
+  (typeof LEGACY_SUBJECT_STATE_KINDS)[number];
+
+/**
+ * Storage compatibility includes retired kinds so existing persisted rows and
+ * legacy replay remain readable. Product/runtime logic that targets current
+ * Mind concepts should use CURRENT_SUBJECT_STATE_KINDS instead.
+ */
 export const SUBJECT_STATE_KINDS = [
   "feel",
   "memory",
