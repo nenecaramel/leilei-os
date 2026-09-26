@@ -59,8 +59,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
     @Published private(set) var chatSyncState: ChatSyncState = .idle
     @Published private(set) var chatSendState: ChatSendState = .idle
+    @Published private(set) var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
 
     private var nativeLiveCurrentPathETags: [UUID: String] = [:]
+    private var nativeLiveRuntimeMetadataByConversationID:
+        [UUID: NativeLiveRuntimeMetadata] = [:]
     private var conversationBootstrapInFlight = false
     private var chatRefreshInFlight = false
     private var chatRefreshPendingForce = false
@@ -295,10 +298,14 @@ final class AppModel: ObservableObject {
                 return id == conversationID
             }
             nativeLiveCurrentPathETags.removeValue(forKey: conversationID)
+            nativeLiveRuntimeMetadataByConversationID.removeValue(
+                forKey: conversationID
+            )
 
             if activeNativeLiveConversationID == conversationID {
                 activeNativeLiveConversationID = nil
                 nativeLiveCurrentPath = nil
+                nativeLiveRuntimeMetadata = nil
                 chatSyncState = .idle
                 UserDefaults.standard.removeObject(
                     forKey: Self.activeNativeLiveConversationDefaultsKey
@@ -506,6 +513,8 @@ final class AppModel: ObservableObject {
         if activeNativeLiveConversationID != conversationID {
             activeNativeLiveConversationID = conversationID
             nativeLiveCurrentPath = nil
+            nativeLiveRuntimeMetadata =
+                nativeLiveRuntimeMetadataByConversationID[conversationID]
             chatSyncState = .idle
         }
 
@@ -643,6 +652,15 @@ final class AppModel: ObservableObject {
                     }
 
                     if turn.canonicalStatus == "finalized_success" {
+                        nativeLiveRuntimeMetadata = turn.runtimeMetadata
+                        if let metadata = turn.runtimeMetadata {
+                            nativeLiveRuntimeMetadataByConversationID[
+                                conversationID
+                            ] = metadata
+                        } else {
+                            nativeLiveRuntimeMetadataByConversationID
+                                .removeValue(forKey: conversationID)
+                        }
                         return
                     }
 
@@ -726,6 +744,8 @@ final class AppModel: ObservableObject {
         conversationBootstrapState = .idle
         nativeLiveCurrentPath = nil
         nativeLiveCurrentPathETags.removeAll()
+        nativeLiveRuntimeMetadata = nil
+        nativeLiveRuntimeMetadataByConversationID.removeAll()
         chatSyncState = .idle
         chatRefreshInFlight = false
         chatRefreshPendingForce = false

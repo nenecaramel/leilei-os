@@ -183,6 +183,160 @@ struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
     let semanticStatus: String?
     let semanticFallbackCode: String?
     let failureCode: String?
+    let runtimeMetadata: NativeLiveRuntimeMetadata?
+}
+
+struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
+    let contextUsage: NativeLiveRuntimeContextUsage?
+    let compactionAdvisory: NativeLiveRuntimeCompactionAdvisory?
+    let compaction: NativeLiveRuntimeCompactionMetadata?
+    let execution: NativeLiveRuntimeExecutionMetadata?
+
+    enum CodingKeys: String, CodingKey {
+        case contextUsage = "context_usage"
+        case compactionAdvisory = "compaction_advisory"
+        case compaction
+        case execution
+    }
+}
+
+struct NativeLiveRuntimeContextUsage: Decodable, Sendable, Equatable {
+    let model: String?
+    let totalTokens: Double?
+    let maxTokens: Double?
+    let rawMaxTokens: Double?
+    let percentage: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case totalTokens = "total_tokens"
+        case maxTokens = "max_tokens"
+        case rawMaxTokens = "raw_max_tokens"
+        case percentage
+    }
+}
+
+struct NativeLiveRuntimeCompactionAdvisory: Decodable, Sendable, Equatable {
+    let due: Bool
+    let thresholdPercent: Double
+    let observedPercent: Double?
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case due
+        case thresholdPercent = "threshold_percent"
+        case observedPercent = "observed_percent"
+        case reason
+    }
+}
+
+struct NativeLiveRuntimeCompactionMetadata: Decodable, Sendable, Equatable {
+    let source: String
+    let attempted: Bool
+    let outcome: String
+    let summary: String?
+    let failureCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case attempted
+        case outcome
+        case summary
+        case failureCode = "failure_code"
+    }
+}
+
+struct NativeLiveRuntimeExecutionMetadata: Decodable, Sendable, Equatable {
+    let readback: NativeLiveRuntimeExecutionReadback
+    let readbackError: String?
+
+    enum CodingKeys: String, CodingKey {
+        case readback
+        case readbackError = "readback_error"
+    }
+}
+
+struct NativeLiveRuntimeExecutionReadback: Decodable, Sendable, Equatable {
+    let applied: NativeLiveRuntimeExecutionApplied
+}
+
+struct NativeLiveRuntimeExecutionApplied: Decodable, Sendable, Equatable {
+    let model: String?
+    let effort: String?
+}
+
+struct SystemConnectionsSnapshot: Decodable, Sendable, Equatable {
+    let webAPI: String
+    let publicMCP: String
+    let internalMCP: String
+
+    enum CodingKeys: String, CodingKey {
+        case webAPI = "web_api"
+        case publicMCP = "public_mcp"
+        case internalMCP = "internal_mcp"
+    }
+}
+
+struct SystemDataSummarySnapshot: Decodable, Sendable, Equatable {
+    struct Diary: Decodable, Sendable, Equatable {
+        let active: Int
+        let archived: Int
+    }
+
+    struct Todo: Decodable, Sendable, Equatable {
+        let active: Int
+    }
+
+    let diary: Diary
+    let todo: Todo
+}
+
+struct SystemActivitySnapshot: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let occurredAt: String
+    let label: String
+    let source: String
+    let outcome: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case occurredAt = "occurred_at"
+        case label
+        case source
+        case outcome
+    }
+}
+
+struct ImportSummaryCountsSnapshot: Decodable, Sendable, Equatable {
+    let create: Int
+    let duplicate: Int
+    let conflict: Int
+    let invalid: Int
+}
+
+struct ImportSummarySnapshot: Decodable, Sendable, Equatable {
+    let diary: ImportSummaryCountsSnapshot
+    let todo: ImportSummaryCountsSnapshot
+}
+
+struct ImportPreviewSnapshot: Decodable, Sendable, Equatable {
+    let previewFingerprint: String
+    let summary: ImportSummarySnapshot
+    let canExecute: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case previewFingerprint = "preview_fingerprint"
+        case summary
+        case canExecute = "can_execute"
+    }
+}
+
+struct ImportExecutionSnapshot: Decodable, Sendable, Equatable {
+    let previewFingerprint: String
+
+    enum CodingKeys: String, CodingKey {
+        case previewFingerprint = "preview_fingerprint"
+    }
 }
 
 enum LeileiAPIError: LocalizedError {
@@ -470,6 +624,122 @@ final class LeileiAPIClient {
         }
     }
 
+    func systemConnections() async throws -> SystemConnectionsSnapshot {
+        let envelope: SystemConnectionsEnvelope = try await request(
+            path: "/api/v1/system/connections",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func systemDataSummary() async throws -> SystemDataSummarySnapshot {
+        let envelope: SystemDataSummaryEnvelope = try await request(
+            path: "/api/v1/system/data",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func systemActivity() async throws -> [SystemActivitySnapshot] {
+        let envelope: SystemActivityEnvelope = try await request(
+            path: "/api/v1/system/activity",
+            authenticated: true
+        )
+        return envelope.data.events
+    }
+
+    func exportData(
+        scope: String,
+        includeAudit: Bool
+    ) async throws -> Data {
+        try await rawRequest(
+            path: "/api/v1/system/export?scope=\(scope)&include_audit=\(includeAudit ? "true" : "false")"
+        )
+    }
+
+    func previewImport(_ data: Data) async throws -> ImportPreviewSnapshot {
+        let response = try await rawRequest(
+            path: "/api/v1/system/import/preview",
+            method: "POST",
+            body: data,
+            contentType: "application/octet-stream"
+        )
+        return try JSONDecoder().decode(
+            ImportPreviewEnvelope.self,
+            from: response
+        ).data
+    }
+
+    func executeImport(
+        _ data: Data,
+        expectedPreviewFingerprint: String
+    ) async throws -> ImportExecutionSnapshot {
+        let response = try await rawRequest(
+            path: "/api/v1/system/import/execute?expected_preview_fingerprint=\(expectedPreviewFingerprint)",
+            method: "POST",
+            body: data,
+            contentType: "application/octet-stream"
+        )
+        return try JSONDecoder().decode(
+            ImportExecutionEnvelope.self,
+            from: response
+        ).data
+    }
+
+    private func rawRequest(
+        path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        contentType: String? = nil
+    ) async throws -> Data {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let contentType {
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+
+        guard
+            let token = try await authSession.accessToken(),
+            !token.isEmpty
+        else {
+            throw LeileiAPIError.missingAccessToken
+        }
+        request.setValue(
+            "Bearer \(token)",
+            forHTTPHeaderField: "Authorization"
+        )
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        switch http.statusCode {
+        case 200..<300:
+            return data
+        case 401:
+            throw LeileiAPIError.unauthorized
+        case 403:
+            throw LeileiAPIError.forbidden
+        default:
+            let failure = try? JSONDecoder().decode(
+                ErrorEnvelope.self,
+                from: data
+            )
+            throw LeileiAPIError.backend(
+                status: http.statusCode,
+                code: failure?.error.code,
+                message: failure?.error.message
+            )
+        }
+    }
+
     func request<Response: Decodable>(
         path: String,
         method: String = "GET",
@@ -534,6 +804,35 @@ final class LeileiAPIClient {
             )
         }
     }
+}
+
+private struct SystemConnectionsEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: SystemConnectionsSnapshot
+}
+
+private struct SystemDataSummaryEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: SystemDataSummarySnapshot
+}
+
+private struct SystemActivityEnvelope: Decodable, Sendable {
+    struct ActivityData: Decodable, Sendable {
+        let events: [SystemActivitySnapshot]
+    }
+
+    let success: Bool
+    let data: ActivityData
+}
+
+private struct ImportPreviewEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ImportPreviewSnapshot
+}
+
+private struct ImportExecutionEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ImportExecutionSnapshot
 }
 
 private struct HealthEnvelope: Decodable, Sendable {

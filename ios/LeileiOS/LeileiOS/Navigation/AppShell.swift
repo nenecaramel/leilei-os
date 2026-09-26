@@ -25,7 +25,10 @@ struct AppShell: View {
             floatingControlCenters = $0
         }
         .sheet(isPresented: $settingsPresented) {
-            SettingsSheetView(appModel: appModel)
+            SettingsSheetView(
+                appModel: appModel,
+                dataService: LeileiSettingsDataService(api: appModel.api)
+            )
         }
     }
 

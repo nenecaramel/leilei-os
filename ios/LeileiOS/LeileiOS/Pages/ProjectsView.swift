@@ -269,40 +269,41 @@ struct ProjectFilePickerSheet: View {
 
 struct ContextOverviewSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Context") {
                     LabeledContent("Usage") {
-                        Text("—")
+                        Text(usageText)
                             .foregroundStyle(.secondary)
                     }
 
                     LabeledContent("Tokens") {
-                        Text("—")
+                        Text(tokensText)
                             .foregroundStyle(.secondary)
                     }
 
                     LabeledContent("Model") {
-                        Text("—")
+                        Text(modelText)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 Section("Compaction") {
                     LabeledContent("Status") {
-                        Text("—")
+                        Text(compactionStatusText)
                             .foregroundStyle(.secondary)
                     }
 
                     LabeledContent("Threshold") {
-                        Text("—")
+                        Text(compactionThresholdText)
                             .foregroundStyle(.secondary)
                     }
 
                     LabeledContent("Last Event") {
-                        Text("—")
+                        Text(lastCompactionEventText)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -321,5 +322,87 @@ struct ContextOverviewSheet: View {
             }
         }
         .background(Color.settingsBackground)
+    }
+
+    private var metadata: NativeLiveRuntimeMetadata? {
+        appModel.nativeLiveRuntimeMetadata
+    }
+
+    private var usageText: String {
+        guard let percentage = metadata?.contextUsage?.percentage else {
+            return "—"
+        }
+        return percentText(percentage)
+    }
+
+    private var tokensText: String {
+        guard let total = metadata?.contextUsage?.totalTokens else {
+            return "—"
+        }
+        let totalText = integerText(total)
+        guard let maximum = metadata?.contextUsage?.maxTokens else {
+            return totalText
+        }
+        return "\(totalText) / \(integerText(maximum))"
+    }
+
+    private var modelText: String {
+        let raw =
+            metadata?.contextUsage?.model
+            ?? metadata?.execution?.readback.applied.model
+        guard let raw, !raw.isEmpty else { return "—" }
+        return NativeLiveClaudeModel(rawValue: raw)?.displayName ?? raw
+    }
+
+    private var compactionStatusText: String {
+        if let compaction = metadata?.compaction, compaction.attempted {
+            return compactionOutcomeTitle(compaction.outcome)
+        }
+        if let advisory = metadata?.compactionAdvisory {
+            return advisory.due ? "Due" : "Not Due"
+        }
+        return "—"
+    }
+
+    private var compactionThresholdText: String {
+        guard let threshold = metadata?.compactionAdvisory?.thresholdPercent else {
+            return "—"
+        }
+        return percentText(threshold)
+    }
+
+    private var lastCompactionEventText: String {
+        guard let compaction = metadata?.compaction else {
+            return "—"
+        }
+        if let summary = compaction.summary?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !summary.isEmpty {
+            return summary
+        }
+        return compactionOutcomeTitle(compaction.outcome)
+    }
+
+    private func compactionOutcomeTitle(_ outcome: String) -> String {
+        switch outcome {
+        case "not_due":
+            return "Not Due"
+        case "succeeded":
+            return "Succeeded"
+        case "failed":
+            return "Failed"
+        case "unsupported":
+            return "Unsupported"
+        default:
+            return outcome
+        }
+    }
+
+    private func percentText(_ value: Double) -> String {
+        "\(Int(value.rounded()))%"
+    }
+
+    private func integerText(_ value: Double) -> String {
+        Int(value.rounded()).formatted()
     }
 }

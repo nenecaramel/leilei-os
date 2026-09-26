@@ -123,7 +123,7 @@ private struct SettingsDetailLayer: View {
     private var detailContent: some View {
         switch page {
         case .summary:
-            SettingsSummaryContent()
+            SettingsSummaryContent(dataService: dataService)
         case .export:
             SettingsExportContent(dataService: dataService)
         case .restore:
@@ -329,15 +329,49 @@ private struct SettingsHomeContent: View {
 }
 
 private struct SettingsSummaryContent: View {
+    let dataService: any SettingsDataService
+
+    @State private var summary: SettingsDataSummary?
+    @State private var isLoading = true
+
     var body: some View {
         Form {
             Section("Summary") {
-                LabeledContent("Diary", value: "Loading…")
-                LabeledContent("Todo", value: "Loading…")
+                LabeledContent("Diary", value: diaryValue)
+                LabeledContent("Todo", value: todoValue)
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(Color.settingsBackground)
+        .task {
+            await loadSummary()
+        }
+    }
+
+    private var diaryValue: String {
+        if let summary {
+            return "\(summary.diaryActive) active · \(summary.diaryArchived) archived"
+        }
+        return isLoading ? "Loading…" : "Unavailable"
+    }
+
+    private var todoValue: String {
+        if let summary {
+            return "\(summary.todoActive) active"
+        }
+        return isLoading ? "Loading…" : "Unavailable"
+    }
+
+    @MainActor
+    private func loadSummary() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            summary = try await dataService.readDataSummary()
+        } catch {
+            summary = nil
+        }
     }
 }

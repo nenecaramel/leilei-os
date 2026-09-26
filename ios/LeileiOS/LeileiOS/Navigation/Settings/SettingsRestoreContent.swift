@@ -13,7 +13,7 @@ struct SettingsRestoreContent: View {
     @State private var outcomeMessage: String?
 
     private var canRestore: Bool {
-        preview != nil && preview?.invalidCount == 0 && !isRestoring
+        preview?.canExecute == true && !isRestoring
     }
 
     var body: some View {
@@ -139,7 +139,11 @@ struct SettingsRestoreContent: View {
         }
 
         do {
-            let result = try await dataService.executeRestore(fileURL: selectedFileURL)
+            guard let preview else { return }
+            let result = try await dataService.executeRestore(
+                fileURL: selectedFileURL,
+                previewFingerprint: preview.previewFingerprint
+            )
             outcomeMessage = result.completed
                 ? "Done"
                 : "Failed"
