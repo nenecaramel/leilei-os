@@ -102,12 +102,17 @@ export class DriveSatisfactionService {
       activeThreshold: this.policy.activeThreshold,
     });
     if (result.outcome !== "rejected") {
-      await this.evolution.runOnce({
-        userId: input.userId,
-        subjectId: input.subjectId,
-        now: input.now,
-        mode: "full",
-      });
+      try {
+        await this.evolution.runOnce({
+          userId: input.userId,
+          subjectId: input.subjectId,
+          now: input.now,
+          mode: "full",
+        });
+      } catch {
+        // Satisfaction is durable authority. Derived projection is fail-soft
+        // and can be recovered by the shared maintenance/repair path.
+      }
     }
     return result;
   }
