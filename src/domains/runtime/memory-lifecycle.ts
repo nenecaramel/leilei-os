@@ -58,6 +58,12 @@ export type MemoryLifecyclePurge = {
   expectedUpdatedAt: string;
 };
 
+export type MemoryRecallReinforcementUpdate = {
+  stateId: string;
+  nextPayload: Record<string, unknown>;
+  lifecycle: SubjectStateLifecycle;
+};
+
 export interface MemoryLifecycleRuntimePort {
   listCandidates(input: {
     userId: string;
@@ -269,12 +275,7 @@ export function evaluateLifecycle(
   const salience = clamp01(
     current.salience * Math.pow(0.5, elapsedHours / halfLifeHours),
   );
-  const status: SubjectStateLifecycleStatus =
-    salience <= policy.archiveThreshold
-      ? "archived"
-      : salience <= policy.fadingThreshold
-        ? "fading"
-        : "active";
+  const status = lifecycleStatusForSalience(salience, policy);
 
   const lifecycle: SubjectStateLifecycle = {
     ...current,
@@ -291,6 +292,103 @@ export function evaluateLifecycle(
     nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
     lifecycle,
     reason: "decay",
+  };
+}
+
+export function evaluateRecallReinforcement(
+  candidate: MemoryLifecycleCandidate,
+  recalledAtIso: string,
+  salienceBoost: number,
+  policy?: MemoryLifecyclePolicy,
+): MemoryRecallReinforcementUpdate | null {
+  const recalledAt = normalizeIso(recalledAtIso, "recalledAt");
+  if (
+    !Number.isFinite(salienceBoost)
+    || salienceBoost < 0
+    || salienceBoost > 1
+  ) {
+    throw new Error("Recall salienceBoost must be between 0 and 1.");
+  }
+  if (policy) validatePolicy(policy);
+
+  const current = readSubjectStateLifecycle(candidate.payload);
+  if (
+    current?.status === "archived"
+    || current?.status === "forgotten"
+  ) {
+    return null;
+  }
+  if (
+    current?.lastRecalledAt
+    && Date.parse(recalledAt) <= Date.parse(current.lastRecalledAt)
+  ) {
+    return null;
+  }
+
+  if (!current) {
+    const lifecycle: SubjectStateLifecycle = {
+      status: "active",
+      salience: 1,
+      protected: false,
+      lastDecayedAt: recalledAt,
+      lastRecalledAt: recalledAt,
+      archivedAt: null,
+      forgottenAt: null,
+    };
+    return {
+      stateId: candidate.stateId,
+      nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
+      lifecycle,
+    };
+  }
+
+  const recallMs = Date.parse(recalledAt);
+  const lastDecayMs = Date.parse(current.lastDecayedAt);
+  let nextLastDecayedAt = current.lastDecayedAt;
+  let salience = current.salience;
+
+  if (policy) {
+    const halfLifeHours = policy.halfLifeHours[candidate.kind];
+    if (!current.protected && recallMs > lastDecayMs) {
+      const elapsedHours = (recallMs - lastDecayMs) / 3_600_000;
+      salience *= Math.pow(0.5, elapsedHours / halfLifeHours);
+      nextLastDecayedAt = recalledAt;
+      salience = clamp01(salience + salienceBoost);
+    } else if (!current.protected && recallMs < lastDecayMs) {
+      const elapsedHours = (lastDecayMs - recallMs) / 3_600_000;
+      const caughtUpBoost =
+        salienceBoost * Math.pow(0.5, elapsedHours / halfLifeHours);
+      salience = clamp01(salience + caughtUpBoost);
+    } else {
+      if (recallMs > lastDecayMs) nextLastDecayedAt = recalledAt;
+      salience = clamp01(salience + salienceBoost);
+    }
+  } else {
+    salience = clamp01(salience + salienceBoost);
+    if (recallMs > lastDecayMs) {
+      // Decay is disabled, so advancing the checkpoint establishes a new
+      // non-retroactive baseline rather than silently aging the state later.
+      nextLastDecayedAt = recalledAt;
+    }
+  }
+
+  const status = policy
+    ? lifecycleStatusForSalience(salience, policy)
+    : current.status;
+  const lifecycle: SubjectStateLifecycle = {
+    ...current,
+    status,
+    salience,
+    lastDecayedAt: nextLastDecayedAt,
+    lastRecalledAt: recalledAt,
+    archivedAt: status === "archived" ? nextLastDecayedAt : null,
+    forgottenAt: null,
+  };
+
+  return {
+    stateId: candidate.stateId,
+    nextPayload: writeSubjectStateLifecycle(candidate.payload, lifecycle),
+    lifecycle,
   };
 }
 
@@ -437,6 +535,17 @@ export function forgottenSubjectStatePayload(
   return {
     [LIFECYCLE_KEY]: lifecycle,
   };
+}
+
+function lifecycleStatusForSalience(
+  salience: number,
+  policy: MemoryLifecyclePolicy,
+): SubjectStateLifecycleStatus {
+  return salience <= policy.archiveThreshold
+    ? "archived"
+    : salience <= policy.fadingThreshold
+      ? "fading"
+      : "active";
 }
 
 function validatePolicy(policy: MemoryLifecyclePolicy): void {
