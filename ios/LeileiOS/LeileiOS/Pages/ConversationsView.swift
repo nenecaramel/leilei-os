@@ -37,10 +37,14 @@ struct ConversationsView: View {
             } else {
                 ConversationList(
                     conversations: appModel.nativeLiveConversations,
-                    activeConversationID: appModel.activeNativeLiveConversationID
-                ) { conversation in
-                    await open(conversation)
-                }
+                    activeConversationID: appModel.activeNativeLiveConversationID,
+                    onOpen: { conversation in
+                        await open(conversation)
+                    },
+                    onLoadMore: {
+                        await appModel.loadMoreNativeLiveConversations()
+                    }
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -81,6 +85,7 @@ private struct ConversationList: View {
     let conversations: [NativeLiveConversationSummary]
     let activeConversationID: UUID?
     let onOpen: (NativeLiveConversationSummary) async -> Void
+    let onLoadMore: () async -> Void
 
     var body: some View {
         List(conversations) { conversation in
@@ -108,6 +113,14 @@ private struct ConversationList: View {
             }
             .buttonStyle(.plain)
             .listRowBackground(Color(.systemBackground))
+            .onAppear {
+                guard conversation.id == conversations.last?.id else {
+                    return
+                }
+                Task {
+                    await onLoadMore()
+                }
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
