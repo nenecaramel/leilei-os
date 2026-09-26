@@ -268,16 +268,22 @@ test("selected recall decays to the recall instant before applying deterministic
     update.lifecycle.lastRecalledAt,
     "2026-09-21T00:00:00.000Z",
   );
-  assert.deepEqual(
-    (update.nextPayload.recall_reinforcement_v1 as {
-      contributions: unknown[];
-    }).contributions,
-    [{
-      sourceMessageId: "u-recall",
-      recalledAt: "2026-09-21T00:00:00.000Z",
-      currentValue: 0.08,
-    }],
+  const [contribution] = (
+    update.nextPayload.recall_reinforcement_v1 as {
+      contributions: Array<{
+        sourceMessageId: string;
+        recalledAt: string;
+        currentValue: number;
+      }>;
+    }
+  ).contributions;
+  assert.ok(contribution);
+  assert.equal(contribution.sourceMessageId, "u-recall");
+  assert.equal(
+    contribution.recalledAt,
+    "2026-09-21T00:00:00.000Z",
   );
+  assert.equal(Math.abs(contribution.currentValue - 0.08) < 1e-12, true);
 });
 
 test("late recall commit catches its boost up to a newer decay checkpoint", () => {
@@ -415,7 +421,7 @@ test("recall reinforcement without decay policy starts a new non-retroactive bas
   );
 
   assert.ok(update);
-  assert.equal(update.lifecycle.salience, 0.48);
+  assert.equal(Math.abs(update.lifecycle.salience - 0.48) < 1e-12, true);
   assert.equal(update.lifecycle.status, "fading");
   assert.equal(
     update.lifecycle.lastDecayedAt,
@@ -545,7 +551,10 @@ test("causal Edit removal subtracts only recall reinforcement sourced by purged 
   );
 
   assert.ok(repaired);
-  assert.equal(repaired.lifecycle.salience, 0.58);
+  assert.equal(
+    Math.abs(repaired.lifecycle.salience - 0.58) < 1e-12,
+    true,
+  );
   assert.deepEqual(
     (repaired.nextPayload.recall_reinforcement_v1 as {
       contributions: unknown[];
