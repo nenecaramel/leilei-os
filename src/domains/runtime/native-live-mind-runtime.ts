@@ -37,6 +37,7 @@ export interface NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<string>;
 
   planSemanticUserTurn?(input: {
@@ -45,6 +46,7 @@ export interface NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<NativeLiveMindSemanticPlan | null>;
 
   prepareUserTurnFromSemanticPlan?(input: {
@@ -53,6 +55,7 @@ export interface NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
     plan: NativeLiveMindSemanticPlan;
     scores: ReadonlyMap<string, number> | null;
   }): Promise<string>;
@@ -109,6 +112,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<string> {
     const assembledAt = this.now();
     const assembled = await this.service.prepareTurn({
@@ -122,6 +126,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       snapshotSequence: input.conversation.messages.length,
       assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
+      excludedReferenceIds: input.excludedReferenceIds,
     });
     return assembled.prompt;
   }
@@ -132,6 +137,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<NativeLiveMindSemanticPlan | null> {
     const assembledAt = this.now();
     const semantic = await this.service.planSemanticRecall({
@@ -141,6 +147,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       userText: input.userText,
       assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
+      excludedReferenceIds: input.excludedReferenceIds,
     });
     if (!semantic) return null;
 
@@ -159,6 +166,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    excludedReferenceIds?: ReadonlySet<string>;
     plan: NativeLiveMindSemanticPlan;
     scores: ReadonlyMap<string, number> | null;
   }): Promise<string> {
@@ -177,6 +185,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       snapshotSequence: input.plan.snapshotSequence,
       assembledAt: input.plan.assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
+      excludedReferenceIds: input.excludedReferenceIds,
       ...(input.scores ? { semanticScores: input.scores } : {}),
       semanticCandidates: input.plan.candidates,
     });
