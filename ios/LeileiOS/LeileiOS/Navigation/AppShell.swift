@@ -22,7 +22,8 @@ struct AppShell: View {
         }
         .tint(.primary)
         .onPreferenceChange(FloatingControlCenterPreferenceKey.self) { centers in
-            guard selectedPage == .chat,
+            guard sidebarSearchCenterY == nil,
+                  selectedPage == .chat,
                   let centerY = centers[FloatingControlCenter.menu]
             else {
                 return
