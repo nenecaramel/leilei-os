@@ -70,8 +70,8 @@ export function registerBridgeProcessingTools(
     server.registerTool(name, {
       title: action === "claim" ? "Claim a Bridge event" : "Complete a Bridge event",
       description: action === "claim"
-        ? "Claim a Bridge event before handling it. Use the eventId from hidden Bridge context; do not supply identity or state fields."
-        : "Complete a claimed Bridge event after requested processing/tool work and before the final response. Never blindly repeat the same action.",
+        ? "Claim a Bridge event before handling it."
+        : "Complete a claimed Bridge event after its work finishes.",
       inputSchema,
       outputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

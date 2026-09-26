@@ -6,6 +6,7 @@ import type {
   UniverseGalaxyMembership,
   UniverseBackup,
   UniverseNode,
+  UniversePosition,
   UniverseRelation,
   UniverseSnapshot,
 } from "./universe-types.js";
@@ -185,8 +186,28 @@ export class UniverseService {
     await this.requireActiveUser(userId);
     validateExpectedVersion(expectedVersion);
     const key = normalizeMcpIdempotencyKey(idempotencyKey);
-    const input = invalidAsServiceError(() => normalizeMcpNodeCreate(value));
-    assertMcpPosition(input.position);
+    const raw = invalidAsServiceError(() => {
+      const record = asRecord(value);
+      assertAllowedKeys(record, ["title", "summary", "content", "type", "tags", "galaxies", "position"]);
+      return record;
+    });
+    const positionWasSupplied = raw.position !== undefined;
+    const normalized = invalidAsServiceError(() => normalizeMcpNodeCreate({
+      ...raw,
+      position: positionWasSupplied ? raw.position : { x: 50, y: 50 },
+    }));
+    assertMcpPosition(normalized.position);
+
+    let input = normalized;
+    if (!positionWasSupplied) {
+      const current = await this.repository.loadUniverse(userId);
+      if (!current) throw new UniverseServiceError("UNIVERSE_NOT_INITIALIZED");
+      input = {
+        ...normalized,
+        position: chooseAutomaticMcpNodePosition(current.snapshot.nodes),
+      };
+    }
+
     const requestHash = hashMcpWriteRequest({
       title: input.title,
       summary: input.summary,
@@ -194,7 +215,7 @@ export class UniverseService {
       type: input.type,
       tags: input.tags,
       galaxies: input.galaxies,
-      position: input.position,
+      position: positionWasSupplied ? input.position : null,
       expected_version: expectedVersion,
     });
     const result = await this.repository.createNodeIdempotently?.(
@@ -523,6 +544,70 @@ function assertMcpPosition(position: { x: number; y: number }): void {
   if (![position.x, position.y].every((coordinate) => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 100)) {
     throw new UniverseServiceError("INVALID_UNIVERSE");
   }
+}
+
+const AUTO_POSITION_GRID_STEP = 5;
+const AUTO_POSITION_MIN_DISTANCE = 10;
+
+function chooseAutomaticMcpNodePosition(nodes: readonly Pick<UniverseNode, "position">[]): UniversePosition {
+  const existing = nodes
+    .map((node) => node.position)
+    .filter((position) =>
+      Number.isFinite(position.x)
+      && Number.isFinite(position.y)
+      && position.x >= 0
+      && position.x <= 100
+      && position.y >= 0
+      && position.y <= 100
+    );
+
+  const candidates: UniversePosition[] = [];
+  for (let y = 0; y <= 100; y += AUTO_POSITION_GRID_STEP) {
+    for (let x = 0; x <= 100; x += AUTO_POSITION_GRID_STEP) {
+      candidates.push({ x, y });
+    }
+  }
+  candidates.sort((left, right) => {
+    const leftCenterDistance = squaredDistance(left, { x: 50, y: 50 });
+    const rightCenterDistance = squaredDistance(right, { x: 50, y: 50 });
+    return leftCenterDistance - rightCenterDistance || left.y - right.y || left.x - right.x;
+  });
+
+  if (existing.length === 0) return { x: 50, y: 50 };
+
+  const minimumDistanceSquared = AUTO_POSITION_MIN_DISTANCE * AUTO_POSITION_MIN_DISTANCE;
+  let best = candidates[0] ?? { x: 50, y: 50 };
+  let bestClearance = -1;
+
+  for (const candidate of candidates) {
+    let clearance = Number.POSITIVE_INFINITY;
+    for (const position of existing) {
+      clearance = Math.min(clearance, squaredDistance(candidate, position));
+    }
+    if (clearance >= minimumDistanceSquared) return candidate;
+    if (
+      clearance > bestClearance
+      || (
+        clearance === bestClearance
+        && (
+          squaredDistance(candidate, { x: 50, y: 50 }) < squaredDistance(best, { x: 50, y: 50 })
+          || (
+            squaredDistance(candidate, { x: 50, y: 50 }) === squaredDistance(best, { x: 50, y: 50 })
+            && (candidate.y < best.y || (candidate.y === best.y && candidate.x < best.x))
+          )
+        )
+      )
+    ) {
+      best = candidate;
+      bestClearance = clearance;
+    }
+  }
+
+  return best;
+}
+
+function squaredDistance(left: UniversePosition, right: UniversePosition): number {
+  return (left.x - right.x) ** 2 + (left.y - right.y) ** 2;
 }
 
 function assertMcpStrength(strength: unknown): asserts strength is number {

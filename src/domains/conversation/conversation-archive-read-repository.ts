@@ -324,6 +324,7 @@ implements ConversationArchiveReadRepository {
   }): Promise<{ items: ConversationArchiveListItem[]; total: number }> {
     const where = and(
       eq(conversations.userId, input.userId),
+      eq(conversations.origin, "legacy_import"),
       input.provider ? eq(conversations.provider, input.provider) : undefined,
       lifecyclePredicate(input.scope),
     );
@@ -393,17 +394,23 @@ implements ConversationArchiveReadRepository {
 
     return {
       total: countRow?.total ?? 0,
-      items: rows.map((row) => ({
-        ...row,
-        provider: row.provider as ConversationProvider,
-        sourceCreatedAt: toIso(row.sourceCreatedAt),
+      items: rows.map((row) => {
+        if (!row.provider || !row.sourceConversationId) {
+          throw new Error("Legacy conversation is missing import provenance.");
+        }
+        return {
+          ...row,
+          provider: row.provider,
+          sourceConversationId: row.sourceConversationId,
+          sourceCreatedAt: toIso(row.sourceCreatedAt),
         sourceUpdatedAt: toIso(row.sourceUpdatedAt),
         messageCount: row.messageCount ?? 0,
         turnCount: row.turnCount ?? 0,
         totalNodeCount: row.totalNodeCount ?? 0,
         archivedAt: toIso(row.archivedAt),
-        deletedAt: toIso(row.deletedAt),
-      })),
+          deletedAt: toIso(row.deletedAt),
+        };
+      }),
     };
   }
 
@@ -464,15 +471,21 @@ implements ConversationArchiveReadRepository {
       )
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         lifecyclePredicate(input.scope, input.userId, conversations.id, input.branchId),
       ))
       .groupBy(conversations.id)
       .limit(1);
 
-    return row ? {
+    if (!row) return null;
+    if (!row.provider || !row.sourceConversationId) {
+      throw new Error("Legacy conversation is missing import provenance.");
+    }
+    return {
       ...row,
-      provider: row.provider as ConversationProvider,
+      provider: row.provider,
+      sourceConversationId: row.sourceConversationId,
       sourceCreatedAt: toIso(row.sourceCreatedAt),
       sourceUpdatedAt: toIso(row.sourceUpdatedAt),
       messageCount: row.messageCount ?? 0,
@@ -480,7 +493,7 @@ implements ConversationArchiveReadRepository {
       totalNodeCount: row.totalNodeCount ?? 0,
       archivedAt: toIso(row.archivedAt),
       deletedAt: toIso(row.deletedAt),
-    } : null;
+    };
   }
 
   async listMessages(input: {
@@ -494,9 +507,15 @@ implements ConversationArchiveReadRepository {
     branchId?: string;
   }): Promise<{ items: ConversationArchiveMessage[]; total: number }> {
     const visibility = messageVisibility(input.provider, input.view);
+    const conversationJoin = and(
+      eq(conversations.userId, input.userId),
+      eq(conversations.id, conversationMessages.conversationId),
+      eq(conversations.origin, "legacy_import"),
+    );
     const where = and(
       eq(conversationMessages.userId, input.userId),
       eq(conversationMessages.conversationId, input.conversationId),
+      lifecyclePredicate(input.scope, input.userId, input.conversationId, input.branchId),
       visibility,
       input.branchId ? branchSelectionPredicate(input.userId, input.branchId) : branchVisibilityPredicate(input.userId),
     );
@@ -504,6 +523,7 @@ implements ConversationArchiveReadRepository {
     const [countRow] = await this.db
       .select({ total: sql<number>`count(*)::int` })
       .from(conversationMessages)
+      .innerJoin(conversations, conversationJoin)
       .where(where);
 
     const rows = await this.db
@@ -524,6 +544,7 @@ implements ConversationArchiveReadRepository {
         displayText: conversationMessages.displayText,
       })
       .from(conversationMessages)
+      .innerJoin(conversations, conversationJoin)
       .where(where)
       .orderBy(...messageOrder(input.provider, input.view))
       .limit(input.limit)
@@ -531,12 +552,18 @@ implements ConversationArchiveReadRepository {
 
     return {
       total: countRow?.total ?? 0,
-      items: rows.map((row) => ({
-        ...row,
-        role: row.role as ConversationArchiveMessage["role"],
-        sourceCreatedAt: toIso(row.sourceCreatedAt),
-        sourceUpdatedAt: toIso(row.sourceUpdatedAt),
-      })),
+      items: rows.map((row) => {
+        if (!row.sourceNodeId) {
+          throw new Error("Legacy conversation message is missing import provenance.");
+        }
+        return {
+          ...row,
+          sourceNodeId: row.sourceNodeId,
+          role: row.role as ConversationArchiveMessage["role"],
+          sourceCreatedAt: toIso(row.sourceCreatedAt),
+          sourceUpdatedAt: toIso(row.sourceUpdatedAt),
+        };
+      }),
     };
   }
 
@@ -557,6 +584,21 @@ implements ConversationArchiveReadRepository {
           payload: conversationContentBlocks.payload,
         })
         .from(conversationContentBlocks)
+        .innerJoin(
+          conversationMessages,
+          and(
+            eq(conversationMessages.userId, input.userId),
+            eq(conversationMessages.id, conversationContentBlocks.messageId),
+          ),
+        )
+        .innerJoin(
+          conversations,
+          and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, conversationMessages.conversationId),
+            eq(conversations.origin, "legacy_import"),
+          ),
+        )
         .where(and(
           eq(conversationContentBlocks.userId, input.userId),
           inArray(conversationContentBlocks.messageId, input.messageIds),
@@ -576,6 +618,21 @@ implements ConversationArchiveReadRepository {
           payload: conversationAttachments.payload,
         })
         .from(conversationAttachments)
+        .innerJoin(
+          conversationMessages,
+          and(
+            eq(conversationMessages.userId, input.userId),
+            eq(conversationMessages.id, conversationAttachments.messageId),
+          ),
+        )
+        .innerJoin(
+          conversations,
+          and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, conversationMessages.conversationId),
+            eq(conversations.origin, "legacy_import"),
+          ),
+        )
         .where(and(
           eq(conversationAttachments.userId, input.userId),
           inArray(conversationAttachments.messageId, input.messageIds),
@@ -658,6 +715,7 @@ implements ConversationArchiveReadRepository {
     const baseJoin = and(
       eq(conversations.userId, input.userId),
       eq(conversations.id, conversationMessages.conversationId),
+      eq(conversations.origin, "legacy_import"),
     );
     const [countRow] = await this.db
       .select({ total: sql<number>`count(*)::int` })
@@ -690,12 +748,18 @@ implements ConversationArchiveReadRepository {
 
     return {
       total: countRow?.total ?? 0,
-      items: rows.map((row) => ({
-        ...row,
-        provider: row.provider as ConversationProvider,
-        role: row.role as "user" | "assistant",
-        sourceCreatedAt: toIso(row.sourceCreatedAt),
-      })),
+      items: rows.map((row) => {
+        if (!row.provider || !row.sourceNodeId) {
+          throw new Error("Legacy conversation search row is missing import provenance.");
+        }
+        return {
+          ...row,
+          provider: row.provider,
+          sourceNodeId: row.sourceNodeId,
+          role: row.role as "user" | "assistant",
+          sourceCreatedAt: toIso(row.sourceCreatedAt),
+        };
+      }),
     };
   }
 
@@ -711,6 +775,14 @@ implements ConversationArchiveReadRepository {
     const rows = await this.db
       .select({ id: conversationMessages.id })
       .from(conversationMessages)
+      .innerJoin(
+        conversations,
+        and(
+          eq(conversations.userId, input.userId),
+          eq(conversations.id, conversationMessages.conversationId),
+          eq(conversations.origin, "legacy_import"),
+        ),
+      )
       .where(and(
         eq(conversationMessages.userId, input.userId),
         eq(conversationMessages.conversationId, input.conversationId),
@@ -747,6 +819,7 @@ implements ConversationArchiveReadRepository {
         and(
           eq(conversations.userId, input.userId),
           eq(conversations.id, conversationMessages.conversationId),
+          eq(conversations.origin, "legacy_import"),
         ),
       )
       .where(and(

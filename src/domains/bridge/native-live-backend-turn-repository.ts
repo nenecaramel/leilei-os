@@ -1,0 +1,1020 @@
+import { createHash } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import type { createDatabase } from "../../database/client.js";
+import {
+  nativeLiveMindFollowUps,
+  nativeLiveSemanticScoringRequests,
+  nativeLiveTurnPreparations,
+} from "../../database/schema.js";
+import {
+  DrizzleNativeLiveConversationRepository,
+} from "../conversation/native-live-conversation-repository.js";
+import type {
+  NativeLiveConversation,
+  NativeLiveMessage,
+  NativeLiveProviderCheckpoint,
+} from "../conversation/native-live-conversation-types.js";
+import type {
+  NativeLiveBackendTurnPort,
+  NativeLiveFinalizeFailurePortResult,
+  NativeLiveFinalizeSuccessPortResult,
+  NativeLivePreparedTurn,
+  NativeLivePreparePortResult,
+} from "./native-live-backend-turn-coordinator.js";
+import type {
+  NativeLiveNormalizedEvent,
+} from "../conversation/native-live-conversation-orchestrator.js";
+import {
+  parseNativeLiveExecutionSelection,
+  type NativeLiveExecutionSelection,
+} from "./native-live-execution-selection.js";
+import type {
+  NativeLiveRuntimeFailureCode,
+  NativeLiveRuntimeMetadata,
+  NativeLiveRuntimeMode,
+} from "./native-live-runtime-protocol.js";
+
+type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
+type Executor = Database | Transaction;
+
+export type NativeLiveBackendTurnReadModel = {
+  prepareId: string;
+  requestId: string;
+  conversationId: string;
+  operation: "send" | "retry" | "edit";
+  canonicalUserMessageId: string;
+  executionSelection: NativeLiveExecutionSelection | null;
+  canonicalStatus:
+    | "prepared"
+    | "finalized_success"
+    | "finalized_failure";
+  dispatchStatus:
+    | "staged"
+    | "pending"
+    | "reserved"
+    | "executing"
+    | "delivery_unknown"
+    | "completed"
+    | "rejected";
+  assistantMessage: NativeLiveMessage | null;
+  runtimeMetadata: NativeLiveRuntimeMetadata | null;
+  failureCode: string | null;
+  semanticStatus:
+    | "pending"
+    | "reserved"
+    | "completed"
+    | "fallback"
+    | null;
+  semanticFallbackCode: string | null;
+};
+
+type PreparationRow = {
+  id: string;
+  userId: string;
+  requestId: string;
+  conversationId: string;
+  operation: "send" | "retry" | "edit";
+  requestHash: string;
+  canonicalUserMessageId: string;
+  runtimeMode: "new" | "fork";
+  parentProviderSessionId: string | null;
+  executionSelection: Record<string, unknown> | null;
+  prompt: string;
+  mindPrepared: boolean;
+  status: "prepared" | "finalized_success" | "finalized_failure";
+  resultHash: string | null;
+  providerSessionId: string | null;
+  runtimeMetadata: Record<string, unknown> | null;
+  assistantMessageId: string | null;
+  failureCode: string | null;
+};
+
+const REQUEST_HASH_VERSION = "leileios:native-live-turn-request:v1";
+const RESULT_HASH_VERSION = "leileios:native-live-turn-result:v1";
+
+function hashJson(version: string, value: unknown): string {
+  return createHash("sha256")
+    .update(`${version}\n${JSON.stringify(value)}`, "utf8")
+    .digest("hex");
+}
+
+function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
+  return {
+    prepareId: row.id,
+    requestId: row.requestId,
+    userId: row.userId,
+    conversationId: row.conversationId,
+    operation: row.operation,
+    canonicalUserMessageId: row.canonicalUserMessageId,
+    runtimeMode: row.runtimeMode,
+    parentProviderSessionId: row.parentProviderSessionId,
+    executionSelection: row.executionSelection === null
+      ? null
+      : parseNativeLiveExecutionSelection(row.executionSelection),
+    prompt: row.prompt,
+    mindPrepared: row.mindPrepared,
+  };
+}
+
+function readUserText(message: NativeLiveMessage): string | null {
+  const text = message.blocks
+    .filter((block) => block.kind === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+  return text.length > 0 ? text : null;
+}
+
+function requestConflictOrReplay(
+  row: PreparationRow,
+  requestHash: string,
+): NativeLivePreparePortResult {
+  if (row.requestHash !== requestHash) {
+    return { ok: false, code: "REQUEST_CONFLICT" };
+  }
+  return {
+    ok: true,
+    outcome: "replayed",
+    preparation: mapPreparation(row),
+  };
+}
+
+export class DrizzleNativeLiveBackendTurnPort
+implements NativeLiveBackendTurnPort {
+  constructor(private readonly db: Database) {}
+
+  async prepareSend(input: {
+    prepareId: string;
+    userId: string;
+    requestId: string;
+    conversationId: string;
+    expectedHeadMessageId: string | null;
+    text: string;
+    executionSelection: NativeLiveExecutionSelection | null;
+  }): Promise<NativeLivePreparePortResult> {
+    const requestHash = hashJson(REQUEST_HASH_VERSION, {
+      operation: "send",
+      conversationId: input.conversationId,
+      expectedHeadMessageId: input.expectedHeadMessageId,
+      text: input.text,
+      ...(input.executionSelection
+        ? { executionSelection: input.executionSelection }
+        : {}),
+    });
+
+    return this.prepareWithRaceRecovery(
+      input.userId,
+      input.requestId,
+      requestHash,
+      async (transaction) => {
+        const existing = await this.findByRequest(
+          transaction as Transaction,
+          input.userId,
+          input.requestId,
+        );
+        if (existing) return requestConflictOrReplay(existing, requestHash);
+
+        const conversations =
+          new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
+        const conversation = await conversations.getConversation({
+          userId: input.userId,
+          conversationId: input.conversationId,
+        });
+        if (
+          !conversation
+          || conversation.lifecycleStatus !== "active"
+        ) {
+          return { ok: false as const, code: "CONVERSATION_NOT_FOUND" as const };
+        }
+        if (
+          conversation.currentHeadMessageId
+          !== input.expectedHeadMessageId
+        ) {
+          return {
+            ok: false as const,
+            code: "STALE_HEAD" as const,
+            currentHeadMessageId: conversation.currentHeadMessageId,
+          };
+        }
+
+        const runtimeParent = await this.resolveRuntimeParent(
+          conversations,
+          input.userId,
+          input.conversationId,
+          conversation.currentHeadMessageId,
+        );
+        if (!runtimeParent.ok) return runtimeParent.result;
+
+        const userMessage = await conversations.appendUserMessage({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          parentMessageId: conversation.currentHeadMessageId,
+        });
+        await conversations.appendContentBlock({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          messageId: userMessage.id,
+          ordinal: 0,
+          block: {
+            kind: "text",
+            rawType: "text",
+            text: input.text,
+          },
+        });
+
+        const preparation = await this.insertPreparation(transaction, {
+          prepareId: input.prepareId,
+          userId: input.userId,
+          requestId: input.requestId,
+          conversationId: input.conversationId,
+          operation: "send",
+          requestHash,
+          canonicalUserMessageId: userMessage.id,
+          runtimeMode: runtimeParent.runtimeMode,
+          parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          executionSelection: input.executionSelection,
+          prompt: input.text,
+        });
+
+        return {
+          ok: true as const,
+          outcome: "created" as const,
+          preparation,
+        };
+      },
+    );
+  }
+
+  async prepareRetry(input: {
+    prepareId: string;
+    userId: string;
+    requestId: string;
+    conversationId: string;
+    targetUserMessageId: string;
+    executionSelection: NativeLiveExecutionSelection | null;
+  }): Promise<NativeLivePreparePortResult> {
+    const requestHash = hashJson(REQUEST_HASH_VERSION, {
+      operation: "retry",
+      conversationId: input.conversationId,
+      targetUserMessageId: input.targetUserMessageId,
+      ...(input.executionSelection
+        ? { executionSelection: input.executionSelection }
+        : {}),
+    });
+
+    return this.prepareWithRaceRecovery(
+      input.userId,
+      input.requestId,
+      requestHash,
+      async (transaction) => {
+        const existing = await this.findByRequest(
+          transaction as Transaction,
+          input.userId,
+          input.requestId,
+        );
+        if (existing) return requestConflictOrReplay(existing, requestHash);
+
+        const conversations =
+          new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
+        const conversation = await conversations.getConversation({
+          userId: input.userId,
+          conversationId: input.conversationId,
+        });
+        if (
+          !conversation
+          || conversation.lifecycleStatus !== "active"
+        ) {
+          return { ok: false as const, code: "CONVERSATION_NOT_FOUND" as const };
+        }
+
+        const target = conversation.messages.find(
+          (message) =>
+            message.id === input.targetUserMessageId
+            && message.role === "user",
+        );
+        const prompt = target ? readUserText(target) : null;
+        if (!target || !prompt) {
+          return { ok: false as const, code: "BRANCH_POINT_INVALID" as const };
+        }
+
+        const runtimeParent = await this.resolveRuntimeParent(
+          conversations,
+          input.userId,
+          input.conversationId,
+          target.parentMessageId,
+        );
+        if (!runtimeParent.ok) return runtimeParent.result;
+
+        const preparation = await this.insertPreparation(transaction, {
+          prepareId: input.prepareId,
+          userId: input.userId,
+          requestId: input.requestId,
+          conversationId: input.conversationId,
+          operation: "retry",
+          requestHash,
+          canonicalUserMessageId: target.id,
+          runtimeMode: runtimeParent.runtimeMode,
+          parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          executionSelection: input.executionSelection,
+          prompt,
+        });
+
+        return {
+          ok: true as const,
+          outcome: "created" as const,
+          preparation,
+        };
+      },
+    );
+  }
+
+  async prepareEdit(input: {
+    prepareId: string;
+    userId: string;
+    requestId: string;
+    conversationId: string;
+    targetUserMessageId: string;
+    text: string;
+    executionSelection: NativeLiveExecutionSelection | null;
+  }): Promise<NativeLivePreparePortResult> {
+    const requestHash = hashJson(REQUEST_HASH_VERSION, {
+      operation: "edit",
+      conversationId: input.conversationId,
+      targetUserMessageId: input.targetUserMessageId,
+      text: input.text,
+      ...(input.executionSelection
+        ? { executionSelection: input.executionSelection }
+        : {}),
+    });
+
+    return this.prepareWithRaceRecovery(
+      input.userId,
+      input.requestId,
+      requestHash,
+      async (transaction) => {
+        const existing = await this.findByRequest(
+          transaction as Transaction,
+          input.userId,
+          input.requestId,
+        );
+        if (existing) return requestConflictOrReplay(existing, requestHash);
+
+        const conversations =
+          new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
+        const conversation = await conversations.getConversation({
+          userId: input.userId,
+          conversationId: input.conversationId,
+        });
+        if (
+          !conversation
+          || conversation.lifecycleStatus !== "active"
+        ) {
+          return { ok: false as const, code: "CONVERSATION_NOT_FOUND" as const };
+        }
+
+        const target = conversation.messages.find(
+          (message) =>
+            message.id === input.targetUserMessageId
+            && message.role === "user",
+        );
+        if (!target) {
+          return { ok: false as const, code: "BRANCH_POINT_INVALID" as const };
+        }
+
+        const runtimeParent = await this.resolveRuntimeParent(
+          conversations,
+          input.userId,
+          input.conversationId,
+          target.parentMessageId,
+        );
+        if (!runtimeParent.ok) return runtimeParent.result;
+
+        const editedUser = await conversations.appendUserMessage({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          parentMessageId: target.parentMessageId,
+        });
+        await conversations.appendContentBlock({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          messageId: editedUser.id,
+          ordinal: 0,
+          block: {
+            kind: "text",
+            rawType: "text",
+            text: input.text,
+          },
+        });
+
+        const preparation = await this.insertPreparation(transaction, {
+          prepareId: input.prepareId,
+          userId: input.userId,
+          requestId: input.requestId,
+          conversationId: input.conversationId,
+          operation: "edit",
+          requestHash,
+          canonicalUserMessageId: editedUser.id,
+          runtimeMode: runtimeParent.runtimeMode,
+          parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          executionSelection: input.executionSelection,
+          prompt: input.text,
+        });
+
+        return {
+          ok: true as const,
+          outcome: "created" as const,
+          preparation,
+        };
+      },
+    );
+  }
+
+  async getPreparation(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<NativeLivePreparedTurn | null> {
+    const row = await this.findById(this.db, input.userId, input.prepareId);
+    return row ? mapPreparation(row) : null;
+  }
+
+  async readTurn(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<NativeLiveBackendTurnReadModel | null> {
+    const [row] = await this.db
+      .select({
+        id: nativeLiveTurnPreparations.id,
+        requestId: nativeLiveTurnPreparations.requestId,
+        conversationId: nativeLiveTurnPreparations.conversationId,
+        operation: nativeLiveTurnPreparations.operation,
+        canonicalUserMessageId:
+          nativeLiveTurnPreparations.canonicalUserMessageId,
+        executionSelection:
+          nativeLiveTurnPreparations.executionSelection,
+        canonicalStatus: nativeLiveTurnPreparations.status,
+        dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+        assistantMessageId: nativeLiveTurnPreparations.assistantMessageId,
+        runtimeMetadata: nativeLiveTurnPreparations.runtimeMetadata,
+        failureCode: nativeLiveTurnPreparations.failureCode,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.prepareId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    const [semantic] = await this.db
+      .select({
+        status: nativeLiveSemanticScoringRequests.status,
+        fallbackCode: nativeLiveSemanticScoringRequests.fallbackCode,
+      })
+      .from(nativeLiveSemanticScoringRequests)
+      .where(
+        and(
+          eq(nativeLiveSemanticScoringRequests.userId, input.userId),
+          eq(nativeLiveSemanticScoringRequests.prepareId, input.prepareId),
+        ),
+      )
+      .limit(1);
+
+    let assistantMessage: NativeLiveMessage | null = null;
+    if (row.assistantMessageId) {
+      const conversations =
+        new DrizzleNativeLiveConversationRepository(this.db);
+      const conversation = await conversations.getConversation({
+        userId: input.userId,
+        conversationId: row.conversationId,
+      });
+      assistantMessage =
+        conversation?.messages.find(
+          (message) => message.id === row.assistantMessageId,
+        ) ?? null;
+      if (!assistantMessage) {
+        throw new Error("Finalized assistant message was not found.");
+      }
+    }
+
+    return {
+      prepareId: row.id,
+      requestId: row.requestId,
+      conversationId: row.conversationId,
+      operation: row.operation,
+      canonicalUserMessageId: row.canonicalUserMessageId,
+      executionSelection:
+        row.executionSelection === null
+          ? null
+          : parseNativeLiveExecutionSelection(
+              row.executionSelection,
+            ),
+      canonicalStatus: row.canonicalStatus,
+      dispatchStatus: row.dispatchStatus,
+      assistantMessage,
+      runtimeMetadata:
+        row.runtimeMetadata as NativeLiveRuntimeMetadata | null,
+      failureCode: row.failureCode,
+      semanticStatus: semantic?.status ?? null,
+      semanticFallbackCode: semantic?.fallbackCode ?? null,
+    };
+  }
+
+  async persistMindPreparedPrompt(input: {
+    userId: string;
+    prepareId: string;
+    prompt: string;
+  }): Promise<NativeLivePreparedTurn> {
+    const prompt = input.prompt.trim();
+    if (!prompt) {
+      throw new Error("Mind-prepared runtime prompt must be nonblank.");
+    }
+
+    return this.db.transaction(
+      async (transaction) => {
+        const row = await this.findById(
+          transaction as Transaction,
+          input.userId,
+          input.prepareId,
+          true,
+        );
+        if (!row) {
+          throw new Error("Native live turn preparation was not found.");
+        }
+        if (row.mindPrepared) return mapPreparation(row);
+        if (row.status !== "prepared") {
+          throw new Error("Finalized turn preparation cannot change its prompt.");
+        }
+
+        const [updated] = await transaction
+          .update(nativeLiveTurnPreparations)
+          .set({
+            prompt,
+            mindPrepared: true,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(nativeLiveTurnPreparations.id, input.prepareId),
+              eq(nativeLiveTurnPreparations.userId, input.userId),
+              eq(nativeLiveTurnPreparations.status, "prepared"),
+              eq(nativeLiveTurnPreparations.mindPrepared, false),
+            ),
+          )
+          .returning(this.selection());
+
+        if (updated) return mapPreparation(updated);
+
+        const raced = await this.findById(
+          transaction as Transaction,
+          input.userId,
+          input.prepareId,
+          true,
+        );
+        if (!raced) {
+          throw new Error("Native live turn preparation disappeared.");
+        }
+        return mapPreparation(raced);
+      },
+      { isolationLevel: "serializable" },
+    );
+  }
+
+  async finalizeSuccess(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string;
+    blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
+    normalizedEvents: readonly NativeLiveNormalizedEvent[];
+    runtimeMetadata: NativeLiveRuntimeMetadata | null;
+    mindFollowUp:
+      Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["mindFollowUp"];
+  }): Promise<NativeLiveFinalizeSuccessPortResult> {
+    const resultHash = hashJson(RESULT_HASH_VERSION, {
+      status: "success",
+      providerSessionId: input.providerSessionId,
+      normalizedEvents: input.normalizedEvents,
+      ...(input.runtimeMetadata
+        ? { runtimeMetadata: input.runtimeMetadata }
+        : {}),
+    });
+
+    try {
+      return await this.db.transaction(
+        async (transaction) => {
+          const row = await this.findById(
+            transaction as Transaction,
+            input.userId,
+            input.preparation.prepareId,
+            true,
+          );
+          if (!row) {
+            return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+          }
+
+          if (row.status === "finalized_success") {
+            if (row.resultHash !== resultHash) {
+              return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+            }
+            const record = await this.loadFinalizedSuccess(
+              transaction as Transaction,
+              row,
+            );
+            return {
+              ok: true as const,
+              outcome: "idempotent" as const,
+              record,
+            };
+          }
+          if (row.status !== "prepared") {
+            return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+          }
+
+          const conversations =
+            new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
+          const assistantMessage = await conversations.appendAssistantMessage({
+            userId: input.userId,
+            conversationId: row.conversationId,
+            parentMessageId: row.canonicalUserMessageId,
+          });
+
+          const blocks = [];
+          for (const [ordinal, block] of input.blocks.entries()) {
+            blocks.push(
+              await conversations.appendContentBlock({
+                userId: input.userId,
+                conversationId: row.conversationId,
+                messageId: assistantMessage.id,
+                ordinal,
+                block,
+              }),
+            );
+          }
+
+          const checkpoint = await conversations.bindProviderCheckpoint({
+            userId: input.userId,
+            conversationId: row.conversationId,
+            canonicalMessageId: assistantMessage.id,
+            checkpoint: {
+              provider: "claude_code",
+              providerSessionId: input.providerSessionId,
+            },
+          });
+
+          await conversations.setCurrentHead({
+            userId: input.userId,
+            conversationId: row.conversationId,
+            messageId: assistantMessage.id,
+          });
+
+          const finalizedAt = new Date();
+          const updated = await transaction
+            .update(nativeLiveTurnPreparations)
+            .set({
+              status: "finalized_success",
+              resultHash,
+              providerSessionId: input.providerSessionId,
+              runtimeMetadata:
+                input.runtimeMetadata as Record<string, unknown> | null,
+              assistantMessageId: assistantMessage.id,
+              failureCode: null,
+              finalizedAt,
+              updatedAt: finalizedAt,
+            })
+            .where(
+              and(
+                eq(nativeLiveTurnPreparations.id, row.id),
+                eq(nativeLiveTurnPreparations.userId, input.userId),
+                eq(nativeLiveTurnPreparations.status, "prepared"),
+              ),
+            )
+            .returning({ id: nativeLiveTurnPreparations.id });
+
+          if (updated.length !== 1) {
+            throw new Error("Native live turn finalization lost its preparation lock.");
+          }
+
+          if (input.mindFollowUp) {
+            await transaction.insert(nativeLiveMindFollowUps).values({
+              prepareId: row.id,
+              userId: input.userId,
+              conversationId: row.conversationId,
+              assistantMessageId: assistantMessage.id,
+              operation: row.operation,
+              intents: input.mindFollowUp.intents.map((intent) => ({
+                kind: intent.kind,
+                text: intent.text,
+                sourceStart: intent.sourceStart,
+                sourceEnd: intent.sourceEnd,
+                raw: intent.raw,
+              })),
+              status: "pending",
+              retryCount: 0,
+            });
+          }
+
+          return {
+            ok: true as const,
+            outcome: "completed" as const,
+            record: {
+              assistantMessage: { ...assistantMessage, blocks },
+              checkpoint,
+            },
+          };
+        },
+        { isolationLevel: "serializable" },
+      );
+    } catch {
+      return { ok: false, code: "CANONICAL_WRITE_FAILURE" };
+    }
+  }
+
+  async finalizeFailure(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    errorCode: NativeLiveRuntimeFailureCode | "RUNTIME_PROTOCOL_ERROR";
+  }): Promise<NativeLiveFinalizeFailurePortResult> {
+    const resultHash = hashJson(RESULT_HASH_VERSION, {
+      status: "failure",
+      errorCode: input.errorCode,
+    });
+
+    try {
+      return await this.db.transaction(
+        async (transaction) => {
+          const row = await this.findById(
+            transaction as Transaction,
+            input.userId,
+            input.preparation.prepareId,
+            true,
+          );
+          if (!row) {
+            return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+          }
+          if (row.status === "finalized_failure") {
+            if (
+              row.resultHash === resultHash
+              && row.failureCode === input.errorCode
+            ) {
+              return { ok: true as const, outcome: "idempotent" as const };
+            }
+            return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+          }
+          if (row.status !== "prepared") {
+            return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+          }
+
+          const finalizedAt = new Date();
+          const updated = await transaction
+            .update(nativeLiveTurnPreparations)
+            .set({
+              status: "finalized_failure",
+              resultHash,
+              providerSessionId: null,
+              assistantMessageId: null,
+              failureCode: input.errorCode,
+              finalizedAt,
+              updatedAt: finalizedAt,
+            })
+            .where(
+              and(
+                eq(nativeLiveTurnPreparations.id, row.id),
+                eq(nativeLiveTurnPreparations.userId, input.userId),
+                eq(nativeLiveTurnPreparations.status, "prepared"),
+              ),
+            )
+            .returning({ id: nativeLiveTurnPreparations.id });
+
+          if (updated.length !== 1) {
+            return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+          }
+          return { ok: true as const, outcome: "recorded" as const };
+        },
+        { isolationLevel: "serializable" },
+      );
+    } catch {
+      return { ok: false, code: "FINALIZE_CONFLICT" };
+    }
+  }
+
+  private async prepareWithRaceRecovery(
+    userId: string,
+    requestId: string,
+    requestHash: string,
+    work: (transaction: Transaction) => Promise<NativeLivePreparePortResult>,
+  ): Promise<NativeLivePreparePortResult> {
+    const existing = await this.findByRequest(this.db, userId, requestId);
+    if (existing) return requestConflictOrReplay(existing, requestHash);
+
+    try {
+      return await this.db.transaction(
+        async (transaction) => work(transaction as Transaction),
+        { isolationLevel: "serializable" },
+      );
+    } catch (error) {
+      const raced = await this.findByRequest(this.db, userId, requestId);
+      if (raced) return requestConflictOrReplay(raced, requestHash);
+      throw error;
+    }
+  }
+
+  private async resolveRuntimeParent(
+    conversations: DrizzleNativeLiveConversationRepository,
+    userId: string,
+    conversationId: string,
+    parentMessageId: string | null,
+  ): Promise<
+    | {
+        ok: true;
+        runtimeMode: NativeLiveRuntimeMode;
+        parentProviderSessionId: string | null;
+      }
+    | {
+        ok: false;
+        result: NativeLivePreparePortResult;
+      }
+  > {
+    if (!parentMessageId) {
+      return {
+        ok: true,
+        runtimeMode: "new",
+        parentProviderSessionId: null,
+      };
+    }
+
+    const checkpoint = await conversations.getProviderCheckpointForHead({
+      userId,
+      conversationId,
+      canonicalMessageId: parentMessageId,
+    });
+    if (!checkpoint) {
+      return {
+        ok: false,
+        result: { ok: false, code: "CHECKPOINT_NOT_FOUND" },
+      };
+    }
+
+    return {
+      ok: true,
+      runtimeMode: "fork",
+      parentProviderSessionId: checkpoint.providerSessionId,
+    };
+  }
+
+  private async insertPreparation(
+    executor: Executor,
+    input: {
+      prepareId: string;
+      userId: string;
+      requestId: string;
+      conversationId: string;
+      operation: "send" | "retry" | "edit";
+      requestHash: string;
+      canonicalUserMessageId: string;
+      runtimeMode: "new" | "fork";
+      parentProviderSessionId: string | null;
+      executionSelection: NativeLiveExecutionSelection | null;
+      prompt: string;
+    },
+  ): Promise<NativeLivePreparedTurn> {
+    const [row] = await executor
+      .insert(nativeLiveTurnPreparations)
+      .values({
+        id: input.prepareId,
+        userId: input.userId,
+        requestId: input.requestId,
+        conversationId: input.conversationId,
+        operation: input.operation,
+        requestHash: input.requestHash,
+        canonicalUserMessageId: input.canonicalUserMessageId,
+        runtimeMode: input.runtimeMode,
+        parentProviderSessionId: input.parentProviderSessionId,
+        executionSelection: input.executionSelection,
+        prompt: input.prompt,
+        mindPrepared: false,
+        status: "prepared",
+      })
+      .returning(this.selection());
+
+    if (!row) throw new Error("Native live turn preparation insert failed.");
+    return mapPreparation(row);
+  }
+
+  private async findByRequest(
+    executor: Executor,
+    userId: string,
+    requestId: string,
+  ): Promise<PreparationRow | null> {
+    const [row] = await executor
+      .select(this.selection())
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, userId),
+          eq(nativeLiveTurnPreparations.requestId, requestId),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  private async findById(
+    executor: Executor,
+    userId: string,
+    prepareId: string,
+    lock = false,
+  ): Promise<PreparationRow | null> {
+    const query = executor
+      .select(this.selection())
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, userId),
+          eq(nativeLiveTurnPreparations.id, prepareId),
+        ),
+      );
+
+    const rows = lock
+      ? await query.for("update").limit(1)
+      : await query.limit(1);
+    return rows[0] ?? null;
+  }
+
+  private async loadFinalizedSuccess(
+    transaction: Transaction,
+    row: PreparationRow,
+  ): Promise<{
+    assistantMessage: NativeLiveMessage;
+    checkpoint: NativeLiveProviderCheckpoint;
+  }> {
+    if (!row.assistantMessageId) {
+      throw new Error("Finalized preparation is missing its assistant message.");
+    }
+
+    const conversations =
+      new DrizzleNativeLiveConversationRepository(
+              transaction as Transaction,
+            );
+    const conversation = await conversations.getConversation({
+      userId: row.userId,
+      conversationId: row.conversationId,
+    });
+    const assistantMessage = conversation?.messages.find(
+      (message) => message.id === row.assistantMessageId,
+    );
+    if (!assistantMessage) {
+      throw new Error("Finalized assistant message was not found.");
+    }
+
+    const checkpoint = await conversations.getProviderCheckpointForHead({
+      userId: row.userId,
+      conversationId: row.conversationId,
+      canonicalMessageId: row.assistantMessageId,
+    });
+    if (!checkpoint) {
+      throw new Error("Finalized provider checkpoint was not found.");
+    }
+
+    return { assistantMessage, checkpoint };
+  }
+
+  private selection() {
+    return {
+      id: nativeLiveTurnPreparations.id,
+      userId: nativeLiveTurnPreparations.userId,
+      requestId: nativeLiveTurnPreparations.requestId,
+      conversationId: nativeLiveTurnPreparations.conversationId,
+      operation: nativeLiveTurnPreparations.operation,
+      requestHash: nativeLiveTurnPreparations.requestHash,
+      canonicalUserMessageId:
+        nativeLiveTurnPreparations.canonicalUserMessageId,
+      runtimeMode: nativeLiveTurnPreparations.runtimeMode,
+      parentProviderSessionId:
+        nativeLiveTurnPreparations.parentProviderSessionId,
+      executionSelection: nativeLiveTurnPreparations.executionSelection,
+      prompt: nativeLiveTurnPreparations.prompt,
+      mindPrepared: nativeLiveTurnPreparations.mindPrepared,
+      status: nativeLiveTurnPreparations.status,
+      resultHash: nativeLiveTurnPreparations.resultHash,
+      providerSessionId: nativeLiveTurnPreparations.providerSessionId,
+      runtimeMetadata: nativeLiveTurnPreparations.runtimeMetadata,
+      assistantMessageId: nativeLiveTurnPreparations.assistantMessageId,
+      failureCode: nativeLiveTurnPreparations.failureCode,
+    };
+  }
+}

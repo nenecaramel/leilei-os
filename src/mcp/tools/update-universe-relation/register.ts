@@ -1,9 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import { UniverseServiceError, type UniverseService } from "../../../domains/universe/universe-service.js";
 import { invokeMcpWrite } from "../write-context.js";
 import { safeUniverseWriteError, universeWriteErrorDetailsSchema } from "../universe/shared.js";
 import { updateUniverseRelationInputSchema } from "./schema.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const relationOutputSchema = z.object({
   id: z.string().min(1).max(256),
@@ -11,12 +13,12 @@ const relationOutputSchema = z.object({
   target: z.string().min(1).max(256),
   relationType: z.enum(["related_to", "supports", "contradicts", "extends", "part_of", "raises"]),
   strength: z.number().finite().min(0).max(1),
-  createdAt: z.string().datetime(),
+  created_at: z.string().datetime(),
 }).strict();
 
 const outputSchema = z.object({
   success: z.boolean(),
-  data: z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative() }).strict().optional(),
+  data: z.object({ relation: relationOutputSchema, universe_version: z.number().int().nonnegative(), ...mcpMutationReceiptFields }).strict().optional(),
   error: universeWriteErrorDetailsSchema.optional(),
 }).strict();
 
@@ -28,7 +30,7 @@ export type UpdateUniverseRelationToolDependencies = {
 export function registerUpdateUniverseRelationTool(server: McpServer, dependencies: UpdateUniverseRelationToolDependencies): void {
   server.registerTool("update_universe_relation", {
     title: "Update a Universe relation",
-    description: "Apply a partial update to one Universe relation using expected_version. Only relation_type and strength may change; id, source, target, and createdAt remain unchanged. A stale version is a conflict; fresh-read the relation and Universe version before deciding whether another action is needed, and never blindly retry.",
+    description: "Change a Universe relation's type and/or strength; endpoints stay unchanged.",
     inputSchema: updateUniverseRelationInputSchema,
     outputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -50,7 +52,28 @@ export function registerUpdateUniverseRelationTool(server: McpServer, dependenci
       );
       return {
         content: [{ type: "text", text: "Universe relation updated." }],
-        structuredContent: { success: true as const, data: result },
+        structuredContent: {
+          success: true as const,
+          data: {
+            ...result,
+            relation: {
+              id: result.relation.id,
+              source: result.relation.source,
+              target: result.relation.target,
+              relationType: result.relation.relationType,
+              strength: result.relation.strength,
+              created_at: result.relation.createdAt,
+            },
+            ...mcpMutationReceipt({
+              outcome: "applied",
+              entity_type: "universe_relation",
+              entity_id: result.relation.id,
+              revision: null,
+              detail_tool: "get_universe_relations",
+              detail_arguments: { node_id: result.relation.source },
+            }),
+          },
+        },
       };
     },
     mapError: (error) => safeUniverseWriteError(error, "Universe relation was not found."),

@@ -12,7 +12,7 @@ type HostContext = RecordValue & {
   containerDimensions?: { height?: number; maxHeight?: number };
 };
 
-type ThinkingBlockApp = {
+type NoteCardApp = {
   ontoolinput?: (params: ToolInputParams) => void;
   ontoolinputpartial?: (params: ToolInputParams) => void;
   ontoolresult?: (params: RecordValue) => void;
@@ -21,7 +21,7 @@ type ThinkingBlockApp = {
   getHostContext?: () => HostContext | undefined;
 };
 
-export type ThinkingBlockController = {
+export type NoteCardController = {
   render: (event?: { detail?: { globals?: RecordValue } }) => void;
   setCollapsed: (value: boolean) => void;
   handleToolInput: (argumentsValue?: RecordValue) => void;
@@ -30,10 +30,10 @@ export type ThinkingBlockController = {
   handleHostContext: (context: RecordValue) => void;
 };
 
-type ThinkingBlockWindow = Window & {
+type NoteCardWindow = Window & {
   openai?: RecordValue;
-  thinkingBlock?: ThinkingBlockController;
-  __LEILEIOS_DISABLE_THINKING_BLOCK_CONNECT__?: boolean;
+  noteCard?: NoteCardController;
+  __LEILEIOS_DISABLE_NOTE_CARD_CONNECT__?: boolean;
 };
 
 function objectOrEmpty(value: unknown): RecordValue {
@@ -94,15 +94,15 @@ function finitePositive(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-export function installThinkingBlockRuntime(
-  app: ThinkingBlockApp,
-  windowRef: ThinkingBlockWindow,
+export function installNoteCardRuntime(
+  app: NoteCardApp,
+  windowRef: NoteCardWindow,
   documentRef: Document,
-): ThinkingBlockController | null {
-  const card = documentRef.querySelector<HTMLElement>("[data-thinking-card]");
-  const content = documentRef.querySelector<HTMLElement>("[data-thinking-content]");
-  const toggle = documentRef.querySelector<HTMLButtonElement>("[data-thinking-toggle]");
-  const meta = documentRef.querySelector<HTMLElement>("[data-thinking-meta]");
+): NoteCardController | null {
+  const card = documentRef.querySelector<HTMLElement>("[data-note-card]");
+  const content = documentRef.querySelector<HTMLElement>("[data-note-content]");
+  const toggle = documentRef.querySelector<HTMLButtonElement>("[data-note-toggle]");
+  const meta = documentRef.querySelector<HTMLElement>("[data-note-meta]");
   if (!card || !content || !toggle || !meta) return null;
 
   let collapsed = false;
@@ -163,12 +163,16 @@ export function installThinkingBlockRuntime(
       fallbackInput,
       fallbackOutput,
     ];
-    const style = pick(sources, "style", "deep_think");
-    const effort = pick(sources, "effort", "");
-    const thinking = pick(sources, "thinking", "本轮没有提供外置工作文本。");
-    const normalizedStyle = style === "relational" || style === "deep_think" ? style : "deep_think";
-    meta.textContent = effort ? `${normalizedStyle} · ${effort}` : normalizedStyle;
-    content.textContent = thinking;
+    const style = pick(sources, "style", "plain");
+    const detail = pick(sources, "detail", pick(sources, "detail", ""));
+    const note = pick(
+      sources,
+      "note",
+      pick(sources, "note", "本轮没有提供笔记。"),
+    );
+    const normalizedStyle = style === "warm" ? "warm" : "plain";
+    meta.textContent = detail ? `${normalizedStyle} · ${detail}` : normalizedStyle;
+    content.textContent = note;
     applyHostContext();
     requestIntrinsicHeight(true);
   };
@@ -198,7 +202,7 @@ export function installThinkingBlockRuntime(
     render();
   };
 
-  const controller: ThinkingBlockController = {
+  const controller: NoteCardController = {
     render,
     setCollapsed,
     handleToolInput,
@@ -206,7 +210,7 @@ export function installThinkingBlockRuntime(
     handleToolResult,
     handleHostContext,
   };
-  windowRef.thinkingBlock = controller;
+  windowRef.noteCard = controller;
   app.ontoolinput = (params) => handleToolInput(params.arguments);
   app.ontoolinputpartial = (params) => handleToolInputPartial(params.arguments);
   app.ontoolresult = (params) => handleToolResult(params);
@@ -222,17 +226,17 @@ export function installThinkingBlockRuntime(
   return controller;
 }
 
-export function startThinkingBlockApp(
-  windowRef: ThinkingBlockWindow = window,
+export function startNoteCardApp(
+  windowRef: NoteCardWindow = window,
   documentRef: Document = document,
-): ThinkingBlockController | null {
+): NoteCardController | null {
   const app = new App(
-    { name: "LeileiOS Thinking Block", version: "1.0.0" },
+    { name: "LeileiOS Note Card", version: "1.0.0" },
     {},
     { autoResize: true, strict: true },
   );
-  const controller = installThinkingBlockRuntime(app, windowRef, documentRef);
-  if (!controller || windowRef.__LEILEIOS_DISABLE_THINKING_BLOCK_CONNECT__) return controller;
+  const controller = installNoteCardRuntime(app, windowRef, documentRef);
+  if (!controller || windowRef.__LEILEIOS_DISABLE_NOTE_CARD_CONNECT__) return controller;
   const transport = new PostMessageTransport(windowRef.parent, windowRef.parent);
   void app.connect(transport)
     .then(() => {
@@ -243,4 +247,4 @@ export function startThinkingBlockApp(
   return controller;
 }
 
-if (typeof window !== "undefined" && typeof document !== "undefined") startThinkingBlockApp();
+if (typeof window !== "undefined" && typeof document !== "undefined") startNoteCardApp();

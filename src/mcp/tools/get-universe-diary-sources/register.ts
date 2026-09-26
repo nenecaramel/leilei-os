@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { safeUniverseReadError } from "../universe/shared.js";
@@ -31,7 +32,7 @@ export type GetUniverseDiarySourcesToolDependencies = {
 export function registerGetUniverseDiarySourcesTool(server: McpServer, dependencies: GetUniverseDiarySourcesToolDependencies): void {
   server.registerTool("get_universe_diary_sources", {
     title: "Get Universe Diary sources",
-    description: "Read the authenticated user's active and archived Diary sources for one exact Universe node. Returns only live source metadata, never Diary body content.",
+    description: "Read Diary provenance metadata for one Universe node.",
     inputSchema,
     outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

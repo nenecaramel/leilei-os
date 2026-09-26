@@ -368,6 +368,43 @@ test("toy tools fail safely without authenticated context", async (t) => {
   assert.equal(service.calls.length, 0);
 });
 
+test("toy idempotency conflicts are explicitly non-retryable", async (t) => {
+  const service = new MockToyCommandToolService();
+  service.nextError = new ToyDomainError(
+    "IDEMPOTENCY_CONFLICT",
+    "private conflict detail",
+  );
+
+  const { client, server } = await connectTestClient(
+    createTestDependencies(service),
+  );
+
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const response = await client.callTool({
+    name: "toy_stop",
+    arguments: { idempotency_key: "toy-stop-idem-conflict" },
+  });
+
+  assert.equal(response.isError, true);
+  assert.deepEqual(
+    (response.structuredContent as any).error,
+    {
+      code: "IDEMPOTENCY_CONFLICT",
+      message: "This idempotency key was already used for a different toy command.",
+      retryable: false,
+      reason: "idempotency_conflict",
+      current_revision: null,
+      recommended_tool: null,
+      recommended_arguments: null,
+    },
+  );
+  assert.doesNotMatch(JSON.stringify(response), /private conflict detail/);
+});
+
 test("toy tools map domain failures to safe messages", async (t) => {
   const service = new MockToyCommandToolService();
   service.nextError = new ToyDomainError(

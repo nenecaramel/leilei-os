@@ -39,9 +39,7 @@ import {
 } from "../observability/logger.js";
 import { createMcpLifecycleObserver } from "../observability/runtime-observers.js";
 
-import type { MemoryApiDependencies } from "../web-api/memory-router.js";
 import type { DiaryApiDependencies } from "../web-api/diary-router.js";
-import type { TaskApiDependencies } from "../web-api/task-router.js";
 import {
   createToyBridgeRouter,
   type ToyApiDependencies,
@@ -54,7 +52,6 @@ import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
 import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
-import type { SharedPaperApiDependencies } from "../web-api/shared-paper-router.js";
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
 import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
 import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
@@ -62,20 +59,41 @@ import type { ConversationLifecycleApiDependencies } from "../web-api/conversati
 import type { ConversationFavoriteApiDependencies } from "../web-api/conversation-favorite-router.js";
 import type { ConversationExclusionManagementApiDependencies } from "../web-api/conversation-exclusion-management-router.js";
 import type { ConversationImportHistoryApiDependencies } from "../web-api/conversation-import-history-router.js";
+import type { NativeLiveApiDependencies } from "../web-api/native-live-router.js";
+import {
+  createNativeLiveRelayInternalRouter,
+  type NativeLiveRelayInternalDependencies,
+} from "../web-api/native-live-relay-internal-router.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
 } from "../web-api/health-sync-router.js";
 import { createHealthSyncAuthMiddleware } from "../web-api/health-sync-auth.js";
 
+export type NativeLiveProductionDependencies = {
+  web: Required<NativeLiveApiDependencies>;
+  internal:
+    Required<
+      Omit<
+        NativeLiveRelayInternalDependencies,
+        "backgroundModelOpportunity"
+        | "observeCompanionBackgroundOpportunity"
+      >
+    >
+    & Pick<
+      NativeLiveRelayInternalDependencies,
+      "backgroundModelOpportunity"
+      | "observeCompanionBackgroundOpportunity"
+    >;
+};
+
 export type AppDependencies = {
   logger?: SafeLogger;
+  nativeLiveProduction?: NativeLiveProductionDependencies;
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
-  webMemoryService?: MemoryApiDependencies["memoryService"];
   webDiaryService?: DiaryApiDependencies["diaryService"];
   webDiaryCommentService?: DiaryApiDependencies["diaryCommentService"];
-  webTaskService?: TaskApiDependencies["taskService"];
   webSystemService?: SystemApiDependencies["systemService"];
   toyService?: ToyApiDependencies["toyService"];
   webGlobalSearchService?: GlobalSearchApiDependencies["globalSearchService"];
@@ -85,7 +103,6 @@ export type AppDependencies = {
   webUniverseService?: UniverseApiDependencies["universeService"];
   webBridgeService?: BridgeApiDependencies["bridgeService"];
   webSentinelService?: SentinelApiDependencies["sentinelService"];
-  webSharedPaperService?: SharedPaperApiDependencies["sharedPaperService"];
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
   webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
   webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
@@ -93,6 +110,36 @@ export type AppDependencies = {
   webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
+  webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
+  webNativeLiveTurnReader?: NativeLiveApiDependencies["turnReader"];
+  webNativeLiveCurrentPathReader?:
+    NativeLiveApiDependencies["currentPathReader"];
+  webNativeLiveConversationService?:
+    NativeLiveApiDependencies["conversationService"];
+  nativeLiveRuntimeEventService?:
+    NativeLiveRelayInternalDependencies["runtimeEventService"]
+    & NativeLiveApiDependencies["runtimeEventService"];
+  nativeLiveRuntimeInteractionService?:
+    NativeLiveRelayInternalDependencies["runtimeInteractionService"]
+    & NativeLiveApiDependencies["runtimeInteractionService"];
+  nativeLiveRuntimeControlService?:
+    NativeLiveRelayInternalDependencies["runtimeControlService"]
+    & NativeLiveApiDependencies["runtimeControlService"];
+  nativeLiveRelayService?:
+    NativeLiveRelayInternalDependencies["relayService"]
+    & NativeLiveApiDependencies["relayService"];
+  nativeLiveWorkWaitService?:
+    NativeLiveRelayInternalDependencies["workWaitService"];
+  nativeLiveSemanticService?:
+    NativeLiveRelayInternalDependencies["semanticService"];
+  nativeLiveBackgroundModelService?:
+    NativeLiveRelayInternalDependencies["backgroundModelService"];
+  nativeLiveBackgroundModelCoordinator?:
+    NativeLiveRelayInternalDependencies["backgroundModelCoordinator"];
+  nativeLiveBackgroundModelOpportunity?:
+    NativeLiveRelayInternalDependencies["backgroundModelOpportunity"];
+  nativeLiveCompanionBackgroundOpportunity?:
+    NativeLiveRelayInternalDependencies["companionBackgroundOpportunity"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -106,6 +153,14 @@ export function createApp(
   const logger = dependencies.logger ?? createSafeLogger({ level: env.LOG_LEVEL });
   const observeMcpLifecycle = createMcpLifecycleObserver(logger);
   const config = requireOAuthConfig(env);
+  if (
+    dependencies.nativeLiveProduction
+    && !config.MCP_AUTH_TOKEN
+  ) {
+    throw new Error(
+      "Native Live production requires internal MCP authentication.",
+    );
+  }
   const oauthAuthorizationServerConfig = getOAuthAuthorizationServerConfig(env);
   const mcpGovernance = getMcpGovernanceConfig(env);
   const mcpSessionRegistry = dependencies.mcpSessionRegistry ?? new McpSessionRegistry({
@@ -302,11 +357,9 @@ export function createApp(
           webApiConfig.WEB_AUTH0_REQUIRED_SCOPE,
       });
 
-    const webMemoryService = dependencies.webMemoryService;
     const webDiaryService = dependencies.webDiaryService;
     const webDiaryCommentService =
       dependencies.webDiaryCommentService;
-    const webTaskService = dependencies.webTaskService;
     const webSystemService = dependencies.webSystemService;
     const toyService = dependencies.toyService;
     const webGlobalSearchService = dependencies.webGlobalSearchService;
@@ -316,18 +369,21 @@ export function createApp(
     const webUniverseService = dependencies.webUniverseService;
     const webBridgeService = dependencies.webBridgeService;
     const webSentinelService = dependencies.webSentinelService;
-    const webSharedPaperService = dependencies.webSharedPaperService;
     const webConversationImportService = dependencies.webConversationImportService;
     const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
     const webConversationPruningService = dependencies.webConversationPruningService;
     const webConversationFavoriteService = dependencies.webConversationFavoriteService;
     const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
     const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
+    const webNativeLiveCoordinator = dependencies.webNativeLiveCoordinator;
+    const webNativeLiveTurnReader = dependencies.webNativeLiveTurnReader;
+    const webNativeLiveCurrentPathReader =
+      dependencies.webNativeLiveCurrentPathReader;
+    const webNativeLiveConversationService =
+      dependencies.webNativeLiveConversationService;
 
     if (
-      !webMemoryService ||
       !webDiaryService ||
-      !webTaskService ||
       !webSystemService ||
       !toyService ||
       !webGlobalSearchService ||
@@ -366,17 +422,11 @@ export function createApp(
       ),
       databaseReadinessMiddleware,
       createWebApiRouter({
-        memory: {
-          memoryService: webMemoryService,
-        },
         diary: {
           diaryService: webDiaryService,
           ...(webDiaryCommentService
             ? { diaryCommentService: webDiaryCommentService }
             : {}),
-        },
-        task: {
-          taskService: webTaskService,
         },
         system: { systemService: webSystemService },
         toy: {
@@ -389,7 +439,6 @@ export function createApp(
         universe: { universeService: webUniverseService },
         ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
         ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
-        ...(webSharedPaperService ? { sharedPaper: { sharedPaperService: webSharedPaperService } } : {}),
         ...(webConversationFavoriteService ? { conversationFavorite: { conversationFavoriteService: webConversationFavoriteService } } : {}),
         ...(webConversationExclusionManagementService ? { conversationExclusionManagement: { conversationExclusionManagementService: webConversationExclusionManagementService } } : {}),
         ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),
@@ -397,6 +446,52 @@ export function createApp(
         ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
         ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
         ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
+        ...(dependencies.nativeLiveProduction
+          ? {
+              nativeLive:
+                dependencies.nativeLiveProduction.web,
+            }
+          : webNativeLiveCoordinator
+            && webNativeLiveTurnReader
+            && dependencies.nativeLiveRelayService
+            ? {
+                nativeLive: {
+                  coordinator: webNativeLiveCoordinator,
+                  relayService: dependencies.nativeLiveRelayService,
+                  turnReader: webNativeLiveTurnReader,
+                  ...(webNativeLiveCurrentPathReader
+                    ? {
+                        currentPathReader:
+                          webNativeLiveCurrentPathReader,
+                      }
+                    : {}),
+                  ...(webNativeLiveConversationService
+                    ? {
+                        conversationService:
+                          webNativeLiveConversationService,
+                      }
+                    : {}),
+                  ...(dependencies.nativeLiveRuntimeEventService
+                    ? {
+                        runtimeEventService:
+                          dependencies.nativeLiveRuntimeEventService,
+                      }
+                    : {}),
+                  ...(dependencies.nativeLiveRuntimeInteractionService
+                    ? {
+                        runtimeInteractionService:
+                          dependencies.nativeLiveRuntimeInteractionService,
+                      }
+                    : {}),
+                  ...(dependencies.nativeLiveRuntimeControlService
+                    ? {
+                        runtimeControlService:
+                          dependencies.nativeLiveRuntimeControlService,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
       }),
     );
   }
@@ -421,6 +516,119 @@ export function createApp(
   );
 
   if (config.MCP_AUTH_TOKEN) {
+    if (dependencies.nativeLiveProduction) {
+      app.use(
+        "/internal/native-live-relay",
+        createInternalAuthMiddleware(
+          config.MCP_AUTH_TOKEN,
+          config.MCP_USER_ID,
+        ),
+        databaseReadinessMiddleware,
+        createNativeLiveRelayInternalRouter({
+          ...dependencies.nativeLiveProduction.internal,
+          observeCompanionBackgroundOpportunity: (event) => {
+            logger.info(
+              "native_live_companion_background_opportunity",
+              {
+                outcome: event.outcome,
+                reason: event.reason,
+                maintenanceKindCount:
+                  event.maintenanceKindCount,
+                effectDeliveryScheduled:
+                  event.effectDeliveryScheduled,
+                proactivityScheduled:
+                  event.proactivityScheduled,
+                topicResurfaceOffered:
+                  event.topicResurfaceOffered,
+                failureCount: event.failureCount,
+              },
+            );
+          },
+        }),
+      );
+    } else if (dependencies.nativeLiveRelayService) {
+      app.use(
+        "/internal/native-live-relay",
+        createInternalAuthMiddleware(
+          config.MCP_AUTH_TOKEN,
+          config.MCP_USER_ID,
+        ),
+        databaseReadinessMiddleware,
+        createNativeLiveRelayInternalRouter({
+          relayService: dependencies.nativeLiveRelayService,
+          ...(dependencies.nativeLiveWorkWaitService
+            ? {
+                workWaitService:
+                  dependencies.nativeLiveWorkWaitService,
+              }
+            : {}),
+          ...(dependencies.nativeLiveSemanticService
+            ? { semanticService: dependencies.nativeLiveSemanticService }
+            : {}),
+          ...(dependencies.nativeLiveBackgroundModelService
+            ? {
+                backgroundModelService:
+                  dependencies.nativeLiveBackgroundModelService,
+              }
+            : {}),
+          ...(dependencies.nativeLiveBackgroundModelCoordinator
+            ? {
+                backgroundModelCoordinator:
+                  dependencies.nativeLiveBackgroundModelCoordinator,
+              }
+            : {}),
+          ...(dependencies.nativeLiveBackgroundModelOpportunity
+            ? {
+                backgroundModelOpportunity:
+                  dependencies.nativeLiveBackgroundModelOpportunity,
+              }
+            : {}),
+          ...(dependencies.nativeLiveCompanionBackgroundOpportunity
+            ? {
+                companionBackgroundOpportunity:
+                  dependencies.nativeLiveCompanionBackgroundOpportunity,
+                observeCompanionBackgroundOpportunity: (event) => {
+                  logger.info(
+                    "native_live_companion_background_opportunity",
+                    {
+                      outcome: event.outcome,
+                      reason: event.reason,
+                      maintenanceKindCount:
+                        event.maintenanceKindCount,
+                      effectDeliveryScheduled:
+                        event.effectDeliveryScheduled,
+                      proactivityScheduled:
+                        event.proactivityScheduled,
+                      topicResurfaceOffered:
+                        event.topicResurfaceOffered,
+                      failureCount: event.failureCount,
+                    },
+                  );
+                },
+              }
+            : {}),
+          ...(dependencies.nativeLiveRuntimeEventService
+            ? {
+                runtimeEventService:
+                  dependencies.nativeLiveRuntimeEventService,
+              }
+            : {}),
+          ...(dependencies.nativeLiveRuntimeInteractionService
+            ? {
+                runtimeInteractionService:
+                  dependencies.nativeLiveRuntimeInteractionService,
+              }
+            : {}),
+          ...(dependencies.nativeLiveRuntimeControlService
+            ? {
+                runtimeControlService:
+                  dependencies.nativeLiveRuntimeControlService,
+              }
+            : {}),
+        }),
+      );
+    }
+
     app.use(
       "/internal/mcp",
       createInternalAuthMiddleware(

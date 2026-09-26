@@ -112,6 +112,16 @@ test(
           assert.equal(cEmpty.outcome, "committed");
           assert.deepEqual(await repository.listContentDates(userA), []);
 
+          await repository.replacePaper({
+            userId: userA, date: "2026-08-11", author: "L", expectedRevision: null,
+            entries: [{ id: "old-1", kind: "pending", text: "older" }],
+          });
+          await repository.replacePaper({
+            userId: userA, date: "2026-08-13", author: "L", expectedRevision: null,
+            entries: [{ id: "new-1", kind: "pending", text: "newer" }],
+          });
+          assert.deepEqual(await repository.listContentDates(userA), ["2026-08-13", "2026-08-11"]);
+
           const other = await repository.replacePaper({
             userId: userB, date: "2026-08-12", author: "L", expectedRevision: null,
             entries: [{ id: "b-1", kind: "pending", text: "other" }],
@@ -411,6 +421,137 @@ test(
       await adminClient`delete from todo_papers where user_id in (${userId}, ${otherUserId})`;
       await adminClient`delete from users where id in (${userId}, ${otherUserId})`;
       await Promise.all([...clients.map((client) => client.end()), adminClient.end()]);
+    }
+  },
+);
+
+test(
+  "Todo batch append is atomic, replayable, and advances the paper once",
+  { skip: !runIntegration },
+  async () => {
+    const client = postgres(process.env.DATABASE_URL!, { prepare: false, ssl: false });
+    const database = drizzle(client, { schema });
+    const userId = randomUUID();
+    const repository = new DrizzleTodoRepository(database as never);
+    const date = "2026-09-23";
+    const entries = [
+      { kind: "pending" as const, text: "batch first" },
+      { kind: "record" as const, text: "batch second" },
+    ];
+    const idempotencyKey = "todo.repository.batch-append-0001";
+    const requestHash = hashMcpWriteRequest({ date, author: "C", entries });
+    try {
+      await database.insert(users).values({
+        id: userId,
+        email: `${userId}@example.invalid`,
+        displayName: "Todo batch owner",
+        status: "active",
+      });
+
+      const committed = await repository.appendEntriesIdempotently!({
+        userId,
+        date,
+        author: "C",
+        entries,
+        idempotencyKey,
+        requestHash,
+      });
+      assert.equal(committed.outcome, "committed");
+      assert.equal(
+        committed.outcome === "committed" ? committed.entries.length : 0,
+        2,
+      );
+      assert.equal(
+        committed.outcome === "committed" ? committed.paperRevision : 0,
+        1,
+      );
+
+      const replayed = await repository.appendEntriesIdempotently!({
+        userId,
+        date,
+        author: "C",
+        entries,
+        idempotencyKey,
+        requestHash,
+      });
+      assert.equal(replayed.outcome, "replayed");
+      assert.deepEqual(
+        replayed.outcome === "replayed"
+          ? replayed.entries.map((entry) => entry.id)
+          : [],
+        committed.outcome === "committed"
+          ? committed.entries.map((entry) => entry.id)
+          : [],
+      );
+
+      const day = await repository.readDay(userId, date);
+      assert.equal(day.C?.revision, 1);
+      assert.deepEqual(
+        day.C?.entries.map(({ kind, text, revision }) => ({ kind, text, revision })),
+        [
+          { kind: "pending", text: "batch first", revision: 1 },
+          { kind: "record", text: "batch second", revision: 1 },
+        ],
+      );
+
+      const conflict = await repository.appendEntriesIdempotently!({
+        userId,
+        date,
+        author: "C",
+        entries: [{ kind: "pending", text: "different" }],
+        idempotencyKey,
+        requestHash: hashMcpWriteRequest({
+          date,
+          author: "C",
+          entries: [{ kind: "pending", text: "different" }],
+        }),
+      });
+      assert.deepEqual(conflict, { outcome: "idempotency_conflict" });
+
+      await client.unsafe(`
+        create or replace function todo_batch_fail_second() returns trigger language plpgsql as $$
+        begin
+          if NEW.text = 'batch explode' then
+            raise exception 'forced Todo batch entry failure';
+          end if;
+          return NEW;
+        end; $$;
+        create trigger todo_batch_fail_second_trigger
+        before insert on todo_entries
+        for each row execute function todo_batch_fail_second();
+      `);
+      const failDate = "2026-09-24";
+      const failEntries = [
+        { kind: "pending" as const, text: "batch safe" },
+        { kind: "pending" as const, text: "batch explode" },
+      ];
+      try {
+        await assert.rejects(repository.appendEntriesIdempotently!({
+          userId,
+          date: failDate,
+          author: "L",
+          entries: failEntries,
+          idempotencyKey: "todo.repository.batch-rollback-0001",
+          requestHash: hashMcpWriteRequest({
+            date: failDate,
+            author: "L",
+            entries: failEntries,
+          }),
+        }));
+      } finally {
+        await client.unsafe(
+          "drop trigger if exists todo_batch_fail_second_trigger on todo_entries; drop function if exists todo_batch_fail_second();",
+        );
+      }
+      assert.equal((await repository.readDay(userId, failDate)).L, null);
+    } finally {
+      await client.unsafe("drop trigger if exists todo_batch_fail_second_trigger on todo_entries");
+      await client.unsafe("drop function if exists todo_batch_fail_second()");
+      await client`delete from mcp_write_idempotency where user_id = ${userId}`;
+      await client`delete from todo_entries where paper_id in (select id from todo_papers where user_id = ${userId})`;
+      await client`delete from todo_papers where user_id = ${userId}`;
+      await client`delete from users where id = ${userId}`;
+      await client.end();
     }
   },
 );

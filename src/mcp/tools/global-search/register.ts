@@ -6,7 +6,7 @@ import { compactMcpText, joinMcpContentLines, quoteMcpText } from "../content-co
 
 const MAX_QUERY_CODE_POINTS = 200;
 const MAX_CURSOR_ENCODED_LENGTH = 2_800;
-const DEFAULT_GLOBAL_SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+const DEFAULT_GLOBAL_SEARCH_MODULES = ["diary", "todo", "universe"] as const;
 const GLOBAL_SEARCH_MODULES = [...DEFAULT_GLOBAL_SEARCH_MODULES, "conversation"] as const;
 
 const globalSearchModuleSchema = z.enum(GLOBAL_SEARCH_MODULES);
@@ -16,12 +16,12 @@ const inputSchema = z.object({
     (value) => [...value].length <= MAX_QUERY_CODE_POINTS,
     { message: `query must be at most ${MAX_QUERY_CODE_POINTS} Unicode code points` },
   ).describe("Search phrase across the selected LeileiOS modules."),
-  modules: z.array(globalSearchModuleSchema).min(1).max(7)
+  modules: z.array(globalSearchModuleSchema).min(1).max(4)
     .default([...DEFAULT_GLOBAL_SEARCH_MODULES])
     .optional()
-    .describe("Modules to search. Defaults to Memory, Diary, Task, Todo, Universe, and Shared Paper. Add conversation explicitly when searching archived ChatGPT/Claude messages."),
+    .describe("Domains to search. Defaults to Diary, Todo, and Universe; add Conversation explicitly."),
   scope: z.enum(["active", "archived", "all"]).default("active").optional(),
-  mode: z.enum(["normal", "phrase"]).default("normal").optional(),
+  mode: z.enum(["normal", "phrase"]).default("normal").optional().describe("normal collapses runs of whitespace before matching; phrase preserves internal whitespace and matches the literal contiguous phrase."),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.number().int().min(1).max(25).default(10).optional(),
@@ -45,14 +45,14 @@ const globalSearchResultSchema = z.object({
   entity_id: z.string().min(1).max(256),
   stable_name: z.string(),
   snippet: z.string().max(480).describe("At most 240 Unicode code points; astral characters may occupy two UTF-16 code units."),
-  matched_field: z.enum(["key", "title", "content", "description", "tags", "mood", "text"]),
+  matched_field: z.enum(["title", "content", "tags", "mood", "text"]),
   match_reason: z.enum(["exact_stable_name", "exact_phrase", "stable_name_prefix", "field_match"]),
   lifecycle_status: z.enum(["active", "archived"]),
   business_time: z.string().datetime(),
-  time_basis: z.enum(["updated_at", "diary_date", "due_time", "created_at", "todo_date", "message_time"]),
+  time_basis: z.enum(["updated_at", "diary_date", "todo_date", "message_time"]),
   updated_at: z.string().datetime(),
   author: z.enum(["L", "G", "C"]).nullable(),
-  detail_tool: z.enum(["get_memory", "get_diary", "get_task", "read_todo_day", "get_universe_node", "get_shared_paper", "read_conversation"]).nullable(),
+  detail_tool: z.enum(["get_diary", "read_todo_day", "get_universe_node", "read_conversation"]).nullable(),
   detail_arguments: globalSearchDetailArgumentsSchema.nullable(),
   conversation_id: z.string().uuid().nullable().optional(),
   conversation_view: z.enum(["default", "all"]).nullable().optional(),
@@ -106,22 +106,11 @@ const globalSearchResultSchema = z.object({
     return;
   }
 
-  if (result.entity_type === "shared_paper") {
-    if (result.detail_tool !== "get_shared_paper") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Shared Paper results must use get_shared_paper." });
-    }
-    if ("id" in result.detail_arguments && !("scope" in result.detail_arguments)
-      && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Shared Paper detail_arguments must contain only a UUID id." });
-    return;
-  }
-
-  const expectedTool = ({ memory: "get_memory", diary: "get_diary", task: "get_task" } as const)[result.entity_type];
-  if (result.detail_tool !== expectedTool) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Detail tool must match the result module." });
+  if (result.detail_tool !== "get_diary") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Diary results must use get_diary." });
   }
   if ("scope" in result.detail_arguments && "id" in result.detail_arguments && z.string().uuid().safeParse(result.detail_arguments.id).success) return;
-  context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Memory, Diary, and Task detail_arguments require a UUID id and scope." });
+  context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Diary detail_arguments require a UUID id and scope." });
 });
 
 const globalSearchDataSchema = z.object({
@@ -130,7 +119,7 @@ const globalSearchDataSchema = z.object({
     count: z.number().int().min(0).max(25),
     has_more: z.boolean(),
     next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
-    searched_modules: z.array(globalSearchModuleSchema).min(1).max(7),
+    searched_modules: z.array(globalSearchModuleSchema).min(1).max(4),
     searched_scope: z.enum(["active", "archived", "all"]),
   }).strict(),
 }).strict();
@@ -146,14 +135,14 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Use global_search only for cross-domain discovery when the target domain is unknown or genuinely spans LeileiOS domains. It does not replace domain-specific detail or mutation tools. Defaults remain Memory, Diary, Task, Todo, Universe, and Shared Paper; Conversation Archive is supported but opt-in via modules=['conversation', ...] so its large message corpus does not change default six-domain search. When the domain is known, prefer that domain's dedicated browse/search/detail tool; use search_conversations for past ChatGPT/Claude messages. Conversation results point to read_conversation with the exact canonical message and saved view. Use scope=all only for explicit historical/all-record intent. No results means nothing was found: never invent an answer.",
+    description: "Search across LeileiOS modules. Defaults to Diary, Todo, and Universe; add Conversation explicitly. Prefer a domain search when the domain is known.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async (args) => {
     try {
       const userId = dependencies.getAuthenticatedUserId();
-      const data = await dependencies.globalSearchService.search({ userId, ...args });
+      const data = await dependencies.globalSearchService.search({ userId, ...args, modules: args.modules ?? [...DEFAULT_GLOBAL_SEARCH_MODULES] });
       return {
         content: [{ type: "text", text: globalSearchContent(data) }],
         structuredContent: { success: true as const, data },

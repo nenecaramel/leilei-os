@@ -19,7 +19,7 @@ export function registerGetWeatherContextTool(server: McpServer): void {
     {
       title: "Get weather context",
       description:
-        "Read-only tool that returns the current weather context for the user location.",
+        "Read current weather context for the user location.",
       inputSchema: {},
       outputSchema: getWeatherContextOutputSchema,
       annotations: {

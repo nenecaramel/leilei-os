@@ -75,6 +75,31 @@ const baseEnvSchema = z.object({
   MCP_SESSION_MAX_TOTAL: z.coerce.number().int().positive().default(32),
   MCP_IDEMPOTENCY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
+  MCP_PUBLIC_TOOL_PROFILES: z.string().optional(),
+  MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
+  NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
+    z.coerce.number().int().positive().max(25).optional(),
+  NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT:
+    z.coerce.number().int().positive().max(1_000).optional(),
+  NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_PROACTIVITY_ENABLED: booleanEnv.optional(),
+  NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
+    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_PROACTIVITY_USER_LIMIT:
+    z.coerce.number().int().positive().max(1_000).optional(),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -244,6 +269,161 @@ export type McpGovernanceConfig = {
   idempotencyRetentionDays: number;
   idempotencyCleanupIntervalHours: number;
 };
+
+export type TopicResurfaceOpportunityConfig = {
+  minIntervalMs: number;
+  candidateLimit: number;
+};
+
+export type BackgroundMaintenancePulseConfig = {
+  intervalMs: number;
+  userLimit: number;
+};
+
+export type MemoryDecayConfig = {
+  halfLifeHours: {
+    memory: number;
+    feel: number;
+  };
+  fadingThreshold: number;
+  archiveThreshold: number;
+};
+
+export type ProactivityWakeOpportunityConfig = {
+  minIdleMs: number;
+  cooldownMs: number;
+  userLimit: number;
+};
+
+export function getBackgroundMaintenancePulseConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS"
+    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT"
+  >,
+): BackgroundMaintenancePulseConfig {
+  return {
+    intervalMs:
+      (environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS
+        ?? 3_600) * 1_000,
+    userLimit:
+      environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT
+      ?? 64,
+  };
+}
+
+export function getProactivityWakeOpportunityConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_PROACTIVITY_ENABLED"
+    | "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS"
+    | "NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS"
+    | "NATIVE_LIVE_PROACTIVITY_USER_LIMIT"
+  >,
+): ProactivityWakeOpportunityConfig | undefined {
+  const enabled = environment.NATIVE_LIVE_PROACTIVITY_ENABLED;
+  const values = [
+    environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS,
+    environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS,
+    environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT,
+  ];
+
+  if (enabled !== true) {
+    if (values.some((value) => value !== undefined)) {
+      throw new Error(
+        "NATIVE_LIVE_PROACTIVITY_ENABLED=true is required when Proactivity policy values are configured.",
+      );
+    }
+    return undefined;
+  }
+
+  if (values.some((value) => value === undefined)) {
+    throw new Error(
+      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS, NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS, and NATIVE_LIVE_PROACTIVITY_USER_LIMIT are required when Proactivity is enabled.",
+    );
+  }
+
+  return {
+    minIdleMs:
+      environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS! * 1_000,
+    cooldownMs:
+      environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS! * 1_000,
+    userLimit:
+      environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT!,
+  };
+}
+
+export function getMemoryDecayConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS"
+    | "NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS"
+    | "NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD"
+    | "NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD"
+  >,
+): MemoryDecayConfig | undefined {
+  const values = [
+    environment.NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS,
+    environment.NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS,
+    environment.NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD,
+    environment.NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD,
+  ];
+  if (values.every((value) => value === undefined)) {
+    return undefined;
+  }
+  if (values.some((value) => value === undefined)) {
+    throw new Error(
+      "All NATIVE_LIVE_MEMORY_DECAY_* settings must be configured together.",
+    );
+  }
+
+  const fadingThreshold =
+    environment.NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD!;
+  const archiveThreshold =
+    environment.NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD!;
+  if (archiveThreshold >= fadingThreshold) {
+    throw new Error(
+      "Memory decay thresholds must satisfy archive < fading.",
+    );
+  }
+
+  return {
+    halfLifeHours: {
+      memory:
+        environment.NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS!,
+      feel:
+        environment.NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS!,
+    },
+    fadingThreshold,
+    archiveThreshold,
+  };
+}
+
+export function getTopicResurfaceOpportunityConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS"
+    | "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT"
+  >,
+): TopicResurfaceOpportunityConfig | undefined {
+  const interval =
+    environment.NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS;
+  const limit =
+    environment.NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT;
+
+  if (interval === undefined && limit === undefined) {
+    return undefined;
+  }
+  if (interval === undefined || limit === undefined) {
+    throw new Error(
+      "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS and NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT must be configured together.",
+    );
+  }
+  return {
+    minIntervalMs: interval * 1_000,
+    candidateLimit: limit,
+  };
+}
 
 export function getMcpGovernanceConfig(
   values: Partial<Record<

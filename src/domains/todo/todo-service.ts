@@ -128,6 +128,15 @@ export type TodoEntryMutationServiceResult = {
   };
 };
 
+export type TodoEntriesMutationServiceResult = {
+  entries: Array<TodoEntry & { outcome: "applied" | "replayed" }>;
+  paperRevision: number;
+  metadata: {
+    committed: boolean;
+    idempotent_replay: boolean;
+  };
+};
+
 export type TodoEntryDeleteServiceResult = {
   entryId: string;
   paperRevision: number;
@@ -146,9 +155,15 @@ export class TodoService {
     return { date, papers: await this.repository.readDay(userId, date) };
   }
 
-  async listDates(userId: string): Promise<string[]> {
+  async listDates(userId: string, limit?: number, offset?: number): Promise<string[]> {
     await this.requireActiveUser(userId);
-    return this.repository.listContentDates(userId);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 101)) {
+      throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo date pagination limit is invalid.");
+    }
+    if (offset !== undefined && (!Number.isInteger(offset) || offset < 0)) {
+      throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo date pagination offset is invalid.");
+    }
+    return this.repository.listContentDates(userId, limit, offset);
   }
 
   async search(input: {
@@ -159,6 +174,7 @@ export class TodoService {
     date_from?: unknown;
     date_to?: unknown;
     limit?: unknown;
+    offset?: unknown;
   }): Promise<TodoSearchResult> {
     await this.requireActiveUser(input.userId);
     let query: string;
@@ -171,7 +187,9 @@ export class TodoService {
     const dateTo = searchDate(input.date_to);
     if (dateFrom && dateTo && dateFrom > dateTo) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
     const limit = input.limit === undefined ? 50 : input.limit;
-    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 50) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 51) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
+    const offset = input.offset === undefined ? 0 : input.offset;
+    if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0) throw new TodoServiceError("TODO_SEARCH_INVALID", "Todo search is invalid.");
     if (!this.repository.searchEntries) throw new Error("Todo search persistence is unavailable.");
     const rows = await this.repository.searchEntries({
       userId: input.userId,
@@ -181,6 +199,7 @@ export class TodoService {
       dateFrom,
       dateTo,
       limit,
+      offset,
     });
     return {
       entries: rows.map((row) => ({
@@ -302,6 +321,64 @@ export class TodoService {
       throw new TodoServiceError("TODO_ENTRY_NOT_FOUND", "The appended Todo entry is no longer available.");
     }
     throw new Error("Unknown Todo entry append persistence outcome.");
+  }
+
+  async appendEntriesIdempotently(input: {
+    userId: string;
+    date: unknown;
+    author: unknown;
+    entries: unknown;
+    idempotencyKey: string;
+  }): Promise<TodoEntriesMutationServiceResult> {
+    await this.requireActiveUser(input.userId);
+    const date = normalizeTodoDate(input.date);
+    const author = normalizeTodoAuthor(input.author);
+    const entries = normalizeTodoBatchEntries(input.entries);
+    const idempotencyKey = normalizeTodoIdempotencyKey(input.idempotencyKey);
+    if (!this.repository.appendEntriesIdempotently) {
+      throw new Error("Todo batch append persistence is unavailable.");
+    }
+    const result = await this.repository.appendEntriesIdempotently({
+      userId: input.userId,
+      date,
+      author,
+      entries,
+      idempotencyKey,
+      requestHash: hashMcpWriteRequest({ date, author, entries }),
+    });
+    if (result.outcome === "committed" || result.outcome === "replayed") {
+      const entryOutcome = result.outcome === "committed" ? "applied" : "replayed";
+      return {
+        entries: result.entries.map((entry) => ({
+          ...entry,
+          outcome: entryOutcome,
+        })),
+        paperRevision: result.paperRevision,
+        metadata: {
+          committed: result.outcome === "committed",
+          idempotent_replay: result.outcome === "replayed",
+        },
+      };
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new TodoServiceError(
+        "IDEMPOTENCY_CONFLICT",
+        "The idempotency key was already used for a different Todo entry append.",
+      );
+    }
+    if (result.outcome === "entry_limit") {
+      throw new TodoServiceError(
+        "TODO_ENTRY_LIMIT",
+        "The Todo batch would exceed the maximum number of entries.",
+      );
+    }
+    if (result.outcome === "entry_not_found") {
+      throw new TodoServiceError(
+        "TODO_ENTRY_NOT_FOUND",
+        "One or more replayed Todo entries are no longer available.",
+      );
+    }
+    throw new Error("Unknown Todo batch append persistence outcome.");
   }
 
   async updateEntryIdempotently(input: {
@@ -453,6 +530,33 @@ function normalizeTodoEntryText(value: unknown): string {
     throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo entry text is invalid.");
   }
   return normalized;
+}
+
+function normalizeTodoBatchEntries(
+  value: unknown,
+): Array<{ kind: TodoEntry["kind"]; text: string }> {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TodoServiceError(
+      "TODO_ENTRY_INVALID",
+      "Todo batch must contain at least one entry.",
+    );
+  }
+  if (value.length > MAX_TODO_ENTRIES) {
+    throw new TodoServiceError(
+      "TODO_ENTRY_LIMIT",
+      "Todo batch exceeds the maximum number of entries.",
+    );
+  }
+  return value.map((row) => {
+    if (!row || typeof row !== "object") {
+      throw new TodoServiceError("TODO_ENTRY_INVALID", "Todo batch entry is invalid.");
+    }
+    const candidate = row as Record<string, unknown>;
+    return {
+      kind: normalizeTodoKind(candidate.kind),
+      text: normalizeTodoEntryText(candidate.text),
+    };
+  });
 }
 
 function normalizeTodoEntryRevision(value: unknown): number {

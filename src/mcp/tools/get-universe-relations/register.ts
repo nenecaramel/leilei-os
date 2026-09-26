@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { UNIVERSE_DOMAIN_BOUNDARY } from "../model-language.js";
 import type { UniverseService } from "../../../domains/universe/universe-service.js";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
 import { mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -26,7 +27,7 @@ export type GetUniverseRelationsToolDependencies = { universeService: Pick<Unive
 
 export function registerGetUniverseRelationsTool(server: McpServer, dependencies: GetUniverseRelationsToolDependencies): void {
   server.registerTool("get_universe_relations", {
-    title: "Get Universe node relations", description: "Expand the relationships around one known authenticated Universe node by exact node ID. This is a neighborhood read, not global Universe discovery.",
+    title: "Get Universe node relations", description: "Read relations connected to one Universe node.",
     inputSchema: z.object({ node_id: z.string().trim().min(1).max(256).describe("Exact canonical Universe node ID.") }).strict(), outputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ node_id }) => {

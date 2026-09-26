@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-export type StateSurfaceState = "loading" | "empty" | "error";
-export type StateSurfacePlacement = "page" | "module" | "paper" | "inline";
+type StateSurfaceState = "loading" | "empty" | "error";
+type StateSurfacePlacement = "page" | "module" | "paper" | "inline";
 
 type StateSurfaceProps = {
   state: StateSurfaceState;
@@ -66,25 +66,4 @@ export function ModuleState(props: NamedStateProps) {
   return <StateSurface {...props} placement="module" />;
 }
 
-export function PaperState(props: NamedStateProps) {
-  return <StateSurface {...props} placement="paper" />;
-}
 
-export function TransientState({
-  message,
-  tone = "error",
-  className = "",
-}: {
-  message: string;
-  tone?: "error" | "neutral";
-  className?: string;
-}) {
-  return (
-    <div
-      className={`transient-state transient-state--${tone}${className ? ` ${className}` : ""}`}
-      role={tone === "error" ? "alert" : "status"}
-    >
-      {message}
-    </div>
-  );
-}

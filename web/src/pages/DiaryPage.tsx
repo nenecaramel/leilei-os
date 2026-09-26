@@ -6,7 +6,7 @@ import {
   type RefObject,
 } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
-import { ModuleSearchStateMessage } from "../components/ModuleSearch";
+import { ModuleStateMessage } from "../components/ModuleSearch";
 import { DiaryPageHeader } from "./DiaryPageHeader";
 import {
   DiaryCommentsSection,
@@ -1200,7 +1200,7 @@ export function DiaryPageContent({
                     }}
                   />
                 ) : filters.q ? (
-                  <ModuleSearchStateMessage
+                  <ModuleStateMessage
                     state="empty"
                     emptyText="没有符合条件的日记"
                     errorText=""
@@ -1228,12 +1228,12 @@ export function DiaryPageContent({
 
               {state.status === "loading" ? (
                 filters.q ? (
-                  <ModuleSearchStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="Searching..." />
+                  <ModuleStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="Searching..." />
                 ) : <MobileDiaryLoading label="Diary 加载中" />
               ) : null}
 
               {state.status === "error" ? (
-                <ModuleSearchStateMessage
+                <ModuleStateMessage
                   state="error"
                   placement={filters.q ? "module" : "page"}
                   emptyText=""
@@ -1654,7 +1654,7 @@ function MobileArchivedDiaryList({
     body = <MobileDiaryLoading label="已归档 Diary 加载中" />;
   } else if (state.status === "error") {
     body = (
-      <ModuleSearchStateMessage
+      <ModuleStateMessage
         state="error"
         placement="page"
         emptyText=""

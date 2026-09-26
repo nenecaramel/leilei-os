@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type {
-  AddDiaryCommentResult,
-  DiaryCommentResult,
-  ListDiaryCommentsResult,
+import {
+  DiaryCommentDomainError,
+  type AddDiaryCommentResult,
+  type DiaryCommentResult,
+  type ListDiaryCommentsResult,
 } from "../src/domains/diary/diary-comment-service.js";
 import type {
   AuthenticatedDiaryContext,
@@ -235,8 +236,29 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
       idempotencyKey: "diary-comment-tool-0001",
     },
   });
+  assert.deepEqual(
+    (add.structuredContent as {
+      data: {
+        outcome: string;
+        entity_type: string;
+        entity_id: string;
+        revision: number | null;
+        detail_tool: string | null;
+        detail_arguments: unknown;
+      };
+    }).data,
+    {
+      comment: COMMENT,
+      outcome: "applied",
+      entity_type: "diary_comment",
+      entity_id: COMMENT_ID,
+      revision: 2,
+      detail_tool: "get_diary_comment",
+      detail_arguments: { id: COMMENT_ID, scope: "active" },
+    },
+  );
 
-  await pair.client.callTool({
+  const updated = await pair.client.callTool({
     name: "update_diary_comment",
     arguments: {
       id: COMMENT_ID,
@@ -251,7 +273,9 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
     content: "改过的 comment。",
   });
 
-  await pair.client.callTool({
+  assert.equal((updated.structuredContent as { data: { outcome: string } }).data.outcome, "applied");
+
+  const deleted = await pair.client.callTool({
     name: "delete_diary_comment",
     arguments: {
       id: COMMENT_ID,
@@ -263,9 +287,70 @@ test("Diary comment MCP mutations bind authenticated identity and preserve revis
     id: COMMENT_ID,
     expectedRevision: 3,
   });
+  assert.deepEqual(
+    (deleted.structuredContent as {
+      data: {
+        outcome: string;
+        entity_type: string;
+        entity_id: string;
+        revision: number | null;
+        detail_tool: string | null;
+        detail_arguments: unknown;
+      };
+    }).data,
+    {
+      comment_id: COMMENT_ID,
+      deleted: true,
+      outcome: "applied",
+      entity_type: "diary_comment",
+      entity_id: COMMENT_ID,
+      revision: null,
+      detail_tool: null,
+      detail_arguments: null,
+    },
+  );
 });
 
-test("get_diary includes the recent canonical comment window when the comment service is configured", async (t) => {
+test("Diary comment revision conflicts point to exact comment readback", async (t) => {
+  const comments = new CommentService();
+  comments.updateComment = async () => {
+    throw new DiaryCommentDomainError(
+      "COMMENT_REVISION_CONFLICT",
+      "private stale comment detail",
+    );
+  };
+  const pair = await connect(comments);
+  t.after(async () => {
+    await pair.client.close();
+    await pair.server.close();
+  });
+
+  const result = await pair.client.callTool({
+    name: "update_diary_comment",
+    arguments: {
+      id: COMMENT_ID,
+      expected_revision: 2,
+      content: "changed",
+    },
+  });
+
+  assert.equal(result.isError, true);
+  assert.deepEqual(
+    (result.structuredContent as any).error,
+    {
+      code: "COMMENT_REVISION_CONFLICT",
+      message: "Diary comment revision changed. Read the comment again before retrying.",
+      retryable: false,
+      reason: "stale_revision",
+      current_revision: null,
+      recommended_tool: "get_diary_comment",
+      recommended_arguments: { id: COMMENT_ID, scope: "active" },
+    },
+  );
+  assert.doesNotMatch(JSON.stringify(result), /private stale comment detail/);
+});
+
+test("get_diary returns a comment pagination pointer without embedding comments", async (t) => {
   const comments = new CommentService();
   const pair = await connect(comments);
   t.after(async () => {
@@ -280,74 +365,17 @@ test("get_diary includes the recent canonical comment window when the comment se
 
   const data = (result.structuredContent as {
     data: {
-      comments: DiaryCommentResult[];
-      comments_metadata: {
-        count: number;
-        returned: number;
-        truncated: boolean;
-      };
+      comments_tool: string;
+      comments_arguments: { diary_id: string; scope: string };
     };
   }).data;
-  assert.deepEqual(data.comments, [COMMENT]);
-  assert.deepEqual(data.comments_metadata, {
-    count: 1,
-    returned: 1,
-    truncated: false,
-  });
-  assert.deepEqual(comments.listCalls[0], {
-    userId: USER_ID,
-    diaryId: DIARY_ID,
+  assert.equal(data.comments_tool, "list_diary_comments");
+  assert.deepEqual(data.comments_arguments, {
+    diary_id: DIARY_ID,
     scope: "active",
-    limit: 50,
   });
-});
-
-test("get_diary marks a partial comment window as truncated and directs callers to pagination", async (t) => {
-  const comments = new CommentService();
-  comments.listComments = async (input) => {
-    comments.listCalls.push(input);
-    return {
-      comments: [COMMENT],
-      metadata: {
-        count: 73,
-        returned: 1,
-        has_more: true,
-        next_before: "older-comments",
-      },
-    };
-  };
-  const pair = await connect(comments);
-  t.after(async () => {
-    await pair.client.close();
-    await pair.server.close();
-  });
-
-  const result = await pair.client.callTool({
-    name: "get_diary",
-    arguments: { id: DIARY_ID },
-  });
-
-  const structured = result.structuredContent as {
-    data: {
-      comments_metadata: {
-        count: number;
-        returned: number;
-        truncated: boolean;
-      };
-    };
-  };
-  assert.deepEqual(structured.data.comments_metadata, {
-    count: 73,
-    returned: 1,
-    truncated: true,
-  });
-  const textContent = (result.content as Array<{ type: string; text?: string }>)
-    .map((item) => item.text ?? "")
-    .join("\n");
-  assert.match(
-    textContent,
-    /Only 1 of 73 comments are included\. Use list_diary_comments to read older comments\./,
-  );
+  assert.equal(comments.listCalls.length, 0);
+  assert.equal(JSON.stringify(result.structuredContent).includes('"comments"'), false);
 });
 
 test("list_diary_comments supports archived reads and opaque pagination", async (t) => {

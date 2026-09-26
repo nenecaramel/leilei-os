@@ -55,13 +55,13 @@ export type ConversationMessageContext = {
   anchorIndex: number;
 };
 
-export type MergeCounts = {
+type MergeCounts = {
   create: number;
   update: number;
   unchanged: number;
   stale: number;
 };
-export type ConversationImportSummary = {
+type ConversationImportSummary = {
   conversations: MergeCounts;
   messages: MergeCounts & { path_changed: number };
 };
@@ -81,7 +81,7 @@ export type ConversationImportPreview = {
   warning_codes: Record<string, number>;
   exclusions: ConversationExclusionSummary;
 };
-export type ConversationExclusionSummary = {
+type ConversationExclusionSummary = {
   conversations: number;
   messages: number;
   branch_roots: number;
@@ -159,7 +159,7 @@ export type ConversationImportExecute = {
   exclusions: ConversationExclusionSummary;
 };
 
-export type ConversationImportHistoryStatus =
+type ConversationImportHistoryStatus =
   | "processing"
   | "executed"
   | "failed"
@@ -207,12 +207,12 @@ export type ConversationImportSourceHistoryDetail =
     runs: ConversationImportHistoryRun[];
   };
 
-export type ConversationImportBatchFileStatus =
+type ConversationImportBatchFileStatus =
   | "pending"
   | "already_executed"
   | "duplicate_in_batch";
 
-export type ConversationImportBatchCounts = {
+type ConversationImportBatchCounts = {
   total: number;
   unique: number;
   duplicate: number;
@@ -220,7 +220,7 @@ export type ConversationImportBatchCounts = {
   pending: number;
 };
 
-export type ConversationImportBatchFilePreview = {
+type ConversationImportBatchFilePreview = {
   input_index: number;
   import_run_id: string;
   source_id: string;
@@ -288,7 +288,7 @@ export type ConversationFavoriteListItem = {
   updatedAt: string;
 };
 
-export type ConversationFavoriteMessage = {
+type ConversationFavoriteMessage = {
   ordinal: number;
   messageId: string;
   sourceNodeId: string;

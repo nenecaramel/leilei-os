@@ -35,7 +35,7 @@ export function isUniverseNodeReturnTo(value: string): boolean {
   return value !== "/universe" && getSafeUniverseNodeReturnTo(value) === value;
 }
 
-export function readUniverseNodeTarget(search: string, nodeIds: readonly string[]): string | null {
+function readUniverseNodeTarget(search: string, nodeIds: readonly string[]): string | null {
   const nodeId = new URLSearchParams(search).get("node");
   return nodeId && nodeIds.includes(nodeId) ? nodeId : null;
 }

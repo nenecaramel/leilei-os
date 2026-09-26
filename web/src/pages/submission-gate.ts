@@ -3,7 +3,7 @@ export type SubmissionGate = {
   leave(): void;
 };
 
-export const UNSAVED_CHANGES_MESSAGE =
+const UNSAVED_CHANGES_MESSAGE =
   "当前有未保存的内容，确定要离开吗？";
 
 export function createSubmissionGate(): SubmissionGate {

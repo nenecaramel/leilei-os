@@ -12,7 +12,7 @@ import type {
   UniverseSnapshot,
 } from "./universe-types";
 
-export type UniverseClientState = UniverseReadResult | null;
+type UniverseClientState = UniverseReadResult | null;
 
 export type UniverseService = ReturnType<typeof createLeileiOSUniverseService>;
 
@@ -127,8 +127,6 @@ export function createLeileiOSUniverseService({ adapter }: { adapter: UniverseAd
   };
 }
 
-export const createUniverseService = createLeileiOSUniverseService;
-export const LeileiOSUniverseService = createLeileiOSUniverseService;
 
 export function isUniverseVersionConflict(error: unknown): boolean {
   return (error as WebApiError | undefined)?.code === "VERSION_CONFLICT";

@@ -19,12 +19,34 @@ async function listTools(server: McpServer, clientName: string): Promise<string[
   await server.connect(serverTransport);
   await client.connect(clientTransport);
   try {
-    const result = await client.listTools();
-    return result.tools.map((tool) => tool.name).sort();
+    return (await client.listTools()).tools.map((tool) => tool.name).sort();
   } finally {
     await client.close();
     await server.close();
   }
+}
+
+function productionFactory(input: {
+  conversationArchiveReadService?: unknown;
+  conversationExclusionManagementService?: unknown;
+  conversationRecoveryVisibility?: "public-enabled" | "internal-only";
+  bridgeService?: unknown;
+  sentinelService?: unknown;
+} = {}) {
+  return createProductionMcpSessionServerFactory({
+    activeUserRepository: { findUserById: async () => ({ status: "active" }) },
+    diaryService: {} as never,
+    toyCommandService: {} as never,
+    globalSearchService: {} as never,
+    todoService: {} as never,
+    universeService: {} as never,
+    healthService: {} as never,
+    conversationArchiveReadService: input.conversationArchiveReadService as never,
+    conversationExclusionManagementService: input.conversationExclusionManagementService as never,
+    conversationRecoveryVisibility: input.conversationRecoveryVisibility,
+    bridgeService: input.bridgeService as never,
+    sentinelService: input.sentinelService as never,
+  });
 }
 
 test("production MCP server composition cannot create database pools", () => {
@@ -37,116 +59,110 @@ test("production MCP server composition cannot create database pools", () => {
   assert.doesNotMatch(routerSource, /registerProductionNotionExplicitWriteTools/);
 });
 
-test("direct MCP server keeps the expected core inventory", async () => {
+test("direct MCP server keeps operational connectivity outside its model surface", async () => {
   const names = await listTools(createMcpServer({} as never), "mcp-core-inventory");
+  assert.equal(names.includes("hello"), false);
   assert.equal(names.includes("write_notion_page"), false);
   assert.equal(names.includes("write_notion_comment"), false);
 });
 
-test("production MCP session factory includes canonical Conversation reads", async () => {
-  const createSessionServer = createProductionMcpSessionServerFactory({
-    activeUserRepository: {
-      findUserById: async () => ({ status: "active" }),
-    },
-    memoryService: {} as never,
-    diaryService: {} as never,
-    taskService: {} as never,
-    toyCommandService: {} as never,
-    globalSearchService: {} as never,
-    todoService: {} as never,
-    universeService: {} as never,
-    healthService: {} as never,
-    bridgeService: {} as never,
-    sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); }, claimCurrentWake: async () => { throw new Error("unused"); } } as never,
+test("production public surface exposes canonical Conversation reads and no retired tools", async () => {
+  const createSessionServer = productionFactory({
+    conversationArchiveReadService: {},
   });
+  const names = await listTools(createSessionServer("user-1", "public"), "mcp-production-public");
 
-  const names = await listTools(createSessionServer("user-1"), "mcp-production-inventory");
+  for (const name of ["list_conversations", "search_conversations", "read_conversation", "list_universe_galaxies", "render_note_card"]) {
+    assert.equal(names.includes(name), true, `${name} must remain public`);
+  }
 
-  assert.equal(names.filter((name) => name.includes("shared_paper")).length, 10);
-  for (const name of [
-    "add_diary_comment",
-    "get_diary_comment",
-    "list_diary_comments",
-    "update_diary_comment",
-    "delete_diary_comment",
+  for (const retired of [
+    "read_memory",
+    "create_memory",
+    "create_task",
+    "list_shared_papers",
     "archive_diary",
     "restore_diary",
-    "delete_diary",
+    "permanently_delete_diary",
+    "list_deleted_conversation_branches",
+    "archive_conversation",
+    "delete_conversation_item",
+    "restore_conversation_item",
+    "permanently_delete_conversation_item",
+    "search_universe",
+    "write_diary",
+    "write_todo_paper",
+    "render_working_note",
+    "render_thinking_block",
   ]) {
-    assert.equal(names.filter((candidate) => candidate === name).length, 1);
+    assert.equal(names.includes(retired), false, `${retired} must stay retired`);
   }
-  assert.equal(names.includes("hello"), false);
-  assert.equal(names.filter((name) => name === "search_conversations").length, 1);
-  assert.equal(names.filter((name) => name === "read_conversation").length, 1);
-  assert.equal(names.filter((name) => name === "search_todo").length, 1);
-  for (const name of ["append_todo_entry", "update_todo_entry", "delete_todo_entry"]) {
-    assert.equal(names.filter((candidate) => candidate === name).length, 1);
+
+  for (const hidden of [
+    "sentinel_get_state",
+    "bridge_listener_open",
+    "list_conversation_exclusions",
+    "search_notion",
+  ]) {
+    assert.equal(names.includes(hidden), false, `public default must hide ${hidden}`);
   }
-  assert.equal(names.filter((name) => name === "get_health").length, 1);
-  assert.equal(names.filter((name) => name === "get_current_time").length, 1);
-  assert.equal(names.filter((name) => name === "render_thinking_block").length, 1);
-  assert.equal(names.filter((name) => name === "sentinel_get_state").length, 1);
-  assert.equal(names.filter((name) => name === "complete_sentinel_wake").length, 1);
-  assert.equal(names.filter((name) => name === "sentinel_claim_current_wake").length, 1);
-  assert.equal(names.filter((name) => name === "write_notion_page").length, 1);
-  assert.equal(names.filter((name) => name === "write_notion_comment").length, 1);
-  assert.equal(names.filter((name) => name === "bridge_event_claim").length, 1);
-  assert.equal(names.filter((name) => name === "bridge_event_complete").length, 1);
 });
 
-test("internal MCP session factory remains free of Bridge App tools", async () => {
-  const createSessionServer = createProductionMcpSessionServerFactory({
-    activeUserRepository: { findUserById: async () => ({ status: "active" }) },
-    memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
-    toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
-    universeService: {} as never, healthService: {} as never, bridgeService: {} as never,
-    sentinelService: { getWakeState: async () => { throw new Error("unused"); }, completeWake: async () => { throw new Error("unused"); }, claimCurrentWake: async () => { throw new Error("unused"); } } as never,
+test("production internal full exposes maintenance/runtime profiles without reviving retired tools", async () => {
+  const createSessionServer = productionFactory({
+    conversationArchiveReadService: {},
+    conversationExclusionManagementService: {},
+    bridgeService: {},
+    sentinelService: {},
   });
-  const names = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-inventory");
-  assert.equal(names.filter((name) => name.startsWith("bridge_listener_")).length, 0);
-  assert.equal(names.includes("bridge_event_claim"), false);
-  assert.equal(names.includes("bridge_event_complete"), false);
-  assert.equal(names.includes("sentinel_get_state"), false);
-  assert.equal(names.includes("complete_sentinel_wake"), false);
-  assert.equal(names.includes("render_thinking_block"), false);
+  const names = await listTools(createSessionServer("user-1", "internal"), "mcp-production-internal");
+
+  for (const required of [
+    "render_note_card",
+    "sentinel_get_state",
+    "bridge_listener_open",
+    "list_conversation_exclusions",
+    "search_notion",
+    "get_notion_connection",
+  ]) {
+    assert.equal(names.includes(required), true, `internal full must expose ${required}`);
+  }
+
+  for (const retired of [
+    "read_memory",
+    "write_memory",
+    "create_task",
+    "get_task",
+    "list_shared_papers",
+    "delete_shared_paper",
+    "archive_diary",
+    "delete_diary",
+    "archive_conversation",
+    "permanently_delete_conversation_item",
+    "search_universe",
+    "write_diary",
+    "write_todo_paper",
+    "render_working_note",
+    "render_thinking_block",
+  ]) {
+    assert.equal(names.includes(retired), false, `internal full must not revive ${retired}`);
+  }
 });
 
-test("production factory can hide recovery-only Conversation tools from public while keeping them internal", async () => {
-  const createSessionServer = createProductionMcpSessionServerFactory({
-    activeUserRepository: { findUserById: async () => ({ status: "active" }) },
-    memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
-    toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
-    universeService: {} as never, healthService: {} as never,
-    conversationArchiveReadService: {} as never,
-    conversationPruningService: {} as never,
-    conversationExclusionManagementService: {} as never,
+test("Conversation recovery visibility can be internal-only while canonical reads remain public", async () => {
+  const createSessionServer = productionFactory({
+    conversationArchiveReadService: {},
+    conversationExclusionManagementService: {},
     conversationRecoveryVisibility: "internal-only",
   });
   const publicNames = await listTools(createSessionServer("user-1", "public"), "mcp-public-recovery-hidden");
   const internalNames = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-recovery-present");
-  for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates", "inspect_conversation_restore_path", "restore_conversation_exclusion"]) {
-    assert.equal(publicNames.includes(name), false, `${name} must be hidden from configured public inventory`);
-    assert.equal(internalNames.includes(name), true, `${name} must remain available internally`);
-  }
-  for (const name of ["list_conversations", "list_deleted_conversation_branches", "archive_conversation", "delete_conversation_item", "restore_conversation_item", "permanently_delete_conversation_item"]) {
-    assert.equal(publicNames.includes(name), true, `${name} remains a public Conversation product tool`);
-  }
-});
 
-test("production factory defaults Conversation recovery tools to public-enabled while retaining them internally", async () => {
-  const createSessionServer = createProductionMcpSessionServerFactory({
-    activeUserRepository: { findUserById: async () => ({ status: "active" }) },
-    memoryService: {} as never, diaryService: {} as never, taskService: {} as never,
-    toyCommandService: {} as never, globalSearchService: {} as never, todoService: {} as never,
-    universeService: {} as never, healthService: {} as never,
-    conversationArchiveReadService: {} as never,
-    conversationPruningService: {} as never,
-    conversationExclusionManagementService: {} as never,
-  });
-  const publicNames = await listTools(createSessionServer("user-1", "public"), "mcp-public-recovery-default");
-  const internalNames = await listTools(createSessionServer("user-1", "internal"), "mcp-internal-recovery-default");
   for (const name of ["list_conversation_exclusions", "inspect_conversation_restore_candidates", "inspect_conversation_restore_path", "restore_conversation_exclusion"]) {
-    assert.equal(publicNames.includes(name), true, `${name} must remain public by default`);
-    assert.equal(internalNames.includes(name), true, `${name} must remain internal by default`);
+    assert.equal(publicNames.includes(name), false, `${name} must be hidden publicly`);
+    assert.equal(internalNames.includes(name), true, `${name} must remain internal`);
+  }
+  for (const name of ["list_conversations", "search_conversations", "read_conversation"]) {
+    assert.equal(publicNames.includes(name), true, `${name} must remain public`);
   }
 });

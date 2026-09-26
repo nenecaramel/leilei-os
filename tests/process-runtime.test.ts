@@ -119,7 +119,7 @@ test("process runtime owns retention scheduling and drains it before the databas
   ]);
 });
 
-test("process runtime starts, stops, and drains the Sentinel scheduler with retention", async () => {
+test("process runtime keeps periodic cloud schedulers off by default", async () => {
   const { createProcessRuntime } = await import("../src/app/process-runtime.js");
   const calls: string[] = [];
   const resource = {
@@ -149,7 +149,7 @@ test("process runtime starts, stops, and drains the Sentinel scheduler with rete
   runtime.startBackgroundWork();
   runtime.stopBackgroundWork();
   await runtime.drainBackgroundWork();
-  assert.deepEqual(calls, ["start", "stop", "drain"]);
+  assert.deepEqual(calls, ["stop", "drain"]);
 });
 
 test("process runtime creates one shared safe logger for app and observers", async () => {

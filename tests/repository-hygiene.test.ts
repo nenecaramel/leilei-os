@@ -69,3 +69,30 @@ test("Shared Paper MCP App removal leaves no runtime or build residue", () => {
     );
   }
 });
+
+
+test("coding-agent workspace policy is enforced by closeout commands", () => {
+  const agents = readFileSync("AGENTS.md", "utf8");
+  const rootPackage = JSON.parse(
+    readFileSync("package.json", "utf8"),
+  ) as {
+    scripts?: Record<string, string>;
+  };
+  const hygieneScript = readFileSync(
+    "scripts/local-hygiene.mjs",
+    "utf8",
+  );
+  const gitignore = readFileSync(".gitignore", "utf8");
+
+  assert.match(agents, /only long-lived LeileiOS working copies/i);
+  assert.match(agents, /Do not create persistent clones, worktrees/i);
+  assert.match(agents, /pnpm hygiene:finish/);
+  assert.equal(
+    rootPackage.scripts?.["hygiene:finish"],
+    "pnpm hygiene:clean && pnpm hygiene:check",
+  );
+  assert.match(hygieneScript, /Mobile Documents/);
+  assert.match(hygieneScript, /git\(\["ls-files"/);
+  assert.match(gitignore, /\*\.tsbuildinfo/);
+  assert.match(gitignore, /\*\*\/xcuserdata\//);
+});

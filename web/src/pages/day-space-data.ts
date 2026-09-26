@@ -35,7 +35,7 @@ export type DaySpaceModuleState<T> =
 
 const TODO_AUTHORS = ["L", "G", "C"] as const;
 
-export function visibleTodoPapers(day: TodoDay) {
+function visibleTodoPapers(day: TodoDay) {
   return TODO_AUTHORS.flatMap((author) => {
     const paper = day.papers[author];
     return paper && paper.entries.length > 0 ? [paper] : [];

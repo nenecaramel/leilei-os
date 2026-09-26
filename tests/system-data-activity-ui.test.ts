@@ -80,10 +80,7 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
       return {
         success: true,
         data: {
-          memory: { active: 12, archived: 3 },
           diary: { active: 8, archived: 2 },
-          task: { active: 5, archived: 7 },
-          shared_paper: { active: 4, archived: 1 },
           todo: { active: 9 },
         },
       } as T;
@@ -97,8 +94,8 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
   await waitForCondition(
     () =>
       paths.includes("/system/data") &&
-      /Task/.test(container.textContent ?? "") &&
-      /7/.test(container.textContent ?? ""),
+      /Diary/.test(container.textContent ?? "") &&
+      /9/.test(container.textContent ?? ""),
     "System Data request and ready state",
   );
 
@@ -106,24 +103,16 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
   const text = container.textContent ?? "";
 
   for (const expected of [
-    "Memory",
-    "12",
-    "3",
     "Diary",
     "8",
     "2",
-    "Task",
-    "5",
-    "7",
-    "Shared Paper",
-    "4",
-    "1",
     "Todo",
     "9",
     "—",
   ]) {
     assert.match(text, new RegExp(expected));
   }
+  assert.doesNotMatch(text, /Memory|Task|Shared Paper/);
 
   const todoRow = Array.from(container.querySelectorAll(".system-data-row")).find((row) => row.textContent?.includes("Todo"));
   assert.ok(todoRow);
@@ -134,7 +123,7 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
   env.restore();
 });
 
-test("Data tolerates a legacy summary response while backend deployment catches up", async () => {
+test("Data renders only active modules", async () => {
   const env = installDom("https://leilei.test/system/data");
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);
@@ -144,28 +133,23 @@ test("Data tolerates a legacy summary response while backend deployment catches 
       return {
         success: true,
         data: {
-          memory: { active: 1, archived: 0 },
-          diary: { active: 2, archived: 0 },
-          task: { active: 3, archived: 0 },
+          diary: { active: 2, archived: 1 },
+          todo: { active: 3 },
         },
       } as T;
     },
   };
 
   root.render(React.createElement(SystemDataPageContent, { api }));
-
   await waitForCondition(
-    () => /Shared Paper/.test(container.textContent ?? "") && /Todo/.test(container.textContent ?? ""),
-    "legacy System Data response to render safely",
+    () => /Diary/.test(container.textContent ?? "") && /Todo/.test(container.textContent ?? ""),
+    "active System Data modules to render",
   );
 
-  const rows = Array.from(container.querySelectorAll(".system-data-row"));
-  const sharedPaperRow = rows.find((row) => row.textContent?.includes("Shared Paper"));
-  const todoRow = rows.find((row) => row.textContent?.includes("Todo"));
-  assert.ok(sharedPaperRow);
-  assert.ok(todoRow);
-  assert.match(sharedPaperRow.textContent ?? "", /—/u);
-  assert.match(todoRow.textContent ?? "", /—/u);
+  const text = container.textContent ?? "";
+  assert.match(text, /Diary/);
+  assert.match(text, /Todo/);
+  assert.doesNotMatch(text, /Memory|Task|Shared Paper/);
 
   root.unmount();
   await waitForPaint();
@@ -190,10 +174,7 @@ test("Data exposes Retry after a failed count request", async () => {
       return {
         success: true,
         data: {
-          memory: { active: 1, archived: 0 },
           diary: { active: 2, archived: 0 },
-          task: { active: 3, archived: 0 },
-          shared_paper: { active: 0, archived: 0 },
           todo: { active: 0 },
         },
       } as T;
@@ -247,7 +228,7 @@ test("Activity groups persisted events by day and keeps newest event first", asy
               id: "evt-2",
               occurred_at:
                 "2026-08-09T07:30:00.000Z",
-              label: "Task archived",
+              label: "Diary archived",
               source: "Web",
               outcome: "success",
             },
@@ -255,7 +236,7 @@ test("Activity groups persisted events by day and keeps newest event first", asy
               id: "evt-1",
               occurred_at:
                 "2026-08-08T04:15:00.000Z",
-              label: "Memory restored",
+              label: "Diary restored",
               source: "MCP",
               outcome: "success",
             },
@@ -276,8 +257,8 @@ test("Activity groups persisted events by day and keeps newest event first", asy
 
   assert.deepEqual(paths, ["/system/activity"]);
   const text = container.textContent ?? "";
-  assert.match(text, /Task archived/);
-  assert.match(text, /Memory restored/);
+  assert.match(text, /Diary archived/);
+  assert.match(text, /Diary restored/);
   assert.match(text, /Web/);
   assert.match(text, /MCP/);
   assert.match(text, /Success/);
@@ -289,7 +270,7 @@ test("Activity groups persisted events by day and keeps newest event first", asy
   ).map((node) => node.textContent);
   assert.deepEqual(
     labels,
-    ["Task archived", "Memory restored"],
+    ["Diary archived", "Diary restored"],
   );
 
   assert.equal(

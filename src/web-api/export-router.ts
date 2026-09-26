@@ -8,11 +8,8 @@ export type ExportApiDependencies = {
 
 const EXPORT_SCOPES = new Set<ExportScope>([
   "all",
-  "memory",
   "diary",
-  "task",
   "todo",
-  "shared_paper",
 ]);
 
 export function createExportApiRouter(

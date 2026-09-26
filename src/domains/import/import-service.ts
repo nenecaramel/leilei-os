@@ -1,9 +1,6 @@
 import type {
   ExportDiaryRecord,
   ExportDocumentV2,
-  ExportMemoryRecord,
-  ExportSharedPaper,
-  ExportTaskRecord,
   ExportTodoPaper,
 } from "../export/export-types.js";
 import {
@@ -55,28 +52,32 @@ function toPreview(plan: ImportPlan): ImportPreview {
 }
 
 function includedModules(document: ExportDocumentV2): Set<ImportModule> {
-  return new Set((Object.keys(document.data) as ImportModule[]));
+  const modules: ImportModule[] = [];
+  if (document.data.diary) modules.push("diary");
+  if (document.data.todo) modules.push("todo");
+  return new Set(modules);
 }
 
-function hasExactCreatedValue(item: ImportPlanItem, state: ImportCurrentState): boolean {
-  if (item.module === "memory") {
-    const record = item.record as ExportMemoryRecord;
-    return state.memory.some((candidate) => candidate.id === record.id && hashCanonical(candidate) === hashCanonical(record));
-  }
+function hasExactCreatedValue(
+  item: ImportPlanItem,
+  state: ImportCurrentState,
+): boolean {
   if (item.module === "diary") {
     const record = item.record as ExportDiaryRecord;
-    return state.diary.some((candidate) => candidate.id === record.id && hashCanonical(candidate) === hashCanonical(record));
+    return state.diary.some(
+      (candidate) =>
+        candidate.id === record.id
+        && hashCanonical(candidate) === hashCanonical(record),
+    );
   }
-  if (item.module === "task") {
-    const record = item.record as ExportTaskRecord;
-    return state.task.some((candidate) => candidate.id === record.id && hashCanonical(candidate) === hashCanonical(record));
-  }
-  if (item.module === "todo") {
-    const record = item.record as ExportTodoPaper;
-    return state.todo.some((paper) => paper.date === record.date && paper.author === record.author && hashCanonical(paper) === hashCanonical(record));
-  }
-  const record = item.record as ExportSharedPaper;
-  return state.shared_paper.some((paper) => paper.id === record.id && hashCanonical(paper) === hashCanonical(record));
+
+  const record = item.record as ExportTodoPaper;
+  return state.todo.some(
+    (paper) =>
+      paper.date === record.date
+      && paper.author === record.author
+      && hashCanonical(paper) === hashCanonical(record),
+  );
 }
 
 function hasDatabaseErrorCode(error: unknown, code: string): boolean {
@@ -122,11 +123,18 @@ export class ImportService {
           throw new ImportValidationError("IMPORT_NOTHING_TO_RESTORE", "IMPORT_NOTHING_TO_RESTORE");
         }
         for (const item of creates) {
-          if (item.module === "memory") await transaction.insertMemory(userId, item.record as ExportMemoryRecord);
-          if (item.module === "diary") await transaction.insertDiary(userId, item.record as ExportDiaryRecord);
-          if (item.module === "task") await transaction.insertTask(userId, item.record as ExportTaskRecord);
-          if (item.module === "todo") await transaction.insertTodo(userId, item.record as ExportTodoPaper);
-          if (item.module === "shared_paper") await transaction.insertSharedPaper(userId, item.record as ExportSharedPaper);
+          if (item.module === "diary") {
+            await transaction.insertDiary(
+              userId,
+              item.record as ExportDiaryRecord,
+            );
+          }
+          if (item.module === "todo") {
+            await transaction.insertTodo(
+              userId,
+              item.record as ExportTodoPaper,
+            );
+          }
         }
         const reread = await transaction.rereadCreatedState(userId, includedModules(parsed.document));
         if (creates.some((item) => !hasExactCreatedValue(item, reread))) {

@@ -265,3 +265,34 @@ test("a throwing observer cannot stop later policy retention", async () => {
 
   assert.equal(deleteCalls, 2);
 });
+
+
+test("background model operational retention emits its dedicated completion event", async () => {
+  const events: unknown[] = [];
+  const cutoffs: number[] = [];
+  const coordinator = createRetentionCoordinator({
+    intervalMs: 1_000,
+    now: () => 10_000,
+    observe: (event) => { events.push(event); },
+    policies: [{
+      policy: "native_live_background_model_jobs",
+      retentionMs: 7_000,
+      deleteBatch: async (cutoff) => {
+        cutoffs.push(cutoff.getTime());
+        return 2;
+      },
+    }],
+  });
+
+  await coordinator.runNow();
+
+  assert.deepEqual(cutoffs, [3_000]);
+  assert.deepEqual(events, [{
+    name: "native_live_background_model_jobs_cleanup_completed",
+    policy: "native_live_background_model_jobs",
+    deletedRows: 2,
+    batches: 1,
+    capped: false,
+    durationMs: 0,
+  }]);
+});

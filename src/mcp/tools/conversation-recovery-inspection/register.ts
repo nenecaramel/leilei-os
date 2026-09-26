@@ -138,7 +138,7 @@ export function registerConversationRecoveryInspectionTools(
 ): void {
   server.registerTool("list_conversation_exclusions", {
     title: "List Conversation Exclusions",
-    description: "Read-only inspection of the authenticated user's durable Conversation exclusion rules. Use this for recovery diagnosis before any restore action. Results are user-scoped and never modify canonical conversations, exclusions, or retained raw imports.",
+    description: "List Conversation exclusions for recovery diagnosis.",
     inputSchema: listInputSchema,
     outputSchema: listOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -195,7 +195,7 @@ export function registerConversationRecoveryInspectionTools(
 
   server.registerTool("inspect_conversation_restore_candidates", {
     title: "Inspect Conversation Restore Candidates",
-    description: "Read-only exact recovery inspection for one user-scoped Conversation exclusion. Resolves only retained raw import sources that actually contain the exclusion target using the existing provider parser and recovery resolver. This tool never restores, deletes, reimports, or removes an exclusion.",
+    description: "Find retained raw sources containing one Conversation exclusion; no restore.",
     inputSchema: inspectInputSchema,
     outputSchema: inspectOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -239,7 +239,7 @@ export function registerConversationRecoveryInspectionTools(
 
   server.registerTool("inspect_conversation_restore_path", {
     title: "Inspect Conversation Restore Path",
-    description: "Read-only retained-source branch evidence for one already-verified Conversation exclusion and source. Returns the exclusion root and connected raw descendants with source-node ids, parent-node ids, roles, timestamps, text, and depth so recovery fingerprints and ancestry can be verified before restore. This tool never restores, deletes, reimports, or removes an exclusion.",
+    description: "Inspect branch recovery evidence for one exclusion/source pair.",
     inputSchema: pathInputSchema,
     outputSchema: pathOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -296,7 +296,7 @@ export function registerConversationRecoveryInspectionTools(
 
   server.registerTool("restore_conversation_exclusion", {
     title: "Restore Conversation Exclusion",
-    description: "Restore exactly one already-verified legacy Conversation exclusion from one retained raw source. This calls the existing atomic legacy restore pipeline for the authenticated user: the selected canonical content is restored and only the selected exclusion is removed on success. Use inspect_conversation_restore_candidates and inspect_conversation_restore_path first. Do not retry blindly after an uncertain result; read back the exclusion state first.",
+    description: "Restore one Conversation exclusion from a verified source; inspect candidates and path first.",
     inputSchema: restoreInputSchema,
     outputSchema: restoreOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },

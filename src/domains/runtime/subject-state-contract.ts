@@ -1,0 +1,102 @@
+import {
+  validatePersistentWriteEnvelope,
+  type PersistentWriteEnvelope,
+} from "./persistent-write-envelope.js";
+
+export const SUBJECT_STATE_KINDS = [
+  "feel",
+  "memory",
+  "dream",
+  "bedrock",
+  "drive",
+  "thought",
+  "curiosity",
+  "topic",
+] as const;
+
+export type SubjectStateKind = (typeof SUBJECT_STATE_KINDS)[number];
+
+export type SubjectStateWrite = {
+  id: string;
+  kind: SubjectStateKind;
+  text?: string | null;
+  payload?: Record<string, unknown> | null;
+  envelope: PersistentWriteEnvelope;
+};
+
+export class SubjectStateContractError extends Error {
+  constructor(
+    readonly code:
+      | "INVALID_ID"
+      | "EMPTY_STATE"
+      | "BEDROCK_AUTHORITY_REQUIRED"
+      | "UNSETTLED_STATE_MUST_BE_PATH_SCOPED",
+    message: string,
+  ) {
+    super(message);
+    this.name = "SubjectStateContractError";
+  }
+}
+
+function nonBlank(value: string, label: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new SubjectStateContractError("INVALID_ID", `${label} must not be blank.`);
+  }
+  return normalized;
+}
+
+function hasPayload(payload: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(payload && Object.keys(payload).length > 0);
+}
+
+/**
+ * Subject-state semantics sit on top of the generic Persistent Write Envelope.
+ * The envelope keeps semantic actor, producer, committer, authority, status
+ * axes, scope, provenance and versions separate.
+ */
+export function validateSubjectStateWrite(
+  input: SubjectStateWrite,
+): SubjectStateWrite {
+  const id = nonBlank(input.id, "id");
+  const text = input.text?.trim() || null;
+
+  if (!text && !hasPayload(input.payload)) {
+    throw new SubjectStateContractError(
+      "EMPTY_STATE",
+      "Persistent subject state requires text or a non-empty payload.",
+    );
+  }
+
+  const envelope = validatePersistentWriteEnvelope(input.envelope);
+
+  if (
+    input.kind === "bedrock"
+    && (
+      envelope.semanticActor.kind !== "subject"
+      || envelope.authority !== "subject_authorized"
+    )
+  ) {
+    throw new SubjectStateContractError(
+      "BEDROCK_AUTHORITY_REQUIRED",
+      "Bedrock semantic content requires subject-authorized subject authorship.",
+    );
+  }
+
+  if (
+    envelope.status.settlementStatus === "unsettled"
+    && envelope.scope.applicability !== "path"
+  ) {
+    throw new SubjectStateContractError(
+      "UNSETTLED_STATE_MUST_BE_PATH_SCOPED",
+      "Unsettled subject state must remain path-scoped until settlement.",
+    );
+  }
+
+  return {
+    ...input,
+    id,
+    text,
+    envelope,
+  };
+}

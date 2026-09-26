@@ -1,11 +1,8 @@
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
-  coreMemories,
   diaryEntries,
   resourceLifecycleEvents,
-  sharedPapers,
-  tasks,
   todoEntries,
   todoPapers,
   toolCalls,
@@ -16,9 +13,6 @@ import type { ExportRepository } from "./export-service.js";
 import type {
   ExportDiaryRecord,
   ExportLifecycleEvent,
-  ExportMemoryRecord,
-  ExportTaskRecord,
-  ExportSharedPaper,
   ExportToolActivity,
   ExportTodoPaper,
 } from "./export-types.js";
@@ -38,21 +32,6 @@ export class DrizzleExportRepository implements ExportRepository {
     return user ?? null;
   }
 
-  async listMemory(userId: string): Promise<ExportMemoryRecord[]> {
-    const rows = await this.db.select({
-      id: coreMemories.id, category: coreMemories.category, key: coreMemories.key,
-      content: coreMemories.content, tags: coreMemories.tags, visibility: coreMemories.visibility,
-      source: coreMemories.source, author: coreMemories.author, status: coreMemories.status,
-      sortOrder: coreMemories.sortOrder, createdAt: coreMemories.createdAt, updatedAt: coreMemories.updatedAt,
-    }).from(coreMemories).where(eq(coreMemories.userId, userId))
-      .orderBy(asc(coreMemories.createdAt), asc(coreMemories.id));
-    return rows.map((row) => ({
-      id: row.id, category: row.category, key: row.key, content: row.content, tags: row.tags,
-      visibility: row.visibility, source: row.source, author: row.author, status: row.status,
-      sort_order: row.sortOrder, created_at: toIso(row.createdAt), updated_at: toIso(row.updatedAt),
-    }));
-  }
-
   async listDiary(userId: string): Promise<ExportDiaryRecord[]> {
     const rows = await this.db.select({
       id: diaryEntries.id, title: diaryEntries.title, content: diaryEntries.content,
@@ -65,22 +44,6 @@ export class DrizzleExportRepository implements ExportRepository {
       id: row.id, title: row.title, content: row.content, date: row.date, tags: row.tags,
       mood: row.mood, source: row.source, author: row.author, status: row.status,
       created_at: toIso(row.createdAt), updated_at: toIso(row.updatedAt),
-    }));
-  }
-
-  async listTasks(userId: string): Promise<ExportTaskRecord[]> {
-    const rows = await this.db.select({
-      id: tasks.id, title: tasks.title, description: tasks.description, status: tasks.status,
-      resumeStatus: tasks.resumeStatus, lifecycleStatus: tasks.lifecycleStatus, author: tasks.author,
-      priority: tasks.priority, dueTime: tasks.dueTime, timezone: tasks.timezone, tags: tasks.tags,
-      createdAt: tasks.createdAt, updatedAt: tasks.updatedAt, completedAt: tasks.completedAt,
-    }).from(tasks).where(eq(tasks.userId, userId)).orderBy(asc(tasks.createdAt), asc(tasks.id));
-    return rows.map((row) => ({
-      id: row.id, title: row.title, description: row.description, status: row.status,
-      resume_status: row.resumeStatus, lifecycle_status: row.lifecycleStatus, author: row.author,
-      priority: row.priority, due_time: row.dueTime ? toIso(row.dueTime) : null, timezone: row.timezone,
-      tags: row.tags, created_at: toIso(row.createdAt), updated_at: toIso(row.updatedAt),
-      completed_at: row.completedAt ? toIso(row.completedAt) : null,
     }));
   }
 
@@ -104,35 +67,6 @@ export class DrizzleExportRepository implements ExportRepository {
     return papers.map((paper) => ({
       date: paper.date, author: paper.author, revision: paper.revision,
       created_at: toIso(paper.createdAt), updated_at: toIso(paper.updatedAt), entries: grouped.get(paper.id) ?? [],
-    }));
-  }
-
-  async listSharedPapers(userId: string): Promise<ExportSharedPaper[]> {
-    const rows = await this.db
-      .select({
-        id: sharedPapers.id,
-        title: sharedPapers.title,
-        content: sharedPapers.content,
-        revision: sharedPapers.revision,
-        createdBy: sharedPapers.createdBy,
-        updatedBy: sharedPapers.updatedBy,
-        createdAt: sharedPapers.createdAt,
-        updatedAt: sharedPapers.updatedAt,
-        archivedAt: sharedPapers.archivedAt,
-      })
-      .from(sharedPapers)
-      .where(eq(sharedPapers.userId, userId))
-      .orderBy(asc(sharedPapers.createdAt), asc(sharedPapers.id));
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      content: row.content,
-      revision: row.revision,
-      created_by: row.createdBy,
-      updated_by: row.updatedBy,
-      created_at: toIso(row.createdAt),
-      updated_at: toIso(row.updatedAt),
-      archived_at: row.archivedAt ? toIso(row.archivedAt) : null,
     }));
   }
 

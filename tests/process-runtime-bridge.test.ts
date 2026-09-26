@@ -19,4 +19,65 @@ test("process runtime exposes bridge service from the shared database resource",
   });
   assert.equal(resources, 1);
   assert.ok(runtime.appDependencies);
+  assert.ok(runtime.appDependencies.nativeLiveProduction);
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.web.coordinator,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.web.turnReader,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.web.currentPathReader,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.relayService,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.semanticService,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.backgroundModelService,
+  );
+  assert.ok(
+    runtime.appDependencies.nativeLiveProduction.internal.backgroundModelCoordinator,
+  );
+  assert.ok(runtime.topicResurfaceCrossDeviceCoordinator);
+  assert.ok(runtime.distillationCrossDeviceCoordinator);
+  assert.ok(runtime.proactivityWakeCrossDeviceCoordinator);
+  assert.ok(runtime.runtimeEffectDeliveryCoordinator);
+  assert.ok(runtime.runtimeEffectDeliveryWorker);
+  assert.ok(runtime.driveSatisfactionService);
+});
+
+
+test("process runtime exposes Topic resurface opportunity only with explicit cadence config", () => {
+  const fake = { db: {} as never, probe: async () => undefined, close: async () => undefined };
+  const disabled = createProcessRuntime({
+    environment: {
+      DATABASE_URL: "postgres://local",
+      LOG_LEVEL: "error",
+      MCP_AUTH_TOKEN: "",
+    } as never,
+    createDatabaseResource: () => fake,
+  });
+  assert.equal(
+    disabled.appDependencies.nativeLiveProduction
+      ?.internal.backgroundModelOpportunity,
+    undefined,
+  );
+
+  const enabled = createProcessRuntime({
+    environment: {
+      DATABASE_URL: "postgres://local",
+      LOG_LEVEL: "error",
+      MCP_AUTH_TOKEN: "",
+      NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS: 60,
+      NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: 5,
+    } as never,
+    createDatabaseResource: () => fake,
+  });
+  assert.ok(
+    enabled.appDependencies.nativeLiveProduction
+      ?.internal.backgroundModelOpportunity,
+  );
 });

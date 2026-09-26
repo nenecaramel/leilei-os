@@ -30,6 +30,7 @@ class FakeRepository implements UniverseRepository {
   lastUpdateReason: string | undefined;
   backupCalls = 0;
   mcpNodeCalls = 0;
+  mcpNodeRequestHashes: string[] = [];
   mcpRelationCalls = 0;
   relationUpdateCalls = 0;
   lastUpdatedRelation: UniverseSnapshot["relations"][number] | undefined;
@@ -56,9 +57,17 @@ class FakeRepository implements UniverseRepository {
     this.version += 1;
     return { snapshot: this.snapshot, version: this.version };
   }
-  async createNodeIdempotently(_userId: string, node: UniverseSnapshot["nodes"][number], expectedVersion: number): Promise<{ outcome: "created"; value: UniverseSnapshot["nodes"][number]; version: number }> {
+  async createNodeIdempotently(
+    _userId: string,
+    node: UniverseSnapshot["nodes"][number],
+    expectedVersion: number,
+    _idempotencyKey: string,
+    requestHash: string,
+  ): Promise<{ outcome: "created"; value: UniverseSnapshot["nodes"][number]; version: number }> {
     this.mcpNodeCalls += 1;
+    this.lastCreatedNode = node;
     this.lastExpectedVersion = expectedVersion;
+    this.mcpNodeRequestHashes.push(requestHash);
     return { outcome: "created", value: node, version: expectedVersion + 1 };
   }
   async updateNode(_userId: string, node: UniverseSnapshot["nodes"][number], reason: string, expectedVersion: number): Promise<UniverseReadResult> {
@@ -267,6 +276,68 @@ test("MCP Universe service creates authoritative node/relation results with dura
   assert.equal(relationResult.relation.id.startsWith("edge-"), true);
   assert.equal(relationResult.relation.strength, 0);
   assert.equal(repository.mcpRelationCalls, 1);
+});
+
+test("MCP Universe create places the first automatic node at canvas center", async () => {
+  const repository = new FakeRepository();
+  const service = new UniverseService(repository);
+
+  const result = await service.createMcpNode("user-1", {
+    title: "First auto node",
+    summary: "",
+    content: "",
+    type: "concept",
+    tags: [],
+    galaxies: [],
+  }, 1, "universe-first-auto-0001");
+
+  assert.deepEqual(result.node.position, { x: 50, y: 50 });
+});
+
+test("MCP Universe create auto-places omitted positions without destabilizing idempotency fingerprints", async () => {
+  const repository = new FakeRepository();
+  repository.snapshot = {
+    ...emptySnapshot,
+    nodes: [{
+      id: "center-node",
+      title: "Center",
+      summary: "",
+      content: "",
+      type: "concept",
+      tags: [],
+      galaxies: [],
+      position: { x: 50, y: 50 },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+  };
+  repository.version = 1;
+  const service = new UniverseService(repository);
+  const input = {
+    title: "Auto node",
+    summary: "",
+    content: "",
+    type: "concept",
+    tags: [],
+    galaxies: [],
+  };
+
+  const first = await service.createMcpNode("user-1", input, 1, "universe-auto-create-0001");
+  assert.deepEqual(first.node.position, { x: 50, y: 40 });
+  assert.equal(repository.mcpNodeRequestHashes.length, 1);
+  const firstHash = repository.mcpNodeRequestHashes[0];
+
+  repository.snapshot = {
+    ...repository.snapshot!,
+    nodes: [...repository.snapshot!.nodes, first.node],
+  };
+  await service.createMcpNode("user-1", input, 1, "universe-auto-create-0001");
+  assert.deepEqual(repository.lastCreatedNode?.position, { x: 40, y: 50 });
+  assert.equal(repository.mcpNodeRequestHashes[1], firstHash);
+
+  await service.createMcpNode("user-1", { ...input, position: { x: 7, y: 9 } }, 1, "universe-explicit-create-0001");
+  assert.deepEqual(repository.lastCreatedNode?.position, { x: 7, y: 9 });
+  assert.notEqual(repository.mcpNodeRequestHashes[2], firstHash);
 });
 
 test("MCP Universe service rejects forbidden generated-field input and self relations", async () => {

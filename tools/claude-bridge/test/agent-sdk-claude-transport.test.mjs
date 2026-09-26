@@ -1,0 +1,1069 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  AgentSdkClaudeTransport,
+} from "../src/agent-sdk-claude-transport.mjs";
+
+function fakeQuery(messages, { error = null } = {}) {
+  let closed = false;
+  return {
+    get closed() {
+      return closed;
+    },
+    close() {
+      closed = true;
+    },
+    async *[Symbol.asyncIterator]() {
+      for (const message of messages) {
+        yield message;
+      }
+      if (error) throw error;
+    },
+  };
+}
+
+function successFixture(sessionId = "provider-sdk-1") {
+  return [
+    {
+      type: "system",
+      subtype: "init",
+      session_id: sessionId,
+    },
+    {
+      type: "assistant",
+      session_id: sessionId,
+      message: {
+        content: [{ type: "text", text: "READY" }],
+      },
+    },
+    {
+      type: "result",
+      subtype: "success",
+      session_id: sessionId,
+      result: "READY",
+    },
+  ];
+}
+
+test("sendNew preserves Claude Code settings and normalized event parity", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: { HOME: "/Users/leilei" },
+    cwd: "/workspace/leilei-os",
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture());
+    },
+  });
+
+  const emitted = [];
+  transport.events.on("normalized-event", (event) => {
+    emitted.push(event);
+  });
+
+  const result = await transport.sendNew("remember this");
+
+  assert.deepEqual(call, {
+    prompt: "remember this",
+    options: {
+      cwd: "/workspace/leilei-os",
+      env: { HOME: "/Users/leilei" },
+      settingSources: ["user", "project", "local"],
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+      },
+      verbatimPrompts: true,
+    },
+  });
+  assert.equal(result.providerSessionId, "provider-sdk-1");
+  assert.deepEqual(
+    result.normalizedEvents.map((event) => event.type),
+    ["session", "text", "result"],
+  );
+  assert.deepEqual(result.normalizedEvents, emitted);
+});
+
+test("explicit model/thinking/effort selection reaches query options and returns applied readback", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async getSettings() {
+          return {
+            applied: {
+              model: "claude-opus-5-5",
+              effort: "medium",
+            },
+          };
+        },
+        async supportedModels() {
+          return [
+            {
+              value: "claude-opus-5-5",
+              displayName: "Claude Opus 5.5",
+              description: "test",
+              supportsEffort: true,
+              supportedEffortLevels: [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+              ],
+              supportsAdaptiveThinking: true,
+            },
+          ];
+        },
+        async *[Symbol.asyncIterator]() {
+          for (const message of successFixture("provider-model")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  const result = await transport.sendNew("hello", {
+    model: "claude-opus-5-5",
+    thinking: "adaptive",
+    effort: "medium",
+  });
+
+  assert.equal(call.options.model, "claude-opus-5-5");
+  assert.deepEqual(call.options.thinking, { type: "adaptive" });
+  assert.equal(call.options.effort, "medium");
+  assert.equal(result.executionReadbackError, null);
+  assert.deepEqual(result.executionReadback.applied, {
+    model: "claude-opus-5-5",
+    effort: "medium",
+  });
+  assert.equal(
+    result.executionReadback.capability.supports_adaptive_thinking,
+    true,
+  );
+});
+
+test("resume passes provider session identity without forking", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-root"));
+    },
+  });
+
+  const result = await transport.resume(
+    "provider-root",
+    "what was it?",
+  );
+
+  assert.equal(call.options.resume, "provider-root");
+  assert.equal("forkSession" in call.options, false);
+  assert.equal(result.providerSessionId, "provider-root");
+});
+
+test("fork uses resume plus forkSession and requires a new provider session id", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-fork"));
+    },
+  });
+
+  const result = await transport.fork(
+    "provider-root",
+    "branch prompt",
+  );
+
+  assert.equal(call.options.resume, "provider-root");
+  assert.equal(call.options.forkSession, true);
+  assert.equal(result.providerSessionId, "provider-fork");
+
+  const conflicting = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => fakeQuery(successFixture("provider-root")),
+  });
+  await assert.rejects(
+    () => conflicting.fork("provider-root", "branch prompt"),
+    (error) =>
+      error.runtimeCode === "PROVIDER_SESSION_CONFLICT"
+      && /same provider session id/i.test(error.message),
+  );
+});
+
+test("normal turns expose the latest live context usage and deterministic compaction advisory", async () => {
+  let usageCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async getContextUsage() {
+        usageCalls += 1;
+        const percentage = usageCalls === 1 ? 74 : 76;
+        return {
+          model: "claude-opus-5-5",
+          totalTokens: percentage * 10000,
+          maxTokens: 1000000,
+          rawMaxTokens: 1000000,
+          percentage,
+          categories: [
+            {
+              name: "Messages",
+              tokens: percentage * 9000,
+              kind: "used",
+            },
+          ],
+        };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-context",
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-context",
+          message: {
+            content: [{ type: "text", text: "working" }],
+          },
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-context",
+          message: {
+            content: [{ type: "text", text: "READY" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-context",
+          result: "READY",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.sendNew("hello");
+  assert.equal(usageCalls, 2);
+
+  assert.deepEqual(result.contextUsage, {
+    model: "claude-opus-5-5",
+    total_tokens: 760000,
+    max_tokens: 1000000,
+    raw_max_tokens: 1000000,
+    percentage: 76,
+    categories: [
+      {
+        name: "Messages",
+        tokens: 684000,
+        kind: "used",
+        is_deferred: null,
+      },
+    ],
+  });
+  assert.equal(result.contextUsageError, null);
+  assert.deepEqual(result.compactionAdvisory, {
+    due: true,
+    threshold_percent: 75,
+    observed_percent: 76,
+    reason: "turn_boundary_threshold_reached",
+  });
+});
+
+test("compact uses a dedicated non-verbatim control path and returns lifecycle observability", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-root",
+          };
+
+          await input.options.hooks.PreCompact[0].hooks[0]({
+            hook_event_name: "PreCompact",
+            trigger: "manual",
+            custom_instructions: null,
+          });
+
+          yield {
+            type: "system",
+            subtype: "compact_boundary",
+            session_id: "provider-root",
+            compact_metadata: {
+              trigger: "manual",
+              pre_tokens: 28485,
+              post_tokens: 1302,
+              duration_ms: 10123,
+              preserved_segment: {
+                head_uuid: "head",
+                anchor_uuid: "anchor",
+                tail_uuid: "tail",
+              },
+            },
+          };
+
+          await input.options.hooks.PostCompact[0].hooks[0]({
+            hook_event_name: "PostCompact",
+            trigger: "manual",
+            compact_summary: "summary with durable marker",
+          });
+
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id: "provider-root",
+            result: "",
+          };
+        },
+      };
+    },
+  });
+
+  const result = await transport.compact("provider-root");
+
+  assert.equal(call.prompt, "/compact");
+  assert.equal(call.options.resume, "provider-root");
+  assert.equal(call.options.verbatimPrompts, false);
+  assert.ok(call.options.hooks);
+  assert.equal(result.providerSessionId, "provider-root");
+  assert.equal(result.contextUsage, null);
+  assert.deepEqual(result.compaction.boundary, {
+    trigger: "manual",
+    pre_tokens: 28485,
+    post_tokens: 1302,
+    duration_ms: 10123,
+    preserved_segment: {
+      head_uuid: "head",
+      anchor_uuid: "anchor",
+      tail_uuid: "tail",
+    },
+  });
+  assert.deepEqual(result.compaction.preCompact, [
+    {
+      hookEventName: "PreCompact",
+      trigger: "manual",
+      customInstructions: null,
+    },
+  ]);
+  assert.deepEqual(result.compaction.postCompact, [
+    {
+      hookEventName: "PostCompact",
+      trigger: "manual",
+      summary: "summary with durable marker",
+    },
+  ]);
+});
+
+test("compact refuses to claim success if the SDK emits no compact boundary", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-root",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "provider-root",
+        result: "",
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () => transport.compact("provider-root"),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /without a compact boundary/i.test(error.message),
+  );
+});
+
+test("SDK terminal error results map into existing runtime failure semantics", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-sdk-failure",
+      },
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        session_id: "provider-sdk-failure",
+        errors: ["permission denied"],
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () => transport.sendNew("hello"),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /permission denied/i.test(error.message),
+  );
+});
+
+test("query transport exceptions map into existing process failure semantics", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () =>
+      fakeQuery([], { error: new Error("sdk subprocess died") }),
+  });
+
+  await assert.rejects(
+    () => transport.sendNew("hello"),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /sdk subprocess died/i.test(error.message),
+  );
+});
+
+test("abort closes the active SDK query and reports ABORTED", async () => {
+  let release;
+  let active;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => {
+      let closed = false;
+      active = {
+        close() {
+          closed = true;
+          release();
+        },
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-abort",
+          };
+          await gate;
+          if (!closed) {
+            yield {
+              type: "result",
+              subtype: "success",
+              session_id: "provider-abort",
+              result: "should not finish",
+            };
+          }
+        },
+      };
+      return active;
+    },
+  });
+
+  const run = transport.sendNew("long task");
+  await new Promise((resolve) => setImmediate(resolve));
+  transport.abort();
+
+  await assert.rejects(
+    () => run,
+    (error) => error.runtimeCode === "ABORTED",
+  );
+  assert.ok(active);
+});
+
+test("refuses API-key mode and keeps subscription-auth boundary", () => {
+  assert.throws(
+    () =>
+      new AgentSdkClaudeTransport({
+        environment: { ANTHROPIC_API_KEY: "forbidden" },
+        queryImpl: () => fakeQuery([]),
+      }),
+    /ANTHROPIC_API_KEY/,
+  );
+});
+
+test("SDK loading stays lazy so the old transport remains a valid rollback", async () => {
+  let loadCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    loadQuery: async () => {
+      loadCalls += 1;
+      return () => fakeQuery(successFixture("lazy-provider"));
+    },
+  });
+
+  assert.equal(loadCalls, 0);
+  const result = await transport.sendNew("hello");
+  assert.equal(loadCalls, 1);
+  assert.equal(result.providerSessionId, "lazy-provider");
+});
+
+
+test("interactive foreground execution uses the dedicated turn handle with verbatim streaming", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "provider-interactive-child",
+          };
+          yield {
+            type: "stream_event",
+            session_id: "provider-interactive-child",
+            event: {
+              type: "content_block_delta",
+              index: 0,
+              delta: {
+                type: "text_delta",
+                text: "hel",
+              },
+            },
+          };
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id: "provider-interactive-child",
+            result: "hello",
+          };
+        },
+      };
+    },
+  });
+
+  const emitted = [];
+  const delivered = [];
+  transport.events.on("normalized-event", (event) => {
+    emitted.push(event.type);
+  });
+
+  const result = await transport.executeTurn(
+    "branch prompt",
+    {
+      mode: "fork",
+      parentProviderSessionId: "provider-parent",
+      streaming: true,
+      onNormalizedEvent: async (event) => {
+        delivered.push(event.type);
+      },
+    },
+  );
+
+  assert.equal(
+    typeof call.prompt?.[Symbol.asyncIterator],
+    "function",
+  );
+  assert.equal(call.options.resume, "provider-parent");
+  assert.equal(call.options.forkSession, true);
+  assert.equal(call.options.verbatimPrompts, true);
+  assert.equal(call.options.includePartialMessages, true);
+  assert.equal(
+    result.providerSessionId,
+    "provider-interactive-child",
+  );
+  assert.deepEqual(
+    result.normalizedEvents.map((event) => event.type),
+    ["session", "partial_text", "result"],
+  );
+  assert.deepEqual(
+    emitted,
+    ["session", "partial_text", "result"],
+  );
+  assert.deepEqual(
+    delivered,
+    ["session", "partial_text", "result"],
+  );
+});
+
+test("interactive foreground event delivery failure is observability-only", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        for (const message of successFixture("provider-event-fail-soft")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const failures = [];
+  transport.events.on(
+    "event-delivery-error",
+    (error) => failures.push(error),
+  );
+
+  let attempts = 0;
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      onNormalizedEvent: async () => {
+        attempts += 1;
+        throw new Error("event delivery unavailable");
+      },
+    },
+  );
+
+  assert.equal(
+    result.providerSessionId,
+    "provider-event-fail-soft",
+  );
+  assert.equal(attempts, 3);
+  assert.equal(failures.length, 1);
+});
+
+
+test("interactive foreground execution binds permission and question host callbacks", async () => {
+  const sdkDecisions = [];
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: ({ options }) => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        sdkDecisions.push(
+          await options.canUseTool(
+            "Write",
+            { file_path: "/tmp/a", content: "x" },
+            {
+              toolUseID: "tool-write-1",
+              requestId: "request-write-1",
+            },
+          ),
+        );
+        sdkDecisions.push(
+          await options.canUseTool(
+            "AskUserQuestion",
+            {
+              questions: [{
+                question: "Theme",
+                options: [
+                  { label: "Light" },
+                  { label: "Dark" },
+                ],
+              }],
+            },
+            {
+              toolUseID: "tool-question-1",
+              requestId: "request-question-1",
+            },
+          ),
+        );
+        for (const message of successFixture("provider-interactions")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const requests = [];
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      permissionHandler: async (request) => {
+        requests.push(["permission", request]);
+        return {
+          decision: "allow",
+          updatedInput: {
+            file_path: "/allowed/a",
+            content: "rewritten",
+          },
+        };
+      },
+      questionHandler: async (request) => {
+        requests.push(["question", request]);
+        return {
+          decision: "answer",
+          answers: {
+            Theme: "Dark",
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-interactions");
+  assert.deepEqual(
+    requests.map(([kind]) => kind),
+    ["permission", "question"],
+  );
+  assert.deepEqual(sdkDecisions, [
+    {
+      behavior: "allow",
+      updatedInput: {
+        file_path: "/allowed/a",
+        content: "rewritten",
+      },
+    },
+    {
+      behavior: "allow",
+      updatedInput: {
+        questions: [{
+          question: "Theme",
+          options: [
+            { label: "Light" },
+            { label: "Dark" },
+          ],
+        }],
+        answers: {
+          Theme: "Dark",
+        },
+      },
+    },
+  ]);
+});
+
+
+test("interactive foreground control pump can queue a mid-turn user message on the same SDK query", async () => {
+  const seenUserMessages = [];
+  const receipts = [];
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: ({ prompt }) => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        const iterator = prompt[Symbol.asyncIterator]();
+        const first = await iterator.next();
+        seenUserMessages.push(
+          first.value.message.content[0].text,
+        );
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-controlled",
+        };
+        const second = await iterator.next();
+        seenUserMessages.push(
+          second.value.message.content[0].text,
+        );
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-controlled",
+          result: "UPDATED",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "initial",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      controlPump: async (controller) => {
+        await new Promise((resolve) => setImmediate(resolve));
+        receipts.push(
+          controller.sendUserMessage("mid-turn update"),
+        );
+      },
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-controlled");
+  assert.deepEqual(seenUserMessages, [
+    "initial",
+    "mid-turn update",
+  ]);
+  assert.deepEqual(receipts, [{ status: "queued" }]);
+});
+
+test("interactive foreground control pump projects graceful interrupt as INTERRUPTED", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {
+        release();
+      },
+      async interrupt() {
+        release();
+        return { still_queued: [] };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-interrupt-control",
+        };
+        await gate;
+        throw new Error("provider interrupted execution");
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () =>
+      transport.executeTurn(
+        "long task",
+        {
+          mode: "new",
+          parentProviderSessionId: null,
+          streaming: true,
+          controlPump: async (controller) => {
+            await new Promise((resolve) => setImmediate(resolve));
+            await controller.interrupt();
+          },
+        },
+      ),
+    (error) => error.runtimeCode === "INTERRUPTED",
+  );
+});
+
+
+test("interactive foreground execution applies model thinking and effort selection", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successFixture("provider-selected-interactive")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      execution: {
+        model: "claude-sonnet-5",
+        thinking: "adaptive",
+        effort: "xhigh",
+      },
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-selected-interactive");
+  assert.equal(call.options.model, "claude-sonnet-5");
+  assert.deepEqual(call.options.thinking, { type: "adaptive" });
+  assert.equal(call.options.effort, "xhigh");
+  assert.equal(call.options.verbatimPrompts, true);
+});
+
+
+test("interactive foreground returns turn-boundary context usage and compaction advisory", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async getContextUsage() {
+        return {
+          model: "claude-opus-5-5",
+          totalTokens: 760000,
+          maxTokens: 1000000,
+          rawMaxTokens: 1000000,
+          percentage: 76,
+          categories: [{
+            name: "Messages",
+            tokens: 700000,
+            kind: "used",
+            isDeferred: false,
+          }],
+        };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-context-interactive",
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-context-interactive",
+          message: {
+            content: [{ type: "text", text: "done" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-context-interactive",
+          result: "done",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+    },
+  );
+
+  assert.deepEqual(result.contextUsage, {
+    model: "claude-opus-5-5",
+    total_tokens: 760000,
+    max_tokens: 1000000,
+    raw_max_tokens: 1000000,
+    percentage: 76,
+    categories: [{
+      name: "Messages",
+      tokens: 700000,
+      kind: "used",
+      is_deferred: false,
+    }],
+  });
+  assert.equal(result.contextUsageError, null);
+  assert.deepEqual(result.compactionAdvisory, {
+    due: true,
+    threshold_percent: 75,
+    observed_percent: 76,
+    reason: "turn_boundary_threshold_reached",
+  });
+});
+
+
+test("interactive foreground returns execution readback for the exact requested selection", async () => {
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async getSettings() {
+        return {
+          applied: {
+            model: "claude-opus-5-5",
+            effort: "high",
+          },
+        };
+      },
+      async supportedModels() {
+        return [{
+          value: "claude-opus-5-5",
+          displayName: "Claude Opus 5.5",
+          description: "test model",
+          supportsEffort: true,
+          supportedEffortLevels: [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+          ],
+          supportsAdaptiveThinking: true,
+          supportsFastMode: false,
+          supportsAutoMode: false,
+        }];
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-execution-readback",
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-execution-readback",
+          message: {
+            content: [{ type: "text", text: "done" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          session_id: "provider-execution-readback",
+          result: "done",
+        };
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      execution: {
+        model: "claude-opus-5-5",
+        thinking: "adaptive",
+        effort: "high",
+      },
+    },
+  );
+
+  assert.equal(result.executionReadbackError, null);
+  assert.deepEqual(result.executionReadback, {
+    requested: {
+      model: "claude-opus-5-5",
+      thinking: "adaptive",
+      effort: "high",
+    },
+    applied: {
+      model: "claude-opus-5-5",
+      effort: "high",
+    },
+    capability: {
+      value: "claude-opus-5-5",
+      display_name: "Claude Opus 5.5",
+      description: "test model",
+      supports_effort: true,
+      supported_effort_levels: [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ],
+      supports_adaptive_thinking: true,
+      supports_fast_mode: false,
+      supports_auto_mode: false,
+    },
+    supported_models: [{
+      value: "claude-opus-5-5",
+      display_name: "Claude Opus 5.5",
+      description: "test model",
+      supports_effort: true,
+      supported_effort_levels: [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ],
+      supports_adaptive_thinking: true,
+      supports_fast_mode: false,
+      supports_auto_mode: false,
+    }],
+  });
+});

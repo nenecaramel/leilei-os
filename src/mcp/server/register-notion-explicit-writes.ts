@@ -7,12 +7,9 @@ import {
   type NotionExplicitWriteResult,
 } from "../../domains/notion/notion-explicit-write-service.js";
 import {
-  notionAuthErrorResult,
   notionBodySchema,
-  notionErrorResult,
   notionIdSchema,
-  notionOutputSchema,
-  notionSuccess,
+  notionWriteError,
   NotionWriteAuthenticationError,
 } from "../tools/notion-write-shared.js";
 import {
@@ -25,6 +22,15 @@ import {
   authorizeNotionUser,
   isActiveUserAuthorizationError,
 } from "./notion-authorization.js";
+import {
+  mcpMutationReceipt,
+  mcpMutationReceiptFields,
+} from "../tools/mutation-contract.js";
+import {
+  createMcpToolError,
+  mcpErrorRecoveryHint,
+  mcpToolErrorDetailsSchema,
+} from "../tools/error-contract.js";
 
 export type NotionExplicitWriteServiceContract = {
   createPage(body: Record<string, unknown>): Promise<NotionExplicitWriteResult>;
@@ -88,35 +94,68 @@ const commentInputSchema = z.object({
   body: notionBodySchema,
 }).strict();
 
-function explicitWriteErrorResult(error: NotionExplicitWriteError) {
-  const text = error.code === "UNCERTAIN_WRITE"
+const explicitReceiptOutputSchema = z.object({
+  success: z.boolean(),
+  data: z.object({
+    operation: z.string().min(1),
+    target_id: z.string().min(1),
+    verified: z.literal(true),
+    discussion_id: z.string().nullable().optional(),
+    ...mcpMutationReceiptFields,
+  }).strict().optional(),
+  error: mcpToolErrorDetailsSchema.optional(),
+}).strict();
+
+function explicitWriteErrorResult(
+  error: NotionExplicitWriteError,
+  pageId?: string,
+) {
+  const message = error.code === "UNCERTAIN_WRITE"
     ? "The Notion write outcome is uncertain. Fresh readback was attempted and the write was not retried."
     : error.code === "INVALID_WRITE"
       ? "The requested Notion change is outside the allowed explicit-write surface."
       : "The Notion write completed but fresh readback verification failed.";
-  return {
-    isError: true as const,
-    content: [{ type: "text" as const, text }],
-  };
+
+  if (error.code === "UNCERTAIN_WRITE") {
+    return createMcpToolError(
+      error.code,
+      message,
+      message,
+      mcpErrorRecoveryHint({
+        retryable: false,
+        reason: "uncertain_outcome",
+        recommendedTool: pageId ? "read_notion_page" : null,
+        recommendedArguments: pageId ? { page_id: pageId } : null,
+      }),
+    );
+  }
+  return createMcpToolError(error.code, message);
 }
 
 function invalidActionInput(toolName: string) {
-  return {
-    isError: true as const,
-    content: [{
-      type: "text" as const,
-      text: `The ${toolName} request is invalid for the selected action.`,
-    }],
-  };
+  return createMcpToolError(
+    "INVALID_ARGUMENT",
+    `The ${toolName} request is invalid for the selected action.`,
+  );
 }
 
-function handleWriteError(error: unknown) {
-  if (isActiveUserAuthorizationError(error)) {
-    return notionAuthErrorResult();
+function handleWriteError(error: unknown, pageId?: string) {
+  if (
+    isActiveUserAuthorizationError(error)
+    || error instanceof NotionWriteAuthenticationError
+  ) {
+    return createMcpToolError(
+      "AUTHENTICATION_REQUIRED",
+      "Authentication is required to modify Notion.",
+    );
   }
-  if (error instanceof NotionWriteAuthenticationError) return notionAuthErrorResult();
-  if (error instanceof NotionExplicitWriteError) return explicitWriteErrorResult(error);
-  return notionErrorResult(error);
+  if (error instanceof NotionExplicitWriteError) {
+    return explicitWriteErrorResult(error, pageId);
+  }
+  return createMcpToolError(
+    "NOTION_WRITE_FAILED",
+    notionWriteError(error),
+  );
 }
 
 export function registerNotionExplicitWriteTools(
@@ -128,9 +167,9 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion page",
       description:
-        "Explicitly create a Notion page, update page properties, or update page content. Shapes: create={action,body,parent?}; update={action,page_id,body}; update_content={action,page_id,body}. page_id and body are required where shown; parent is create-only. Each operation fresh-reads before writing and verifies with fresh readback. Destructive page actions are not available.",
+        "Advanced explicit-payload Notion page write; prefer typed tools when they fit.",
       inputSchema: pageInputSchema,
-      outputSchema: notionOutputSchema,
+      outputSchema: explicitReceiptOutputSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -139,10 +178,14 @@ export function registerNotionExplicitWriteTools(
       },
     },
     async (args) => {
+      let recoveryPageId: string | undefined;
       try {
         const parsed = pageActionSchema.safeParse(args);
         if (!parsed.success) return invalidActionInput("write_notion_page");
         const actionArgs = parsed.data;
+        recoveryPageId = actionArgs.action === "create"
+          ? undefined
+          : actionArgs.page_id;
 
         if (actionArgs.action === "create") {
           const body = actionArgs.parent
@@ -150,20 +193,38 @@ export function registerNotionExplicitWriteTools(
             : actionArgs.body;
           await authorizeNotionUser(dependencies);
           const result = await dependencies.notionService.createPage(body);
-          return notionSuccess(result, `Created and verified Notion page ${result.target_id}.`);
+          return explicitSuccess(
+            result,
+            "notion_page",
+            result.target_id,
+            result.target_id,
+            `Created and verified Notion page ${result.target_id}.`,
+          );
         }
 
         await authorizeNotionUser(dependencies);
 
         if (actionArgs.action === "update") {
           const result = await dependencies.notionService.updatePage(actionArgs.page_id, actionArgs.body);
-          return notionSuccess(result, `Updated and verified Notion page ${result.target_id}.`);
+          return explicitSuccess(
+            result,
+            "notion_page",
+            result.target_id,
+            actionArgs.page_id,
+            `Updated and verified Notion page ${result.target_id}.`,
+          );
         }
 
         const result = await dependencies.notionService.updatePageContent(actionArgs.page_id, actionArgs.body);
-        return notionSuccess(result, `Updated and verified Notion page content ${result.target_id}.`);
+        return explicitSuccess(
+          result,
+          "notion_page",
+          result.target_id,
+          actionArgs.page_id,
+          `Updated and verified Notion page content ${result.target_id}.`,
+        );
       } catch (error) {
-        return handleWriteError(error);
+        return handleWriteError(error, recoveryPageId);
       }
     },
   );
@@ -173,9 +234,9 @@ export function registerNotionExplicitWriteTools(
     {
       title: "Write Notion comment",
       description:
-        "Explicitly create a page comment or reply to an existing discussion. Each operation fresh-reads the target page and verifies the created comment with fresh readback. Comment update and delete are not available.",
+        "Advanced explicit-payload Notion comment write; prefer typed comment tools when they fit.",
       inputSchema: commentInputSchema,
-      outputSchema: notionOutputSchema,
+      outputSchema: explicitReceiptOutputSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -192,7 +253,13 @@ export function registerNotionExplicitWriteTools(
 
         if (args.action === "create") {
           const result = await dependencies.notionService.createComment(args.page_id, args.body);
-          return notionSuccess(result, `Created and verified Notion comment ${result.target_id}.`);
+          return explicitSuccess(
+            result,
+            "notion_comment",
+            result.target_id,
+            args.page_id,
+            `Created and verified Notion comment ${result.target_id}.`,
+          );
         }
 
         const result = await dependencies.notionService.replyComment(
@@ -200,12 +267,55 @@ export function registerNotionExplicitWriteTools(
           args.discussion_id as string,
           args.body,
         );
-        return notionSuccess(result, `Created and verified Notion comment reply ${result.target_id}.`);
+        return explicitSuccess(
+          result,
+          "notion_comment",
+          result.target_id,
+          args.page_id,
+          `Created and verified Notion comment reply ${result.target_id}.`,
+        );
       } catch (error) {
         return handleWriteError(error);
       }
     },
   );
+}
+
+function explicitSuccess(
+  result: NotionExplicitWriteResult,
+  entityType: "notion_page" | "notion_comment",
+  entityId: string,
+  pageId: string,
+  text: string,
+) {
+  const data = {
+    operation: result.operation,
+    target_id: result.target_id,
+    verified: true as const,
+    ...(typeof result.discussion_id === "string" || result.discussion_id === null
+      ? { discussion_id: result.discussion_id }
+      : {}),
+    ...mcpMutationReceipt({
+      outcome: "applied",
+      entity_type: entityType,
+      entity_id: entityId,
+      revision: null,
+      detail_tool: entityType === "notion_comment" ? null : "read_notion_page",
+      detail_arguments: entityType === "notion_comment"
+        ? null
+        : { page_id: pageId },
+    }),
+  };
+  return {
+    content: [{
+      type: "text" as const,
+      text: `${text} [operation=${data.operation}; target_id=${data.target_id}]`,
+    }],
+    structuredContent: {
+      success: true as const,
+      data,
+    },
+  };
 }
 
 let productionService: NotionExplicitWriteService | undefined;

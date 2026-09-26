@@ -14,21 +14,20 @@ export type UniversePoint = {
   y: number;
 };
 
-export const MIN_UNIVERSE_SCALE = 0.2;
-export const MAX_UNIVERSE_SCALE = 4;
-export const UNIVERSE_VIEWPORT_STORAGE_KEY = "leileios.universe.viewport.v1";
+const MIN_UNIVERSE_SCALE = 0.2;
+const MAX_UNIVERSE_SCALE = 4;
 
 // Canonical positions are percentages in a 0..100 logical coordinate space.
 // Keeping the conversion in one place lets the renderer use a larger world
 // without changing the persisted Universe contract.
 const WORLD_UNITS_PER_CANONICAL_UNIT = 10;
 
-export function clampUniverseCoordinate(value: number): number {
+function clampUniverseCoordinate(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, value));
 }
 
-export function clampUniversePosition(position: UniversePoint): UniversePoint {
+function clampUniversePosition(position: UniversePoint): UniversePoint {
   return {
     x: clampUniverseCoordinate(position.x),
     y: clampUniverseCoordinate(position.y),
@@ -49,7 +48,7 @@ export function worldToCanonicalPosition(world: UniversePoint): UniversePoint {
   });
 }
 
-export function clampUniverseScale(scale: number): number {
+function clampUniverseScale(scale: number): number {
   if (!Number.isFinite(scale)) return 1;
   return Math.min(MAX_UNIVERSE_SCALE, Math.max(MIN_UNIVERSE_SCALE, scale));
 }

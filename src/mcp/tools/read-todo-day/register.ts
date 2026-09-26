@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MCP_CONTENT_AUTHOR_DESCRIPTION, TODO_DOMAIN_BOUNDARY } from "../model-language.js";
 import { TodoServiceError } from "../../../domains/todo/todo-service.js";
 import type { TodoDayPapers } from "../../../domains/todo/todo-types.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
@@ -15,7 +16,7 @@ const todoEntrySchema = z.object({
 const todoAuthorSchema = z.enum(["L", "G", "C"]);
 
 const todoPaperSchema = z.object({
-  author: todoAuthorSchema,
+  author: todoAuthorSchema.describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
   date: z.string(),
   revision: z.number().int().nonnegative(),
   entries: z.array(todoEntrySchema),
@@ -23,17 +24,19 @@ const todoPaperSchema = z.object({
 
 const readTodoDayInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  author: todoAuthorSchema.optional(),
+  author: todoAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
+
+const todoPapersSchema = z.object({
+  L: todoPaperSchema.nullable(),
+  G: todoPaperSchema.nullable(),
+  C: todoPaperSchema.nullable(),
+}).partial().strict();
 
 const readTodoDayDataSchema = z.object({
   date: z.string(),
-  author: todoAuthorSchema.optional(),
-  papers: z.object({
-    L: todoPaperSchema.nullable(),
-    G: todoPaperSchema.nullable(),
-    C: todoPaperSchema.nullable(),
-  }),
+  author: todoAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
+  papers: todoPapersSchema,
 });
 
 const readTodoDayOutputSchema = z.object({
@@ -63,7 +66,7 @@ export function registerReadTodoDayTool(
     {
       title: "Read one Todo day",
       description:
-        "Read Todo papers for one exact business date. Without author, return the complete L, G, and C papers; when the user specifies author (L, G, or C), return only that author's paper. Each persisted entry includes its entry revision; use that revision with update_todo_entry or delete_todo_entry. Empty or missing papers are returned as null.",
+        "Read Todo for one date; return all L/G/C papers or one selected author.",
       inputSchema: readTodoDayInputSchema,
       outputSchema: readTodoDayOutputSchema,
       annotations: {
@@ -91,17 +94,18 @@ export function registerReadTodoDayTool(
           G: normalizePaper(data.papers.G),
           C: normalizePaper(data.papers.C),
         };
-        const scopedData = author
-          ? {
-              date: data.date,
-              author,
-              papers: {
-                L: author === "L" ? normalizedPapers.L : null,
-                G: author === "G" ? normalizedPapers.G : null,
-                C: author === "C" ? normalizedPapers.C : null,
-              },
-            }
-          : { date: data.date, papers: normalizedPapers };
+        let scopedData: {
+          date: string;
+          author?: "L" | "G" | "C";
+          papers: Partial<TodoDayPapers>;
+        };
+        if (author) {
+          const papers: Partial<TodoDayPapers> = {};
+          papers[author] = normalizedPapers[author];
+          scopedData = { date: data.date, author, papers };
+        } else {
+          scopedData = { date: data.date, papers: normalizedPapers };
+        }
         return {
           content: [{ type: "text", text: todoDayContent(scopedData) }],
           structuredContent: { success: true as const, data: scopedData },
@@ -116,7 +120,7 @@ export function registerReadTodoDayTool(
 function todoDayContent(data: {
   date: string;
   author?: "L" | "G" | "C";
-  papers: TodoDayPapers;
+  papers: Partial<TodoDayPapers>;
 }): string {
   const lines = [`Todo ${data.date}`];
   let paperCount = 0;

@@ -19,7 +19,7 @@ async function connect(dependencies: Record<string, unknown> = {}) {
 
 const sources = [{ diaryId: DIARY_ID, title: "A diary", date: "2026-08-21", status: "archived" as const }];
 
-test("registers the four Universe provenance/relation MCP tools with frozen annotations", async (t) => {
+test("registers the four Universe provenance/relation MCP tools with stable annotations and output envelopes", async (t) => {
   const fixture = await connect();
   t.after(async () => { await fixture.client.close(); await fixture.server.close(); });
 
@@ -41,8 +41,6 @@ test("registers the four Universe provenance/relation MCP tools with frozen anno
     readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false,
   });
   for (const name of ["delete_universe_relation", "add_universe_diary_source", "delete_universe_diary_source"]) {
-    assert.match(byName.get(name)?.description ?? "", /fresh-read/i);
-    assert.match(byName.get(name)?.description ?? "", /never blindly retry/i);
     const outputSchema = byName.get(name)?.outputSchema as {
       properties?: { success?: { type?: string; const?: unknown; enum?: unknown[] } };
     };

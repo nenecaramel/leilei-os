@@ -3,10 +3,11 @@ import {
   NotionTransport,
   type NotionTransportOptions,
 } from "./notion-transport.js";
+import { codePointLength, sliceCodePoints } from "../../shared/unicode.js";
 
 const MAX_DEPTH = 8;
 const MAX_BLOCKS = 500;
-const MAX_TEXT_LENGTH = 60_000;
+const MAX_TEXT_CODE_POINTS = 200_000;
 export const DEFAULT_NOTION_PAGE_READ_TIMEOUT_MS = 30_000;
 
 export type NotionReadClientOptions = NotionTransportOptions & {
@@ -354,9 +355,10 @@ export class NotionReadClient {
     await readChildren(pageId, 0);
 
     const fullContent = lines.join("\n");
-    const textTruncated = fullContent.length > MAX_TEXT_LENGTH;
+    const fullContentLength = codePointLength(fullContent);
+    const textTruncated = fullContentLength > MAX_TEXT_CODE_POINTS;
     const content = textTruncated
-      ? fullContent.slice(0, MAX_TEXT_LENGTH)
+      ? sliceCodePoints(fullContent, 0, MAX_TEXT_CODE_POINTS)
       : fullContent;
 
     return {

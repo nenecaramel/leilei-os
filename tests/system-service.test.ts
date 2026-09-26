@@ -18,10 +18,7 @@ function createRepository(overrides: Partial<SystemRepository> = {}): SystemRepo
     },
     async readDataSummary() {
       return {
-        memory: { active: 2, archived: 1 },
         diary: { active: 3, archived: 2 },
-        task: { active: 4, archived: 1 },
-        shared_paper: { active: 0, archived: 0 },
         todo: { active: 0 },
       } satisfies SystemDataSummary;
     },
@@ -62,20 +59,14 @@ test("data summary forwards the authenticated user id and preserves real counts"
     async readDataSummary(userId) {
       calls.push(userId);
       return {
-        memory: { active: 1, archived: 2 },
         diary: { active: 3, archived: 4 },
-        task: { active: 5, archived: 6 },
-        shared_paper: { active: 7, archived: 8 },
         todo: { active: 9 },
       };
     },
   }));
 
   assert.deepEqual(await service.readDataSummary(USER_ID), {
-    memory: { active: 1, archived: 2 },
     diary: { active: 3, archived: 4 },
-    task: { active: 5, archived: 6 },
-    shared_paper: { active: 7, archived: 8 },
     todo: { active: 9 },
   });
   assert.deepEqual(calls, [USER_ID]);
@@ -85,7 +76,7 @@ test("activity normalizes persisted lifecycle and meaningful tool evidence, filt
   const lifecycle: SystemLifecycleActivityRecord[] = [
     {
       id: "life-web",
-      resourceType: "task",
+      resourceType: "diary",
       action: "archive",
       actorType: "user",
       channel: "web",
@@ -93,7 +84,7 @@ test("activity normalizes persisted lifecycle and meaningful tool evidence, filt
     },
     {
       id: "life-noise",
-      resourceType: "task",
+      resourceType: "diary",
       action: "unknown",
       actorType: "user",
       channel: "web",
@@ -103,11 +94,11 @@ test("activity normalizes persisted lifecycle and meaningful tool evidence, filt
   const tools: SystemToolActivityRecord[] = [
     {
       id: "tool-failed",
-      toolName: "create_task",
+      toolName: "write_diary",
       operation: "create",
       source: "mcp",
       status: "error",
-      errorCode: "TASK_INVALID",
+      errorCode: "DIARY_INVALID",
       createdAt: new Date("2026-08-09T00:05:00.000Z"),
     },
     {
@@ -146,14 +137,14 @@ test("activity normalizes persisted lifecycle and meaningful tool evidence, filt
     {
       id: "tool-failed",
       occurred_at: "2026-08-09T00:05:00.000Z",
-      label: "Task creation failed",
+      label: "Diary creation failed",
       source: "MCP",
       outcome: "failed",
     },
     {
       id: "life-web",
       occurred_at: "2026-08-09T00:03:00.000Z",
-      label: "Task archived",
+      label: "Diary archived",
       source: "Web",
       outcome: "success",
     },
@@ -172,7 +163,7 @@ test("activity returns only the final bounded list after merging sources", async
     async listLifecycleActivity() {
       return Array.from({ length: 80 }, (_, index) => ({
         id: `life-${index}`,
-        resourceType: "memory" as const,
+        resourceType: "diary_entry" as const,
         action: "archive" as const,
         actorType: "user" as const,
         channel: "web" as const,
@@ -182,7 +173,7 @@ test("activity returns only the final bounded list after merging sources", async
     async listToolActivity() {
       return Array.from({ length: 80 }, (_, index) => ({
         id: `tool-${index}`,
-        toolName: "write_memory" as const,
+        toolName: "write_diary" as const,
         operation: "create",
         source: "mcp" as const,
         status: "success" as const,

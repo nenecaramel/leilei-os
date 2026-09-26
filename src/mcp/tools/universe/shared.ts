@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { UniverseServiceError } from "../../../domains/universe/universe-service.js";
-import { createMcpToolError } from "../error-contract.js";
+import {
+  createMcpToolError,
+  mcpErrorRecoveryFields,
+  mcpErrorRecoveryHint,
+} from "../error-contract.js";
 
 const universeWriteErrorCodes = [
   "USER_NOT_FOUND",
@@ -22,6 +26,7 @@ const universeWriteErrorCodes = [
 export const universeWriteErrorDetailsSchema = z.object({
   code: z.enum(universeWriteErrorCodes),
   message: z.string(),
+  ...mcpErrorRecoveryFields,
 }).strict();
 
 export class UniverseAuthenticationError extends Error {
@@ -82,12 +87,43 @@ export function safeUniverseReadError(error: unknown, notFoundMessage: string) {
   );
 }
 
-export function safeUniverseWriteError(error: unknown, notFoundMessage: string) {
+export function safeUniverseWriteError(
+  error: unknown,
+  notFoundMessage: string,
+  recoveryContext?: {
+    recommendedTool?: string;
+    recommendedArguments?: Record<string, unknown>;
+  },
+) {
   if (!(error instanceof UniverseServiceError)) {
     return safeUniverseError(error, notFoundMessage);
   }
 
   const message = safeUniverseServiceMessage(error, notFoundMessage);
+  if (error.code === "VERSION_CONFLICT") {
+    return createMcpToolError(
+      error.code,
+      message,
+      `${error.code}: ${message}`,
+      mcpErrorRecoveryHint({
+        retryable: false,
+        reason: "stale_version",
+        recommendedTool: recoveryContext?.recommendedTool ?? "list_universe_nodes",
+        recommendedArguments: recoveryContext?.recommendedArguments ?? {},
+      }),
+    );
+  }
+  if (error.code === "IDEMPOTENCY_CONFLICT") {
+    return createMcpToolError(
+      error.code,
+      message,
+      `${error.code}: ${message}`,
+      mcpErrorRecoveryHint({
+        retryable: false,
+        reason: "idempotency_conflict",
+      }),
+    );
+  }
   return {
     isError: true as const,
     content: [{ type: "text" as const, text: `${error.code}: ${message}` }],

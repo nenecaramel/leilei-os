@@ -19,3 +19,17 @@ dist/
 *.dump.enc
 *.backup.enc
 *.sha256
+.runtime/
+
+# Local coding-agent/build residue. Long-lived work belongs only in canonical
+# Developer clones; temporary worktrees must be removed at task closeout.
+coverage/
+.derivedData/
+DerivedData/
+.worktrees/
+.turbo/
+.vite/
+test-results/
+playwright-report/
+*.tsbuildinfo
+**/xcuserdata/

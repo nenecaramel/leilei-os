@@ -17,7 +17,7 @@ export type UniverseMapAction =
   | { type: "long-press"; nodeId: string; world: UniversePoint }
   | { type: "cancel" };
 
-export type UniverseMapEffect =
+type UniverseMapEffect =
   | { type: "open-node"; nodeId: string }
   | { type: "create-node"; world: UniversePoint }
   | { type: "begin-move"; nodeId: string; world: UniversePoint };

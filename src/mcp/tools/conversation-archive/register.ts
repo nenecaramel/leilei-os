@@ -7,7 +7,6 @@ import {
   type ConversationModelView,
 } from "../../../domains/conversation/conversation-archive-read-service.js";
 import type { ConversationArchiveSearchResult } from "../../../domains/conversation/conversation-archive-read-service.js";
-import { ConversationPruningError, type ConversationPruningService } from "../../../domains/conversation/conversation-pruning-service.js";
 import type { ConversationArchiveListItem } from "../../../domains/conversation/conversation-archive-read-repository.js";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
 import { compactMcpText, joinMcpContentLines, quoteMcpText } from "../content-contract.js";
@@ -20,14 +19,14 @@ const readModeSchema = z.enum(["compact", "full"]);
 
 const searchInputSchema = z.object({
   query: z.string().trim().min(1).max(500)
-    .describe("Text to find inside the current canonical Conversation Archive."),
+    .describe("Text to search in the Conversation Archive."),
   provider: providerSchema.optional(),
   role: roleSchema.optional(),
   conversation_id: z.string().uuid().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   time_zone: z.string().min(1).max(100).optional()
-    .describe("Required when from or to is supplied. Use an IANA time zone such as Asia/Shanghai."),
+    .describe("Required with from/to; use an IANA time zone."),
   favorites_only: z.boolean().default(false).optional(),
   scope: lifecycleScopeSchema.default("active").optional(),
   limit: z.number().int().min(1).max(100).default(20).optional(),
@@ -73,18 +72,18 @@ const searchOutputSchema = z.object({
 
 const readInputSchema = z.object({
   conversation_id: z.string().uuid()
-    .describe("Canonical Conversation id returned by search_conversations or global_search."),
+    .describe("Conversation ID returned by search_conversations or global_search."),
   message_id: z.string().uuid().optional()
-    .describe("Optional exact canonical message id. When supplied, read a bounded context window around this message."),
+    .describe("Optional message ID; reads context around this message."),
   view: viewSchema.default("default").optional()
-    .describe("default uses the ChatGPT authoritative current path and Claude branch-inclusive canonical view. Use all to inspect saved branches."),
+    .describe("default uses the canonical view; all includes saved branches."),
   scope: lifecycleScopeSchema.default("active").optional(),
   branch_id: z.string().uuid().optional()
-    .describe("Deleted branch id from list_deleted_conversation_branches. Only valid with scope=deleted."),
+    .describe("Optional branch ID; only valid with scope=deleted."),
   mode: readModeSchema.default("compact").optional()
-    .describe("compact returns a bounded transcript. full includes canonical blocks, payloads, attachments, and provider metadata."),
+    .describe("compact returns transcript text; full adds blocks, payloads, attachments, and provider metadata."),
   context: z.number().int().min(0).max(50).default(20).optional()
-    .describe("Messages before and after message_id. Ignored when message_id is omitted."),
+    .describe("Messages before and after message_id; ignored without message_id."),
   limit: z.number().int().min(1).max(100).default(40).optional()
     .describe("Page size when message_id is omitted."),
   offset: z.number().int().min(0).max(1_000_000).default(0).optional()
@@ -97,25 +96,6 @@ const listInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(50).optional(),
   offset: z.number().int().min(0).max(100_000).default(0).optional(),
 }).strict();
-
-const deletedBranchesInputSchema = z.object({
-  limit: z.number().int().min(1).max(100).default(50).optional(),
-  offset: z.number().int().min(0).max(100_000).default(0).optional(),
-}).strict();
-
-const archiveInputSchema = z.object({ conversation_id: z.string().uuid() }).strict();
-const conversationTargetSchema = z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid() }).strict();
-const branchDeleteTargetSchema = z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), message_id: z.string().uuid() }).strict();
-const branchTargetSchema = z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), branch_id: z.string().uuid() }).strict();
-const deleteInputSchema = z.object({ target: z.discriminatedUnion("kind", [conversationTargetSchema, branchDeleteTargetSchema]) }).strict();
-const restoreInputSchema = z.object({ target: z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.enum(["archived", "deleted"]) }).strict(),
-  branchTargetSchema,
-]) }).strict();
-const permanentDeleteInputSchema = z.object({ target: z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.literal("deleted") }).strict(),
-  branchTargetSchema,
-]) }).strict();
 
 const paginationSchema = z.object({
   count: z.number().int().min(0),
@@ -153,80 +133,6 @@ const listOutputSchema = z.object({
   data: z.object({
     items: z.array(listItemSchema),
     metadata: paginationSchema,
-  }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const deletedBranchItemSchema = z.object({
-  branch_id: z.string().uuid(),
-  conversation_id: z.string().uuid(),
-  provider: providerSchema,
-  title: z.string().nullable(),
-  deleted_at: z.string().datetime().nullable(),
-  root_role: z.enum(["user", "assistant", "system", "tool", "reasoning", "unknown"]).nullable(),
-  root_source_created_at: z.string().datetime().nullable(),
-  root_snippet: z.string().nullable(),
-  detail_tool: z.literal("read_conversation"),
-  detail_arguments: z.object({
-    conversation_id: z.string().uuid(),
-    branch_id: z.string().uuid(),
-    scope: z.literal("deleted"),
-    view: z.literal("all"),
-  }).strict(),
-}).strict();
-
-const deletedBranchesOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({
-    items: z.array(deletedBranchItemSchema),
-    metadata: paginationSchema,
-  }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const lifecycleTargetOutputSchema = z.union([
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.enum(["archived", "deleted"]) }).strict(),
-  z.object({ kind: z.literal("conversation"), conversation_id: z.string().uuid(), scope: z.literal("deleted") }).strict(),
-  z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), message_id: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal("branch"), conversation_id: z.string().uuid(), branch_id: z.string().uuid() }).strict(),
-]);
-
-const lifecycleResultSchema = z.object({
-  provider: providerSchema,
-  sourceConversationId: z.string(),
-  sourceNodeId: z.string().optional(),
-  deletedMessages: z.number().int().min(0),
-  remainingMessages: z.number().int().min(0).optional(),
-  currentLeafSourceNodeId: z.string().nullable().optional(),
-  deletedAt: z.string().datetime().optional(),
-  rawSourcePreserved: z.literal(true),
-}).strict();
-
-const archiveOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({ conversation_id: z.string().uuid(), archived: z.literal(true) }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const deleteOutputSchema = z.object({
-  success: z.boolean(),
-  data: lifecycleResultSchema.extend({ target: lifecycleTargetOutputSchema }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const restoreOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({ target: lifecycleTargetOutputSchema, restored: z.literal(true) }).strict().optional(),
-  error: mcpToolErrorDetailsSchema.optional(),
-}).strict();
-
-const permanentDeleteOutputSchema = z.object({
-  success: z.boolean(),
-  data: z.object({
-    target: lifecycleTargetOutputSchema,
-    deleted: z.literal(true),
-    rawSourcePreserved: z.literal(true),
   }).strict().optional(),
   error: mcpToolErrorDetailsSchema.optional(),
 }).strict();
@@ -336,10 +242,6 @@ const readOutputSchema = z.object({
 
 export type ConversationArchiveMcpToolDependencies = {
   conversationArchiveReadService: Pick<ConversationArchiveReadService, "list" | "search" | "modelView">;
-  conversationPruningService?: Pick<ConversationPruningService,
-    "listDeletedBranches" | "archiveConversation" | "deleteConversation" | "deleteBranch" |
-    "restoreConversation" | "restoreDeletedConversation" | "restoreBranch" |
-    "permanentlyDeleteConversation" | "permanentlyDeleteBranch">;
   getAuthenticatedUserId: () => string;
 };
 
@@ -349,7 +251,7 @@ export function registerConversationArchiveTools(
 ): void {
   server.registerTool("list_conversations", {
     title: "List Conversations",
-    description: "List authenticated canonical Conversations in one lifecycle scope. Use read_conversation with each exact detail pointer.",
+    description: "LeileiOS Conversation Archive: browse conversations; use read_conversation for detail.",
     inputSchema: listInputSchema,
     outputSchema: listOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -374,7 +276,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("search_conversations", {
     title: "Search Conversation Archive",
-    description: "Search the authenticated user's current canonical Conversation Archive when the target domain is known to be past ChatGPT or Claude conversations. Results come from canonical messages after LeileiOS pruning/deletion, never directly from immutable raw exports. Each hit points to read_conversation for bounded model-readable context. Use global_search instead when the target domain is unknown.",
+    description: "LeileiOS Conversation Archive: search ChatGPT/Claude messages; use read_conversation for context.",
     inputSchema: searchInputSchema,
     outputSchema: searchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -437,7 +339,7 @@ export function registerConversationArchiveTools(
 
   server.registerTool("read_conversation", {
     title: "Read Conversation",
-    description: "Read a bounded canonical Conversation transcript after an exact Conversation id is known. mode defaults to compact: a normal model-readable transcript with role, model, timestamps, and message identity, without canonical payloads or attachments. Use mode=full only when blocks, raw types, payloads, attachments, and provider metadata are needed. It reflects current LeileiOS state after conversation or branch deletion/pruning; immutable raw export blobs are not read. With message_id, returns context around the exact hit; otherwise page with offset/limit.",
+    description: "LeileiOS Conversation Archive: read paged conversation content or context around one message.",
     inputSchema: readInputSchema,
     outputSchema: readOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -476,11 +378,6 @@ export function registerConversationArchiveTools(
     }
   });
 
-  if (!dependencies.conversationPruningService) return;
-  registerConversationLifecycleTools(server, {
-    ...dependencies,
-    conversationPruningService: dependencies.conversationPruningService,
-  });
 }
 
 function toListToolResult(item: ConversationArchiveListItem, scope: "active" | "archived" | "deleted") {
@@ -636,94 +533,6 @@ function modelViewContent(
   ]);
 }
 
-function registerConversationLifecycleTools(
-  server: McpServer,
-  dependencies: ConversationArchiveMcpToolDependencies & { conversationPruningService: NonNullable<ConversationArchiveMcpToolDependencies["conversationPruningService"]> },
-): void {
-  const annotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
-  server.registerTool("list_deleted_conversation_branches", {
-    title: "List Deleted Conversation Branches",
-    description: "List recoverable deleted canonical Conversation branches. Use the returned branch id to read, restore, or permanently delete a branch.",
-    inputSchema: deletedBranchesInputSchema,
-    outputSchema: deletedBranchesOutputSchema,
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ limit = 50, offset = 0 }) => {
-    try {
-      const result = await dependencies.conversationPruningService.listDeletedBranches({ userId: dependencies.getAuthenticatedUserId(), limit, offset });
-      const items = result.items.map((item) => ({
-        branch_id: item.id,
-        conversation_id: item.conversationId,
-        provider: item.provider,
-        title: item.title,
-        deleted_at: item.deletedAt ?? null,
-        root_role: item.rootRole,
-        root_source_created_at: item.rootSourceCreatedAt,
-        root_snippet: item.rootSnippet,
-        detail_tool: "read_conversation" as const,
-        detail_arguments: { conversation_id: item.conversationId, branch_id: item.id, scope: "deleted" as const, view: "all" as const },
-      }));
-      return { content: [{ type: "text", text: `${result.total} deleted Conversation branches; returning ${items.length}.` }], structuredContent: { success: true, data: { items, metadata: { count: items.length, total: result.total, limit, offset, has_more: offset + items.length < result.total } } } };
-    } catch (error) { return safeConversationToolError(error, "lifecycle"); }
-  });
-
-  server.registerTool("archive_conversation", {
-    title: "Archive Conversation",
-    description: "Move one active Conversation to Archive. It remains restorable.", inputSchema: archiveInputSchema, outputSchema: archiveOutputSchema, annotations,
-  }, async ({ conversation_id }) => {
-    try {
-      await dependencies.conversationPruningService.archiveConversation({ userId: dependencies.getAuthenticatedUserId(), conversationId: conversation_id });
-      return lifecycleSuccess("Conversation archived.", { conversation_id, archived: true });
-    } catch (error) { return safeConversationToolError(error, "lifecycle"); }
-  });
-
-  server.registerTool("delete_conversation_item", {
-    title: "Delete Conversation Item",
-    description: "Move an active Conversation or a branch rooted at message_id to Deleted. Branch deletion is recoverable and requires the root message id, not a deleted branch id.", inputSchema: deleteInputSchema,
-    outputSchema: deleteOutputSchema,
-    annotations: { ...annotations, destructiveHint: true },
-  }, async ({ target }) => {
-    try {
-      const userId = dependencies.getAuthenticatedUserId();
-      const result = target.kind === "conversation"
-        ? await dependencies.conversationPruningService.deleteConversation({ userId, conversationId: target.conversation_id })
-        : await dependencies.conversationPruningService.deleteBranch({ userId, conversationId: target.conversation_id, messageId: target.message_id });
-      return lifecycleSuccess("Conversation item moved to Deleted.", { target, ...result });
-    } catch (error) { return safeConversationToolError(error, "lifecycle"); }
-  });
-
-  server.registerTool("restore_conversation_item", {
-    title: "Restore Conversation Item",
-    description: "Restore an archived/deleted whole Conversation or a deleted branch using its stored branch_id.", inputSchema: restoreInputSchema, outputSchema: restoreOutputSchema, annotations,
-  }, async ({ target }) => {
-    try {
-      const userId = dependencies.getAuthenticatedUserId();
-      if (target.kind === "branch") await dependencies.conversationPruningService.restoreBranch({ userId, conversationId: target.conversation_id, branchId: target.branch_id });
-      else if (target.scope === "archived") await dependencies.conversationPruningService.restoreConversation({ userId, conversationId: target.conversation_id });
-      else await dependencies.conversationPruningService.restoreDeletedConversation({ userId, conversationId: target.conversation_id });
-      return lifecycleSuccess("Conversation item restored.", { target, restored: true });
-    } catch (error) { return safeConversationToolError(error, "lifecycle"); }
-  });
-
-  server.registerTool("permanently_delete_conversation_item", {
-    title: "Permanently Delete Conversation Item",
-    description: "Permanently delete a previously deleted Conversation or deleted branch and block its later reimport. The original export remains preserved.", inputSchema: permanentDeleteInputSchema,
-    outputSchema: permanentDeleteOutputSchema,
-    annotations: { ...annotations, destructiveHint: true },
-  }, async ({ target }) => {
-    try {
-      const userId = dependencies.getAuthenticatedUserId();
-      const result = target.kind === "branch"
-        ? await dependencies.conversationPruningService.permanentlyDeleteBranch({ userId, conversationId: target.conversation_id, branchId: target.branch_id })
-        : await dependencies.conversationPruningService.permanentlyDeleteConversation({ userId, conversationId: target.conversation_id });
-      return lifecycleSuccess("Conversation item permanently deleted; original export remains preserved.", { target, ...result });
-    } catch (error) { return safeConversationToolError(error, "lifecycle"); }
-  });
-}
-
-function lifecycleSuccess(text: string, data: Record<string, unknown>) {
-  return { content: [{ type: "text" as const, text }], structuredContent: { success: true as const, data } };
-}
-
 function renderModelMessage(message: ConversationModelMessage, absoluteIndex: number): string[] {
   const header = [
     `#${absoluteIndex + 1}`,
@@ -773,18 +582,6 @@ function safeConversationToolError(error: unknown, operation: "list" | "search" 
       : error.code === "CONVERSATION_UNAVAILABLE"
         ? "Conversation Archive is unavailable for the authenticated user."
         : "The Conversation Archive request is invalid.";
-    return createMcpToolError(error.code, message);
-  }
-  if (error instanceof ConversationPruningError) {
-    const message = error.code === "CONVERSATION_PRUNE_NOT_FOUND"
-      ? "Conversation item was not found in the selected lifecycle state."
-      : error.code === "CONVERSATION_PRUNE_WHOLE_WINDOW_REQUIRED"
-        ? "This branch contains the whole Conversation and must be deleted as a whole Conversation."
-        : error.code === "CONVERSATION_PRUNE_UNAVAILABLE"
-          ? "Conversation lifecycle actions are unavailable for the authenticated user."
-          : error.code === "CONVERSATION_PRUNE_ACTION_NOT_AVAILABLE"
-            ? "This Conversation lifecycle action is unavailable."
-            : "The Conversation lifecycle request is invalid.";
     return createMcpToolError(error.code, message);
   }
   console.error(

@@ -48,6 +48,77 @@ test("Todo append normalizes one entry and does not require a paper revision", a
   assert.equal((captured as Record<string, unknown>).text, "hello");
 });
 
+test("Todo batch append normalizes entries and uses one idempotency boundary", async () => {
+  let captured: unknown;
+  const service = new TodoService(repository({
+    async appendEntriesIdempotently(input) {
+      captured = input;
+      return {
+        outcome: "committed",
+        entries: [
+          { id: "batch-seed", kind: "pending", text: "first", revision: 1 },
+          { id: "batch-seed:1", kind: "record", text: "second", revision: 1 },
+        ],
+        paperRevision: 4,
+      };
+    },
+  }));
+
+  const result = await service.appendEntriesIdempotently({
+    userId: USER_ID,
+    date: "2026-09-14",
+    author: "C",
+    entries: [
+      { kind: "pending", text: "  first  " },
+      { kind: "record", text: " second " },
+    ],
+    idempotencyKey: "todo-entry-service-batch-0001",
+  });
+
+  assert.deepEqual(result, {
+    entries: [
+      { id: "batch-seed", kind: "pending", text: "first", revision: 1, outcome: "applied" },
+      { id: "batch-seed:1", kind: "record", text: "second", revision: 1, outcome: "applied" },
+    ],
+    paperRevision: 4,
+    metadata: { committed: true, idempotent_replay: false },
+  });
+  assert.deepEqual(
+    (captured as { entries: unknown }).entries,
+    [
+      { kind: "pending", text: "first" },
+      { kind: "record", text: "second" },
+    ],
+  );
+  assert.deepEqual(
+    Object.keys(captured as Record<string, unknown>).sort(),
+    ["author", "date", "entries", "idempotencyKey", "requestHash", "userId"].sort(),
+  );
+});
+
+test("Todo batch replay marks every entry replayed", async () => {
+  const service = new TodoService(repository({
+    async appendEntriesIdempotently() {
+      return {
+        outcome: "replayed",
+        entries: [
+          { id: "batch-seed", kind: "completed", text: "done", revision: 2 },
+        ],
+        paperRevision: 7,
+      };
+    },
+  }));
+  const result = await service.appendEntriesIdempotently({
+    userId: USER_ID,
+    date: "2026-09-14",
+    author: "L",
+    entries: [{ kind: "pending", text: "original" }],
+    idempotencyKey: "todo-entry-service-batch-replay",
+  });
+  assert.equal(result.entries[0]?.outcome, "replayed");
+  assert.deepEqual(result.metadata, { committed: false, idempotent_replay: true });
+});
+
 test("Todo update uses entry revision CAS and partial fields", async () => {
   let captured: unknown;
   const service = new TodoService(repository({

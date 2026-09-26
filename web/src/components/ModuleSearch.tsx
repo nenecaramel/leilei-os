@@ -36,7 +36,7 @@ export function ModuleSearchField({ ariaLabel, placeholder, value, onChange, cla
 }
 
 export type ModuleSearchState = "idle" | "loading" | "ready" | "empty" | "error";
-export type ModuleStatePlacement = "inline" | "module" | "paper" | "page";
+type ModuleStatePlacement = "inline" | "module" | "paper" | "page";
 
 type ModuleStateMessageProps = {
   state: ModuleSearchState;
@@ -94,7 +94,3 @@ export function ModuleStateMessage({
     />
   );
 }
-
-// Compatibility alias for search-only callers while module pages migrate to the
-// presentation-level name.
-export const ModuleSearchStateMessage = ModuleStateMessage;

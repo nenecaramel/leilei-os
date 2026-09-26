@@ -99,7 +99,6 @@ test("exposes the strict create Universe node request fields", async (t) => {
     "type",
     "tags",
     "galaxies",
-    "position",
     "expected_version",
     "idempotency_key",
   ]);
@@ -222,7 +221,26 @@ test("update Universe relation forwards an explicit partial patch and returns th
   assert.equal(result.isError, undefined);
   assert.deepEqual(result, {
     content: [{ type: "text", text: "Universe relation updated." }],
-    structuredContent: { success: true, data: { relation: updatedRelation, universe_version: 5 } },
+    structuredContent: {
+      success: true,
+      data: {
+        relation: {
+          id: updatedRelation.id,
+          source: updatedRelation.source,
+          target: updatedRelation.target,
+          relationType: updatedRelation.relationType,
+          strength: updatedRelation.strength,
+          created_at: updatedRelation.createdAt,
+        },
+        universe_version: 5,
+        outcome: "applied",
+        entity_type: "universe_relation",
+        entity_id: updatedRelation.id,
+        revision: null,
+        detail_tool: "get_universe_relations",
+        detail_arguments: { node_id: updatedRelation.source },
+      },
+    },
   });
   assert.deepEqual(calls, [["user-1", relation.id, { relationType: "extends", strength: 0.25 }, 4]]);
 });
@@ -307,7 +325,7 @@ test("update Universe relation exposes stale and missing relation errors without
   assert.deepEqual(calls, ["missing", relation.id]);
 });
 
-test("create Universe node forwards boundary positions and never accepts caller identity fields", async (t) => {
+test("create Universe node preserves explicit positions, allows omitted auto position, and rejects invalid input", async (t) => {
   const calls: unknown[] = [];
   const fixture = await connect({
     universeWriteTools: {
@@ -337,9 +355,12 @@ test("create Universe node forwards boundary positions and never accepts caller 
     structuredContent: {
       success: true,
       data: {
-        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        node: { id: node.id, title: node.title, type: node.type, created_at: node.createdAt, updated_at: node.updatedAt },
         universe_version: 1,
-        metadata: { created: true, idempotent_replay: false },
+        outcome: "applied",
+        entity_type: "universe_node",
+        entity_id: node.id,
+        revision: null,
         detail_tool: "get_universe_node",
         detail_arguments: { id: node.id },
       },
@@ -352,15 +373,32 @@ test("create Universe node forwards boundary positions and never accepts caller 
     "node-create-0000001",
   ]);
 
+  const automatic = await fixture.client.callTool({
+    name: "create_universe_node",
+    arguments: {
+      title: "Auto", summary: "", content: "", type: "concept", tags: [], galaxies: [],
+      expected_version: 1, idempotency_key: "node-create-auto-0001",
+    },
+  });
+  assert.equal(automatic.isError, undefined);
+  assert.equal(calls.length, 2);
+  assert.deepEqual((calls[1] as unknown[]).slice(1), [
+    { title: "Auto", summary: "", content: "", type: "concept", tags: [], galaxies: [] },
+    1,
+    "node-create-auto-0001",
+  ]);
+
   for (const arguments_ of [
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: -1, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000002" },
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: 10, y: 101 }, expected_version: 0, idempotency_key: "node-create-0000003" },
     { title: "Node", summary: "Summary", content: "Content", type: "concept", tags: [], galaxies: [], position: { x: 10, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000004", id: "caller-id" },
+    { title: "Node", summary: "Summary", content: "Content", type: "   ", tags: [], galaxies: [], position: { x: 10, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000005" },
+    { title: "Node", summary: "Summary", content: "Content", type: "x".repeat(129), tags: [], galaxies: [], position: { x: 10, y: 10 }, expected_version: 0, idempotency_key: "node-create-0000006" },
   ]) {
     const invalid = await fixture.client.callTool({ name: "create_universe_node", arguments: arguments_ });
     assert.equal(invalid.isError, true);
   }
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 });
 
 test("update Universe node is a partial patch and rejects an empty or hidden patch", async (t) => {
@@ -384,8 +422,12 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
     structuredContent: {
       success: true,
       data: {
-        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        node: { id: node.id, title: node.title, type: node.type, created_at: node.createdAt, updated_at: node.updatedAt },
         universe_version: 2,
+        outcome: "applied",
+        entity_type: "universe_node",
+        entity_id: node.id,
+        revision: null,
         detail_tool: "get_universe_node",
         detail_arguments: { id: node.id },
       },
@@ -396,6 +438,8 @@ test("update Universe node is a partial patch and rejects an empty or hidden pat
     { id: "node-generated", expected_version: 1 },
     { id: "node-generated", expected_version: 1, importance: "anchor" },
     { id: "node-generated", expected_version: 1, createdAt: "2026-08-21T00:00:00.000Z" },
+    { id: "node-generated", expected_version: 1, type: "   " },
+    { id: "node-generated", expected_version: 1, type: "x".repeat(129) },
   ]) {
     const invalid = await fixture.client.callTool({ name: "update_universe_node", arguments: arguments_ });
     assert.equal(invalid.isError, true);
@@ -422,7 +466,23 @@ test("create Universe relation enforces self-link and strength boundaries before
     content: [{ type: "text", text: "Universe relation created: edge-generated node-a->node-b; version=3" }],
     structuredContent: {
       success: true,
-      data: { relation, universe_version: 3, metadata: { created: true, idempotent_replay: false } },
+      data: {
+        relation: {
+          id: relation.id,
+          source: relation.source,
+          target: relation.target,
+          relationType: relation.relationType,
+          strength: relation.strength,
+          created_at: relation.createdAt,
+        },
+        universe_version: 3,
+        outcome: "applied",
+        entity_type: "universe_relation",
+        entity_id: relation.id,
+        revision: null,
+        detail_tool: "get_universe_relations",
+        detail_arguments: { node_id: relation.source },
+      },
     },
   });
   assert.equal(calls.length, 1);
@@ -452,6 +512,11 @@ test("Universe mutation errors remain safe and distinguish stale versions", asyn
     error: {
       code: "VERSION_CONFLICT",
       message: "Universe changed since expected_version; fresh-read before deciding whether to retry.",
+      retryable: false,
+      reason: "stale_version",
+      current_revision: null,
+      recommended_tool: "list_universe_nodes",
+      recommended_arguments: {},
     },
   });
   assert.match(JSON.stringify(stale.content), /VERSION_CONFLICT/);
@@ -619,9 +684,12 @@ test("preserves idempotent replay metadata in a successful Universe write", asyn
     structuredContent: {
       success: true,
       data: {
-        node: { id: node.id, title: node.title, type: node.type, createdAt: node.createdAt, updatedAt: node.updatedAt },
+        node: { id: node.id, title: node.title, type: node.type, created_at: node.createdAt, updated_at: node.updatedAt },
         universe_version: 9,
-        metadata: { created: false, idempotent_replay: true },
+        outcome: "replayed",
+        entity_type: "universe_node",
+        entity_id: node.id,
+        revision: null,
         detail_tool: "get_universe_node",
         detail_arguments: { id: node.id },
       },
@@ -661,7 +729,6 @@ test("Universe read errors expose a machine-readable envelope", async (t) => {
       universeService: {
         async loadUniverse() { throw new UniverseServiceError("NODE_NOT_FOUND"); },
       },
-      globalSearchService: { async search() { throw new Error("not used"); } },
       getAuthenticatedUserId: () => "user-1",
     },
   });

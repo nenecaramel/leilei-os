@@ -97,11 +97,12 @@ implements ConversationPruningRepository {
         .from(conversations)
         .where(and(
           eq(conversations.userId, input.userId),
+          eq(conversations.origin, "legacy_import"),
           eq(conversations.id, input.conversationId),
         ))
         .for("update")
         .limit(1);
-      if (!conversation) return null;
+      if (!conversation?.provider || !conversation.sourceConversationId) return null;
 
       const messageRows = await transaction
         .select({ id: conversationMessages.id })
@@ -115,6 +116,7 @@ implements ConversationPruningRepository {
         .set({ deletedAt: new Date(), archivedAt: null, updatedAt: new Date() })
         .where(and(
           eq(conversations.userId, input.userId),
+          eq(conversations.origin, "legacy_import"),
           eq(conversations.id, conversation.id),
         ));
 
@@ -153,11 +155,16 @@ implements ConversationPruningRepository {
       .from(conversations)
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
       ))
       .for("update")
       .limit(1);
-    if (!conversation) return null;
+    if (
+      !conversation?.provider
+      || !conversation.sourceConversationId
+      || !conversation.sourceFingerprint
+    ) return null;
 
     const messages = await transaction
       .select({
@@ -175,11 +182,14 @@ implements ConversationPruningRepository {
       .for("update");
 
     const root = messages.find((message) => message.id === input.messageId);
-    if (!root) return null;
+    if (!root?.sourceNodeId || messages.some((message) => !message.sourceNodeId)) return null;
+    const legacyMessages = messages as Array<
+      (typeof messages)[number] & { sourceNodeId: string }
+    >;
 
     const children = new Map<string, string[]>();
-    const bySourceNode = new Map(messages.map((message) => [message.sourceNodeId, message]));
-    for (const message of messages) {
+    const bySourceNode = new Map(legacyMessages.map((message) => [message.sourceNodeId, message]));
+    for (const message of legacyMessages) {
       if (!message.parentSourceNodeId) continue;
       const list = children.get(message.parentSourceNodeId) ?? [];
       list.push(message.sourceNodeId);
@@ -197,8 +207,8 @@ implements ConversationPruningRepository {
 
     const deletedRows = [...excludedSourceNodes]
       .map((sourceNodeId) => bySourceNode.get(sourceNodeId))
-      .filter((row): row is (typeof messages)[number] => Boolean(row));
-    if (deletedRows.length >= messages.length) {
+      .filter((row): row is (typeof legacyMessages)[number] => Boolean(row));
+    if (deletedRows.length >= legacyMessages.length) {
       throw Object.assign(
         new Error("Deleting this branch would remove the entire conversation."),
         { code: "CONVERSATION_PRUNE_WHOLE_WINDOW_REQUIRED" },
@@ -217,7 +227,7 @@ implements ConversationPruningRepository {
       .onConflictDoNothing()
       .returning({ id: conversationDeletedBranches.id, deletedAt: conversationDeletedBranches.deletedAt });
 
-    const remaining = messages.filter(
+    const remaining = legacyMessages.filter(
       (message) => !excludedSourceNodes.has(message.sourceNodeId),
     );
     let currentLeafSourceNodeId = conversation.currentLeafSourceNodeId;
@@ -254,6 +264,7 @@ implements ConversationPruningRepository {
       .set({ archivedAt: new Date(), deletedAt: null, updatedAt: new Date() })
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.deletedAt} IS NULL`,
         sql`${conversations.archivedAt} IS NULL`,
@@ -267,6 +278,7 @@ implements ConversationPruningRepository {
       .set({ archivedAt: null, updatedAt: new Date() })
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.archivedAt} IS NOT NULL`,
       ))
@@ -279,6 +291,7 @@ implements ConversationPruningRepository {
       .set({ deletedAt: null, archivedAt: null, updatedAt: new Date() })
       .where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.deletedAt} IS NOT NULL`,
       ))
@@ -294,10 +307,11 @@ implements ConversationPruningRepository {
         sourceConversationId: conversations.sourceConversationId,
       }).from(conversations).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
         sql`${conversations.deletedAt} IS NOT NULL`,
       )).for("update").limit(1);
-      if (!conversation) return null;
+      if (!conversation?.provider || !conversation.sourceConversationId) return null;
       const rows = await transaction.select({ id: conversationMessages.id }).from(conversationMessages).where(and(
         eq(conversationMessages.userId, input.userId),
         eq(conversationMessages.conversationId, conversation.id),
@@ -311,6 +325,7 @@ implements ConversationPruningRepository {
       }).onConflictDoNothing();
       await transaction.delete(conversations).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, conversation.id),
       ));
       return {
@@ -349,9 +364,10 @@ implements ConversationPruningRepository {
         sourceFingerprint: conversations.sourceFingerprint,
       }).from(conversations).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
       )).for("update").limit(1);
-      if (!conversation) return null;
+      if (!conversation?.sourceFingerprint) return null;
       const rows = await transaction.select({
         id: conversationMessages.id,
         sourceNodeId: conversationMessages.sourceNodeId,
@@ -362,8 +378,12 @@ implements ConversationPruningRepository {
         eq(conversationMessages.userId, input.userId),
         eq(conversationMessages.conversationId, input.conversationId),
       )).for("update");
+      if (rows.some((row) => !row.sourceNodeId)) return null;
+      const legacyRows = rows as Array<
+        (typeof rows)[number] & { sourceNodeId: string }
+      >;
       const children = new Map<string, string[]>();
-      for (const row of rows) {
+      for (const row of legacyRows) {
         if (row.parentSourceNodeId) children.set(row.parentSourceNodeId, [
           ...(children.get(row.parentSourceNodeId) ?? []),
           row.sourceNodeId,
@@ -377,13 +397,13 @@ implements ConversationPruningRepository {
         excluded.add(node);
         queue.push(...(children.get(node) ?? []));
       }
-      const ids = rows.filter((row) => excluded.has(row.sourceNodeId)).map((row) => row.id);
-      if (ids.length >= rows.length) {
+      const ids = legacyRows.filter((row) => excluded.has(row.sourceNodeId)).map((row) => row.id);
+      if (ids.length >= legacyRows.length) {
         throw Object.assign(new Error("Deleting this branch would remove the entire conversation."), {
           code: "CONVERSATION_PRUNE_WHOLE_WINDOW_REQUIRED",
         });
       }
-      const remaining = rows.filter((row) => !excluded.has(row.sourceNodeId));
+      const remaining = legacyRows.filter((row) => !excluded.has(row.sourceNodeId));
       let currentLeafSourceNodeId = conversation.currentLeafSourceNodeId;
       if (currentLeafSourceNodeId && excluded.has(currentLeafSourceNodeId)) {
         currentLeafSourceNodeId = remaining
@@ -412,6 +432,7 @@ implements ConversationPruningRepository {
         updatedAt: new Date(),
       }).where(and(
         eq(conversations.userId, input.userId),
+        eq(conversations.origin, "legacy_import"),
         eq(conversations.id, input.conversationId),
       ));
       for (const idChunk of chunks(ids, DELETE_BATCH)) {
@@ -451,6 +472,7 @@ implements ConversationPruningRepository {
     }).from(conversationDeletedBranches).innerJoin(conversations, and(
       eq(conversations.id, conversationDeletedBranches.conversationId),
       eq(conversations.userId, conversationDeletedBranches.userId),
+      eq(conversations.origin, "legacy_import"),
     )).leftJoin(conversationMessages, and(
       eq(conversationMessages.userId, input.userId),
       eq(conversationMessages.conversationId, conversations.id),

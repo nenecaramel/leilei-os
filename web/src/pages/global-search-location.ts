@@ -1,9 +1,9 @@
-export const DEFAULT_SEARCH_MODULES = ["memory", "diary", "task", "todo", "universe", "shared_paper"] as const;
+export const DEFAULT_SEARCH_MODULES = ["diary", "todo", "universe"] as const;
 export const SEARCH_MODULES = [...DEFAULT_SEARCH_MODULES, "conversation"] as const;
-export const GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS = 200;
+const GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS = 200;
 export type SearchModule = typeof SEARCH_MODULES[number];
-export type SearchScope = "active" | "archived" | "all";
-export type SearchMode = "normal" | "phrase";
+type SearchScope = "active" | "archived" | "all";
+type SearchMode = "normal" | "phrase";
 export type GlobalSearchFilters = {
   q: string;
   modules: SearchModule[];

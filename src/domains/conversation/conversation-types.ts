@@ -1,4 +1,8 @@
 export type ConversationProvider = "chatgpt" | "claude";
+export type ConversationOrigin = "legacy_import" | "native_live";
+export type ConversationLifecycleStatus = "active" | "archived" | "deleted";
+export type ConversationMessageStatus = "pending" | "streaming" | "completed" | "error";
+export type ConversationRuntimeProvider = "claude_code";
 
 export type ConversationRole =
   | "user"
@@ -18,6 +22,7 @@ export type ConversationContentKind =
   | "audio"
   | "video"
   | "file"
+  | "attachment"
   | "unknown";
 
 export type NormalizedConversationContentBlock = {

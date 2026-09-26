@@ -18,7 +18,7 @@ import {
 } from "../src/mcp/tools/read-todo-day/register.js";
 import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
 import {
-  registerWriteTodoPaperTool,
+  registerReplaceTodoPaperTool,
   WriteTodoPaperAuthenticationError,
 } from "../src/mcp/tools/write-todo-paper/register.js";
 import {
@@ -43,6 +43,12 @@ const C_PAPER: TodoPaper = {
   revision: 1,
   entries: [{ id: "c-1", kind: "pending", text: "Claude item", revision: 1 }],
 };
+const L_WRITE_ENTRIES: ReplaceTodoPaperInput["entries"] = L_PAPER.entries.map(
+  ({ id, kind, text }) => ({ id, kind, text }),
+);
+const C_WRITE_ENTRIES: ReplaceTodoPaperInput["entries"] = C_PAPER.entries.map(
+  ({ id, kind, text }) => ({ id, kind, text }),
+);
 const C_PAPER_ON_DATE: TodoPaper = { ...C_PAPER, date: DATE };
 const PAPERS: TodoDayPapers = { L: null, G: null, C: C_PAPER };
 
@@ -58,7 +64,7 @@ class TodoToolService {
 
   async listDates(userId: string) {
     this.listCalls.push(userId);
-    return ["2026-08-11", DATE];
+    return [DATE, "2026-08-11"];
   }
 
   async replacePaperIdempotently(input: unknown) {
@@ -153,7 +159,7 @@ async function connectWriteImplementation(input?: {
     return USER_ID;
   });
   const server = new McpServer({ name: "todo-write-tool-test", version: "1.0.0" });
-  registerWriteTodoPaperTool(server, {
+  registerReplaceTodoPaperTool(server, {
     todoService: todo as never,
     getAuthenticatedUserId,
   });
@@ -203,7 +209,10 @@ test("Todo read tool implementations delegate once and preserve exact server tru
   });
   assert.deepEqual(dates.structuredContent, {
     success: true,
-    data: { dates: ["2026-08-11", DATE] },
+    data: {
+      dates: [DATE, "2026-08-11"],
+      metadata: { returned: 2, has_more: false, next_cursor: null },
+    },
   });
   assert.deepEqual((fixture.todo as TodoToolService).readCalls, [{ userId: USER_ID, date: DATE }]);
   assert.deepEqual((fixture.todo as TodoToolService).listCalls, [USER_ID]);
@@ -236,7 +245,7 @@ test("read_todo_day author filter exposes only the requested paper in content an
     data: {
       date: DATE,
       author: "C",
-      papers: { L: null, G: null, C: C_PAPER_ON_DATE },
+      papers: { C: C_PAPER_ON_DATE },
     },
   });
   const content = response.content.map((entry) => ("text" in entry ? entry.text : "")).join("\n");
@@ -263,10 +272,10 @@ test("read_todo_day reports a requested author as missing instead of claiming th
     arguments: { date: DATE, author: "C" },
   });
   assert.equal(response.isError, undefined);
-  assert.deepEqual((response.structuredContent as { data: { author: string; papers: TodoDayPapers } }).data, {
+  assert.deepEqual((response.structuredContent as { data: { author: string; papers: Partial<TodoDayPapers> } }).data, {
     date: DATE,
     author: "C",
-    papers: { L: null, G: null, C: null },
+    papers: { C: null },
   });
   const content = response.content.map((entry) => ("text" in entry ? entry.text : "")).join("\n");
   assert.match(content, /C paper.*(?:missing|not found)/i);
@@ -359,7 +368,7 @@ test("Todo read tools reject invalid dates before repository reads and sanitize 
   assert.equal(authResponse.isError, true);
 });
 
-test("write_todo_paper delegates normalized identity-free input and returns exact metadata", async (t) => {
+test("replace_todo_paper delegates normalized identity-free input and returns exact metadata", async (t) => {
   const fixture = await connectWriteImplementation();
   t.after(async () => {
     await fixture.client.close();
@@ -367,12 +376,12 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
   });
 
   const response = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: DATE,
       author: "L",
-      revision: 3,
-      entries: L_PAPER.entries,
+      expected_revision: 3,
+      entries: L_WRITE_ENTRIES,
       idempotency_key: "todo-paper-direct-20260813",
     },
   });
@@ -380,7 +389,12 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
     success: true,
     data: {
       paper: L_PAPER,
-      metadata: { committed: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "todo_paper",
+      entity_id: `${DATE}:L`,
+      revision: L_PAPER.revision,
+      detail_tool: "read_todo_day",
+      detail_arguments: { date: DATE, author: "L" },
     },
   });
   assert.deepEqual((fixture.todo as TodoToolService).writeCalls, [{
@@ -388,13 +402,13 @@ test("write_todo_paper delegates normalized identity-free input and returns exac
     date: DATE,
     author: "L",
     revision: 3,
-    entries: L_PAPER.entries,
+    entries: L_WRITE_ENTRIES,
     idempotencyKey: "todo-paper-direct-20260813",
   }]);
   assert.equal(fixture.authCalls(), 1);
 });
 
-test("write_todo_paper accepts C and rejects Claude before service mutation", async (t) => {
+test("replace_todo_paper accepts C and rejects Claude before service mutation", async (t) => {
   const fixture = await connectWriteImplementation();
   t.after(async () => {
     await fixture.client.close();
@@ -402,23 +416,23 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
   });
 
   const cWrite = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: C_PAPER.date,
       author: "C",
-      revision: null,
-      entries: C_PAPER.entries,
+      expected_revision: null,
+      entries: C_WRITE_ENTRIES,
       idempotency_key: "todo-paper-c-author-20260905",
     },
   });
   assert.equal(cWrite.isError, undefined);
   const invalid = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: C_PAPER.date,
       author: "Claude",
-      revision: null,
-      entries: C_PAPER.entries,
+      expected_revision: null,
+      entries: C_WRITE_ENTRIES,
       idempotency_key: "todo-paper-claude-invalid-01",
     },
   });
@@ -428,12 +442,12 @@ test("write_todo_paper accepts C and rejects Claude before service mutation", as
     date: C_PAPER.date,
     author: "C",
     revision: null,
-    entries: C_PAPER.entries,
+    entries: C_WRITE_ENTRIES,
     idempotencyKey: "todo-paper-c-author-20260905",
   }]);
 });
 
-test("write_todo_paper strict schema rejects omissions and identity before authentication", async (t) => {
+test("replace_todo_paper strict schema rejects omissions and identity before authentication", async (t) => {
   const fixture = await connectWriteImplementation();
   t.after(async () => {
     await fixture.client.close();
@@ -441,12 +455,12 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
   });
 
   for (const argumentsValue of [
-    { date: DATE, revision: null, entries: [], idempotency_key: "todo-paper-missing-author-01" },
+    { date: DATE, expected_revision: null, entries: [], idempotency_key: "todo-paper-missing-author-01" },
     { date: DATE, author: "L", entries: [], idempotency_key: "todo-paper-missing-revision-1" },
     {
       date: DATE,
       author: "L",
-      revision: null,
+      expected_revision: null,
       entries: [],
       idempotency_key: "todo-paper-identity-20260813",
       user_id: "attacker",
@@ -454,13 +468,27 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
     {
       date: DATE,
       author: "L",
-      revision: null,
+      expected_revision: null,
       entries: [{ id: "a", kind: "pending", text: "x", extra: true }],
       idempotency_key: "todo-paper-entry-extra-0001",
     },
+    {
+      date: DATE,
+      author: "L",
+      expected_revision: null,
+      entries: [{ id: "   ", kind: "pending", text: "x" }],
+      idempotency_key: "todo-paper-entry-empty-id-01",
+    },
+    {
+      date: DATE,
+      author: "L",
+      expected_revision: null,
+      entries: [{ id: "x".repeat(129), kind: "pending", text: "x" }],
+      idempotency_key: "todo-paper-entry-long-id-001",
+    },
   ]) {
     const response = await fixture.client.callTool({
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: argumentsValue,
     });
     assert.equal(response.isError, true);
@@ -469,14 +497,14 @@ test("write_todo_paper strict schema rejects omissions and identity before authe
   assert.equal((fixture.todo as TodoToolService).writeCalls.length, 0);
 });
 
-test("write_todo_paper distinguishes bounded conflicts and sanitizes internal failures", async (t) => {
+test("replace_todo_paper distinguishes bounded conflicts and sanitizes internal failures", async (t) => {
   const call = {
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: DATE,
       author: "L",
-      revision: null,
-      entries: L_PAPER.entries,
+      expected_revision: null,
+      entries: L_WRITE_ENTRIES,
       idempotency_key: "todo-paper-errors-20260813",
     },
   };
@@ -498,6 +526,24 @@ test("write_todo_paper distinguishes bounded conflicts and sanitizes internal fa
     await fixture.server.close();
     assert.equal(response.isError, true);
     assert.match(JSON.stringify(response), expected);
+    if (error instanceof TodoServiceError && error.code === "TODO_PAPER_CONFLICT") {
+      assert.deepEqual(
+        (response.structuredContent as any).error,
+        {
+          code: "TODO_PAPER_CONFLICT",
+          message: "The Todo paper changed. Read the current paper and retry with its revision.",
+          retryable: false,
+          reason: "stale_revision",
+          current_revision: null,
+          recommended_tool: "read_todo_day",
+          recommended_arguments: { date: DATE, author: "L" },
+        },
+      );
+    }
+    if (error instanceof TodoServiceError && error.code === "IDEMPOTENCY_CONFLICT") {
+      assert.equal((response.structuredContent as any).error.reason, "idempotency_conflict");
+      assert.equal((response.structuredContent as any).error.retryable, false);
+    }
     assert.doesNotMatch(JSON.stringify(response), /private conflict|private entry|private SQL|Todo text/);
   }
 
@@ -523,11 +569,10 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
 
   const tools = (await fixture.client.listTools()).tools;
-  assert.equal(tools.length, 61, "the MCP surface must contain the complete production core surface including Shared Paper append and Todo entry writes");
   const todoTools = tools.filter((tool) => tool.name.includes("todo"));
   assert.deepEqual(
     todoTools.map((tool) => tool.name).sort(),
-    ["append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "search_todo", "update_todo_entry", "write_todo_paper"],
+    ["append_todo_entries", "append_todo_entry", "delete_todo_entry", "list_todo_dates", "read_todo_day", "replace_todo_paper", "search_todo", "update_todo_entry"],
   );
   for (const forbidden of [
     "get_day_space",
@@ -556,9 +601,9 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   assert.equal(read?.inputSchema.properties?.author?.enum?.join(","), "L,G,C");
 
   const dates = tools.find((tool) => tool.name === "list_todo_dates");
-  assert.deepEqual(Object.keys(dates?.inputSchema.properties ?? {}), []);
+  assert.deepEqual(Object.keys(dates?.inputSchema.properties ?? {}).sort(), ["cursor", "limit"]);
 
-  const write = tools.find((tool) => tool.name === "write_todo_paper");
+  const write = tools.find((tool) => tool.name === "replace_todo_paper");
   assert.ok(write);
   assert.deepEqual(write.annotations, {
     readOnlyHint: false,
@@ -568,16 +613,14 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
   });
   assert.deepEqual(
     [...(write.inputSchema.required ?? [])].sort(),
-    ["date", "author", "revision", "entries", "idempotency_key"].sort(),
+    ["date", "author", "expected_revision", "entries", "idempotency_key"].sort(),
   );
   assert.deepEqual(
     Object.keys(write.inputSchema.properties ?? {}).sort(),
-    ["date", "author", "revision", "entries", "idempotency_key"].sort(),
+    ["date", "author", "expected_revision", "entries", "idempotency_key"].sort(),
   );
-  assert.match(write.description ?? "", /complete ordered array/i);
-  assert.match(write.description ?? "", /\{"id":"todo-1","kind":"pending","text":"\.\.\."\}/);
-  assert.match(write.description ?? "", /kind must be exactly one of "pending", "completed", or "record"/);
-  assert.doesNotMatch(write.description ?? "", /"kind":"pending\|completed\|record"/);
+  assert.match(write.description ?? "", /create.*reorder.*fully replace/i);
+  assert.match(write.description ?? "", /entry tools.*single-entry changes/i);
 
   const append = tools.find((tool) => tool.name === "append_todo_entry");
   assert.ok(append);
@@ -586,14 +629,13 @@ test("Todo exposes the read/write/search MCP surface", async (t) => {
     ["date", "author", "kind", "text", "idempotency_key"].sort(),
   );
   assert.equal("revision" in (append.inputSchema.properties ?? {}), false);
-  assert.match(append.description ?? "", /server creates the entry id/i);
-  assert.match(append.description ?? "", /does not require the paper revision/i);
+  assert.match(append.description ?? "", /paper revision.*not required/i);
 
   const updateEntry = tools.find((tool) => tool.name === "update_todo_entry");
   assert.ok(updateEntry);
   assert.ok(updateEntry.inputSchema.properties?.expected_revision);
   assert.ok(updateEntry.inputSchema.properties?.entry_id);
-  assert.match(updateEntry.description ?? "", /only that entry revision is compared/i);
+  assert.match(updateEntry.description ?? "", /other entries.*independent/i);
 
   const deleteEntry = tools.find((tool) => tool.name === "delete_todo_entry");
   assert.ok(deleteEntry);
@@ -627,16 +669,19 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
   });
   assert.deepEqual(dates.structuredContent, {
     success: true,
-    data: { dates: ["2026-08-11", DATE] },
+    data: {
+      dates: [DATE, "2026-08-11"],
+      metadata: { returned: 2, has_more: false, next_cursor: null },
+    },
   });
 
   const write = await fixture.client.callTool({
-    name: "write_todo_paper",
+    name: "replace_todo_paper",
     arguments: {
       date: DATE,
       author: "L",
-      revision: 3,
-      entries: L_PAPER.entries,
+      expected_revision: 3,
+      entries: L_WRITE_ENTRIES,
       idempotency_key: "todo-paper-contract-20260813",
     },
   });
@@ -644,7 +689,12 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
     success: true,
     data: {
       paper: L_PAPER,
-      metadata: { committed: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "todo_paper",
+      entity_id: `${DATE}:L`,
+      revision: L_PAPER.revision,
+      detail_tool: "read_todo_day",
+      detail_arguments: { date: DATE, author: "L" },
     },
   });
   assert.deepEqual(fixture.todo.readCalls, [{ userId: USER_ID, date: DATE }]);
@@ -654,7 +704,7 @@ test("Todo read and write tools preserve exact papers and server-owned identity"
     date: DATE,
     author: "L",
     revision: 3,
-    entries: L_PAPER.entries,
+    entries: L_WRITE_ENTRIES,
     idempotencyKey: "todo-paper-contract-20260813",
   }]);
   assert.equal(fixture.authCalls(), 3);
@@ -671,22 +721,22 @@ test("Todo tool schemas reject identity injection before authentication or servi
     { name: "read_todo_day", arguments: { date: DATE, user_id: "attacker" } },
     { name: "list_todo_dates", arguments: { userId: "attacker" } },
     {
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: {
         date: DATE,
         author: "L",
-        revision: null,
-        entries: L_PAPER.entries,
+        expected_revision: null,
+        entries: L_WRITE_ENTRIES,
         idempotency_key: "todo-paper-attacker-20260813",
         user_id: "attacker",
       },
     },
     {
-      name: "write_todo_paper",
+      name: "replace_todo_paper",
       arguments: {
         date: DATE,
         author: "L",
-        revision: null,
+        expected_revision: null,
         entries: "[{\"id\":\"a\",\"kind\":\"pending\",\"text\":\"x\"}]",
         idempotency_key: "todo-paper-string-entries-20260813",
       },

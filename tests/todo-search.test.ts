@@ -27,6 +27,7 @@ class SearchRepository {
       dateFrom: "2026-08-01",
       dateTo: "2026-08-31",
       limit: 10,
+      offset: 0,
     });
     return Promise.resolve([rows[0]!]);
   }
@@ -79,7 +80,7 @@ test("Todo MCP exposes search_todo with compact entry pointers", async (t) => {
   const outputSchema = tool.outputSchema as { properties?: { data?: { properties?: { metadata?: { properties?: Record<string, unknown> } } } } };
   assert.ok(outputSchema.properties?.data?.properties?.metadata?.properties?.author);
   const response = await client.callTool({ name: "search_todo", arguments: { query: "计划" } });
-  assert.deepEqual(response.structuredContent, { success: true, data: { entries: [{ entry_id: rows[0]!.entryId, date: rows[0]!.date, author: rows[0]!.author, kind: rows[0]!.kind, text: rows[0]!.text, snippet: "Café 计划", detail_tool: "read_todo_day", detail_arguments: { date: rows[0]!.date } }], metadata: { count: 1, author: "C" } } });
+  assert.deepEqual(response.structuredContent, { success: true, data: { entries: [{ entry_id: rows[0]!.entryId, date: rows[0]!.date, author: rows[0]!.author, kind: rows[0]!.kind, text: rows[0]!.text, snippet: "Café 计划", detail_tool: "read_todo_day", detail_arguments: { date: rows[0]!.date } }], metadata: { count: 1, author: "C", returned: 1, has_more: false, next_cursor: null } } });
   const rejected = await client.callTool({ name: "search_todo", arguments: { query: "😀".repeat(201) } });
   assert.equal(rejected.isError, true);
 });
@@ -100,7 +101,7 @@ test("TodoService rejects invalid search filters and enforces active-user isolat
   await assert.rejects(() => service.search({ userId: USER_ID, query: "x", author: "X" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
   await assert.rejects(() => service.search({ userId: USER_ID, query: "x", kind: "other" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
   await assert.rejects(() => service.search({ userId: USER_ID, query: "x", date_from: "2026-09-02", date_to: "2026-09-01" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
-  await assert.rejects(() => service.search({ userId: USER_ID, query: "x", limit: 51 }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
+  await assert.rejects(() => service.search({ userId: USER_ID, query: "x", limit: 52 }), (error: unknown) => error instanceof Error && "code" in error && error.code === "TODO_SEARCH_INVALID");
   assert.equal(calls.length, 0);
 });
 
@@ -129,5 +130,5 @@ test("TodoService preserves a bounded result limit and case-insensitive query co
   repository.searchEntries = (input: unknown) => { received = input; return Promise.resolve([]); };
   const service = new TodoService(repository as never);
   await service.search({ userId: USER_ID, query: " Café ", limit: 50 });
-  assert.deepEqual(received, { userId: USER_ID, query: "café", limit: 50, author: undefined, kind: undefined, dateFrom: undefined, dateTo: undefined });
+  assert.deepEqual(received, { userId: USER_ID, query: "café", limit: 50, offset: 0, author: undefined, kind: undefined, dateFrom: undefined, dateTo: undefined });
 });

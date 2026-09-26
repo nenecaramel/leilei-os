@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { DIARY_DOMAIN_BOUNDARY, MCP_CONTENT_AUTHOR_DESCRIPTION } from "../model-language.js";
 import { DiaryDomainError, type AuthenticatedDiaryContext, type DiaryEntryResult, type UpdateMcpDiaryInput } from "../../../domains/diary/diary-service.js";
 import { DIARY_CONTENT_MAX_LENGTH } from "../../../domains/resource-limits.js";
 import { invokeMcpWrite } from "../write-context.js";
@@ -8,6 +9,7 @@ import {
   mcpToolErrorDetailsSchema,
 } from "../error-contract.js";
 import { joinMcpContentLines, quoteMcpText } from "../content-contract.js";
+import { mcpMutationReceipt, mcpMutationReceiptFields } from "../mutation-contract.js";
 
 const contentAuthorSchema = z.enum(["L", "G", "C"]);
 
@@ -18,7 +20,7 @@ const updateDiaryInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   mood: z.string().min(1).max(50).nullable().optional(),
-  author: contentAuthorSchema.optional(),
+  author: contentAuthorSchema.optional().describe(MCP_CONTENT_AUTHOR_DESCRIPTION),
 }).strict();
 
 const updateDiaryDataSchema = z.object({
@@ -31,8 +33,7 @@ const updateDiaryDataSchema = z.object({
   updated_at: z.string().datetime(),
   lifecycle_status: z.literal("active"),
   author: contentAuthorSchema.nullable(),
-  detail_tool: z.literal("get_diary"),
-  detail_arguments: z.object({ id: z.string(), scope: z.literal("active") }).strict(),
+  ...mcpMutationReceiptFields,
 });
 
 const updateDiaryOutputSchema = z.object({
@@ -47,7 +48,7 @@ export type UpdateDiaryToolDependencies = { diaryService: UpdateDiaryToolService
 export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateDiaryToolDependencies): void {
   server.registerTool("update_diary", {
     title: "Update one Diary entry",
-    description: "Update only explicitly supplied fields on one active Diary entry. If the outcome is uncertain, perform a readback with get_diary before deciding what to do next; never blindly retry.",
+    description: "Update the latest active Diary state; omitted fields stay unchanged. No revision precondition is required.",
     inputSchema: updateDiaryInputSchema,
     outputSchema: updateDiaryOutputSchema,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -68,8 +69,14 @@ export function registerUpdateDiaryTool(server: McpServer, dependencies: UpdateD
         updated_at: data.updated_at,
         lifecycle_status: "active" as const,
         author: data.author,
-        detail_tool: "get_diary" as const,
-        detail_arguments: { id: data.id, scope: "active" as const },
+        ...mcpMutationReceipt({
+          outcome: "applied",
+          entity_type: "diary",
+          entity_id: data.id,
+          revision: null,
+          detail_tool: "get_diary",
+          detail_arguments: { id: data.id, scope: "active" },
+        }),
       };
       return {
         content: [{ type: "text", text: joinMcpContentLines([

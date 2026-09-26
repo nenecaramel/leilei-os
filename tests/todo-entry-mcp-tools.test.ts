@@ -15,6 +15,7 @@ const DATE = "2026-09-14";
 async function connect(input?: {
   todoService?: {
     appendEntryIdempotently(input: unknown): Promise<unknown>;
+    appendEntriesIdempotently?(input: unknown): Promise<unknown>;
     updateEntryIdempotently(input: unknown): Promise<unknown>;
     deleteEntryIdempotently(input: unknown): Promise<unknown>;
   };
@@ -26,6 +27,17 @@ async function connect(input?: {
       calls.push({ operation: "append", input: value });
       return {
         entry: { id: "11111111-1111-4111-8111-111111111111", kind: "pending", text: "new row", revision: 1 },
+        paperRevision: 8,
+        metadata: { committed: true, idempotent_replay: false },
+      };
+    },
+    async appendEntriesIdempotently(value: unknown) {
+      calls.push({ operation: "append_batch", input: value });
+      return {
+        entries: [
+          { id: "22222222-2222-4222-8222-222222222222", kind: "pending", text: "first", revision: 1, outcome: "applied" },
+          { id: "22222222-2222-4222-8222-222222222222:1", kind: "record", text: "second", revision: 1, outcome: "applied" },
+        ],
         paperRevision: 8,
         metadata: { committed: true, idempotent_replay: false },
       };
@@ -81,7 +93,10 @@ test("Todo entry tools delegate server-owned identity and return entry revisions
     data: {
       entry: { id: "11111111-1111-4111-8111-111111111111", kind: "pending", text: "new row", revision: 1 },
       paper_revision: 8,
-      metadata: { committed: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "todo_entry",
+      entity_id: "11111111-1111-4111-8111-111111111111",
+      revision: 1,
       detail_tool: "read_todo_day",
       detail_arguments: { date: DATE, author: "L" },
     },
@@ -102,7 +117,10 @@ test("Todo entry tools delegate server-owned identity and return entry revisions
   assert.deepEqual((update.structuredContent as { data: unknown }).data, {
     entry: { id: "todo-a", kind: "completed", text: "changed", revision: 4 },
     paper_revision: 9,
-    metadata: { committed: true, idempotent_replay: false },
+    outcome: "applied",
+    entity_type: "todo_entry",
+    entity_id: "todo-a",
+    revision: 4,
     detail_tool: "read_todo_day",
     detail_arguments: { date: DATE, author: "L" },
   });
@@ -121,7 +139,10 @@ test("Todo entry tools delegate server-owned identity and return entry revisions
     entry_id: "todo-b",
     deleted: true,
     paper_revision: 10,
-    metadata: { committed: true, idempotent_replay: false },
+    outcome: "applied",
+    entity_type: "todo_entry",
+    entity_id: "todo-b",
+    revision: null,
     detail_tool: "read_todo_day",
     detail_arguments: { date: DATE, author: "L" },
   });
@@ -165,6 +186,57 @@ test("Todo entry tools delegate server-owned identity and return entry revisions
   ]);
 });
 
+test("Todo batch append delegates once and returns per-entry id revision outcome", async (t) => {
+  const fixture = await connect();
+  t.after(async () => {
+    await fixture.client.close();
+    await fixture.server.close();
+  });
+
+  const response = await fixture.client.callTool({
+    name: "append_todo_entries",
+    arguments: {
+      date: DATE,
+      author: "C",
+      entries: [
+        { kind: "pending", text: "first" },
+        { kind: "record", text: "second" },
+      ],
+      idempotency_key: "todo-entry-batch-20260914",
+    },
+  });
+
+  assert.deepEqual(response.structuredContent, {
+    success: true,
+    data: {
+      entries: [
+        { id: "22222222-2222-4222-8222-222222222222", kind: "pending", text: "first", revision: 1, outcome: "applied" },
+        { id: "22222222-2222-4222-8222-222222222222:1", kind: "record", text: "second", revision: 1, outcome: "applied" },
+      ],
+      paper_revision: 8,
+      outcome: "applied",
+      entity_type: "todo_paper",
+      entity_id: `${DATE}:C`,
+      revision: 8,
+      detail_tool: "read_todo_day",
+      detail_arguments: { date: DATE, author: "C" },
+    },
+  });
+  assert.deepEqual(fixture.calls, [{
+    operation: "append_batch",
+    input: {
+      userId: USER_ID,
+      date: DATE,
+      author: "C",
+      entries: [
+        { kind: "pending", text: "first" },
+        { kind: "record", text: "second" },
+      ],
+      idempotencyKey: "todo-entry-batch-20260914",
+    },
+  }]);
+});
+
 test("Todo entry schemas reject identity injection and incomplete updates before service mutation", async (t) => {
   const fixture = await connect();
   t.after(async () => {
@@ -172,6 +244,15 @@ test("Todo entry schemas reject identity injection and incomplete updates before
     await fixture.server.close();
   });
   const cases = [
+    {
+      name: "append_todo_entries",
+      arguments: {
+        date: DATE,
+        author: "L",
+        entries: [],
+        idempotency_key: "todo-entry-schema-batch-0001",
+      },
+    },
     {
       name: "append_todo_entry",
       arguments: {
@@ -242,6 +323,24 @@ test("Todo entry tools preserve bounded conflicts and sanitize internal failures
     });
     assert.equal(response.isError, true);
     assert.match(JSON.stringify(response), new RegExp(code));
+    if (code === "TODO_ENTRY_CONFLICT") {
+      assert.deepEqual(
+        (response.structuredContent as any).error,
+        {
+          code,
+          message: "The Todo entry changed. Read the current Todo day and retry with that entry's revision.",
+          retryable: false,
+          reason: "stale_revision",
+          current_revision: null,
+          recommended_tool: "read_todo_day",
+          recommended_arguments: { date: DATE, author: "L" },
+        },
+      );
+    }
+    if (code === "IDEMPOTENCY_CONFLICT") {
+      assert.equal((response.structuredContent as any).error.reason, "idempotency_conflict");
+      assert.equal((response.structuredContent as any).error.retryable, false);
+    }
     assert.doesNotMatch(JSON.stringify(response), /private stale|private missing|private idem|private SQL|todo text/i);
   }
 });

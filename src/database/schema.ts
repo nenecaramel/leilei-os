@@ -29,24 +29,6 @@ const bytea = customType<{ data: Buffer }>({
 
 export const userStatusEnum = pgEnum("user_status", ["active", "disabled"]);
 
-export const memoryCategoryEnum = pgEnum("memory_category", [
-  "profile",
-  "preference",
-  "goal",
-  "project",
-]);
-
-export const memoryVisibilityEnum = pgEnum("memory_visibility", [
-  "assistant",
-  "private",
-  "restricted",
-]);
-
-export const memoryStatusEnum = pgEnum("memory_status", [
-  "active",
-  "archived",
-]);
-
 export const diarySourceEnum = pgEnum("diary_source", ["chatgpt_mcp"]);
 
 export const contentAuthorEnum = pgEnum("content_author", ["L", "G", "C"]);
@@ -66,25 +48,6 @@ export const toolCallStatusEnum = pgEnum("tool_call_status", [
   "success",
   "rejected",
   "error",
-]);
-
-export const taskStatusEnum = pgEnum("task_status", [
-  "pending",
-  "in_progress",
-  "completed",
-  "cancelled",
-]);
-
-export const taskLifecycleStatusEnum = pgEnum("task_lifecycle_status", [
-  "active",
-  "archived",
-]);
-
-export const taskPriorityEnum = pgEnum("task_priority", [
-  "low",
-  "normal",
-  "high",
-  "urgent",
 ]);
 
 export const toyCommandActionEnum = pgEnum("toy_command_action", [
@@ -248,132 +211,6 @@ export const todoEntries = pgTable(
       "todo_entries_position_nonnegative",
       sql`${table.position} >= 0`,
     ),
-  ],
-);
-
-export const sharedPapers = pgTable(
-  "shared_papers",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    title: varchar("title", { length: 200 }).notNull(),
-    content: text("content").notNull(),
-    revision: integer("revision").default(1).notNull(),
-    createdBy: contentAuthorEnum("created_by").notNull(),
-    updatedBy: contentAuthorEnum("updated_by").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-  },
-  (table) => [
-    unique("shared_papers_id_user_unique").on(table.id, table.userId),
-    index("shared_papers_user_updated_id_idx").on(table.userId, table.updatedAt.desc(), table.id.desc()),
-    index("shared_papers_user_archive_updated_id_idx").on(table.userId, table.archivedAt, table.updatedAt.desc(), table.id.desc()),
-    check("shared_papers_revision_positive", sql`${table.revision} >= 1`),
-    check("shared_papers_title_not_blank", sql`char_length(btrim(${table.title})) > 0`),
-  ],
-);
-
-export const sharedPaperEdits = pgTable(
-  "shared_paper_edits",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    paperId: uuid("paper_id").notNull(),
-    baseRevision: integer("base_revision").notNull(),
-    revision: integer("revision").notNull(),
-    author: contentAuthorEnum("author").notNull(),
-    target: varchar("target", { length: 16 }).default("content").notNull(),
-    startOffset: integer("start_offset").notNull(),
-    endOffset: integer("end_offset").notNull(),
-    deletedText: text("deleted_text").notNull(),
-    insertedText: text("inserted_text").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.paperId, table.userId],
-      foreignColumns: [sharedPapers.id, sharedPapers.userId],
-      name: "shared_paper_edits_paper_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("shared_paper_edits_paper_revision_uidx").on(table.paperId, table.revision),
-    index("shared_paper_edits_paper_revision_idx").on(table.paperId, table.revision.desc()),
-    check("shared_paper_edits_base_revision_positive", sql`${table.baseRevision} >= 1`),
-    check("shared_paper_edits_revision_step", sql`${table.revision} = ${table.baseRevision} + 1`),
-    check("shared_paper_edits_target_allowed", sql`${table.target} IN ('content', 'title')`),
-    check("shared_paper_edits_offsets_valid", sql`${table.startOffset} >= 0 AND ${table.endOffset} >= ${table.startOffset}`),
-    check("shared_paper_edits_deleted_length_matches", sql`char_length(${table.deletedText}) = ${table.endOffset} - ${table.startOffset}`),
-    check("shared_paper_edits_not_noop", sql`${table.deletedText} <> ${table.insertedText}`),
-  ],
-);
-
-export const coreMemories = pgTable(
-  "core_memories",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, {
-        onDelete: "restrict",
-        onUpdate: "cascade",
-      }),
-    category: memoryCategoryEnum("category").notNull(),
-    key: varchar("key", { length: 100 }).notNull(),
-    content: text("content").notNull(),
-    tags: varchar("tags", { length: 50 })
-      .array()
-      .default(sql`ARRAY[]::varchar(50)[]`)
-      .notNull(),
-    visibility: memoryVisibilityEnum("visibility")
-      .default("assistant")
-      .notNull(),
-    source: varchar("source", { length: 100 }).notNull(),
-    author: contentAuthorEnum("author"),
-    status: memoryStatusEnum("status").default("active").notNull(),
-    sortOrder: integer("sort_order").default(0).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    uniqueIndex("core_memories_user_key_unique_idx").on(
-      table.userId,
-      table.key,
-    ),
-    index("core_memories_user_category_idx").on(
-      table.userId,
-      table.category,
-    ),
-    index("core_memories_read_scope_idx").on(
-      table.userId,
-      table.visibility,
-      table.status,
-      table.sortOrder,
-    ),
-    check(
-      "core_memories_key_not_blank",
-      sql`char_length(btrim(${table.key})) > 0`,
-    ),
-    check(
-      "core_memories_content_not_blank",
-      sql`char_length(btrim(${table.content})) > 0`,
-    ),
-    check(
-      "core_memories_source_not_blank",
-      sql`char_length(btrim(${table.source})) > 0`,
-    ),
-    check(
-      "core_memories_tags_limit",
-      sql`cardinality(${table.tags}) <= 20`,
-    ),
-    check("core_memories_sort_order_nonnegative", sql`${table.sortOrder} >= 0`),
   ],
 );
 
@@ -609,9 +446,7 @@ export const mcpWriteIdempotency = pgTable(
       }),
     toolName: varchar("tool_name", { length: 100 })
       .$type<
-        | "create_task"
         | "write_diary"
-        | "write_memory"
         | "toy_set"
         | "toy_stop"
         | "write_todo_paper"
@@ -620,12 +455,6 @@ export const mcpWriteIdempotency = pgTable(
         | "delete_todo_entry"
         | "create_universe_node"
         | "create_universe_relation"
-        | "create_shared_paper"
-        | "edit_shared_paper"
-        | "append_shared_paper"
-        | "archive_shared_paper"
-        | "restore_shared_paper"
-        | "delete_shared_paper"
         | "add_diary_comment"
       >()
       .notNull(),
@@ -633,16 +462,12 @@ export const mcpWriteIdempotency = pgTable(
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     resourceType: varchar("resource_type", { length: 32 })
       .$type<
-        | "task"
         | "diary_entry"
-        | "memory"
         | "toy_command"
         | "todo_paper"
         | "todo_entry"
         | "universe_node"
         | "universe_relation"
-        | "shared_paper"
-        | "shared_paper_edit"
         | "diary_comment"
       >()
       .notNull(),
@@ -667,7 +492,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('create_task', 'write_diary', 'write_memory', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'create_shared_paper', 'edit_shared_paper', 'append_shared_paper', 'archive_shared_paper', 'restore_shared_paper', 'delete_shared_paper', 'add_diary_comment')`,
+      sql`${table.toolName} IN ('write_diary', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'add_diary_comment')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -679,7 +504,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('task', 'diary_entry', 'memory', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'shared_paper', 'shared_paper_edit', 'diary_comment')`,
+      sql`${table.resourceType} IN ('diary_entry', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'diary_comment')`,
     ),
   ],
 );
@@ -695,7 +520,7 @@ export const resourceLifecycleEvents = pgTable(
         onUpdate: "cascade",
       }),
     resourceType: varchar("resource_type", { length: 32 })
-      .$type<"memory" | "diary" | "task">()
+      .$type<"diary">()
       .notNull(),
     resourceId: uuid("resource_id").notNull(),
     action: varchar("action", { length: 32 })
@@ -727,7 +552,7 @@ export const resourceLifecycleEvents = pgTable(
     ),
     check(
       "resource_lifecycle_events_resource_type_allowed",
-      sql`${table.resourceType} IN ('memory', 'diary', 'task')`,
+      sql`${table.resourceType} IN ('diary')`,
     ),
     check(
       "resource_lifecycle_events_action_allowed",
@@ -770,6 +595,94 @@ export const dataImportRuns = pgTable(
   ],
 );
 export type ConversationProvider = "chatgpt" | "claude";
+export type ConversationOrigin = "legacy_import" | "native_live";
+export type ConversationLifecycleStatus = "active" | "archived" | "deleted";
+export type ConversationMessageStatus = "pending" | "streaming" | "completed" | "error";
+export type ConversationRuntimeProvider = "claude_code";
+export type NativeLiveTurnOperation = "send" | "retry" | "edit";
+export type NativeLiveTurnRuntimeMode = "new" | "fork";
+export type NativeLiveTurnPreparationStatus =
+  | "prepared"
+  | "finalized_success"
+  | "finalized_failure";
+export type NativeLiveTurnDispatchStatus =
+  | "staged"
+  | "pending"
+  | "reserved"
+  | "executing"
+  | "delivery_unknown"
+  | "completed"
+  | "rejected";
+export type NativeLiveRuntimeEventType =
+  | "session"
+  | "text"
+  | "partial_text"
+  | "tool_use"
+  | "tool_result"
+  | "attachment"
+  | "task"
+  | "result"
+  | "error"
+  | "runtime";
+export type NativeLiveRuntimeInteractionKind =
+  | "permission"
+  | "question";
+export type NativeLiveRuntimeInteractionStatus =
+  | "pending"
+  | "resolved"
+  | "cancelled";
+export type NativeLiveRuntimeControlKind =
+  | "mid_turn_input"
+  | "interrupt";
+export type NativeLiveRuntimeControlStatus =
+  | "pending"
+  | "reserved"
+  | "applied"
+  | "failed";
+export type NativeLiveMindFollowUpStatus =
+  | "pending"
+  | "processing"
+  | "completed";
+export type NativeLiveSemanticScoringStatus =
+  | "pending"
+  | "reserved"
+  | "completed"
+  | "fallback";
+export type NativeLiveBackgroundModelJobStatus =
+  | "pending"
+  | "reserved"
+  | "completed"
+  | "failed";
+export type RuntimeProactivityWakeStatus =
+  | "created"
+  | "waiting_model"
+  | "decided";
+export type RuntimeEffectStatus =
+  | "pending"
+  | "reserved"
+  | "dispatching"
+  | "observed"
+  | "failed"
+  | "unknown";
+export type RuntimeDriveSatisfactionEvidenceKind =
+  | "user_message"
+  | "tool_result";
+export type RuntimeSubjectStateKind =
+  | "feel"
+  | "memory"
+  | "dream"
+  | "bedrock"
+  | "drive"
+  | "thought"
+  | "curiosity"
+  | "topic";
+export type RuntimeSubjectScopeApplicability =
+  | "global"
+  | "conversation"
+  | "path";
+export type RuntimeSettlementStatus = "unsettled" | "settled" | "rejected";
+export type RuntimePathStatus = "current" | "superseded";
+export type RuntimeValidityStatus = "valid" | "invalidated" | "tombstoned";
 export type ConversationExclusionScope = "conversation" | "branch";
 export type ConversationFavoriteView = "default" | "all";
 export type ConversationImportRunStatus = "processing" | "executed" | "failed";
@@ -790,6 +703,7 @@ export type ConversationContentKind =
   | "audio"
   | "video"
   | "file"
+  | "attachment"
   | "unknown";
 
 export const conversationImportSources = pgTable(
@@ -928,17 +842,23 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>().notNull(),
-    sourceConversationId: text("source_conversation_id").notNull(),
+    origin: varchar("origin", { length: 32 }).$type<ConversationOrigin>().default("legacy_import").notNull(),
+    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>(),
+    sourceConversationId: text("source_conversation_id"),
     title: text("title"),
+    lifecycleStatus: varchar("lifecycle_status", { length: 32 })
+      .$type<ConversationLifecycleStatus>()
+      .default("active")
+      .notNull(),
+    currentHeadMessageId: uuid("current_head_message_id"),
     sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }),
     sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
     currentLeafSourceNodeId: text("current_leaf_source_node_id"),
     defaultModel: text("default_model"),
     providerMetadata: jsonb("provider_metadata").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
-    sourceFingerprint: varchar("source_fingerprint", { length: 64 }).notNull(),
-    firstSeenImportId: uuid("first_seen_import_id").notNull(),
-    lastSeenImportId: uuid("last_seen_import_id").notNull(),
+    sourceFingerprint: varchar("source_fingerprint", { length: 64 }),
+    firstSeenImportId: uuid("first_seen_import_id"),
+    lastSeenImportId: uuid("last_seen_import_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -947,6 +867,7 @@ export const conversations = pgTable(
   (table) => [
     unique("conversations_id_user_unique").on(table.id, table.userId),
     uniqueIndex("conversations_user_provider_source_uidx").on(table.userId, table.provider, table.sourceConversationId),
+    index("conversations_user_origin_updated_idx").on(table.userId, table.origin, table.updatedAt.desc(), table.id.desc()),
     index("conversations_user_provider_updated_idx").on(table.userId, table.provider, table.sourceUpdatedAt.desc(), table.id.desc()),
     foreignKey({
       columns: [table.firstSeenImportId, table.userId],
@@ -958,7 +879,13 @@ export const conversations = pgTable(
       foreignColumns: [conversationImportRuns.id, conversationImportRuns.userId],
       name: "conversations_last_import_user_fk",
     }).onDelete("restrict").onUpdate("cascade"),
-    check("conversations_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
+    check("conversations_origin_allowed", sql`${table.origin} IN ('legacy_import', 'native_live')`),
+    check("conversations_lifecycle_status_allowed", sql`${table.lifecycleStatus} IN ('active', 'archived', 'deleted')`),
+    check(
+      "conversations_origin_provenance_consistency",
+      sql`(${table.origin} = 'legacy_import' AND ${table.provider} IS NOT NULL AND ${table.sourceConversationId} IS NOT NULL AND ${table.sourceFingerprint} IS NOT NULL AND ${table.firstSeenImportId} IS NOT NULL AND ${table.lastSeenImportId} IS NOT NULL) OR (${table.origin} = 'native_live' AND ${table.provider} IS NULL AND ${table.sourceConversationId} IS NULL AND ${table.sourceFingerprint} IS NULL AND ${table.firstSeenImportId} IS NULL AND ${table.lastSeenImportId} IS NULL)`,
+    ),
+    check("conversations_provider_allowed", sql`${table.provider} IS NULL OR ${table.provider} IN ('chatgpt', 'claude')`),
     check("conversations_source_id_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
     check("conversations_fingerprint_format", sql`${table.sourceFingerprint} ~ '^[0-9a-f]{64}$'`),
     check("conversations_provider_metadata_object", sql`jsonb_typeof(${table.providerMetadata}) = 'object'`),
@@ -999,10 +926,12 @@ export const conversationMessages = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
-    sourceNodeId: text("source_node_id").notNull(),
+    sourceNodeId: text("source_node_id"),
     sourceMessageId: text("source_message_id"),
     parentSourceNodeId: text("parent_source_node_id"),
+    parentMessageId: uuid("parent_message_id"),
     role: varchar("role", { length: 32 }).$type<ConversationMessageRole>().notNull(),
+    status: varchar("status", { length: 32 }).$type<ConversationMessageStatus>().default("completed").notNull(),
     rawRole: text("raw_role"),
     model: text("model"),
     sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }),
@@ -1012,18 +941,25 @@ export const conversationMessages = pgTable(
     turnIndex: integer("turn_index"),
     isPrimary: boolean("is_primary").default(false).notNull(),
     displayText: text("display_text").default("").notNull(),
-    sourceFingerprint: varchar("source_fingerprint", { length: 64 }).notNull(),
-    firstSeenImportId: uuid("first_seen_import_id").notNull(),
-    lastSeenImportId: uuid("last_seen_import_id").notNull(),
+    sourceFingerprint: varchar("source_fingerprint", { length: 64 }),
+    firstSeenImportId: uuid("first_seen_import_id"),
+    lastSeenImportId: uuid("last_seen_import_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     unique("conversation_messages_id_user_unique").on(table.id, table.userId),
+    unique("conversation_messages_id_conversation_user_unique").on(table.id, table.conversationId, table.userId),
     foreignKey({
       columns: [table.conversationId, table.userId],
       foreignColumns: [conversations.id, conversations.userId],
       name: "conversation_messages_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.parentMessageId, table.conversationId, table.userId],
+      foreignColumns: [table.id, table.conversationId, table.userId],
+      name: "conversation_messages_parent_same_conversation_fk",
     }).onDelete("cascade").onUpdate("cascade"),
     foreignKey({
       columns: [table.firstSeenImportId, table.userId],
@@ -1043,8 +979,14 @@ export const conversationMessages = pgTable(
       .on(table.conversationId, table.currentPathIndex)
       .where(sql`${table.isCurrentPath} = true AND ${table.currentPathIndex} IS NOT NULL`),
     index("conversation_messages_user_source_created_idx").on(table.userId, table.sourceCreatedAt, table.id),
+    index("conversation_messages_conversation_parent_idx").on(table.conversationId, table.parentMessageId, table.createdAt, table.id),
     index("conversation_messages_conversation_path_idx").on(table.conversationId, table.isCurrentPath, table.currentPathIndex),
     check("conversation_messages_source_node_not_blank", sql`char_length(btrim(${table.sourceNodeId})) > 0`),
+    check("conversation_messages_status_allowed", sql`${table.status} IN ('pending', 'streaming', 'completed', 'error')`),
+    check(
+      "conversation_messages_provenance_consistency",
+      sql`(${table.sourceNodeId} IS NULL AND ${table.parentSourceNodeId} IS NULL AND ${table.sourceFingerprint} IS NULL AND ${table.firstSeenImportId} IS NULL AND ${table.lastSeenImportId} IS NULL) OR (${table.sourceNodeId} IS NOT NULL AND ${table.sourceFingerprint} IS NOT NULL AND ${table.firstSeenImportId} IS NOT NULL AND ${table.lastSeenImportId} IS NOT NULL)`,
+    ),
     check(
       "conversation_messages_role_allowed",
       sql`${table.role} IN ('user', 'assistant', 'system', 'tool', 'reasoning', 'unknown')`,
@@ -1069,6 +1011,7 @@ export const conversationContentBlocks = pgTable(
     rawType: text("raw_type").notNull(),
     text: text("text"),
     payload: jsonb("payload").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({
@@ -1081,12 +1024,1457 @@ export const conversationContentBlocks = pgTable(
     check("conversation_content_blocks_ordinal_nonnegative", sql`${table.ordinal} >= 0`),
     check(
       "conversation_content_blocks_kind_allowed",
-      sql`${table.kind} IN ('text', 'thinking', 'reasoning_recap', 'tool_use', 'tool_result', 'image', 'audio', 'video', 'file', 'unknown')`,
+      sql`${table.kind} IN ('text', 'thinking', 'reasoning_recap', 'tool_use', 'tool_result', 'image', 'audio', 'video', 'file', 'attachment', 'unknown')`,
     ),
     check("conversation_content_blocks_raw_type_not_blank", sql`char_length(btrim(${table.rawType})) > 0`),
     check(
       "conversation_content_blocks_payload_object",
       sql`${table.payload} IS NULL OR jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+  ],
+);
+
+
+export const conversationProviderSessionCheckpoints = pgTable(
+  "conversation_provider_session_checkpoints",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    canonicalMessageId: uuid("canonical_message_id").notNull(),
+    provider: varchar("provider", { length: 32 })
+      .$type<ConversationRuntimeProvider>()
+      .notNull(),
+    providerSessionId: text("provider_session_id").notNull(),
+    runtimeMetadata: jsonb("runtime_metadata")
+      .$type<Record<string, unknown> | null>(),
+    providerCheckpointId: text("provider_checkpoint_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "conversation_provider_session_checkpoints_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.canonicalMessageId, table.conversationId, table.userId],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "conversation_provider_session_checkpoints_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("conversation_provider_session_checkpoints_message_provider_uidx").on(
+      table.conversationId,
+      table.canonicalMessageId,
+      table.provider,
+    ),
+    index("conversation_provider_session_checkpoints_user_head_idx").on(
+      table.userId,
+      table.conversationId,
+      table.canonicalMessageId,
+    ),
+    check(
+      "conversation_provider_session_checkpoints_provider_allowed",
+      sql`${table.provider} = 'claude_code'`,
+    ),
+    check(
+      "conversation_provider_session_checkpoints_session_not_blank",
+      sql`char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "conversation_provider_session_checkpoints_checkpoint_not_blank",
+      sql`${table.providerCheckpointId} IS NULL OR char_length(btrim(${table.providerCheckpointId})) > 0`,
+    ),
+  ],
+);
+
+export const nativeLiveTurnPreparations = pgTable(
+  "native_live_turn_preparations",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    operation: varchar("operation", { length: 16 })
+      .$type<NativeLiveTurnOperation>()
+      .notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    canonicalUserMessageId: uuid("canonical_user_message_id").notNull(),
+    runtimeMode: varchar("runtime_mode", { length: 16 })
+      .$type<NativeLiveTurnRuntimeMode>()
+      .notNull(),
+    parentProviderSessionId: text("parent_provider_session_id"),
+    executionSelection: jsonb("execution_selection").$type<Record<string, unknown> | null>(),
+    prompt: text("prompt").notNull(),
+    mindPrepared: boolean("mind_prepared").default(false).notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveTurnPreparationStatus>()
+      .default("prepared")
+      .notNull(),
+    resultHash: varchar("result_hash", { length: 64 }),
+    providerSessionId: text("provider_session_id"),
+    runtimeMetadata: jsonb("runtime_metadata")
+      .$type<Record<string, unknown> | null>(),
+    assistantMessageId: uuid("assistant_message_id"),
+    failureCode: varchar("failure_code", { length: 64 }),
+    dispatchStatus: varchar("dispatch_status", { length: 32 })
+      .$type<NativeLiveTurnDispatchStatus>()
+      .default("staged")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    executionStartedAt: timestamp("execution_started_at", {
+      withTimezone: true,
+    }),
+    deliveryUnknownAt: timestamp("delivery_unknown_at", {
+      withTimezone: true,
+    }),
+    dispatchErrorCode: varchar("dispatch_error_code", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "native_live_turn_preparations_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.canonicalUserMessageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "native_live_turn_preparations_user_message_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.assistantMessageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "native_live_turn_preparations_assistant_message_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("native_live_turn_preparations_user_request_uidx").on(
+      table.userId,
+      table.requestId,
+    ),
+    unique("native_live_turn_preparations_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
+    index("native_live_turn_preparations_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("native_live_turn_preparations_conversation_created_idx").on(
+      table.conversationId,
+      table.createdAt,
+      table.id,
+    ),
+    index("native_live_turn_preparations_dispatch_queue_idx").on(
+      table.userId,
+      table.dispatchStatus,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "native_live_turn_preparations_operation_allowed",
+      sql`${table.operation} IN ('send', 'retry', 'edit')`,
+    ),
+    check(
+      "native_live_turn_preparations_runtime_mode_allowed",
+      sql`${table.runtimeMode} IN ('new', 'fork')`,
+    ),
+    check(
+      "native_live_turn_preparations_runtime_parent_consistency",
+      sql`(${table.runtimeMode} = 'new' AND ${table.parentProviderSessionId} IS NULL)
+        OR (${table.runtimeMode} = 'fork' AND ${table.parentProviderSessionId} IS NOT NULL AND char_length(btrim(${table.parentProviderSessionId})) > 0)`,
+    ),
+    check(
+      "native_live_turn_preparations_execution_selection_object",
+      sql`${table.executionSelection} IS NULL OR jsonb_typeof(${table.executionSelection}) = \'object\'`,
+    ),
+    check(
+      "native_live_turn_preparations_request_hash_format",
+      sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "native_live_turn_preparations_prompt_not_blank",
+      sql`char_length(btrim(${table.prompt})) > 0`,
+    ),
+    check(
+      "native_live_turn_preparations_status_allowed",
+      sql`${table.status} IN ('prepared', 'finalized_success', 'finalized_failure')`,
+    ),
+    check(
+      "native_live_turn_preparations_dispatch_status_allowed",
+      sql`${table.dispatchStatus} IN ('staged', 'pending', 'reserved', 'executing', 'delivery_unknown', 'completed', 'rejected')`,
+    ),
+    check(
+      "native_live_turn_preparations_dispatch_reservation_consistency",
+      sql`(${table.dispatchStatus} IN ('staged', 'pending', 'rejected')
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.executionStartedAt} IS NULL)
+        OR (${table.dispatchStatus} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.executionStartedAt} IS NULL)
+        OR (${table.dispatchStatus} IN ('executing', 'delivery_unknown', 'completed')
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.executionStartedAt} IS NOT NULL)`,
+    ),
+    check(
+      "native_live_turn_preparations_result_hash_format",
+      sql`${table.resultHash} IS NULL OR ${table.resultHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "native_live_turn_preparations_runtime_metadata_object",
+      sql`${table.runtimeMetadata} IS NULL OR jsonb_typeof(${table.runtimeMetadata}) = 'object'`,
+    ),
+    check(
+      "native_live_turn_preparations_result_consistency",
+      sql`(${table.status} = 'prepared'
+          AND ${table.resultHash} IS NULL
+          AND ${table.providerSessionId} IS NULL
+          AND ${table.assistantMessageId} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.finalizedAt} IS NULL)
+        OR (${table.status} = 'finalized_success'
+          AND ${table.resultHash} IS NOT NULL
+          AND ${table.providerSessionId} IS NOT NULL
+          AND char_length(btrim(${table.providerSessionId})) > 0
+          AND ${table.assistantMessageId} IS NOT NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.finalizedAt} IS NOT NULL)
+        OR (${table.status} = 'finalized_failure'
+          AND ${table.resultHash} IS NOT NULL
+          AND ${table.providerSessionId} IS NULL
+          AND ${table.assistantMessageId} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND char_length(btrim(${table.failureCode})) > 0
+          AND ${table.finalizedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeEvents = pgTable(
+  "native_live_runtime_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    prepareId: uuid("prepare_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    eventType: varchar("event_type", { length: 32 })
+      .$type<NativeLiveRuntimeEventType>()
+      .notNull(),
+    providerSessionId: text("provider_session_id"),
+    payload: jsonb("payload").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_runtime_events_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("native_live_runtime_events_prepare_sequence_uidx").on(
+      table.userId,
+      table.prepareId,
+      table.sequence,
+    ),
+    index("native_live_runtime_events_prepare_sequence_idx").on(
+      table.userId,
+      table.prepareId,
+      table.sequence,
+    ),
+    check(
+      "native_live_runtime_events_sequence_positive",
+      sql`${table.sequence} > 0`,
+    ),
+    check(
+      "native_live_runtime_events_type_allowed",
+      sql`${table.eventType} IN ('session', 'text', 'partial_text', 'tool_use', 'tool_result', 'attachment', 'task', 'result', 'error', 'runtime')`,
+    ),
+    check(
+      "native_live_runtime_events_provider_session_not_blank",
+      sql`${table.providerSessionId} IS NULL OR char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "native_live_runtime_events_payload_object",
+      sql`${table.payload} IS NULL OR jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeInteractions = pgTable(
+  "native_live_runtime_interactions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    prepareId: uuid("prepare_id").notNull(),
+    listenerInstanceId: uuid("listener_instance_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<NativeLiveRuntimeInteractionKind>()
+      .notNull(),
+    request: jsonb("request").$type<Record<string, unknown>>().notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveRuntimeInteractionStatus>()
+      .default("pending")
+      .notNull(),
+    response: jsonb("response").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_runtime_interactions_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_runtime_interactions_turn_status_idx").on(
+      table.userId,
+      table.prepareId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "native_live_runtime_interactions_kind_allowed",
+      sql`${table.kind} IN ('permission', 'question')`,
+    ),
+    check(
+      "native_live_runtime_interactions_request_object",
+      sql`jsonb_typeof(${table.request}) = 'object' AND ${table.request} <> '{}'::jsonb`,
+    ),
+    check(
+      "native_live_runtime_interactions_status_allowed",
+      sql`${table.status} IN ('pending', 'resolved', 'cancelled')`,
+    ),
+    check(
+      "native_live_runtime_interactions_response_object",
+      sql`${table.response} IS NULL OR jsonb_typeof(${table.response}) = 'object'`,
+    ),
+    check(
+      "native_live_runtime_interactions_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.response} IS NULL
+          AND ${table.resolvedAt} IS NULL
+          AND ${table.cancelledAt} IS NULL)
+        OR (${table.status} = 'resolved'
+          AND ${table.response} IS NOT NULL
+          AND ${table.resolvedAt} IS NOT NULL
+          AND ${table.cancelledAt} IS NULL)
+        OR (${table.status} = 'cancelled'
+          AND ${table.response} IS NULL
+          AND ${table.resolvedAt} IS NULL
+          AND ${table.cancelledAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeControls = pgTable(
+  "native_live_runtime_controls",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    prepareId: uuid("prepare_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<NativeLiveRuntimeControlKind>()
+      .notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveRuntimeControlStatus>()
+      .default("pending")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    receipt: jsonb("receipt").$type<Record<string, unknown> | null>(),
+    failureCode: varchar("failure_code", { length: 64 }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_runtime_controls_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_runtime_controls_queue_idx").on(
+      table.userId,
+      table.prepareId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "native_live_runtime_controls_kind_allowed",
+      sql`${table.kind} IN ('mid_turn_input', 'interrupt')`,
+    ),
+    check(
+      "native_live_runtime_controls_payload_object",
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+    check(
+      "native_live_runtime_controls_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'applied', 'failed')`,
+    ),
+    check(
+      "native_live_runtime_controls_receipt_object",
+      sql`${table.receipt} IS NULL OR jsonb_typeof(${table.receipt}) = 'object'`,
+    ),
+    check(
+      "native_live_runtime_controls_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.receipt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.appliedAt} IS NULL)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.receipt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.appliedAt} IS NULL)
+        OR (${table.status} = 'applied'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.receipt} IS NOT NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.appliedAt} IS NOT NULL)
+        OR (${table.status} = 'failed'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.receipt} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND ${table.appliedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveRuntimeListenerLeases = pgTable(
+  "native_live_runtime_listener_leases",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    dispatchTarget: varchar("dispatch_target", { length: 32 })
+      .$type<ConversationRuntimeProvider>()
+      .notNull(),
+    listenerInstanceId: uuid("listener_instance_id").notNull(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true })
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.dispatchTarget] }),
+    index("native_live_runtime_listener_leases_expiry_idx").on(
+      table.leaseExpiresAt,
+    ),
+    check(
+      "native_live_runtime_listener_leases_target_allowed",
+      sql`${table.dispatchTarget} = 'claude_code'`,
+    ),
+  ],
+);
+
+export const nativeLiveSemanticScoringRequests = pgTable(
+  "native_live_semantic_scoring_requests",
+  {
+    prepareId: uuid("prepare_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    manifestId: uuid("manifest_id").notNull(),
+    assembledAt: timestamp("assembled_at", { withTimezone: true }).notNull(),
+    snapshotSequence: integer("snapshot_sequence").notNull(),
+    query: text("query").notNull(),
+    candidates: jsonb("candidates")
+      .$type<Record<string, unknown>[]>()
+      .notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveSemanticScoringStatus>()
+      .default("pending")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    scores: jsonb("scores").$type<Record<string, number> | null>(),
+    fallbackCode: varchar("fallback_code", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_semantic_scoring_requests_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "native_live_semantic_scoring_requests_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_semantic_scoring_requests_queue_idx").on(
+      table.status,
+      table.createdAt,
+      table.prepareId,
+    ),
+    index("native_live_semantic_scoring_requests_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+      table.prepareId,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_query_not_blank",
+      sql`char_length(btrim(${table.query})) > 0`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_candidates_array",
+      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) BETWEEN 1 AND 64`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_snapshot_nonnegative",
+      sql`${table.snapshotSequence} >= 0`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_scores_object",
+      sql`${table.scores} IS NULL OR jsonb_typeof(${table.scores}) = 'object'`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'completed', 'fallback')`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_fallback_code_allowed",
+      sql`${table.fallbackCode} IS NULL OR ${table.fallbackCode} IN ('E5_PROVIDER_UNAVAILABLE', 'E5_SCORING_FAILED')`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.scores} IS NULL
+          AND ${table.fallbackCode} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.scores} IS NULL
+          AND ${table.fallbackCode} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'completed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.scores} IS NOT NULL
+          AND ${table.fallbackCode} IS NULL
+          AND ${table.completedAt} IS NOT NULL)
+        OR (${table.status} = 'fallback'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.scores} IS NULL
+          AND ${table.fallbackCode} IS NOT NULL
+          AND ${table.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const nativeLiveBackgroundModelJobs = pgTable(
+  "native_live_background_model_jobs",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    subjectId: text("subject_id").notNull(),
+    workflowKind: varchar("workflow_kind", { length: 64 }),
+    workflowRunId: uuid("workflow_run_id"),
+    workflowPayload: jsonb("workflow_payload")
+      .$type<Record<string, unknown> | null>(),
+    taskKind: varchar("task_kind", { length: 64 }).notNull(),
+    promptContractVersion: varchar("prompt_contract_version", {
+      length: 128,
+    }).notNull(),
+    prompt: text("prompt").notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveBackgroundModelJobStatus>()
+      .default("pending")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    resultText: text("result_text"),
+    errorCode: varchar("error_code", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("native_live_background_model_jobs_queue_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("native_live_background_model_jobs_terminal_idx").on(
+      table.status,
+      table.completedAt,
+      table.id,
+    ),
+    index("native_live_background_model_jobs_workflow_idx").on(
+      table.userId,
+      table.subjectId,
+      table.workflowKind,
+      table.consumedAt,
+      table.createdAt,
+      table.id,
+    ),
+    uniqueIndex("native_live_background_model_jobs_run_stage_uidx").on(
+      table.workflowRunId,
+      table.taskKind,
+    ),
+    check(
+      "native_live_background_model_jobs_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "native_live_background_model_jobs_workflow_consistency",
+      sql`(
+        ${table.workflowKind} IS NULL
+        AND ${table.workflowRunId} IS NULL
+        AND ${table.workflowPayload} IS NULL
+      ) OR (
+        ${table.workflowKind} = 'topic_resurface'
+        AND ${table.workflowRunId} IS NOT NULL
+        AND ${table.workflowPayload} IS NOT NULL
+        AND jsonb_typeof(${table.workflowPayload}) = 'object'
+        AND ${table.taskKind} IN (
+          'topic_resurface_evaluate',
+          'topic_resurface_deliberate',
+          'topic_resurface_retention'
+        )
+      ) OR (
+        ${table.workflowKind} = 'distillation'
+        AND ${table.workflowRunId} IS NOT NULL
+        AND ${table.workflowPayload} IS NOT NULL
+        AND jsonb_typeof(${table.workflowPayload}) = 'object'
+        AND ${table.taskKind} = 'distillation'
+      ) OR (
+        ${table.workflowKind} = 'proactivity_wake'
+        AND ${table.workflowRunId} IS NOT NULL
+        AND ${table.workflowPayload} IS NOT NULL
+        AND jsonb_typeof(${table.workflowPayload}) = 'object'
+        AND ${table.taskKind} = 'proactivity_deliberate'
+      )`,
+    ),
+    check(
+      "native_live_background_model_jobs_task_kind_allowed",
+      sql`${table.taskKind} IN ('distillation', 'proactivity_deliberate', 'topic_resurface_evaluate', 'topic_resurface_deliberate', 'topic_resurface_retention')`,
+    ),
+    check(
+      "native_live_background_model_jobs_prompt_contract_not_blank",
+      sql`char_length(btrim(${table.promptContractVersion})) > 0`,
+    ),
+    check(
+      "native_live_background_model_jobs_prompt_not_blank",
+      sql`char_length(btrim(${table.prompt})) > 0`,
+    ),
+    check(
+      "native_live_background_model_jobs_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'completed', 'failed')`,
+    ),
+    check(
+      "native_live_background_model_jobs_consumed_consistency",
+      sql`${table.consumedAt} IS NULL
+        OR ${table.status} IN ('completed', 'failed')`,
+    ),
+    check(
+      "native_live_background_model_jobs_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.resultText} IS NULL
+          AND ${table.errorCode} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.resultText} IS NULL
+          AND ${table.errorCode} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'completed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.resultText} IS NOT NULL
+          AND char_length(btrim(${table.resultText})) > 0
+          AND ${table.errorCode} IS NULL
+          AND ${table.completedAt} IS NOT NULL)
+        OR (${table.status} = 'failed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.resultText} IS NULL
+          AND ${table.errorCode} IS NOT NULL
+          AND char_length(btrim(${table.errorCode})) > 0
+          AND ${table.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const runtimeProactivityWakes = pgTable(
+  "runtime_proactivity_wakes",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    subjectId: text("subject_id").notNull(),
+    gate: jsonb("gate")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    contactTarget: text("contact_target"),
+    contextSnapshot: jsonb("context_snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<RuntimeProactivityWakeStatus>()
+      .default("created")
+      .notNull(),
+    modelTaskId: uuid("model_task_id"),
+    decision: jsonb("decision")
+      .$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("runtime_proactivity_wakes_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
+    index("runtime_proactivity_wakes_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("runtime_proactivity_wakes_subject_created_idx").on(
+      table.userId,
+      table.subjectId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "runtime_proactivity_wakes_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_proactivity_wakes_gate_object",
+      sql`jsonb_typeof(${table.gate}) = 'object'`,
+    ),
+    check(
+      "runtime_proactivity_wakes_context_object",
+      sql`jsonb_typeof(${table.contextSnapshot}) = 'object'`,
+    ),
+    check(
+      "runtime_proactivity_wakes_target_not_blank",
+      sql`${table.contactTarget} IS NULL
+        OR char_length(btrim(${table.contactTarget})) > 0`,
+    ),
+    check(
+      "runtime_proactivity_wakes_status_allowed",
+      sql`${table.status} IN ('created', 'waiting_model', 'decided')`,
+    ),
+    check(
+      "runtime_proactivity_wakes_state_consistency",
+      sql`(${table.status} = 'created'
+          AND ${table.modelTaskId} IS NULL
+          AND ${table.decision} IS NULL
+          AND ${table.decidedAt} IS NULL)
+        OR (${table.status} = 'waiting_model'
+          AND ${table.modelTaskId} IS NOT NULL
+          AND ${table.decision} IS NULL
+          AND ${table.decidedAt} IS NULL)
+        OR (${table.status} = 'decided'
+          AND ${table.decision} IS NOT NULL
+          AND jsonb_typeof(${table.decision}) = 'object'
+          AND ${table.decidedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const runtimeEffects = pgTable(
+  "runtime_effects",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    subjectId: text("subject_id").notNull(),
+    sourceWakeId: uuid("source_wake_id").notNull(),
+    decisionId: text("decision_id").notNull(),
+    idempotencyKey: varchar("idempotency_key", {
+      length: 64,
+    }).notNull(),
+    effectType: varchar("effect_type", { length: 64 })
+      .notNull(),
+    target: text("target").notNull(),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    payloadHash: varchar("payload_hash", {
+      length: 64,
+    }).notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<RuntimeEffectStatus>()
+      .default("pending")
+      .notNull(),
+    attempt: integer("attempt").default(0).notNull(),
+    retryable: boolean("retryable").default(true).notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", {
+      withTimezone: true,
+    }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    dispatchStartedAt: timestamp("dispatch_started_at", {
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    observedAt: timestamp("observed_at", {
+      withTimezone: true,
+    }),
+    failureCode: varchar("failure_code", { length: 128 }),
+  },
+  (table) => [
+    unique("runtime_effects_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
+    foreignKey({
+      columns: [table.sourceWakeId, table.userId],
+      foreignColumns: [
+        runtimeProactivityWakes.id,
+        runtimeProactivityWakes.userId,
+      ],
+      name: "runtime_effects_wake_user_fk",
+    }).onDelete("restrict").onUpdate("cascade"),
+    uniqueIndex("runtime_effects_user_idempotency_uidx").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("runtime_effects_source_wake_uidx").on(
+      table.sourceWakeId,
+    ),
+    index("runtime_effects_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "runtime_effects_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_effects_decision_not_blank",
+      sql`char_length(btrim(${table.decisionId})) > 0`,
+    ),
+    check(
+      "runtime_effects_idempotency_format",
+      sql`${table.idempotencyKey} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "runtime_effects_type_allowed",
+      sql`${table.effectType} = 'message_send'`,
+    ),
+    check(
+      "runtime_effects_target_not_blank",
+      sql`char_length(btrim(${table.target})) > 0`,
+    ),
+    check(
+      "runtime_effects_payload_object",
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
+    ),
+    check(
+      "runtime_effects_payload_hash_format",
+      sql`${table.payloadHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "runtime_effects_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'dispatching', 'observed', 'failed', 'unknown')`,
+    ),
+    check(
+      "runtime_effects_attempt_nonnegative",
+      sql`${table.attempt} >= 0`,
+    ),
+    check(
+      "runtime_effects_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = true)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.dispatchStartedAt} IS NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = true)
+        OR (${table.status} = 'dispatching'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = true
+          AND ${table.attempt} > 0)
+        OR (${table.status} = 'observed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NOT NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.retryable} = false
+          AND ${table.attempt} > 0)
+        OR (${table.status} = 'failed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND char_length(btrim(${table.failureCode})) > 0
+          AND ${table.attempt} > 0)
+        OR (${table.status} = 'unknown'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.dispatchStartedAt} IS NOT NULL
+          AND ${table.observedAt} IS NULL
+          AND ${table.failureCode} IS NOT NULL
+          AND char_length(btrim(${table.failureCode})) > 0
+          AND ${table.retryable} = false
+          AND ${table.attempt} > 0)`,
+    ),
+  ],
+);
+
+export const runtimeEffectMessageDeliveries = pgTable(
+  "runtime_effect_message_deliveries",
+  {
+    effectId: uuid("effect_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    messageId: uuid("message_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.effectId, table.userId],
+      foreignColumns: [
+        runtimeEffects.id,
+        runtimeEffects.userId,
+      ],
+      name: "runtime_effect_message_deliveries_effect_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [
+        conversations.id,
+        conversations.userId,
+      ],
+      name: "runtime_effect_message_deliveries_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.messageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_effect_message_deliveries_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex(
+      "runtime_effect_message_deliveries_message_uidx",
+    ).on(table.messageId),
+    index(
+      "runtime_effect_message_deliveries_user_created_idx",
+    ).on(table.userId, table.createdAt, table.effectId),
+  ],
+);
+
+export const nativeLiveMindFollowUps = pgTable(
+  "native_live_mind_followups",
+  {
+    prepareId: uuid("prepare_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    assistantMessageId: uuid("assistant_message_id").notNull(),
+    operation: varchar("operation", { length: 16 })
+      .$type<NativeLiveTurnOperation>()
+      .notNull(),
+    intents: jsonb("intents")
+      .$type<Record<string, unknown>[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveMindFollowUpStatus>()
+      .default("pending")
+      .notNull(),
+    retryCount: integer("retry_count").default(0).notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lockedBy: uuid("locked_by"),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    lastErrorName: varchar("last_error_name", { length: 128 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.prepareId, table.userId],
+      foreignColumns: [
+        nativeLiveTurnPreparations.id,
+        nativeLiveTurnPreparations.userId,
+      ],
+      name: "native_live_mind_followups_preparation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "native_live_mind_followups_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.assistantMessageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "native_live_mind_followups_assistant_message_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("native_live_mind_followups_status_available_idx").on(
+      table.status,
+      table.availableAt,
+      table.createdAt,
+      table.prepareId,
+    ),
+    index("native_live_mind_followups_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+      table.prepareId,
+    ),
+    check(
+      "native_live_mind_followups_operation_allowed",
+      sql`${table.operation} IN ('send', 'retry', 'edit')`,
+    ),
+    check(
+      "native_live_mind_followups_intents_array",
+      sql`jsonb_typeof(${table.intents}) = 'array'`,
+    ),
+    check(
+      "native_live_mind_followups_status_allowed",
+      sql`${table.status} IN ('pending', 'processing', 'completed')`,
+    ),
+    check(
+      "native_live_mind_followups_retry_nonnegative",
+      sql`${table.retryCount} >= 0`,
+    ),
+    check(
+      "native_live_mind_followups_lock_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.lockedBy} IS NULL
+          AND ${table.lockedUntil} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'processing'
+          AND ${table.lockedBy} IS NOT NULL
+          AND ${table.lockedUntil} IS NOT NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'completed'
+          AND ${table.lockedBy} IS NULL
+          AND ${table.lockedUntil} IS NULL
+          AND ${table.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const runtimeSubjectStates = pgTable(
+  "runtime_subject_states",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    subjectId: text("subject_id").notNull(),
+    kind: varchar("kind", { length: 32 }).$type<RuntimeSubjectStateKind>().notNull(),
+    text: text("text"),
+    payload: jsonb("payload").$type<Record<string, unknown> | null>(),
+    scopeApplicability: varchar("scope_applicability", { length: 32 })
+      .$type<RuntimeSubjectScopeApplicability>()
+      .notNull(),
+    scopeConversationId: uuid("scope_conversation_id"),
+    scopePathHeadMessageId: uuid("scope_path_head_message_id"),
+    settlementStatus: varchar("settlement_status", { length: 32 })
+      .$type<RuntimeSettlementStatus>()
+      .notNull(),
+    pathStatus: varchar("path_status", { length: 32 })
+      .$type<RuntimePathStatus>()
+      .notNull(),
+    validityStatus: varchar("validity_status", { length: 32 })
+      .$type<RuntimeValidityStatus>()
+      .notNull(),
+    envelope: jsonb("envelope").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("runtime_subject_states_id_user_unique").on(table.id, table.userId),
+    index("runtime_subject_states_user_subject_kind_idx").on(
+      table.userId,
+      table.subjectId,
+      table.kind,
+      table.updatedAt.desc(),
+    ),
+    index("runtime_subject_states_scope_idx").on(
+      table.userId,
+      table.subjectId,
+      table.scopeConversationId,
+      table.settlementStatus,
+      table.validityStatus,
+    ),
+    check("runtime_subject_states_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
+    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'dream', 'bedrock', 'drive', 'thought', 'curiosity', 'topic')`),
+    check("runtime_subject_states_scope_allowed", sql`${table.scopeApplicability} IN ('global', 'conversation', 'path')`),
+    check("runtime_subject_states_settlement_allowed", sql`${table.settlementStatus} IN ('unsettled', 'settled', 'rejected')`),
+    check("runtime_subject_states_path_status_allowed", sql`${table.pathStatus} IN ('current', 'superseded')`),
+    check("runtime_subject_states_validity_allowed", sql`${table.validityStatus} IN ('valid', 'invalidated', 'tombstoned')`),
+    check(
+      "runtime_subject_states_scope_consistency",
+      sql`(${table.scopeApplicability} = 'global' AND ${table.scopeConversationId} IS NULL AND ${table.scopePathHeadMessageId} IS NULL)
+        OR (${table.scopeApplicability} = 'conversation' AND ${table.scopeConversationId} IS NOT NULL AND ${table.scopePathHeadMessageId} IS NULL)
+        OR (${table.scopeApplicability} = 'path' AND ${table.scopeConversationId} IS NOT NULL AND ${table.scopePathHeadMessageId} IS NOT NULL)`,
+    ),
+    check(
+      "runtime_subject_states_content_present",
+      sql`(${table.text} IS NOT NULL AND char_length(btrim(${table.text})) > 0)
+        OR (${table.payload} IS NOT NULL AND jsonb_typeof(${table.payload}) = 'object' AND ${table.payload} <> '{}'::jsonb)`,
+    ),
+    check("runtime_subject_states_payload_object", sql`${table.payload} IS NULL OR jsonb_typeof(${table.payload}) = 'object'`),
+    check("runtime_subject_states_envelope_object", sql`jsonb_typeof(${table.envelope}) = 'object'`),
+  ],
+);
+
+export const runtimeDriveSatisfactionEvents = pgTable(
+  "runtime_drive_satisfaction_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    driveStateId: uuid("drive_state_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    evidenceMessageId: uuid("evidence_message_id").notNull(),
+    evidenceBlockId: uuid("evidence_block_id").references(
+      () => conversationContentBlocks.id,
+      { onDelete: "cascade", onUpdate: "cascade" },
+    ),
+    evidenceKind: varchar("evidence_kind", { length: 32 })
+      .$type<RuntimeDriveSatisfactionEvidenceKind>()
+      .notNull(),
+    amount: doublePrecision("amount").notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.driveStateId, table.userId],
+      foreignColumns: [runtimeSubjectStates.id, runtimeSubjectStates.userId],
+      name: "runtime_drive_satisfaction_events_drive_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_drive_satisfaction_events_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.evidenceMessageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_drive_satisfaction_events_message_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("runtime_drive_satisfaction_events_user_idempotency_uidx").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    index("runtime_drive_satisfaction_events_drive_created_idx").on(
+      table.driveStateId,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "runtime_drive_satisfaction_events_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_drive_satisfaction_events_kind_allowed",
+      sql`${table.evidenceKind} IN (\'user_message\', \'tool_result\')`,
+    ),
+    check(
+      "runtime_drive_satisfaction_events_amount_bounds",
+      sql`${table.amount} > 0 AND ${table.amount} <= 1`,
+    ),
+    check(
+      "runtime_drive_satisfaction_events_idempotency_format",
+      sql`${table.idempotencyKey} ~ \'^[A-Za-z0-9._:-]{16,128}$\'`,
+    ),
+    check(
+      "runtime_drive_satisfaction_events_block_consistency",
+      sql`(${table.evidenceKind} = \'user_message\' AND ${table.evidenceBlockId} IS NULL)
+        OR (${table.evidenceKind} = \'tool_result\' AND ${table.evidenceBlockId} IS NOT NULL)`,
+    ),
+  ],
+);
+export const runtimeSubjectStateTransitions = pgTable(
+  "runtime_subject_state_transitions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    stateId: uuid("state_id").notNull(),
+    reason: varchar("reason", { length: 64 }).notNull(),
+    beforeEnvelope: jsonb("before_envelope").$type<Record<string, unknown>>().notNull(),
+    afterEnvelope: jsonb("after_envelope").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.stateId, table.userId],
+      foreignColumns: [runtimeSubjectStates.id, runtimeSubjectStates.userId],
+      name: "runtime_subject_state_transitions_state_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("runtime_subject_state_transitions_state_created_idx").on(
+      table.stateId,
+      table.createdAt,
+      table.id,
+    ),
+    check("runtime_subject_state_transitions_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
+    check("runtime_subject_state_transitions_reason_not_blank", sql`char_length(btrim(${table.reason})) > 0`),
+    check("runtime_subject_state_transitions_before_object", sql`jsonb_typeof(${table.beforeEnvelope}) = 'object'`),
+    check("runtime_subject_state_transitions_after_object", sql`jsonb_typeof(${table.afterEnvelope}) = 'object'`),
+  ],
+);
+
+export const runtimeContextManifests = pgTable(
+  "runtime_context_manifests",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    pathHeadMessageId: uuid("path_head_message_id"),
+    snapshotSequence: integer("snapshot_sequence").notNull(),
+    assemblyVersion: varchar("assembly_version", { length: 64 }).notNull(),
+    promptContractVersion: varchar("prompt_contract_version", { length: 64 }).notNull(),
+    budget: jsonb("budget").$type<Record<string, unknown>>().notNull(),
+    items: jsonb("items").$type<Record<string, unknown>[]>().notNull(),
+    assembledAt: timestamp("assembled_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_context_manifests_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.pathHeadMessageId, table.conversationId, table.userId],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_context_manifests_head_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("runtime_context_manifests_user_subject_created_idx").on(
+      table.userId,
+      table.subjectId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    check("runtime_context_manifests_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
+    check("runtime_context_manifests_snapshot_nonnegative", sql`${table.snapshotSequence} >= 0`),
+    check("runtime_context_manifests_assembly_not_blank", sql`char_length(btrim(${table.assemblyVersion})) > 0`),
+    check("runtime_context_manifests_prompt_not_blank", sql`char_length(btrim(${table.promptContractVersion})) > 0`),
+    check("runtime_context_manifests_budget_object", sql`jsonb_typeof(${table.budget}) = 'object'`),
+    check("runtime_context_manifests_items_array", sql`jsonb_typeof(${table.items}) = 'array'`),
+  ],
+);
+
+export const runtimeDistillationWatermarks = pgTable(
+  "runtime_distillation_watermarks",
+  {
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    lastSourceMessageId: uuid("last_source_message_id").notNull(),
+    processVersion: varchar("process_version", { length: 64 }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.userId, table.subjectId, table.conversationId],
+      name: "runtime_distillation_watermarks_pk",
+    }),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_distillation_watermarks_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.lastSourceMessageId, table.conversationId, table.userId],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_distillation_watermarks_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    check(
+      "runtime_distillation_watermarks_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_distillation_watermarks_process_not_blank",
+      sql`char_length(btrim(${table.processVersion})) > 0`,
     ),
   ],
 );
@@ -1712,85 +3100,6 @@ export const universeBackups = pgTable(
   ],
 );
 
-export const tasks = pgTable(
-  "tasks",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, {
-        onDelete: "restrict",
-        onUpdate: "cascade",
-      }),
-    title: varchar("title", { length: 200 }).notNull(),
-    description: text("description").notNull(),
-    status: taskStatusEnum("status").default("pending").notNull(),
-    resumeStatus: taskStatusEnum("resume_status"),
-    lifecycleStatus: taskLifecycleStatusEnum("lifecycle_status")
-      .default("active")
-      .notNull(),
-    author: contentAuthorEnum("author"),
-    priority: taskPriorityEnum("priority").default("normal").notNull(),
-    dueTime: timestamp("due_time", { withTimezone: true }),
-    timezone: varchar("timezone", { length: 64 }).notNull(),
-    tags: varchar("tags", { length: 50 })
-      .array()
-      .default(sql`ARRAY[]::varchar(50)[]`)
-      .notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("tasks_user_status_due_idx").on(
-      table.userId,
-      table.status,
-      table.dueTime,
-    ),
-    index("tasks_user_lifecycle_due_created_idx").on(
-      table.userId,
-      table.lifecycleStatus,
-      table.dueTime,
-      table.createdAt.desc(),
-      table.id,
-    ),
-    index("tasks_user_due_idx").on(table.userId, table.dueTime),
-    index("tasks_user_created_idx").on(
-      table.userId,
-      table.createdAt.desc(),
-    ),
-    check(
-      "tasks_title_not_blank",
-      sql`char_length(btrim(${table.title})) > 0`,
-    ),
-    check(
-      "tasks_description_not_blank",
-      sql`char_length(btrim(${table.description})) > 0`,
-    ),
-    check(
-      "tasks_timezone_not_blank",
-      sql`char_length(btrim(${table.timezone})) > 0`,
-    ),
-    check(
-      "tasks_timezone_format",
-      sql`${table.timezone} ~ '^[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*$'`,
-    ),
-    check("tasks_tags_limit", sql`cardinality(${table.tags}) <= 20`),
-    check(
-      "tasks_completed_at_consistency",
-      sql`(${table.status} = 'completed' AND ${table.completedAt} IS NOT NULL) OR (${table.status} <> 'completed' AND ${table.completedAt} IS NULL)`,
-    ),
-    check(
-      "tasks_resume_status_consistency",
-      sql`((${table.status} IN ('pending', 'in_progress') AND ${table.resumeStatus} IS NULL) OR (${table.status} IN ('completed', 'cancelled') AND ${table.resumeStatus} IS NOT NULL AND ${table.resumeStatus} IN ('pending', 'in_progress')))`,
-    ),
-  ],
-);
-
 export const toyCommands = pgTable(
   "toy_commands",
   {
@@ -1850,9 +3159,7 @@ export const toyCommands = pgTable(
   ],
 );
 export type UserPageCopy = {
-  memorySubtitle?: string;
   diarySubtitle?: string;
-  taskSubtitle?: string;
   settingsSubtitle?: string;
   homeHeroEyebrow?: string | null;
   homeHeroTitleMode?: "auto" | "custom";

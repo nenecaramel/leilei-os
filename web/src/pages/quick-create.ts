@@ -1,16 +1,13 @@
-export type QuickCreateTarget = "memory" | "diary" | "task";
+export type QuickCreateTarget = "diary";
 
 const QUICK_CREATE_TARGETS: readonly QuickCreateTarget[] = [
-  "memory",
   "diary",
-  "task",
 ];
 
 export function isQuickCreateTarget(
   value: unknown,
 ): value is QuickCreateTarget {
-  return typeof value === "string" &&
-    QUICK_CREATE_TARGETS.includes(value as QuickCreateTarget);
+  return value === "diary";
 }
 
 export function createQuickCreateState(
@@ -28,13 +25,29 @@ export function consumeQuickCreateTarget(
 ): boolean {
   if (typeof window === "undefined") return false;
   const state = window.history.state;
-  if (!state || typeof state !== "object" || !Object.prototype.hasOwnProperty.call(state, "quickCreate")) {
+  if (
+    !state
+    || typeof state !== "object"
+    || !Object.prototype.hasOwnProperty.call(
+      state,
+      "quickCreate",
+    )
+  ) {
     return false;
   }
-  const target = (state as { quickCreate?: unknown }).quickCreate;
-  const matches = target === expected && isQuickCreateTarget(target);
-  const nextState = { ...(state as Record<string, unknown>) };
+  const target =
+    (state as { quickCreate?: unknown }).quickCreate;
+  const matches =
+    target === expected
+    && isQuickCreateTarget(target);
+  const nextState = {
+    ...(state as Record<string, unknown>),
+  };
   delete nextState.quickCreate;
-  window.history.replaceState(nextState, "", window.location.href);
+  window.history.replaceState(
+    nextState,
+    "",
+    window.location.href,
+  );
   return matches;
 }

@@ -1,0 +1,607 @@
+import { EventEmitter } from "node:events";
+import { ClaudeEventNormalizer } from "./normalized-events.mjs";
+import {
+  normalizeAgentSdkInterruptReceipt,
+} from "./agent-sdk-interrupt.mjs";
+import {
+  assertInteractiveCallbackQueryOptions,
+  createAgentSdkPermissionCallback,
+} from "./agent-sdk-permission.mjs";
+import {
+  createAgentSdkQuestionCallback,
+} from "./agent-sdk-question.mjs";
+
+function runtimeError(message, details = {}) {
+  return Object.assign(new Error(message), details);
+}
+
+async function loadDefaultQuery() {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  if (typeof sdk.query !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK did not expose query().",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+  return sdk.query;
+}
+
+function userMessage(text) {
+  return {
+    type: "user",
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content: [{ type: "text", text }],
+    },
+  };
+}
+
+function nonblankString(value) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function createAgentSdkInputQueue(initialMessage) {
+  const queued = [initialMessage];
+  let waiter = null;
+  let ended = false;
+
+  return {
+    push(message) {
+      if (ended) {
+        throw runtimeError(
+          "Agent SDK input queue is already closed.",
+          { runtimeCode: "RUNTIME_UNAVAILABLE" },
+        );
+      }
+      if (waiter) {
+        const resolve = waiter;
+        waiter = null;
+        resolve({
+          value: message,
+          done: false,
+        });
+        return;
+      }
+      queued.push(message);
+    },
+
+    end() {
+      if (ended) return;
+      ended = true;
+      if (waiter) {
+        const resolve = waiter;
+        waiter = null;
+        resolve({
+          value: undefined,
+          done: true,
+        });
+      }
+    },
+
+    [Symbol.asyncIterator]() {
+      return {
+        next() {
+          if (queued.length > 0) {
+            return Promise.resolve({
+              value: queued.shift(),
+              done: false,
+            });
+          }
+          if (ended) {
+            return Promise.resolve({
+              value: undefined,
+              done: true,
+            });
+          }
+          return new Promise((resolve) => {
+            waiter = resolve;
+          });
+        },
+      };
+    },
+  };
+}
+
+function sdkResultFailed(message) {
+  if (!message || message.type !== "result") return false;
+  if (message.is_error === true) return true;
+  return typeof message.subtype === "string"
+    && message.subtype !== "success";
+}
+
+export async function createAgentSdkTurnHandle({
+  prompt,
+  mode = "new",
+  parentProviderSessionId = null,
+  resume = null,
+  forkSession = false,
+  queryImpl = null,
+  loadQuery = loadDefaultQuery,
+  environment = process.env,
+  cwd = process.cwd(),
+  queryOptions = {},
+  permissionHandler = null,
+  questionHandler = null,
+  streaming = false,
+  midTurnInput = false,
+  executionReadback = false,
+} = {}) {
+  if (environment.ANTHROPIC_API_KEY) {
+    throw new Error(
+      "ANTHROPIC_API_KEY must be unset; native live uses Claude subscription auth.",
+    );
+  }
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    throw new Error("Agent SDK turn prompt must be nonblank.");
+  }
+  if (typeof streaming !== "boolean") {
+    throw new Error("Agent SDK turn streaming must be boolean.");
+  }
+  if (typeof midTurnInput !== "boolean") {
+    throw new Error("Agent SDK turn midTurnInput must be boolean.");
+  }
+  if (typeof executionReadback !== "boolean") {
+    throw new Error("Agent SDK turn executionReadback must be boolean.");
+  }
+  if (
+    streaming
+    && queryOptions.includePartialMessages === false
+  ) {
+    throw new Error(
+      "streaming: true cannot be combined with includePartialMessages: false.",
+    );
+  }
+
+  const resolvedQuery = queryImpl ?? await loadQuery();
+  const events = new EventEmitter();
+
+  let permissionCallback = null;
+  let questionCallback = null;
+
+  if (
+    permissionHandler !== null
+    || questionHandler !== null
+  ) {
+    assertInteractiveCallbackQueryOptions(
+      queryOptions,
+      "interactive host callbacks",
+    );
+  }
+
+  if (permissionHandler !== null) {
+    permissionCallback =
+      createAgentSdkPermissionCallback({
+        permissionHandler,
+        events,
+      });
+  }
+
+  if (questionHandler !== null) {
+    questionCallback =
+      createAgentSdkQuestionCallback({
+        questionHandler,
+        events,
+      });
+  }
+
+  const interactiveCallback =
+    permissionCallback || questionCallback
+      ? async (
+          toolName,
+          input,
+          context = {},
+        ) => {
+          if (
+            toolName === "AskUserQuestion"
+            && questionCallback
+          ) {
+            return questionCallback(
+              toolName,
+              input,
+              context,
+            );
+          }
+
+          if (permissionCallback) {
+            return permissionCallback(
+              toolName,
+              input,
+              context,
+            );
+          }
+
+          return {
+            behavior: "deny",
+            message:
+              "LeileiOS has no permission handler configured for this tool request.",
+            interrupt: false,
+          };
+        }
+      : null;
+
+  const inputQueue = midTurnInput
+    ? createAgentSdkInputQueue(
+        userMessage(prompt),
+      )
+    : null;
+
+  async function* promptStream() {
+    yield userMessage(prompt);
+  }
+
+  const options = {
+    cwd,
+    env: environment,
+    settingSources: ["user", "project", "local"],
+    systemPrompt: {
+      type: "preset",
+      preset: "claude_code",
+    },
+    ...queryOptions,
+    ...(streaming
+      ? { includePartialMessages: true }
+      : {}),
+    ...(
+      interactiveCallback
+        ? { canUseTool: interactiveCallback }
+        : {}
+    ),
+    ...(resume ? { resume } : {}),
+    ...(forkSession ? { forkSession: true } : {}),
+  };
+
+  let query;
+  try {
+    query = resolvedQuery({
+      prompt:
+        inputQueue ?? promptStream(),
+      options,
+    });
+  } catch (cause) {
+    throw runtimeError(
+      `Failed to start Claude Agent SDK turn: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+    );
+  }
+
+  if (!query || typeof query[Symbol.asyncIterator] !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK query() did not return an async iterable.",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+
+  return new AgentSdkTurnHandle({
+    query,
+    mode,
+    parentProviderSessionId,
+    events,
+    inputQueue,
+    midTurnInput,
+    executionReadback,
+  });
+}
+
+export class AgentSdkTurnHandle {
+  constructor({
+    query,
+    mode,
+    parentProviderSessionId,
+    events = new EventEmitter(),
+    inputQueue = null,
+    midTurnInput = false,
+    executionReadback = false,
+  }) {
+    this.query = query;
+    this.mode = mode;
+    this.parentProviderSessionId = parentProviderSessionId;
+    this.events = events;
+    this.inputQueue = inputQueue;
+    this.midTurnInput = midTurnInput;
+    this.executionReadback = executionReadback;
+    this.providerSessionId = null;
+    this.interruptReceipt = null;
+    this.interruptRequested = false;
+    this.abortRequested = false;
+    this.closed = false;
+    this.started = false;
+    this.completion = null;
+    this.rawContextUsage = null;
+    this.contextUsageError = null;
+    this.rawExecutionSettings = null;
+    this.rawSupportedModels = null;
+    this.executionReadbackError = null;
+    this.executionReadbackSampled = false;
+  }
+
+  start() {
+    if (this.started) return this.completion;
+    if (this.closed) {
+      throw runtimeError(
+        "Agent SDK turn handle is already closed.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    this.started = true;
+    this.completion = this.#consume();
+    return this.completion;
+  }
+
+  sendUserMessage(text) {
+    if (!this.midTurnInput || !this.inputQueue) {
+      throw runtimeError(
+        "Agent SDK turn does not have mid-turn input enabled.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (!this.started || !this.completion) {
+      throw runtimeError(
+        "Agent SDK turn has not started.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (
+      this.closed
+      || this.abortRequested
+      || this.interruptRequested
+    ) {
+      throw runtimeError(
+        "Agent SDK turn no longer accepts user input.",
+        {
+          runtimeCode:
+            this.abortRequested
+              ? "ABORTED"
+              : "RUNTIME_UNAVAILABLE",
+        },
+      );
+    }
+
+    const normalizedText = nonblankString(text);
+    if (!normalizedText) {
+      throw new Error(
+        "Mid-turn user message must be nonblank.",
+      );
+    }
+
+    this.inputQueue.push(
+      userMessage(normalizedText),
+    );
+    const receipt = {
+      status: "queued",
+    };
+    this.events.emit(
+      "mid-turn-input",
+      receipt,
+    );
+    return receipt;
+  }
+
+  async interrupt() {
+    if (!this.started || !this.completion) {
+      throw runtimeError(
+        "Agent SDK turn has not started.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (this.closed) {
+      throw runtimeError(
+        "Agent SDK turn is already terminal.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    if (this.abortRequested) {
+      throw runtimeError(
+        "Agent SDK turn is already being hard-aborted.",
+        { runtimeCode: "ABORTED" },
+      );
+    }
+    if (typeof this.query.interrupt !== "function") {
+      throw runtimeError(
+        "Claude Agent SDK Query does not expose interrupt().",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    this.interruptRequested = true;
+    const receipt = normalizeAgentSdkInterruptReceipt(
+      await this.query.interrupt(),
+    );
+    this.inputQueue?.end();
+    this.interruptReceipt = receipt;
+    this.events.emit("interrupt", receipt);
+    return receipt;
+  }
+
+  abort() {
+    if (this.closed) return;
+    this.abortRequested = true;
+    this.inputQueue?.end();
+    this.query.close?.();
+    if (!this.started) {
+      this.closed = true;
+    }
+  }
+
+  async #consume() {
+    const parsedEvents = [];
+    const normalizedEvents = [];
+    const normalizer = new ClaudeEventNormalizer({
+      logicalConversationId: null,
+      mode: this.mode,
+      parentProviderSessionId:
+        this.parentProviderSessionId,
+    });
+    let terminalResult = null;
+    let terminalFailure = null;
+
+    try {
+      for await (const message of this.query) {
+        parsedEvents.push(message);
+        this.providerSessionId =
+          this.providerSessionId
+          ?? nonblankString(message?.session_id)
+          ?? nonblankString(message?.sessionId);
+
+        this.events.emit("event", message);
+        const next = normalizer.normalize(message);
+        normalizedEvents.push(...next);
+        for (const event of next) {
+          this.events.emit("normalized-event", event);
+        }
+
+        if (
+          this.executionReadback
+          && !this.executionReadbackSampled
+          && message?.type === "assistant"
+        ) {
+          this.executionReadbackSampled = true;
+          try {
+            if (typeof this.query.getSettings === "function") {
+              this.rawExecutionSettings =
+                await this.query.getSettings();
+            } else {
+              throw new Error(
+                "Claude Agent SDK Query does not expose getSettings().",
+              );
+            }
+
+            if (typeof this.query.supportedModels === "function") {
+              this.rawSupportedModels =
+                await this.query.supportedModels();
+            }
+          } catch (cause) {
+            this.executionReadbackError =
+              cause instanceof Error ? cause.message : String(cause);
+          }
+        }
+
+        if (
+          message?.type === "assistant"
+          && typeof this.query.getContextUsage === "function"
+        ) {
+          try {
+            this.rawContextUsage = await this.query.getContextUsage({
+              detail: "summary",
+            });
+            this.contextUsageError = null;
+          } catch (cause) {
+            if (!this.rawContextUsage) {
+              this.contextUsageError =
+                cause instanceof Error ? cause.message : String(cause);
+            }
+          }
+        }
+
+        if (message?.type === "result") {
+          terminalResult = message;
+          this.inputQueue?.end();
+        }
+        if (sdkResultFailed(message)) {
+          terminalFailure = message;
+        }
+      }
+    } catch (cause) {
+      if (this.abortRequested) {
+        throw runtimeError(
+          "Claude Agent SDK turn was aborted.",
+          {
+            runtimeCode: "ABORTED",
+            cause,
+            providerSessionId: this.providerSessionId,
+            events: parsedEvents,
+            normalizedEvents,
+          },
+        );
+      }
+      if (this.interruptReceipt) {
+        throw runtimeError(
+          "Claude Agent SDK turn was interrupted.",
+          {
+            runtimeCode: "INTERRUPTED",
+            cause,
+            providerSessionId: this.providerSessionId,
+            interruptReceipt: this.interruptReceipt,
+            result: terminalFailure,
+            events: parsedEvents,
+            normalizedEvents,
+          },
+        );
+      }
+      throw runtimeError(
+        `Claude Agent SDK turn failed: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          cause,
+          providerSessionId: this.providerSessionId,
+          events: parsedEvents,
+          normalizedEvents,
+        },
+      );
+    } finally {
+      this.inputQueue?.end();
+      this.closed = true;
+    }
+
+    if (this.abortRequested) {
+      throw runtimeError(
+        "Claude Agent SDK turn was aborted.",
+        {
+          runtimeCode: "ABORTED",
+          providerSessionId: this.providerSessionId,
+          events: parsedEvents,
+          normalizedEvents,
+        },
+      );
+    }
+
+    if (
+      this.interruptReceipt
+      && (
+        terminalFailure
+        || !terminalResult
+        || terminalResult.subtype !== "success"
+      )
+    ) {
+      throw runtimeError(
+        "Claude Agent SDK turn was interrupted.",
+        {
+          runtimeCode: "INTERRUPTED",
+          providerSessionId: this.providerSessionId,
+          interruptReceipt: this.interruptReceipt,
+          result: terminalFailure ?? terminalResult,
+          events: parsedEvents,
+          normalizedEvents,
+        },
+      );
+    }
+
+    if (terminalFailure) {
+      throw runtimeError(
+        "Claude Agent SDK turn failed.",
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          providerSessionId: this.providerSessionId,
+          result: terminalFailure,
+          events: parsedEvents,
+          normalizedEvents,
+        },
+      );
+    }
+
+    return {
+      providerSessionId: this.providerSessionId,
+      events: parsedEvents,
+      normalizedEvents,
+      result: terminalResult,
+      rawContextUsage: this.rawContextUsage,
+      contextUsageError: this.contextUsageError,
+      rawExecutionSettings: this.rawExecutionSettings,
+      rawSupportedModels: this.rawSupportedModels,
+      executionReadbackError: this.executionReadbackError,
+    };
+  }
+}

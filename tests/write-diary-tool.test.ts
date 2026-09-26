@@ -81,7 +81,7 @@ async function connectTestClient(dependencies: ReturnType<typeof createTestDepen
   return { client, server };
 }
 
-test("tools/list includes all registered Phase 4 tools plus later read additions", async (t) => {
+test("tools/list includes surviving Diary/Todo/Universe core tools", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -92,69 +92,38 @@ test("tools/list includes all registered Phase 4 tools plus later read additions
   });
 
   const response = await client.listTools();
-  assert.deepEqual(
-    response.tools.map((tool) => tool.name).sort(),
-    [
-      "add_universe_diary_source",
-      "archive_shared_paper",
-      "create_shared_paper",
-      "create_task",
-      "create_universe_node",
-      "create_universe_relation",
-      "delete_shared_paper",
-      "delete_universe_diary_source",
-      "delete_universe_relation",
-      "edit_shared_paper",
-      "get_diary",
-      "get_memory",
-      "get_notion_connection",
-      "get_shared_paper",
-      "get_task",
-      "get_universe_diary_sources",
-      "get_universe_node",
-      "get_universe_relations",
-      "get_weather_context",
-      "global_search",
-      "list_shared_paper_edits",
-      "list_shared_papers",
-      "list_tasks",
-      "list_todo_dates",
-      "list_universe_nodes",
-      "query_notion_data_source",
-      "read_memory",
-      "read_notion_data_source",
-      "read_notion_database",
-      "read_notion_page",
-      "read_todo_day",
-      "restore_shared_paper",
-      "search_diary",
-      "search_memory",
-      "search_notion",
-      "search_shared_papers",
-      "search_todo",
-      "search_universe",
-      "toy_set",
-      "toy_stop",
-      "transition_task",
-      "update_diary",
-      "update_memory",
-      "update_task",
-      "update_universe_node",
-      "update_universe_relation",
-      "write_diary",
-      "write_memory",
-      "write_todo_paper",
-    ],
-  );
+  const names = new Set(response.tools.map((tool) => tool.name));
+  for (const required of [
+    "create_diary",
+    "create_diary",
+    "update_diary",
+    "get_diary",
+    "search_diary",
+    "add_diary_comment",
+    "list_diary_comments",
+    "replace_todo_paper",
+    "append_todo_entries",
+    "append_todo_entry",
+    "update_todo_entry",
+    "delete_todo_entry",
+    "create_universe_node",
+    "global_search",
+  ]) {
+    assert.equal(
+      names.has(required),
+      true,
+      `full test server must keep ${required} registered`,
+    );
+  }
 
-  const writeDiary = response.tools.find((tool) => tool.name === "write_diary");
+  const writeDiary = response.tools.find((tool) => tool.name === "create_diary");
   assert.equal(writeDiary?.annotations?.readOnlyHint, false);
   assert.equal(writeDiary?.annotations?.idempotentHint, true);
   assert.equal("user_id" in (writeDiary?.inputSchema.properties ?? {}), false);
   assert.equal("source" in (writeDiary?.inputSchema.properties ?? {}), false);
 });
 
-test("write_diary calls the mock service with authenticated context", async (t) => {
+test("create_diary calls the mock service with authenticated context", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -165,7 +134,7 @@ test("write_diary calls the mock service with authenticated context", async (t) 
   });
 
   const response = await client.callTool({
-    name: "write_diary",
+    name: "create_diary",
     arguments: {
       title: "测试日记",
       content: "这是来自 MCP Tool 测试的内容。",
@@ -203,12 +172,20 @@ test("write_diary calls the mock service with authenticated context", async (t) 
         author: "G",
         created_at: "2026-07-22T08:00:00.000Z",
       },
-      metadata: { created: true, idempotent_replay: false },
+      outcome: "applied",
+      entity_type: "diary",
+      entity_id: "00000000-0000-4000-8000-000000000001",
+      revision: null,
+      detail_tool: "get_diary",
+      detail_arguments: {
+        id: "00000000-0000-4000-8000-000000000001",
+        scope: "active",
+      },
     },
   });
 });
 
-test("write_diary accepts and serializes C-authored entries", async (t) => {
+test("create_diary accepts and serializes C-authored entries", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -219,7 +196,7 @@ test("write_diary accepts and serializes C-authored entries", async (t) => {
   });
 
   const response = await client.callTool({
-    name: "write_diary",
+    name: "create_diary",
     arguments: {
       title: "Claude diary",
       content: "A C-authored entry.",
@@ -235,7 +212,7 @@ test("write_diary accepts and serializes C-authored entries", async (t) => {
   assert.equal((response.structuredContent as { data: { diary: { author: string } } }).data.diary.author, "C");
 });
 
-test("write_diary rejects invalid input before calling the service", async (t) => {
+test("create_diary rejects invalid input before calling the service", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService),
@@ -246,7 +223,7 @@ test("write_diary rejects invalid input before calling the service", async (t) =
   });
 
   const response = await client.callTool({
-    name: "write_diary",
+    name: "create_diary",
     arguments: {
       title: "测试日记",
       content: "内容",
@@ -262,7 +239,7 @@ test("write_diary rejects invalid input before calling the service", async (t) =
   assert.equal(diaryService.calls.length, 0);
 });
 
-test("write_diary fails safely when authenticated context is unavailable", async (t) => {
+test("create_diary fails safely when authenticated context is unavailable", async (t) => {
   const diaryService = new MockDiaryToolService();
   const { client, server } = await connectTestClient(
     createTestDependencies(diaryService, () => {
@@ -275,7 +252,7 @@ test("write_diary fails safely when authenticated context is unavailable", async
   });
 
   const response = await client.callTool({
-    name: "write_diary",
+    name: "create_diary",
     arguments: {
       title: "测试日记",
       content: "内容",

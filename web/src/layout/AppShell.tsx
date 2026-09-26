@@ -12,7 +12,6 @@ import { NavigationPanel } from "./NavigationPanel";
 import { QuickSearchPanel } from "./QuickSearchPanel";
 import { RouteScrollManager } from "./RouteScrollManager";
 
-export { NAV_ITEMS } from "./NavigationGroups";
 
 export function AppShell() {
   const api = useWebApiClient();
