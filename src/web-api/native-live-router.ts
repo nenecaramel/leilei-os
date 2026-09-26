@@ -50,7 +50,7 @@ export type NativeLiveApiDependencies = {
   currentPathReader?: NativeLiveCurrentPathReader;
   conversationService?: Pick<
     NativeLiveConversationService,
-    "listConversations" | "createConversation" | "renameConversation" | "deleteConversation"
+    "listConversations" | "listConversationPage" | "createConversation" | "renameConversation" | "deleteConversation"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
@@ -150,6 +150,18 @@ export function listNativeLiveConversationsHandler(
       return;
     }
 
+    const cursor = parseOptionalCursorQuery(request.query.cursor);
+    if (cursor === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_CURSOR",
+          message: "Conversation list cursor must be a single non-empty string.",
+        },
+      });
+      return;
+    }
+
     const service = dependencies.conversationService;
     if (!service) {
       response.status(503).json({
@@ -163,15 +175,29 @@ export function listNativeLiveConversationsHandler(
     }
 
     try {
-      const conversations = await service.listConversations({
+      const page = await service.listConversationPage({
         userId: request.webUserId,
         limit,
+        ...(cursor ? { cursor } : {}),
       });
       response.json({
         success: true,
-        data: { conversations },
+        data: {
+          conversations: page.conversations,
+          nextCursor: page.nextCursor,
+        },
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof RangeError) {
+        response.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_CURSOR",
+            message: error.message,
+          },
+        });
+        return;
+      }
       response.status(503).json({
         success: false,
         error: {
@@ -1059,6 +1085,26 @@ export function readNativeLiveCurrentPathHandler(
       return;
     }
 
+    const beforeMessageId =
+      parseOptionalUuidQuery(request.query.before_message_id);
+    const afterMessageId =
+      parseOptionalUuidQuery(request.query.after_message_id);
+    if (
+      beforeMessageId === null
+      || afterMessageId === null
+      || (beforeMessageId && afterMessageId)
+    ) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CURRENT_PATH_CURSOR",
+          message:
+            "Current path accepts one valid before_message_id or after_message_id cursor.",
+        },
+      });
+      return;
+    }
+
     const reader = dependencies.currentPathReader;
     if (!reader) {
       response.status(503).json({
@@ -1077,6 +1123,8 @@ export function readNativeLiveCurrentPathHandler(
         userId: request.webUserId,
         conversationId,
         limit,
+        ...(beforeMessageId ? { beforeMessageId } : {}),
+        ...(afterMessageId ? { afterMessageId } : {}),
       });
       if (!snapshot) {
         response.status(404).json({
@@ -1092,6 +1140,7 @@ export function readNativeLiveCurrentPathHandler(
       const etag = nativeLiveCurrentPathEtag(
         snapshot.syncToken,
         limit,
+        { beforeMessageId, afterMessageId },
       );
       response.setHeader("ETag", etag);
       if (ifNoneMatchContains(request.header("if-none-match"), etag)) {
@@ -1109,10 +1158,22 @@ export function readNativeLiveCurrentPathHandler(
           updatedAt: snapshot.updatedAt,
           syncToken: snapshot.syncToken,
           truncated: snapshot.truncated,
+          olderCursor: snapshot.olderCursor,
+          resetRequired: snapshot.resetRequired,
           messages: snapshot.messages,
         },
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof RangeError) {
+        response.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_NATIVE_LIVE_CURRENT_PATH_CURSOR",
+            message: error.message,
+          },
+        });
+        return;
+      }
       response.status(503).json({
         success: false,
         error: {
@@ -1226,6 +1287,24 @@ function parseCreateConversationBody(
     return { ok: false };
   }
   return { ok: true, title: trimmed };
+}
+
+function parseOptionalCursorQuery(
+  value: unknown,
+): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value;
+}
+
+function parseOptionalUuidQuery(
+  value: unknown,
+): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+    return null;
+  }
+  return value;
 }
 
 function parseCurrentPathLimit(

@@ -36,14 +36,21 @@ class FakeConversationService {
     };
 
   async listConversations(input: unknown) {
+    return (await this.listConversationPage(input)).conversations;
+  }
+
+  async listConversationPage(input: unknown) {
     this.listCalls.push(input);
-    return [{
-      id: conversationId,
-      title: "Existing",
-      currentHeadMessageId: null,
-      createdAt: "2026-09-24T00:00:00.000Z",
-      updatedAt: "2026-09-24T01:00:00.000Z",
-    }];
+    return {
+      conversations: [{
+        id: conversationId,
+        title: "Existing",
+        currentHeadMessageId: null,
+        createdAt: "2026-09-24T00:00:00.000Z",
+        updatedAt: "2026-09-24T01:00:00.000Z",
+      }],
+      nextCursor: "next-page",
+    };
   }
 
   async createConversation(input: {
@@ -85,6 +92,9 @@ async function withServer(
   conversationService: FakeConversationService,
   callback: (baseUrl: string) => Promise<void>,
   authenticated = true,
+  currentPathReader?: {
+    readCurrentPath(input: unknown): Promise<unknown>;
+  },
 ): Promise<void> {
   const app = express();
   app.use(express.json());
@@ -111,6 +121,7 @@ async function withServer(
         },
       },
       conversationService,
+      currentPathReader: currentPathReader as never,
     }),
   );
 
@@ -135,12 +146,31 @@ test("native live bootstrap lists owner-scoped active summaries with a bounded l
     );
     assert.equal(response.status, 200);
     const payload = await response.json() as {
-      data: { conversations: Array<Record<string, unknown>> };
+      data: {
+        conversations: Array<Record<string, unknown>>;
+        nextCursor: string | null;
+      };
     };
     assert.equal(payload.data.conversations.length, 1);
+    assert.equal(payload.data.nextCursor, "next-page");
     assert.equal(payload.data.conversations[0]?.id, conversationId);
     assert.equal("userId" in (payload.data.conversations[0] ?? {}), false);
     assert.deepEqual(service.listCalls, [{ userId, limit: 2 }]);
+  });
+});
+
+test("native live bootstrap forwards an opaque pagination cursor", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations?limit=2&cursor=opaque-next`,
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(service.listCalls, [{
+      userId,
+      limit: 2,
+      cursor: "opaque-next",
+    }]);
   });
 });
 
@@ -159,6 +189,75 @@ test("native live bootstrap defaults list limit and rejects an invalid limit", a
     assert.equal(invalid.status, 400);
     assert.equal(service.listCalls.length, 1);
   });
+});
+
+test("native live current path forwards delta cursor and returns pagination metadata", async () => {
+  const service = new FakeConversationService();
+  const calls: unknown[] = [];
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const afterMessageId = "66666666-6666-4666-8666-666666666666";
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?limit=25&after_message_id=${afterMessageId}`,
+      );
+      assert.equal(response.status, 200);
+      const payload = await response.json() as {
+        data: {
+          olderCursor: string | null;
+          resetRequired: boolean;
+          messages: unknown[];
+        };
+      };
+      assert.equal(payload.data.olderCursor, null);
+      assert.equal(payload.data.resetRequired, false);
+      assert.equal(payload.data.messages.length, 0);
+      assert.deepEqual(calls, [{
+        userId,
+        conversationId,
+        limit: 25,
+        afterMessageId,
+      }]);
+    },
+    true,
+    {
+      async readCurrentPath(input: unknown) {
+        calls.push(input);
+        return {
+          conversationId,
+          title: "Existing",
+          currentHeadMessageId: "77777777-7777-4777-8777-777777777777",
+          updatedAt: "2026-09-26T08:00:00.000Z",
+          syncToken: "head:77777777-7777-4777-8777-777777777777",
+          truncated: false,
+          olderCursor: null,
+          resetRequired: false,
+          messages: [],
+        };
+      },
+    },
+  );
+});
+
+test("native live current path rejects simultaneous older and delta cursors", async () => {
+  const service = new FakeConversationService();
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const beforeMessageId = "66666666-6666-4666-8666-666666666666";
+      const afterMessageId = "77777777-7777-4777-8777-777777777777";
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path?before_message_id=${beforeMessageId}&after_message_id=${afterMessageId}`,
+      );
+      assert.equal(response.status, 400);
+    },
+    true,
+    {
+      async readCurrentPath() {
+        throw new Error("must not be called");
+      },
+    },
+  );
 });
 
 test("native live bootstrap creates for the authenticated owner and trims title", async () => {
