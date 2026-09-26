@@ -152,20 +152,6 @@ export class SubjectStateBackgroundMaintenance {
       });
     }
     if (
-      selected.has("mind_retirement")
-      && this.config.mindRetirement
-      && this.runners.mindRetirement
-    ) {
-      this.scheduleOne({
-        userId,
-        mutex,
-        key: "mind-retirement",
-        kind: "mind_retirement",
-        plan: this.config.mindRetirement,
-        runner: this.runners.mindRetirement,
-      });
-    }
-    if (
       selected.has("topic_lifecycle")
       && this.config.topicLifecycle
       && (
@@ -207,6 +193,21 @@ export class SubjectStateBackgroundMaintenance {
             });
           }
         },
+      });
+    }
+
+    if (
+      selected.has("mind_retirement")
+      && this.config.mindRetirement
+      && this.runners.mindRetirement
+    ) {
+      this.scheduleOne({
+        userId,
+        mutex,
+        key: "mind-retirement",
+        kind: "mind_retirement",
+        plan: this.config.mindRetirement,
+        runner: this.runners.mindRetirement,
       });
     }
   }
