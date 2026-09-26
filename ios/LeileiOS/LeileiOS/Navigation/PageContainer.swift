@@ -8,6 +8,9 @@ struct PageContainer: View {
     @State private var renameErrorMessage: String?
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
+    @State private var showingContext = false
+    @State private var showingProjectPicker = false
+    @State private var showingWorkspacePicker = false
 
     let selectedPage: AppPage
     let isDraftConversation: Bool
@@ -25,6 +28,8 @@ struct PageContainer: View {
                         draftConversationID: draftConversationID,
                         onDraftCommitted: onDraftCommitted
                     )
+                } else if selectedPage == .projects {
+                    ProjectsView()
                 } else if selectedPage == .globalSearch {
                     GlobalSearchView()
                 } else if selectedPage == .diary {
@@ -54,11 +59,44 @@ struct PageContainer: View {
                 if selectedPage != .globalSearch
                     && selectedPage != .diary
                     && selectedPage != .daySpace
-                    && selectedPage != .conversations {
+                    && selectedPage != .conversations
+                    && selectedPage != .projects {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
-                            if !isDraftConversation {
-                                Menu {
+                            Menu {
+                                Button {
+                                    showingContext = true
+                                } label: {
+                                    Label(
+                                        "Context",
+                                        systemImage: "chart.bar"
+                                    )
+                                }
+
+                                Button {
+                                    showingProjectPicker = true
+                                } label: {
+                                    Label(
+                                        "Move to Project",
+                                        systemImage: "folder"
+                                    )
+                                }
+                                .disabled(
+                                    isDraftConversation
+                                        || appModel.activeNativeLiveConversationID == nil
+                                )
+
+                                Button {
+                                    showingWorkspacePicker = true
+                                } label: {
+                                    Label(
+                                        "Workspace",
+                                        systemImage: "externaldrive"
+                                    )
+                                }
+
+                                Divider()
+
                                 Button {
                                     guard appModel.activeNativeLiveConversationID != nil else {
                                         return
@@ -84,9 +122,8 @@ struct PageContainer: View {
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 18, weight: .medium))
-                                }
-                                .accessibilityLabel("Conversation menu")
                             }
+                            .accessibilityLabel("Conversation menu")
                         } else {
                             Button {
                             } label: {
@@ -100,6 +137,15 @@ struct PageContainer: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+        .sheet(isPresented: $showingContext) {
+            ContextOverviewSheet()
+        }
+        .sheet(isPresented: $showingProjectPicker) {
+            ProjectPickerSheet(title: "Move to Project")
+        }
+        .sheet(isPresented: $showingWorkspacePicker) {
+            WorkspacePickerSheet()
+        }
         .alert(
             "Rename",
             isPresented: $showingRenameAlert
