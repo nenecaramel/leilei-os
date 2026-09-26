@@ -50,13 +50,6 @@ import type { TodoApiDependencies } from "../web-api/todo-router.js";
 import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
-import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
-import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
-import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
-import type { ConversationLifecycleApiDependencies } from "../web-api/conversation-lifecycle-router.js";
-import type { ConversationFavoriteApiDependencies } from "../web-api/conversation-favorite-router.js";
-import type { ConversationExclusionManagementApiDependencies } from "../web-api/conversation-exclusion-management-router.js";
-import type { ConversationImportHistoryApiDependencies } from "../web-api/conversation-import-history-router.js";
 import type { NativeLiveApiDependencies } from "../web-api/native-live-router.js";
 import {
   createNativeLiveRelayInternalRouter,
@@ -99,13 +92,6 @@ export type AppDependencies = {
   webExportService?: ExportApiDependencies["exportService"];
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
-  webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
-  webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
-  webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
-  webConversationLifecycle?: ConversationLifecycleApiDependencies;
-  webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
-  webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
-  webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -333,12 +319,6 @@ export function createApp(
     const webExportService = dependencies.webExportService;
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
-    const webConversationImportService = dependencies.webConversationImportService;
-    const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
-    const webConversationPruningService = dependencies.webConversationPruningService;
-    const webConversationFavoriteService = dependencies.webConversationFavoriteService;
-    const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
-    const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
 
     if (
       !webDiaryService ||
@@ -395,13 +375,6 @@ export function createApp(
         export: { exportService: webExportService },
         import: { importService: webImportService },
         universe: { universeService: webUniverseService },
-        ...(webConversationFavoriteService ? { conversationFavorite: { conversationFavoriteService: webConversationFavoriteService } } : {}),
-        ...(webConversationExclusionManagementService ? { conversationExclusionManagement: { conversationExclusionManagementService: webConversationExclusionManagementService } } : {}),
-        ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),
-        ...(webConversationArchiveReadService ? { conversationRead: { conversationArchiveReadService: webConversationArchiveReadService } } : {}),
-        ...(webConversationPruningService ? { conversationPruning: { conversationPruningService: webConversationPruningService } } : {}),
-        ...(dependencies.webConversationLifecycle ? { conversationLifecycle: dependencies.webConversationLifecycle } : {}),
-        ...(webConversationImportService ? { conversationImport: { conversationImportService: webConversationImportService } } : {}),
         ...(dependencies.nativeLiveProduction
           ? {
               nativeLive:
