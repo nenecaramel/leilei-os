@@ -674,7 +674,6 @@ export function createProcessRuntime(
     healthService,
     publicToolProfiles,
     internalToolProfiles,
-    logger,
   });
 
   return {

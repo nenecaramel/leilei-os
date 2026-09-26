@@ -7,7 +7,6 @@ import type { TodoService } from "../../domains/todo/todo-service.js";
 import type { ToyCommandService } from "../../domains/toy/toy-command-service.js";
 import type { UniverseService } from "../../domains/universe/universe-service.js";
 import type { McpSessionNamespace } from "./session-registry.js";
-import type { SafeLogger } from "../../observability/logger.js";
 import type { HealthService } from "../../domains/health-v2/health-service.js";
 import type { ConversationArchiveReadService } from "../../domains/conversation/conversation-archive-read-service.js";
 import type { ConversationExclusionManagementService } from "../../domains/conversation/conversation-exclusion-management-service.js";
@@ -47,7 +46,6 @@ export function createProductionMcpSessionServerFactory(input: {
   conversationArchiveReadService?: ConversationArchiveReadService;
   conversationExclusionManagementService?: ConversationExclusionManagementService;
   conversationRecoveryVisibility?: "public-enabled" | "internal-only";
-  logger?: SafeLogger;
   publicToolProfiles?: readonly McpToolProfileName[];
   internalToolProfiles?: readonly McpToolProfileName[];
 }): McpSessionServerFactory {
