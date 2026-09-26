@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private let daySpaceStateHeight: CGFloat = 470
 
@@ -105,14 +106,20 @@ struct DaySpaceView: View {
                 selectDate(DaySpaceDate.businessDate(datePickerDraft))
             }
         }
-        .overlay {
-            if let selection {
-                switch selection {
+        .fullScreenCover(item: $selection) { paper in
+            Group {
+                switch paper {
                 case .todo(let todo):
                     DaySpaceTodoPaperDetail(
                         paper: todo,
                         onSaved: { committed in
                             applyTodo(committed)
+                            Task {
+                                await refreshTodoAfterSave(
+                                    date: committed.date,
+                                    committed: committed
+                                )
+                            }
                         },
                         onClosed: {
                             self.selection = nil
@@ -124,6 +131,12 @@ struct DaySpaceView: View {
                         diary: diary,
                         onSaved: { committed in
                             applyDiary(committed)
+                            Task {
+                                await refreshDiaryAfterSave(
+                                    date: committed.date,
+                                    committed: committed
+                                )
+                            }
                         },
                         onClosed: {
                             self.selection = nil
@@ -131,6 +144,8 @@ struct DaySpaceView: View {
                     )
                 }
             }
+            .presentationBackground(.clear)
+            .interactiveDismissDisabled()
         }
         .task {
             await discoverAndLoad()
@@ -486,6 +501,67 @@ struct DaySpaceView: View {
             return .success(response.data.diaries)
         } catch {
             return .failure(error)
+        }
+    }
+
+    @MainActor
+    private func refreshTodoAfterSave(
+        date: String,
+        committed: DaySpaceTodoPaper
+    ) async {
+        guard selectedDate == date else { return }
+
+        let result = await readTodo(date: date)
+
+        guard selectedDate == date else { return }
+
+        switch result {
+        case .success(let day):
+            todoState = .ready(day)
+
+        case .failure:
+            var current = todoState.value
+                ?? DaySpaceTodoDay(
+                    date: date,
+                    papers: DaySpaceTodoPapers(
+                        L: nil,
+                        G: nil,
+                        C: nil
+                    )
+                )
+            current.setPaper(
+                committed.entries.isEmpty ? nil : committed,
+                for: committed.author
+            )
+            todoState = .error(current)
+        }
+    }
+
+    @MainActor
+    private func refreshDiaryAfterSave(
+        date: String,
+        committed: DaySpaceDiary
+    ) async {
+        guard selectedDate == date else { return }
+
+        let result = await readDiaries(date: date)
+
+        guard selectedDate == date else { return }
+
+        switch result {
+        case .success(let diaries):
+            diaryState = .ready(diaries)
+
+        case .failure:
+            var diaries = diaryState.value ?? []
+            if let index = diaries.firstIndex(
+                where: { $0.id == committed.id }
+            ) {
+                diaries[index] = committed
+            } else {
+                diaries.append(committed)
+            }
+            diaryState = .error(diaries)
         }
     }
 
