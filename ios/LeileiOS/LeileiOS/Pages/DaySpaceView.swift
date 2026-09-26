@@ -14,6 +14,7 @@ struct DaySpaceView: View {
     @State private var todoState: DaySpaceModuleState<DaySpaceTodoDay> = .loading(nil)
     @State private var diaryState: DaySpaceModuleState<[DaySpaceDiary]> = .loading(nil)
     @State private var selection: DaySpacePaperSelection?
+    @State private var createPresented = false
     @State private var datePickerPresented = false
     @State private var datePickerDraft = Date.now
     @State private var generation = 0
@@ -97,7 +98,21 @@ struct DaySpaceView: View {
         .toolbar {
             if #available(iOS 26.0, *) {
                 DefaultToolbarItem(kind: .search, placement: .bottomBar)
+
+                ToolbarSpacer(.fixed, placement: .bottomBar)
+
+                ToolbarItem(placement: .bottomBar) {
+                    Button {
+                        createPresented = true
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .accessibilityLabel("New Todo")
+                }
             }
+        }
+        .navigationDestination(isPresented: $createPresented) {
+            DaySpaceTodoCreatePlaceholder()
         }
         .sheet(isPresented: $datePickerPresented) {
             DaySpaceDatePickerSheet(
@@ -586,6 +601,15 @@ struct DaySpaceView: View {
         }
 
         diaryState = .ready(diaries)
+    }
+}
+
+private struct DaySpaceTodoCreatePlaceholder: View {
+    var body: some View {
+        Color(.systemBackground)
+            .ignoresSafeArea()
+            .navigationTitle("New Todo")
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 
