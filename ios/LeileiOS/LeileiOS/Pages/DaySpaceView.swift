@@ -1061,6 +1061,7 @@ private struct DaySpaceDiaryPreview: View {
     }
 }
 
+
 private struct DaySpaceTodoPaperDetail: View {
     let paper: DaySpaceTodoPaper
     let onSaved: (DaySpaceTodoPaper) -> Void
@@ -1069,6 +1070,7 @@ private struct DaySpaceTodoPaperDetail: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var rows: [DaySpaceEditableTodoEntry]
+    @State private var focusRequest: DaySpaceTodoFocusRequest?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -1090,7 +1092,7 @@ private struct DaySpaceTodoPaperDetail: View {
 
     var body: some View {
         DaySpacePaperDetailLayer(
-            dateLabel: DaySpaceDate.fullLabel(paper.date),
+            dateLabel: DaySpaceDate.paperLabel(paper.date),
             errorMessage: errorMessage,
             onRequestClose: {
                 Task {
@@ -1109,52 +1111,86 @@ private struct DaySpaceTodoPaperDetail: View {
                             design: .serif
                         )
                     )
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(
+                        Color(
+                            white: 0.52
+                        )
+                    )
             }
         ) {
             LazyVStack(spacing: 0) {
-                ForEach($rows) { $row in
+                ForEach(rows) { row in
                     HStack(alignment: .top, spacing: 8) {
                         Button {
-                            row.kind = row.kind.next
+                            cycleStatus(row.id)
                         } label: {
-                            DaySpaceTodoMark(kind: row.kind)
-                                .frame(width: 22, height: 30)
+                            DaySpaceTodoEditorMark(
+                                kind: row.kind
+                            )
+                            .frame(
+                                width: 22,
+                                height: 30
+                            )
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Change todo status")
 
-                        TextField(
-                            "",
-                            text: $row.text,
-                            axis: .vertical
+                        DaySpaceTodoLineEditor(
+                            text: row.text,
+                            kind: row.kind,
+                            rowID: row.id,
+                            focusRequest: focusRequest,
+                            onTextChange: { text in
+                                updateText(
+                                    rowID: row.id,
+                                    text: text
+                                )
+                            },
+                            onSplit: { range in
+                                splitRow(
+                                    rowID: row.id,
+                                    range: range
+                                )
+                            },
+                            onMergePrevious: {
+                                mergeWithPrevious(
+                                    rowID: row.id
+                                )
+                            },
+                            onMergeNext: {
+                                mergeWithNext(
+                                    rowID: row.id
+                                )
+                            },
+                            onMovePrevious: {
+                                moveToPrevious(
+                                    rowID: row.id
+                                )
+                            },
+                            onMoveNext: {
+                                moveToNext(
+                                    rowID: row.id
+                                )
+                            },
+                            onPasteMultiline: { range, text in
+                                pasteMultiline(
+                                    rowID: row.id,
+                                    range: range,
+                                    text: text
+                                )
+                            }
                         )
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14))
-                        .lineLimit(1...5)
                         .frame(
                             maxWidth: .infinity,
                             minHeight: 30,
                             alignment: .topLeading
                         )
-                        .strikethrough(row.kind == .completed)
-                        .foregroundStyle(
-                            row.kind == .completed
-                                ? Color.secondary
-                                : Color.primary
-                        )
-                        .onChange(of: row.text) { _, _ in
-                            ensureRowCapacity()
-                        }
                     }
-                    .frame(minHeight: 30, alignment: .top)
-                    .opacity(
-                        row.text.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        ).isEmpty
-                            ? 0.58
-                            : 1
+                    .frame(
+                        minHeight: 30,
+                        alignment: .top
                     )
+                    .opacity(row.creation ? 0.58 : 1)
                 }
             }
         }
@@ -1165,7 +1201,10 @@ private struct DaySpaceTodoPaperDetail: View {
             let text = row.text.trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
-            guard !text.isEmpty else { return nil }
+
+            guard !text.isEmpty else {
+                return nil
+            }
 
             return DaySpaceTodoEntry(
                 id: row.id,
@@ -1182,12 +1221,16 @@ private struct DaySpaceTodoPaperDetail: View {
             return true
         }
 
-        for (left, right) in zip(current, paper.entries) {
+        for (left, right) in zip(
+            current,
+            paper.entries
+        ) {
             if left.id != right.id
                 || left.kind != right.kind
-                || left.text != right.text.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ) {
+                || left.text
+                    != right.text.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ) {
                 return true
             }
         }
@@ -1195,7 +1238,318 @@ private struct DaySpaceTodoPaperDetail: View {
         return false
     }
 
-    private func ensureRowCapacity() {
+    private func cycleStatus(_ rowID: String) {
+        guard let index = rowIndex(rowID) else {
+            return
+        }
+
+        rows[index].kind = rows[index].kind.next
+        errorMessage = nil
+    }
+
+    private func updateText(
+        rowID: String,
+        text: String
+    ) {
+        guard let index = rowIndex(rowID) else {
+            return
+        }
+
+        rows[index].text = text
+        rows[index].creation = text
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .isEmpty
+        normalizeVisibleRows()
+        errorMessage = nil
+    }
+
+    private func splitRow(
+        rowID: String,
+        range: NSRange
+    ) -> Bool {
+        guard let index = rowIndex(rowID) else {
+            return false
+        }
+
+        let source = rows[index].text as NSString
+        guard range.location >= 0,
+              NSMaxRange(range) <= source.length
+        else {
+            return false
+        }
+
+        let before = source.substring(
+            with: NSRange(
+                location: 0,
+                length: range.location
+            )
+        )
+        let after = source.substring(
+            from: NSMaxRange(range)
+        )
+
+        rows[index].text = before
+        rows[index].creation = before
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .isEmpty
+
+        let nextIndex = index + 1
+        let targetID: String
+
+        if rows.indices.contains(nextIndex),
+           rows[nextIndex].creation,
+           rows[nextIndex].text.isEmpty {
+            rows[nextIndex].text = after
+            rows[nextIndex].creation = after
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                .isEmpty
+            targetID = rows[nextIndex].id
+        } else {
+            let next = DaySpaceEditableTodoEntry(
+                id: UUID().uuidString.lowercased(),
+                kind: .pending,
+                text: after,
+                creation: after
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .isEmpty
+            )
+            rows.insert(
+                next,
+                at: nextIndex
+            )
+            targetID = next.id
+        }
+
+        normalizeVisibleRows()
+        requestFocus(
+            rowID: targetID,
+            offset: 0
+        )
+        errorMessage = nil
+        return true
+    }
+
+    private func mergeWithPrevious(
+        rowID: String
+    ) -> Bool {
+        guard let index = rowIndex(rowID),
+              index > 0
+        else {
+            return false
+        }
+
+        let previousIndex = index - 1
+        let previousLength = rows[previousIndex]
+            .text.utf16.count
+        let merged = rows[previousIndex].text
+            + rows[index].text
+
+        rows[previousIndex].text = merged
+        rows[previousIndex].creation = merged
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .isEmpty
+
+        let targetID = rows[previousIndex].id
+        rows.remove(at: index)
+        normalizeVisibleRows()
+        requestFocus(
+            rowID: targetID,
+            offset: previousLength
+        )
+        errorMessage = nil
+        return true
+    }
+
+    private func mergeWithNext(
+        rowID: String
+    ) -> Bool {
+        guard let index = rowIndex(rowID),
+              rows.indices.contains(index + 1)
+        else {
+            return false
+        }
+
+        let nextIndex = index + 1
+        let next = rows[nextIndex]
+
+        if next.creation,
+           next.text.isEmpty {
+            return true
+        }
+
+        let caretOffset = rows[index].text.utf16.count
+        rows[index].text += next.text
+        rows[index].creation = rows[index].text
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .isEmpty
+        rows.remove(at: nextIndex)
+        normalizeVisibleRows()
+        requestFocus(
+            rowID: rowID,
+            offset: caretOffset
+        )
+        errorMessage = nil
+        return true
+    }
+
+    private func moveToPrevious(
+        rowID: String
+    ) -> Bool {
+        guard let index = rowIndex(rowID),
+              index > 0
+        else {
+            return false
+        }
+
+        let previous = rows[index - 1]
+        requestFocus(
+            rowID: previous.id,
+            offset: previous.text.utf16.count
+        )
+        return true
+    }
+
+    private func moveToNext(
+        rowID: String
+    ) -> Bool {
+        guard let index = rowIndex(rowID),
+              rows.indices.contains(index + 1)
+        else {
+            return false
+        }
+
+        requestFocus(
+            rowID: rows[index + 1].id,
+            offset: 0
+        )
+        return true
+    }
+
+    private func pasteMultiline(
+        rowID: String,
+        range: NSRange,
+        text: String
+    ) -> Bool {
+        guard text.contains("\n")
+                || text.contains("\r"),
+              let index = rowIndex(rowID)
+        else {
+            return false
+        }
+
+        let source = rows[index].text as NSString
+        guard range.location >= 0,
+              NSMaxRange(range) <= source.length
+        else {
+            return false
+        }
+
+        let normalized = text.replacingOccurrences(
+            of: "\r\n",
+            with: "\n"
+        )
+        .replacingOccurrences(
+            of: "\r",
+            with: "\n"
+        )
+
+        let lines = normalized.components(
+            separatedBy: "\n"
+        )
+
+        guard lines.count > 1 else {
+            return false
+        }
+
+        let prefix = source.substring(
+            with: NSRange(
+                location: 0,
+                length: range.location
+            )
+        )
+        let suffix = source.substring(
+            from: NSMaxRange(range)
+        )
+
+        rows[index].text = prefix + (lines.first ?? "")
+        rows[index].creation = rows[index].text
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .isEmpty
+
+        var inserted: [DaySpaceEditableTodoEntry] = []
+
+        for lineIndex in 1..<lines.count {
+            let line = lines[lineIndex]
+            let isLast = lineIndex == lines.count - 1
+            let rowText = isLast
+                ? line + suffix
+                : line
+
+            inserted.append(
+                DaySpaceEditableTodoEntry(
+                    id: UUID().uuidString.lowercased(),
+                    kind: .pending,
+                    text: rowText,
+                    creation: rowText
+                        .trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        )
+                        .isEmpty
+                )
+            )
+        }
+
+        rows.insert(
+            contentsOf: inserted,
+            at: index + 1
+        )
+
+        if let target = inserted.last {
+            requestFocus(
+                rowID: target.id,
+                offset: (lines.last ?? "").utf16.count
+            )
+        }
+
+        normalizeVisibleRows()
+        errorMessage = nil
+        return true
+    }
+
+    private func rowIndex(
+        _ rowID: String
+    ) -> Int? {
+        rows.firstIndex {
+            $0.id == rowID
+        }
+    }
+
+    private func requestFocus(
+        rowID: String,
+        offset: Int
+    ) {
+        focusRequest = DaySpaceTodoFocusRequest(
+            token: UUID(),
+            rowID: rowID,
+            offset: offset
+        )
+    }
+
+    private func normalizeVisibleRows() {
         let lastContentIndex = rows.lastIndex {
             !$0.text.trimmingCharacters(
                 in: .whitespacesAndNewlines
@@ -1209,26 +1563,23 @@ private struct DaySpaceTodoPaperDetail: View {
 
         while rows.count < targetCount {
             rows.append(
-                DaySpaceEditableTodoEntry(
-                    id: UUID().uuidString.lowercased(),
-                    kind: .pending,
-                    text: ""
-                )
+                DaySpaceEditableTodoEntry.creationRow()
             )
         }
 
         while rows.count > targetCount,
               let last = rows.last,
-              last.text.trimmingCharacters(
-                in: .whitespacesAndNewlines
-              ).isEmpty {
+              last.creation,
+              last.text.isEmpty {
             rows.removeLast()
         }
     }
 
     @MainActor
     private func requestClose() async {
-        guard !isSaving else { return }
+        guard !isSaving else {
+            return
+        }
 
         guard isDirty else {
             onClosed()
@@ -1240,28 +1591,447 @@ private struct DaySpaceTodoPaperDetail: View {
 
     @MainActor
     private func saveAndClose() async {
-        guard !isSaving else { return }
+        guard !isSaving else {
+            return
+        }
 
         isSaving = true
         errorMessage = nil
-        defer { isSaving = false }
+        defer {
+            isSaving = false
+        }
 
         do {
             let request = DaySpaceTodoReplaceRequest(
                 revision: paper.revision,
                 entries: normalizedEntries
             )
-            let body = try JSONEncoder().encode(request)
-            let response: DaySpaceTodoPaperEnvelope = try await appModel.api.request(
-                path: "/api/v1/todo/\(paper.date)/\(paper.author.rawValue)",
-                method: "PUT",
-                body: body
+            let body = try JSONEncoder().encode(
+                request
             )
+            let response: DaySpaceTodoPaperEnvelope =
+                try await appModel.api.request(
+                    path: "/api/v1/todo/\(paper.date)/\(paper.author.rawValue)",
+                    method: "PUT",
+                    body: body
+                )
             onSaved(response.data)
             onClosed()
+        } catch LeileiAPIError.backend(
+            _,
+            let code,
+            _
+        ) where code == "TODO_PAPER_CONFLICT" {
+            errorMessage =
+                "这张纸张已在其他设备修改，请重新打开后再保存。"
         } catch {
-            errorMessage = "Failed"
+            errorMessage = "保存失败，请重试"
         }
+    }
+}
+
+private struct DaySpaceTodoFocusRequest: Equatable {
+    let token: UUID
+    let rowID: String
+    let offset: Int
+}
+
+private struct DaySpaceTodoEditorMark: View {
+    let kind: DaySpaceTodoEntryKind
+
+    var body: some View {
+        ZStack {
+            switch kind {
+            case .pending:
+                Circle()
+                    .stroke(
+                        Color.black.opacity(0.42),
+                        lineWidth: 1
+                    )
+                    .frame(
+                        width: 14,
+                        height: 14
+                    )
+
+            case .completed:
+                Circle()
+                    .fill(
+                        Color(
+                            white: 0.47
+                        )
+                    )
+                    .frame(
+                        width: 14,
+                        height: 14
+                    )
+
+                Image(systemName: "checkmark")
+                    .font(
+                        .system(
+                            size: 8,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(Color.white)
+
+            case .record:
+                Circle()
+                    .fill(
+                        Color(
+                            white: 0.29
+                        )
+                    )
+                    .frame(
+                        width: 8,
+                        height: 8
+                    )
+            }
+        }
+    }
+}
+
+private struct DaySpaceTodoLineEditor: UIViewRepresentable {
+    let text: String
+    let kind: DaySpaceTodoEntryKind
+    let rowID: String
+    let focusRequest: DaySpaceTodoFocusRequest?
+    let onTextChange: (String) -> Void
+    let onSplit: (NSRange) -> Bool
+    let onMergePrevious: () -> Bool
+    let onMergeNext: () -> Bool
+    let onMovePrevious: () -> Bool
+    let onMoveNext: () -> Bool
+    let onPasteMultiline: (NSRange, String) -> Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(
+        context: Context
+    ) -> DaySpaceTodoNativeTextView {
+        let textView = DaySpaceTodoNativeTextView()
+        textView.backgroundColor = .clear
+        textView.isScrollEnabled = false
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.delegate = context.coordinator
+        textView.autocorrectionType = .default
+        textView.spellCheckingType = .default
+        textView.smartQuotesType = .default
+        textView.smartDashesType = .default
+        textView.returnKeyType = .default
+        textView.setContentCompressionResistancePriority(
+            .required,
+            for: .vertical
+        )
+        textView.setContentHuggingPriority(
+            .required,
+            for: .vertical
+        )
+        wire(
+            textView,
+            coordinator: context.coordinator
+        )
+        applyAppearance(
+            to: textView,
+            coordinator: context.coordinator
+        )
+        return textView
+    }
+
+    func updateUIView(
+        _ textView: DaySpaceTodoNativeTextView,
+        context: Context
+    ) {
+        context.coordinator.parent = self
+        wire(
+            textView,
+            coordinator: context.coordinator
+        )
+        applyAppearance(
+            to: textView,
+            coordinator: context.coordinator
+        )
+
+        guard let focusRequest,
+              focusRequest.rowID == rowID,
+              context.coordinator.lastFocusToken
+                != focusRequest.token
+        else {
+            return
+        }
+
+        context.coordinator.lastFocusToken =
+            focusRequest.token
+
+        let offset = max(
+            0,
+            min(
+                focusRequest.offset,
+                text.utf16.count
+            )
+        )
+
+        DispatchQueue.main.async {
+            textView.becomeFirstResponder()
+            textView.selectedRange = NSRange(
+                location: offset,
+                length: 0
+            )
+        }
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: DaySpaceTodoNativeTextView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width else {
+            return nil
+        }
+
+        let fitting = uiView.sizeThatFits(
+            CGSize(
+                width: width,
+                height: .greatestFiniteMagnitude
+            )
+        )
+
+        return CGSize(
+            width: width,
+            height: max(
+                30,
+                ceil(fitting.height)
+            )
+        )
+    }
+
+    private func wire(
+        _ textView: DaySpaceTodoNativeTextView,
+        coordinator: Coordinator
+    ) {
+        textView.onBackspaceAtStart = {
+            coordinator.parent.onMergePrevious()
+        }
+        textView.onDeleteForwardAtEnd = {
+            coordinator.parent.onMergeNext()
+        }
+        textView.onMovePrevious = {
+            coordinator.parent.onMovePrevious()
+        }
+        textView.onMoveNext = {
+            coordinator.parent.onMoveNext()
+        }
+        textView.onPasteMultiline = {
+            range,
+            value in
+            coordinator.parent.onPasteMultiline(
+                range,
+                value
+            )
+        }
+    }
+
+    private func applyAppearance(
+        to textView: DaySpaceTodoNativeTextView,
+        coordinator: Coordinator
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 30
+        paragraph.maximumLineHeight = 30
+
+        let textColor: UIColor = kind == .completed
+            ? UIColor(
+                white: 0.56,
+                alpha: 1
+            )
+            : UIColor(
+                white: 0.09,
+                alpha: 1
+            )
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(
+                ofSize: 14
+            ),
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraph,
+            .strikethroughStyle: kind == .completed
+                ? NSUnderlineStyle.single.rawValue
+                : 0,
+        ]
+
+        if textView.text != text
+            || coordinator.lastKind != kind {
+            let selection = textView.selectedRange
+            textView.attributedText = NSAttributedString(
+                string: text,
+                attributes: attributes
+            )
+            textView.selectedRange = NSRange(
+                location: min(
+                    selection.location,
+                    text.utf16.count
+                ),
+                length: 0
+            )
+        }
+
+        textView.typingAttributes = attributes
+        coordinator.lastKind = kind
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: DaySpaceTodoLineEditor
+        var lastFocusToken: UUID?
+        var lastKind: DaySpaceTodoEntryKind?
+
+        init(
+            parent: DaySpaceTodoLineEditor
+        ) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(
+            _ textView: UITextView
+        ) {
+            parent.onTextChange(
+                textView.text
+            )
+            textView.invalidateIntrinsicContentSize()
+        }
+
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText value: String
+        ) -> Bool {
+            guard value == "\n",
+                  textView.markedTextRange == nil
+            else {
+                return true
+            }
+
+            if let native = textView
+                as? DaySpaceTodoNativeTextView,
+               native.consumeShiftReturn() {
+                return true
+            }
+
+            return !parent.onSplit(range)
+        }
+    }
+}
+
+private final class DaySpaceTodoNativeTextView: UITextView {
+    var onBackspaceAtStart: (() -> Bool)?
+    var onDeleteForwardAtEnd: (() -> Bool)?
+    var onMovePrevious: (() -> Bool)?
+    var onMoveNext: (() -> Bool)?
+    var onPasteMultiline: ((NSRange, String) -> Bool)?
+
+    private var shiftReturnPending = false
+
+    override func deleteBackward() {
+        if selectedRange.length == 0,
+           selectedRange.location == 0,
+           onBackspaceAtStart?() == true {
+            return
+        }
+
+        super.deleteBackward()
+    }
+
+    override func paste(
+        _ sender: Any?
+    ) {
+        if let value = UIPasteboard.general.string,
+           (value.contains("\n")
+                || value.contains("\r")),
+           onPasteMultiline?(
+                selectedRange,
+                value
+           ) == true {
+            return
+        }
+
+        super.paste(sender)
+    }
+
+    override func pressesBegan(
+        _ presses: Set<UIPress>,
+        with event: UIPressesEvent?
+    ) {
+        guard let key = presses.first?.key else {
+            super.pressesBegan(
+                presses,
+                with: event
+            )
+            return
+        }
+
+        let input = key.charactersIgnoringModifiers
+        let textLength = text.utf16.count
+        let collapsed = selectedRange.length == 0
+
+        if (input == "\r" || input == "\n"),
+           key.modifierFlags.contains(.shift) {
+            shiftReturnPending = true
+            super.pressesBegan(
+                presses,
+                with: event
+            )
+            return
+        }
+
+        if input == UIKeyCommand.inputDeleteForward,
+           collapsed,
+           selectedRange.location == textLength,
+           onDeleteForwardAtEnd?() == true {
+            return
+        }
+
+        if input == UIKeyCommand.inputLeftArrow,
+           collapsed,
+           selectedRange.location == 0,
+           onMovePrevious?() == true {
+            return
+        }
+
+        if input == UIKeyCommand.inputRightArrow,
+           collapsed,
+           selectedRange.location == textLength,
+           onMoveNext?() == true {
+            return
+        }
+
+        if input == UIKeyCommand.inputUpArrow,
+           collapsed,
+           selectedRange.location == 0,
+           onMovePrevious?() == true {
+            return
+        }
+
+        if input == UIKeyCommand.inputDownArrow,
+           collapsed,
+           selectedRange.location == textLength,
+           onMoveNext?() == true {
+            return
+        }
+
+        super.pressesBegan(
+            presses,
+            with: event
+        )
+    }
+
+    func consumeShiftReturn() -> Bool {
+        defer {
+            shiftReturnPending = false
+        }
+
+        return shiftReturnPending
     }
 }
 
@@ -1274,7 +2044,6 @@ private struct DaySpaceDiaryPaperDetail: View {
 
     @State private var title: String
     @State private var content: String
-    @State private var author: DaySpaceAuthor?
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var discardConfirmationPresented = false
@@ -1287,14 +2056,19 @@ private struct DaySpaceDiaryPaperDetail: View {
         self.diary = diary
         self.onSaved = onSaved
         self.onClosed = onClosed
-        _title = State(initialValue: diary.title)
-        _content = State(initialValue: diary.content)
-        _author = State(initialValue: diary.author)
+        _title = State(
+            initialValue: diary.title
+        )
+        _content = State(
+            initialValue: diary.content
+        )
     }
 
     var body: some View {
         DaySpacePaperDetailLayer(
-            dateLabel: DaySpaceDate.fullLabel(diary.date),
+            dateLabel: DaySpaceDate.paperLabel(
+                diary.date
+            ),
             errorMessage: errorMessage,
             onRequestClose: {
                 requestVeilClose()
@@ -1308,82 +2082,121 @@ private struct DaySpaceDiaryPaperDetail: View {
 
                     Text("·")
 
-                    Button(isSaving ? "Saving…" : "Save") {
+                    Button(
+                        isSaving
+                            ? "Saving…"
+                            : "Save"
+                    ) {
                         Task {
                             await save()
                         }
                     }
-                    .disabled(isSaving || isInvalid || !isDirty)
+                    .disabled(
+                        isSaving
+                            || isInvalid
+                            || !isDirty
+                    )
                 }
-                .font(.system(size: 13))
-                .foregroundStyle(Color.secondary)
+                .font(
+                    .system(
+                        size: 13
+                    )
+                )
+                .foregroundStyle(
+                    Color(
+                        white: 0.43
+                    )
+                )
             },
             signature: {
-                Text(author?.rawValue ?? "—")
-                    .font(
-                        .system(
-                            size: 20,
-                            weight: .medium,
-                            design: .serif
-                        )
+                Text(
+                    diary.author?.rawValue
+                        ?? "—"
+                )
+                .font(
+                    .system(
+                        size: 20,
+                        weight: .medium,
+                        design: .serif
                     )
-                    .foregroundStyle(Color.secondary)
-                    .frame(minWidth: 32, minHeight: 28)
+                )
+                .foregroundStyle(
+                    Color(
+                        white: 0.52
+                    )
+                )
+                .frame(
+                    minWidth: 32,
+                    minHeight: 28
+                )
             }
         ) {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(
+                alignment: .leading,
+                spacing: 0
+            ) {
                 TextField(
                     "Title",
-                    text: $title,
-                    axis: .vertical
+                    text: $title
                 )
                 .textFieldStyle(.plain)
-                .font(.system(size: 16, weight: .medium))
+                .font(
+                    .system(
+                        size: 17,
+                        weight: .medium
+                    )
+                )
+                .foregroundStyle(
+                    Color(
+                        white: 0.09
+                    )
+                )
+                .lineLimit(1)
+                .frame(height: 23)
                 .padding(.bottom, 14)
                 .disabled(isSaving)
-                .onChange(of: title) { _, _ in
+                .onChange(of: title) {
+                    _,
+                    _ in
                     errorMessage = nil
                 }
 
-                TextField(
-                    "Content",
-                    text: $content,
-                    axis: .vertical
-                )
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .lineSpacing(10)
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
-                )
+                DaySpaceDiaryBodyEditor(
+                    text: content,
+                    disabled: isSaving
+                ) { value in
+                    content = value
+                    errorMessage = nil
+                }
                 .frame(
                     maxWidth: .infinity,
                     minHeight: 420,
                     alignment: .topLeading
                 )
-                .disabled(isSaving)
-                .onChange(of: content) { _, _ in
-                    errorMessage = nil
-                }
             }
         }
         .confirmationDialog(
-            "Discard unsaved changes?",
+            "放弃未保存的修改？",
             isPresented: $discardConfirmationPresented,
             titleVisibility: .visible
         ) {
-            Button("Discard", role: .destructive) {
+            Button(
+                "放弃",
+                role: .destructive
+            ) {
                 onClosed()
             }
-            Button("Keep Editing", role: .cancel) {}
+
+            Button(
+                "继续编辑",
+                role: .cancel
+            ) {}
         }
     }
 
     private var isDirty: Bool {
         title != diary.title
             || content != diary.content
-            || author != diary.author
     }
 
     private var isInvalid: Bool {
@@ -1393,11 +2206,13 @@ private struct DaySpaceDiaryPaperDetail: View {
             || content.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ).isEmpty
-            || author == nil
+            || diary.author == nil
     }
 
     private func requestVeilClose() {
-        guard !isSaving else { return }
+        guard !isSaving else {
+            return
+        }
 
         if isDirty {
             discardConfirmationPresented = true
@@ -1409,17 +2224,19 @@ private struct DaySpaceDiaryPaperDetail: View {
     @MainActor
     private func save() async {
         guard !isSaving,
-              let author
+              let author = diary.author
         else {
             return
         }
 
-        let normalizedTitle = title.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        let normalizedContent = content.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
+        let normalizedTitle = title
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        let normalizedContent = content
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
 
         guard !normalizedTitle.isEmpty,
               !normalizedContent.isEmpty
@@ -1429,7 +2246,9 @@ private struct DaySpaceDiaryPaperDetail: View {
 
         isSaving = true
         errorMessage = nil
-        defer { isSaving = false }
+        defer {
+            isSaving = false
+        }
 
         do {
             let request = DaySpaceDiaryUpdateRequest(
@@ -1440,16 +2259,142 @@ private struct DaySpaceDiaryPaperDetail: View {
                 mood: diary.mood,
                 author: author
             )
-            let body = try JSONEncoder().encode(request)
-            let response: DaySpaceDiaryEnvelope = try await appModel.api.request(
-                path: "/api/v1/diary/\(diary.id)",
-                method: "PATCH",
-                body: body
+            let body = try JSONEncoder().encode(
+                request
             )
+            let response: DaySpaceDiaryEnvelope =
+                try await appModel.api.request(
+                    path: "/api/v1/diary/\(diary.id)",
+                    method: "PATCH",
+                    body: body
+                )
             onSaved(response.data)
             onClosed()
         } catch {
-            errorMessage = "Failed"
+            errorMessage = "保存失败，请重试"
+        }
+    }
+}
+
+private struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
+    let text: String
+    let disabled: Bool
+    let onTextChange: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(
+        context: Context
+    ) -> UITextView {
+        let textView = UITextView()
+        textView.backgroundColor = .clear
+        textView.isScrollEnabled = false
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.delegate = context.coordinator
+        textView.autocorrectionType = .default
+        textView.spellCheckingType = .default
+        applyAppearance(to: textView)
+        return textView
+    }
+
+    func updateUIView(
+        _ textView: UITextView,
+        context: Context
+    ) {
+        context.coordinator.parent = self
+        textView.isEditable = !disabled
+        applyAppearance(to: textView)
+
+        if textView.text != text {
+            let selection = textView.selectedRange
+            textView.text = text
+            textView.selectedRange = NSRange(
+                location: min(
+                    selection.location,
+                    text.utf16.count
+                ),
+                length: 0
+            )
+        }
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width else {
+            return nil
+        }
+
+        let fitting = uiView.sizeThatFits(
+            CGSize(
+                width: width,
+                height: .greatestFiniteMagnitude
+            )
+        )
+
+        return CGSize(
+            width: width,
+            height: max(
+                420,
+                ceil(fitting.height)
+            )
+        )
+    }
+
+    private func applyAppearance(
+        to textView: UITextView
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 30
+        paragraph.maximumLineHeight = 30
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(
+                ofSize: 14
+            ),
+            .foregroundColor: UIColor(
+                white: 0.15,
+                alpha: 1
+            ),
+            .paragraphStyle: paragraph,
+        ]
+
+        let selection = textView.selectedRange
+        textView.attributedText = NSAttributedString(
+            string: textView.text ?? "",
+            attributes: attributes
+        )
+        textView.typingAttributes = attributes
+        textView.selectedRange = NSRange(
+            location: min(
+                selection.location,
+                textView.text.utf16.count
+            ),
+            length: 0
+        )
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: DaySpaceDiaryBodyEditor
+
+        init(
+            parent: DaySpaceDiaryBodyEditor
+        ) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(
+            _ textView: UITextView
+        ) {
+            parent.onTextChange(
+                textView.text
+            )
+            textView.invalidateIntrinsicContentSize()
         }
     }
 }
@@ -1489,15 +2434,21 @@ private struct DaySpacePaperDetailLayer<
             )
 
             ZStack {
-                Color.white.opacity(0.82)
+                Color.white
+                    .opacity(0.82)
+                    .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
                         onRequestClose()
                     }
 
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color(.systemBackground))
+                ZStack(
+                    alignment: .topLeading
+                ) {
+                    RoundedRectangle(
+                        cornerRadius: 14
+                    )
+                    .fill(Color.white)
 
                     ScrollView {
                         content
@@ -1519,23 +2470,49 @@ private struct DaySpacePaperDetailLayer<
                     .padding(.bottom, 38)
 
                     Text(dateLabel)
-                        .font(.system(size: 13))
-                        .tracking(0.3)
-                        .foregroundStyle(Color.secondary)
-                        .padding(.leading, 24)
-                        .padding(.top, 13)
+                        .font(
+                            .system(
+                                size: 13
+                            )
+                        )
+                        .tracking(0.52)
+                        .foregroundStyle(
+                            Color(
+                                white: 0.43
+                            )
+                        )
+                        .padding(
+                            .leading,
+                            24
+                        )
+                        .padding(
+                            .top,
+                            13
+                        )
 
                     topRight
-                        .padding(.trailing, 24)
-                        .padding(.top, 13)
+                        .padding(
+                            .trailing,
+                            24
+                        )
+                        .padding(
+                            .top,
+                            13
+                        )
                         .frame(
                             maxWidth: .infinity,
                             alignment: .topTrailing
                         )
 
                     signature
-                        .padding(.trailing, 24)
-                        .padding(.bottom, 11)
+                        .padding(
+                            .trailing,
+                            24
+                        )
+                        .padding(
+                            .bottom,
+                            11
+                        )
                         .frame(
                             maxWidth: .infinity,
                             maxHeight: .infinity,
@@ -1544,11 +2521,27 @@ private struct DaySpacePaperDetailLayer<
 
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.secondary)
-                            .padding(.leading, 24)
-                            .padding(.trailing, 68)
-                            .padding(.bottom, 11)
+                            .font(
+                                .system(
+                                    size: 12
+                                )
+                            )
+                            .foregroundStyle(
+                                Color.red
+                            )
+                            .lineLimit(2)
+                            .padding(
+                                .leading,
+                                24
+                            )
+                            .padding(
+                                .trailing,
+                                68
+                            )
+                            .padding(
+                                .bottom,
+                                9
+                            )
                             .frame(
                                 maxWidth: .infinity,
                                 maxHeight: .infinity,
@@ -1556,35 +2549,47 @@ private struct DaySpacePaperDetailLayer<
                             )
                     }
                 }
+                .foregroundStyle(
+                    Color(
+                        white: 0.09
+                    )
+                )
                 .frame(
                     width: dimensions.width,
                     height: dimensions.height
                 )
                 .clipShape(
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(
+                        cornerRadius: 14
+                    )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(
-                            Color.primary.opacity(0.11),
-                            lineWidth: 1
-                        )
+                    RoundedRectangle(
+                        cornerRadius: 14
+                    )
+                    .stroke(
+                        Color.black.opacity(0.11),
+                        lineWidth: 1
+                    )
                 )
                 .shadow(
                     color: .black.opacity(0.09),
                     radius: 28,
                     y: 18
                 )
-                .offset(y: dimensions.offsetY)
+                .offset(
+                    y: dimensions.offsetY
+                )
             }
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity
             )
         }
-        .ignoresSafeArea(.container)
-        .transition(.opacity)
-        .zIndex(100)
+        .background(
+            Color.clear
+                .ignoresSafeArea()
+        )
     }
 
     private func paperDimensions(
@@ -1596,27 +2601,44 @@ private struct DaySpacePaperDetailLayer<
     ) {
         let width = min(
             665,
-            max(280, size.width - 46)
+            max(
+                280,
+                size.width - 46
+            )
         )
-        let availableHeight = max(
-            360,
-            size.height - 20
-        )
-        let preferredHeight: CGFloat
 
         if size.height < 680 {
-            preferredHeight = availableHeight
-        } else {
-            preferredHeight = max(
-                536,
-                size.height * 0.78 - 24
+            return (
+                width,
+                max(
+                    360,
+                    size.height - 20
+                ),
+                min(
+                    31,
+                    max(
+                        0,
+                        size.height * 0.04
+                    )
+                )
             )
         }
 
+        let height = min(
+            696,
+            max(
+                536,
+                size.height * 0.78 - 24
+            )
+        )
+
         return (
             width,
-            min(696, min(availableHeight, preferredHeight)),
-            min(31, max(0, size.height * 0.04))
+            min(
+                size.height - 20,
+                height
+            ),
+            31
         )
     }
 }
@@ -1625,11 +2647,14 @@ private struct DaySpacePaperRules: View {
     var body: some View {
         GeometryReader { proxy in
             Path { path in
-                var y: CGFloat = 30
+                var y: CGFloat = 29.5
 
                 while y < proxy.size.height {
                     path.move(
-                        to: CGPoint(x: 0, y: y)
+                        to: CGPoint(
+                            x: 0,
+                            y: y
+                        )
                     )
                     path.addLine(
                         to: CGPoint(
@@ -1641,7 +2666,7 @@ private struct DaySpacePaperRules: View {
                 }
             }
             .stroke(
-                Color.primary.opacity(0.075),
+                Color.black.opacity(0.075),
                 lineWidth: 1
             )
         }
@@ -1923,6 +2948,7 @@ private struct DaySpaceEditableTodoEntry: Identifiable {
     let id: String
     var kind: DaySpaceTodoEntryKind
     var text: String
+    var creation: Bool
 
     static func initialRows(
         author: DaySpaceAuthor,
@@ -1932,26 +2958,38 @@ private struct DaySpaceEditableTodoEntry: Identifiable {
             DaySpaceEditableTodoEntry(
                 id: $0.id,
                 kind: $0.kind,
-                text: $0.text
+                text: $0.text,
+                creation: false
             )
+        }
+
+        let lastContentIndex = rows.lastIndex {
+            !$0.text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
         }
 
         let targetCount = max(
             24,
-            entries.count + 1
+            (lastContentIndex ?? -1) + 2
         )
 
         while rows.count < targetCount {
             rows.append(
-                DaySpaceEditableTodoEntry(
-                    id: UUID().uuidString.lowercased(),
-                    kind: .pending,
-                    text: ""
-                )
+                creationRow()
             )
         }
 
         return rows
+    }
+
+    static func creationRow() -> DaySpaceEditableTodoEntry {
+        DaySpaceEditableTodoEntry(
+            id: UUID().uuidString.lowercased(),
+            kind: .pending,
+            text: "",
+            creation: true
+        )
     }
 }
 
