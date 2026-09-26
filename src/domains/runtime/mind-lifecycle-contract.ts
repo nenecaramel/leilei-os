@@ -143,7 +143,7 @@ export function isMindLifecycleTransitionAllowed(input: {
 }
 
 export function assertMindLifecycleTransition(input: {
-  kind: SubjectStateKind;
+  kind: CurrentSubjectStateKind;
   from: MindLifecycleState;
   to: MindLifecycleState;
 }): void {
@@ -154,7 +154,7 @@ export function assertMindLifecycleTransition(input: {
 }
 
 export function canPurgeMindState(input: {
-  kind: SubjectStateKind;
+  kind: CurrentSubjectStateKind;
   state: MindLifecycleState;
 }): boolean {
   const profile = mindLifecycleProfile(input.kind);
