@@ -17,6 +17,17 @@ function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
 }
 
+async function loadDefaultDeleteSession() {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  if (typeof sdk.deleteSession !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK did not expose deleteSession().",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+  return sdk.deleteSession;
+}
+
 async function loadDefaultQuery() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
   if (typeof sdk.query !== "function") {
@@ -62,6 +73,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   constructor({
     queryImpl = null,
     loadQuery = loadDefaultQuery,
+    deleteSessionImpl = null,
+    loadDeleteSession = loadDefaultDeleteSession,
     environment = process.env,
     cwd = process.cwd(),
     compactionThresholdPercent = 75,
@@ -74,6 +87,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     }
     this.queryImpl = queryImpl;
     this.loadQuery = loadQuery;
+    this.deleteSessionImpl = deleteSessionImpl;
+    this.loadDeleteSession = loadDeleteSession;
     this.environment = environment;
     this.cwd = cwd;
     this.compactionThresholdPercent = compactionThresholdPercent;
@@ -423,10 +438,49 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
   }
 
+  async deleteSession(sessionId) {
+    if (this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError(
+        "Claude Agent SDK session cannot be deleted during an active turn.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    const id = nonblankString(sessionId);
+    if (!id) {
+      throw runtimeError(
+        "Claude Agent SDK session id is required for deletion.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+
+    const deleteSessionImpl = await this.#resolveDeleteSession();
+    try {
+      await deleteSessionImpl(id, { directory: this.cwd });
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to delete Claude Agent SDK session: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
+  }
+
   abort() {
     this.abortRequested = true;
     this.activeTurnHandle?.abort?.();
     this.activeQuery?.close?.();
+  }
+
+  async #resolveDeleteSession() {
+    if (this.deleteSessionImpl) return this.deleteSessionImpl;
+    try {
+      this.deleteSessionImpl = await this.loadDeleteSession();
+      return this.deleteSessionImpl;
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to load Claude Agent SDK deleteSession(): ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
   }
 
   async #resolveQuery() {
