@@ -120,6 +120,7 @@ struct PageContainer: View {
                                         "Delete",
                                         systemImage: "trash"
                                     )
+                                    .foregroundStyle(.red)
                                 }
                                 .disabled(
                                     appModel.activeNativeLiveConversationID == nil
