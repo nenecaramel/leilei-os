@@ -1,7 +1,7 @@
 import type {
   NativeLiveDistillationScheduleInput,
   NativeLiveDistillationTrigger,
-} from "./distillation-background-trigger.js";
+} from "./distillation-trigger-contract.js";
 import type {
   BackgroundOpportunityPolicy,
 } from "./background-opportunity-policy.js";
