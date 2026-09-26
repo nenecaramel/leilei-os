@@ -8,6 +8,7 @@ import type {
   CuriosityTopicProjectionRuntimePort,
   CuriosityTopicSeedCandidate,
 } from "./curiosity-topic-projection.js";
+import { readCuriosityEvolution } from "./curiosity-evolution.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -34,6 +35,7 @@ implements CuriosityTopicProjectionRuntimePort {
       .select({
         id: runtimeSubjectStates.id,
         text: runtimeSubjectStates.text,
+        payload: runtimeSubjectStates.payload,
         envelope: runtimeSubjectStates.envelope,
       })
       .from(runtimeSubjectStates)
@@ -68,6 +70,12 @@ implements CuriosityTopicProjectionRuntimePort {
     return rows.flatMap((row) => {
       const text = row.text?.trim();
       if (!text) return [];
+      try {
+        const evolution = readCuriosityEvolution(row.payload);
+        if (evolution && evolution.phase !== "active") return [];
+      } catch {
+        return [];
+      }
       const envelope =
         row.envelope as unknown as PersistentWriteEnvelope;
       const causedBy = envelope.provenance.causedBy?.trim();
