@@ -2,77 +2,66 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BackgroundOpportunityPolicy,
+  DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "../src/domains/runtime/background-opportunity-policy.js";
 
-test("background opportunity policy keeps post-turn work separate from Companion due work", () => {
+test("background opportunity policy owns only Companion timed maintenance", () => {
   const policy = new BackgroundOpportunityPolicy({
     decayEnabled: false,
-    proactivityWakeEnabled: false,
-    topicResurfaceEnabled: true,
   });
 
   assert.deepEqual(
-    policy.decide({ opportunity: "post_turn" }).targets.map(
-      (target) => target.kind,
-    ),
-    ["distillation"],
-  );
-  assert.deepEqual(
-    policy.decide({ opportunity: "companion_due" }).targets.map(
-      (target) => target.kind,
-    ),
+    policy.decide().targets.map((target) => target.kind),
     [
       "thought_evolution",
       "drive_evolution",
       "topic_lifecycle",
     ],
   );
-  assert.deepEqual(
-    policy.decide({ opportunity: "mac_idle" }).targets.map(
-      (target) => target.kind,
-    ),
-    ["topic_resurface"],
-  );
-});
 
-test("Decay is opt-in and Breath is not a schedulable background target", () => {
-  const policy = new BackgroundOpportunityPolicy({
-    decayEnabled: true,
-    proactivityWakeEnabled: false,
-    topicResurfaceEnabled: false,
-  });
-
-  const kinds = [
-    ...policy.decide({ opportunity: "post_turn" }).targets,
-    ...policy.decide({ opportunity: "companion_due" }).targets,
-    ...policy.decide({ opportunity: "mac_idle" }).targets,
-  ].map((target) => target.kind);
-
-  assert.equal(kinds.includes("decay"), true);
-  assert.equal(kinds.includes("breath" as never), false);
-  assert.equal(kinds.includes("topic_resurface"), false);
-});
-
-test("Proactivity wake is Companion due work, not a second scheduler", () => {
-  const policy = new BackgroundOpportunityPolicy({
-    decayEnabled: false,
-    proactivityWakeEnabled: true,
-    topicResurfaceEnabled: false,
-  });
-
-  assert.deepEqual(
-    policy.decide({ opportunity: "companion_due" }).targets.map(
-      (target) => target.kind,
-    ),
-    [
-      "thought_evolution",
-      "drive_evolution",
-      "topic_lifecycle",
-      "proactivity_wake",
-    ],
+  assert.equal(
+    DEFAULT_BACKGROUND_TARGET_PLANS.distillation.priority,
+    "consolidation",
   );
   assert.equal(
-    policy.plan("companion_due", "proactivity_wake")?.priority,
+    DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake.priority,
     "reflection",
+  );
+  assert.equal(
+    DEFAULT_BACKGROUND_TARGET_PLANS.topicResurface.priority,
+    "reflection",
+  );
+});
+
+test("Decay is opt-in and Breath is not a schedulable Companion target", () => {
+  const disabled = new BackgroundOpportunityPolicy({
+    decayEnabled: false,
+  });
+  const enabled = new BackgroundOpportunityPolicy({
+    decayEnabled: true,
+  });
+
+  const disabledKinds =
+    disabled.decide().targets.map((target) => target.kind);
+  const enabledKinds =
+    enabled.decide().targets.map((target) => target.kind);
+
+  assert.equal(disabledKinds.includes("decay"), false);
+  assert.equal(enabledKinds.includes("decay"), true);
+  assert.equal(
+    enabledKinds.includes("breath" as never),
+    false,
+  );
+  assert.equal(
+    enabledKinds.includes("distillation"),
+    false,
+  );
+  assert.equal(
+    enabledKinds.includes("proactivity_wake"),
+    false,
+  );
+  assert.equal(
+    enabledKinds.includes("topic_resurface"),
+    false,
   );
 });
