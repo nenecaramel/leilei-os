@@ -515,12 +515,12 @@ export function createApp(
     }),
   );
 
-  if (config.MCP_AUTH_TOKEN) {
+  if (config.NATIVE_LIVE_RELAY_AUTH_TOKEN) {
     if (dependencies.nativeLiveProduction) {
       app.use(
         "/internal/native-live-relay",
         createInternalAuthMiddleware(
-          config.NATIVE_LIVE_RELAY_AUTH_TOKEN!,
+          config.NATIVE_LIVE_RELAY_AUTH_TOKEN,
           config.MCP_USER_ID,
         ),
         databaseReadinessMiddleware,
@@ -550,7 +550,7 @@ export function createApp(
       app.use(
         "/internal/native-live-relay",
         createInternalAuthMiddleware(
-          config.NATIVE_LIVE_RELAY_AUTH_TOKEN!,
+          config.NATIVE_LIVE_RELAY_AUTH_TOKEN,
           config.MCP_USER_ID,
         ),
         databaseReadinessMiddleware,
@@ -627,8 +627,9 @@ export function createApp(
             : {}),
         }),
       );
-    }
+  }
 
+  if (config.MCP_AUTH_TOKEN) {
     app.use(
       "/internal/mcp",
       createInternalAuthMiddleware(
