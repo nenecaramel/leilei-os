@@ -96,7 +96,7 @@ test("settlement catch-up mode initializes new Thought evidence without time dec
             stateId: "thought-old",
             text: "old thought",
             payload: writeThoughtEvolution(null, {
-              stage: "flit",
+              phase: "active",
               role: "anchor",
               threadKey: thoughtThreadKey("old thought"),
               anchorStateId: "thought-old",
@@ -105,7 +105,7 @@ test("settlement catch-up mode initializes new Thought evidence without time dec
               reinforcementSources: ["source-old"],
               lastEvolvedAt: oldAt,
               lastReinforcedAt: oldAt,
-              fixationAt: null,
+              dormantAt: null,
             }),
             sourceId: "source-old",
             createdAt: oldAt,
@@ -127,10 +127,10 @@ test("settlement catch-up mode initializes new Thought evidence without time dec
       },
     },
     {
-      flitHalfLifeHours: 24,
+      halfLifeHours: 24,
       baseStrength: 0.4,
       reinforcementBoost: 0.2,
-      fixationThreshold: 0.8,
+      dormantBelowStrength: 0.1,
       minEvolutionIntervalHours: 1,
       maxReinforcementSources: 8,
     },
@@ -148,6 +148,7 @@ test("settlement catch-up mode initializes new Thought evidence without time dec
     [["thought-new", "initialize"]],
   );
   assert.equal(result.decayed, 0);
+  assert.equal(result.dormantTransitions, 0);
 });
 
 test("settlement catch-up mode initializes new Topic evidence without dormancy maintenance", async () => {
