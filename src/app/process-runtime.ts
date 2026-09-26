@@ -32,7 +32,7 @@ import {
   createDefaultDriveSatisfactionService,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-  DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
+  DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
 } from "../domains/runtime/default-backend-mind-runtime.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
@@ -351,7 +351,7 @@ export function createProcessRuntime(
         distillationProcessVersion,
       ),
       {
-        surfaceLimit: DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
+        settlementLagMessages: DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
         minSourceMessages: 8,
         maxMemoriesPerRun: 3,
         ruleVersion: "distill-rule-v1",

@@ -168,7 +168,7 @@ class Queue {
 function config(): DistillationConfig {
   let state = 0;
   return {
-    surfaceLimit: 2,
+    settlementLagMessages: 2,
     maxMemoriesPerRun: 3,
     ruleVersion: "distill-rule-v1",
     processVersion: "distill-process-v1",

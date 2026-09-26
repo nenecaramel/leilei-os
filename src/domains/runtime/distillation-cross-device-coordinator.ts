@@ -107,7 +107,7 @@ export class DistillationCrossDeviceCoordinator {
     });
     const window = planDistillationWindow({
       conversation,
-      surfaceLimit: this.config.surfaceLimit,
+      settlementLagMessages: this.config.settlementLagMessages,
       minSourceMessages: this.config.minSourceMessages,
       previousWatermarkMessageId,
     });
@@ -240,7 +240,7 @@ export class DistillationCrossDeviceCoordinator {
     try {
       currentWindow = planDistillationWindow({
         conversation,
-        surfaceLimit: this.config.surfaceLimit,
+        settlementLagMessages: this.config.settlementLagMessages,
         minSourceMessages: this.config.minSourceMessages,
         previousWatermarkMessageId:
           window.expectedPreviousWatermarkMessageId,
