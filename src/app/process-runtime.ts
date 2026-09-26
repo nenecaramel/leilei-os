@@ -143,6 +143,9 @@ import {
   NativeLiveWorkWaitService,
 } from "../domains/bridge/native-live-work-wake.js";
 import {
+  NativeLiveTurnWaitService,
+} from "../domains/bridge/native-live-turn-wait.js";
+import {
   DrizzleNativeLiveRuntimeEventRepository,
   NativeLiveRuntimeEventService,
 } from "../domains/bridge/native-live-runtime-event-stream.js";
@@ -447,6 +450,11 @@ export function createProcessRuntime(
     new DrizzleNativeLiveConversationRepository(db),
   );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
+  const nativeLiveTurnWaitService =
+    new NativeLiveTurnWaitService(
+      nativeLiveTurnPort,
+      nativeLiveWorkWakeBroker,
+    );
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
     new DrizzleNativeLiveMindFollowUpRepository(db),
     nativeLiveTurnPort,
@@ -801,6 +809,7 @@ export function createProcessRuntime(
           coordinator: nativeLiveRelayPrepareCoordinator,
           relayService: nativeLiveRelayService,
           turnReader: nativeLiveTurnPort,
+          turnWaitService: nativeLiveTurnWaitService,
           currentPathReader:
             new DrizzleNativeLiveCurrentPathReader(db),
           conversationService:

@@ -652,10 +652,17 @@ export class NativeLiveBackendRelayService {
       "finalize"
     >,
     private readonly workWake?: {
-      notify(input: {
-        userId: string;
-        kind: "foreground";
-      }): Promise<void>;
+      notify(input:
+        | {
+            userId: string;
+            kind: "foreground";
+          }
+        | {
+            userId: string;
+            kind: "turn_terminal";
+            prepareId: string;
+          }
+      ): Promise<void>;
     },
   ) {}
 
@@ -745,6 +752,10 @@ export class NativeLiveBackendRelayService {
 
     const outcome = await this.repository.markCompleted(input);
     this.requireMutation(outcome);
+    await this.bestEffortTurnTerminalWake(
+      input.userId,
+      input.reservationId,
+    );
     return finalized;
   }
 
@@ -765,6 +776,10 @@ export class NativeLiveBackendRelayService {
   }): Promise<void> {
     const outcome = await this.repository.rejectReservation(input);
     this.requireMutation(outcome);
+    await this.bestEffortTurnTerminalWake(
+      input.userId,
+      input.reservationId,
+    );
   }
 
   private async bestEffortWake(
@@ -775,6 +790,21 @@ export class NativeLiveBackendRelayService {
       await this.workWake?.notify({ userId, kind });
     } catch {
       // Durable queue state is authoritative; wake delivery is advisory.
+    }
+  }
+
+  private async bestEffortTurnTerminalWake(
+    userId: string,
+    prepareId: string,
+  ): Promise<void> {
+    try {
+      await this.workWake?.notify({
+        userId,
+        kind: "turn_terminal",
+        prepareId,
+      });
+    } catch {
+      // Durable terminal turn state is authoritative.
     }
   }
 

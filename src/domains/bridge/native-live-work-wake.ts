@@ -11,7 +11,8 @@ export type NativeLiveWorkKind =
   | "foreground"
   | "background_model"
   | "runtime_control"
-  | "runtime_interaction";
+  | "runtime_interaction"
+  | "turn_terminal";
 
 type NativeLiveWorkWakeInput =
   | {
@@ -27,6 +28,11 @@ type NativeLiveWorkWakeInput =
       userId: string;
       kind: "runtime_interaction";
       interactionId: string;
+    }
+  | {
+      userId: string;
+      kind: "turn_terminal";
+      prepareId: string;
     };
 
 export type NativeLiveWorkWaitOutcome =
@@ -45,6 +51,9 @@ export class DrizzleNativeLiveWorkWakePublisher {
         : {}),
       ...(input.kind === "runtime_interaction"
         ? { interaction_id: input.interactionId }
+        : {}),
+      ...(input.kind === "turn_terminal"
+        ? { prepare_id: input.prepareId }
         : {}),
     });
     try {
@@ -228,6 +237,33 @@ export class NativeLiveWorkWakeBroker {
     });
   }
 
+  turnVersion(
+    userId: string,
+    prepareId: string,
+  ): number {
+    return this.versionForKey(
+      turnWakeKey(userId, prepareId),
+    );
+  }
+
+  waitForTurnChange(input: {
+    userId: string;
+    prepareId: string;
+    afterVersion: number;
+    timeoutMs: number;
+    signal?: AbortSignal | null;
+  }): Promise<NativeLiveWorkWaitOutcome> {
+    return this.waitForKey({
+      key: turnWakeKey(
+        input.userId,
+        input.prepareId,
+      ),
+      afterVersion: input.afterVersion,
+      timeoutMs: input.timeoutMs,
+      signal: input.signal,
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -363,6 +399,20 @@ export class NativeLiveWorkWakeBroker {
       return;
     }
 
+    if (kind === "turn_terminal") {
+      const prepareId = record.prepare_id;
+      if (
+        typeof prepareId !== "string"
+        || !prepareId.trim()
+      ) {
+        return;
+      }
+      this.signalKey(
+        turnWakeKey(userId, prepareId),
+      );
+      return;
+    }
+
     if (
       kind === "semantic"
       || kind === "foreground"
@@ -416,4 +466,11 @@ function interactionWakeKey(
   interactionId: string,
 ): string {
   return `interaction:${userId}:${interactionId}`;
+}
+
+function turnWakeKey(
+  userId: string,
+  prepareId: string,
+): string {
+  return `turn:${userId}:${prepareId}`;
 }
