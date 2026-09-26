@@ -249,6 +249,7 @@ implements NativeLiveBackendTurnPort {
           operation: "send",
           requestHash,
           canonicalUserMessageId: userMessage.id,
+          replacementTargetUserMessageId: null,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           executionSelection: input.executionSelection,
@@ -314,7 +315,14 @@ implements NativeLiveBackendTurnPort {
             && message.role === "user",
         );
         const prompt = target ? readUserText(target) : null;
-        if (!target || !prompt) {
+        const purgePlan = target
+          ? planReplacementMessagePurge({
+              operation: "retry",
+              conversation,
+              targetUserMessageId: target.id,
+            })
+          : null;
+        if (!target || !prompt || !purgePlan) {
           return { ok: false as const, code: "BRANCH_POINT_INVALID" as const };
         }
 
@@ -334,6 +342,7 @@ implements NativeLiveBackendTurnPort {
           operation: "retry",
           requestHash,
           canonicalUserMessageId: target.id,
+          replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           executionSelection: input.executionSelection,
@@ -400,7 +409,14 @@ implements NativeLiveBackendTurnPort {
             message.id === input.targetUserMessageId
             && message.role === "user",
         );
-        if (!target) {
+        const purgePlan = target
+          ? planReplacementMessagePurge({
+              operation: "edit",
+              conversation,
+              targetUserMessageId: target.id,
+            })
+          : null;
+        if (!target || !purgePlan) {
           return { ok: false as const, code: "BRANCH_POINT_INVALID" as const };
         }
 
@@ -437,6 +453,7 @@ implements NativeLiveBackendTurnPort {
           operation: "edit",
           requestHash,
           canonicalUserMessageId: editedUser.id,
+          replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           executionSelection: input.executionSelection,
@@ -898,6 +915,7 @@ implements NativeLiveBackendTurnPort {
       operation: "send" | "retry" | "edit";
       requestHash: string;
       canonicalUserMessageId: string;
+      replacementTargetUserMessageId: string | null;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
@@ -914,6 +932,7 @@ implements NativeLiveBackendTurnPort {
         operation: input.operation,
         requestHash: input.requestHash,
         canonicalUserMessageId: input.canonicalUserMessageId,
+        replacementTargetUserMessageId: input.replacementTargetUserMessageId,
         runtimeMode: input.runtimeMode,
         parentProviderSessionId: input.parentProviderSessionId,
         executionSelection: input.executionSelection,
@@ -1015,6 +1034,8 @@ implements NativeLiveBackendTurnPort {
       requestHash: nativeLiveTurnPreparations.requestHash,
       canonicalUserMessageId:
         nativeLiveTurnPreparations.canonicalUserMessageId,
+      replacementTargetUserMessageId:
+        nativeLiveTurnPreparations.replacementTargetUserMessageId,
       runtimeMode: nativeLiveTurnPreparations.runtimeMode,
       parentProviderSessionId:
         nativeLiveTurnPreparations.parentProviderSessionId,
