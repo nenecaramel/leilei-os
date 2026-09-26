@@ -627,6 +627,7 @@ export function createApp(
             : {}),
         }),
       );
+    }
   }
 
   if (config.MCP_AUTH_TOKEN) {
