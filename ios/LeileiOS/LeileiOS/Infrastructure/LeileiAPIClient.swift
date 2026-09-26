@@ -19,6 +19,11 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
     let updatedAt: String
 }
 
+struct NativeLiveConversationPage: Sendable, Equatable {
+    let conversations: [NativeLiveConversationSummary]
+    let nextCursor: String?
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -26,6 +31,8 @@ struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let updatedAt: String
     let syncToken: String
     let truncated: Bool
+    let olderCursor: String?
+    let resetRequired: Bool
     let messages: [NativeLiveCurrentPathMessage]
 }
 
@@ -401,15 +408,43 @@ final class LeileiAPIClient {
     func nativeLiveConversations(
         limit: Int = 50
     ) async throws -> [NativeLiveConversationSummary] {
+        try await nativeLiveConversationPage(limit: limit).conversations
+    }
+
+    func nativeLiveConversationPage(
+        limit: Int = 50,
+        cursor: String? = nil
+    ) async throws -> NativeLiveConversationPage {
         guard (1...100).contains(limit) else {
             throw LeileiAPIError.invalidResponse
         }
 
+        var components = URLComponents()
+        components.path = "/api/v1/native-live/conversations"
+        var queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let cursor {
+            guard !cursor.isEmpty else {
+                throw LeileiAPIError.invalidResponse
+            }
+            queryItems.append(
+                URLQueryItem(name: "cursor", value: cursor)
+            )
+        }
+        components.queryItems = queryItems
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+
         let envelope: NativeLiveConversationListEnvelope = try await request(
-            path: "/api/v1/native-live/conversations?limit=\(limit)",
+            path: path,
             authenticated: true
         )
-        return envelope.data.conversations
+        return NativeLiveConversationPage(
+            conversations: envelope.data.conversations,
+            nextCursor: envelope.data.nextCursor
+        )
     }
 
     func createNativeLiveConversation(
@@ -560,14 +595,42 @@ final class LeileiAPIClient {
     func nativeLiveCurrentPath(
         conversationID: UUID,
         limit: Int = 100,
+        beforeMessageID: String? = nil,
+        afterMessageID: String? = nil,
         etag: String? = nil
     ) async throws -> NativeLiveCurrentPathFetchResult {
-        guard (1...200).contains(limit) else {
+        guard (1...200).contains(limit),
+              beforeMessageID == nil || afterMessageID == nil else {
             throw LeileiAPIError.invalidResponse
         }
 
-        let path = "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())/current-path?limit=\(limit)"
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+        var components = URLComponents()
+        components.path =
+            "/api/v1/native-live/conversations/"
+            + conversationID.uuidString.lowercased()
+            + "/current-path"
+        var queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let beforeMessageID {
+            queryItems.append(
+                URLQueryItem(
+                    name: "before_message_id",
+                    value: beforeMessageID
+                )
+            )
+        }
+        if let afterMessageID {
+            queryItems.append(
+                URLQueryItem(
+                    name: "after_message_id",
+                    value: afterMessageID
+                )
+            )
+        }
+        components.queryItems = queryItems
+        guard let path = components.string,
+              let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw LeileiAPIError.invalidResponse
         }
 
@@ -851,6 +914,7 @@ private struct NativeLiveConversationListEnvelope: Decodable, Sendable {
 
     struct ConversationListData: Decodable, Sendable {
         let conversations: [NativeLiveConversationSummary]
+        let nextCursor: String?
     }
 }
 
