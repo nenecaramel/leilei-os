@@ -5,10 +5,6 @@ type BridgeEvent = {
   id: string;
   visibleText: string;
   modelContext?: string;
-  kind?: string;
-  source?: string;
-  reservedAt?: string | null;
-  dispatchStartedAt?: string | null;
 };
 
 type BridgeToolResult = {
@@ -179,27 +175,8 @@ function startBridgeListener(): void {
     }, POLL_MS) as unknown as ReturnType<typeof setTimeout>;
   };
 
-  const sentinelWakeMetadata = (event: BridgeEvent): Record<string, unknown> | null => {
-    if (event.kind !== "wake" || event.source !== "leileios_sentinel" || typeof event.modelContext !== "string") return null;
-    const match = event.modelContext.match(/wakeId=([^;]+); sentinelId=([^;]+); controlRevision=(\d+); scheduledFor=([^ ]+)\./);
-    if (!match) return null;
-    return {
-      eventId: event.id,
-      wakeId: match[1],
-      sentinelId: match[2],
-      controlRevision: Number(match[3]),
-      scheduledFor: match[4],
-      reservedAt: event.reservedAt ?? null,
-      dispatchStartedAt: event.dispatchStartedAt ?? null,
-    };
-  };
-
-  const modelContextFor = (event: BridgeEvent): string => {
-    const wake = sentinelWakeMetadata(event);
-    return wake
-      ? `LeileiOS Sentinel event metadata: eventId=${event.id}; wakeId=${wake.wakeId}; sentinelId=${wake.sentinelId}; controlRevision=${wake.controlRevision}; scheduledFor=${wake.scheduledFor}.`
-      : `${event.modelContext ?? ""}\n\nLeileiOS Bridge event metadata: eventId=${event.id}.`;
-  };
+  const modelContextFor = (event: BridgeEvent): string =>
+    `${event.modelContext ?? ""}\n\nLeileiOS Bridge event metadata: eventId=${event.id}.`;
 
   const definiteTransportRejection = (error: unknown): boolean => {
     const candidate = error as { code?: unknown; message?: unknown };
@@ -270,10 +247,8 @@ function startBridgeListener(): void {
       }
       if (tearingDown) return;
       try {
-        const wakeMetadata = sentinelWakeMetadata(event);
         const contextResult = await trackAppCall(app.updateModelContext({
           content: [{ type: "text", text: modelContextFor(event) }],
-          ...(wakeMetadata ? { _meta: { leileios: { bridgeEvent: wakeMetadata } } } : {}),
         }, { timeout: TIMEOUT_MS }));
         if ((contextResult as { isError?: boolean } | undefined)?.isError === true) throw new Error("Host rejected ui/update-model-context");
       } catch (error) {

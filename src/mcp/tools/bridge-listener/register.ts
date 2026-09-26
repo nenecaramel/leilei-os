@@ -2,7 +2,7 @@ import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createMcpToolError, mcpToolErrorDetailsSchema } from "../error-contract.js";
-import { BRIDGE_RESOURCE_URI, getSentinelWakeRoutingMetadata } from "./listener-resource.js";
+import { BRIDGE_RESOURCE_URI } from "./listener-resource.js";
 import type { BridgeEventRecord } from "../../../domains/bridge/bridge-event-types.js";
 import type { BridgeService } from "../../../domains/bridge/bridge-service.js";
 
@@ -61,12 +61,10 @@ export function registerBridgeListenerTools(server: McpServer, deps: BridgeListe
       const event = await deps.bridgeService.reserveNext(deps.getAuthenticatedUserId(), listenerInstanceId);
       const result = ok({ event: event ? compactEvent(event) : null });
       if (!event) return result;
-      const wakeMetadata = getSentinelWakeRoutingMetadata(event);
       return {
         ...result,
         _meta: {
           bridgeEvent: event,
-          ...(wakeMetadata ? { wakeMetadata } : {}),
         },
       };
     } catch (error) {

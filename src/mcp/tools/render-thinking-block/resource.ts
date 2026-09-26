@@ -1,19 +1,19 @@
-import { readFileSync } from "node:fs";
 import {
   registerAppResource,
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { loadMcpBrowserBundle } from "../browser-bundle-loader.js";
 
 export const RENDER_NOTE_CARD_RESOURCE_URI =
   "ui://widget/leileios-note-card-v2.html";
 export const CHATGPT_RENDER_NOTE_CARD_RESOURCE_URI =
   "ui://widget/leileios-note-card-chatgpt-v2.html";
 
-const NOTE_CARD_BROWSER_BUNDLE = readFileSync(
-  new URL("./browser-runtime.js", import.meta.url),
-  "utf8",
-);
+const NOTE_CARD_BROWSER_BUNDLE = loadMcpBrowserBundle({
+  compiledUrl: new URL("./browser-runtime.js", import.meta.url),
+  sourceUrl: new URL("./browser-runtime.ts", import.meta.url),
+});
 
 function escapeInlineScript(value: string): string {
   return value.replace(/<\/script/gi, "<\\/script");

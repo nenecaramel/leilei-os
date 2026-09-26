@@ -15,16 +15,6 @@ const eventRecord = {
   modelContext: "route hint",
 };
 
-function sentinelWakeEvent(eventId: string, wakeId: string) {
-  return {
-    id: eventId,
-    visibleText: "wake up",
-    kind: "wake",
-    source: "leileios_sentinel",
-    modelContext: `wakeId=${wakeId}; sentinelId=33333333-3333-4333-8333-333333333333; controlRevision=4; scheduledFor=2026-08-30T00:00:00.000Z.`,
-  };
-}
-
 function ordinaryEvent(eventId: string, visibleText: string) {
   return {
     id: eventId,
@@ -220,65 +210,6 @@ test("listener sends a user-role message and releases definite ui/message reject
     response(dom, calls, calls.indexOf(message), { isError: true });
     await tick();
     assert.equal(calls.at(-1)?.params?.name, "bridge_listener_release");
-  } finally {
-    dom.window.close();
-  }
-});
-
-test("each consecutive Sentinel synthetic message carries its own routing identity", async () => {
-  const calls: BridgeCall[] = [];
-  const dom = createDom(calls);
-  const first = sentinelWakeEvent(
-    "00000000-0000-4000-8000-000000000011",
-    "00000000-0000-4000-8000-000000000021",
-  );
-  const second = sentinelWakeEvent(
-    "00000000-0000-4000-8000-000000000012",
-    "00000000-0000-4000-8000-000000000022",
-  );
-
-  async function dispatch(event: ReturnType<typeof sentinelWakeEvent>) {
-    const sync = calls.findLast((call) => call.params?.name === "bridge_listener_sync")!;
-    response(dom, calls, calls.indexOf(sync), { ...toolResult({ event }), _meta: { bridgeEvent: event } });
-    await tick();
-
-    const context = calls.findLast((call) => call.method === "ui/update-model-context")!;
-    response(dom, calls, calls.indexOf(context), {});
-    await tick();
-
-    const dispatchStarted = calls.findLast((call) => call.params?.name === "bridge_listener_dispatch_started")!;
-    response(dom, calls, calls.indexOf(dispatchStarted), toolResult({}));
-    await tick();
-
-    const message = calls.findLast((call) => call.method === "ui/message")!;
-    const text = ((message.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
-    assert.equal(text, `@LeileiOS ${event.visibleText}`);
-    assert.doesNotMatch(text, /eventId|wakeId|bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake/i);
-
-    const contextText = ((context.params as { content: Array<{ text: string }> }).content[0]?.text) ?? "";
-    assert.match(contextText, new RegExp(`eventId=${event.id}`));
-    assert.match(contextText, /wakeId=[^;]+/);
-    assert.doesNotMatch(contextText, /bridge_event_claim|bridge_event_complete|sentinel_get_state|complete_sentinel_wake|claim this wake first|call\s+\w+/i);
-
-    response(dom, calls, calls.indexOf(message), { isError: false });
-    await tick();
-    const delivered = calls.findLast((call) => call.params?.name === "bridge_listener_delivered")!;
-    response(dom, calls, calls.indexOf(delivered), toolResult({}));
-    await tick();
-  }
-
-  try {
-    const start = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-start]")!;
-    const syncNow = dom.window.document.querySelector<HTMLButtonElement>("[data-bridge-sync]")!;
-    start.click();
-    await tick();
-    response(dom, calls, 0, toolResult({ state: "acquired" }));
-    await tick();
-    await dispatch(first);
-
-    syncNow.click();
-    await tick();
-    await dispatch(second);
   } finally {
     dom.window.close();
   }
