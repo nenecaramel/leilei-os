@@ -63,6 +63,7 @@ export class CompanionBackgroundOpportunityService {
       TopicResurfaceCrossDeviceOpportunity,
       "offer"
     > | null,
+    private readonly effectDeliveryOnDirty: boolean = true,
   ) {}
 
   async offer(input: {
@@ -107,7 +108,13 @@ export class CompanionBackgroundOpportunityService {
     // foreground completion, so it is the only subsystem intentionally
     // offered on a dirty opportunity.
     let effectDeliveryScheduled = false;
-    if (this.effectDelivery) {
+    if (
+      this.effectDelivery
+      && (
+        input.reason !== "dirty"
+        || this.effectDeliveryOnDirty
+      )
+    ) {
       try {
         this.effectDelivery.scheduleUser(userId);
         effectDeliveryScheduled = true;
