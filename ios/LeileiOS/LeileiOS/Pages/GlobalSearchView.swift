@@ -270,8 +270,6 @@ private struct GlobalSearchResultRow: View {
             GlobalSearchTodoRow(result: result)
         case .universe:
             GlobalSearchUniverseRow(result: result)
-        case .conversation:
-            GlobalSearchConversationRow(result: result)
         }
     }
 }
@@ -339,35 +337,6 @@ private struct GlobalSearchUniverseRow: View {
             GlobalSearchMetadataLine(
                 left: GlobalSearchDate.row(result.businessTime),
                 right: result.matchedField.capitalized
-            )
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct GlobalSearchConversationRow: View {
-    let result: GlobalSearchResultItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(result.stableName)
-                .font(.body.weight(.semibold))
-                .lineLimit(1)
-
-            if !result.snippet.isEmpty {
-                Text(result.snippet)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-            }
-
-            GlobalSearchMetadataLine(
-                left: GlobalSearchDate.row(result.businessTime),
-                right: result.lifecycleStatus == "archived"
-                    ? "Archived"
-                    : ""
             )
         }
         .padding(.vertical, 2)
