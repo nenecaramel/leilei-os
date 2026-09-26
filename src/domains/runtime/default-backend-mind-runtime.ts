@@ -36,6 +36,19 @@ import {
   DrizzleTopicEvolutionRuntimePort,
 } from "./topic-evolution-runtime-repository.js";
 import {
+  CuriosityEvolutionService,
+  type CuriosityEvolutionPolicy,
+} from "./curiosity-evolution.js";
+import {
+  DrizzleCuriosityEvolutionRuntimePort,
+} from "./curiosity-evolution-runtime-repository.js";
+import {
+  CuriosityResolutionService,
+} from "./curiosity-resolution.js";
+import {
+  DrizzleCuriosityResolutionRuntimePort,
+} from "./curiosity-resolution-runtime-repository.js";
+import {
   CuriosityTopicProjectionService,
 } from "./curiosity-topic-projection.js";
 import {
@@ -85,6 +98,11 @@ const DEFAULT_THOUGHT_EVOLUTION_POLICY = {
   dormantBelowStrength: 0.1,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
+};
+
+export const DEFAULT_CURIOSITY_EVOLUTION_POLICY: CuriosityEvolutionPolicy = {
+  maxReinforcementSources: 16,
+  dormantAfterHours: 168,
 };
 
 const DEFAULT_TOPIC_EVOLUTION_POLICY = {
@@ -148,6 +166,10 @@ export function createDefaultBackendMindRuntime(
     new DrizzleThoughtEvolutionRuntimePort(db),
     DEFAULT_THOUGHT_EVOLUTION_POLICY,
   );
+  const curiosityEvolution = new CuriosityEvolutionService(
+    new DrizzleCuriosityEvolutionRuntimePort(db),
+    DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+  );
   const curiosityTopicProjection = new CuriosityTopicProjectionService(
     new DrizzleCuriosityTopicProjectionRuntimePort(db),
   );
@@ -163,6 +185,7 @@ export function createDefaultBackendMindRuntime(
     {
       driveEvolution,
       thoughtEvolution,
+      curiosityEvolution,
       curiosityTopicProjection,
       topicEvolution,
     },
@@ -199,6 +222,10 @@ export function createDefaultSubjectStateBackgroundMaintenance(
         new DrizzleDriveEvolutionRuntimePort(db),
         DEFAULT_DRIVE_EVOLUTION_POLICY,
       ),
+      curiosityEvolution: new CuriosityEvolutionService(
+        new DrizzleCuriosityEvolutionRuntimePort(db),
+        DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+      ),
       curiosityTopicProjection: new CuriosityTopicProjectionService(
         new DrizzleCuriosityTopicProjectionRuntimePort(db),
       ),
@@ -228,5 +255,18 @@ export function createDefaultDriveSatisfactionService(
     new DrizzleDriveEvolutionRuntimePort(db),
     new DrizzleDriveSatisfactionRuntimePort(db),
     DEFAULT_DRIVE_EVOLUTION_POLICY,
+  );
+}
+
+
+export function createDefaultCuriosityResolutionService(
+  db: Database,
+): CuriosityResolutionService {
+  return new CuriosityResolutionService(
+    new CuriosityEvolutionService(
+      new DrizzleCuriosityEvolutionRuntimePort(db),
+      DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+    ),
+    new DrizzleCuriosityResolutionRuntimePort(db),
   );
 }
