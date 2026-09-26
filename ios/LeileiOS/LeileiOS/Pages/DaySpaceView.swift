@@ -142,26 +142,15 @@ struct DaySpaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .results(let entries):
-            List {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    Button {
-                        Task {
-                            await openSearchResult(entry)
-                        }
-                    } label: {
-                        DaySpaceTodoSearchRow(entry: entry)
+            List(entries) { entry in
+                Button {
+                    Task {
+                        await openSearchResult(entry)
                     }
-                    .buttonStyle(.plain)
-                    .listRowBackground(Color(.systemBackground))
-                    .listRowSeparator(
-                        index == 0 ? .hidden : .visible,
-                        edges: .top
-                    )
-                    .listRowSeparator(
-                        index == entries.count - 1 ? .hidden : .visible,
-                        edges: .bottom
-                    )
+                } label: {
+                    DaySpaceTodoSearchRow(entry: entry)
                 }
+                .buttonStyle(.plain)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
