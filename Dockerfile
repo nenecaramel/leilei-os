@@ -7,9 +7,11 @@ RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY tests ./tests
 COPY scripts/build-bridge-browser.mjs ./scripts/build-bridge-browser.mjs
 COPY scripts/build-thinking-block-browser.mjs ./scripts/build-thinking-block-browser.mjs
 RUN pnpm build
+RUN pnpm test:production-runtime-gate
 
 FROM node:22-alpine AS runtime
 
