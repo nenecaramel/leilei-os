@@ -1199,25 +1199,19 @@ private struct DaySpaceTodoPaperDetail: View {
             signature: {
                 if paper == nil {
                     Menu {
-                        ForEach(DaySpaceAuthor.allCases) { candidate in
-                            Button {
-                                author = candidate
-                                errorMessage = nil
-                            } label: {
-                                HStack {
-                                    Text(candidate.rawValue)
-
-                                    if candidate.rawValue == author.rawValue {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
+                        Picker("", selection: $author) {
+                            ForEach(DaySpaceAuthor.allCases) { candidate in
+                                Text(candidate.rawValue)
+                                    .tag(candidate)
+                                    .disabled(
+                                        unavailableAuthors.contains {
+                                            $0.rawValue == candidate.rawValue
+                                        }
+                                    )
                             }
-                            .disabled(
-                                unavailableAuthors.contains {
-                                    $0.rawValue == candidate.rawValue
-                                }
-                            )
                         }
+                        .labelsHidden()
+                        .pickerStyle(.inline)
                     } label: {
                         Text(author.rawValue)
                             .font(
@@ -1232,6 +1226,9 @@ private struct DaySpaceTodoPaperDetail: View {
                                     white: 0.52
                                 )
                             )
+                    }
+                    .onChange(of: author) { _, _ in
+                        errorMessage = nil
                     }
                     .accessibilityLabel("Todo author \(author.rawValue)")
                 } else {
