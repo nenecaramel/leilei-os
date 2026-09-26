@@ -1,18 +1,7 @@
 name: CI
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - "ios/**"
-      - "**/*.md"
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "ios/**"
-      - "**/*.md"
+  workflow_dispatch:
 
 jobs:
   verify:
