@@ -41,11 +41,6 @@ test("due companion opportunity schedules cadence work across maintenance, effec
               priority: "maintenance" as const,
               cost: 1,
             },
-            {
-              kind: "proactivity_wake" as const,
-              priority: "reflection" as const,
-              cost: 1,
-            },
           ],
         };
       },
