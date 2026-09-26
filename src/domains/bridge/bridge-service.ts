@@ -390,30 +390,6 @@ export function hashBridgeEventRequest(value: {
     .digest("hex");
 }
 
-export function hashSentinelWakeRequest(wakeId: string): string {
-  return createHash("sha256")
-    .update(
-      `${BRIDGE_REQUEST_FINGERPRINT_VERSION}\n` +
-        JSON.stringify({ kind: "wake", source: "leileios_sentinel", wakeId }),
-      "utf8",
-    )
-    .digest("hex");
-}
-
-export function createSentinelWakeModelContext(input: {
-  eventId: string;
-  wakeId: string;
-  sentinelId: string;
-  controlRevision: number;
-  scheduledFor: Date;
-}): string {
-  return [
-    `LeileiOS Sentinel wake event ${input.eventId}.`,
-    `wakeId=${input.wakeId}; sentinelId=${input.sentinelId}; controlRevision=${input.controlRevision}; scheduledFor=${input.scheduledFor.toISOString()}.`,
-    "Sentinel wake metadata is provided for correlation.",
-  ].join(" ");
-}
-
 export function createBridgeModelContext(input: {
   eventId: string;
   createdAt: Date;
