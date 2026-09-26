@@ -3,7 +3,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
+  conversationProviderSessionCheckpoints,
   nativeLiveBackgroundModelJobs,
+  nativeLiveProviderSessionCleanups,
   nativeLiveMindFollowUps,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
@@ -39,6 +41,7 @@ import type {
 } from "./native-live-runtime-protocol.js";
 import {
   planCausalSubjectStatePurge,
+  planExclusiveProviderSessionCleanup,
   planReplacementMessagePurge,
   planSubjectStateEvolutionRepairs,
   workflowReferencesAnyId,
@@ -890,6 +893,48 @@ implements NativeLiveBackendTurnPort {
   ): Promise<void> {
     const purgeMessageIds = new Set(plan.messageIds);
     if (purgeMessageIds.size === 0) return;
+
+    const checkpoints = await transaction
+      .select({
+        canonicalMessageId:
+          conversationProviderSessionCheckpoints.canonicalMessageId,
+        provider:
+          conversationProviderSessionCheckpoints.provider,
+        providerSessionId:
+          conversationProviderSessionCheckpoints.providerSessionId,
+      })
+      .from(conversationProviderSessionCheckpoints)
+      .where(
+        and(
+          eq(
+            conversationProviderSessionCheckpoints.userId,
+            row.userId,
+          ),
+          eq(
+            conversationProviderSessionCheckpoints.conversationId,
+            row.conversationId,
+          ),
+        ),
+      );
+
+    const providerSessionIds =
+      planExclusiveProviderSessionCleanup({
+        purgeMessageIds,
+        checkpoints,
+      });
+    if (providerSessionIds.length > 0) {
+      await transaction
+        .insert(nativeLiveProviderSessionCleanups)
+        .values(
+          providerSessionIds.map((providerSessionId) => ({
+            userId: row.userId,
+            provider: "claude_code" as const,
+            providerSessionId,
+            status: "pending" as const,
+          })),
+        )
+        .onConflictDoNothing();
+    }
 
     const watermarks = await transaction
       .select({
