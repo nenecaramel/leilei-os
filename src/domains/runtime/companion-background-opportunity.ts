@@ -104,9 +104,9 @@ export class CompanionBackgroundOpportunityService {
       }
     }
 
-    // Effect recovery is cheap and may become deliverable immediately after
-    // foreground completion, so it is the only subsystem intentionally
-    // offered on a dirty opportunity.
+    // Timed opportunities always get a chance to drain durable historical
+    // effects. Dirty opportunities only do that when an active producer
+    // (currently Proactivity) can create new effects between timed cadences.
     let effectDeliveryScheduled = false;
     if (
       this.effectDelivery
