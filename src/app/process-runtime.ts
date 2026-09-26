@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   env,
+  getBreathRankingConfig,
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
@@ -303,9 +304,11 @@ export function createProcessRuntime(
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
+  const breathRankingConfig = getBreathRankingConfig(runtimeEnv);
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(
     db,
     memoryDecayConfig,
+    breathRankingConfig,
   );
   const driveSatisfactionService =
     createDefaultDriveSatisfactionService(db);

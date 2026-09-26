@@ -77,6 +77,8 @@ const baseEnvSchema = z.object({
   MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
   MCP_PUBLIC_TOOL_PROFILES: z.string().optional(),
   MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
+  NATIVE_LIVE_BREATH_SALIENCE_WEIGHT:
+    z.coerce.number().min(0).max(1).optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
@@ -262,6 +264,10 @@ export type McpGovernanceConfig = {
   idempotencyCleanupIntervalHours: number;
 };
 
+export type BreathRankingConfig = {
+  salienceWeight: number;
+};
+
 export type TopicResurfaceOpportunityConfig = {
   candidateLimit: number;
 };
@@ -279,6 +285,26 @@ export type ProactivityWakeOpportunityConfig = {
   minIdleMs: number;
   cooldownMs: number;
 };
+
+export function getBreathRankingConfig(
+  environment: Pick<
+    RuntimeEnv,
+    "NATIVE_LIVE_BREATH_SALIENCE_WEIGHT"
+  >,
+): BreathRankingConfig {
+  const salienceWeight =
+    environment.NATIVE_LIVE_BREATH_SALIENCE_WEIGHT ?? 0.1;
+  if (
+    !Number.isFinite(salienceWeight)
+    || salienceWeight < 0
+    || salienceWeight > 1
+  ) {
+    throw new Error(
+      "NATIVE_LIVE_BREATH_SALIENCE_WEIGHT must be between 0 and 1.",
+    );
+  }
+  return { salienceWeight };
+}
 
 export function getProactivityWakeOpportunityConfig(
   environment: Pick<

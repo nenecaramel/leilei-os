@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getBreathRankingConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
@@ -129,5 +130,29 @@ test("Proactivity wake production opportunity is disabled by default and require
       minIdleMs: 7_200_000,
       cooldownMs: 21_600_000,
     },
+  );
+});
+
+
+test("Breath salience ranking has a conservative production default and stays explicitly tunable", () => {
+  assert.deepEqual(
+    getBreathRankingConfig({
+      NATIVE_LIVE_BREATH_SALIENCE_WEIGHT: undefined,
+    }),
+    { salienceWeight: 0.1 },
+  );
+
+  assert.deepEqual(
+    getBreathRankingConfig({
+      NATIVE_LIVE_BREATH_SALIENCE_WEIGHT: 0.2,
+    }),
+    { salienceWeight: 0.2 },
+  );
+
+  assert.throws(
+    () => getBreathRankingConfig({
+      NATIVE_LIVE_BREATH_SALIENCE_WEIGHT: 1.1,
+    } as never),
+    /between 0 and 1/,
   );
 });
