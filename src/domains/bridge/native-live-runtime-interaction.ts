@@ -389,7 +389,9 @@ export class NativeLiveRuntimeInteractionService {
       Pick<
         NativeLiveWorkWakeBroker,
         "start" | "interactionVersion" | "waitForInteractionChange"
-      >,
+      > & {
+        release?: () => Promise<void>;
+      },
   ) {}
 
   create(
@@ -448,50 +450,54 @@ export class NativeLiveRuntimeInteractionService {
     }
 
     await this.wakeBroker.start();
-    const version = this.wakeBroker.interactionVersion(
-      input.userId,
-      input.interactionId,
-    );
-
-    const raced = await read();
-    if (!raced) {
-      throw new NativeLiveRuntimeInteractionError(
-        "INTERACTION_NOT_FOUND",
-        "Native live interaction was not found.",
+    try {
+      const version = this.wakeBroker.interactionVersion(
+        input.userId,
+        input.interactionId,
       );
-    }
-    if (raced.status !== "pending") {
-      return {
-        outcome: "terminal",
-        interaction: raced,
-      };
-    }
 
-    const wake =
-      await this.wakeBroker.waitForInteractionChange({
-        userId: input.userId,
-        interactionId: input.interactionId,
-        afterVersion: version,
-        timeoutMs: input.timeoutMs,
-        signal: input.signal,
-      });
-    if (wake.outcome !== "ready") {
-      return { outcome: "timeout" };
-    }
-
-    const terminal = await read();
-    if (!terminal) {
-      throw new NativeLiveRuntimeInteractionError(
-        "INTERACTION_NOT_FOUND",
-        "Native live interaction was not found.",
-      );
-    }
-    return terminal.status === "pending"
-      ? { outcome: "timeout" }
-      : {
+      const raced = await read();
+      if (!raced) {
+        throw new NativeLiveRuntimeInteractionError(
+          "INTERACTION_NOT_FOUND",
+          "Native live interaction was not found.",
+        );
+      }
+      if (raced.status !== "pending") {
+        return {
           outcome: "terminal",
-          interaction: terminal,
+          interaction: raced,
         };
+      }
+
+      const wake =
+        await this.wakeBroker.waitForInteractionChange({
+          userId: input.userId,
+          interactionId: input.interactionId,
+          afterVersion: version,
+          timeoutMs: input.timeoutMs,
+          signal: input.signal,
+        });
+      if (wake.outcome !== "ready") {
+        return { outcome: "timeout" };
+      }
+
+      const terminal = await read();
+      if (!terminal) {
+        throw new NativeLiveRuntimeInteractionError(
+          "INTERACTION_NOT_FOUND",
+          "Native live interaction was not found.",
+        );
+      }
+      return terminal.status === "pending"
+        ? { outcome: "timeout" }
+        : {
+            outcome: "terminal",
+            interaction: terminal,
+          };
+    } finally {
+      await this.wakeBroker.release?.();
+    }
   }
 
   listForUser(

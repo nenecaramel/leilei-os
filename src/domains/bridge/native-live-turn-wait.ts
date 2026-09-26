@@ -26,7 +26,9 @@ export class NativeLiveTurnWaitService {
     private readonly wakeBroker: Pick<
       NativeLiveWorkWakeBroker,
       "start" | "turnVersion" | "waitForTurnChange"
-    >,
+    > & {
+      release?: () => Promise<void>;
+    },
   ) {}
 
   async wait(input: {
@@ -51,39 +53,43 @@ export class NativeLiveTurnWaitService {
     }
 
     await this.wakeBroker.start();
-    const version = this.wakeBroker.turnVersion(
-      input.userId,
-      input.prepareId,
-    );
+    try {
+      const version = this.wakeBroker.turnVersion(
+        input.userId,
+        input.prepareId,
+      );
 
-    const raced = await read();
-    if (!raced) return null;
-    if (isTerminal(raced)) {
-      return {
-        outcome: "terminal",
-        turn: raced,
-      };
-    }
-
-    const wake = await this.wakeBroker.waitForTurnChange({
-      userId: input.userId,
-      prepareId: input.prepareId,
-      afterVersion: version,
-      timeoutMs: input.timeoutMs,
-      signal: input.signal,
-    });
-    if (wake.outcome !== "ready") {
-      return { outcome: "timeout" };
-    }
-
-    const terminal = await read();
-    if (!terminal) return null;
-    return isTerminal(terminal)
-      ? {
+      const raced = await read();
+      if (!raced) return null;
+      if (isTerminal(raced)) {
+        return {
           outcome: "terminal",
-          turn: terminal,
-        }
-      : { outcome: "timeout" };
+          turn: raced,
+        };
+      }
+
+      const wake = await this.wakeBroker.waitForTurnChange({
+        userId: input.userId,
+        prepareId: input.prepareId,
+        afterVersion: version,
+        timeoutMs: input.timeoutMs,
+        signal: input.signal,
+      });
+      if (wake.outcome !== "ready") {
+        return { outcome: "timeout" };
+      }
+
+      const terminal = await read();
+      if (!terminal) return null;
+      return isTerminal(terminal)
+        ? {
+            outcome: "terminal",
+            turn: terminal,
+          }
+        : { outcome: "timeout" };
+    } finally {
+      await this.wakeBroker.release?.();
+    }
   }
 }
 

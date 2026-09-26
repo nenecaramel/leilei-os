@@ -72,6 +72,7 @@ test("turn wait closes the missed-notify race with a second authoritative read",
   });
   let reads = 0;
   let waits = 0;
+  let releases = 0;
 
   const service = new NativeLiveTurnWaitService(
     {
@@ -89,6 +90,9 @@ test("turn wait closes the missed-notify race with a second authoritative read",
         waits += 1;
         return { outcome: "ready" as const, version: 4 };
       },
+      async release() {
+        releases += 1;
+      },
     },
   );
 
@@ -102,6 +106,7 @@ test("turn wait closes the missed-notify race with a second authoritative read",
   );
   assert.equal(reads, 2);
   assert.equal(waits, 0);
+  assert.equal(releases, 1);
 });
 
 test("turn wait reads terminal state after a wake and returns timeout without polling", async () => {
