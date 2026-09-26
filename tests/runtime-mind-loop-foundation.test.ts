@@ -526,25 +526,23 @@ test("Context Assembly injects only active Drive anchors and drops satisfied/rei
   assert.equal(assembled.prompt.includes("已经满足的缺口"), false);
 });
 
-test("Context Assembly injects only anchor Fixations and keeps Flits out", () => {
-  const fixationAnchor = state(
+test("Context Assembly injects strongest active Thought anchors directly", () => {
+  const strong = state(
     "11111111-1111-4111-8111-111111111111",
     "thought",
     "这个问题一直在我脑子里打转",
   );
-  fixationAnchor.payload = writeThoughtEvolution(
-    fixationAnchor.payload,
+  strong.payload = writeThoughtEvolution(
+    strong.payload,
     {
-      stage: "fixation",
       role: "anchor",
-      threadKey: "thread-fixation",
-      anchorStateId: fixationAnchor.id,
+      threadKey: "thread-strong",
+      anchorStateId: strong.id,
       strength: 0.85,
       reinforcementCount: 3,
       reinforcementSources: ["m1", "m2", "m3"],
       lastEvolvedAt: now,
       lastReinforcedAt: now,
-      fixationAt: now,
     },
   );
 
@@ -556,72 +554,69 @@ test("Context Assembly injects only anchor Fixations and keeps Flits out", () =>
   reinforcement.payload = writeThoughtEvolution(
     reinforcement.payload,
     {
-      stage: "fixation",
       role: "reinforcement",
-      threadKey: "thread-fixation",
-      anchorStateId: fixationAnchor.id,
+      threadKey: "thread-strong",
+      anchorStateId: strong.id,
       strength: 0.85,
       reinforcementCount: 3,
       reinforcementSources: ["m1", "m2", "m3"],
       lastEvolvedAt: now,
       lastReinforcedAt: now,
-      fixationAt: now,
     },
   );
 
-  const flit = state(
+  const weak = state(
     "33333333-3333-4333-8333-333333333333",
     "thought",
-    "一个暂时闪过的念头",
+    "一个已经很弱的念头",
   );
-  flit.payload = writeThoughtEvolution(
-    flit.payload,
+  weak.payload = writeThoughtEvolution(
+    weak.payload,
     {
-      stage: "flit",
       role: "anchor",
-      threadKey: "thread-flit",
-      anchorStateId: flit.id,
-      strength: 0.35,
+      threadKey: "thread-weak",
+      anchorStateId: weak.id,
+      strength: 0.05,
       reinforcementCount: 1,
       reinforcementSources: ["m4"],
       lastEvolvedAt: now,
       lastReinforcedAt: now,
-      fixationAt: null,
     },
   );
 
   const assembled = assembleTurnContext({
-    manifestId: "manifest-fixation",
+    manifestId: "manifest-thought",
     userId: "u1",
     subjectId: "G",
     conversation: conversation([], null),
-    userMessageId: "u-fixation",
+    userMessageId: "u-thought",
     userText: "继续",
-    subjectStates: [fixationAnchor, reinforcement, flit],
+    subjectStates: [strong, reinforcement, weak],
     snapshotSequence: 1,
     assembledAt: now,
     assemblyVersion: "assembly-v1",
     promptContractVersion: "prompt-v1",
     surfaceLimit: 4,
     breathLimit: 3,
-    fixationLimit: 3,
+    thoughtLimit: 3,
+    thoughtMinStrength: 0.1,
     maxContextItems: 10,
     maxContextChars: 4000,
   });
 
-  const fixationItems = assembled.manifest.items.filter(
-    (item) => item.selection.reason === "active_fixation",
+  const thoughtItems = assembled.manifest.items.filter(
+    (item) => item.selection.reason === "active_thought",
   );
   assert.deepEqual(
-    fixationItems.map((item) => item.sourceId),
-    [fixationAnchor.id],
+    thoughtItems.map((item) => item.sourceId),
+    [strong.id],
   );
   assert.equal(
     assembled.prompt.includes("这个问题一直在我脑子里打转"),
     true,
   );
   assert.equal(
-    assembled.prompt.includes("一个暂时闪过的念头"),
+    assembled.prompt.includes("一个已经很弱的念头"),
     false,
   );
 });

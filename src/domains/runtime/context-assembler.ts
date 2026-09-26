@@ -143,7 +143,7 @@ function selectWithinBudget(
 
 /**
  * First Non-style Context Assembly slice:
- * current user message + active Drive + active Fixation + active Topic + bounded Breath.
+ * current user message + active Drive + active Thought + active Topic + bounded Breath.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -170,7 +170,8 @@ export function assembleTurnContext(input: {
   breathSemanticMinScore?: number;
   breathSemanticScores?: ReadonlyMap<string, number>;
   driveLimit?: number;
-  fixationLimit?: number;
+  thoughtLimit?: number;
+  thoughtMinStrength?: number;
   topicLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
@@ -257,12 +258,20 @@ export function assembleTurnContext(input: {
       );
     });
 
-  const fixationLimit = input.fixationLimit ?? 0;
-  if (!Number.isInteger(fixationLimit) || fixationLimit < 0) {
-    throw new Error("Fixation limit must be a nonnegative integer.");
+  const thoughtLimit = input.thoughtLimit ?? 0;
+  const thoughtMinStrength = input.thoughtMinStrength ?? 0;
+  if (!Number.isInteger(thoughtLimit) || thoughtLimit < 0) {
+    throw new Error("Thought limit must be a nonnegative integer.");
+  }
+  if (
+    !Number.isFinite(thoughtMinStrength)
+    || thoughtMinStrength < 0
+    || thoughtMinStrength > 1
+  ) {
+    throw new Error("Thought minimum strength must be between zero and one.");
   }
 
-  const fixations = input.subjectStates
+  const thoughts = input.subjectStates
     .filter((state) => {
       if (
         state.kind !== "thought"
@@ -280,8 +289,8 @@ export function assembleTurnContext(input: {
         const evolution = readThoughtEvolution(state.payload);
         return Boolean(
           evolution
-          && evolution.stage === "fixation"
-          && evolution.role === "anchor",
+          && evolution.role === "anchor"
+          && evolution.strength >= thoughtMinStrength,
         );
       } catch {
         return false;
@@ -297,13 +306,13 @@ export function assembleTurnContext(input: {
         || left.id.localeCompare(right.id)
       );
     })
-    .slice(0, fixationLimit)
+    .slice(0, thoughtLimit)
     .map((state, index) => {
       const evolution = readThoughtEvolution(state.payload)!;
       return subjectStateToContextItem(
         state,
         selection(
-          "active_fixation",
+          "active_thought",
           150 + index,
           evolution.strength,
         ),
@@ -391,7 +400,7 @@ export function assembleTurnContext(input: {
     [
       userItem,
       ...drives,
-      ...fixations,
+      ...thoughts,
       ...topics,
       ...breathItems,
     ],

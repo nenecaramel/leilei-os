@@ -10,10 +10,9 @@ import {
 } from "../src/domains/runtime/thought-evolution.js";
 
 const policy: ThoughtEvolutionPolicy = {
-  flitHalfLifeHours: 168,
+  halfLifeHours: 168,
   baseStrength: 0.35,
   reinforcementBoost: 0.25,
-  fixationThreshold: 0.75,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
@@ -57,7 +56,7 @@ class Port {
   }
 }
 
-test("a single settled Thought starts as a decaying Flit", async () => {
+test("a single settled Thought decays by its half-life", async () => {
   const port = new Port([
     candidate(
       "11111111-1111-4111-8111-111111111111",
@@ -75,16 +74,14 @@ test("a single settled Thought starts as a decaying Flit", async () => {
   });
 
   assert.equal(result.initialized, 1);
-  assert.equal(result.fixations, 0);
   assert.equal(port.updates.length, 1);
   const evolution = port.updates[0]?.evolution;
-  assert.equal(evolution?.stage, "flit");
   assert.equal(evolution?.role, "anchor");
   assert.equal(evolution?.reinforcementCount, 1);
   assert.ok(Math.abs((evolution?.strength ?? 0) - 0.175) < 1e-9);
 });
 
-test("three independently settled exact-thread Thoughts promote one anchor to Fixation", async () => {
+test("independent repeats reinforce one Thought thread without promoting a separate stage", async () => {
   const port = new Port([
     candidate(
       "11111111-1111-4111-8111-111111111111",
@@ -107,19 +104,16 @@ test("three independently settled exact-thread Thoughts promote one anchor to Fi
   ]);
   const service = new ThoughtEvolutionService(port, policy);
 
-  const result = await service.runOnce({
+  await service.runOnce({
     userId: "u1",
     subjectId: "G",
     now: "2026-09-22T12:00:00.000Z",
   });
 
-  assert.equal(result.fixations, 1);
   assert.equal(port.updates.length, 3);
-
   const anchor = port.updates.find(
     (update) => update.stateId === "11111111-1111-4111-8111-111111111111",
   );
-  assert.equal(anchor?.evolution.stage, "fixation");
   assert.equal(anchor?.evolution.role, "anchor");
   assert.equal(anchor?.evolution.reinforcementCount, 3);
   assert.equal(anchor?.evolution.strength, 0.85);
@@ -127,6 +121,7 @@ test("three independently settled exact-thread Thoughts promote one anchor to Fi
     anchor?.evolution.threadKey,
     thoughtThreadKey("I keep wondering how memory changes identity"),
   );
+  assert.equal("stage" in (anchor?.evolution ?? {}), false);
 
   const reinforcement = port.updates.find(
     (update) => update.stateId === "33333333-3333-4333-8333-333333333333",
@@ -138,7 +133,7 @@ test("three independently settled exact-thread Thoughts promote one anchor to Fi
   );
 });
 
-test("duplicate Thought tags from the same source message count as one reinforcement", async () => {
+test("duplicate Thought writes from one source count as one reinforcement", async () => {
   const port = new Port([
     candidate(
       "11111111-1111-4111-8111-111111111111",
@@ -168,56 +163,36 @@ test("duplicate Thought tags from the same source message count as one reinforce
   });
 
   assert.equal(port.updates[0]?.evolution.reinforcementCount, 2);
-  assert.equal(port.updates[0]?.evolution.stage, "flit");
   assert.equal(port.updates[0]?.evolution.strength, 0.6);
 });
 
-test("a promoted Fixation does not automatically demote during V1 decay", async () => {
-  const fixationPayload = {
+test("legacy Fixation payload fields are ignored and Thought strength can decay again", async () => {
+  const legacyPayload = {
     thought_v1: {
       stage: "fixation",
       role: "anchor",
       threadKey: thoughtThreadKey("sticky thought"),
       anchorStateId: "11111111-1111-4111-8111-111111111111",
-      strength: 0.85,
-      reinforcementCount: 3,
-      reinforcementSources: ["m1", "m2", "m3"],
+      strength: 0.35,
+      reinforcementCount: 1,
+      reinforcementSources: ["m1"],
       lastEvolvedAt: "2026-09-22T12:00:00.000Z",
       lastReinforcedAt: "2026-09-22T12:00:00.000Z",
       fixationAt: "2026-09-22T12:00:00.000Z",
     },
   };
+  const parsed = readThoughtEvolution(legacyPayload);
+  assert.ok(parsed);
+  assert.equal("stage" in parsed, false);
+  assert.equal("fixationAt" in parsed, false);
+
   const port = new Port([
     candidate(
       "11111111-1111-4111-8111-111111111111",
       "sticky thought",
       "m1",
-      "2026-09-20T12:00:00.000Z",
-      fixationPayload,
-    ),
-    candidate(
-      "22222222-2222-4222-8222-222222222222",
-      "sticky thought",
-      "m2",
-      "2026-09-21T12:00:00.000Z",
-      {
-        thought_v1: {
-          ...(fixationPayload.thought_v1 as Record<string, unknown>),
-          role: "reinforcement",
-        },
-      },
-    ),
-    candidate(
-      "33333333-3333-4333-8333-333333333333",
-      "sticky thought",
-      "m3",
       "2026-09-22T12:00:00.000Z",
-      {
-        thought_v1: {
-          ...(fixationPayload.thought_v1 as Record<string, unknown>),
-          role: "reinforcement",
-        },
-      },
+      legacyPayload,
     ),
   ]);
   const service = new ThoughtEvolutionService(port, policy);
@@ -225,13 +200,11 @@ test("a promoted Fixation does not automatically demote during V1 decay", async 
   const result = await service.runOnce({
     userId: "u1",
     subjectId: "G",
-    now: "2026-10-22T12:00:00.000Z",
+    now: "2026-09-29T12:00:00.000Z",
   });
 
-  assert.equal(result.fixations, 1);
-  assert.equal(port.updates.length, 0);
-  assert.equal(
-    readThoughtEvolution(fixationPayload)?.stage,
-    "fixation",
-  );
+  assert.equal(result.decayed, 1);
+  assert.equal(port.updates.length, 1);
+  assert.ok(Math.abs((port.updates[0]?.evolution.strength ?? 0) - 0.175) < 1e-9);
+  assert.equal("stage" in (port.updates[0]?.evolution ?? {}), false);
 });

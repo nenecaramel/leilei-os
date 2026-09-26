@@ -98,7 +98,8 @@ export type MindLoopConfig = {
   breathSemanticCandidateLimit?: number;
   breathSemanticCandidateMaxChars?: number;
   driveLimit?: number;
-  fixationLimit?: number;
+  thoughtLimit?: number;
+  thoughtMinStrength?: number;
   topicLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
@@ -298,7 +299,8 @@ export class NativeLiveMindLoopService {
       breathSemanticMinScore: this.config.breathSemanticMinScore ?? 0,
       breathSemanticScores: semanticScores,
       driveLimit: this.config.driveLimit ?? 0,
-      fixationLimit: this.config.fixationLimit ?? 0,
+      thoughtLimit: this.config.thoughtLimit ?? 0,
+      thoughtMinStrength: this.config.thoughtMinStrength ?? 0,
       topicLimit: this.config.topicLimit ?? 0,
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
