@@ -51,7 +51,6 @@ import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
-import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
 import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
 import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
@@ -102,7 +101,6 @@ export type AppDependencies = {
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
   webBridgeService?: BridgeApiDependencies["bridgeService"];
-  webSentinelService?: SentinelApiDependencies["sentinelService"];
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
   webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
   webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
@@ -368,7 +366,6 @@ export function createApp(
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
     const webBridgeService = dependencies.webBridgeService;
-    const webSentinelService = dependencies.webSentinelService;
     const webConversationImportService = dependencies.webConversationImportService;
     const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
     const webConversationPruningService = dependencies.webConversationPruningService;
@@ -438,7 +435,6 @@ export function createApp(
         import: { importService: webImportService },
         universe: { universeService: webUniverseService },
         ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
-        ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
         ...(webConversationFavoriteService ? { conversationFavorite: { conversationFavoriteService: webConversationFavoriteService } } : {}),
         ...(webConversationExclusionManagementService ? { conversationExclusionManagement: { conversationExclusionManagementService: webConversationExclusionManagementService } } : {}),
         ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),
