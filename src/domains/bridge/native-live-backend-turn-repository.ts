@@ -40,6 +40,7 @@ import type {
 import {
   planCausalSubjectStatePurge,
   planReplacementMessagePurge,
+  planSubjectStateEvolutionRepairs,
   workflowReferencesAnyId,
   type ReplacementPurgePlan,
 } from "./native-live-replacement-purge.js";
@@ -929,6 +930,12 @@ implements NativeLiveBackendTurnPort {
       resetDistillation,
       states,
     });
+    const purgeStateIdSet = new Set(purgeStateIds);
+    const evolutionRepairs = planSubjectStateEvolutionRepairs({
+      states,
+      purgeMessageIds,
+      purgeStateIds: purgeStateIdSet,
+    });
     const causalIds = new Set<string>([
       ...purgeMessageIds,
       ...purgeStateIds,
@@ -994,6 +1001,21 @@ implements NativeLiveBackendTurnPort {
           and(
             eq(runtimeSubjectStates.userId, row.userId),
             inArray(runtimeSubjectStates.id, purgeStateIds),
+          ),
+        );
+    }
+
+    for (const repair of evolutionRepairs) {
+      await transaction
+        .update(runtimeSubjectStates)
+        .set({
+          payload: repair.nextPayload,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(runtimeSubjectStates.userId, row.userId),
+            eq(runtimeSubjectStates.id, repair.stateId),
           ),
         );
     }
