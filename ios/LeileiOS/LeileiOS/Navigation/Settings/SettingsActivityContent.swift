@@ -72,7 +72,7 @@ private struct SettingsActivityRow: View {
             HStack {
                 Text(record.label)
                 Spacer()
-                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
                     .foregroundStyle(.secondary)
             }
 
