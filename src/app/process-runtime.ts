@@ -238,6 +238,23 @@ function observeBackgroundWorkflowAdvancer(
   };
 }
 
+function lazyBackgroundWorkflowAdvancer(
+  workflowKind: BackgroundWorkflowKind,
+  createAdvancer: () => NativeLiveBackgroundWorkflowAdvancer,
+  logger: SafeLogger,
+): NativeLiveBackgroundWorkflowAdvancer {
+  let advancer: NativeLiveBackgroundWorkflowAdvancer | null = null;
+  return observeBackgroundWorkflowAdvancer(
+    workflowKind,
+    {
+      advanceNextForUser(input) {
+        advancer ??= createAdvancer();
+        return advancer.advanceNextForUser(input);
+      },
+    },
+    logger,
+  );
+}
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
   mcpSessionRegistry: McpSessionRegistry;
@@ -439,21 +456,8 @@ export function createProcessRuntime(
       nativeLiveWorkWakePublisher,
       nativeLiveWorkWakeBroker,
     );
-  const proactivityWakeRepository =
-    new DrizzleProactivityWakeRepository(db);
-  const proactivityWakeOpportunitySource =
-    proactivityWakeOpportunityConfig
-      ? new DrizzleProactivityWakeOpportunitySource(
-          db,
-          proactivityWakeOpportunityConfig,
-        )
-      : null;
   const runtimeEffectRepository =
     new DrizzleRuntimeEffectRepository(db);
-  const proactivityEffectMaterializer =
-    new ProactivityEffectMaterializer(
-      runtimeEffectRepository,
-    );
   const runtimeEffectDeliveryCoordinator =
     new RuntimeEffectDeliveryCoordinator(
       runtimeEffectRepository,
@@ -480,18 +484,29 @@ export function createProcessRuntime(
         logger.info(name, fields);
       },
     );
-  const proactivityWakeCrossDeviceCoordinator =
-    new ProactivityWakeCrossDeviceCoordinator(
-      nativeLiveBackgroundModelService,
-      proactivityWakeRepository,
-      proactivityWakeOpportunitySource,
-      undefined,
-      undefined,
-      proactivityEffectMaterializer,
-      proactivityWakeOpportunityConfig
-        ? runtimeEffectDeliveryWorker
-        : null,
-    );
+
+  const proactivityWakeOpportunitySource =
+    proactivityWakeOpportunityConfig
+      ? new DrizzleProactivityWakeOpportunitySource(
+          db,
+          proactivityWakeOpportunityConfig,
+        )
+      : null;
+  let proactivityWakeCrossDeviceCoordinator:
+    ProactivityWakeCrossDeviceCoordinator | null = null;
+  const getProactivityWakeCrossDeviceCoordinator = () =>
+    proactivityWakeCrossDeviceCoordinator ??=
+      new ProactivityWakeCrossDeviceCoordinator(
+        nativeLiveBackgroundModelService,
+        new DrizzleProactivityWakeRepository(db),
+        proactivityWakeOpportunitySource,
+        undefined,
+        undefined,
+        new ProactivityEffectMaterializer(runtimeEffectRepository),
+        proactivityWakeOpportunityConfig
+          ? runtimeEffectDeliveryWorker
+          : null,
+      );
   const proactivityWakePlan =
     proactivityWakeOpportunityConfig
       ? DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake
@@ -503,33 +518,37 @@ export function createProcessRuntime(
       ? new ProactivityWakeOpportunityProducer(
           backgroundLoopOrchestrator,
           proactivityWakeOpportunitySource,
-          proactivityWakeCrossDeviceCoordinator,
+          getProactivityWakeCrossDeviceCoordinator(),
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
           proactivityWakePlan,
         )
       : null;
-  const topicResurfaceCrossDeviceCoordinator =
-    new TopicResurfaceCrossDeviceCoordinator(
-      nativeLiveBackgroundModelService,
-      new TopicResurfaceCandidateService(
-        new DrizzleTopicResurfaceCandidatePort(db),
-      ),
-      new DrizzleTopicResurfaceThoughtMaterializationPort(db),
-      {
-        ruleVersion: "topic-resurface-thought-v1",
-        processVersion: "topic-resurface-thought-materialization-v1",
-        deliberationPromptContractVersion:
-          "topic-resurface-deliberation-v1",
-        retentionPromptContractVersion:
-          "topic-resurface-retention-v1",
-        model: {
-          provider: "claude_code",
-          model: "runtime-selected",
-          configVersion: "cross-device-v1",
-          promptContractVersion: "topic-resurface-v1",
+
+  let topicResurfaceCrossDeviceCoordinator:
+    TopicResurfaceCrossDeviceCoordinator | null = null;
+  const getTopicResurfaceCrossDeviceCoordinator = () =>
+    topicResurfaceCrossDeviceCoordinator ??=
+      new TopicResurfaceCrossDeviceCoordinator(
+        nativeLiveBackgroundModelService,
+        new TopicResurfaceCandidateService(
+          new DrizzleTopicResurfaceCandidatePort(db),
+        ),
+        new DrizzleTopicResurfaceThoughtMaterializationPort(db),
+        {
+          ruleVersion: "topic-resurface-thought-v1",
+          processVersion: "topic-resurface-thought-materialization-v1",
+          deliberationPromptContractVersion:
+            "topic-resurface-deliberation-v1",
+          retentionPromptContractVersion:
+            "topic-resurface-retention-v1",
+          model: {
+            provider: "claude_code",
+            model: "runtime-selected",
+            configVersion: "cross-device-v1",
+            promptContractVersion: "topic-resurface-v1",
+          },
         },
-      },
-    );
+      );
   const nativeLiveBackgroundWorkflowCoordinator =
     new NativeLiveBackgroundWorkflowCoordinator([
       observeBackgroundWorkflowAdvancer(
@@ -537,21 +556,21 @@ export function createProcessRuntime(
         distillationCrossDeviceCoordinator,
         logger,
       ),
-      observeBackgroundWorkflowAdvancer(
+      lazyBackgroundWorkflowAdvancer(
         "proactivity_wake",
-        proactivityWakeCrossDeviceCoordinator,
+        getProactivityWakeCrossDeviceCoordinator,
         logger,
       ),
-      observeBackgroundWorkflowAdvancer(
+      lazyBackgroundWorkflowAdvancer(
         "topic_resurface",
-        topicResurfaceCrossDeviceCoordinator,
+        getTopicResurfaceCrossDeviceCoordinator,
         logger,
       ),
     ]);
   const topicResurfaceCrossDeviceOpportunity =
     topicResurfaceOpportunityConfig
       ? new TopicResurfaceCrossDeviceOpportunity(
-          topicResurfaceCrossDeviceCoordinator,
+          getTopicResurfaceCrossDeviceCoordinator(),
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
           topicResurfaceOpportunityConfig,
         )
