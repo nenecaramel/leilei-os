@@ -104,6 +104,7 @@ test(
       stateIds: [stateId],
       recalledAt,
       salienceBoost: 0.08,
+      sourceMessageId: "canonical-user-turn",
     });
     await port.recordBreathRecall({
       userId,
@@ -111,6 +112,7 @@ test(
       stateIds: [stateId],
       recalledAt,
       salienceBoost: 0.08,
+      sourceMessageId: "canonical-user-turn",
     });
 
     const [stored] = await port.list({
