@@ -214,6 +214,56 @@ test("surviving state is preserved while contaminated evolution cache is strippe
   }]);
 });
 
+test("semantic action projections are invalidated when their branch provenance is purged", () => {
+  const repairs = planSubjectStateEvolutionRepairs({
+    states: [
+      {
+        id: "drive-anchor",
+        kind: "drive",
+        payload: {
+          drive_v1: {
+            anchorStateId: "drive-anchor",
+            reinforcementSources: ["safe-message"],
+            pressure: 0.2,
+          },
+        },
+      },
+      {
+        id: "drive-copy",
+        kind: "drive",
+        payload: {
+          drive_v1: {
+            anchorStateId: "drive-anchor",
+            reinforcementSources: ["safe-message"],
+            pressure: 0.2,
+          },
+        },
+      },
+      {
+        id: "curiosity-anchor",
+        kind: "curiosity",
+        payload: {
+          curiosity_v1: {
+            anchorStateId: "curiosity-anchor",
+            reinforcementSources: ["safe-message"],
+            resolutionSourceId: "old-assistant",
+            phase: "resolved",
+          },
+        },
+      },
+    ],
+    purgeMessageIds: new Set(["old-assistant"]),
+    purgeStateIds: new Set(),
+    additionalEvolutionCausalIds: new Set(["drive-anchor"]),
+  });
+
+  assert.deepEqual(
+    repairs.map((repair) => repair.stateId).sort(),
+    ["curiosity-anchor", "drive-anchor", "drive-copy"],
+  );
+  assert.equal(repairs.every((repair) => repair.nextPayload === null), true);
+});
+
 test("distillation reset drops all distilled memories for that conversation", () => {
   const ids = planCausalSubjectStatePurge({
     conversationId: "c1",
