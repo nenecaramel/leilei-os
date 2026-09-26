@@ -412,15 +412,25 @@ private struct GlobalSearchMetadataLine: View {
 
 private enum GlobalSearchDate {
     static func row(_ value: String) -> String {
-        let datePart = value.prefix(10)
-        let parts = datePart.split(separator: "-")
-        guard parts.count == 3,
-              let month = Int(parts[1]),
-              let day = Int(parts[2])
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds,
+        ]
+
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+
+        guard let date = fractional.date(from: value)
+            ?? standard.date(from: value)
         else {
             return ""
         }
 
-        return "\(month)/\(day)"
+        return date.formatted(
+            .dateTime
+                .month(.defaultDigits)
+                .day()
+        )
     }
 }
