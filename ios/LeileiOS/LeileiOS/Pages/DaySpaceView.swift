@@ -555,16 +555,17 @@ private struct DaySpaceTodoSearchRow: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(entry.text)
                 .font(.body.weight(.semibold))
-                .lineLimit(2)
+                .lineLimit(1)
 
             HStack(spacing: 12) {
-                Text(DaySpaceDate.fullLabel(entry.date))
+                Text(DaySpaceDate.rowLabel(entry.date))
                     .fixedSize(horizontal: true, vertical: false)
 
                 Spacer(minLength: 8)
 
                 Text("\(entry.author.rawValue)  \(entry.kind.rawValue.capitalized)")
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -2013,6 +2014,21 @@ private enum DaySpaceDate {
         }
 
         return businessDate(shifted)
+    }
+
+    static func rowLabel(_ value: String) -> String {
+        let components = value.split(
+            separator: "-",
+            omittingEmptySubsequences: false
+        )
+        guard components.count == 3,
+              let month = Int(components[1]),
+              let day = Int(components[2])
+        else {
+            return value
+        }
+
+        return "\(month)/\(day)"
     }
 
     static func fullLabel(_ value: String) -> String {
