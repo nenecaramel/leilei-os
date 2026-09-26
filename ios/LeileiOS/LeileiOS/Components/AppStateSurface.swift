@@ -8,12 +8,20 @@ struct AppStateSurface: View {
     var body: some View {
         ContentUnavailableView {
             Text(title)
+                .font(.body)
+                .fontWeight(.regular)
+                .foregroundStyle(.secondary)
         } actions: {
             if let actionTitle,
                let action {
                 Button(actionTitle, action: action)
             }
         }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: .center
+        )
     }
 }
 
