@@ -295,8 +295,6 @@ export function createProcessRuntime(
 
   const logger =
     (options.createLogger ?? ((level) => createSafeLogger({ level })))(runtimeEnv.LOG_LEVEL);
-  const cloudPeriodicBackgroundEnabled =
-    runtimeEnv.LEILEI_CLOUD_PERIODIC_BACKGROUND_ENABLED === true;
   const observeLifecycle = createMcpLifecycleObserver(logger);
   const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
   const { db } = database;
@@ -855,22 +853,13 @@ export function createProcessRuntime(
       createMcpSessionServer,
     },
     startBackgroundWork: () => {
-      logger.info("cloud_periodic_background_mode", {
-        state: cloudPeriodicBackgroundEnabled
-          ? "periodic"
-          : "startup_recovery_only",
+      logger.info("cloud_background_mode", {
+        state: "startup_recovery_only",
       });
-      if (cloudPeriodicBackgroundEnabled) {
-        retentionCoordinator.start();
-        sentinelScheduler.start();
-        nativeLiveMindFollowUpScheduler.start();
-        nativeLiveSemanticScheduler.start();
-        backgroundMaintenancePulse.start();
-        return;
-      }
 
-      // Railway Free must be able to idle. Recover durable work once at
-      // process start, but do not keep cloud timers or database polling alive.
+      // Cloud runtime does not own periodic background cadence. Recover
+      // durable work once at process start; Mac Companion/event-driven paths
+      // own subsequent opportunities.
       void retentionCoordinator.runNow().catch(() => undefined);
       void nativeLiveMindFollowUpScheduler.runNow().catch(() => undefined);
       void nativeLiveSemanticScheduler.runNow().catch(() => undefined);
