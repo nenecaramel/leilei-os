@@ -676,6 +676,36 @@ implements NativeLiveBackendTurnPort {
             new DrizzleNativeLiveConversationRepository(
               transaction as Transaction,
             );
+
+          let replacementPurgePlan: ReplacementPurgePlan | null = null;
+          if (row.operation !== "send") {
+            const conversation = await conversations.getConversation({
+              userId: input.userId,
+              conversationId: row.conversationId,
+            });
+            if (!conversation) {
+              throw new Error(
+                "Replacement finalization conversation was not found.",
+              );
+            }
+            replacementPurgePlan = planReplacementMessagePurge({
+              operation: row.operation,
+              conversation,
+              targetUserMessageId:
+                row.replacementTargetUserMessageId
+                ?? (
+                  row.operation === "retry"
+                    ? row.canonicalUserMessageId
+                    : null
+                ),
+            });
+            if (!replacementPurgePlan) {
+              throw new Error(
+                "Replacement finalization target is no longer on the current path.",
+              );
+            }
+          }
+
           const assistantMessage = await conversations.appendAssistantMessage({
             userId: input.userId,
             conversationId: row.conversationId,
@@ -736,6 +766,17 @@ implements NativeLiveBackendTurnPort {
 
           if (updated.length !== 1) {
             throw new Error("Native live turn finalization lost its preparation lock.");
+          }
+
+          if (
+            replacementPurgePlan
+            && replacementPurgePlan.rootMessageIds.length > 0
+          ) {
+            await this.purgeReplacementArtifacts(
+              transaction as Transaction,
+              row,
+              replacementPurgePlan,
+            );
           }
 
           if (input.mindFollowUp) {
@@ -839,6 +880,133 @@ implements NativeLiveBackendTurnPort {
     } catch {
       return { ok: false, code: "FINALIZE_CONFLICT" };
     }
+  }
+
+  private async purgeReplacementArtifacts(
+    transaction: Transaction,
+    row: PreparationRow,
+    plan: ReplacementPurgePlan,
+  ): Promise<void> {
+    const purgeMessageIds = new Set(plan.messageIds);
+    if (purgeMessageIds.size === 0) return;
+
+    const watermarks = await transaction
+      .select({
+        lastSourceMessageId:
+          runtimeDistillationWatermarks.lastSourceMessageId,
+      })
+      .from(runtimeDistillationWatermarks)
+      .where(
+        and(
+          eq(runtimeDistillationWatermarks.userId, row.userId),
+          eq(
+            runtimeDistillationWatermarks.conversationId,
+            row.conversationId,
+          ),
+        ),
+      );
+
+    const resetDistillation = watermarks.some((watermark) =>
+      purgeMessageIds.has(watermark.lastSourceMessageId)
+    );
+
+    const states = await transaction
+      .select({
+        id: runtimeSubjectStates.id,
+        kind: runtimeSubjectStates.kind,
+        payload: runtimeSubjectStates.payload,
+        envelope: runtimeSubjectStates.envelope,
+        scopeConversationId: runtimeSubjectStates.scopeConversationId,
+        scopePathHeadMessageId:
+          runtimeSubjectStates.scopePathHeadMessageId,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, row.userId));
+
+    const purgeStateIds = planCausalSubjectStatePurge({
+      conversationId: row.conversationId,
+      purgeMessageIds,
+      resetDistillation,
+      states,
+    });
+    const causalIds = new Set<string>([
+      ...purgeMessageIds,
+      ...purgeStateIds,
+    ]);
+
+    const backgroundJobs = await transaction
+      .select({
+        id: nativeLiveBackgroundModelJobs.id,
+        workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
+        workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
+      })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(eq(nativeLiveBackgroundModelJobs.userId, row.userId));
+
+    const purgeBackgroundJobIds = backgroundJobs
+      .filter((job) => {
+        if (
+          resetDistillation
+          && job.workflowKind === "distillation"
+          && job.workflowPayload?.conversation_id === row.conversationId
+        ) {
+          return true;
+        }
+        return workflowReferencesAnyId(
+          job.workflowPayload,
+          causalIds,
+        );
+      })
+      .map((job) => job.id);
+
+    if (purgeBackgroundJobIds.length > 0) {
+      await transaction
+        .delete(nativeLiveBackgroundModelJobs)
+        .where(
+          and(
+            eq(nativeLiveBackgroundModelJobs.userId, row.userId),
+            inArray(
+              nativeLiveBackgroundModelJobs.id,
+              purgeBackgroundJobIds,
+            ),
+          ),
+        );
+    }
+
+    if (resetDistillation) {
+      await transaction
+        .delete(runtimeDistillationWatermarks)
+        .where(
+          and(
+            eq(runtimeDistillationWatermarks.userId, row.userId),
+            eq(
+              runtimeDistillationWatermarks.conversationId,
+              row.conversationId,
+            ),
+          ),
+        );
+    }
+
+    if (purgeStateIds.length > 0) {
+      await transaction
+        .delete(runtimeSubjectStates)
+        .where(
+          and(
+            eq(runtimeSubjectStates.userId, row.userId),
+            inArray(runtimeSubjectStates.id, purgeStateIds),
+          ),
+        );
+    }
+
+    await transaction
+      .delete(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.userId, row.userId),
+          eq(conversationMessages.conversationId, row.conversationId),
+          inArray(conversationMessages.id, plan.rootMessageIds),
+        ),
+      );
   }
 
   private async prepareWithRaceRecovery(
