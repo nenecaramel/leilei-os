@@ -4,6 +4,7 @@ import {
   evaluateForgetting,
   evaluateLifecycle,
   evaluatePurge,
+  evaluateRecallReinforcement,
   forgottenSubjectStatePayload,
   MemoryLifecycleService,
   type MemoryLifecyclePolicy,
@@ -228,4 +229,179 @@ test("MemoryLifecycleService keeps product rates injectable and runs forget/purg
   assert.equal(committed.length, 1);
   assert.equal(forgotten.length, 0);
   assert.equal(purged.length, 0);
+});
+
+
+test("selected recall decays to the recall instant before applying deterministic salience boost", () => {
+  const update = evaluateRecallReinforcement(
+    {
+      stateId: "m-recall",
+      kind: "memory",
+      payload: {
+        lifecycle_v1: {
+          status: "fading",
+          salience: 0.5,
+          protected: false,
+          lastDecayedAt: "2026-09-20T00:00:00.000Z",
+          lastRecalledAt: null,
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
+      updatedAt: "2026-09-20T00:00:01.000Z",
+    },
+    "2026-09-21T00:00:00.000Z",
+    0.08,
+    policy,
+  );
+
+  assert.ok(update);
+  assert.equal(update.lifecycle.salience, 0.33);
+  assert.equal(update.lifecycle.status, "fading");
+  assert.equal(
+    update.lifecycle.lastDecayedAt,
+    "2026-09-21T00:00:00.000Z",
+  );
+  assert.equal(
+    update.lifecycle.lastRecalledAt,
+    "2026-09-21T00:00:00.000Z",
+  );
+});
+
+test("late recall commit catches its boost up to a newer decay checkpoint", () => {
+  const update = evaluateRecallReinforcement(
+    {
+      stateId: "m-late-recall",
+      kind: "memory",
+      payload: {
+        lifecycle_v1: {
+          status: "fading",
+          salience: 0.25,
+          protected: false,
+          lastDecayedAt: "2026-09-21T00:00:00.000Z",
+          lastRecalledAt: null,
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
+      updatedAt: "2026-09-21T00:00:01.000Z",
+    },
+    "2026-09-20T12:00:00.000Z",
+    0.08,
+    policy,
+  );
+
+  assert.ok(update);
+  assert.equal(
+    Math.abs(update.lifecycle.salience - 0.3065685424949238) < 1e-12,
+    true,
+  );
+  assert.equal(
+    update.lifecycle.lastDecayedAt,
+    "2026-09-21T00:00:00.000Z",
+  );
+  assert.equal(
+    update.lifecycle.lastRecalledAt,
+    "2026-09-20T12:00:00.000Z",
+  );
+});
+
+test("recall reinforcement is idempotent for the same or older recall evidence", () => {
+  const candidate = {
+    stateId: "m-idempotent",
+    kind: "memory" as const,
+    payload: {
+      lifecycle_v1: {
+        status: "active",
+        salience: 0.7,
+        protected: false,
+        lastDecayedAt: "2026-09-21T00:00:00.000Z",
+        lastRecalledAt: "2026-09-21T00:00:00.000Z",
+        archivedAt: null,
+        forgottenAt: null,
+      },
+    },
+    updatedAt: "2026-09-21T00:00:01.000Z",
+  };
+
+  assert.equal(
+    evaluateRecallReinforcement(
+      candidate,
+      "2026-09-21T00:00:00.000Z",
+      0.08,
+      policy,
+    ),
+    null,
+  );
+  assert.equal(
+    evaluateRecallReinforcement(
+      candidate,
+      "2026-09-20T23:00:00.000Z",
+      0.08,
+      policy,
+    ),
+    null,
+  );
+});
+
+test("recall cannot resurrect archived or forgotten Memory/Feel", () => {
+  for (const status of ["archived", "forgotten"] as const) {
+    const at = "2026-09-21T00:00:00.000Z";
+    const payload = {
+      lifecycle_v1: {
+        status,
+        salience: status === "forgotten" ? 0 : 0.1,
+        protected: false,
+        lastDecayedAt: at,
+        lastRecalledAt: null,
+        archivedAt: at,
+        forgottenAt: status === "forgotten" ? at : null,
+      },
+    };
+    assert.equal(
+      evaluateRecallReinforcement(
+        {
+          stateId: "m-" + status,
+          kind: "memory",
+          payload,
+          updatedAt: at,
+        },
+        "2026-09-22T00:00:00.000Z",
+        0.08,
+        policy,
+      ),
+      null,
+    );
+  }
+});
+
+test("recall reinforcement without decay policy starts a new non-retroactive baseline", () => {
+  const update = evaluateRecallReinforcement(
+    {
+      stateId: "f-no-decay",
+      kind: "feel",
+      payload: {
+        lifecycle_v1: {
+          status: "fading",
+          salience: 0.4,
+          protected: false,
+          lastDecayedAt: "2026-09-01T00:00:00.000Z",
+          lastRecalledAt: null,
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
+      updatedAt: "2026-09-01T00:00:01.000Z",
+    },
+    "2026-09-22T00:00:00.000Z",
+    0.08,
+  );
+
+  assert.ok(update);
+  assert.equal(update.lifecycle.salience, 0.48);
+  assert.equal(update.lifecycle.status, "fading");
+  assert.equal(
+    update.lifecycle.lastDecayedAt,
+    "2026-09-22T00:00:00.000Z",
+  );
 });
