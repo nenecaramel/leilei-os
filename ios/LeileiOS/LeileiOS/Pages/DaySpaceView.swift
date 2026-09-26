@@ -105,20 +105,30 @@ struct DaySpaceView: View {
                 selectDate(DaySpaceDate.businessDate(datePickerDraft))
             }
         }
-        .sheet(item: $selection) { paper in
-            switch paper {
-            case .todo(let todo):
-                DaySpaceTodoEditorSheet(
-                    paper: todo
-                ) { committed in
-                    applyTodo(committed)
-                }
+        .overlay {
+            if let selection {
+                switch selection {
+                case .todo(let todo):
+                    DaySpaceTodoPaperDetail(
+                        paper: todo,
+                        onSaved: { committed in
+                            applyTodo(committed)
+                        },
+                        onClosed: {
+                            self.selection = nil
+                        }
+                    )
 
-            case .diary(let diary):
-                DaySpaceDiaryEditorSheet(
-                    diary: diary
-                ) { committed in
-                    applyDiary(committed)
+                case .diary(let diary):
+                    DaySpaceDiaryPaperDetail(
+                        diary: diary,
+                        onSaved: { committed in
+                            applyDiary(committed)
+                        },
+                        onClosed: {
+                            self.selection = nil
+                        }
+                    )
                 }
             }
         }
@@ -975,12 +985,12 @@ private struct DaySpaceDiaryPreview: View {
     }
 }
 
-private struct DaySpaceTodoEditorSheet: View {
+private struct DaySpaceTodoPaperDetail: View {
     let paper: DaySpaceTodoPaper
     let onSaved: (DaySpaceTodoPaper) -> Void
+    let onClosed: () -> Void
 
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
 
     @State private var rows: [DaySpaceEditableTodoEntry]
     @State private var isSaving = false
@@ -988,10 +998,12 @@ private struct DaySpaceTodoEditorSheet: View {
 
     init(
         paper: DaySpaceTodoPaper,
-        onSaved: @escaping (DaySpaceTodoPaper) -> Void
+        onSaved: @escaping (DaySpaceTodoPaper) -> Void,
+        onClosed: @escaping () -> Void
     ) {
         self.paper = paper
         self.onSaved = onSaved
+        self.onClosed = onClosed
         _rows = State(
             initialValue: DaySpaceEditableTodoEntry.initialRows(
                 author: paper.author,
@@ -1001,137 +1013,79 @@ private struct DaySpaceTodoEditorSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach($rows) { $row in
-                        HStack(alignment: .top, spacing: 10) {
-                            Button {
-                                row.kind = row.kind.next
-                            } label: {
-                                DaySpaceTodoMark(kind: row.kind)
-                                    .frame(width: 18, height: 24)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Change todo status")
-
-                            TextField(
-                                "",
-                                text: $row.text,
-                                axis: .vertical
-                            )
-                            .textFieldStyle(.plain)
-                            .font(.body)
-                            .strikethrough(row.kind == .completed)
-                            .foregroundStyle(
-                                row.kind == .completed
-                                    ? Color.secondary
-                                    : Color.primary
-                            )
-                            .onChange(of: row.text) { _, _ in
-                                ensureRowCapacity()
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 6)
-                    }
+        DaySpacePaperDetailLayer(
+            dateLabel: DaySpaceDate.fullLabel(paper.date),
+            errorMessage: errorMessage,
+            onRequestClose: {
+                Task {
+                    await requestClose()
                 }
-                .padding(.top, 10)
+            },
+            topRight: {
+                EmptyView()
+            },
+            signature: {
+                Text(paper.author.rawValue)
+                    .font(
+                        .system(
+                            size: 20,
+                            weight: .medium,
+                            design: .serif
+                        )
+                    )
+                    .foregroundStyle(Color.secondary)
+            }
+        ) {
+            LazyVStack(spacing: 0) {
+                ForEach($rows) { $row in
+                    HStack(alignment: .top, spacing: 8) {
+                        Button {
+                            row.kind = row.kind.next
+                        } label: {
+                            DaySpaceTodoMark(kind: row.kind)
+                                .frame(width: 22, height: 30)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Change todo status")
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
+                        TextField(
+                            "",
+                            text: $row.text,
+                            axis: .vertical
+                        )
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .lineLimit(1...5)
                         .frame(
                             maxWidth: .infinity,
-                            alignment: .leading
+                            minHeight: 30,
+                            alignment: .topLeading
                         )
-                }
-            }
-            .background(Color(.systemBackground))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text(DaySpaceDate.fullLabel(paper.date))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving…" : "Done") {
-                        Task {
-                            await save()
+                        .strikethrough(row.kind == .completed)
+                        .foregroundStyle(
+                            row.kind == .completed
+                                ? Color.secondary
+                                : Color.primary
+                        )
+                        .onChange(of: row.text) { _, _ in
+                            ensureRowCapacity()
                         }
                     }
-                    .disabled(isSaving)
-                }
-
-                ToolbarItem(placement: .bottomBar) {
-                    Text(paper.author.rawValue)
-                        .font(.system(size: 13, design: .serif).italic())
-                        .foregroundStyle(.secondary)
+                    .frame(minHeight: 30, alignment: .top)
+                    .opacity(
+                        row.text.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
+                            ? 0.58
+                            : 1
+                    )
                 }
             }
         }
     }
 
-    private func ensureRowCapacity() {
-        while rows.count > 1 {
-            let lastIsEmpty = rows.last?.text
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
-                .isEmpty ?? false
-
-            let previousIsEmpty = rows[rows.count - 2].text
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
-                .isEmpty
-
-            guard lastIsEmpty && previousIsEmpty else {
-                break
-            }
-
-            rows.removeLast()
-        }
-
-        guard let last = rows.last,
-              !last.text.trimmingCharacters(
-                in: .whitespacesAndNewlines
-              ).isEmpty
-        else {
-            return
-        }
-
-        rows.append(
-            DaySpaceEditableTodoEntry(
-                id: UUID().uuidString.lowercased(),
-                kind: .pending,
-                text: ""
-            )
-        )
-    }
-
-    @MainActor
-    private func save() async {
-        guard !isSaving else { return }
-
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-
-        let entries = rows.compactMap { row -> DaySpaceTodoEntry? in
+    private var normalizedEntries: [DaySpaceTodoEntry] {
+        rows.compactMap { row -> DaySpaceTodoEntry? in
             let text = row.text.trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
@@ -1143,11 +1097,83 @@ private struct DaySpaceTodoEditorSheet: View {
                 text: text
             )
         }
+    }
+
+    private var isDirty: Bool {
+        let current = normalizedEntries
+
+        guard current.count == paper.entries.count else {
+            return true
+        }
+
+        for (left, right) in zip(current, paper.entries) {
+            if left.id != right.id
+                || left.kind != right.kind
+                || left.text != right.text.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func ensureRowCapacity() {
+        let lastContentIndex = rows.lastIndex {
+            !$0.text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+        }
+
+        let targetCount = max(
+            24,
+            (lastContentIndex ?? -1) + 2
+        )
+
+        while rows.count < targetCount {
+            rows.append(
+                DaySpaceEditableTodoEntry(
+                    id: UUID().uuidString.lowercased(),
+                    kind: .pending,
+                    text: ""
+                )
+            )
+        }
+
+        while rows.count > targetCount,
+              let last = rows.last,
+              last.text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+              ).isEmpty {
+            rows.removeLast()
+        }
+    }
+
+    @MainActor
+    private func requestClose() async {
+        guard !isSaving else { return }
+
+        guard isDirty else {
+            onClosed()
+            return
+        }
+
+        await saveAndClose()
+    }
+
+    @MainActor
+    private func saveAndClose() async {
+        guard !isSaving else { return }
+
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
 
         do {
             let request = DaySpaceTodoReplaceRequest(
                 revision: paper.revision,
-                entries: entries
+                entries: normalizedEntries
             )
             let body = try JSONEncoder().encode(request)
             let response: DaySpaceTodoPaperEnvelope = try await appModel.api.request(
@@ -1156,132 +1182,171 @@ private struct DaySpaceTodoEditorSheet: View {
                 body: body
             )
             onSaved(response.data)
-            dismiss()
-        } catch LeileiAPIError.backend(_, let code, _) where code == "TODO_PAPER_CONFLICT" {
-            errorMessage = "Failed"
+            onClosed()
         } catch {
             errorMessage = "Failed"
         }
     }
 }
 
-private struct DaySpaceDiaryEditorSheet: View {
+private struct DaySpaceDiaryPaperDetail: View {
     let diary: DaySpaceDiary
     let onSaved: (DaySpaceDiary) -> Void
+    let onClosed: () -> Void
 
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.dismiss) private var dismiss
 
     @State private var title: String
     @State private var content: String
-    @State private var author: DaySpaceAuthor
+    @State private var author: DaySpaceAuthor?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var discardConfirmationPresented = false
 
     init(
         diary: DaySpaceDiary,
-        onSaved: @escaping (DaySpaceDiary) -> Void
+        onSaved: @escaping (DaySpaceDiary) -> Void,
+        onClosed: @escaping () -> Void
     ) {
         self.diary = diary
         self.onSaved = onSaved
+        self.onClosed = onClosed
         _title = State(initialValue: diary.title)
         _content = State(initialValue: diary.content)
-        _author = State(initialValue: diary.author ?? .L)
+        _author = State(initialValue: diary.author)
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    TextField(
-                        "Title",
-                        text: $title,
-                        axis: .vertical
-                    )
-                    .font(.title2.weight(.semibold))
-
-                    Menu {
-                        ForEach(DaySpaceAuthor.allCases) { value in
-                            Button(value.rawValue) {
-                                author = value
-                            }
-                        }
-                    } label: {
-                        Text(author.rawValue)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-
-                    TextField(
-                        "Write something...",
-                        text: $content,
-                        axis: .vertical
-                    )
-                    .font(.body)
-                    .textFieldStyle(.plain)
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
-                    )
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 300,
-                        alignment: .topLeading
-                    )
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 12)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 32)
-            }
-            .background(Color(.systemBackground))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+        DaySpacePaperDetailLayer(
+            dateLabel: DaySpaceDate.fullLabel(diary.date),
+            errorMessage: errorMessage,
+            onRequestClose: {
+                requestVeilClose()
+            },
+            topRight: {
+                HStack(spacing: 5) {
                     Button("Cancel") {
-                        dismiss()
+                        onClosed()
                     }
                     .disabled(isSaving)
-                }
 
-                ToolbarItem(placement: .principal) {
-                    Text(DaySpaceDate.fullLabel(diary.date))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                    Text("·")
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving…" : "Done") {
+                    Button(isSaving ? "Saving…" : "Save") {
                         Task {
                             await save()
                         }
                     }
-                    .disabled(
-                        isSaving ||
-                        title.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        ).isEmpty ||
-                        content.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        ).isEmpty
-                    )
+                    .disabled(isSaving || isInvalid || !isDirty)
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Color.secondary)
+            },
+            signature: {
+                Menu {
+                    ForEach(DaySpaceAuthor.allCases) { value in
+                        Button(value.rawValue) {
+                            author = value
+                            errorMessage = nil
+                        }
+                    }
+                } label: {
+                    Text(author?.rawValue ?? "—")
+                        .font(
+                            .system(
+                                size: 20,
+                                weight: .medium,
+                                design: .serif
+                            )
+                        )
+                        .foregroundStyle(Color.secondary)
+                        .frame(minWidth: 32, minHeight: 28)
+                }
+                .buttonStyle(.plain)
+            }
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                TextField(
+                    "Title",
+                    text: $title,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .font(.system(size: 16, weight: .medium))
+                .padding(.bottom, 14)
+                .disabled(isSaving)
+                .onChange(of: title) { _, _ in
+                    errorMessage = nil
+                }
+
+                TextField(
+                    "Content",
+                    text: $content,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .lineSpacing(10)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 420,
+                    alignment: .topLeading
+                )
+                .disabled(isSaving)
+                .onChange(of: content) { _, _ in
+                    errorMessage = nil
                 }
             }
+        }
+        .confirmationDialog(
+            "Discard unsaved changes?",
+            isPresented: $discardConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Discard", role: .destructive) {
+                onClosed()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        }
+    }
+
+    private var isDirty: Bool {
+        title != diary.title
+            || content != diary.content
+            || author != diary.author
+    }
+
+    private var isInvalid: Bool {
+        title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty
+            || content.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+            || author == nil
+    }
+
+    private func requestVeilClose() {
+        guard !isSaving else { return }
+
+        if isDirty {
+            discardConfirmationPresented = true
+        } else {
+            onClosed()
         }
     }
 
     @MainActor
     private func save() async {
-        guard !isSaving else { return }
+        guard !isSaving,
+              let author
+        else {
+            return
+        }
 
         let normalizedTitle = title.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -1289,6 +1354,7 @@ private struct DaySpaceDiaryEditorSheet: View {
         let normalizedContent = content.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
+
         guard !normalizedTitle.isEmpty,
               !normalizedContent.isEmpty
         else {
@@ -1315,10 +1381,205 @@ private struct DaySpaceDiaryEditorSheet: View {
                 body: body
             )
             onSaved(response.data)
-            dismiss()
+            onClosed()
         } catch {
             errorMessage = "Failed"
         }
+    }
+}
+
+private struct DaySpacePaperDetailLayer<
+    Content: View,
+    TopRight: View,
+    Signature: View
+>: View {
+    let dateLabel: String
+    let errorMessage: String?
+    let onRequestClose: () -> Void
+    let topRight: TopRight
+    let signature: Signature
+    let content: Content
+
+    init(
+        dateLabel: String,
+        errorMessage: String?,
+        onRequestClose: @escaping () -> Void,
+        @ViewBuilder topRight: () -> TopRight,
+        @ViewBuilder signature: () -> Signature,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.dateLabel = dateLabel
+        self.errorMessage = errorMessage
+        self.onRequestClose = onRequestClose
+        self.topRight = topRight()
+        self.signature = signature()
+        self.content = content()
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let dimensions = paperDimensions(
+                for: proxy.size
+            )
+
+            ZStack {
+                Color.white.opacity(0.82)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onRequestClose()
+                    }
+
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color(.systemBackground))
+
+                    ScrollView {
+                        content
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: max(
+                                    0,
+                                    dimensions.height - 80
+                                ),
+                                alignment: .topLeading
+                            )
+                            .background {
+                                DaySpacePaperRules()
+                            }
+                    }
+                    .scrollIndicators(.hidden)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 42)
+                    .padding(.bottom, 38)
+
+                    Text(dateLabel)
+                        .font(.system(size: 13))
+                        .tracking(0.3)
+                        .foregroundStyle(Color.secondary)
+                        .padding(.leading, 24)
+                        .padding(.top, 13)
+
+                    topRight
+                        .padding(.trailing, 24)
+                        .padding(.top, 13)
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .topTrailing
+                        )
+
+                    signature
+                        .padding(.trailing, 24)
+                        .padding(.bottom, 11)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity,
+                            alignment: .bottomTrailing
+                        )
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.secondary)
+                            .padding(.leading, 24)
+                            .padding(.trailing, 68)
+                            .padding(.bottom, 11)
+                            .frame(
+                                maxWidth: .infinity,
+                                maxHeight: .infinity,
+                                alignment: .bottomLeading
+                            )
+                    }
+                }
+                .frame(
+                    width: dimensions.width,
+                    height: dimensions.height
+                )
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 14)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(
+                            Color.primary.opacity(0.11),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: .black.opacity(0.09),
+                    radius: 28,
+                    y: 18
+                )
+                .offset(y: dimensions.offsetY)
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
+        }
+        .ignoresSafeArea(.container)
+        .transition(.opacity)
+        .zIndex(100)
+    }
+
+    private func paperDimensions(
+        for size: CGSize
+    ) -> (
+        width: CGFloat,
+        height: CGFloat,
+        offsetY: CGFloat
+    ) {
+        let width = min(
+            665,
+            max(280, size.width - 46)
+        )
+        let availableHeight = max(
+            360,
+            size.height - 20
+        )
+        let preferredHeight: CGFloat
+
+        if size.height < 680 {
+            preferredHeight = availableHeight
+        } else {
+            preferredHeight = max(
+                536,
+                size.height * 0.78 - 24
+            )
+        }
+
+        return (
+            width,
+            min(696, min(availableHeight, preferredHeight)),
+            min(31, max(0, size.height * 0.04))
+        )
+    }
+}
+
+private struct DaySpacePaperRules: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Path { path in
+                var y: CGFloat = 30
+
+                while y < proxy.size.height {
+                    path.move(
+                        to: CGPoint(x: 0, y: y)
+                    )
+                    path.addLine(
+                        to: CGPoint(
+                            x: proxy.size.width,
+                            y: y
+                        )
+                    )
+                    y += 30
+                }
+            }
+            .stroke(
+                Color.primary.opacity(0.075),
+                lineWidth: 1
+            )
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -1609,13 +1870,20 @@ private struct DaySpaceEditableTodoEntry: Identifiable {
             )
         }
 
-        rows.append(
-            DaySpaceEditableTodoEntry(
-                id: UUID().uuidString.lowercased(),
-                kind: .pending,
-                text: ""
-            )
+        let targetCount = max(
+            24,
+            entries.count + 1
         )
+
+        while rows.count < targetCount {
+            rows.append(
+                DaySpaceEditableTodoEntry(
+                    id: UUID().uuidString.lowercased(),
+                    kind: .pending,
+                    text: ""
+                )
+            )
+        }
 
         return rows
     }
