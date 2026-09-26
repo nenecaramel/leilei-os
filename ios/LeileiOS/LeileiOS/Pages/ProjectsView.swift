@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct ProjectsView: View {
-    @State private var query = ""
     @State private var showingWorkspacePicker = false
 
     var body: some View {
@@ -32,7 +31,6 @@ struct ProjectsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
-        .searchable(text: $query, prompt: "Search")
         .sheet(isPresented: $showingWorkspacePicker) {
             WorkspacePickerSheet()
         }
@@ -57,13 +55,6 @@ struct ProjectsView: View {
                         .font(.system(size: 18, weight: .medium))
                 }
                 .accessibilityLabel("Project options")
-            }
-
-            if #available(iOS 26.0, *) {
-                DefaultToolbarItem(
-                    kind: .search,
-                    placement: .bottomBar
-                )
             }
         }
     }
