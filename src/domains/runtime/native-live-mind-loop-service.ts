@@ -212,7 +212,6 @@ export class NativeLiveMindLoopService {
           persisted.conversationId !== input.conversation.id
           || persisted.pathHeadMessageId !== expectedHead
           || persisted.snapshotSequence !== input.snapshotSequence
-          || persisted.createdAt !== input.assembledAt
           || persisted.assemblyVersion !== this.config.assemblyVersion
           || persisted.promptContractVersion
             !== this.config.promptContractVersion
