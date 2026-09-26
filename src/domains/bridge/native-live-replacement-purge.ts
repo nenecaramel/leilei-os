@@ -1,3 +1,7 @@
+import {
+  expandCausalStateReferences,
+  structuredValueReferencesAnyId,
+} from "../runtime/persistent-reference-scan.js";
 import type {
   NativeLiveConversation,
   NativeLiveMessage,
@@ -49,19 +53,9 @@ export function planReplacementMessagePurge(input: {
   };
 }
 
-export function stateReferencesAnyId(
-  value: unknown,
-  ids: ReadonlySet<string>,
-): boolean {
-  if (typeof value === "string") return ids.has(value);
-  if (Array.isArray(value)) {
-    return value.some((item) => stateReferencesAnyId(item, ids));
-  }
-  if (!value || typeof value !== "object") return false;
-  return Object.values(value as Record<string, unknown>).some((item) =>
-    stateReferencesAnyId(item, ids)
-  );
-}
+export {
+  structuredValueReferencesAnyId as stateReferencesAnyId,
+};
 
 export function planCausalSubjectStatePurge(input: {
   conversationId: string;
@@ -76,50 +70,29 @@ export function planCausalSubjectStatePurge(input: {
     scopePathHeadMessageId: string | null;
   }[];
 }): string[] {
-  const contaminated = new Set<string>();
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-    const references = new Set<string>([
-      ...input.purgeMessageIds,
-      ...contaminated,
-    ]);
-
-    for (const state of input.states) {
-      if (contaminated.has(state.id)) continue;
-
-      const distillationReset =
+  const initiallySelected = new Set(
+    input.states
+      .filter((state) =>
         input.resetDistillation
         && state.kind === "memory"
         && state.scopeConversationId === input.conversationId
-        && state.payload?.formation === "distillation";
+        && state.payload?.formation === "distillation"
+      )
+      .map((state) => state.id),
+  );
 
-      const contaminatedByPath = Boolean(
-        state.scopePathHeadMessageId
-        && input.purgeMessageIds.has(state.scopePathHeadMessageId),
-      );
-
-      if (
-        distillationReset
-        || contaminatedByPath
-        || stateReferencesAnyId(state.envelope, references)
-        || stateReferencesAnyId(state.payload, references)
-      ) {
-        contaminated.add(state.id);
-        changed = true;
-      }
-    }
-  }
-
-  return [...contaminated];
+  return [...expandCausalStateReferences({
+    states: input.states,
+    rootIds: input.purgeMessageIds,
+    initiallySelectedStateIds: initiallySelected,
+  })];
 }
 
 export function workflowReferencesAnyId(
   payload: Record<string, unknown> | null,
   ids: ReadonlySet<string>,
 ): boolean {
-  return Boolean(payload) && stateReferencesAnyId(payload, ids);
+  return Boolean(payload) && structuredValueReferencesAnyId(payload, ids);
 }
 
 function collectDescendants(
