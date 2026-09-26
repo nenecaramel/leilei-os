@@ -85,7 +85,50 @@ export function planCausalSubjectStatePurge(input: {
     states: input.states,
     rootIds: input.purgeMessageIds,
     initiallySelectedStateIds: initiallySelected,
+    includePayload: false,
   })];
+}
+
+export type SubjectStateEvolutionRepair = {
+  stateId: string;
+  nextPayload: Record<string, unknown> | null;
+};
+
+export function planSubjectStateEvolutionRepairs(input: {
+  states: readonly {
+    id: string;
+    kind: string;
+    payload: Record<string, unknown> | null;
+  }[];
+  purgeMessageIds: ReadonlySet<string>;
+  purgeStateIds: ReadonlySet<string>;
+}): SubjectStateEvolutionRepair[] {
+  const causalIds = new Set<string>([
+    ...input.purgeMessageIds,
+    ...input.purgeStateIds,
+  ]);
+  const evolutionKeyByKind: Record<string, string | undefined> = {
+    drive: "drive_v1",
+    thought: "thought_v1",
+    topic: "topic_v1",
+  };
+
+  return input.states.flatMap((state) => {
+    if (input.purgeStateIds.has(state.id) || !state.payload) return [];
+    const evolutionKey = evolutionKeyByKind[state.kind];
+    if (!evolutionKey || !(evolutionKey in state.payload)) return [];
+    const evolutionPayload = state.payload[evolutionKey];
+    if (!structuredValueReferencesAnyId(evolutionPayload, causalIds)) {
+      return [];
+    }
+    const nextPayload = { ...state.payload };
+    delete nextPayload[evolutionKey];
+    return [{
+      stateId: state.id,
+      nextPayload:
+        Object.keys(nextPayload).length > 0 ? nextPayload : null,
+    }];
+  });
 }
 
 export function workflowReferencesAnyId(
