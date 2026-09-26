@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationMessages,
+  nativeLiveBackgroundModelJobs,
   nativeLiveMindFollowUps,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
+  runtimeDistillationWatermarks,
+  runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
   DrizzleNativeLiveConversationRepository,
@@ -33,6 +37,12 @@ import type {
   NativeLiveRuntimeMetadata,
   NativeLiveRuntimeMode,
 } from "./native-live-runtime-protocol.js";
+import {
+  planCausalSubjectStatePurge,
+  planReplacementMessagePurge,
+  workflowReferencesAnyId,
+  type ReplacementPurgePlan,
+} from "./native-live-replacement-purge.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (
@@ -81,6 +91,7 @@ type PreparationRow = {
   operation: "send" | "retry" | "edit";
   requestHash: string;
   canonicalUserMessageId: string;
+  replacementTargetUserMessageId: string | null;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
   executionSelection: Record<string, unknown> | null;
@@ -111,6 +122,7 @@ function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     conversationId: row.conversationId,
     operation: row.operation,
     canonicalUserMessageId: row.canonicalUserMessageId,
+    replacementTargetUserMessageId: row.replacementTargetUserMessageId,
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
     executionSelection: row.executionSelection === null
