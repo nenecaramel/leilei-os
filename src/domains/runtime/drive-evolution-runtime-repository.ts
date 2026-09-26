@@ -1,7 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { runtimeSubjectStates } from "../../database/schema.js";
+import {
+  runtimeDriveSatisfactionEvents,
+  runtimeSubjectStates,
+} from "../../database/schema.js";
 import type {
   DriveEvolutionCandidate,
   DriveEvolutionRuntimePort,
@@ -49,9 +52,47 @@ implements DriveEvolutionRuntimePort {
       )
       .limit(input.limit);
 
+    if (rows.length === 0) return [];
+
+    const satisfactionRows = await this.db
+      .select({
+        driveStateId: runtimeDriveSatisfactionEvents.driveStateId,
+        amount: runtimeDriveSatisfactionEvents.amount,
+        createdAt: runtimeDriveSatisfactionEvents.createdAt,
+      })
+      .from(runtimeDriveSatisfactionEvents)
+      .where(
+        and(
+          eq(runtimeDriveSatisfactionEvents.userId, input.userId),
+          eq(runtimeDriveSatisfactionEvents.subjectId, input.subjectId),
+          inArray(
+            runtimeDriveSatisfactionEvents.driveStateId,
+            rows.map((row) => row.id),
+          ),
+        ),
+      );
+
+    const satisfactionByState = new Map<
+      string,
+      { total: number; lastSatisfiedAt: string | null }
+    >();
+    for (const event of satisfactionRows) {
+      const current = satisfactionByState.get(event.driveStateId)
+        ?? { total: 0, lastSatisfiedAt: null };
+      current.total += event.amount;
+      const at = event.createdAt.toISOString();
+      if (!current.lastSatisfiedAt || at > current.lastSatisfiedAt) {
+        current.lastSatisfiedAt = at;
+      }
+      satisfactionByState.set(event.driveStateId, current);
+    }
+
     return rows.flatMap((row) => {
       const text = row.text?.trim();
       if (!text) return [];
+      const satisfaction =
+        satisfactionByState.get(row.id)
+        ?? { total: 0, lastSatisfiedAt: null };
       return [{
         stateId: row.id,
         text,
@@ -59,6 +100,8 @@ implements DriveEvolutionRuntimePort {
         sourceId: sourceIdFromEnvelope(row.envelope, row.id),
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
+        durableSatisfactionTotal: satisfaction.total,
+        durableLastSatisfiedAt: satisfaction.lastSatisfiedAt,
       }];
     });
   }
