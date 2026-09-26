@@ -1,4 +1,40 @@
-import { createNativeLiveApiRouter, type NativeLiveApiDependencies } from "./native-live-router.js";
+import { Router } from "express";
+import {
+  createDiaryApiRouter,
+  type DiaryApiDependencies,
+} from "./diary-router.js";
+import {
+  createToyUserRouter,
+  type ToyApiDependencies,
+} from "./toy-router.js";
+import {
+  createGlobalSearchApiRouter,
+  type GlobalSearchApiDependencies,
+} from "./global-search-router.js";
+import {
+  createSystemApiRouter,
+  type SystemApiDependencies,
+} from "./system-router.js";
+import {
+  createTodoApiRouter,
+  type TodoApiDependencies,
+} from "./todo-router.js";
+import {
+  createExportApiRouter,
+  type ExportApiDependencies,
+} from "./export-router.js";
+import {
+  createImportApiRouter,
+  type ImportApiDependencies,
+} from "./import-router.js";
+import {
+  createUniverseApiRouter,
+  type UniverseApiDependencies,
+} from "./universe-router.js";
+import {
+  createNativeLiveApiRouter,
+  type NativeLiveApiDependencies,
+} from "./native-live-router.js";
 
 export type WebApiRouterDependencies = {
   diary: DiaryApiDependencies;
