@@ -431,7 +431,7 @@ function validatePolicy(policy: ThoughtEvolutionPolicy): void {
     !Number.isFinite(policy.halfLifeHours)
     || policy.halfLifeHours <= 0
   ) {
-    throw new Error("Thought flit half-life must be positive.");
+    throw new Error("Thought half-life must be positive.");
   }
   for (const [label, value] of [
     ["baseStrength", policy.baseStrength],
