@@ -46,6 +46,133 @@ struct ProjectsView: View {
 }
 
 
+struct ProjectDetailView: View {
+    let name: String
+
+    var body: some View {
+        List {
+            Section {
+                NavigationLink {
+                    ProjectFilesView()
+                } label: {
+                    Label("Files", systemImage: "folder")
+                }
+
+                NavigationLink {
+                    ProjectConversationsView()
+                } label: {
+                    Label(
+                        "Conversations",
+                        systemImage: "bubble.left.and.bubble.right"
+                    )
+                }
+            }
+
+            Section("Claude") {
+                ForEach(ProjectClaudePage.allCases) { page in
+                    NavigationLink {
+                        ProjectClaudePageView(page: page)
+                    } label: {
+                        Label(page.title, systemImage: page.systemImage)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
+        .navigationTitle(name)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
+private enum ProjectClaudePage: String, CaseIterable, Identifiable {
+    case instructions
+    case settings
+    case skills
+    case agents
+    case mcp
+    case hooks
+    case plugins
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .instructions:
+            "Instructions"
+        case .settings:
+            "Settings"
+        case .skills:
+            "Skills"
+        case .agents:
+            "Agents"
+        case .mcp:
+            "MCP"
+        case .hooks:
+            "Hooks"
+        case .plugins:
+            "Plugins"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .instructions:
+            "doc.text"
+        case .settings:
+            "slider.horizontal.3"
+        case .skills:
+            "lightbulb"
+        case .agents:
+            "person.2"
+        case .mcp:
+            "network"
+        case .hooks:
+            "link"
+        case .plugins:
+            "puzzlepiece.extension"
+        }
+    }
+}
+
+
+private struct ProjectClaudePageView: View {
+    let page: ProjectClaudePage
+
+    var body: some View {
+        AppStateSurface(title: "Nothing here")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.settingsBackground)
+            .navigationTitle(page.title)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
+private struct ProjectFilesView: View {
+    var body: some View {
+        AppStateSurface(title: "Nothing here")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+            .navigationTitle("Files")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
+private struct ProjectConversationsView: View {
+    var body: some View {
+        AppStateSurface(title: "Nothing here")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+            .navigationTitle("Conversations")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
 struct WorkspacePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -93,6 +220,29 @@ struct ProjectPickerSheet: View {
 }
 
 
+struct ProjectFilePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            AppStateSurface(title: "Nothing here")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.settingsBackground)
+                .navigationTitle("Project File")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                    }
+                }
+        }
+        .background(Color.settingsBackground)
+    }
+}
+
+
 struct ContextOverviewSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -101,6 +251,11 @@ struct ContextOverviewSheet: View {
             Form {
                 Section("Context") {
                     LabeledContent("Usage") {
+                        Text("—")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LabeledContent("Tokens") {
                         Text("—")
                             .foregroundStyle(.secondary)
                     }
@@ -118,6 +273,11 @@ struct ContextOverviewSheet: View {
                     }
 
                     LabeledContent("Threshold") {
+                        Text("—")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LabeledContent("Last Event") {
                         Text("—")
                             .foregroundStyle(.secondary)
                     }
