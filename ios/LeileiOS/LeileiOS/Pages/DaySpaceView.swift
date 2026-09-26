@@ -925,8 +925,8 @@ private struct DaySpaceTodoMark: View {
     var body: some View {
         switch kind {
         case .record:
-            RoundedRectangle(cornerRadius: 1)
-                .stroke(Color.secondary, lineWidth: 1)
+            Circle()
+                .fill(Color.secondary)
                 .frame(width: 5, height: 5)
 
         case .pending:
