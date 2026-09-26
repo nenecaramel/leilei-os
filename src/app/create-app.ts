@@ -108,36 +108,6 @@ export type AppDependencies = {
   webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
-  webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
-  webNativeLiveTurnReader?: NativeLiveApiDependencies["turnReader"];
-  webNativeLiveCurrentPathReader?:
-    NativeLiveApiDependencies["currentPathReader"];
-  webNativeLiveConversationService?:
-    NativeLiveApiDependencies["conversationService"];
-  nativeLiveRuntimeEventService?:
-    NativeLiveRelayInternalDependencies["runtimeEventService"]
-    & NativeLiveApiDependencies["runtimeEventService"];
-  nativeLiveRuntimeInteractionService?:
-    NativeLiveRelayInternalDependencies["runtimeInteractionService"]
-    & NativeLiveApiDependencies["runtimeInteractionService"];
-  nativeLiveRuntimeControlService?:
-    NativeLiveRelayInternalDependencies["runtimeControlService"]
-    & NativeLiveApiDependencies["runtimeControlService"];
-  nativeLiveRelayService?:
-    NativeLiveRelayInternalDependencies["relayService"]
-    & NativeLiveApiDependencies["relayService"];
-  nativeLiveWorkWaitService?:
-    NativeLiveRelayInternalDependencies["workWaitService"];
-  nativeLiveSemanticService?:
-    NativeLiveRelayInternalDependencies["semanticService"];
-  nativeLiveBackgroundModelService?:
-    NativeLiveRelayInternalDependencies["backgroundModelService"];
-  nativeLiveBackgroundModelCoordinator?:
-    NativeLiveRelayInternalDependencies["backgroundModelCoordinator"];
-  nativeLiveBackgroundModelOpportunity?:
-    NativeLiveRelayInternalDependencies["backgroundModelOpportunity"];
-  nativeLiveCompanionBackgroundOpportunity?:
-    NativeLiveRelayInternalDependencies["companionBackgroundOpportunity"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -372,12 +342,6 @@ export function createApp(
     const webConversationFavoriteService = dependencies.webConversationFavoriteService;
     const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
     const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
-    const webNativeLiveCoordinator = dependencies.webNativeLiveCoordinator;
-    const webNativeLiveTurnReader = dependencies.webNativeLiveTurnReader;
-    const webNativeLiveCurrentPathReader =
-      dependencies.webNativeLiveCurrentPathReader;
-    const webNativeLiveConversationService =
-      dependencies.webNativeLiveConversationService;
 
     if (
       !webDiaryService ||
@@ -447,47 +411,7 @@ export function createApp(
               nativeLive:
                 dependencies.nativeLiveProduction.web,
             }
-          : webNativeLiveCoordinator
-            && webNativeLiveTurnReader
-            && dependencies.nativeLiveRelayService
-            ? {
-                nativeLive: {
-                  coordinator: webNativeLiveCoordinator,
-                  relayService: dependencies.nativeLiveRelayService,
-                  turnReader: webNativeLiveTurnReader,
-                  ...(webNativeLiveCurrentPathReader
-                    ? {
-                        currentPathReader:
-                          webNativeLiveCurrentPathReader,
-                      }
-                    : {}),
-                  ...(webNativeLiveConversationService
-                    ? {
-                        conversationService:
-                          webNativeLiveConversationService,
-                      }
-                    : {}),
-                  ...(dependencies.nativeLiveRuntimeEventService
-                    ? {
-                        runtimeEventService:
-                          dependencies.nativeLiveRuntimeEventService,
-                      }
-                    : {}),
-                  ...(dependencies.nativeLiveRuntimeInteractionService
-                    ? {
-                        runtimeInteractionService:
-                          dependencies.nativeLiveRuntimeInteractionService,
-                      }
-                    : {}),
-                  ...(dependencies.nativeLiveRuntimeControlService
-                    ? {
-                        runtimeControlService:
-                          dependencies.nativeLiveRuntimeControlService,
-                      }
-                    : {}),
-                },
-              }
-            : {}),
+          : {}),
       }),
     );
   }
@@ -540,87 +464,6 @@ export function createApp(
               },
             );
           },
-        }),
-      );
-    } else if (dependencies.nativeLiveRelayService) {
-      app.use(
-        "/internal/native-live-relay",
-        createInternalAuthMiddleware(
-          config.NATIVE_LIVE_RELAY_AUTH_TOKEN,
-          config.MCP_USER_ID,
-        ),
-        databaseReadinessMiddleware,
-        createNativeLiveRelayInternalRouter({
-          relayService: dependencies.nativeLiveRelayService,
-          ...(dependencies.nativeLiveWorkWaitService
-            ? {
-                workWaitService:
-                  dependencies.nativeLiveWorkWaitService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveSemanticService
-            ? { semanticService: dependencies.nativeLiveSemanticService }
-            : {}),
-          ...(dependencies.nativeLiveBackgroundModelService
-            ? {
-                backgroundModelService:
-                  dependencies.nativeLiveBackgroundModelService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveBackgroundModelCoordinator
-            ? {
-                backgroundModelCoordinator:
-                  dependencies.nativeLiveBackgroundModelCoordinator,
-              }
-            : {}),
-          ...(dependencies.nativeLiveBackgroundModelOpportunity
-            ? {
-                backgroundModelOpportunity:
-                  dependencies.nativeLiveBackgroundModelOpportunity,
-              }
-            : {}),
-          ...(dependencies.nativeLiveCompanionBackgroundOpportunity
-            ? {
-                companionBackgroundOpportunity:
-                  dependencies.nativeLiveCompanionBackgroundOpportunity,
-                observeCompanionBackgroundOpportunity: (event) => {
-                  logger.info(
-                    "native_live_companion_background_opportunity",
-                    {
-                      outcome: event.outcome,
-                      reason: event.reason,
-                      maintenanceKindCount:
-                        event.maintenanceKindCount,
-                      effectDeliveryScheduled:
-                        event.effectDeliveryScheduled,
-                      proactivityScheduled:
-                        event.proactivityScheduled,
-                      topicResurfaceOffered:
-                        event.topicResurfaceOffered,
-                      failureCount: event.failureCount,
-                    },
-                  );
-                },
-              }
-            : {}),
-          ...(dependencies.nativeLiveRuntimeEventService
-            ? {
-                runtimeEventService:
-                  dependencies.nativeLiveRuntimeEventService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveRuntimeInteractionService
-            ? {
-                runtimeInteractionService:
-                  dependencies.nativeLiveRuntimeInteractionService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveRuntimeControlService
-            ? {
-                runtimeControlService:
-                  dependencies.nativeLiveRuntimeControlService,
-              }
-            : {}),
         }),
       );
     }
