@@ -134,8 +134,30 @@ type Waiter = {
   abortCleanup: (() => void) | null;
 };
 
+type NativeLiveWakePostgresClient = {
+  listen(
+    channel: string,
+    onnotify: (payload: string) => void,
+  ): unknown;
+  end(options?: { timeout?: number }): unknown;
+};
+
+export type NativeLiveWorkWakeBrokerOptions = {
+  createClient?: (
+    databaseUrl: string,
+  ) => NativeLiveWakePostgresClient;
+  idleReleaseMs?: number;
+};
+
+const DEFAULT_WORK_WAKE_IDLE_RELEASE_MS = 2_000;
+
 export class NativeLiveWorkWakeBroker {
-  private readonly client: ReturnType<typeof postgres>;
+  private readonly databaseUrl: string;
+  private readonly createClient: (
+    databaseUrl: string,
+  ) => NativeLiveWakePostgresClient;
+  private readonly idleReleaseMs: number;
+  private client: NativeLiveWakePostgresClient | null = null;
   private readonly versions = new Map<string, number>();
   private readonly waiters = new Map<string, Set<Waiter>>();
   private readonly versionExpiryTimers = new Map<
@@ -143,31 +165,55 @@ export class NativeLiveWorkWakeBroker {
     ReturnType<typeof setTimeout>
   >();
   private startPromise: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
+  private idleReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private listenerLeaseCount = 0;
   private closed = false;
 
-  constructor(databaseUrl: string) {
-    this.client = postgres(databaseUrl, {
-      max: 1,
-      prepare: false,
-      ssl: "require",
-      connect_timeout: 3,
-      idle_timeout: 0,
-    });
+  constructor(
+    databaseUrl: string,
+    options: NativeLiveWorkWakeBrokerOptions = {},
+  ) {
+    this.databaseUrl = databaseUrl;
+    this.idleReleaseMs =
+      options.idleReleaseMs ?? DEFAULT_WORK_WAKE_IDLE_RELEASE_MS;
+    this.createClient =
+      options.createClient
+      ?? ((url) =>
+        postgres(url, {
+          max: 1,
+          prepare: false,
+          ssl: "require",
+          connect_timeout: 3,
+          idle_timeout: 0,
+        }));
   }
 
-  start(): Promise<void> {
+  async start(): Promise<void> {
     if (this.closed) {
-      return Promise.reject(
-        new Error("Native live work wake broker is closed."),
-      );
+      throw new Error("Native live work wake broker is closed.");
     }
-    this.startPromise ??= Promise.resolve(
-      this.client.listen(
-        WORK_WAKE_CHANNEL,
-        (payload) => this.handleNotification(payload),
-      ),
-    ).then(() => undefined);
-    return this.startPromise;
+
+    this.cancelIdleRelease();
+    this.listenerLeaseCount += 1;
+    try {
+      await this.ensureStarted();
+    } catch (error) {
+      this.listenerLeaseCount = Math.max(
+        0,
+        this.listenerLeaseCount - 1,
+      );
+      this.scheduleIdleRelease();
+      throw error;
+    }
+  }
+
+  async release(): Promise<void> {
+    if (this.listenerLeaseCount > 0) {
+      this.listenerLeaseCount -= 1;
+    }
+    if (this.closed) return;
+    this.scheduleIdleRelease();
   }
 
   version(userId: string): number {
@@ -272,6 +318,9 @@ export class NativeLiveWorkWakeBroker {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.listenerLeaseCount = 0;
+    this.cancelIdleRelease();
+
     for (const [key, bucket] of this.waiters) {
       for (const waiter of [...bucket]) {
         waiter.resolve({
@@ -281,12 +330,114 @@ export class NativeLiveWorkWakeBroker {
       }
     }
     this.waiters.clear();
+
     for (const timer of this.versionExpiryTimers.values()) {
       clearTimeout(timer);
     }
     this.versionExpiryTimers.clear();
     this.versions.clear();
-    await this.client.end({ timeout: 5 });
+
+    await this.startPromise?.catch(() => undefined);
+    await this.stopListener();
+  }
+
+  private async ensureStarted(): Promise<void> {
+    if (this.closed) {
+      throw new Error("Native live work wake broker is closed.");
+    }
+
+    if (this.stopPromise) {
+      await this.stopPromise;
+    }
+    if (this.startPromise) {
+      await this.startPromise;
+      return;
+    }
+
+    const client = this.createClient(this.databaseUrl);
+    this.client = client;
+
+    const startPromise = Promise.resolve(
+      client.listen(
+        WORK_WAKE_CHANNEL,
+        (payload) => this.handleNotification(payload),
+      ),
+    )
+      .then(() => undefined)
+      .catch(async (error) => {
+        if (this.client === client) {
+          this.client = null;
+        }
+        try {
+          await Promise.resolve(client.end({ timeout: 5 }));
+        } catch {
+          // Preserve the original LISTEN failure.
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (this.startPromise === startPromise) {
+          this.startPromise = null;
+        }
+      });
+    this.startPromise = startPromise;
+    await startPromise;
+  }
+
+  private async stopListener(): Promise<void> {
+    if (this.stopPromise) {
+      await this.stopPromise;
+      return;
+    }
+
+    const client = this.client;
+    if (!client) return;
+
+    this.client = null;
+    const stopPromise = Promise.resolve()
+      .then(() => client.end({ timeout: 5 }))
+      .then(() => undefined)
+      .finally(() => {
+        if (this.stopPromise === stopPromise) {
+          this.stopPromise = null;
+        }
+      });
+    this.stopPromise = stopPromise;
+    await stopPromise;
+  }
+
+  private scheduleIdleRelease(): void {
+    if (
+      this.closed
+      || this.listenerLeaseCount > 0
+      || this.waiters.size > 0
+      || !this.client
+      || this.idleReleaseTimer
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (this.idleReleaseTimer === timer) {
+        this.idleReleaseTimer = null;
+      }
+      if (
+        this.closed
+        || this.listenerLeaseCount > 0
+        || this.waiters.size > 0
+      ) {
+        return;
+      }
+      void this.stopListener().catch(() => undefined);
+    }, this.idleReleaseMs);
+    timer.unref?.();
+    this.idleReleaseTimer = timer;
+  }
+
+  private cancelIdleRelease(): void {
+    if (!this.idleReleaseTimer) return;
+    clearTimeout(this.idleReleaseTimer);
+    this.idleReleaseTimer = null;
   }
 
   private async waitForKey(input: {
@@ -295,13 +446,16 @@ export class NativeLiveWorkWakeBroker {
     timeoutMs: number;
     signal?: AbortSignal | null;
   }): Promise<NativeLiveWorkWaitOutcome> {
-    await this.start();
+    this.cancelIdleRelease();
+    await this.ensureStarted();
 
     const current = this.versionForKey(input.key);
     if (current !== input.afterVersion) {
+      this.scheduleIdleRelease();
       return { outcome: "ready", version: current };
     }
     if (input.signal?.aborted) {
+      this.scheduleIdleRelease();
       return { outcome: "timeout", version: current };
     }
 
@@ -314,6 +468,7 @@ export class NativeLiveWorkWakeBroker {
         }
         clearTimeout(waiter.timer);
         waiter.abortCleanup?.();
+        this.scheduleIdleRelease();
         resolve(outcome);
       };
 
@@ -463,18 +618,22 @@ export class NativeLiveWorkWaitService {
     signal?: AbortSignal | null;
   }): Promise<NativeLiveWorkWaitOutcome> {
     await this.broker.start();
-    const version = this.broker.version(input.userId);
+    try {
+      const version = this.broker.version(input.userId);
 
-    if (await this.availability.hasWork({ userId: input.userId })) {
-      return { outcome: "ready", version };
+      if (await this.availability.hasWork({ userId: input.userId })) {
+        return { outcome: "ready", version };
+      }
+
+      return await this.broker.waitForChange({
+        userId: input.userId,
+        afterVersion: version,
+        timeoutMs: input.timeoutMs,
+        signal: input.signal,
+      });
+    } finally {
+      await this.broker.release();
     }
-
-    return this.broker.waitForChange({
-      userId: input.userId,
-      afterVersion: version,
-      timeoutMs: input.timeoutMs,
-      signal: input.signal,
-    });
   }
 }
 
