@@ -1180,6 +1180,7 @@ private struct DaySpaceTodoPaperDetail: View {
                                 )
                             }
                         )
+                        .padding(.trailing, 4)
                         .frame(
                             maxWidth: .infinity,
                             minHeight: 30,
