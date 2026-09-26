@@ -5,6 +5,7 @@ private let daySpaceStateHeight: CGFloat = 470
 struct DaySpaceView: View {
     @EnvironmentObject private var appModel: AppModel
 
+    @State private var query = ""
     @State private var selectedDate: String?
     @State private var discoveryState: DaySpaceDiscoveryState = .loading
     @State private var discoveryIncomplete = false
@@ -16,8 +17,13 @@ struct DaySpaceView: View {
     @State private var generation = 0
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        Group {
+            if isSearching {
+                AppStateSurface(title: "Nothing here")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
                 DaySpaceDateNavigationRow(
                     selectedDate: selectedDate,
                     onPrevious: {
@@ -74,15 +80,24 @@ struct DaySpaceView: View {
                     .padding(.bottom, 8)
                 }
 
-                content
+                        content
+                    }
+                    .frame(maxWidth: 860)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+                    .padding(.bottom, 28)
+                    .frame(maxWidth: .infinity)
+                }
             }
-            .frame(maxWidth: 860)
-            .padding(.horizontal, 24)
-            .padding(.top, 8)
-            .padding(.bottom, 28)
-            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+        .searchable(text: $query, prompt: "Search")
+        .toolbar {
+            if #available(iOS 26.0, *) {
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            }
+        }
         .sheet(isPresented: $datePickerPresented) {
             DaySpaceDatePickerSheet(
                 date: $datePickerDraft
@@ -110,6 +125,10 @@ struct DaySpaceView: View {
         .task {
             await discoverAndLoad()
         }
+    }
+
+    private var isSearching: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     @ViewBuilder
