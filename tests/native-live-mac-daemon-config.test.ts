@@ -24,19 +24,31 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
   });
 });
 
-test("Mac daemon config falls back to MCP server URL/token and derives a stable listener id", () => {
+test("Mac daemon config uses a dedicated relay token and derives a stable listener id", () => {
   const machine = {
     hostname: () => "Leilei-Mac",
     homedir: () => "/Users/leilei",
   };
-  const first = resolveNativeLiveMacDaemonConfig({
-    MCP_SERVER_URL: "https://leilei-os.example/",
-    MCP_AUTH_TOKEN: "internal-token",
-  }, machine);
-  const second = resolveNativeLiveMacDaemonConfig({
-    MCP_SERVER_URL: "https://leilei-os.example/",
-    MCP_AUTH_TOKEN: "internal-token",
-  }, machine);
+  const first = resolveNativeLiveMacDaemonConfig(
+    {
+      MCP_SERVER_URL: "https://leilei-os.example/",
+    },
+    machine,
+    () => ({
+      NATIVE_LIVE_RELAY_AUTH_TOKEN:
+        "relay-token-that-is-long-enough-for-production",
+    }),
+  );
+  const second = resolveNativeLiveMacDaemonConfig(
+    {
+      MCP_SERVER_URL: "https://leilei-os.example/",
+    },
+    machine,
+    () => ({
+      NATIVE_LIVE_RELAY_AUTH_TOKEN:
+        "relay-token-that-is-long-enough-for-production",
+    }),
+  );
 
   assert.equal(first.relayBaseUrl, "https://leilei-os.example");
   assert.equal(first.relayToken, "internal-token");
@@ -50,7 +62,8 @@ test("Mac daemon config falls back to MCP server URL/token and derives a stable 
 test("Mac daemon config accepts an explicit companion background cadence", () => {
   const config = resolveNativeLiveMacDaemonConfig({
     MCP_SERVER_URL: "https://leilei-os.example/",
-    MCP_AUTH_TOKEN: "internal-token",
+    LEILEI_NATIVE_LIVE_RELAY_TOKEN:
+      "relay-token-that-is-long-enough-for-production",
     LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS: "90",
   }, {
     hostname: () => "Leilei-Mac",
@@ -62,7 +75,8 @@ test("Mac daemon config accepts an explicit companion background cadence", () =>
   assert.throws(
     () => resolveNativeLiveMacDaemonConfig({
       MCP_SERVER_URL: "https://leilei-os.example/",
-      MCP_AUTH_TOKEN: "internal-token",
+      LEILEI_NATIVE_LIVE_RELAY_TOKEN:
+      "relay-token-that-is-long-enough-for-production",
       LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS: "0",
     }, {
       hostname: () => "Leilei-Mac",
@@ -88,7 +102,8 @@ test("Mac daemon config bootstraps production relay from Railway variables when 
     },
     () => ({
       MCP_SERVER_URL: "https://railway-production.example",
-      MCP_AUTH_TOKEN: "railway-token",
+      NATIVE_LIVE_RELAY_AUTH_TOKEN:
+        "railway-relay-token-that-is-long-enough",
     }),
   );
 
@@ -96,7 +111,10 @@ test("Mac daemon config bootstraps production relay from Railway variables when 
     config.relayBaseUrl,
     "https://railway-production.example",
   );
-  assert.equal(config.relayToken, "railway-token");
+  assert.equal(
+    config.relayToken,
+    "railway-relay-token-that-is-long-enough",
+  );
 });
 
 test("Mac daemon config does not invoke Railway loader when local env is complete", () => {
@@ -104,7 +122,8 @@ test("Mac daemon config does not invoke Railway loader when local env is complet
   const config = resolveNativeLiveMacDaemonConfig(
     {
       MCP_SERVER_URL: "https://local.example",
-      MCP_AUTH_TOKEN: "local-token",
+      LEILEI_NATIVE_LIVE_RELAY_TOKEN:
+        "local-relay-token-that-is-long-enough",
     },
     {
       hostname: () => "Leilei-Mac",
@@ -115,7 +134,10 @@ test("Mac daemon config does not invoke Railway loader when local env is complet
       return {};
     },
   );
-  assert.equal(config.relayToken, "local-token");
+  assert.equal(
+    config.relayToken,
+    "local-relay-token-that-is-long-enough",
+  );
   assert.equal(calls, 0);
 });
 
@@ -123,6 +145,24 @@ test("Mac daemon config uses the known production URL but fails closed without a
   assert.throws(
     () => resolveNativeLiveMacDaemonConfig(
       {},
+      {
+        hostname: () => "Leilei-Mac",
+        homedir: () => "/Users/leilei",
+      },
+      () => ({}),
+    ),
+    /relay token is required/,
+  );
+});
+
+
+test("Mac daemon never falls back to the broad internal MCP credential", () => {
+  assert.throws(
+    () => resolveNativeLiveMacDaemonConfig(
+      {
+        MCP_SERVER_URL: "https://leilei-os.example/",
+        MCP_AUTH_TOKEN: "broad-internal-token",
+      },
       {
         hostname: () => "Leilei-Mac",
         homedir: () => "/Users/leilei",
