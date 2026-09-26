@@ -8,6 +8,7 @@ struct ChatComposer: View {
     var isFocused: FocusState<Bool>.Binding
     var isSending = false
     var isEditing = false
+    var onProjectFile: (() -> Void)? = nil
     var onCancelEdit: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
@@ -77,6 +78,7 @@ struct ChatComposer: View {
                     Divider()
 
                     Button {
+                        onProjectFile?()
                     } label: {
                         Label("Project File", systemImage: "folder")
                     }
