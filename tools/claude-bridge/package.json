@@ -4,24 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.mjs",
-    "test": "node --test test/**/*.test.mjs",
-    "smoke:agent-sdk-subscription": "node scripts/agent-sdk-subscription-smoke.mjs",
-    "smoke:agent-sdk-capabilities": "node scripts/agent-sdk-capability-smoke.mjs",
-    "smoke:agent-sdk-compaction": "node scripts/agent-sdk-compaction-smoke.mjs",
-    "smoke:agent-sdk-transport-compaction": "node scripts/agent-sdk-transport-compaction-smoke.mjs",
-    "smoke:agent-sdk-model-readback": "node scripts/agent-sdk-model-readback-smoke.mjs",
-    "smoke:agent-sdk-abort-failure": "node scripts/agent-sdk-abort-failure-smoke.mjs",
-    "smoke:agent-sdk-interrupt": "node scripts/agent-sdk-interrupt-smoke.mjs",
-    "smoke:agent-sdk-turn-handle": "node scripts/agent-sdk-turn-handle-smoke.mjs",
-    "smoke:agent-sdk-permission": "node scripts/agent-sdk-permission-smoke.mjs",
-    "smoke:agent-sdk-streaming": "node scripts/agent-sdk-streaming-smoke.mjs",
-    "smoke:agent-sdk-mid-turn-input": "node scripts/agent-sdk-mid-turn-input-smoke.mjs",
-    "smoke:agent-sdk-ask-user-question": "node scripts/agent-sdk-ask-user-question-smoke.mjs",
-    "smoke:agent-sdk-filesystem-parity": "node scripts/agent-sdk-filesystem-parity-smoke.mjs",
-    "smoke:agent-sdk-mcp": "node scripts/agent-sdk-mcp-parity-smoke.mjs",
-    "smoke:agent-sdk-background-task": "node scripts/agent-sdk-background-task-parity-smoke.mjs",
-    "smoke:agent-sdk-plugin": "node scripts/agent-sdk-plugin-parity-smoke.mjs",
-    "smoke:agent-sdk-pending-parity": "node scripts/agent-sdk-pending-parity-suite.mjs"
+    "test": "node --test test/**/*.test.mjs"
   },
   "engines": {
     "node": ">=20"
