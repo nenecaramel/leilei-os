@@ -7,7 +7,6 @@ Leilei OS is an authenticated personal workspace built around a React Web app, a
 The current codebase includes:
 
 - **Diary and Todo** — durable personal records with server-side ownership, bounded reads/search, canonical Diary comments, and revision-aware Todo entry writes.
-- **Conversation Archive** — user-initiated ChatGPT/Claude export imports, durable conversation reading/search, Favorites, Sources, and explicit import history.
 - **Native Live / Runtime** — canonical native conversations plus Railway-owned durable authority, Mac Companion execution, bounded Runtime/Mind state, and event-driven relay/control contracts.
 - **Dashboard and Day Space** — authenticated date-scoped views backed by the real API.
 - **Universe** — nodes, weighted galaxy memberships, relations, revisions, provenance, backup/import/export, search, and explicit MCP writes.
