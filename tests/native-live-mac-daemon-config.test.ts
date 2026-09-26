@@ -51,7 +51,10 @@ test("Mac daemon config uses a dedicated relay token and derives a stable listen
   );
 
   assert.equal(first.relayBaseUrl, "https://leilei-os.example");
-  assert.equal(first.relayToken, "internal-token");
+  assert.equal(
+    first.relayToken,
+    "relay-token-that-is-long-enough-for-production",
+  );
   assert.equal(first.listenerInstanceId, second.listenerInstanceId);
   assert.match(
     first.listenerInstanceId,
