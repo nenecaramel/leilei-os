@@ -73,6 +73,7 @@ export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
   basePressure: 0.4,
   reinforcementBoost: 0.2,
   activeThreshold: 0.1,
+  dormantAfterSatisfiedHours: 168,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
