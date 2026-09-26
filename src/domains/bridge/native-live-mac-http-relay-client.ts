@@ -102,6 +102,56 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async reserveProviderSessionCleanup(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }) {
+    const data = await this.post(
+      "/provider-session-cleanup/reserve",
+      {
+        listener_instance_id: input.listenerInstanceId,
+        dispatch_target: input.dispatchTarget,
+      },
+    );
+    if (data === null) return null;
+    const record = readRecord(data);
+    if (
+      typeof record.reservationId !== "string"
+      || typeof record.providerSessionId !== "string"
+      || !record.providerSessionId.trim()
+    ) {
+      throw new Error(
+        "Native live provider session cleanup reservation is invalid.",
+      );
+    }
+    return {
+      reservationId: record.reservationId,
+      providerSessionId: record.providerSessionId,
+    };
+  }
+
+  async submitProviderSessionCleanupResult(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | { status: "success" }
+      | { status: "failure"; failureCode: string };
+  }): Promise<void> {
+    await this.post(
+      `/provider-session-cleanup/reservations/${encodeURIComponent(input.reservationId)}/result`,
+      input.outcome.status === "success"
+        ? {
+            listener_instance_id: input.listenerInstanceId,
+            status: "success",
+          }
+        : {
+            listener_instance_id: input.listenerInstanceId,
+            status: "failure",
+            failure_code: input.outcome.failureCode,
+          },
+    );
+  }
+
   async reserveBackgroundModel(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
