@@ -133,7 +133,6 @@ test("production internal MCP defaults preserve current maintenance/runtime inve
     "write_notion_page",
     "get_notion_connection",
     "list_conversation_exclusions",
-    "sentinel_get_state",
     "bridge_listener_open",
     "bridge_event_claim",
     "render_note_card",
@@ -144,6 +143,17 @@ test("production internal MCP defaults preserve current maintenance/runtime inve
       names.includes(required),
       true,
       `internal full profile must expose ${required}`,
+    );
+  }
+  for (const retired of [
+    "sentinel_get_state",
+    "sentinel_claim_current_wake",
+    "complete_sentinel_wake",
+  ]) {
+    assert.equal(
+      names.includes(retired),
+      false,
+      `retired Sentinel tool must stay absent: ${retired}`,
     );
   }
 });
