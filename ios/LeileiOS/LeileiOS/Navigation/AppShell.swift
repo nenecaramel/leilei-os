@@ -61,7 +61,7 @@ struct AppShell: View {
             ZStack(alignment: .leading) {
                 Rectangle()
                     .fill(Color(red: 0.98, green: 0.98, blue: 0.98))
-                    .ignoresSafeArea(.container)
+                    .ignoresSafeArea()
 
                 SidebarView(
                     selectedPage: $selectedPage,
@@ -270,7 +270,7 @@ private struct MainPageLayer: View {
     var body: some View {
         ZStack {
             Color(.systemBackground)
-                .ignoresSafeArea(.container)
+                .ignoresSafeArea()
 
             PageContainer(
                 selectedPage: selectedPage,
