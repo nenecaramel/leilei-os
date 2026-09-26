@@ -31,7 +31,6 @@ struct SidebarView: View {
                             SidebarSection(
                                 title: nil,
                                 pages: [
-                                    .home,
                                     .projects,
                                     .diary,
                                     .daySpace,

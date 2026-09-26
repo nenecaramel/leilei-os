@@ -61,8 +61,6 @@ struct SidebarSection: View {
 private extension AppPage {
     var sidebarSystemImage: String {
         switch self {
-        case .home:
-            return "house"
         case .projects:
             return "folder"
         case .diary:
