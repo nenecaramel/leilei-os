@@ -164,10 +164,10 @@ test("duplicate Drive tags from one assistant message count as one reinforcement
   assert.equal(port.updates[0]?.evolution.pressure, 0.6);
 });
 
-test("satisfaction stored on the anchor lowers pressure and later reinforcement can reactivate it", async () => {
+test("later reinforcement can reactivate a dormant Drive", async () => {
   const anchorId = "11111111-1111-4111-8111-111111111111";
   const satisfiedPayload = writeDriveEvolution(null, {
-    phase: "satisfied",
+    phase: "dormant",
     role: "anchor",
     threadKey: driveThreadKey("keep exploring"),
     anchorStateId: anchorId,
@@ -178,7 +178,7 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
     lastEvolvedAt: "2026-09-22T12:00:00.000Z",
     lastReinforcedAt: "2026-09-22T11:00:00.000Z",
     lastSatisfiedAt: "2026-09-22T12:00:00.000Z",
-    dormantAt: null,
+    dormantAt: "2026-09-22T13:00:00.000Z",
   });
   const port = new Port([
     candidate(
@@ -218,6 +218,7 @@ test("satisfaction stored on the anchor lowers pressure and later reinforcement 
   assert.ok(anchor);
   assert.ok(Math.abs(anchor.evolution.pressure - 0.15) < 1e-9);
   assert.equal(anchor.evolution.phase, "active");
+  assert.equal(anchor.evolution.dormantAt, null);
   assert.equal(anchor.evolution.satisfactionTotal, 0.65);
 });
 
@@ -318,4 +319,15 @@ test("Drive dormancy remains disabled when no dormancy window is configured", as
   assert.equal(result.dormant, 0);
   assert.equal(port.updates[0]?.evolution.phase, "satisfied");
   assert.equal(port.updates[0]?.evolution.dormantAt, null);
+});
+
+
+test("Drive dormancy policy rejects a non-positive window", () => {
+  assert.throws(
+    () => new DriveEvolutionService(new Port([]), {
+      ...policy,
+      dormantAfterSatisfiedHours: 0,
+    }),
+    /dormant-after-satisfied hours must be positive/,
+  );
 });
