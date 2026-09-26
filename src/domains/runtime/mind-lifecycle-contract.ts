@@ -11,8 +11,7 @@ export type MindLifecycleState =
 
 export type MindLifecycleOwnership =
   | "authored"
-  | "derived"
-  | "hybrid";
+  | "derived";
 
 export type MindLifecycleDriver =
   | "time_decay"
