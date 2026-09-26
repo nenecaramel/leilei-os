@@ -27,8 +27,6 @@ import { DrizzleImportRepository } from "../domains/import/import-repository.js"
 import { ImportService } from "../domains/import/import-service.js";
 import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
 import { UniverseService } from "../domains/universe/universe-service.js";
-import { DrizzleBridgeEventRepository } from "../domains/bridge/bridge-event-repository.js";
-import { BridgeService } from "../domains/bridge/bridge-service.js";
 import {
   createDefaultBackendMindRuntime,
   createDefaultDriveSatisfactionService,
@@ -158,7 +156,6 @@ import {
   NativeLiveSemanticHandshakeService,
   createNativeLiveSemanticRecoveryRunner,
 } from "../domains/bridge/native-live-semantic-handshake.js";
-import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
@@ -198,7 +195,6 @@ import {
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
 import {
   createMcpLifecycleObserver,
-  createBridgeObserver,
   createRetentionObserver,
 } from "../observability/runtime-observers.js";
 
@@ -297,7 +293,6 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
-  const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
   const driveSatisfactionService =
     createDefaultDriveSatisfactionService(db);
@@ -631,11 +626,6 @@ export function createProcessRuntime(
         deleteBatch: (cutoff, limit) => deleteExpiredDataImportRunsBatch(db, cutoff, limit),
       },
       {
-        policy: "bridge_events",
-        retentionMs: BRIDGE_TERMINAL_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
-        deleteBatch: (cutoff, limit) => deleteExpiredBridgeEventsBatch(db, cutoff, limit),
-      },
-      {
         policy: "native_live_background_model_jobs",
         retentionMs:
           NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS
@@ -682,8 +672,6 @@ export function createProcessRuntime(
     todoService,
     universeService,
     healthService,
-    bridgeService,
-    bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
     publicToolProfiles,
     internalToolProfiles,
     logger,
@@ -703,7 +691,6 @@ export function createProcessRuntime(
       webExportService: exportService,
       webImportService: importService,
       webUniverseService: universeService,
-      webBridgeService: bridgeService,
       nativeLiveProduction: {
         web: {
           coordinator: nativeLiveRelayPrepareCoordinator,
