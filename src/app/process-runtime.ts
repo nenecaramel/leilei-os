@@ -105,8 +105,6 @@ import {
   RuntimeMessageEffectDeliveryAdapter,
 } from "../domains/runtime/runtime-message-effect-delivery-adapter.js";
 import {
-  DrizzleRuntimeEffectDeliveryUserSource,
-  RuntimeEffectDeliveryRecovery,
   RuntimeEffectDeliveryWorker,
 } from "../domains/runtime/runtime-effect-delivery-worker.js";
 import {
@@ -498,12 +496,6 @@ export function createProcessRuntime(
         logger.info(name, fields);
       },
     );
-  const runtimeEffectDeliveryStartupRecovery =
-    new RuntimeEffectDeliveryRecovery(
-      new DrizzleRuntimeEffectDeliveryUserSource(db),
-      runtimeEffectDeliveryWorker,
-      100,
-    );
   const proactivityWakeCrossDeviceCoordinator =
     new ProactivityWakeCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
@@ -584,11 +576,10 @@ export function createProcessRuntime(
     new CompanionBackgroundOpportunityService(
       subjectStateBackgroundMaintenance,
       backgroundOpportunityPolicy,
-      proactivityWakeOpportunityConfig
-        ? runtimeEffectDeliveryWorker
-        : null,
+      runtimeEffectDeliveryWorker,
       proactivityWakeOpportunityProducer,
       topicResurfaceCrossDeviceOpportunity ?? null,
+      Boolean(proactivityWakeOpportunityConfig),
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
@@ -797,12 +788,6 @@ export function createProcessRuntime(
       void retentionCoordinator.runNow().catch(() => undefined);
       void nativeLiveMindFollowUpRecovery.runNow().catch(() => undefined);
       void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
-      // Effects can outlive a previously enabled Proactivity configuration.
-      // Recover any durable backlog once at startup, but when Proactivity is
-      // disabled do not re-scan runtime_effects after every foreground turn.
-      void runtimeEffectDeliveryStartupRecovery
-        .schedulePulse()
-        .catch(() => undefined);
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
