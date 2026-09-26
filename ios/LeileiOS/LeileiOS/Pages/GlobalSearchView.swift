@@ -9,6 +9,9 @@ struct GlobalSearchView: View {
     @State private var scope: GlobalSearchScope = .active
     @State private var state: SearchState = .idle
     @State private var searchTask: Task<Void, Never>?
+    @State private var loadMoreTask: Task<Void, Never>?
+    @State private var isLoadingMore = false
+    @State private var loadMoreFailed = false
 
     init(service: any GlobalSearchService = UnavailableGlobalSearchService()) {
         self.service = service
@@ -19,28 +22,33 @@ struct GlobalSearchView: View {
             switch state {
             case .idle:
                 Color.clear
+
             case .loading:
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             case .results(let response):
-                List(response.results) { result in
-                    GlobalSearchResultRow(result: result)
-                }
-                .listStyle(.plain)
+                GlobalSearchResultsList(
+                    response: response,
+                    isLoadingMore: isLoadingMore,
+                    loadMoreFailed: loadMoreFailed,
+                    onLoadMore: {
+                        loadMore(response)
+                    }
+                )
+
             case .noResults:
-                ContentUnavailableView.search(text: query)
-            case .unavailable(let message):
-                ContentUnavailableView(
-                    "Global Search Unavailable",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
-                )
-            case .error(let message):
-                ContentUnavailableView(
-                    "Search Failed",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
-                )
+                AppStateSurface(title: "Nothing here")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .unavailable:
+                AppStateSurface(
+                    title: "Unavailable",
+                    actionTitle: "Retry"
+                ) {
+                    scheduleSearch()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -65,25 +73,21 @@ struct GlobalSearchView: View {
         }
         .onDisappear {
             searchTask?.cancel()
+            loadMoreTask?.cancel()
         }
     }
 
     private func scheduleSearch() {
         searchTask?.cancel()
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
+        loadMoreTask?.cancel()
+        isLoadingMore = false
+        loadMoreFailed = false
+
+        guard let request = currentRequest else {
             state = .idle
             return
         }
 
-        let dateRange = timePreset.dateRange()
-        let request = GlobalSearchRequest(
-            query: trimmedQuery,
-            modules: modules,
-            scope: scope,
-            dateFrom: dateRange.dateFrom,
-            dateTo: dateRange.dateTo
-        )
         state = .loading
 
         searchTask = Task {
@@ -93,14 +97,88 @@ struct GlobalSearchView: View {
             do {
                 let response = try await service.search(request)
                 guard !Task.isCancelled else { return }
-                state = response.results.isEmpty ? .noResults : .results(response)
+                state = response.results.isEmpty
+                    ? .noResults
+                    : .results(response)
             } catch is CancellationError {
                 return
-            } catch let error as GlobalSearchServiceError {
-                state = .unavailable(error.localizedDescription)
             } catch {
-                state = .error(error.localizedDescription)
+                guard !Task.isCancelled else { return }
+                state = .unavailable
             }
+        }
+    }
+
+    private func loadMore(_ response: GlobalSearchResponse) {
+        guard !isLoadingMore,
+              let cursor = response.nextCursor,
+              let request = currentRequest
+        else {
+            return
+        }
+
+        loadMoreTask?.cancel()
+        isLoadingMore = true
+        loadMoreFailed = false
+
+        loadMoreTask = Task {
+            do {
+                let next = try await service.search(
+                    request,
+                    cursor: cursor
+                )
+                guard !Task.isCancelled else { return }
+
+                let existing = response.results
+                let combined = uniqueResults(existing + next.results)
+
+                state = .results(
+                    GlobalSearchResponse(
+                        results: combined,
+                        count: combined.count,
+                        hasMore: next.hasMore,
+                        nextCursor: next.nextCursor,
+                        searchedModules: next.searchedModules,
+                        searchedScope: next.searchedScope
+                    )
+                )
+                isLoadingMore = false
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                isLoadingMore = false
+                loadMoreFailed = true
+            }
+        }
+    }
+
+    private var currentRequest: GlobalSearchRequest? {
+        let trimmedQuery = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmedQuery.isEmpty,
+              !modules.isEmpty
+        else {
+            return nil
+        }
+
+        let dateRange = timePreset.dateRange()
+        return GlobalSearchRequest(
+            query: trimmedQuery,
+            modules: modules,
+            scope: scope,
+            dateFrom: dateRange.dateFrom,
+            dateTo: dateRange.dateTo
+        )
+    }
+
+    private func uniqueResults(
+        _ results: [GlobalSearchResultItem]
+    ) -> [GlobalSearchResultItem] {
+        var seen = Set<String>()
+        return results.filter {
+            seen.insert($0.id).inserted
         }
     }
 }
@@ -111,31 +189,238 @@ private extension GlobalSearchView {
         case loading
         case results(GlobalSearchResponse)
         case noResults
-        case unavailable(String)
-        case error(String)
+        case unavailable
     }
+}
+
+private struct GlobalSearchResultsList: View {
+    let response: GlobalSearchResponse
+    let isLoadingMore: Bool
+    let loadMoreFailed: Bool
+    let onLoadMore: () -> Void
+
+    private var groups: [GlobalSearchResultGroup] {
+        GlobalSearchModule.allCases.compactMap { module in
+            let items = response.results.filter {
+                $0.entityType == module
+            }
+            return items.isEmpty
+                ? nil
+                : GlobalSearchResultGroup(
+                    module: module,
+                    items: items
+                )
+        }
+    }
+
+    var body: some View {
+        List {
+            ForEach(groups) { group in
+                Section(group.module.title) {
+                    ForEach(group.items) { result in
+                        GlobalSearchResultRow(result: result)
+                    }
+                }
+            }
+
+            if response.nextCursor != nil {
+                Section {
+                    Button(action: onLoadMore) {
+                        HStack {
+                            Spacer()
+
+                            if isLoadingMore {
+                                ProgressView()
+                            } else {
+                                Text(
+                                    loadMoreFailed
+                                        ? "Retry"
+                                        : "Load More"
+                                )
+                            }
+
+                            Spacer()
+                        }
+                    }
+                    .disabled(isLoadingMore)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+    }
+}
+
+private struct GlobalSearchResultGroup: Identifiable {
+    let module: GlobalSearchModule
+    let items: [GlobalSearchResultItem]
+
+    var id: GlobalSearchModule { module }
 }
 
 private struct GlobalSearchResultRow: View {
     let result: GlobalSearchResultItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(result.stableName)
-                .font(.system(size: 17, weight: .medium))
+        switch result.entityType {
+        case .diary:
+            GlobalSearchDiaryRow(result: result)
+        case .todo:
+            GlobalSearchTodoRow(result: result)
+        case .universe:
+            GlobalSearchUniverseRow(result: result)
+        case .conversation:
+            GlobalSearchConversationRow(result: result)
+        }
+    }
+}
 
-            Text(result.entityType.title)
-                .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(.secondary)
+private struct GlobalSearchDiaryRow: View {
+    let result: GlobalSearchResultItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(result.stableName)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
 
             if !result.snippet.isEmpty {
                 Text(result.snippet)
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(3)
+                    .lineLimit(2)
+            }
+
+            GlobalSearchMetadataLine(
+                left: GlobalSearchDate.row(result.businessTime),
+                right: [
+                    result.author,
+                    result.lifecycleStatus == "archived"
+                        ? "Archived"
+                        : nil,
+                ]
+                .compactMap { $0 }
+                .joined(separator: "  ")
+            )
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct GlobalSearchTodoRow: View {
+    let result: GlobalSearchResultItem
+
+    private var primaryText: String {
+        result.snippet.isEmpty
+            ? result.stableName
+            : result.snippet
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(primaryText)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+
+            GlobalSearchMetadataLine(
+                left: GlobalSearchDate.row(result.businessTime),
+                right: result.author ?? ""
+            )
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct GlobalSearchUniverseRow: View {
+    let result: GlobalSearchResultItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(result.stableName)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+
+            if !result.snippet.isEmpty {
+                Text(result.snippet)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            GlobalSearchMetadataLine(
+                left: GlobalSearchDate.row(result.businessTime),
+                right: result.matchedField.capitalized
+            )
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct GlobalSearchConversationRow: View {
+    let result: GlobalSearchResultItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(result.stableName)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+
+            if !result.snippet.isEmpty {
+                Text(result.snippet)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            GlobalSearchMetadataLine(
+                left: GlobalSearchDate.row(result.businessTime),
+                right: result.lifecycleStatus == "archived"
+                    ? "Archived"
+                    : ""
+            )
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct GlobalSearchMetadataLine: View {
+    let left: String
+    let right: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(left)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 8)
+
+            if !right.isEmpty {
+                Text(right)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
-        .padding(.vertical, 6)
-        .accessibilityHint(result.detailTool ?? "")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+}
+
+private enum GlobalSearchDate {
+    static func row(_ value: String) -> String {
+        let datePart = value.prefix(10)
+        let parts = datePart.split(separator: "-")
+        guard parts.count == 3,
+              let month = Int(parts[1]),
+              let day = Int(parts[2])
+        else {
+            return ""
+        }
+
+        return "\(month)/\(day)"
     }
 }
