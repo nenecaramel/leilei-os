@@ -103,6 +103,48 @@ implements NativeLiveCurrentPathReader {
 
     let startMessageId = headMessageId;
     if (input.beforeMessageId) {
+      const membership =
+        await this.db.execute<{ id: string }>(sql`
+          WITH RECURSIVE current_path AS (
+            SELECT
+              message.id,
+              message.parent_message_id
+            FROM conversation_messages AS message
+            WHERE message.id = ${headMessageId}::uuid
+              AND message.user_id = ${input.userId}::uuid
+              AND message.conversation_id =
+                ${input.conversationId}::uuid
+
+            UNION ALL
+
+            SELECT
+              parent.id,
+              parent.parent_message_id
+            FROM conversation_messages AS parent
+            JOIN current_path AS path
+              ON parent.id = path.parent_message_id
+            WHERE parent.user_id = ${input.userId}::uuid
+              AND parent.conversation_id =
+                ${input.conversationId}::uuid
+              AND path.id <> ${input.beforeMessageId}::uuid
+          )
+          SELECT id
+          FROM current_path
+          WHERE id = ${input.beforeMessageId}::uuid
+          LIMIT 1
+        `);
+      if (membership.length === 0) {
+        return this.readCurrentPath({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          limit,
+        }).then((latest) =>
+          latest
+            ? { ...latest, resetRequired: true }
+            : null
+        );
+      }
+
       const [cursor] = await this.db
         .select({
           parentMessageId: conversationMessages.parentMessageId,
