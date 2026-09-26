@@ -6,6 +6,7 @@ struct DaySpaceView: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var query = ""
+    @State private var searchState: DaySpaceTodoSearchState = .idle
     @State private var selectedDate: String?
     @State private var discoveryState: DaySpaceDiscoveryState = .loading
     @State private var discoveryIncomplete = false
@@ -19,8 +20,7 @@ struct DaySpaceView: View {
     var body: some View {
         Group {
             if isSearching {
-                AppStateSurface(title: "Nothing here")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                searchContent
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
@@ -125,10 +125,52 @@ struct DaySpaceView: View {
         .task {
             await discoverAndLoad()
         }
+        .task(id: query) {
+            await searchTodoIfNeeded()
+        }
     }
 
     private var isSearching: Bool {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @ViewBuilder
+    private var searchContent: some View {
+        switch searchState {
+        case .idle, .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .results(let entries):
+            List(entries) { entry in
+                Button {
+                    Task {
+                        await openSearchResult(entry)
+                    }
+                } label: {
+                    DaySpaceTodoSearchRow(entry: entry)
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemBackground))
+
+        case .noResults:
+            AppStateSurface(title: "Nothing here")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .unavailable:
+            AppStateSurface(
+                title: "Unavailable",
+                actionTitle: "Retry"
+            ) {
+                Task {
+                    await searchTodoIfNeeded()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     @ViewBuilder
@@ -228,6 +270,66 @@ struct DaySpaceView: View {
         Task {
             await loadDate(date)
         }
+    }
+
+    @MainActor
+    private func searchTodoIfNeeded() async {
+        let normalized = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !normalized.isEmpty else {
+            searchState = .idle
+            return
+        }
+
+        searchState = .loading
+
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            try Task.checkCancellation()
+
+            let response: DaySpaceTodoSearchEnvelope =
+                try await appModel.api.request(
+                    path: todoSearchPath(for: normalized)
+                )
+
+            try Task.checkCancellation()
+            searchState = response.data.entries.isEmpty
+                ? .noResults
+                : .results(response.data.entries)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            searchState = .unavailable
+        }
+    }
+
+    private func todoSearchPath(for query: String) -> String {
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "limit", value: "51"),
+        ]
+        return "/api/v1/todo/search?\(components.percentEncodedQuery ?? "")"
+    }
+
+    @MainActor
+    private func openSearchResult(
+        _ entry: DaySpaceTodoSearchEntry
+    ) async {
+        query = ""
+        searchState = .idle
+        await loadDate(entry.date)
+
+        guard let day = todoState.value,
+              let paper = day.papers[entry.author]
+        else {
+            return
+        }
+
+        selection = .todo(paper)
     }
 
     @MainActor
@@ -398,6 +500,77 @@ struct DaySpaceView: View {
         }
 
         diaryState = .ready(diaries)
+    }
+}
+
+private enum DaySpaceTodoSearchState {
+    case idle
+    case loading
+    case results([DaySpaceTodoSearchEntry])
+    case noResults
+    case unavailable
+}
+
+private struct DaySpaceTodoSearchEnvelope: Decodable {
+    let success: Bool
+    let data: DaySpaceTodoSearchData
+}
+
+private struct DaySpaceTodoSearchData: Decodable {
+    let entries: [DaySpaceTodoSearchEntry]
+    let metadata: DaySpaceTodoSearchMetadata
+}
+
+private struct DaySpaceTodoSearchMetadata: Decodable {
+    let count: Int
+    let author: DaySpaceAuthor?
+}
+
+private struct DaySpaceTodoSearchEntry: Decodable, Identifiable {
+    let entryID: String
+    let date: String
+    let author: DaySpaceAuthor
+    let kind: DaySpaceTodoEntryKind
+    let text: String
+    let snippet: String
+
+    var id: String {
+        "\(date):\(author.rawValue):\(entryID)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case author
+        case kind
+        case text
+        case snippet
+        case entryID = "entry_id"
+    }
+}
+
+private struct DaySpaceTodoSearchRow: View {
+    let entry: DaySpaceTodoSearchEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(entry.text)
+                .font(.body.weight(.semibold))
+                .lineLimit(2)
+
+            HStack(spacing: 12) {
+                Text(DaySpaceDate.fullLabel(entry.date))
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Spacer(minLength: 8)
+
+                Text("\(entry.author.rawValue)  \(entry.kind.rawValue.capitalized)")
+                    .lineLimit(1)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 
