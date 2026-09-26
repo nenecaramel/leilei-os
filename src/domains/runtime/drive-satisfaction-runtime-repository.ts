@@ -42,7 +42,7 @@ export type DriveSatisfactionResult =
       outcome: "applied" | "idempotent";
       driveStateId: string;
       pressure: number;
-      phase: "active" | "satisfied";
+      phase: "active" | "satisfied" | "dormant";
       satisfactionTotal: number;
     }
   | {
@@ -216,16 +216,23 @@ implements DriveSatisfactionRuntimePort {
         const nextPressure = clampDrivePressure(
           anchorEvolution.pressure - input.amount,
         );
+        const nextPhase =
+          nextPressure > input.activeThreshold
+            ? "active" as const
+            : anchorEvolution.phase === "dormant"
+              ? "dormant" as const
+              : "satisfied" as const;
         const nextEvolution = {
           ...anchorEvolution,
           pressure: nextPressure,
-          phase:
-            nextPressure > input.activeThreshold
-              ? "active" as const
-              : "satisfied" as const,
+          phase: nextPhase,
           satisfactionTotal: nextSatisfactionTotal,
           lastEvolvedAt: now,
           lastSatisfiedAt: now,
+          dormantAt:
+            nextPhase === "dormant"
+              ? anchorEvolution.dormantAt
+              : null,
         };
 
         await transaction.insert(runtimeDriveSatisfactionEvents).values({
