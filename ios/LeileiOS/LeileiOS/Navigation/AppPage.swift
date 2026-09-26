@@ -8,7 +8,6 @@ enum AppPage: String, Identifiable {
     case daySpace = "Day Space"
     case conversations = "Conversations"
     case universe = "Universe"
-    case sentinel = "Sentinel"
 
     case globalSearch = "Global Search"
 
