@@ -95,8 +95,6 @@ struct PageContainer: View {
                                     )
                                 }
 
-                                Divider()
-
                                 Button {
                                     guard appModel.activeNativeLiveConversationID != nil else {
                                         return
@@ -104,16 +102,24 @@ struct PageContainer: View {
                                     renameTitle = activeConversationEditableTitle
                                     showingRenameAlert = true
                                 } label: {
-                                    Text("Rename")
+                                    Label(
+                                        "Rename",
+                                        systemImage: "pencil"
+                                    )
                                 }
                                 .disabled(
                                     appModel.activeNativeLiveConversationID == nil
                                 )
 
+                                Divider()
+
                                 Button(role: .destructive) {
                                     showingDeleteConfirmation = true
                                 } label: {
-                                    Text("Delete")
+                                    Label(
+                                        "Delete",
+                                        systemImage: "trash"
+                                    )
                                 }
                                 .disabled(
                                     appModel.activeNativeLiveConversationID == nil
