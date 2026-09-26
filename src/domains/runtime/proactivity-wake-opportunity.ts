@@ -478,7 +478,7 @@ export class ProactivityWakeOpportunityProducer {
     >,
     private readonly source: Pick<
       ProactivityWakeOpportunitySource,
-      "listCandidateUserIds" | "buildOpportunity"
+      "buildOpportunity"
     >,
     private readonly coordinator: Pick<
       ProactivityWakeCrossDeviceCoordinator,
