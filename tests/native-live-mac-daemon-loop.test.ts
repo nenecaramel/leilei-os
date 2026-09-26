@@ -960,3 +960,108 @@ test("daemon never blindly reapplies a provider control when completion delivery
   assert.equal(relay.completeCount, 1);
   assert.equal(relay.waitCount, 1);
 });
+
+
+test("idle daemon hard-deletes a reserved purged provider session and receipts success", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const cleanupReservationId =
+    "77777777-7777-4777-8777-777777777777";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const cleanupRelay = Object.assign(relay, {
+    async reserveProviderSessionCleanup(input: unknown) {
+      calls.push({ name: "reserveCleanup", input });
+      return {
+        reservationId: cleanupReservationId,
+        providerSessionId: "provider-old-fork",
+      };
+    },
+    async submitProviderSessionCleanupResult(input: unknown) {
+      calls.push({ name: "submitCleanup", input });
+    },
+  });
+  const deleted: string[] = [];
+  const cleanupExecutor = {
+    async deleteSession(sessionId: string) {
+      deleted.push(sessionId);
+    },
+  };
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    cleanupRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    cleanupExecutor,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "provider_session_cleanup_completed",
+    reservationId: cleanupReservationId,
+  });
+  assert.deepEqual(deleted, ["provider-old-fork"]);
+  assert.deepEqual(calls, [
+    {
+      name: "reserveCleanup",
+      input: {
+        listenerInstanceId,
+        dispatchTarget: "claude_code",
+      },
+    },
+    {
+      name: "submitCleanup",
+      input: {
+        listenerInstanceId,
+        reservationId: cleanupReservationId,
+        outcome: { status: "success" },
+      },
+    },
+  ]);
+});
+
+test("provider session deletion failure is receipted for bounded retry", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const cleanupReservationId =
+    "77777777-7777-4777-8777-777777777777";
+  const receipts: unknown[] = [];
+  const cleanupRelay = Object.assign(relay, {
+    async reserveProviderSessionCleanup() {
+      return {
+        reservationId: cleanupReservationId,
+        providerSessionId: "provider-old-fork",
+      };
+    },
+    async submitProviderSessionCleanupResult(input: unknown) {
+      receipts.push(input);
+    },
+  });
+  const cleanupExecutor = {
+    async deleteSession() {
+      throw new Error("filesystem unavailable");
+    },
+  };
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    cleanupRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    cleanupExecutor,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "provider_session_cleanup_failed",
+    reservationId: cleanupReservationId,
+  });
+  assert.deepEqual(receipts, [{
+    listenerInstanceId,
+    reservationId: cleanupReservationId,
+    outcome: {
+      status: "failure",
+      failureCode: "DELETE_SESSION_FAILED",
+    },
+  }]);
+});

@@ -82,6 +82,7 @@ const loop = new NativeLiveMacDaemonLoop(
   semanticScorer,
   companionScheduler,
   backgroundModelExecutor,
+  runtime,
 );
 
 let stopping = false;
@@ -172,6 +173,7 @@ while (!stopping) {
       outcome.outcome === "completed"
       || outcome.outcome === "semantic_completed"
       || outcome.outcome === "background_completed"
+      || outcome.outcome === "provider_session_cleanup_completed"
     ) {
       continue;
     }

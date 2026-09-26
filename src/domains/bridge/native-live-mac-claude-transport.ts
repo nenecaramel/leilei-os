@@ -42,6 +42,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
 export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
     abort(): void;
+    deleteSession(sessionId: string): Promise<void>;
     executeTurn?(
       prompt: string,
       options: NativeLiveMacInteractiveTurnOptions,

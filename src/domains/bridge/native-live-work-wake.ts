@@ -109,6 +109,19 @@ export class DrizzleNativeLiveWorkAvailability {
         UNION ALL
 
         SELECT 1
+        FROM native_live_provider_session_cleanups AS cleanup
+        WHERE cleanup.user_id = ${input.userId}::uuid
+          AND (
+            cleanup.status = 'pending'
+            OR (
+              cleanup.status = 'reserved'
+              AND cleanup.reservation_expires_at <= now()
+            )
+          )
+
+        UNION ALL
+
+        SELECT 1
         FROM native_live_background_model_jobs AS job
         WHERE job.user_id = ${input.userId}::uuid
           AND (

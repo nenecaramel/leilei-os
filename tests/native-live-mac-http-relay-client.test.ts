@@ -617,3 +617,74 @@ test("Mac HTTP relay client round-trips a durable permission interaction", async
     "permission",
   );
 });
+
+
+test("Mac HTTP relay client reserves and receipts provider session cleanup", async () => {
+  const cleanupId = "77777777-7777-4777-8777-777777777777";
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const responses = [
+    {
+      success: true,
+      data: {
+        reservationId: cleanupId,
+        providerSessionId: "provider-old-fork",
+      },
+    },
+    {
+      success: true,
+      data: { outcome: "applied" },
+    },
+  ];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    const payload = responses.shift();
+    if (!payload) throw new Error("unexpected fetch");
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  assert.deepEqual(
+    await client.reserveProviderSessionCleanup({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    }),
+    {
+      reservationId: cleanupId,
+      providerSessionId: "provider-old-fork",
+    },
+  );
+  await client.submitProviderSessionCleanupResult({
+    listenerInstanceId: listenerId,
+    reservationId: cleanupId,
+    outcome: { status: "success" },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      url:
+        "https://relay.example/internal/native-live-relay/provider-session-cleanup/reserve",
+      body: {
+        listener_instance_id: listenerId,
+        dispatch_target: "claude_code",
+      },
+    },
+    {
+      url:
+        `https://relay.example/internal/native-live-relay/provider-session-cleanup/reservations/${cleanupId}/result`,
+      body: {
+        listener_instance_id: listenerId,
+        status: "success",
+      },
+    },
+  ]);
+});

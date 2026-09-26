@@ -131,6 +131,38 @@ export function planSubjectStateEvolutionRepairs(input: {
   });
 }
 
+export function planExclusiveProviderSessionCleanup(input: {
+  purgeMessageIds: ReadonlySet<string>;
+  checkpoints: readonly {
+    canonicalMessageId: string;
+    provider: string;
+    providerSessionId: string;
+  }[];
+}): string[] {
+  const surviving = new Set(
+    input.checkpoints
+      .filter((checkpoint) =>
+        !input.purgeMessageIds.has(checkpoint.canonicalMessageId)
+      )
+      .map((checkpoint) =>
+        `${checkpoint.provider}:\0${checkpoint.providerSessionId}`
+      ),
+  );
+
+  return [
+    ...new Set(
+      input.checkpoints
+        .filter((checkpoint) =>
+          input.purgeMessageIds.has(checkpoint.canonicalMessageId)
+          && !surviving.has(
+            `${checkpoint.provider}:\0${checkpoint.providerSessionId}`,
+          )
+        )
+        .map((checkpoint) => checkpoint.providerSessionId),
+    ),
+  ];
+}
+
 export function workflowReferencesAnyId(
   payload: Record<string, unknown> | null,
   ids: ReadonlySet<string>,

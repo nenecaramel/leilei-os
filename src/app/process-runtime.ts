@@ -126,6 +126,10 @@ import {
   NativeLiveBackendRelayService,
 } from "../domains/bridge/native-live-backend-relay.js";
 import {
+  DrizzleNativeLiveProviderSessionCleanupRepository,
+  NativeLiveProviderSessionCleanupService,
+} from "../domains/bridge/native-live-provider-session-cleanup.js";
+import {
   DrizzleNativeLiveWorkAvailability,
   DrizzleNativeLiveWorkWakePublisher,
   NativeLiveWorkWakeBroker,
@@ -426,6 +430,10 @@ export function createProcessRuntime(
     nativeLiveTurnCoordinator,
     nativeLiveWorkWakePublisher,
   );
+  const nativeLiveProviderSessionCleanupService =
+    new NativeLiveProviderSessionCleanupService(
+      new DrizzleNativeLiveProviderSessionCleanupRepository(db),
+    );
   const nativeLiveRuntimeEventService =
     new NativeLiveRuntimeEventService(
       new DrizzleNativeLiveRuntimeEventRepository(db),
@@ -692,6 +700,8 @@ export function createProcessRuntime(
         internal: {
           relayService: nativeLiveRelayService,
           workWaitService: nativeLiveWorkWaitService,
+          providerSessionCleanupService:
+            nativeLiveProviderSessionCleanupService,
           semanticService: nativeLiveSemanticService,
           backgroundModelService:
             nativeLiveBackgroundModelService,

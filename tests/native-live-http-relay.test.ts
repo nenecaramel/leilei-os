@@ -1817,3 +1817,91 @@ test("web owner can create and list foreground mid-turn and interrupt controls",
     },
   );
 });
+
+
+test("internal relay reserves and receipts provider session cleanup in authenticated user scope", async () => {
+  const relayService = new FakeRelayService();
+  const cleanupId = "77777777-7777-4777-8777-777777777777";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const providerSessionCleanupService = {
+    async reserveNext(input: unknown) {
+      calls.push({ name: "reserve", input });
+      return {
+        reservationId: cleanupId,
+        providerSessionId: "provider-old-fork",
+      };
+    },
+    async complete(input: unknown) {
+      calls.push({ name: "complete", input });
+      return "applied" as const;
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          providerSessionCleanupService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const reserved = await fetch(
+        `${baseUrl}/internal/native-live-relay/provider-session-cleanup/reserve`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(reserved.status, 200);
+      assert.deepEqual(
+        (await reserved.json() as { data: unknown }).data,
+        {
+          reservationId: cleanupId,
+          providerSessionId: "provider-old-fork",
+        },
+      );
+
+      const completed = await fetch(
+        `${baseUrl}/internal/native-live-relay/provider-session-cleanup/reservations/${cleanupId}/result`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            status: "success",
+          }),
+        },
+      );
+      assert.equal(completed.status, 200);
+      assert.deepEqual(calls, [
+        {
+          name: "reserve",
+          input: {
+            userId,
+            listenerInstanceId: listenerId,
+          },
+        },
+        {
+          name: "complete",
+          input: {
+            userId,
+            listenerInstanceId: listenerId,
+            reservationId: cleanupId,
+            outcome: { status: "success" },
+          },
+        },
+      ]);
+    },
+  );
+});

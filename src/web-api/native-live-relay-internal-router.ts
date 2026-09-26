@@ -49,6 +49,10 @@ import type {
 import type {
   NativeLiveWorkWaitService,
 } from "../domains/bridge/native-live-work-wake.js";
+import {
+  NativeLiveProviderSessionCleanupError,
+  type NativeLiveProviderSessionCleanupService,
+} from "../domains/bridge/native-live-provider-session-cleanup.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -102,6 +106,10 @@ export type NativeLiveRelayInternalDependencies = {
     failureCount: number;
   }) => void;
   workWaitService?: Pick<NativeLiveWorkWaitService, "wait">;
+  providerSessionCleanupService?: Pick<
+    NativeLiveProviderSessionCleanupService,
+    "reserveNext" | "complete"
+  >;
 };
 
 const UUID_PATTERN =
@@ -151,6 +159,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/background-model/topic-resurface/opportunity",
       topicResurfaceOpportunityHandler(dependencies),
+    );
+  }
+  if (dependencies.providerSessionCleanupService) {
+    router.post(
+      "/provider-session-cleanup/reserve",
+      reserveProviderSessionCleanupHandler(dependencies),
+    );
+    router.post(
+      "/provider-session-cleanup/reservations/:reservationId/result",
+      submitProviderSessionCleanupResultHandler(dependencies),
     );
   }
   router.post("/reserve", reserveNextHandler(dependencies));
@@ -551,6 +569,72 @@ function submitBackgroundModelResultHandler(
       });
     } catch (error) {
       sendBackgroundModelError(response, error);
+    }
+  };
+}
+
+function reserveProviderSessionCleanupHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.providerSessionCleanupService) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const reservation =
+        await dependencies.providerSessionCleanupService.reserveNext({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+        });
+      response.json({
+        success: true,
+        data: reservation,
+      });
+    } catch (error) {
+      sendProviderSessionCleanupError(response, error);
+    }
+  };
+}
+
+function submitProviderSessionCleanupResultHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.providerSessionCleanupService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const body = parseProviderSessionCleanupResultBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const outcome =
+        await dependencies.providerSessionCleanupService.complete({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+          outcome:
+            body.status === "success"
+              ? { status: "success" }
+              : {
+                  status: "failure",
+                  failureCode: body.failure_code,
+                },
+        });
+      response.json({
+        success: true,
+        data: { outcome },
+      });
+    } catch (error) {
+      sendProviderSessionCleanupError(response, error);
     }
   };
 }
@@ -1245,6 +1329,60 @@ function parseRuntimeEventBatchBody(
   };
 }
 
+function parseProviderSessionCleanupResultBody(
+  value: unknown,
+):
+  | {
+      listener_instance_id: string;
+      status: "success";
+    }
+  | {
+      listener_instance_id: string;
+      status: "failure";
+      failure_code: string;
+    }
+  | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    !isUuid(record.listener_instance_id)
+    || (
+      record.status !== "success"
+      && record.status !== "failure"
+    )
+  ) {
+    return null;
+  }
+
+  if (record.status === "success") {
+    if (
+      Object.keys(record).length !== 2
+      || "failure_code" in record
+    ) {
+      return null;
+    }
+    return {
+      listener_instance_id: record.listener_instance_id,
+      status: "success",
+    };
+  }
+
+  if (
+    Object.keys(record).length !== 3
+    || typeof record.failure_code !== "string"
+    || !record.failure_code.trim()
+  ) {
+    return null;
+  }
+  return {
+    listener_instance_id: record.listener_instance_id,
+    status: "failure",
+    failure_code: record.failure_code,
+  };
+}
+
 function parseResultBody(
   value: unknown,
 ): {
@@ -1498,6 +1636,34 @@ function sendBackgroundModelError(
       code: "NATIVE_LIVE_BACKGROUND_MODEL_UNAVAILABLE",
       message:
         "Native live background model queue is temporarily unavailable.",
+    },
+  });
+}
+
+function sendProviderSessionCleanupError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof NativeLiveProviderSessionCleanupError) {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: error.code,
+        message:
+          error.code === "LISTENER_NOT_ACTIVE"
+            ? "Native live provider session cleanup listener lease is not active."
+            : "Provider session cleanup reservation is no longer valid.",
+      },
+    });
+    return;
+  }
+
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "NATIVE_LIVE_PROVIDER_SESSION_CLEANUP_UNAVAILABLE",
+      message:
+        "Native live provider session cleanup is temporarily unavailable.",
     },
   });
 }

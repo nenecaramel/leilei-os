@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   planCausalSubjectStatePurge,
+  planExclusiveProviderSessionCleanup,
   planReplacementMessagePurge,
   planSubjectStateEvolutionRepairs,
   stateReferencesAnyId,
@@ -245,4 +246,35 @@ test("structured reference scan matches exact ids only", () => {
     ),
     false,
   );
+});
+
+
+test("provider session cleanup only selects sessions exclusive to purged messages", () => {
+  const sessions = planExclusiveProviderSessionCleanup({
+    purgeMessageIds: new Set(["old-a", "old-b"]),
+    checkpoints: [
+      {
+        canonicalMessageId: "old-a",
+        provider: "claude_code",
+        providerSessionId: "session-old",
+      },
+      {
+        canonicalMessageId: "old-b",
+        provider: "claude_code",
+        providerSessionId: "session-shared",
+      },
+      {
+        canonicalMessageId: "survivor",
+        provider: "claude_code",
+        providerSessionId: "session-shared",
+      },
+      {
+        canonicalMessageId: "survivor-2",
+        provider: "claude_code",
+        providerSessionId: "session-safe",
+      },
+    ],
+  });
+
+  assert.deepEqual(sessions, ["session-old"]);
 });

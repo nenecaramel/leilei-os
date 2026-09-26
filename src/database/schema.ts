@@ -613,6 +613,11 @@ export type NativeLiveTurnDispatchStatus =
   | "delivery_unknown"
   | "completed"
   | "rejected";
+export type NativeLiveProviderSessionCleanupStatus =
+  | "pending"
+  | "reserved"
+  | "completed"
+  | "failed";
 export type NativeLiveRuntimeEventType =
   | "session"
   | "text"
@@ -1088,6 +1093,104 @@ export const conversationProviderSessionCheckpoints = pgTable(
     check(
       "conversation_provider_session_checkpoints_checkpoint_not_blank",
       sql`${table.providerCheckpointId} IS NULL OR char_length(btrim(${table.providerCheckpointId})) > 0`,
+    ),
+  ],
+);
+
+export const nativeLiveProviderSessionCleanups = pgTable(
+  "native_live_provider_session_cleanups",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    provider: varchar("provider", { length: 32 })
+      .$type<ConversationRuntimeProvider>()
+      .notNull(),
+    providerSessionId: text("provider_session_id").notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveProviderSessionCleanupStatus>()
+      .default("pending")
+      .notNull(),
+    attempt: integer("attempt").default(0).notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    lastErrorCode: varchar("last_error_code", { length: 64 }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex(
+      "native_live_provider_session_cleanups_user_session_uidx",
+    ).on(
+      table.userId,
+      table.provider,
+      table.providerSessionId,
+    ),
+    index(
+      "native_live_provider_session_cleanups_queue_idx",
+    ).on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "native_live_provider_session_cleanups_provider_allowed",
+      sql`${table.provider} = 'claude_code'`,
+    ),
+    check(
+      "native_live_provider_session_cleanups_session_not_blank",
+      sql`char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "native_live_provider_session_cleanups_attempt_bounds",
+      sql`${table.attempt} BETWEEN 0 AND 5`,
+    ),
+    check(
+      "native_live_provider_session_cleanups_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'completed', 'failed')`,
+    ),
+    check(
+      "native_live_provider_session_cleanups_state_consistency",
+      sql`(
+          ${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.completedAt} IS NULL
+        ) OR (
+          ${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.completedAt} IS NULL
+        ) OR (
+          ${table.status} = 'completed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.lastErrorCode} IS NULL
+          AND ${table.completedAt} IS NOT NULL
+        ) OR (
+          ${table.status} = 'failed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.lastErrorCode} IS NOT NULL
+          AND ${table.completedAt} IS NOT NULL
+        )`,
     ),
   ],
 );
