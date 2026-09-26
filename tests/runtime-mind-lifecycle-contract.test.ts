@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SUBJECT_STATE_KINDS } from "../src/domains/runtime/subject-state-contract.js";
+import {
+  CURRENT_SUBJECT_STATE_KINDS,
+  LEGACY_SUBJECT_STATE_KINDS,
+  SUBJECT_STATE_KINDS,
+} from "../src/domains/runtime/subject-state-contract.js";
 import {
   MIND_LIFECYCLE_PROFILES,
   assertMindLifecycleTransition,
@@ -12,9 +16,13 @@ import {
 test("Mind lifecycle contract covers only current Mind kinds and excludes retired Dream", () => {
   assert.deepEqual(
     Object.keys(MIND_LIFECYCLE_PROFILES).sort(),
-    SUBJECT_STATE_KINDS.filter((kind) => kind !== "dream").sort(),
+    [...CURRENT_SUBJECT_STATE_KINDS].sort(),
   );
-  assert.equal(SUBJECT_STATE_KINDS.includes("dream"), true);
+  assert.deepEqual([...LEGACY_SUBJECT_STATE_KINDS], ["dream"]);
+  assert.deepEqual(
+    new Set(SUBJECT_STATE_KINDS),
+    new Set([...CURRENT_SUBJECT_STATE_KINDS, ...LEGACY_SUBJECT_STATE_KINDS]),
+  );
   assert.equal("dream" in MIND_LIFECYCLE_PROFILES, false);
 });
 
