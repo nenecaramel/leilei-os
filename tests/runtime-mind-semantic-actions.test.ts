@@ -7,6 +7,9 @@ import {
   NativeLiveMindSemanticActionExecutor,
   nativeLiveMindSemanticActionIdempotencyKey,
 } from "../src/domains/bridge/native-live-mind-semantic-action.js";
+import {
+  DriveSatisfactionService,
+} from "../src/domains/runtime/drive-satisfaction-runtime-repository.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";
@@ -167,4 +170,65 @@ test("deterministic semantic action rejection is a receipt, not an endlessly ret
     outcome: "rejected",
     code: "DRIVE_NOT_ELIGIBLE",
   });
+});
+
+
+test("Drive semantic satisfaction maps partial/full meaning through Runtime policy instead of model-authored numbers", async () => {
+  const amounts: number[] = [];
+  const evolutionPort = {
+    async listCandidates() {
+      return [];
+    },
+    async applyUpdates() {
+      return { applied: 0, conflicts: 0 };
+    },
+  };
+  const satisfactionPort = {
+    async applySatisfaction(input: { amount: number; driveStateId: string }) {
+      amounts.push(input.amount);
+      return {
+        outcome: "applied" as const,
+        driveStateId: input.driveStateId,
+        pressure: 0,
+        phase: "satisfied" as const,
+        satisfactionTotal: input.amount,
+      };
+    },
+  };
+  const service = new DriveSatisfactionService(
+    evolutionPort,
+    satisfactionPort,
+    {
+      basePressure: 0.4,
+      reinforcementBoost: 0.2,
+      activeThreshold: 0.1,
+      dormantAfterSatisfiedHours: 168,
+      minEvolutionIntervalHours: 6,
+      maxReinforcementSources: 16,
+    },
+  );
+  const base = {
+    userId,
+    subjectId: "G",
+    driveStateId,
+    evidence: {
+      kind: "assistant_message" as const,
+      conversationId,
+      messageId: assistantMessageId,
+    },
+    now: "2026-09-27T00:30:00.000Z",
+  };
+
+  await service.satisfySemantic({
+    ...base,
+    level: "partial",
+    idempotencyKey: "semantic-partial-0001",
+  });
+  await service.satisfySemantic({
+    ...base,
+    level: "full",
+    idempotencyKey: "semantic-full-0000001",
+  });
+
+  assert.deepEqual(amounts, [0.2, 1]);
 });
