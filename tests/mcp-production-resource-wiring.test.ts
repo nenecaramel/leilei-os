@@ -72,6 +72,8 @@ test("production public surface exposes canonical Conversation reads and no reti
     assert.equal(names.includes(name), true, `${name} must remain public`);
   }
 
+  assert.equal(names.includes("render_note_card"), false);
+
   for (const retired of [
     "sentinel_get_state",
     "sentinel_claim_current_wake",
@@ -117,7 +119,6 @@ test("production internal full exposes supported maintenance profiles without re
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-production-internal");
 
   for (const required of [
-    "render_note_card",
     "list_conversation_exclusions",
     "search_notion",
     "get_notion_connection",

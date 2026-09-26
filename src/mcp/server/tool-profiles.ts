@@ -48,7 +48,6 @@ export const DEFAULT_INTERNAL_MCP_TOOL_PROFILES:
     "notion_advanced",
     "conversation_recovery",
     "device",
-    "ui",
   ];
 
 export function resolveMcpToolExposure(

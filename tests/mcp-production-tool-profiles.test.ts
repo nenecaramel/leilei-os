@@ -129,7 +129,6 @@ test("production internal MCP defaults preserve supported maintenance inventory"
     "write_notion_page",
     "get_notion_connection",
     "list_conversation_exclusions",
-    "render_note_card",
     "create_diary",
     "replace_todo_paper",
   ]) {
@@ -139,6 +138,8 @@ test("production internal MCP defaults preserve supported maintenance inventory"
       `internal full profile must expose ${required}`,
     );
   }
+  assert.equal(names.includes("render_note_card"), false);
+
   for (const retired of [
     "sentinel_get_state",
     "sentinel_claim_current_wake",
