@@ -27,6 +27,8 @@ export type NativeLiveCurrentPathSnapshot = {
   updatedAt: string;
   syncToken: string;
   truncated: boolean;
+  olderCursor: string | null;
+  resetRequired: boolean;
   messages: NativeLiveMessage[];
 };
 
@@ -40,6 +42,8 @@ export interface NativeLiveCurrentPathReader {
     userId: string;
     conversationId: string;
     limit: number;
+    beforeMessageId?: string | null;
+    afterMessageId?: string | null;
   }): Promise<NativeLiveCurrentPathSnapshot | null>;
 }
 
@@ -51,8 +55,15 @@ implements NativeLiveCurrentPathReader {
     userId: string;
     conversationId: string;
     limit: number;
+    beforeMessageId?: string | null;
+    afterMessageId?: string | null;
   }): Promise<NativeLiveCurrentPathSnapshot | null> {
     const limit = normalizeCurrentPathLimit(input.limit);
+    if (input.beforeMessageId && input.afterMessageId) {
+      throw new RangeError(
+        "Native live current path accepts either beforeMessageId or afterMessageId, not both.",
+      );
+    }
     const [conversation] = await this.db
       .select({
         id: conversations.id,
@@ -84,8 +95,49 @@ implements NativeLiveCurrentPathReader {
         updatedAt: conversation.updatedAt.toISOString(),
         syncToken: emptySyncToken(conversation.id),
         truncated: false,
+        olderCursor: null,
+        resetRequired: false,
         messages: [],
       };
+    }
+
+    let startMessageId = headMessageId;
+    if (input.beforeMessageId) {
+      const [cursor] = await this.db
+        .select({
+          parentMessageId: conversationMessages.parentMessageId,
+        })
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.userId, input.userId),
+            eq(
+              conversationMessages.conversationId,
+              input.conversationId,
+            ),
+            eq(conversationMessages.id, input.beforeMessageId),
+          ),
+        )
+        .limit(1);
+      if (!cursor) {
+        throw new RangeError(
+          "Native live current path beforeMessageId is invalid.",
+        );
+      }
+      if (!cursor.parentMessageId) {
+        return {
+          conversationId: conversation.id,
+          title: conversation.title,
+          currentHeadMessageId: headMessageId,
+          updatedAt: conversation.updatedAt.toISOString(),
+          syncToken: headSyncToken(headMessageId),
+          truncated: false,
+          olderCursor: null,
+          resetRequired: false,
+          messages: [],
+        };
+      }
+      startMessageId = cursor.parentMessageId;
     }
 
     const pathRows =
@@ -96,7 +148,7 @@ implements NativeLiveCurrentPathReader {
             message.parent_message_id,
             0 AS depth
           FROM conversation_messages AS message
-          WHERE message.id = ${headMessageId}::uuid
+          WHERE message.id = ${startMessageId}::uuid
             AND message.user_id = ${input.userId}::uuid
             AND message.conversation_id =
               ${input.conversationId}::uuid
@@ -122,19 +174,62 @@ implements NativeLiveCurrentPathReader {
 
     if (
       pathRows.length === 0
-      || pathRows[pathRows.length - 1]?.id !== headMessageId
+      || pathRows[pathRows.length - 1]?.id !== startMessageId
     ) {
       throw new Error(
-        "Native live current head is not readable from its canonical path.",
+        "Native live current path anchor is not readable.",
       );
     }
 
-    const truncated = pathRows.length > limit;
-    const boundedPathRows = truncated
-      ? pathRows.slice(pathRows.length - limit)
-      : pathRows;
+    let truncated = false;
+    let resetRequired = false;
+    let boundedPathRows: CurrentPathIdRow[];
+
+    if (input.afterMessageId) {
+      if (input.afterMessageId === headMessageId) {
+        boundedPathRows = [];
+      } else {
+        const afterIndex =
+          pathRows.findIndex((row) => row.id === input.afterMessageId);
+        if (afterIndex >= 0) {
+          boundedPathRows = pathRows.slice(afterIndex + 1);
+        } else {
+          resetRequired = true;
+          truncated = pathRows.length > limit;
+          boundedPathRows = truncated
+            ? pathRows.slice(pathRows.length - limit)
+            : pathRows;
+        }
+      }
+    } else {
+      truncated = pathRows.length > limit;
+      boundedPathRows = truncated
+        ? pathRows.slice(pathRows.length - limit)
+        : pathRows;
+    }
+
+    const olderCursor =
+      (input.afterMessageId && !resetRequired)
+        ? null
+        : truncated
+          ? boundedPathRows[0]?.id ?? null
+          : null;
     const messageIds =
       boundedPathRows.map((row) => row.id);
+
+    if (messageIds.length === 0) {
+      return {
+        conversationId: conversation.id,
+        title: conversation.title,
+        currentHeadMessageId: headMessageId,
+        updatedAt: conversation.updatedAt.toISOString(),
+        syncToken: headSyncToken(headMessageId),
+        truncated,
+        olderCursor,
+        resetRequired,
+        messages: [],
+      };
+    }
 
     const messageRows = await this.db
       .select({
@@ -262,6 +357,8 @@ implements NativeLiveCurrentPathReader {
       updatedAt: conversation.updatedAt.toISOString(),
       syncToken: headSyncToken(headMessageId),
       truncated,
+      olderCursor,
+      resetRequired,
       messages,
     };
   }
@@ -285,8 +382,14 @@ export function normalizeCurrentPathLimit(
 export function nativeLiveCurrentPathEtag(
   syncToken: string,
   limit: number,
+  cursor: {
+    beforeMessageId?: string | null;
+    afterMessageId?: string | null;
+  } = {},
 ): string {
-  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}"`;
+  const before = cursor.beforeMessageId ?? "-";
+  const after = cursor.afterMessageId ?? "-";
+  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}"`;
 }
 
 function headSyncToken(headMessageId: string): string {
