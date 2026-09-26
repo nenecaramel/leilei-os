@@ -23,7 +23,7 @@ export type ParsedMindSemanticActions = {
 };
 
 const UUID =
-  "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const ACTION_PATTERN = new RegExp(
   `<mind_satisfy\\s+state_id="(${UUID})"\\s+level="(partial|full)"\\s*\\/>|<mind_resolve\\s+state_id="(${UUID})"\\s*\\/>`,
   "gi",
