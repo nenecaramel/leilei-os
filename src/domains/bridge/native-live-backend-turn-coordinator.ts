@@ -37,7 +37,7 @@ export type NativeLivePreparedTurn = {
   conversationId: string;
   operation: NativeLiveRelayRequest["operation"];
   canonicalUserMessageId: string;
-  replacementTargetUserMessageId: string | null;
+  replacementTargetUserMessageId?: string | null;
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
   executionSelection?: NativeLiveExecutionSelection | null;
