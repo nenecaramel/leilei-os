@@ -37,6 +37,7 @@ export interface NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<string>;
 
@@ -46,6 +47,7 @@ export interface NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<NativeLiveMindSemanticPlan | null>;
 
@@ -76,6 +78,11 @@ export interface NativeLiveMindRuntime {
     userId: string;
     conversation: NativeLiveConversation;
   }): Promise<SubjectStateTransition[]>;
+
+  recordFinalizedBreathRecall?(input: {
+    userId: string;
+    manifestId: string;
+  }): Promise<string[]>;
 }
 
 /**
@@ -112,11 +119,12 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<string> {
     const assembledAt = this.now();
     const assembled = await this.service.prepareTurn({
-      manifestId: this.createManifestId(),
+      manifestId: input.manifestId ?? this.createManifestId(),
       userId: input.userId,
       subjectId: this.subjectId,
       conversation: input.conversation,
@@ -137,6 +145,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userMessage: NativeLiveMessage;
     userText: string;
     surfaceHeadMessageId: string | null;
+    manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
   }): Promise<NativeLiveMindSemanticPlan | null> {
     const assembledAt = this.now();
@@ -152,7 +161,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     if (!semantic) return null;
 
     return {
-      manifestId: this.createManifestId(),
+      manifestId: input.manifestId ?? this.createManifestId(),
       assembledAt,
       snapshotSequence: input.conversation.messages.length,
       query: semantic.query,
@@ -249,6 +258,17 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       userId: input.userId,
       subjectId: this.subjectId,
       conversation: input.conversation,
+    });
+  }
+
+  recordFinalizedBreathRecall(input: {
+    userId: string;
+    manifestId: string;
+  }): Promise<string[]> {
+    return this.service.recordFinalizedBreathRecall({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      manifestId: input.manifestId,
     });
   }
 
