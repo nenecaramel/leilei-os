@@ -55,6 +55,9 @@ struct PageContainer: View {
                         Button(action: onMenu) {
                             CompactMenuIcon()
                         }
+                        .reportingFloatingControlCenter(
+                            FloatingControlCenter.menu
+                        )
                     }
                 }
 
