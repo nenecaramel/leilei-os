@@ -19,7 +19,7 @@ test("due companion opportunity schedules cadence work across maintenance, effec
     {
       decide() {
         return {
-          opportunity: "maintenance_pulse" as const,
+          opportunity: "companion_due" as const,
           targets: [
             {
               kind: "decay" as const,
@@ -118,7 +118,7 @@ test("dirty companion opportunity only offers effect recovery", async () => {
     {
       decide() {
         return {
-          opportunity: "maintenance_pulse" as const,
+          opportunity: "companion_due" as const,
           targets: [{
             kind: "thought_evolution" as const,
             priority: "maintenance" as const,
@@ -180,7 +180,7 @@ test("startup catch-up runs maintenance and proactivity without Topic resurfacin
     {
       decide() {
         return {
-          opportunity: "maintenance_pulse" as const,
+          opportunity: "companion_due" as const,
           targets: [{
             kind: "thought_evolution" as const,
             priority: "maintenance" as const,
