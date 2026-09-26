@@ -82,6 +82,7 @@ const loop = new NativeLiveMacDaemonLoop(
   semanticScorer,
   companionScheduler,
   backgroundModelExecutor,
+  runtime,
 );
 
 let stopping = false;
