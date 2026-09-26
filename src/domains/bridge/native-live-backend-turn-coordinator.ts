@@ -98,6 +98,9 @@ export type NativeLiveFinalizeSuccessRecord = {
 
 export type NativeLiveMindFollowUpPayload = {
   intents: readonly MindWriteIntent[];
+  actions: NonNullable<
+    ReturnType<NativeLiveBackendMindRuntime["parseAssistantBlocks"]>["actions"]
+  >;
 };
 
 export interface NativeLivePostFinalizeRunner {
@@ -421,7 +424,7 @@ export class NativeLiveBackendTurnCoordinator {
 
     const parsedMind = this.mind
       ? this.mind.parseAssistantBlocks(canonical.blocks)
-      : { visibleBlocks: canonical.blocks, intents: [] };
+      : { visibleBlocks: canonical.blocks, intents: [], actions: [] };
 
     let finalized: NativeLiveFinalizeSuccessPortResult;
     try {
@@ -433,7 +436,10 @@ export class NativeLiveBackendTurnCoordinator {
         normalizedEvents: result.normalized_events,
         runtimeMetadata: result.runtime_metadata ?? null,
         mindFollowUp: this.mind && this.postFinalize
-          ? { intents: parsedMind.intents }
+          ? {
+              intents: parsedMind.intents,
+              actions: parsedMind.actions ?? [],
+            }
           : null,
       });
     } catch {
