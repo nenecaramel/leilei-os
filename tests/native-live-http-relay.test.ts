@@ -701,7 +701,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
           headers: {
             "x-test-user": "owner",
             "if-none-match":
-              '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
           },
         },
       );
@@ -717,7 +717,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
           headers: {
             "x-test-user": "owner",
             "if-none-match":
-              '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
           },
         },
       );
