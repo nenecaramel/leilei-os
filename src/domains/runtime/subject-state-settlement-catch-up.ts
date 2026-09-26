@@ -81,10 +81,53 @@ export class SubjectStateSettlementCatchUp {
     }
   }
 
+  async refreshAfterReplacement(input: {
+    userId: string;
+  }): Promise<void> {
+    let now: string;
+    try {
+      now = normalizeIso(this.now());
+    } catch {
+      return;
+    }
+
+    await this.runOne(
+      this.runners.driveEvolution,
+      input.userId,
+      now,
+      "full",
+    );
+    await this.runOne(
+      this.runners.thoughtEvolution,
+      input.userId,
+      now,
+      "full",
+    );
+    await this.runOne(
+      this.runners.curiosityEvolution,
+      input.userId,
+      now,
+      "full",
+    );
+    await this.runOne(
+      this.runners.curiosityTopicProjection,
+      input.userId,
+      now,
+      "full",
+    );
+    await this.runOne(
+      this.runners.topicEvolution,
+      input.userId,
+      now,
+      "full",
+    );
+  }
+
   private async runOne(
     runner: SubjectStateEvolutionRunner | null | undefined,
     userId: string,
     now: string,
+    mode: "full" | "settlement_catch_up" = "settlement_catch_up",
   ): Promise<void> {
     if (!runner) return;
     try {
@@ -92,7 +135,7 @@ export class SubjectStateSettlementCatchUp {
         userId,
         subjectId: this.subjectId,
         now,
-        mode: "settlement_catch_up",
+        mode,
       });
     } catch {
       // Settlement catch-up is derived and fail-soft for the foreground turn.

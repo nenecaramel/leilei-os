@@ -3,6 +3,11 @@ import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { nativeLiveMindFollowUps } from "../../database/schema.js";
 import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
+import type { MindSemanticAction } from "../runtime/mind-semantic-action.js";
+import type {
+  MindSemanticActionReceipt,
+  NativeLiveMindSemanticActionExecutor,
+} from "./native-live-mind-semantic-action.js";
 import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
@@ -25,6 +30,7 @@ export type NativeLiveMindFollowUpJob = {
   assistantMessageId: string;
   operation: "send" | "retry" | "edit";
   intents: MindWriteIntent[];
+  actions: MindSemanticAction[];
 };
 
 export interface NativeLiveMindFollowUpPort {
@@ -41,6 +47,7 @@ export interface NativeLiveMindFollowUpPort {
   complete(input: {
     prepareId: string;
     workerId: string;
+    receipts: readonly MindSemanticActionReceipt[];
   }): Promise<boolean>;
 
   releaseFailure(input: {
@@ -57,6 +64,7 @@ type RawFollowUpRow = {
   assistant_message_id: string;
   operation: string;
   intents: unknown;
+  actions: unknown;
 };
 
 export class DrizzleNativeLiveMindFollowUpRepository
@@ -83,7 +91,7 @@ implements NativeLiveMindFollowUpPort {
           (status = 'processing' AND locked_until <= now())
         )
       RETURNING prepare_id, user_id, conversation_id, assistant_message_id,
-        operation, intents
+        operation, intents, actions
     `);
     return rows[0] ? parseJob(rows[0]) : null;
   }
@@ -113,7 +121,7 @@ implements NativeLiveMindFollowUpPort {
       WHERE follow_up.prepare_id = candidate.prepare_id
       RETURNING follow_up.prepare_id, follow_up.user_id,
         follow_up.conversation_id, follow_up.assistant_message_id,
-        follow_up.operation, follow_up.intents
+        follow_up.operation, follow_up.intents, follow_up.actions
     `);
     return rows[0] ? parseJob(rows[0]) : null;
   }
@@ -121,6 +129,7 @@ implements NativeLiveMindFollowUpPort {
   async complete(input: {
     prepareId: string;
     workerId: string;
+    receipts: readonly MindSemanticActionReceipt[];
   }): Promise<boolean> {
     const rows = await this.db
       .update(nativeLiveMindFollowUps)
@@ -129,6 +138,7 @@ implements NativeLiveMindFollowUpPort {
         lockedBy: null,
         lockedUntil: null,
         lastErrorName: null,
+        receipts: input.receipts.map((receipt) => ({ ...receipt })),
         completedAt: sql`now()`,
         updatedAt: sql`now()`,
       })
@@ -179,6 +189,8 @@ implements NativeLivePostFinalizeRunner {
     workerId: string = randomUUID(),
     private readonly backgroundOpportunity:
       Pick<NativeLiveDistillationTrigger, "schedule"> | null = null,
+    private readonly semanticActions:
+      Pick<NativeLiveMindSemanticActionExecutor, "execute"> | null = null,
   ) {
     this.workerId = workerId;
   }
@@ -231,9 +243,27 @@ implements NativeLivePostFinalizeRunner {
         ),
       });
 
+      if (job.actions.length > 0 && !this.semanticActions) {
+        throw new Error("NativeLiveMindSemanticActionExecutorMissing");
+      }
+      const receipts: MindSemanticActionReceipt[] = [];
+      for (const [actionIndex, action] of job.actions.entries()) {
+        receipts.push(
+          await this.semanticActions!.execute({
+            userId: job.userId,
+            conversationId: job.conversationId,
+            assistantMessageId: job.assistantMessageId,
+            prepareId: job.prepareId,
+            actionIndex,
+            action,
+          }),
+        );
+      }
+
       const completed = await this.port.complete({
         prepareId: job.prepareId,
         workerId: this.workerId,
+        receipts,
       });
       if (!completed) {
         throw new Error("NativeLiveMindFollowUpCompletionLost");
@@ -354,6 +384,7 @@ function parseJob(row: RawFollowUpRow): NativeLiveMindFollowUpJob {
     assistantMessageId: row.assistant_message_id,
     operation: row.operation,
     intents: parseIntents(row.intents),
+    actions: parseActions(row.actions),
   };
 }
 
@@ -392,5 +423,55 @@ function parseIntents(value: unknown): MindWriteIntent[] {
       sourceEnd: record.sourceEnd as number,
       raw: record.raw,
     };
+  });
+}
+
+
+function parseActions(value: unknown): MindSemanticAction[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Native live Mind follow-up actions must be an array.");
+  }
+
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error("Native live Mind follow-up action is invalid.");
+    }
+    const record = candidate as Record<string, unknown>;
+    if (
+      (record.kind !== "mind_satisfy" && record.kind !== "mind_resolve")
+      || typeof record.stateId !== "string"
+      || !record.stateId.trim()
+      || typeof record.sourceStart !== "number"
+      || !Number.isInteger(record.sourceStart)
+      || typeof record.sourceEnd !== "number"
+      || !Number.isInteger(record.sourceEnd)
+      || typeof record.raw !== "string"
+    ) {
+      throw new Error("Native live Mind follow-up action is invalid.");
+    }
+    if (
+      record.kind === "mind_satisfy"
+      && record.level !== "partial"
+      && record.level !== "full"
+    ) {
+      throw new Error("Native live Mind satisfaction level is invalid.");
+    }
+
+    return record.kind === "mind_satisfy"
+      ? {
+          kind: "mind_satisfy" as const,
+          stateId: record.stateId,
+          level: record.level as "partial" | "full",
+          sourceStart: record.sourceStart,
+          sourceEnd: record.sourceEnd,
+          raw: record.raw,
+        }
+      : {
+          kind: "mind_resolve" as const,
+          stateId: record.stateId,
+          sourceStart: record.sourceStart,
+          sourceEnd: record.sourceEnd,
+          raw: record.raw,
+        };
   });
 }

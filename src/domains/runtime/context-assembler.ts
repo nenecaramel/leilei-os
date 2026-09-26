@@ -13,6 +13,7 @@ import { isConsolidationEligible } from "./runtime-status-axes.js";
 import { readDriveEvolution } from "./drive-evolution.js";
 import { readThoughtEvolution } from "./thought-evolution.js";
 import { readTopicEvolution } from "./topic-evolution.js";
+import { readCuriosityEvolution } from "./curiosity-evolution.js";
 
 export type AssembledTurnContext = {
   manifest: InitialContextManifest;
@@ -172,6 +173,7 @@ export function assembleTurnContext(input: {
   driveLimit?: number;
   thoughtLimit?: number;
   thoughtMinStrength?: number;
+  curiosityLimit?: number;
   topicLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
@@ -320,6 +322,54 @@ export function assembleTurnContext(input: {
       );
     });
 
+  const curiosityLimit = input.curiosityLimit ?? 0;
+  if (!Number.isInteger(curiosityLimit) || curiosityLimit < 0) {
+    throw new Error("Curiosity limit must be a nonnegative integer.");
+  }
+
+  const curiosities = input.subjectStates
+    .filter((state) => {
+      if (
+        state.kind !== "curiosity"
+        || !stateApplies(state, {
+          userId: input.userId,
+          subjectId: input.subjectId,
+          conversationId: input.conversation.id,
+          currentPathMessageIds,
+        })
+      ) {
+        return false;
+      }
+      try {
+        const evolution = readCuriosityEvolution(state.payload);
+        return Boolean(
+          evolution
+          && evolution.phase === "active"
+          && evolution.role === "anchor",
+        );
+      } catch {
+        return false;
+      }
+    })
+    .sort((left, right) => {
+      const leftEvolution = readCuriosityEvolution(left.payload)!;
+      const rightEvolution = readCuriosityEvolution(right.payload)!;
+      return (
+        rightEvolution.reinforcementCount
+          - leftEvolution.reinforcementCount
+        || Date.parse(rightEvolution.lastReinforcedAt)
+          - Date.parse(leftEvolution.lastReinforcedAt)
+        || left.id.localeCompare(right.id)
+      );
+    })
+    .slice(0, curiosityLimit)
+    .map((state, index) =>
+      subjectStateToContextItem(
+        state,
+        selection("active_curiosity", 175 + index),
+      ),
+    );
+
   const topicLimit = input.topicLimit ?? 0;
   if (!Number.isInteger(topicLimit) || topicLimit < 0) {
     throw new Error("Topic limit must be a nonnegative integer.");
@@ -365,7 +415,7 @@ export function assembleTurnContext(input: {
     .map((state, index) =>
       subjectStateToContextItem(
         state,
-        selection("active_topic", 175 + index),
+        selection("active_topic", 200 + index),
       ),
     );
 
@@ -402,6 +452,7 @@ export function assembleTurnContext(input: {
       userItem,
       ...drives,
       ...thoughts,
+      ...curiosities,
       ...topics,
       ...breathItems,
     ],
@@ -432,6 +483,37 @@ export function assembleTurnContext(input: {
     items: selected,
   };
   return assembledTurnContextFromManifest(manifest);
+}
+
+function renderMindSemanticActionProtocol(
+  manifest: InitialContextManifest,
+): string {
+  const drives = manifest.items.filter(
+    (item) => item.selection.reason === "active_drive",
+  );
+  const curiosities = manifest.items.filter(
+    (item) => item.selection.reason === "active_curiosity",
+  );
+  if (drives.length === 0 && curiosities.length === 0) return "";
+
+  const lines = [
+    '<leileios_mind_actions authority="runtime_protocol">',
+    "These directives are optional semantic actions, not prose.",
+    "Do not invent state IDs. Use only source IDs listed by active Drive/Curiosity context items above.",
+    "Emit a directive only when this turn itself establishes the semantic transition.",
+  ];
+  for (const item of drives) {
+    lines.push(
+      `Drive ${item.sourceId}: partial -> <mind_satisfy state_id="${item.sourceId}" level="partial" />; full -> <mind_satisfy state_id="${item.sourceId}" level="full" />`,
+    );
+  }
+  for (const item of curiosities) {
+    lines.push(
+      `Curiosity ${item.sourceId}: resolved -> <mind_resolve state_id="${item.sourceId}" />`,
+    );
+  }
+  lines.push("</leileios_mind_actions>");
+  return lines.join("\n");
 }
 
 export function assembledTurnContextFromManifest(
@@ -473,8 +555,10 @@ export function assembledTurnContextFromManifest(
   const renderedUserText = userTimestamp
     ? `${userTimestamp} ${userItems[0].text}`
     : userItems[0].text;
+  const mindActionProtocol = renderMindSemanticActionProtocol(manifest);
   const prompt = [
     contextData,
+    ...(mindActionProtocol ? ["", mindActionProtocol] : []),
     "",
     `<user_message>${escapeData(renderedUserText)}</user_message>`,
   ].join("\n");

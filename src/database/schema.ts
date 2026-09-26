@@ -671,6 +671,7 @@ export type RuntimeEffectStatus =
   | "unknown";
 export type RuntimeDriveSatisfactionEvidenceKind =
   | "user_message"
+  | "assistant_message"
   | "tool_result";
 export type RuntimeSubjectStateKind =
   | "feel"
@@ -2231,6 +2232,14 @@ export const nativeLiveMindFollowUps = pgTable(
       .$type<Record<string, unknown>[]>()
       .default(sql`'[]'::jsonb`)
       .notNull(),
+    actions: jsonb("actions")
+      .$type<Record<string, unknown>[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    receipts: jsonb("receipts")
+      .$type<Record<string, unknown>[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     status: varchar("status", { length: 32 })
       .$type<NativeLiveMindFollowUpStatus>()
       .default("pending")
@@ -2295,6 +2304,14 @@ export const nativeLiveMindFollowUps = pgTable(
     check(
       "native_live_mind_followups_intents_array",
       sql`jsonb_typeof(${table.intents}) = 'array'`,
+    ),
+    check(
+      "native_live_mind_followups_actions_array",
+      sql`jsonb_typeof(${table.actions}) = 'array'`,
+    ),
+    check(
+      "native_live_mind_followups_receipts_array",
+      sql`jsonb_typeof(${table.receipts}) = 'array'`,
     ),
     check(
       "native_live_mind_followups_status_allowed",
@@ -2449,7 +2466,7 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     ),
     check(
       "runtime_drive_satisfaction_events_kind_allowed",
-      sql`${table.evidenceKind} IN (\'user_message\', \'tool_result\')`,
+      sql`${table.evidenceKind} IN (\'user_message\', \'assistant_message\', \'tool_result\')`,
     ),
     check(
       "runtime_drive_satisfaction_events_amount_bounds",
@@ -2461,7 +2478,7 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     ),
     check(
       "runtime_drive_satisfaction_events_block_consistency",
-      sql`(${table.evidenceKind} = \'user_message\' AND ${table.evidenceBlockId} IS NULL)
+      sql`(${table.evidenceKind} IN (\'user_message\', \'assistant_message\') AND ${table.evidenceBlockId} IS NULL)
         OR (${table.evidenceKind} = \'tool_result\' AND ${table.evidenceBlockId} IS NOT NULL)`,
     ),
   ],

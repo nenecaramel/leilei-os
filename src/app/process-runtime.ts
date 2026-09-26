@@ -30,6 +30,7 @@ import { UniverseService } from "../domains/universe/universe-service.js";
 import {
   createDefaultBackendMindRuntime,
   createDefaultDriveSatisfactionService,
+  createDefaultCuriosityResolutionService,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
   DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
@@ -155,6 +156,7 @@ import {
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpRecoveryRunner,
 } from "../domains/bridge/native-live-mind-followup.js";
+import { NativeLiveMindSemanticActionExecutor } from "../domains/bridge/native-live-mind-semantic-action.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
@@ -303,6 +305,14 @@ export function createProcessRuntime(
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
   const driveSatisfactionService =
     createDefaultDriveSatisfactionService(db);
+  const curiosityResolutionService =
+    createDefaultCuriosityResolutionService(db);
+  const semanticMindActions =
+    new NativeLiveMindSemanticActionExecutor(
+      driveSatisfactionService,
+      curiosityResolutionService,
+      DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+    );
   const backgroundLoopOrchestrator = new BackgroundLoopOrchestrator({
     maxRunsPerCycle: 4,
     maxCostPerCycle: 4,
@@ -417,6 +427,7 @@ export function createProcessRuntime(
     nativeLiveBackendMind,
     undefined,
     distillationCrossDeviceBackgroundTrigger,
+    semanticMindActions,
   );
   const nativeLiveMindFollowUpRecovery =
     createNativeLiveMindFollowUpRecoveryRunner({

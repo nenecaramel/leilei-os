@@ -27,6 +27,9 @@ import {
 import {
   writeTopicEvolution,
 } from "../src/domains/runtime/topic-evolution.js";
+import {
+  writeCuriosityEvolution,
+} from "../src/domains/runtime/curiosity-evolution.js";
 
 const now = "2026-09-22T08:00:00.000Z";
 const settledStatus = {
@@ -787,6 +790,64 @@ test("explicit Mind write can move from emitted intent to settled Breath recall"
   assert.deepEqual(hits.map((hit) => hit.state.id), [settled.id]);
 });
 
+
+test("Context Assembly exposes active Curiosity anchors and branch-safe semantic action protocol", () => {
+  const curiosity = state(
+    "77777777-7777-4777-8777-777777777777",
+    "curiosity",
+    "这个机制到底为什么会这样",
+  );
+  curiosity.payload = writeCuriosityEvolution(curiosity.payload, {
+    phase: "active",
+    role: "anchor",
+    threadKey: "curiosity-thread",
+    anchorStateId: curiosity.id,
+    reinforcementCount: 2,
+    reinforcementSources: ["m1", "m2"],
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    resolvedAt: null,
+    resolutionSourceId: null,
+    dormantAt: null,
+  });
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-curiosity-actions",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-curiosity-actions",
+    userText: "我现在把原因讲清楚了",
+    subjectStates: [curiosity],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v4",
+    breathLimit: 3,
+    curiosityLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  assert.equal(
+    assembled.manifest.items.some(
+      (item) =>
+        item.sourceId === curiosity.id
+        && item.selection.reason === "active_curiosity"
+    ),
+    true,
+  );
+  assert.equal(
+    assembled.prompt.includes(
+      `<mind_resolve state_id="${curiosity.id}" />`,
+    ),
+    true,
+  );
+  assert.equal(
+    assembled.prompt.includes("Do not invent state IDs"),
+    true,
+  );
+});
 
 test("Context Assembly injects only active Topic anchors and drops reinforcement copies", () => {
   const anchor = state(

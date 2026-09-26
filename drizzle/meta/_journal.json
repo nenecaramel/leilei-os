@@ -512,6 +512,13 @@
       "when": 1790427600000,
       "tag": "0072_native_live_provider_session_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790470200000,
+      "tag": "0073_native_live_mind_semantic_actions",
+      "breakpoints": true
     }
   ]
 }

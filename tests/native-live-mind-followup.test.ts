@@ -42,6 +42,7 @@ function job(): NativeLiveMindFollowUpJob {
     conversationId,
     assistantMessageId,
     operation: "send",
+    actions: [],
     intents: [
       {
         kind: "memory",
@@ -114,12 +115,17 @@ class FakeMind implements NativeLiveBackendMindRuntime {
   }
 }
 
-function setup(backgroundOpportunity: {
-  schedule(input: {
-    userId: string;
-    conversationId: string;
-  }): void;
-} | null = null) {
+function setup(
+  backgroundOpportunity: {
+    schedule(input: {
+      userId: string;
+      conversationId: string;
+    }): void;
+  } | null = null,
+  semanticActions: {
+    execute(input: unknown): Promise<any>;
+  } | null = null,
+) {
   const port = new FakePort();
   const mind = new FakeMind();
   const turns: Pick<NativeLiveBackendTurnPort, "getPreparation"> = {
@@ -133,6 +139,7 @@ function setup(backgroundOpportunity: {
     mind,
     "77777777-7777-4777-8777-777777777777",
     backgroundOpportunity,
+    semanticActions,
   );
   return { port, mind, service };
 }
@@ -160,6 +167,62 @@ test("durable Mind follow-up uses stable per-intent UUIDs and completes only aft
     /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
   );
   assert.equal(port.completeCalls.length, 1);
+  assert.equal(port.releaseCalls.length, 0);
+});
+
+test("durable Mind follow-up executes staged semantic actions only after canonical finalize and persists receipts", async () => {
+  const receipts = [
+    {
+      actionIndex: 0,
+      kind: "mind_satisfy",
+      stateId: "88888888-8888-4888-8888-888888888888",
+      outcome: "applied",
+    },
+    {
+      actionIndex: 1,
+      kind: "mind_resolve",
+      stateId: "99999999-9999-4999-8999-999999999999",
+      outcome: "idempotent",
+    },
+  ];
+  const semanticCalls: unknown[] = [];
+  const { port, service } = setup(null, {
+    async execute(input) {
+      semanticCalls.push(input);
+      return receipts[semanticCalls.length - 1]!;
+    },
+  });
+  port.next = {
+    ...job(),
+    intents: [],
+    actions: [
+      {
+        kind: "mind_satisfy",
+        stateId: "88888888-8888-4888-8888-888888888888",
+        level: "partial",
+        sourceStart: 0,
+        sourceEnd: 1,
+        raw: "x",
+      },
+      {
+        kind: "mind_resolve",
+        stateId: "99999999-9999-4999-8999-999999999999",
+        sourceStart: 2,
+        sourceEnd: 3,
+        raw: "y",
+      },
+    ],
+  };
+
+  assert.equal(
+    await service.processPreparation({ userId, prepareId }),
+    "processed",
+  );
+  assert.equal(semanticCalls.length, 2);
+  assert.deepEqual(
+    (port.completeCalls[0] as { receipts: unknown[] }).receipts,
+    receipts,
+  );
   assert.equal(port.releaseCalls.length, 0);
 });
 

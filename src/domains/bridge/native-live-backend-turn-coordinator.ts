@@ -12,6 +12,7 @@ import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
 import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
+import type { MindSemanticAction } from "../runtime/mind-semantic-action.js";
 import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import {
   NativeLiveRelayContractError,
@@ -98,6 +99,7 @@ export type NativeLiveFinalizeSuccessRecord = {
 
 export type NativeLiveMindFollowUpPayload = {
   intents: readonly MindWriteIntent[];
+  actions: readonly MindSemanticAction[];
 };
 
 export interface NativeLivePostFinalizeRunner {
@@ -421,7 +423,7 @@ export class NativeLiveBackendTurnCoordinator {
 
     const parsedMind = this.mind
       ? this.mind.parseAssistantBlocks(canonical.blocks)
-      : { visibleBlocks: canonical.blocks, intents: [] };
+      : { visibleBlocks: canonical.blocks, intents: [], actions: [] };
 
     let finalized: NativeLiveFinalizeSuccessPortResult;
     try {
@@ -433,7 +435,10 @@ export class NativeLiveBackendTurnCoordinator {
         normalizedEvents: result.normalized_events,
         runtimeMetadata: result.runtime_metadata ?? null,
         mindFollowUp: this.mind && this.postFinalize
-          ? { intents: parsedMind.intents }
+          ? {
+              intents: parsedMind.intents,
+              actions: parsedMind.actions ?? [],
+            }
           : null,
       });
     } catch {

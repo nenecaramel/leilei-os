@@ -3,10 +3,15 @@ import {
   parseMindWriteIntents,
   type CurrentMindWriteIntent,
 } from "./mind-intent-parser.js";
+import {
+  parseMindSemanticActions,
+  type MindSemanticAction,
+} from "./mind-semantic-action.js";
 
 export type ParsedAssistantBlocks = {
   visibleBlocks: NativeLiveContentBlockInput[];
   intents: CurrentMindWriteIntent[];
+  actions?: MindSemanticAction[];
 };
 
 /**
@@ -18,6 +23,7 @@ export function parseMindWriteIntentsFromBlocks(
 ): ParsedAssistantBlocks {
   const visibleBlocks: NativeLiveContentBlockInput[] = [];
   const intents: CurrentMindWriteIntent[] = [];
+  const actions: MindSemanticAction[] = [];
 
   for (const block of blocks) {
     if (block.kind !== "text" || !block.text) {
@@ -25,16 +31,18 @@ export function parseMindWriteIntentsFromBlocks(
       continue;
     }
 
-    const parsed = parseMindWriteIntents(block.text);
-    intents.push(...parsed.intents);
+    const parsedWrites = parseMindWriteIntents(block.text);
+    intents.push(...parsedWrites.intents);
+    const parsedActions = parseMindSemanticActions(parsedWrites.visibleText);
+    actions.push(...parsedActions.actions);
 
-    if (parsed.visibleText) {
+    if (parsedActions.visibleText) {
       visibleBlocks.push({
         ...block,
-        text: parsed.visibleText,
+        text: parsedActions.visibleText,
       });
     }
   }
 
-  return { visibleBlocks, intents };
+  return { visibleBlocks, intents, actions };
 }

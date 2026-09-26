@@ -161,3 +161,34 @@ test("settlement catch-up is fail-soft per process and continues later required 
     "topic",
   ]);
 });
+
+
+test("replacement repair refreshes all derived Mind projections in full mode", async () => {
+  const calls: string[] = [];
+  const runner = (name: string) => ({
+    async runOnce(input: { mode?: "full" | "settlement_catch_up" }) {
+      calls.push(name + ":" + String(input.mode));
+    },
+  });
+  const catchUp = new SubjectStateSettlementCatchUp(
+    "G",
+    {
+      driveEvolution: runner("drive"),
+      thoughtEvolution: runner("thought"),
+      curiosityEvolution: runner("curiosity-evolution"),
+      curiosityTopicProjection: runner("curiosity-projection"),
+      topicEvolution: runner("topic"),
+    },
+    () => now,
+  );
+
+  await catchUp.refreshAfterReplacement({ userId: "u1" });
+
+  assert.deepEqual(calls, [
+    "drive:full",
+    "thought:full",
+    "curiosity-evolution:full",
+    "curiosity-projection:full",
+    "topic:full",
+  ]);
+});

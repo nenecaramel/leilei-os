@@ -102,10 +102,12 @@ export function planSubjectStateEvolutionRepairs(input: {
   }[];
   purgeMessageIds: ReadonlySet<string>;
   purgeStateIds: ReadonlySet<string>;
+  additionalEvolutionCausalIds?: ReadonlySet<string>;
 }): SubjectStateEvolutionRepair[] {
   const causalIds = new Set<string>([
     ...input.purgeMessageIds,
     ...input.purgeStateIds,
+    ...(input.additionalEvolutionCausalIds ?? []),
   ]);
   const evolutionKeyByKind: Record<string, string | undefined> = {
     drive: "drive_v1",
@@ -115,6 +117,29 @@ export function planSubjectStateEvolutionRepairs(input: {
 
   return input.states.flatMap((state) => {
     if (input.purgeStateIds.has(state.id) || !state.payload) return [];
+
+    if (state.kind === "curiosity" && "curiosity_v1" in state.payload) {
+      const evolution = state.payload.curiosity_v1;
+      if (
+        evolution
+        && typeof evolution === "object"
+        && !Array.isArray(evolution)
+        && typeof (evolution as Record<string, unknown>).resolutionSourceId
+          === "string"
+        && input.purgeMessageIds.has(
+          (evolution as Record<string, unknown>).resolutionSourceId as string,
+        )
+      ) {
+        const nextPayload = { ...state.payload };
+        delete nextPayload.curiosity_v1;
+        return [{
+          stateId: state.id,
+          nextPayload:
+            Object.keys(nextPayload).length > 0 ? nextPayload : null,
+        }];
+      }
+    }
+
     const evolutionKey = evolutionKeyByKind[state.kind];
     if (!evolutionKey || !(evolutionKey in state.payload)) return [];
     const evolutionPayload = state.payload[evolutionKey];
