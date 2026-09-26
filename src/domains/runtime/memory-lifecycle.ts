@@ -352,9 +352,13 @@ export function evaluateRecallReinforcement(
 
   if (
     existingIndex < 0
+    && existingContributions.length === 0
     && current?.lastRecalledAt
     && Date.parse(recalledAt) <= Date.parse(current.lastRecalledAt)
   ) {
+    // Legacy pre-reinforcement recall metadata has no causal contribution
+    // ledger. Do not retroactively invent a boost for an already-recorded
+    // historical recall.
     return null;
   }
   if (
