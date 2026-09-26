@@ -535,6 +535,7 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
   strong.payload = writeThoughtEvolution(
     strong.payload,
     {
+      phase: "active",
       role: "anchor",
       threadKey: "thread-strong",
       anchorStateId: strong.id,
@@ -543,6 +544,7 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
       reinforcementSources: ["m1", "m2", "m3"],
       lastEvolvedAt: now,
       lastReinforcedAt: now,
+      dormantAt: null,
     },
   );
 
@@ -554,6 +556,7 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
   reinforcement.payload = writeThoughtEvolution(
     reinforcement.payload,
     {
+      phase: "active",
       role: "reinforcement",
       threadKey: "thread-strong",
       anchorStateId: strong.id,
@@ -562,6 +565,7 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
       reinforcementSources: ["m1", "m2", "m3"],
       lastEvolvedAt: now,
       lastReinforcedAt: now,
+      dormantAt: null,
     },
   );
 
@@ -573,6 +577,7 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
   weak.payload = writeThoughtEvolution(
     weak.payload,
     {
+      phase: "active",
       role: "anchor",
       threadKey: "thread-weak",
       anchorStateId: weak.id,
@@ -581,6 +586,28 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
       reinforcementSources: ["m4"],
       lastEvolvedAt: now,
       lastReinforcedAt: now,
+      dormantAt: null,
+    },
+  );
+
+  const dormant = state(
+    "44444444-4444-4444-8444-444444444444",
+    "thought",
+    "已经 dormant 的高强度残留也不能进 Context",
+  );
+  dormant.payload = writeThoughtEvolution(
+    dormant.payload,
+    {
+      phase: "dormant",
+      role: "anchor",
+      threadKey: "thread-dormant",
+      anchorStateId: dormant.id,
+      strength: 0.9,
+      reinforcementCount: 4,
+      reinforcementSources: ["d1", "d2", "d3", "d4"],
+      lastEvolvedAt: now,
+      lastReinforcedAt: now,
+      dormantAt: now,
     },
   );
 
@@ -591,7 +618,7 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
     conversation: conversation([], null),
     userMessageId: "u-thought",
     userText: "继续",
-    subjectStates: [strong, reinforcement, weak],
+    subjectStates: [strong, reinforcement, weak, dormant],
     snapshotSequence: 1,
     assembledAt: now,
     assemblyVersion: "assembly-v1",
@@ -617,6 +644,10 @@ test("Context Assembly injects strongest active Thought anchors directly", () =>
   );
   assert.equal(
     assembled.prompt.includes("一个已经很弱的念头"),
+    false,
+  );
+  assert.equal(
+    assembled.prompt.includes("已经 dormant 的高强度残留也不能进 Context"),
     false,
   );
 });
