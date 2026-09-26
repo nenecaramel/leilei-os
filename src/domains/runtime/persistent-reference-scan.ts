@@ -23,6 +23,7 @@ export function expandCausalStateReferences(input: {
   states: readonly PersistentReferenceState[];
   rootIds: ReadonlySet<string>;
   initiallySelectedStateIds?: ReadonlySet<string>;
+  includePayload?: boolean;
 }): Set<string> {
   const selected = new Set(input.initiallySelectedStateIds ?? []);
   let changed = true;
@@ -42,7 +43,10 @@ export function expandCausalStateReferences(input: {
           && references.has(state.scopePathHeadMessageId)
         )
         || structuredValueReferencesAnyId(state.envelope, references)
-        || structuredValueReferencesAnyId(state.payload, references)
+        || (
+          input.includePayload !== false
+          && structuredValueReferencesAnyId(state.payload, references)
+        )
       ) {
         selected.add(state.id);
         changed = true;
