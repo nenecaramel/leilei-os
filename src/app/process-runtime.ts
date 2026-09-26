@@ -418,7 +418,10 @@ export function createProcessRuntime(
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
   );
-  const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
+  const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(
+    db,
+    memoryDecayConfig,
+  );
   const nativeLiveTurnWaitService =
     new NativeLiveTurnWaitService(
       nativeLiveTurnPort,
