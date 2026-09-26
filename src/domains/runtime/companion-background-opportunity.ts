@@ -77,25 +77,35 @@ export class CompanionBackgroundOpportunityService {
     }
 
     const failures: CompanionBackgroundOpportunityResult["failures"] = [];
-    const maintenanceKinds = this.policy
-      .decide({ opportunity: "maintenance_pulse" })
-      .targets
-      .map((target) => toMaintenanceKind(target.kind))
-      .filter(
-        (kind): kind is SubjectStateMaintenanceKind => kind !== null,
-      );
+    const runsTimedMaintenance =
+      input.reason === "startup" || input.reason === "due";
+    const maintenanceKinds = runsTimedMaintenance
+      ? this.policy
+          .decide({ opportunity: "maintenance_pulse" })
+          .targets
+          .map((target) => toMaintenanceKind(target.kind))
+          .filter(
+            (kind): kind is SubjectStateMaintenanceKind =>
+              kind !== null,
+          )
+      : [];
 
-    try {
-      if (maintenanceKinds.length > 0) {
-        this.maintenance.schedule({
-          userId,
-          kinds: maintenanceKinds,
-        });
+    if (runsTimedMaintenance) {
+      try {
+        if (maintenanceKinds.length > 0) {
+          this.maintenance.schedule({
+            userId,
+            kinds: maintenanceKinds,
+          });
+        }
+      } catch {
+        failures.push("subject_state");
       }
-    } catch {
-      failures.push("subject_state");
     }
 
+    // Effect recovery is cheap and may become deliverable immediately after
+    // foreground completion, so it is the only subsystem intentionally
+    // offered on a dirty opportunity.
     let effectDeliveryScheduled = false;
     if (this.effectDelivery) {
       try {
@@ -107,7 +117,7 @@ export class CompanionBackgroundOpportunityService {
     }
 
     let proactivityScheduled = false;
-    if (this.proactivity) {
+    if (runsTimedMaintenance && this.proactivity) {
       try {
         proactivityScheduled =
           (await this.proactivity.scheduleUser(userId)) > 0;
@@ -116,8 +126,10 @@ export class CompanionBackgroundOpportunityService {
       }
     }
 
+    // Topic resurfacing is reflective cadence work, not a post-turn task.
+    // Companion's durable due cadence already decides when to offer it.
     let topicResurfaceOffered = false;
-    if (this.topicResurface) {
+    if (input.reason === "due" && this.topicResurface) {
       try {
         await this.topicResurface.offer({ userId });
         topicResurfaceOffered = true;
