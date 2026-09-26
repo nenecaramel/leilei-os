@@ -1067,3 +1067,23 @@ test("interactive foreground returns execution readback for the exact requested 
     }],
   });
 });
+
+
+test("deleteSession delegates to Agent SDK with the daemon cwd", async () => {
+  const calls = [];
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    queryImpl: () => fakeQuery([]),
+    deleteSessionImpl: async (sessionId, options) => {
+      calls.push({ sessionId, options });
+    },
+  });
+
+  await transport.deleteSession("provider-old");
+
+  assert.deepEqual(calls, [{
+    sessionId: "provider-old",
+    options: { dir: "/workspace/leilei-os" },
+  }]);
+});
