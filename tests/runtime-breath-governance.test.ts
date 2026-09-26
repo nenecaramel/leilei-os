@@ -245,3 +245,82 @@ test("finalized Breath reinforcement uses only manifest-selected breath items", 
     sourceMessageId: "u-turn",
   }]);
 });
+
+
+test("deterministic preparation manifest replays despite a later assembledAt retry", async () => {
+  const persisted: InitialContextManifest = {
+    manifestId: "22222222-2222-4222-8222-222222222222",
+    userId: "u1",
+    subjectId: "G",
+    conversationId: "c1",
+    pathHeadMessageId: null,
+    snapshotSequence: 1,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v4",
+    createdAt: "2026-09-22T10:00:00.000Z",
+    budget: {
+      maxItems: 4,
+      maxChars: 1000,
+      usedItems: 1,
+      usedChars: 10,
+      overflowPolicy: "drop_lowest_rank",
+    },
+    items: [{
+      id: "user:u-turn",
+      type: "user_message",
+      sourceId: "u-turn",
+      authority: "data",
+      trustBoundary: "canonical_data",
+      text: "same turn",
+      selection: {
+        reason: "current_user_message",
+        rank: 0,
+        truncated: false,
+      },
+    }],
+  };
+  let listCalls = 0;
+  const port: SubjectStateRuntimePort = {
+    async list() {
+      listCalls += 1;
+      return [];
+    },
+    async append() {},
+    async transition() {},
+    async saveContextManifest() {},
+    async loadContextManifest() { return persisted; },
+  };
+  const service = new NativeLiveMindLoopService(port, {
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v4",
+    ruleVersion: "mind-v1",
+    processVersion: "subject-write-v1",
+    breathLimit: 4,
+    maxContextItems: 16,
+    maxContextChars: 8000,
+  });
+
+  const replayed = await service.prepareTurn({
+    manifestId: persisted.manifestId,
+    userId: "u1",
+    subjectId: "G",
+    conversation: {
+      id: "c1",
+      userId: "u1",
+      title: null,
+      lifecycleStatus: "active",
+      currentHeadMessageId: null,
+      createdAt: "2026-09-22T09:00:00.000Z",
+      updatedAt: "2026-09-22T09:00:00.000Z",
+      messages: [],
+    },
+    userMessageId: "u-turn",
+    userText: "same turn",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:05:00.000Z",
+    surfaceHeadMessageId: null,
+  });
+
+  assert.equal(replayed.manifest.createdAt, persisted.createdAt);
+  assert.equal(listCalls, 0);
+});
