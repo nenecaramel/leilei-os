@@ -151,26 +151,29 @@ test(
       assert.equal((await repositoryA.reserveNext(queueOwner, queueListener))?.id, newId);
       await repositoryA.markHostSent(queueOwner, queueListener, newId);
 
-      // Human PWA work always remains ahead of an older Sentinel wake.
+      // Retired Sentinel rows remain historical data and are never dispatched.
       const sentinelWakeId = randomUUID();
       const humanPriorityId = randomUUID();
       await admin.db.insert(schema.bridgeEvents).values({
         id: sentinelWakeId,
         userId: queueOwner,
-        idempotencyKey: idempotencyKey("sentinel-priority"),
-        requestHash: requestHash("sentinel-priority"),
+        idempotencyKey: idempotencyKey("sentinel-retired"),
+        requestHash: requestHash("sentinel-retired"),
         kind: "wake",
         source: "leileios_sentinel",
-        visibleText: "[LeileiOS Sentinel wake]",
-        modelContext: "bounded wake context",
+        visibleText: "[retired Sentinel wake]",
+        modelContext: "historical wake context",
         status: "pending",
         createdAt: new Date(Date.now() - 10_000),
       });
       await repositoryA.createEvent(queueOwner, createInput(humanPriorityId, "human-priority"));
       assert.equal((await repositoryA.reserveNext(queueOwner, queueListener))?.id, humanPriorityId);
       await repositoryA.markHostSent(queueOwner, queueListener, humanPriorityId);
-      assert.equal((await repositoryA.reserveNext(queueOwner, queueListener))?.id, sentinelWakeId);
-      await repositoryA.markHostSent(queueOwner, queueListener, sentinelWakeId);
+      assert.equal(await repositoryA.reserveNext(queueOwner, queueListener), null);
+      assert.equal(
+        (await repositoryA.getEvent(queueOwner, sentinelWakeId))?.status,
+        "pending",
+      );
 
       // An expired reservation before host dispatch is safely reclaimed.
       const reclaimableId = randomUUID();
