@@ -40,8 +40,18 @@ test("semantic Mind parser extracts only strict branch-safe actions and leaves m
       ["mind_resolve", curiosityStateId],
     ],
   );
-  assert.equal(parsed.visibleText.includes("level=\"partial\""), false);
-  assert.equal(parsed.visibleText.includes("level=\"full\""), false);
+  assert.equal(
+    parsed.visibleText.includes(
+      `<mind_satisfy state_id="${driveStateId}" level="partial" />`,
+    ),
+    false,
+  );
+  assert.equal(
+    parsed.visibleText.includes(
+      `<mind_satisfy state_id="${driveStateId}" level="full" />`,
+    ),
+    false,
+  );
   assert.equal(parsed.visibleText.includes("not-a-uuid"), true);
   assert.equal(parsed.visibleText.includes("level=\"half\""), true);
 });
