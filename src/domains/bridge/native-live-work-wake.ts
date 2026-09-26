@@ -353,6 +353,7 @@ export class NativeLiveWorkWakeBroker {
       await this.startPromise;
       return;
     }
+    if (this.client) return;
 
     const client = this.createClient(this.databaseUrl);
     this.client = client;
