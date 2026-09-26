@@ -8,6 +8,7 @@ import type {
 } from "./native-live-conversation-types.js";
 import type {
   NativeLiveConversationDeleteResult,
+  NativeLiveConversationListPage,
   NativeLiveConversationRepository,
 } from "./native-live-conversation-repository.js";
 
@@ -29,6 +30,23 @@ export class NativeLiveConversationService {
       throw new Error("Native live conversation listing is unavailable.");
     }
     return this.repository.listConversations(input);
+  }
+
+  async listConversationPage(input: {
+    userId: string;
+    limit: number;
+    cursor?: string | null;
+  }): Promise<NativeLiveConversationListPage> {
+    if (this.repository.listConversationPage) {
+      return this.repository.listConversationPage(input);
+    }
+    return {
+      conversations: await this.listConversations({
+        userId: input.userId,
+        limit: input.limit,
+      }),
+      nextCursor: null,
+    };
   }
 
   getConversation(input: {
