@@ -8,8 +8,6 @@ import type { ToyCommandService } from "../../domains/toy/toy-command-service.js
 import type { UniverseService } from "../../domains/universe/universe-service.js";
 import type { McpSessionNamespace } from "./session-registry.js";
 import type { HealthService } from "../../domains/health-v2/health-service.js";
-import type { ConversationArchiveReadService } from "../../domains/conversation/conversation-archive-read-service.js";
-import type { ConversationExclusionManagementService } from "../../domains/conversation/conversation-exclusion-management-service.js";
 import {
   createActiveUserAuthorizer,
   createMcpServer,
@@ -43,9 +41,6 @@ export function createProductionMcpSessionServerFactory(input: {
   todoService: TodoService;
   universeService: UniverseService;
   healthService: HealthService;
-  conversationArchiveReadService?: ConversationArchiveReadService;
-  conversationExclusionManagementService?: ConversationExclusionManagementService;
-  conversationRecoveryVisibility?: "public-enabled" | "internal-only";
   publicToolProfiles?: readonly McpToolProfileName[];
   internalToolProfiles?: readonly McpToolProfileName[];
 }): McpSessionServerFactory {
@@ -86,21 +81,6 @@ export function createProductionMcpSessionServerFactory(input: {
         globalSearchService: input.globalSearchService,
         getAuthenticatedUserId,
       },
-      ...(input.conversationArchiveReadService ? {
-        conversationArchiveTools: {
-          conversationArchiveReadService: input.conversationArchiveReadService,
-          getAuthenticatedUserId,
-        },
-      } : {}),
-      ...(input.conversationExclusionManagementService ? {
-        conversationRecoveryInspection: {
-          conversationExclusionManagementService: input.conversationExclusionManagementService,
-          getAuthenticatedUserId,
-        },
-      } : {}),
-      includeConversationRecoveryTools:
-        input.conversationRecoveryVisibility !== "internal-only"
-        || namespace === "internal",
       todoTools: {
         todoService: input.todoService,
         getAuthenticatedUserId,
