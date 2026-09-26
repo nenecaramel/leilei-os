@@ -138,7 +138,7 @@ export function createDefaultBackendMindRuntime(
     subjectState,
     {
       assemblyVersion: "assembly-v1",
-      promptContractVersion: "prompt-v3",
+      promptContractVersion: "prompt-v4",
       contextTimeZone: DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE,
       ruleVersion: "mind-v1",
       processVersion: "subject-write-v1",
@@ -152,6 +152,7 @@ export function createDefaultBackendMindRuntime(
       driveLimit: 3,
       thoughtLimit: 3,
       thoughtMinStrength: 0.1,
+      curiosityLimit: 3,
       topicLimit: 3,
       maxContextItems: 16,
       maxContextChars: 8_000,
