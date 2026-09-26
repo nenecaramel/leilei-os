@@ -48,6 +48,10 @@ implements CuriosityTopicProjectionRuntimePort {
           eq(runtimeSubjectStates.settlementStatus, "settled"),
           eq(runtimeSubjectStates.pathStatus, "current"),
           eq(runtimeSubjectStates.validityStatus, "valid"),
+          sql`COALESCE(
+            ${runtimeSubjectStates.payload} -> 'curiosity_v1' ->> 'phase',
+            'active'
+          ) = 'active'`,
           sql`NOT EXISTS (
             SELECT 1
             FROM runtime_subject_states projected
