@@ -5,43 +5,67 @@ struct ProjectsView: View {
     @State private var showingWorkspacePicker = false
 
     var body: some View {
-        AppStateSurface(title: "Nothing here")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground))
-            .searchable(text: $query, prompt: "Search")
-            .sheet(isPresented: $showingWorkspacePicker) {
-                WorkspacePickerSheet()
-            }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Projects")
-                        .font(.headline)
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            showingWorkspacePicker = true
-                        } label: {
-                            Label(
-                                "Workspace",
-                                systemImage: "externaldrive"
-                            )
-                        }
+        List {
+            Section("Workspace") {
+                Button {
+                    showingWorkspacePicker = true
+                } label: {
+                    LabeledContent {
+                        Text("Not connected")
+                            .foregroundStyle(.secondary)
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 18, weight: .medium))
+                        Label(
+                            "Workspace",
+                            systemImage: "externaldrive"
+                        )
                     }
-                    .accessibilityLabel("Project options")
                 }
-
-                if #available(iOS 26.0, *) {
-                    DefaultToolbarItem(
-                        kind: .search,
-                        placement: .bottomBar
-                    )
-                }
+                .foregroundStyle(.primary)
             }
+
+            Section("Projects") {
+                AppStateSurface(title: "Nothing here")
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color(.systemBackground))
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+        .searchable(text: $query, prompt: "Search")
+        .sheet(isPresented: $showingWorkspacePicker) {
+            WorkspacePickerSheet()
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Projects")
+                    .font(.headline)
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showingWorkspacePicker = true
+                    } label: {
+                        Label(
+                            "Workspace",
+                            systemImage: "externaldrive"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .medium))
+                }
+                .accessibilityLabel("Project options")
+            }
+
+            if #available(iOS 26.0, *) {
+                DefaultToolbarItem(
+                    kind: .search,
+                    placement: .bottomBar
+                )
+            }
+        }
     }
 }
 
