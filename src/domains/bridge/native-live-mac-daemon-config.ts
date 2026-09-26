@@ -48,12 +48,13 @@ export function resolveNativeLiveMacDaemonConfig(
   const relayToken =
     firstNonBlank(
       environment.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
-      environment.MCP_AUTH_TOKEN,
     )
-    ?? firstNonBlank(readRailwayVariables().MCP_AUTH_TOKEN);
+    ?? firstNonBlank(
+      readRailwayVariables().NATIVE_LIVE_RELAY_AUTH_TOKEN,
+    );
   if (!relayToken) {
     throw new Error(
-      "Native Live relay token is required. Set LEILEI_NATIVE_LIVE_RELAY_TOKEN or MCP_AUTH_TOKEN, or authenticate/link the Railway CLI so production variables can be loaded.",
+      "Native Live relay token is required. Set LEILEI_NATIVE_LIVE_RELAY_TOKEN, or authenticate/link the Railway CLI so NATIVE_LIVE_RELAY_AUTH_TOKEN can be loaded.",
     );
   }
 
@@ -151,7 +152,7 @@ function collectRailwayVariables(
   if (!value || typeof value !== "object") return;
 
   const record = value as Record<string, unknown>;
-  for (const key of ["MCP_SERVER_URL", "MCP_AUTH_TOKEN"]) {
+  for (const key of ["MCP_SERVER_URL", "NATIVE_LIVE_RELAY_AUTH_TOKEN"]) {
     const candidate = record[key];
     if (typeof candidate === "string" && candidate.trim()) {
       result[key] = candidate.trim();
@@ -169,7 +170,10 @@ function collectRailwayVariables(
   if (
     name
     && variableValue
-    && (name === "MCP_SERVER_URL" || name === "MCP_AUTH_TOKEN")
+    && (
+      name === "MCP_SERVER_URL"
+      || name === "NATIVE_LIVE_RELAY_AUTH_TOKEN"
+    )
   ) {
     result[name] = variableValue.trim();
   }
