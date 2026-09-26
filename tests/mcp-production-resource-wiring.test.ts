@@ -31,7 +31,6 @@ function productionFactory(input: {
   conversationExclusionManagementService?: unknown;
   conversationRecoveryVisibility?: "public-enabled" | "internal-only";
   bridgeService?: unknown;
-  sentinelService?: unknown;
 } = {}) {
   return createProductionMcpSessionServerFactory({
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
@@ -45,7 +44,6 @@ function productionFactory(input: {
     conversationExclusionManagementService: input.conversationExclusionManagementService as never,
     conversationRecoveryVisibility: input.conversationRecoveryVisibility,
     bridgeService: input.bridgeService as never,
-    sentinelService: input.sentinelService as never,
   });
 }
 
@@ -77,6 +75,9 @@ test("production public surface exposes canonical Conversation reads and no reti
   }
 
   for (const retired of [
+    "sentinel_get_state",
+    "sentinel_claim_current_wake",
+    "complete_sentinel_wake",
     "read_memory",
     "create_memory",
     "create_task",
@@ -99,7 +100,6 @@ test("production public surface exposes canonical Conversation reads and no reti
   }
 
   for (const hidden of [
-    "sentinel_get_state",
     "bridge_listener_open",
     "list_conversation_exclusions",
     "search_notion",
@@ -113,7 +113,6 @@ test("production internal full exposes maintenance/runtime profiles without revi
     conversationArchiveReadService: {},
     conversationExclusionManagementService: {},
     bridgeService: {},
-    sentinelService: {},
   });
   const names = await listTools(createSessionServer("user-1", "internal"), "mcp-production-internal");
 
