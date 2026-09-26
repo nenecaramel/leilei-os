@@ -3,11 +3,9 @@ import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
 
-export type ThoughtEvolutionStage = "flit" | "fixation";
 export type ThoughtEvolutionRole = "anchor" | "reinforcement";
 
 export type ThoughtEvolutionState = {
-  stage: ThoughtEvolutionStage;
   role: ThoughtEvolutionRole;
   threadKey: string;
   anchorStateId: string;
@@ -16,14 +14,12 @@ export type ThoughtEvolutionState = {
   reinforcementSources: string[];
   lastEvolvedAt: string;
   lastReinforcedAt: string;
-  fixationAt: string | null;
 };
 
 export type ThoughtEvolutionPolicy = {
-  flitHalfLifeHours: number;
+  halfLifeHours: number;
   baseStrength: number;
   reinforcementBoost: number;
-  fixationThreshold: number;
   minEvolutionIntervalHours: number;
   maxReinforcementSources: number;
 };
@@ -43,7 +39,7 @@ export type ThoughtEvolutionUpdate = {
   expectedPayload: Record<string, unknown> | null;
   nextPayload: Record<string, unknown>;
   evolution: ThoughtEvolutionState;
-  reason: "initialize" | "decay" | "reinforce" | "promote";
+  reason: "initialize" | "decay" | "reinforce";
 };
 
 export interface ThoughtEvolutionRuntimePort {
@@ -67,9 +63,7 @@ export type ThoughtEvolutionRunResult = {
   conflicts: number;
   initialized: number;
   reinforced: number;
-  promoted: number;
   decayed: number;
-  fixations: number;
 };
 
 const THOUGHT_KEY = "thought_v1";
@@ -98,12 +92,9 @@ export class ThoughtEvolutionService {
 
     const grouped = groupCandidates(candidates);
     const updates: ThoughtEvolutionUpdate[] = [];
-    let fixations = 0;
-
     for (const group of grouped.values()) {
       const evaluated = evaluateThread(group, now, this.policy);
       updates.push(...evaluated.updates);
-      if (evaluated.stage === "fixation") fixations += 1;
     }
 
     const selectedUpdates =
@@ -126,9 +117,7 @@ export class ThoughtEvolutionService {
       conflicts: committed.conflicts,
       initialized: selectedUpdates.filter((update) => update.reason === "initialize").length,
       reinforced: selectedUpdates.filter((update) => update.reason === "reinforce").length,
-      promoted: selectedUpdates.filter((update) => update.reason === "promote").length,
       decayed: selectedUpdates.filter((update) => update.reason === "decay").length,
-      fixations,
     };
   }
 }
@@ -142,11 +131,7 @@ export function readThoughtEvolution(
     throw new Error("Thought evolution payload must be an object.");
   }
 
-  const stage = value.stage;
   const role = value.role;
-  if (stage !== "flit" && stage !== "fixation") {
-    throw new Error("Thought evolution stage is invalid.");
-  }
   if (role !== "anchor" && role !== "reinforcement") {
     throw new Error("Thought evolution role is invalid.");
   }
@@ -175,20 +160,7 @@ export function readThoughtEvolution(
   const lastEvolvedAt = normalizeIso(value.lastEvolvedAt, "lastEvolvedAt");
   const lastReinforcedAt =
     normalizeIso(value.lastReinforcedAt, "lastReinforcedAt");
-  const fixationAt =
-    value.fixationAt === null
-      ? null
-      : normalizeIso(value.fixationAt, "fixationAt");
-
-  if (
-    (stage === "fixation" && fixationAt === null)
-    || (stage === "flit" && fixationAt !== null)
-  ) {
-    throw new Error("Thought fixation timestamp does not match stage.");
-  }
-
   return {
-    stage,
     role,
     threadKey,
     anchorStateId,
@@ -197,7 +169,6 @@ export function readThoughtEvolution(
     reinforcementSources: [...value.reinforcementSources],
     lastEvolvedAt,
     lastReinforcedAt,
-    fixationAt,
   };
 }
 
@@ -259,10 +230,9 @@ function evaluateThread(
   policy: ThoughtEvolutionPolicy,
 ): {
   updates: ThoughtEvolutionUpdate[];
-  stage: ThoughtEvolutionStage;
 } {
   if (candidates.length === 0) {
-    return { updates: [], stage: "flit" };
+    return { updates: [] };
   }
 
   const anchor = candidates[0]!;
@@ -298,23 +268,10 @@ function evaluateThread(
     (Date.parse(now) - Date.parse(latest.createdAt)) / 3_600_000,
   );
   const decayedStrength = clamp01(
-    rawStrength * Math.pow(0.5, elapsedHours / policy.flitHalfLifeHours),
+    rawStrength * Math.pow(0.5, elapsedHours / policy.halfLifeHours),
   );
 
-  const priorAnchor = safeReadThoughtEvolution(anchor.payload);
-  const stage: ThoughtEvolutionStage =
-    priorAnchor?.stage === "fixation"
-    || decayedStrength >= policy.fixationThreshold
-      ? "fixation"
-      : "flit";
-  const strength =
-    priorAnchor?.stage === "fixation"
-      ? Math.max(priorAnchor.strength, rawStrength)
-      : decayedStrength;
-  const fixationAt =
-    stage === "fixation"
-      ? priorAnchor?.fixationAt ?? now
-      : null;
+  const strength = decayedStrength;
 
   const updates: ThoughtEvolutionUpdate[] = [];
   for (const candidate of candidates) {
@@ -322,7 +279,6 @@ function evaluateThread(
     const role: ThoughtEvolutionRole =
       candidate.stateId === anchor.stateId ? "anchor" : "reinforcement";
     const evolution: ThoughtEvolutionState = {
-      stage,
       role,
       threadKey: key,
       anchorStateId: anchor.stateId,
@@ -331,7 +287,6 @@ function evaluateThread(
       reinforcementSources: sources,
       lastEvolvedAt: now,
       lastReinforcedAt: normalizeIso(latest.createdAt, "createdAt"),
-      fixationAt,
     };
 
     const reason = evolutionReason(
@@ -352,7 +307,7 @@ function evaluateThread(
     });
   }
 
-  return { updates, stage };
+  return { updates };
 }
 
 function evolutionReason(
@@ -362,9 +317,6 @@ function evolutionReason(
   now: string,
 ): ThoughtEvolutionUpdate["reason"] | null {
   if (!current) return "initialize";
-  if (current.stage !== "fixation" && next.stage === "fixation") {
-    return "promote";
-  }
   if (
     current.reinforcementCount !== next.reinforcementCount
     || current.anchorStateId !== next.anchorStateId
@@ -377,8 +329,7 @@ function evolutionReason(
     (Date.parse(now) - Date.parse(current.lastEvolvedAt)) / 3_600_000;
   if (elapsedHours < policy.minEvolutionIntervalHours) return null;
   if (
-    current.stage === next.stage
-    && Math.abs(current.strength - next.strength) < 1e-9
+    Math.abs(current.strength - next.strength) < 1e-9
   ) {
     return null;
   }
@@ -397,15 +348,14 @@ function safeReadThoughtEvolution(
 
 function validatePolicy(policy: ThoughtEvolutionPolicy): void {
   if (
-    !Number.isFinite(policy.flitHalfLifeHours)
-    || policy.flitHalfLifeHours <= 0
+    !Number.isFinite(policy.halfLifeHours)
+    || policy.halfLifeHours <= 0
   ) {
     throw new Error("Thought flit half-life must be positive.");
   }
   for (const [label, value] of [
     ["baseStrength", policy.baseStrength],
     ["reinforcementBoost", policy.reinforcementBoost],
-    ["fixationThreshold", policy.fixationThreshold],
   ] as const) {
     if (!Number.isFinite(value) || value < 0 || value > 1) {
       throw new Error(`Thought ${label} must be between zero and one.`);
