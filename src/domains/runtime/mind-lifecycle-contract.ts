@@ -11,7 +11,8 @@ export type MindLifecycleState =
 
 export type MindLifecycleOwnership =
   | "authored"
-  | "derived";
+  | "derived"
+  | "hybrid";
 
 export type MindLifecycleDriver =
   | "time_decay"
@@ -53,6 +54,10 @@ export type MindLifecycleProfile =
  * - Runtime owns lifecycle transitions and numeric state.
  * - E5 may inform semantic grouping/relevance but never lifecycle.
  * - Numeric thresholds/half-lives remain runtime policy and are not frozen here.
+ *
+ * Topic remains hybrid while production still accepts authored <topic> intents
+ * alongside deterministic Curiosity projection. It can become derived-only
+ * only when that authored entry point is actually retired.
  *
  * Dream is deliberately left pending until its product role is decided. Keeping
  * that uncertainty explicit is safer than silently inventing lifecycle
@@ -120,7 +125,7 @@ export const MIND_LIFECYCLE_PROFILES = {
   },
   topic: {
     management: "managed",
-    ownership: "derived",
+    ownership: "hybrid",
     drivers: ["reinforcement", "inactivity"],
     initialState: "active",
     transitions: {
