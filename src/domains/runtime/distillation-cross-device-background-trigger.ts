@@ -11,7 +11,7 @@ import type {
 import type {
   NativeLiveDistillationScheduleInput,
   NativeLiveDistillationTrigger,
-} from "./distillation-background-trigger.js";
+} from "./distillation-trigger-contract.js";
 
 export type DistillationCrossDeviceBackgroundObserverEvent =
   | {

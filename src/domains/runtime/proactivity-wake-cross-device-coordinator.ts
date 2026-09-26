@@ -16,7 +16,7 @@ import {
 } from "./proactivity-wake-contract.js";
 import {
   ProactivityWakeDecisionBuilder,
-} from "./proactivity-wake-service.js";
+} from "./proactivity-wake-decision-builder.js";
 import type {
   ProactivityEffectMaterializer,
 } from "./proactivity-effect-materializer.js";

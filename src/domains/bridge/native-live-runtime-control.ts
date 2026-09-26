@@ -352,7 +352,9 @@ export class NativeLiveRuntimeControlService {
       Pick<
         NativeLiveWorkWakeBroker,
         "start" | "controlVersion" | "waitForControlChange"
-      >,
+      > & {
+        release?: () => Promise<void>;
+      },
   ) {}
 
   async createForUser(
@@ -410,41 +412,45 @@ export class NativeLiveRuntimeControlService {
     }
 
     await this.wakeBroker.start();
-    const version = this.wakeBroker.controlVersion(
-      input.userId,
-      input.reservationId,
-    );
+    try {
+      const version = this.wakeBroker.controlVersion(
+        input.userId,
+        input.reservationId,
+      );
 
-    const raced =
-      await this.repository.reserveNextForListener({
+      const raced =
+        await this.repository.reserveNextForListener({
+          userId: input.userId,
+          listenerInstanceId: input.listenerInstanceId,
+          reservationId: input.reservationId,
+        });
+      if (raced) {
+        return { outcome: "reserved", control: raced };
+      }
+
+      const wake = await this.wakeBroker.waitForControlChange({
         userId: input.userId,
-        listenerInstanceId: input.listenerInstanceId,
         reservationId: input.reservationId,
+        afterVersion: version,
+        timeoutMs: input.timeoutMs,
+        signal: input.signal,
       });
-    if (raced) {
-      return { outcome: "reserved", control: raced };
-    }
+      if (wake.outcome !== "ready") {
+        return { outcome: "timeout" };
+      }
 
-    const wake = await this.wakeBroker.waitForControlChange({
-      userId: input.userId,
-      reservationId: input.reservationId,
-      afterVersion: version,
-      timeoutMs: input.timeoutMs,
-      signal: input.signal,
-    });
-    if (wake.outcome !== "ready") {
-      return { outcome: "timeout" };
+      const control =
+        await this.repository.reserveNextForListener({
+          userId: input.userId,
+          listenerInstanceId: input.listenerInstanceId,
+          reservationId: input.reservationId,
+        });
+      return control
+        ? { outcome: "reserved", control }
+        : { outcome: "timeout" };
+    } finally {
+      await this.wakeBroker.release?.();
     }
-
-    const control =
-      await this.repository.reserveNextForListener({
-        userId: input.userId,
-        listenerInstanceId: input.listenerInstanceId,
-        reservationId: input.reservationId,
-      });
-    return control
-      ? { outcome: "reserved", control }
-      : { outcome: "timeout" };
   }
 
   completeForListener(

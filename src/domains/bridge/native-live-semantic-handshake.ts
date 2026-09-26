@@ -30,7 +30,6 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   : never;
 
 const SEMANTIC_RESERVATION_LEASE_MS = 300_000;
-const SEMANTIC_COMPLETION_INTERVAL_MS = 2_000;
 
 export type NativeLiveSemanticScoringReservation = {
   reservationId: string;
@@ -602,29 +601,25 @@ implements NativeLiveSemanticPreparationStager {
   }
 }
 
-export type NativeLiveSemanticCompletionScheduler = {
-  start(): void;
-  stopScheduling(): void;
+export type NativeLiveSemanticRecoveryRunner = {
+  stop(): void;
   runNow(): Promise<number>;
   drain(): Promise<void>;
 };
 
-export function createNativeLiveSemanticCompletionScheduler(input: {
+export function createNativeLiveSemanticRecoveryRunner(input: {
   service: Pick<
     NativeLiveSemanticHandshakeService,
     "processNextCompletion"
   >;
-  intervalMs?: number;
   batchLimit?: number;
-}): NativeLiveSemanticCompletionScheduler {
-  const intervalMs = input.intervalMs ?? SEMANTIC_COMPLETION_INTERVAL_MS;
+}): NativeLiveSemanticRecoveryRunner {
   const batchLimit = input.batchLimit ?? 25;
-  let timer: ReturnType<typeof setInterval> | null = null;
   let inFlight: Promise<number> | null = null;
-  let stopping = false;
+  let stopped = false;
 
   const runNow = (): Promise<number> => {
-    if (stopping) return Promise.resolve(0);
+    if (stopped) return Promise.resolve(0);
     if (inFlight) return inFlight;
 
     const run = (async () => {
@@ -651,21 +646,13 @@ export function createNativeLiveSemanticCompletionScheduler(input: {
   };
 
   return {
-    start() {
-      if (stopping || timer) return;
-      timer = setInterval(() => void runNow(), intervalMs);
-      timer.unref?.();
-      void runNow();
-    },
-    stopScheduling() {
-      if (stopping) return;
-      stopping = true;
-      if (timer) clearInterval(timer);
-      timer = null;
+    stop(): void {
+      stopped = true;
     },
     runNow,
-    async drain() {
-      if (inFlight) await inFlight.catch(() => undefined);
+    async drain(): Promise<void> {
+      const current = inFlight;
+      if (current) await current.catch(() => undefined);
     },
   };
 }

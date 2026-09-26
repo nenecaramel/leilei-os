@@ -114,14 +114,24 @@ class FakeCoordinator {
   }
 }
 
+class FakeWake {
+  calls: unknown[] = [];
+
+  async notify(input: unknown) {
+    this.calls.push(input);
+  }
+}
+
 function setup() {
   const port = new FakePort();
   const coordinator = new FakeCoordinator();
+  const wake = new FakeWake();
   const service = new NativeLiveBackendRelayService(
     port,
     coordinator,
+    wake,
   );
-  return { port, coordinator, service };
+  return { port, coordinator, wake, service };
 }
 
 test("reserve emits the persisted prepared command without rebuilding it on the Mac", async () => {
@@ -144,13 +154,14 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
       canonical_user_message_id: userMessageId,
       runtime_mode: "new",
       parent_provider_session_id: null,
+      execution_selection: null,
       prompt: "hello",
     },
   });
 });
 
-test("runtime failure is a valid terminal callback and closes the reservation", async () => {
-  const { port, coordinator, service } = setup();
+test("runtime failure is a valid terminal callback, closes the reservation, and wakes turn waiters", async () => {
+  const { port, coordinator, wake, service } = setup();
   const result = failureResult();
 
   const finalized = await service.submitResult({
@@ -168,6 +179,11 @@ test("runtime failure is a valid terminal callback and closes the reservation", 
     port.calls.filter((entry) => entry.name === "markCompleted").length,
     1,
   );
+  assert.deepEqual(wake.calls, [{
+    userId,
+    kind: "turn_terminal",
+    prepareId,
+  }]);
 });
 
 test("reservation identity mismatch is rejected before canonical finalize", async () => {
@@ -219,7 +235,7 @@ test("canonical finalize conflicts do not mark transport complete", async () => 
 });
 
 test("relay mutations accept applied/idempotent outcomes and reject stale ownership", async () => {
-  const { port, service } = setup();
+  const { port, wake, service } = setup();
 
   port.mutation = "idempotent";
   await service.markExecutionStarted({
@@ -232,6 +248,17 @@ test("relay mutations accept applied/idempotent outcomes and reject stale owners
     listenerInstanceId,
     reservationId: prepareId,
   });
+  await service.rejectReservation({
+    userId,
+    listenerInstanceId,
+    reservationId: prepareId,
+    code: "INVALID_COMMAND",
+  });
+  assert.deepEqual(wake.calls, [{
+    userId,
+    kind: "turn_terminal",
+    prepareId,
+  }]);
 
   port.mutation = "conflict";
   await assert.rejects(
@@ -246,4 +273,5 @@ test("relay mutations accept applied/idempotent outcomes and reject stale owners
       error instanceof NativeLiveBackendRelayError
       && error.code === "RESERVATION_CONFLICT",
   );
+  assert.equal(wake.calls.length, 1);
 });

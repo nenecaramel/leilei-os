@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   env,
-  getBackgroundMaintenancePulseConfig,
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
@@ -28,14 +27,12 @@ import { DrizzleImportRepository } from "../domains/import/import-repository.js"
 import { ImportService } from "../domains/import/import-service.js";
 import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
 import { UniverseService } from "../domains/universe/universe-service.js";
-import { DrizzleBridgeEventRepository } from "../domains/bridge/bridge-event-repository.js";
-import { BridgeService } from "../domains/bridge/bridge-service.js";
 import {
   createDefaultBackendMindRuntime,
   createDefaultDriveSatisfactionService,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-  DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
+  DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
 } from "../domains/runtime/default-backend-mind-runtime.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
@@ -64,18 +61,12 @@ import {
   BackgroundLoopOrchestrator,
 } from "../domains/runtime/background-loop-orchestrator.js";
 import {
-  NativeLivePostTurnBackgroundOpportunity,
-} from "../domains/runtime/native-live-background-opportunity.js";
-import {
   CompanionBackgroundOpportunityService,
 } from "../domains/runtime/companion-background-opportunity.js";
 import {
   BackgroundOpportunityPolicy,
+  DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "../domains/runtime/background-opportunity-policy.js";
-import {
-  createBackgroundMaintenancePulse,
-  DrizzleBackgroundMaintenanceUserSource,
-} from "../domains/runtime/background-maintenance-pulse.js";
 import {
   DistillationCrossDeviceCoordinator,
 } from "../domains/runtime/distillation-cross-device-coordinator.js";
@@ -112,8 +103,6 @@ import {
   RuntimeMessageEffectDeliveryAdapter,
 } from "../domains/runtime/runtime-message-effect-delivery-adapter.js";
 import {
-  DrizzleRuntimeEffectDeliveryUserSource,
-  RuntimeEffectDeliveryRecovery,
   RuntimeEffectDeliveryWorker,
 } from "../domains/runtime/runtime-effect-delivery-worker.js";
 import {
@@ -143,6 +132,9 @@ import {
   NativeLiveWorkWaitService,
 } from "../domains/bridge/native-live-work-wake.js";
 import {
+  NativeLiveTurnWaitService,
+} from "../domains/bridge/native-live-turn-wait.js";
+import {
   DrizzleNativeLiveRuntimeEventRepository,
   NativeLiveRuntimeEventService,
 } from "../domains/bridge/native-live-runtime-event-stream.js";
@@ -157,14 +149,13 @@ import {
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
-  createNativeLiveMindFollowUpScheduler,
+  createNativeLiveMindFollowUpRecoveryRunner,
 } from "../domains/bridge/native-live-mind-followup.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
-  createNativeLiveSemanticCompletionScheduler,
+  createNativeLiveSemanticRecoveryRunner,
 } from "../domains/bridge/native-live-semantic-handshake.js";
-import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
@@ -178,8 +169,6 @@ import {
   DATA_IMPORT_RETENTION_DAYS,
   NATIVE_LIVE_BACKGROUND_MODEL_RETENTION_DAYS,
 } from "../domains/retention/retention-policy.js";
-import { DrizzleSentinelRepository } from "../domains/sentinel/sentinel-repository.js";
-import { SentinelService } from "../domains/sentinel/sentinel-service.js";
 import { DrizzleHealthRepository } from "../domains/health-v2/health-repository.js";
 import { HealthService } from "../domains/health-v2/health-service.js";
 import { DrizzleConversationImportRepository } from "../domains/conversation/conversation-import-repository.js";
@@ -196,11 +185,6 @@ import { DrizzleConversationExclusionManagementRepository } from "../domains/con
 import { ConversationExclusionManagementService } from "../domains/conversation/conversation-exclusion-management-service.js";
 import { DrizzleConversationImportHistoryRepository } from "../domains/conversation/conversation-import-history-repository.js";
 import { ConversationImportHistoryService } from "../domains/conversation/conversation-import-history-service.js";
-import {
-  createSentinelScheduler as buildSentinelScheduler,
-  type SentinelScheduler,
-  type SentinelSchedulerRepository,
-} from "../domains/sentinel/sentinel-scheduler.js";
 import { McpSessionRegistry } from "../mcp/server/session-registry.js";
 import { createProductionMcpSessionServerFactory } from "../mcp/server/production-server-factory.js";
 import {
@@ -211,7 +195,6 @@ import {
 import { createSafeLogger, type SafeLogger } from "../observability/logger.js";
 import {
   createMcpLifecycleObserver,
-  createBridgeObserver,
   createRetentionObserver,
 } from "../observability/runtime-observers.js";
 
@@ -255,19 +238,25 @@ function observeBackgroundWorkflowAdvancer(
   };
 }
 
+function lazyBackgroundWorkflowAdvancer(
+  workflowKind: BackgroundWorkflowKind,
+  createAdvancer: () => NativeLiveBackgroundWorkflowAdvancer,
+  logger: SafeLogger,
+): NativeLiveBackgroundWorkflowAdvancer {
+  let advancer: NativeLiveBackgroundWorkflowAdvancer | null = null;
+  return observeBackgroundWorkflowAdvancer(
+    workflowKind,
+    {
+      advanceNextForUser(input) {
+        advancer ??= createAdvancer();
+        return advancer.advanceNextForUser(input);
+      },
+    },
+    logger,
+  );
+}
 export type ProcessRuntime = {
   appDependencies: AppDependencies;
-  driveSatisfactionService: DriveSatisfactionService;
-  topicResurfaceCrossDeviceCoordinator:
-    TopicResurfaceCrossDeviceCoordinator;
-  distillationCrossDeviceCoordinator:
-    DistillationCrossDeviceCoordinator;
-  proactivityWakeCrossDeviceCoordinator:
-    ProactivityWakeCrossDeviceCoordinator;
-  runtimeEffectDeliveryCoordinator:
-    RuntimeEffectDeliveryCoordinator;
-  runtimeEffectDeliveryWorker:
-    RuntimeEffectDeliveryWorker;
   mcpSessionRegistry: McpSessionRegistry;
   logger: SafeLogger;
   startBackgroundWork(): void;
@@ -280,9 +269,6 @@ export type ProcessRuntimeFactoryDependencies = {
   environment?: RuntimeEnv;
   createDatabaseResource?: (databaseUrl: string) => DatabaseResource;
   createLogger?: (level: RuntimeEnv["LOG_LEVEL"]) => SafeLogger;
-  createSentinelScheduler?: (
-    repository: SentinelSchedulerRepository,
-  ) => SentinelScheduler;
 };
 
 export function createProcessRuntime(
@@ -324,7 +310,6 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
-  const bridgeService = new BridgeService(new DrizzleBridgeEventRepository(db), { observe: createBridgeObserver(logger) });
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
   const driveSatisfactionService =
     createDefaultDriveSatisfactionService(db);
@@ -360,28 +345,14 @@ export function createProcessRuntime(
   });
   const topicResurfaceOpportunityConfig =
     getTopicResurfaceOpportunityConfig(runtimeEnv);
-  const maintenancePulseConfig =
-    getBackgroundMaintenancePulseConfig(runtimeEnv);
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
   const proactivityWakeOpportunityConfig =
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
-    maintenancePulseIntervalMs: maintenancePulseConfig.intervalMs,
     decayEnabled: Boolean(memoryDecayConfig),
-    proactivityWakeEnabled:
-      Boolean(proactivityWakeOpportunityConfig),
-    topicResurfaceMinIntervalMs:
-      topicResurfaceOpportunityConfig?.minIntervalMs ?? null,
   });
-  const distillationPlan = backgroundOpportunityPolicy.plan(
-    "post_turn",
-    "distillation",
-  );
-  if (!distillationPlan) {
-    throw new Error(
-      "Production background policy must allow post-turn Distillation.",
-    );
-  }
+  const distillationPlan =
+    DEFAULT_BACKGROUND_TARGET_PLANS.distillation;
   const nativeLiveBackgroundModelService =
     new NativeLiveBackgroundModelQueueService(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
@@ -397,7 +368,7 @@ export function createProcessRuntime(
         distillationProcessVersion,
       ),
       {
-        surfaceLimit: DEFAULT_NATIVE_LIVE_SURFACE_LIMIT,
+        settlementLagMessages: DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
         minSourceMessages: 8,
         maxMemoriesPerRun: 3,
         ruleVersion: "distill-rule-v1",
@@ -438,24 +409,24 @@ export function createProcessRuntime(
       backgroundLoopOrchestrator,
       memoryDecayConfig,
     );
-  const nativeLivePostTurnBackgroundOpportunity =
-    new NativeLivePostTurnBackgroundOpportunity(
-      distillationCrossDeviceBackgroundTrigger,
-      backgroundOpportunityPolicy,
-    );
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
   );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
+  const nativeLiveTurnWaitService =
+    new NativeLiveTurnWaitService(
+      nativeLiveTurnPort,
+      nativeLiveWorkWakeBroker,
+    );
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
     new DrizzleNativeLiveMindFollowUpRepository(db),
     nativeLiveTurnPort,
     nativeLiveBackendMind,
     undefined,
-    nativeLivePostTurnBackgroundOpportunity,
+    distillationCrossDeviceBackgroundTrigger,
   );
-  const nativeLiveMindFollowUpScheduler =
-    createNativeLiveMindFollowUpScheduler({
+  const nativeLiveMindFollowUpRecovery =
+    createNativeLiveMindFollowUpRecoveryRunner({
       service: nativeLiveMindFollowUpService,
     });
   const nativeLiveTurnCoordinator = new NativeLiveBackendTurnCoordinator(
@@ -485,21 +456,8 @@ export function createProcessRuntime(
       nativeLiveWorkWakePublisher,
       nativeLiveWorkWakeBroker,
     );
-  const proactivityWakeRepository =
-    new DrizzleProactivityWakeRepository(db);
-  const proactivityWakeOpportunitySource =
-    proactivityWakeOpportunityConfig
-      ? new DrizzleProactivityWakeOpportunitySource(
-          db,
-          proactivityWakeOpportunityConfig,
-        )
-      : null;
   const runtimeEffectRepository =
     new DrizzleRuntimeEffectRepository(db);
-  const proactivityEffectMaterializer =
-    new ProactivityEffectMaterializer(
-      runtimeEffectRepository,
-    );
   const runtimeEffectDeliveryCoordinator =
     new RuntimeEffectDeliveryCoordinator(
       runtimeEffectRepository,
@@ -526,32 +484,32 @@ export function createProcessRuntime(
         logger.info(name, fields);
       },
     );
-  const runtimeEffectDeliveryRecovery =
+
+  const proactivityWakeOpportunitySource =
     proactivityWakeOpportunityConfig
-      ? new RuntimeEffectDeliveryRecovery(
-          new DrizzleRuntimeEffectDeliveryUserSource(db),
-          runtimeEffectDeliveryWorker,
-          proactivityWakeOpportunityConfig.userLimit,
+      ? new DrizzleProactivityWakeOpportunitySource(
+          db,
+          proactivityWakeOpportunityConfig,
         )
       : null;
-  const proactivityWakeCrossDeviceCoordinator =
-    new ProactivityWakeCrossDeviceCoordinator(
-      nativeLiveBackgroundModelService,
-      proactivityWakeRepository,
-      proactivityWakeOpportunitySource,
-      undefined,
-      undefined,
-      proactivityEffectMaterializer,
-      proactivityWakeOpportunityConfig
-        ? runtimeEffectDeliveryWorker
-        : null,
-    );
+  let proactivityWakeCrossDeviceCoordinator:
+    ProactivityWakeCrossDeviceCoordinator | null = null;
+  const getProactivityWakeCrossDeviceCoordinator = () =>
+    proactivityWakeCrossDeviceCoordinator ??=
+      new ProactivityWakeCrossDeviceCoordinator(
+        nativeLiveBackgroundModelService,
+        new DrizzleProactivityWakeRepository(db),
+        proactivityWakeOpportunitySource,
+        undefined,
+        undefined,
+        new ProactivityEffectMaterializer(runtimeEffectRepository),
+        proactivityWakeOpportunityConfig
+          ? runtimeEffectDeliveryWorker
+          : null,
+      );
   const proactivityWakePlan =
     proactivityWakeOpportunityConfig
-      ? backgroundOpportunityPolicy.plan(
-          "maintenance_pulse",
-          "proactivity_wake",
-        )
+      ? DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake
       : null;
   const proactivityWakeOpportunityProducer =
     proactivityWakeOpportunityConfig
@@ -560,54 +518,37 @@ export function createProcessRuntime(
       ? new ProactivityWakeOpportunityProducer(
           backgroundLoopOrchestrator,
           proactivityWakeOpportunitySource,
-          proactivityWakeCrossDeviceCoordinator,
+          getProactivityWakeCrossDeviceCoordinator(),
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
           proactivityWakePlan,
         )
       : null;
-  const backgroundMaintenancePulse =
-    createBackgroundMaintenancePulse({
-      source: new DrizzleBackgroundMaintenanceUserSource(db),
-      maintenance: subjectStateBackgroundMaintenance,
-      policy: backgroundOpportunityPolicy,
-      subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-      config: {
-        userLimit: maintenancePulseConfig.userLimit,
-      },
-      ...(
-        runtimeEffectDeliveryRecovery
-        || proactivityWakeOpportunityProducer
-          ? {
-              afterCycle: async () => {
-                await runtimeEffectDeliveryRecovery?.schedulePulse();
-                await proactivityWakeOpportunityProducer?.schedulePulse();
-              },
-            }
-          : {}
-      ),
-    });
-  const topicResurfaceCrossDeviceCoordinator =
-    new TopicResurfaceCrossDeviceCoordinator(
-      nativeLiveBackgroundModelService,
-      new TopicResurfaceCandidateService(
-        new DrizzleTopicResurfaceCandidatePort(db),
-      ),
-      new DrizzleTopicResurfaceThoughtMaterializationPort(db),
-      {
-        ruleVersion: "topic-resurface-thought-v1",
-        processVersion: "topic-resurface-thought-materialization-v1",
-        deliberationPromptContractVersion:
-          "topic-resurface-deliberation-v1",
-        retentionPromptContractVersion:
-          "topic-resurface-retention-v1",
-        model: {
-          provider: "claude_code",
-          model: "runtime-selected",
-          configVersion: "cross-device-v1",
-          promptContractVersion: "topic-resurface-v1",
+
+  let topicResurfaceCrossDeviceCoordinator:
+    TopicResurfaceCrossDeviceCoordinator | null = null;
+  const getTopicResurfaceCrossDeviceCoordinator = () =>
+    topicResurfaceCrossDeviceCoordinator ??=
+      new TopicResurfaceCrossDeviceCoordinator(
+        nativeLiveBackgroundModelService,
+        new TopicResurfaceCandidateService(
+          new DrizzleTopicResurfaceCandidatePort(db),
+        ),
+        new DrizzleTopicResurfaceThoughtMaterializationPort(db),
+        {
+          ruleVersion: "topic-resurface-thought-v1",
+          processVersion: "topic-resurface-thought-materialization-v1",
+          deliberationPromptContractVersion:
+            "topic-resurface-deliberation-v1",
+          retentionPromptContractVersion:
+            "topic-resurface-retention-v1",
+          model: {
+            provider: "claude_code",
+            model: "runtime-selected",
+            configVersion: "cross-device-v1",
+            promptContractVersion: "topic-resurface-v1",
+          },
         },
-      },
-    );
+      );
   const nativeLiveBackgroundWorkflowCoordinator =
     new NativeLiveBackgroundWorkflowCoordinator([
       observeBackgroundWorkflowAdvancer(
@@ -615,31 +556,23 @@ export function createProcessRuntime(
         distillationCrossDeviceCoordinator,
         logger,
       ),
-      observeBackgroundWorkflowAdvancer(
+      lazyBackgroundWorkflowAdvancer(
         "proactivity_wake",
-        proactivityWakeCrossDeviceCoordinator,
+        getProactivityWakeCrossDeviceCoordinator,
         logger,
       ),
-      observeBackgroundWorkflowAdvancer(
+      lazyBackgroundWorkflowAdvancer(
         "topic_resurface",
-        topicResurfaceCrossDeviceCoordinator,
+        getTopicResurfaceCrossDeviceCoordinator,
         logger,
       ),
     ]);
   const topicResurfaceCrossDeviceOpportunity =
     topicResurfaceOpportunityConfig
-      && backgroundOpportunityPolicy.plan(
-        "mac_idle",
-        "topic_resurface",
-      )
       ? new TopicResurfaceCrossDeviceOpportunity(
-          topicResurfaceCrossDeviceCoordinator,
+          getTopicResurfaceCrossDeviceCoordinator(),
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          {
-            ...topicResurfaceOpportunityConfig,
-            minIntervalMs:
-              backgroundOpportunityPolicy.cadenceMs("mac_idle")!,
-          },
+          topicResurfaceOpportunityConfig,
         )
       : undefined;
   const companionBackgroundOpportunity =
@@ -649,6 +582,7 @@ export function createProcessRuntime(
       runtimeEffectDeliveryWorker,
       proactivityWakeOpportunityProducer,
       topicResurfaceCrossDeviceOpportunity ?? null,
+      Boolean(proactivityWakeOpportunityConfig),
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
@@ -657,8 +591,8 @@ export function createProcessRuntime(
     nativeLiveRelayService,
     nativeLiveWorkWakePublisher,
   );
-  const nativeLiveSemanticScheduler =
-    createNativeLiveSemanticCompletionScheduler({
+  const nativeLiveSemanticRecovery =
+    createNativeLiveSemanticRecoveryRunner({
       service: nativeLiveSemanticService,
     });
   const nativeLiveRelayPrepareCoordinator =
@@ -667,8 +601,6 @@ export function createProcessRuntime(
       nativeLiveBackendMind,
       nativeLiveSemanticService,
     );
-  const sentinelRepository = new DrizzleSentinelRepository(db);
-  const sentinelService = new SentinelService(sentinelRepository);
   const healthService = new HealthService(new DrizzleHealthRepository(db));
   const conversationImportService = new ConversationImportService(
     new DrizzleConversationImportRepository(db),
@@ -691,9 +623,6 @@ export function createProcessRuntime(
   const conversationImportHistoryService = new ConversationImportHistoryService(
     new DrizzleConversationImportHistoryRepository(db),
   );
-  const sentinelScheduler = (options.createSentinelScheduler ?? ((repository) =>
-    buildSentinelScheduler({ repository })))(sentinelRepository);
-
   const governance = getMcpGovernanceConfig(runtimeEnv);
   const mcpSessionRegistry = new McpSessionRegistry({
     idleTtlMs: governance.idleTtlSeconds * 1_000,
@@ -714,11 +643,6 @@ export function createProcessRuntime(
         policy: "data_import_runs",
         retentionMs: DATA_IMPORT_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
         deleteBatch: (cutoff, limit) => deleteExpiredDataImportRunsBatch(db, cutoff, limit),
-      },
-      {
-        policy: "bridge_events",
-        retentionMs: BRIDGE_TERMINAL_RETENTION_DAYS * 24 * 60 * 60 * 1_000,
-        deleteBatch: (cutoff, limit) => deleteExpiredBridgeEventsBatch(db, cutoff, limit),
       },
       {
         policy: "native_live_background_model_jobs",
@@ -767,23 +691,13 @@ export function createProcessRuntime(
     todoService,
     universeService,
     healthService,
-    sentinelService,
-    bridgeService,
-    bridgeAmbiguityAcceptanceEnabled: runtimeEnv.BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED,
     publicToolProfiles,
     internalToolProfiles,
-    logger,
   });
 
   return {
     mcpSessionRegistry,
     logger,
-    driveSatisfactionService,
-    topicResurfaceCrossDeviceCoordinator,
-    distillationCrossDeviceCoordinator,
-    proactivityWakeCrossDeviceCoordinator,
-    runtimeEffectDeliveryCoordinator,
-    runtimeEffectDeliveryWorker,
     appDependencies: {
       logger,
       webDiaryService: diaryService,
@@ -795,12 +709,12 @@ export function createProcessRuntime(
       webExportService: exportService,
       webImportService: importService,
       webUniverseService: universeService,
-      webBridgeService: bridgeService,
       nativeLiveProduction: {
         web: {
           coordinator: nativeLiveRelayPrepareCoordinator,
           relayService: nativeLiveRelayService,
           turnReader: nativeLiveTurnPort,
+          turnWaitService: nativeLiveTurnWaitService,
           currentPathReader:
             new DrizzleNativeLiveCurrentPathReader(db),
           conversationService:
@@ -836,7 +750,6 @@ export function createProcessRuntime(
             companionBackgroundOpportunity,
         },
       },
-      webSentinelService: sentinelService,
       webConversationImportService: conversationImportService,
       webConversationArchiveReadService: conversationArchiveReadService,
       webConversationPruningService: conversationPruningService,
@@ -861,23 +774,19 @@ export function createProcessRuntime(
       // durable work once at process start; Mac Companion/event-driven paths
       // own subsequent opportunities.
       void retentionCoordinator.runNow().catch(() => undefined);
-      void nativeLiveMindFollowUpScheduler.runNow().catch(() => undefined);
-      void nativeLiveSemanticScheduler.runNow().catch(() => undefined);
+      void nativeLiveMindFollowUpRecovery.runNow().catch(() => undefined);
+      void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
-      sentinelScheduler.stopScheduling();
-      nativeLiveMindFollowUpScheduler.stopScheduling();
-      nativeLiveSemanticScheduler.stopScheduling();
-      backgroundMaintenancePulse.stopScheduling();
+      nativeLiveMindFollowUpRecovery.stop();
+      nativeLiveSemanticRecovery.stop();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
         retentionCoordinator.drain(),
-        sentinelScheduler.drain(),
-        nativeLiveMindFollowUpScheduler.drain(),
-        nativeLiveSemanticScheduler.drain(),
-        backgroundMaintenancePulse.drain(),
+        nativeLiveMindFollowUpRecovery.drain(),
+        nativeLiveSemanticRecovery.drain(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.

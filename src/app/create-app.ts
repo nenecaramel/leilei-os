@@ -50,8 +50,6 @@ import type { TodoApiDependencies } from "../web-api/todo-router.js";
 import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
-import type { BridgeApiDependencies } from "../web-api/bridge-router.js";
-import type { SentinelApiDependencies } from "../web-api/sentinel-router.js";
 import type { ConversationImportApiDependencies } from "../web-api/conversation-import-router.js";
 import type { ConversationArchiveReadApiDependencies } from "../web-api/conversation-archive-read-router.js";
 import type { ConversationPruningApiDependencies } from "../web-api/conversation-pruning-router.js";
@@ -101,8 +99,6 @@ export type AppDependencies = {
   webExportService?: ExportApiDependencies["exportService"];
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
-  webBridgeService?: BridgeApiDependencies["bridgeService"];
-  webSentinelService?: SentinelApiDependencies["sentinelService"];
   webConversationImportService?: ConversationImportApiDependencies["conversationImportService"];
   webConversationArchiveReadService?: ConversationArchiveReadApiDependencies["conversationArchiveReadService"];
   webConversationPruningService?: ConversationPruningApiDependencies["conversationPruningService"];
@@ -110,36 +106,6 @@ export type AppDependencies = {
   webConversationFavoriteService?: ConversationFavoriteApiDependencies["conversationFavoriteService"];
   webConversationExclusionManagementService?: ConversationExclusionManagementApiDependencies["conversationExclusionManagementService"];
   webConversationImportHistoryService?: ConversationImportHistoryApiDependencies["conversationImportHistoryService"];
-  webNativeLiveCoordinator?: NativeLiveApiDependencies["coordinator"];
-  webNativeLiveTurnReader?: NativeLiveApiDependencies["turnReader"];
-  webNativeLiveCurrentPathReader?:
-    NativeLiveApiDependencies["currentPathReader"];
-  webNativeLiveConversationService?:
-    NativeLiveApiDependencies["conversationService"];
-  nativeLiveRuntimeEventService?:
-    NativeLiveRelayInternalDependencies["runtimeEventService"]
-    & NativeLiveApiDependencies["runtimeEventService"];
-  nativeLiveRuntimeInteractionService?:
-    NativeLiveRelayInternalDependencies["runtimeInteractionService"]
-    & NativeLiveApiDependencies["runtimeInteractionService"];
-  nativeLiveRuntimeControlService?:
-    NativeLiveRelayInternalDependencies["runtimeControlService"]
-    & NativeLiveApiDependencies["runtimeControlService"];
-  nativeLiveRelayService?:
-    NativeLiveRelayInternalDependencies["relayService"]
-    & NativeLiveApiDependencies["relayService"];
-  nativeLiveWorkWaitService?:
-    NativeLiveRelayInternalDependencies["workWaitService"];
-  nativeLiveSemanticService?:
-    NativeLiveRelayInternalDependencies["semanticService"];
-  nativeLiveBackgroundModelService?:
-    NativeLiveRelayInternalDependencies["backgroundModelService"];
-  nativeLiveBackgroundModelCoordinator?:
-    NativeLiveRelayInternalDependencies["backgroundModelCoordinator"];
-  nativeLiveBackgroundModelOpportunity?:
-    NativeLiveRelayInternalDependencies["backgroundModelOpportunity"];
-  nativeLiveCompanionBackgroundOpportunity?:
-    NativeLiveRelayInternalDependencies["companionBackgroundOpportunity"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -155,10 +121,10 @@ export function createApp(
   const config = requireOAuthConfig(env);
   if (
     dependencies.nativeLiveProduction
-    && !config.MCP_AUTH_TOKEN
+    && !config.NATIVE_LIVE_RELAY_AUTH_TOKEN
   ) {
     throw new Error(
-      "Native Live production requires internal MCP authentication.",
+      "Native Live production requires a dedicated relay credential.",
     );
   }
   const oauthAuthorizationServerConfig = getOAuthAuthorizationServerConfig(env);
@@ -367,20 +333,12 @@ export function createApp(
     const webExportService = dependencies.webExportService;
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
-    const webBridgeService = dependencies.webBridgeService;
-    const webSentinelService = dependencies.webSentinelService;
     const webConversationImportService = dependencies.webConversationImportService;
     const webConversationArchiveReadService = dependencies.webConversationArchiveReadService;
     const webConversationPruningService = dependencies.webConversationPruningService;
     const webConversationFavoriteService = dependencies.webConversationFavoriteService;
     const webConversationExclusionManagementService = dependencies.webConversationExclusionManagementService;
     const webConversationImportHistoryService = dependencies.webConversationImportHistoryService;
-    const webNativeLiveCoordinator = dependencies.webNativeLiveCoordinator;
-    const webNativeLiveTurnReader = dependencies.webNativeLiveTurnReader;
-    const webNativeLiveCurrentPathReader =
-      dependencies.webNativeLiveCurrentPathReader;
-    const webNativeLiveConversationService =
-      dependencies.webNativeLiveConversationService;
 
     if (
       !webDiaryService ||
@@ -437,8 +395,6 @@ export function createApp(
         export: { exportService: webExportService },
         import: { importService: webImportService },
         universe: { universeService: webUniverseService },
-        ...(webBridgeService ? { bridge: { bridgeService: webBridgeService } } : {}),
-        ...(webSentinelService ? { sentinel: { sentinelService: webSentinelService } } : {}),
         ...(webConversationFavoriteService ? { conversationFavorite: { conversationFavoriteService: webConversationFavoriteService } } : {}),
         ...(webConversationExclusionManagementService ? { conversationExclusionManagement: { conversationExclusionManagementService: webConversationExclusionManagementService } } : {}),
         ...(webConversationImportHistoryService ? { conversationImportHistory: { conversationImportHistoryService: webConversationImportHistoryService } } : {}),
@@ -451,47 +407,7 @@ export function createApp(
               nativeLive:
                 dependencies.nativeLiveProduction.web,
             }
-          : webNativeLiveCoordinator
-            && webNativeLiveTurnReader
-            && dependencies.nativeLiveRelayService
-            ? {
-                nativeLive: {
-                  coordinator: webNativeLiveCoordinator,
-                  relayService: dependencies.nativeLiveRelayService,
-                  turnReader: webNativeLiveTurnReader,
-                  ...(webNativeLiveCurrentPathReader
-                    ? {
-                        currentPathReader:
-                          webNativeLiveCurrentPathReader,
-                      }
-                    : {}),
-                  ...(webNativeLiveConversationService
-                    ? {
-                        conversationService:
-                          webNativeLiveConversationService,
-                      }
-                    : {}),
-                  ...(dependencies.nativeLiveRuntimeEventService
-                    ? {
-                        runtimeEventService:
-                          dependencies.nativeLiveRuntimeEventService,
-                      }
-                    : {}),
-                  ...(dependencies.nativeLiveRuntimeInteractionService
-                    ? {
-                        runtimeInteractionService:
-                          dependencies.nativeLiveRuntimeInteractionService,
-                      }
-                    : {}),
-                  ...(dependencies.nativeLiveRuntimeControlService
-                    ? {
-                        runtimeControlService:
-                          dependencies.nativeLiveRuntimeControlService,
-                      }
-                    : {}),
-                },
-              }
-            : {}),
+          : {}),
       }),
     );
   }
@@ -515,12 +431,12 @@ export function createApp(
     }),
   );
 
-  if (config.MCP_AUTH_TOKEN) {
+  if (config.NATIVE_LIVE_RELAY_AUTH_TOKEN) {
     if (dependencies.nativeLiveProduction) {
       app.use(
         "/internal/native-live-relay",
         createInternalAuthMiddleware(
-          config.MCP_AUTH_TOKEN,
+          config.NATIVE_LIVE_RELAY_AUTH_TOKEN,
           config.MCP_USER_ID,
         ),
         databaseReadinessMiddleware,
@@ -546,89 +462,10 @@ export function createApp(
           },
         }),
       );
-    } else if (dependencies.nativeLiveRelayService) {
-      app.use(
-        "/internal/native-live-relay",
-        createInternalAuthMiddleware(
-          config.MCP_AUTH_TOKEN,
-          config.MCP_USER_ID,
-        ),
-        databaseReadinessMiddleware,
-        createNativeLiveRelayInternalRouter({
-          relayService: dependencies.nativeLiveRelayService,
-          ...(dependencies.nativeLiveWorkWaitService
-            ? {
-                workWaitService:
-                  dependencies.nativeLiveWorkWaitService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveSemanticService
-            ? { semanticService: dependencies.nativeLiveSemanticService }
-            : {}),
-          ...(dependencies.nativeLiveBackgroundModelService
-            ? {
-                backgroundModelService:
-                  dependencies.nativeLiveBackgroundModelService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveBackgroundModelCoordinator
-            ? {
-                backgroundModelCoordinator:
-                  dependencies.nativeLiveBackgroundModelCoordinator,
-              }
-            : {}),
-          ...(dependencies.nativeLiveBackgroundModelOpportunity
-            ? {
-                backgroundModelOpportunity:
-                  dependencies.nativeLiveBackgroundModelOpportunity,
-              }
-            : {}),
-          ...(dependencies.nativeLiveCompanionBackgroundOpportunity
-            ? {
-                companionBackgroundOpportunity:
-                  dependencies.nativeLiveCompanionBackgroundOpportunity,
-                observeCompanionBackgroundOpportunity: (event) => {
-                  logger.info(
-                    "native_live_companion_background_opportunity",
-                    {
-                      outcome: event.outcome,
-                      reason: event.reason,
-                      maintenanceKindCount:
-                        event.maintenanceKindCount,
-                      effectDeliveryScheduled:
-                        event.effectDeliveryScheduled,
-                      proactivityScheduled:
-                        event.proactivityScheduled,
-                      topicResurfaceOffered:
-                        event.topicResurfaceOffered,
-                      failureCount: event.failureCount,
-                    },
-                  );
-                },
-              }
-            : {}),
-          ...(dependencies.nativeLiveRuntimeEventService
-            ? {
-                runtimeEventService:
-                  dependencies.nativeLiveRuntimeEventService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveRuntimeInteractionService
-            ? {
-                runtimeInteractionService:
-                  dependencies.nativeLiveRuntimeInteractionService,
-              }
-            : {}),
-          ...(dependencies.nativeLiveRuntimeControlService
-            ? {
-                runtimeControlService:
-                  dependencies.nativeLiveRuntimeControlService,
-              }
-            : {}),
-        }),
-      );
     }
+  }
 
+  if (config.MCP_AUTH_TOKEN) {
     app.use(
       "/internal/mcp",
       createInternalAuthMiddleware(

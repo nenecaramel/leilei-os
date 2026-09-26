@@ -1,27 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  LEGACY_BRIDGE_DISPATCH_TARGET,
   NativeLiveRelayContractError,
   parseNativeLiveRelayRequest,
-  resolveBridgeDispatchTarget,
 } from "../src/domains/bridge/native-live-relay-contract.js";
 
 const requestId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";
 const headId = "33333333-3333-4333-8333-333333333333";
 const userMessageId = "44444444-4444-4444-8444-444444444444";
-
-test("legacy missing dispatch target resolves only when explicitly allowed", () => {
-  assert.equal(
-    resolveBridgeDispatchTarget(undefined, { allowLegacyMissing: true }),
-    LEGACY_BRIDGE_DISPATCH_TARGET,
-  );
-  assert.throws(
-    () => resolveBridgeDispatchTarget(undefined),
-    NativeLiveRelayContractError,
-  );
-});
 
 test("native live send requires explicit Claude target and optimistic head identity", () => {
   assert.deepEqual(
@@ -130,11 +117,11 @@ test("operation shapes are strict so send, retry, and edit cannot blur together"
   );
 });
 
-test("native live requests reject legacy host targeting and malformed identifiers", () => {
+test("native live requests reject unsupported targets and malformed identifiers", () => {
   assert.throws(
     () =>
       parseNativeLiveRelayRequest({
-        dispatch_target: "chatgpt_host",
+        dispatch_target: "unsupported_host",
         request_id: requestId,
         operation: "send",
         conversation_id: conversationId,

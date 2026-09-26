@@ -40,9 +40,6 @@ test("Proactivity producer reuses the shared orchestrator and schedules only eli
   const producer = new ProactivityWakeOpportunityProducer(
     orchestrator,
     {
-      async listCandidateUserIds() {
-        return ["u1", "u2"];
-      },
       async buildOpportunity(input) {
         calls.push("discover:" + input.userId);
         if (input.userId === "u2") return null;
@@ -90,7 +87,8 @@ test("Proactivity producer reuses the shared orchestrator and schedules only eli
     () => "2026-09-23T09:40:00.000Z",
   );
 
-  assert.equal(await producer.schedulePulse(), 1);
+  assert.equal(await producer.scheduleUser("u1"), 1);
+  assert.equal(await producer.scheduleUser("u2"), 0);
   await orchestrator.drain();
 
   assert.deepEqual(calls, [

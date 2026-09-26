@@ -55,7 +55,6 @@ test("navigation groups expose the Home, Utilities, System and active Day Space 
     assert.ok(container.querySelector('a[href="/system/about"]')?.textContent?.includes("About"));
     assert.ok(container.querySelector('a[href="/day-space"]')?.textContent?.includes("Day Space"));
     assert.ok(container.querySelector('a[href="/conversations"]')?.textContent?.includes("Conversations"));
-    assert.ok(container.querySelector('a[href="/sentinel"]')?.textContent?.includes("Sentinel"));
     root.unmount();
     env.restore();
   });

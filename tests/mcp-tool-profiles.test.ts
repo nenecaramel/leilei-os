@@ -20,14 +20,10 @@ test("public MCP defaults expose core + device + UI but hide maintenance/runtime
     mcpToolSurfaceEnabled(exposure, "conversation_recovery"),
     false,
   );
-  assert.equal(
-    mcpToolSurfaceEnabled(exposure, "runtime_internal"),
-    false,
-  );
   assert.equal(mcpToolSurfaceEnabled(exposure, "ui"), true);
 });
 
-test("internal MCP defaults preserve full surface for dedicated maintenance/runtime hosts", () => {
+test("internal MCP defaults preserve the full supported maintenance surface", () => {
   const exposure = resolveMcpToolExposure(
     DEFAULT_INTERNAL_MCP_TOOL_PROFILES,
   );
@@ -38,7 +34,6 @@ test("internal MCP defaults preserve full surface for dedicated maintenance/runt
     "conversation_recovery",
     "device",
     "ui",
-    "runtime_internal",
   ] as const) {
     assert.equal(mcpToolSurfaceEnabled(exposure, surface), true);
   }
@@ -48,7 +43,6 @@ test("notion_advanced profile includes the typed Notion surface plus advanced to
   const exposure = resolveMcpToolExposure(["notion_advanced"]);
   assert.equal(mcpToolSurfaceEnabled(exposure, "notion"), true);
   assert.equal(mcpToolSurfaceEnabled(exposure, "notion_advanced"), true);
-  assert.equal(mcpToolSurfaceEnabled(exposure, "runtime_internal"), false);
 });
 
 test("MCP tool profile parser supports explicit composable surfaces and rejects unknown profiles", () => {

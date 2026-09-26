@@ -38,7 +38,7 @@ The Docker build must copy all dependency metadata before `pnpm install`:
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 ```
 
-The build stage also copies `scripts/build-bridge-browser.mjs` before `pnpm build`; omitting it breaks the Message Bridge browser bundle generation.
+The build stage must include `scripts/build-mcp-browser.mjs` before `pnpm build`; that unified step produces both Message Bridge and Thinking Block browser bundles.
 
 If local build succeeds but Docker/Railway fails, compare the Docker dependency/build inputs with the root scripts before changing application code.
 
@@ -86,7 +86,7 @@ The checked-in migration source of truth is:
 drizzle/meta/_journal.json
 ```
 
-Do not copy a migration-head value from an old plan, milestone, or runbook. Current authoritative docs should match the final journal entry. At the time of this cleanup, that entry is `0044_conversation_import_reapply`.
+Do not copy a migration-head value from an old plan, milestone, or runbook. Read the final journal entry directly; current documentation intentionally does not duplicate the head value.
 
 ## Railway deployment does not start immediately
 

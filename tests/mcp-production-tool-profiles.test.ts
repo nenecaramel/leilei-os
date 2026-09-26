@@ -69,7 +69,6 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
     "read_conversation",
     "get_health",
     "get_current_time",
-    "get_weather_context",
     "list_universe_galaxies",
     "render_note_card",
   ]) {
@@ -84,9 +83,6 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
     "sentinel_get_state",
     "sentinel_claim_current_wake",
     "complete_sentinel_wake",
-    "bridge_listener_open",
-    "bridge_event_claim",
-    "bridge_event_complete",
     "list_conversation_exclusions",
     "inspect_conversation_restore_candidates",
     "inspect_conversation_restore_path",
@@ -115,7 +111,7 @@ test("production public MCP defaults expose note card UI but hide runtime, recov
   }
 });
 
-test("production internal MCP defaults preserve current maintenance/runtime inventory", async () => {
+test("production internal MCP defaults preserve supported maintenance inventory", async () => {
   const process = runtime();
   const factory = process.appDependencies.createMcpSessionServer;
   assert.ok(factory);
@@ -133,10 +129,6 @@ test("production internal MCP defaults preserve current maintenance/runtime inve
     "write_notion_page",
     "get_notion_connection",
     "list_conversation_exclusions",
-    "sentinel_get_state",
-    "bridge_listener_open",
-    "bridge_event_claim",
-    "render_note_card",
     "create_diary",
     "replace_todo_paper",
   ]) {
@@ -144,6 +136,19 @@ test("production internal MCP defaults preserve current maintenance/runtime inve
       names.includes(required),
       true,
       `internal full profile must expose ${required}`,
+    );
+  }
+  assert.equal(names.includes("render_note_card"), false);
+
+  for (const retired of [
+    "sentinel_get_state",
+    "sentinel_claim_current_wake",
+    "complete_sentinel_wake",
+  ]) {
+    assert.equal(
+      names.includes(retired),
+      false,
+      `retired Sentinel tool must stay absent: ${retired}`,
     );
   }
 });
@@ -182,7 +187,6 @@ test("production public Notion profile exposes typed facade but hides raw advanc
     "write_notion_page",
     "write_notion_comment",
     "sentinel_get_state",
-    "bridge_listener_open",
   ]) {
     assert.equal(names.includes(hidden), false, `typed Notion profile must hide ${hidden}`);
   }
@@ -216,5 +220,4 @@ test("production public notion_advanced profile includes typed and explicit adva
     assert.equal(names.includes(required), true, `advanced Notion profile must expose ${required}`);
   }
   assert.equal(names.includes("sentinel_get_state"), false);
-  assert.equal(names.includes("bridge_listener_open"), false);
 });

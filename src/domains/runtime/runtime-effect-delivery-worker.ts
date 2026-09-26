@@ -1,5 +1,3 @@
-import { sql } from "drizzle-orm";
-import type { createDatabase } from "../../database/client.js";
 import type {
   BackgroundLoopOrchestrator,
 } from "./background-loop-orchestrator.js";
@@ -15,13 +13,6 @@ import type {
   RuntimeMessageEffectDeliveryResult,
 } from "./runtime-message-effect-delivery-adapter.js";
 
-type Database = ReturnType<typeof createDatabase>["db"];
-
-export interface RuntimeEffectDeliveryUserSource {
-  listCandidateUserIds(input: {
-    limit: number;
-  }): Promise<string[]>;
-}
 
 export type RuntimeEffectDeliveryWorkerObserverEvent =
   | { name: "runtime_effect_delivery_observed" }
@@ -47,43 +38,6 @@ export type RuntimeEffectDeliveryWorkerObserverEvent =
         | "reconciliation_failure";
     };
 
-
-export class DrizzleRuntimeEffectDeliveryUserSource
-implements RuntimeEffectDeliveryUserSource {
-  constructor(private readonly db: Database) {}
-
-  async listCandidateUserIds(input: {
-    limit: number;
-  }): Promise<string[]> {
-    if (
-      !Number.isInteger(input.limit)
-      || input.limit <= 0
-      || input.limit > 1_000
-    ) {
-      throw new Error(
-        "Runtime effect delivery user limit must be 1-1000.",
-      );
-    }
-
-    const rows = await this.db.execute<{ user_id: string }>(sql`
-      SELECT user_id
-      FROM runtime_effects
-      WHERE (
-        status IN (
-          'pending',
-          'reserved',
-          'dispatching',
-          'unknown'
-        )
-        OR (status = 'failed' AND retryable = true)
-      )
-      GROUP BY user_id
-      ORDER BY min(created_at) ASC, user_id ASC
-      LIMIT ${input.limit}
-    `);
-    return rows.map((row) => row.user_id);
-  }
-}
 
 export class RuntimeEffectDeliveryWorker {
   constructor(
@@ -281,36 +235,5 @@ export class RuntimeEffectDeliveryWorker {
     } catch {
       // Observability must never change delivery correctness.
     }
-  }
-}
-
-export class RuntimeEffectDeliveryRecovery {
-  constructor(
-    private readonly source: RuntimeEffectDeliveryUserSource,
-    private readonly worker: Pick<
-      RuntimeEffectDeliveryWorker,
-      "scheduleUser"
-    >,
-    private readonly userLimit: number,
-  ) {
-    if (
-      !Number.isInteger(userLimit)
-      || userLimit <= 0
-      || userLimit > 1_000
-    ) {
-      throw new Error(
-        "Runtime effect recovery userLimit must be 1-1000.",
-      );
-    }
-  }
-
-  async schedulePulse(): Promise<number> {
-    const userIds = await this.source.listCandidateUserIds({
-      limit: this.userLimit,
-    });
-    for (const userId of userIds) {
-      this.worker.scheduleUser(userId);
-    }
-    return userIds.length;
   }
 }

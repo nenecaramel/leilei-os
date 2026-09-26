@@ -27,13 +27,7 @@ node dist/database/migrate.js
 
 The pre-deploy runner performs database-readiness checks and applies pending checked-in migrations transactionally through the LeileiOS migration ledger. Application startup itself does not run migrations.
 
-The current checked-in migration head is:
-
-```text
-0044_conversation_import_reapply
-```
-
-The authoritative checked-in record is `drizzle/meta/_journal.json`.
+The authoritative checked-in migration record is `drizzle/meta/_journal.json`. Read its final entry when verifying the current migration head instead of duplicating that value in release documentation.
 
 A successful deployment must report a healthy service before production smoke checks continue.
 
@@ -45,7 +39,7 @@ The current Message Bridge MCP Apps resource URI is:
 ui://leileios/message-bridge/v5
 ```
 
-The resource uses a committed/generated browser bundle built from `src/mcp/tools/bridge-listener/browser-runtime.ts` by `scripts/build-bridge-browser.mjs`.
+The resource uses a committed/generated browser bundle built from `src/mcp/tools/bridge-listener/browser-runtime.ts` by the unified `scripts/build-mcp-browser.mjs` step.
 
 The Bridge listener remains manually started from its UI. Deploying a new server build must not be interpreted as automatically activating the listener in a host session.
 
@@ -67,7 +61,7 @@ ChatGPT's `openai/outputTemplate` compatibility pointer uses:
 ui://widget/leileios-thinking-block-chatgpt-v3.html
 ```
 
-Both identifiers serve the same current HTML and generated browser runtime. The older v2 and v1 identifiers remain legacy aliases only; they do not restore a previous browser client. The committed/generated bundle is built from `src/mcp/tools/render-thinking-block/browser-runtime.ts` by `scripts/build-thinking-block-browser.mjs`.
+Both identifiers serve the same current HTML and generated browser runtime. The older v2 and v1 identifiers remain legacy aliases only; they do not restore a previous browser client. The committed/generated bundle is built from `src/mcp/tools/render-thinking-block/browser-runtime.ts` by the unified `scripts/build-mcp-browser.mjs` step.
 
 Material standard MCP Apps UI/runtime changes should advance the canonical resource URI rather than relying on hosts to invalidate an existing resource. Any ChatGPT compatibility pointer change must be treated separately and verified on ChatGPT Web/Mobile without regressing other MCP Apps hosts.
 

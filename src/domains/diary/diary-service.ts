@@ -183,6 +183,7 @@ export type DiaryDomainErrorCode =
   | "DIARY_NOT_FOUND"
   | "INVALID_DIARY_ID"
   | "INVALID_DIARY_LIMIT"
+  | "INVALID_DIARY_OFFSET"
   | "INVALID_DIARY_QUERY"
   | "INVALID_TITLE"
   | "INVALID_CONTENT"
@@ -265,6 +266,7 @@ export class DiaryService {
   ): Promise<ListDiariesResult> {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
+    const offset = this.resolveOffset(input.offset);
     const query = this.normalizeListQuery(input.query ?? {});
 
     const [diaries, count] = await Promise.all([
@@ -272,7 +274,7 @@ export class DiaryService {
         userId,
         limit,
         query,
-        input.offset,
+        offset,
       ),
       this.repository.countDiaryEntries(
         userId,
@@ -295,9 +297,10 @@ export class DiaryService {
   ): Promise<SearchDiaryDiscoveryResult> {
     const userId = await this.requireActiveUser(input.userId);
     const limit = this.resolveLimit(input.limit);
+    const offset = this.resolveOffset(input.offset);
     const query = this.normalizeListQuery(input.query ?? {});
     const [diaries, count] = await Promise.all([
-      this.repository.findDiaryEntriesCompact(userId, limit, query, input.offset),
+      this.repository.findDiaryEntriesCompact(userId, limit, query, offset),
       this.repository.countDiaryEntries(userId, query),
     ]);
     return {
@@ -1039,6 +1042,21 @@ export class DiaryService {
     }
 
     return normalized;
+  }
+
+  private resolveOffset(offset?: number): number {
+    if (offset === undefined) {
+      return 0;
+    }
+
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new DiaryDomainError(
+        "INVALID_DIARY_OFFSET",
+        "Diary offset must be a non-negative integer.",
+      );
+    }
+
+    return offset;
   }
 
   private resolveLimit(limit?: number): number {

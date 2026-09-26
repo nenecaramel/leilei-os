@@ -53,7 +53,7 @@ export interface DistillationRuntimePort {
 }
 
 export type DistillationConfig = {
-  surfaceLimit: number;
+  settlementLagMessages: number;
   minSourceMessages?: number;
   maxMemoriesPerRun: number;
   ruleVersion: string;
@@ -84,7 +84,7 @@ export type DistillationRunResult =
 export class DistillationPlanningError extends Error {
   constructor(
     readonly code:
-      | "INVALID_SURFACE_LIMIT"
+      | "INVALID_SETTLEMENT_LAG"
       | "INVALID_BATCH_SIZE"
       | "INVALID_CANONICAL_TURN"
       | "UNSETTLED_SOURCE",
@@ -105,20 +105,20 @@ function messageText(message: NativeLiveMessage): string {
 
 /**
  * Selects only complete, already-continued user/assistant turns that have
- * fallen outside the retained Surface window on the currently selected path.
+ * fallen outside the retained settlement lag on the currently selected path.
  * Sibling branches are never candidates because canonicalPathToHead excludes
  * them before planning starts.
  */
 export function planDistillationWindow(input: {
   conversation: NativeLiveConversation;
-  surfaceLimit: number;
+  settlementLagMessages: number;
   minSourceMessages?: number;
   previousWatermarkMessageId: string | null;
 }): DistillationWindow | null {
-  if (!Number.isInteger(input.surfaceLimit) || input.surfaceLimit < 1) {
+  if (!Number.isInteger(input.settlementLagMessages) || input.settlementLagMessages < 1) {
     throw new DistillationPlanningError(
-      "INVALID_SURFACE_LIMIT",
-      "Distillation surfaceLimit must be a positive integer.",
+      "INVALID_SETTLEMENT_LAG",
+      "Distillation settlementLagMessages must be a positive integer.",
     );
   }
   const minSourceMessages =
@@ -135,7 +135,7 @@ export function planDistillationWindow(input: {
   }
 
   const path = canonicalPathToHead(input.conversation);
-  if (path.length <= input.surfaceLimit) return null;
+  if (path.length <= input.settlementLagMessages) return null;
 
   const previousIndex = input.previousWatermarkMessageId
     ? path.findIndex((message) => message.id === input.previousWatermarkMessageId)
@@ -144,11 +144,11 @@ export function planDistillationWindow(input: {
     input.previousWatermarkMessageId && previousIndex < 0,
   );
   const startIndex = previousIndex >= 0 ? previousIndex + 1 : 0;
-  const outsideSurfaceEndExclusive = path.length - input.surfaceLimit;
+  const settledEndExclusive = path.length - input.settlementLagMessages;
 
   let endIndex = -1;
   for (
-    let index = outsideSurfaceEndExclusive - 1;
+    let index = settledEndExclusive - 1;
     index >= startIndex;
     index -= 1
   ) {
@@ -358,7 +358,7 @@ export class DistillationService {
     });
     const window = planDistillationWindow({
       conversation: input.conversation,
-      surfaceLimit: this.config.surfaceLimit,
+      settlementLagMessages: this.config.settlementLagMessages,
       minSourceMessages: this.config.minSourceMessages,
       previousWatermarkMessageId,
     });

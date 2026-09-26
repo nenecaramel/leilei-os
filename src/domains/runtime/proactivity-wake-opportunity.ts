@@ -73,7 +73,6 @@ export type ProactivityWakeOpportunityInput = {
 
 export interface ProactivityWakeOpportunitySource
 extends ProactivityWakeGateRevalidator {
-  listCandidateUserIds(): Promise<string[]>;
   buildOpportunity(input: {
     userId: string;
     subjectId: string;
@@ -87,23 +86,6 @@ implements ProactivityWakeOpportunitySource {
     private readonly db: Database,
     private readonly config: ProactivityWakeOpportunityConfig,
   ) {}
-
-  async listCandidateUserIds(): Promise<string[]> {
-    const rows = await this.db.execute<{ user_id: string }>(sql`
-      SELECT c.user_id
-      FROM conversations AS c
-      JOIN users AS u
-        ON u.id = c.user_id
-       AND u.status = 'active'
-      WHERE c.origin = 'native_live'
-        AND c.lifecycle_status = 'active'
-        AND c.current_head_message_id IS NOT NULL
-      GROUP BY c.user_id
-      ORDER BY max(c.updated_at) DESC, c.user_id ASC
-      LIMIT ${this.config.userLimit}
-    `);
-    return rows.map((row) => row.user_id);
-  }
 
   async buildOpportunity(input: {
     userId: string;
@@ -496,7 +478,7 @@ export class ProactivityWakeOpportunityProducer {
     >,
     private readonly source: Pick<
       ProactivityWakeOpportunitySource,
-      "listCandidateUserIds" | "buildOpportunity"
+      "buildOpportunity"
     >,
     private readonly coordinator: Pick<
       ProactivityWakeCrossDeviceCoordinator,
@@ -517,19 +499,6 @@ export class ProactivityWakeOpportunityProducer {
         "Proactivity wake producer requires a proactivity_wake plan.",
       );
     }
-  }
-
-  async schedulePulse(): Promise<number> {
-    const users = await this.source.listCandidateUserIds();
-    let scheduled = 0;
-    for (const userId of users) {
-      try {
-        scheduled += await this.scheduleUser(userId);
-      } catch {
-        // One user's wake opportunity must never block later users.
-      }
-    }
-    return scheduled;
   }
 
   async scheduleUser(userId: string): Promise<0 | 1> {

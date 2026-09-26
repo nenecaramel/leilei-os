@@ -1,67 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  getBackgroundMaintenancePulseConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
 } from "../src/config/env.js";
 
-test("Topic resurface opportunity config is disabled unless both explicit knobs are set", () => {
+test("Topic resurface config is explicitly enabled while Companion owns cadence", () => {
   assert.equal(
     getTopicResurfaceOpportunityConfig({
-      NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS: undefined,
+      NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: undefined,
       NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: undefined,
     }),
     undefined,
   );
 
-  assert.throws(
-    () => getTopicResurfaceOpportunityConfig({
-      NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS: 60,
-      NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: undefined,
-    }),
-    /must be configured together/,
-  );
-});
-
-test("Topic resurface opportunity config converts explicit seconds to milliseconds", () => {
   assert.deepEqual(
     getTopicResurfaceOpportunityConfig({
-      NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS: 90,
+      NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: true,
+      NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: undefined,
+    }),
+    { candidateLimit: 5 },
+  );
+
+  assert.deepEqual(
+    getTopicResurfaceOpportunityConfig({
+      NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: true,
       NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: 7,
     }),
-    {
-      minIntervalMs: 90_000,
-      candidateLimit: 7,
-    },
+    { candidateLimit: 7 },
+  );
+
+  assert.throws(
+    () => getTopicResurfaceOpportunityConfig({
+      NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: undefined,
+      NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: 7,
+    }),
+    /requires NATIVE_LIVE_TOPIC_RESURFACE_ENABLED=true/,
   );
 });
 
-
-test("background maintenance pulse uses one coarse default cadence with explicit overrides", () => {
-  assert.deepEqual(
-    getBackgroundMaintenancePulseConfig({
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS: undefined,
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT: undefined,
-    }),
-    {
-      intervalMs: 3_600_000,
-      userLimit: 64,
-    },
-  );
-
-  assert.deepEqual(
-    getBackgroundMaintenancePulseConfig({
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS: 900,
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT: 12,
-    }),
-    {
-      intervalMs: 900_000,
-      userLimit: 12,
-    },
-  );
-});
 
 test("Memory Decay stays disabled unless every semantic policy knob is explicit", () => {
   assert.equal(
@@ -119,7 +97,6 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: undefined,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: undefined,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: undefined,
     }),
     undefined,
   );
@@ -129,7 +106,6 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: undefined,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: undefined,
     }),
     /PROACTIVITY_ENABLED=true/,
   );
@@ -139,7 +115,6 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: true,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: 16,
     }),
     /are required when Proactivity is enabled/,
   );
@@ -149,12 +124,10 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: true,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: 21_600,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: 16,
     }),
     {
       minIdleMs: 7_200_000,
       cooldownMs: 21_600_000,
-      userLimit: 16,
     },
   );
 });

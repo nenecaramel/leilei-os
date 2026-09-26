@@ -8,7 +8,8 @@ Leilei OS is an authenticated personal workspace composed of:
 - a PostgreSQL-backed Express API with domain services and repositories;
 - an OAuth-protected Streamable HTTP MCP server;
 - MCP Apps UI resources for interactive model-facing surfaces; and
-- a PWA runtime for the Web application.
+- a PWA runtime for the Web application; and
+- a Native Live / Runtime backend where Railway owns durable authority and a Mac Companion process performs local Claude execution and bounded background work.
 
 ChatGPT is one MCP client and conversation surface. Leilei OS does not call the OpenAI API. Conversation Archive persists only user-initiated ChatGPT or Claude exports; it does not automatically capture host conversations.
 
@@ -38,7 +39,7 @@ The Web API and MCP tools share domain services and repositories. Tool handlers 
 - **Web is the primary visual product surface.** MCP Apps are optional host-specific enhancements, not a default product layer. Add one only when a concrete host-embedded interaction is materially better than ordinary MCP tools plus Web.
 - **Dedicated discovery and detail stay domain-specific.** When the domain is known, use that domain's browse/search tool and then its exact detail pointer. A domain may combine browse and search in one tool when that matches its semantics; tools are not split merely for naming symmetry.
 - **Global Search is cross-domain discovery.** Use it when the target domain is unknown or the query genuinely spans domains; it must return compact records and exact detail pointers rather than absorb domain-specific detail or mutation behavior.
-- **Modules keep their own semantics.** Memory, Diary, Task, Todo, Universe and Shared Paper do not inherit another module's revision, lifecycle, concurrency or UI model just to look architecturally uniform.
+- **Modules keep their own semantics.** Diary, Todo, Universe, Conversation Archive, Native Live, and Runtime/Mind do not inherit another module's revision, lifecycle, concurrency, or UI model just to look architecturally uniform.
 - **Operational probes do not consume model-visible inventory when an existing transport-level health/handshake check is sufficient.** Keep the public tool surface focused on capabilities that help accomplish user work.
 - Product order, abstractions and UI shape are chosen from current value and dependencies, not from a requirement to make every module structurally identical.
 
@@ -52,7 +53,7 @@ The adapter is configuration-dependent; repository support for it does not by it
 
 ## Web application
 
-The Web application contains authenticated Dashboard and Day Space views plus Memory, Diary, Task, Todo, Shared Paper, Conversation Archive, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
+The Web application contains authenticated Dashboard and Day Space views plus Diary, Todo, Conversation Archive, Universe, Global Search, and System routes. Durable data is read and written through `/api/v1`; the server remains authoritative.
 
 The PWA build emits the manifest and service worker from `web/`. Vercel serves the built SPA from `web/dist` with history fallback. The production branch is `main`.
 
@@ -70,7 +71,7 @@ MCP schemas are Zod-validated. Safe error mappings distinguish invalid input, mi
 
 The standard MCP Apps resource is `ui://widget/leileios-thinking-block-v3.html`. ChatGPT's `openai/outputTemplate` compatibility path points to `ui://widget/leileios-thinking-block-chatgpt-v3.html`. Both identifiers resolve to the same current HTML and browser runtime; the older v2 and v1 identifiers remain only as legacy host-compatibility aliases.
 
-The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` lifecycle for standard MCP Apps hosts while retaining the OpenAI host globals path as a compatibility fallback. The generated Thinking Block browser bundle is produced by `scripts/build-thinking-block-browser.mjs` during the root build.
+The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` lifecycle for standard MCP Apps hosts while retaining the OpenAI host globals path as a compatibility fallback. The generated Thinking Block browser bundle is produced by the unified `scripts/build-mcp-browser.mjs` step during the root build.
 
 ### Message Bridge MCP App
 
@@ -80,13 +81,13 @@ The Message Bridge resource is currently registered as:
 ui://leileios/message-bridge/v5
 ```
 
-The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` runtime. `pnpm build` runs `scripts/build-bridge-browser.mjs` after TypeScript compilation to generate the browser bundle consumed by the resource.
+The browser client uses the official `@modelcontextprotocol/ext-apps` `App` and `PostMessageTransport` runtime. `pnpm build` runs the unified `scripts/build-mcp-browser.mjs` step after TypeScript compilation to generate the browser bundle consumed by the resource.
 
 Host initialization can run when the resource iframe loads, but listener activation is deliberately manual. The Bridge UI calls `bridge_listener_start` only after the user activates **Start**; it does not automatically begin listener polling/delivery.
 
 The resource URI is also a cache/version boundary. Material UI/runtime changes should advance the URI rather than assuming all MCP Apps hosts will invalidate cached resource contents.
 
-Bridge queue, reservation, dispatch, delivery, and Sentinel wake semantics remain server/domain responsibilities; the MCP Apps client does not redefine them.
+Bridge queue, reservation, dispatch, and delivery semantics remain server/domain responsibilities; the MCP Apps client does not redefine them.
 
 ## MCP session lifecycle
 
@@ -94,15 +95,9 @@ Streamable HTTP sessions are process-local and namespaced: `/mcp` uses the publi
 
 ## Database and migrations
 
-PostgreSQL holds durable user, content, Todo, Universe, audit, integration, Sentinel, and related application state.
+PostgreSQL holds durable user, Diary, Todo, Universe, Conversation Archive, Native Live/Runtime, audit, integration, and related application state. Historical migrations for retired product surfaces remain in the migration chain because migration history is append-only.
 
-The checked-in Drizzle migration chain currently ends at:
-
-```text
-0044_conversation_import_reapply
-```
-
-The canonical checked-in source for that value is `drizzle/meta/_journal.json`.
+The canonical checked-in migration source is `drizzle/meta/_journal.json`; read its final entry when the current migration head is needed instead of copying a head value into this document.
 
 Railway runs `node dist/database/migrate.js` as the configured pre-deploy command. The runner performs readiness checks, uses the LeileiOS-owned `public.leilei_schema_migrations` ledger, cross-checks the legacy Drizzle ledger when bootstrapping, and applies pending checked-in migrations transactionally.
 
@@ -111,7 +106,7 @@ Normal application startup does not run migrations. Manual local or disposable-d
 ## Deployment topology
 
 - GitHub default branch and release trunk: `main`.
-- Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and includes both MCP Apps browser build steps (Message Bridge and Thinking Block).
+- Railway Production source: `main`; the root `Dockerfile` builds the API/MCP service and the unified MCP Apps browser bundle step produces both Message Bridge and Thinking Block runtimes.
 - `railway.json` configures the compiled migration runner as pre-deploy work.
 - Vercel Production Branch: `main`; Vercel builds `web/` and serves the SPA.
 - Production credentials and database URLs stay in platform secret stores.

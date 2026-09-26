@@ -7,8 +7,8 @@ import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
 import type {
-  NativeLiveBackgroundOpportunity,
-} from "../runtime/native-live-background-opportunity.js";
+  NativeLiveDistillationTrigger,
+} from "../runtime/distillation-trigger-contract.js";
 import type {
   NativeLiveBackendTurnPort,
   NativeLivePostFinalizeRunner,
@@ -18,8 +18,6 @@ type Database = ReturnType<typeof createDatabase>["db"];
 
 export const NATIVE_LIVE_MIND_FOLLOW_UP_LEASE_MS = 60_000;
 export const NATIVE_LIVE_MIND_FOLLOW_UP_RETRY_MS = 5_000;
-export const NATIVE_LIVE_MIND_FOLLOW_UP_INTERVAL_MS = 2_000;
-
 export type NativeLiveMindFollowUpJob = {
   prepareId: string;
   userId: string;
@@ -180,7 +178,7 @@ implements NativeLivePostFinalizeRunner {
     private readonly mind: NativeLiveBackendMindRuntime,
     workerId: string = randomUUID(),
     private readonly backgroundOpportunity:
-      NativeLiveBackgroundOpportunity | null = null,
+      Pick<NativeLiveDistillationTrigger, "schedule"> | null = null,
   ) {
     this.workerId = workerId;
   }
@@ -262,44 +260,22 @@ implements NativeLivePostFinalizeRunner {
   }
 }
 
-export type NativeLiveMindFollowUpSchedulerOptions = {
-  service: Pick<NativeLiveMindFollowUpService, "processNext">;
-  intervalMs?: number;
-  batchLimit?: number;
-  schedule?: (
-    callback: () => void,
-    milliseconds: number,
-  ) => { unref?: () => void };
-  clearSchedule?: (handle: unknown) => void;
-};
-
-export type NativeLiveMindFollowUpScheduler = {
-  start(): void;
-  stopScheduling(): void;
+export type NativeLiveMindFollowUpRecoveryRunner = {
+  stop(): void;
   runNow(): Promise<number>;
   drain(): Promise<void>;
 };
 
-export function createNativeLiveMindFollowUpScheduler(
-  options: NativeLiveMindFollowUpSchedulerOptions,
-): NativeLiveMindFollowUpScheduler {
-  const intervalMs =
-    options.intervalMs ?? NATIVE_LIVE_MIND_FOLLOW_UP_INTERVAL_MS;
-  const batchLimit = options.batchLimit ?? 25;
-  const schedule =
-    options.schedule
-    ?? ((callback, milliseconds) => setInterval(callback, milliseconds));
-  const clearSchedule =
-    options.clearSchedule
-    ?? ((handle: unknown) =>
-      clearInterval(handle as ReturnType<typeof setInterval>));
-
-  let timer: { unref?: () => void } | null = null;
+export function createNativeLiveMindFollowUpRecoveryRunner(input: {
+  service: Pick<NativeLiveMindFollowUpService, "processNext">;
+  batchLimit?: number;
+}): NativeLiveMindFollowUpRecoveryRunner {
+  const batchLimit = input.batchLimit ?? 25;
   let inFlight: Promise<number> | null = null;
-  let stopping = false;
+  let stopped = false;
 
   const runNow = (): Promise<number> => {
-    if (stopping) return Promise.resolve(0);
+    if (stopped) return Promise.resolve(0);
     if (inFlight) return inFlight;
 
     const run = (async () => {
@@ -308,12 +284,12 @@ export function createNativeLiveMindFollowUpScheduler(
       while (attempted < batchLimit) {
         attempted += 1;
         try {
-          const outcome = await options.service.processNext();
+          const outcome = await input.service.processNext();
           if (outcome === "idle") break;
           processed += 1;
         } catch {
-          // Failed jobs are released with a retry delay. Bound failed attempts
-          // too, so a repository outage cannot create a hot in-process loop.
+          // Failed jobs are durably released with a retry delay. Startup
+          // recovery is bounded and never installs a periodic cloud poller.
         }
       }
       return processed;
@@ -327,26 +303,10 @@ export function createNativeLiveMindFollowUpScheduler(
   };
 
   return {
-    start(): void {
-      if (stopping || timer) return;
-      timer = schedule(() => {
-        void runNow();
-      }, intervalMs);
-      timer.unref?.();
-      void runNow();
+    stop(): void {
+      stopped = true;
     },
-
-    stopScheduling(): void {
-      if (stopping) return;
-      stopping = true;
-      if (timer) {
-        clearSchedule(timer);
-        timer = null;
-      }
-    },
-
     runNow,
-
     async drain(): Promise<void> {
       const current = inFlight;
       if (current) await current.catch(() => undefined);

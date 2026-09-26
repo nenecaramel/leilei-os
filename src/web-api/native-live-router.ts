@@ -28,6 +28,9 @@ import {
   NativeLiveRuntimeControlError,
   type NativeLiveRuntimeControlService,
 } from "../domains/bridge/native-live-runtime-control.js";
+import type {
+  NativeLiveTurnWaitService,
+} from "../domains/bridge/native-live-turn-wait.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: {
@@ -43,10 +46,11 @@ export type NativeLiveApiDependencies = {
       prepareId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
   };
+  turnWaitService?: Pick<NativeLiveTurnWaitService, "wait">;
   currentPathReader?: NativeLiveCurrentPathReader;
   conversationService?: Pick<
     NativeLiveConversationService,
-    "listConversations" | "createConversation" | "renameConversation" | "deleteConversation"
+    "listConversations" | "listConversationPage" | "createConversation" | "renameConversation" | "deleteConversation"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
@@ -68,6 +72,12 @@ export function createNativeLiveApiRouter(
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
+  if (dependencies.turnWaitService) {
+    router.post(
+      "/turns/:prepareId/wait",
+      waitNativeLiveTurnHandler(dependencies),
+    );
+  }
   if (dependencies.runtimeEventService) {
     router.get(
       "/turns/:prepareId/events",
@@ -140,6 +150,18 @@ export function listNativeLiveConversationsHandler(
       return;
     }
 
+    const cursor = parseOptionalCursorQuery(request.query.cursor);
+    if (cursor === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_CURSOR",
+          message: "Conversation list cursor must be a single non-empty string.",
+        },
+      });
+      return;
+    }
+
     const service = dependencies.conversationService;
     if (!service) {
       response.status(503).json({
@@ -153,15 +175,29 @@ export function listNativeLiveConversationsHandler(
     }
 
     try {
-      const conversations = await service.listConversations({
+      const page = await service.listConversationPage({
         userId: request.webUserId,
         limit,
+        ...(cursor ? { cursor } : {}),
       });
       response.json({
         success: true,
-        data: { conversations },
+        data: {
+          conversations: page.conversations,
+          nextCursor: page.nextCursor,
+        },
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof RangeError) {
+        response.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_CURSOR",
+            message: error.message,
+          },
+        });
+        return;
+      }
       response.status(503).json({
         success: false,
         error: {
@@ -894,30 +930,7 @@ export function readNativeLiveTurnHandler(
 
       response.json({
         success: true,
-        data: {
-          prepareId: turn.prepareId,
-          requestId: turn.requestId,
-          conversationId: turn.conversationId,
-          operation: turn.operation,
-          userMessageId: turn.canonicalUserMessageId,
-          executionSelection: turn.executionSelection,
-          canonicalStatus: turn.canonicalStatus,
-          dispatchStatus: turn.dispatchStatus,
-          semanticStatus: turn.semanticStatus,
-          semanticFallbackCode: turn.semanticFallbackCode,
-          failureCode: turn.failureCode,
-          runtimeMetadata: turn.runtimeMetadata,
-          assistantMessage: turn.assistantMessage
-            ? {
-                id: turn.assistantMessage.id,
-                parentMessageId: turn.assistantMessage.parentMessageId,
-                status: turn.assistantMessage.status,
-                createdAt: turn.assistantMessage.createdAt,
-                completedAt: turn.assistantMessage.completedAt,
-                blocks: turn.assistantMessage.blocks,
-              }
-            : null,
-        },
+        data: nativeLiveTurnResponseData(turn),
       });
     } catch {
       response.status(503).json({
@@ -928,6 +941,115 @@ export function readNativeLiveTurnHandler(
         },
       });
     }
+  };
+}
+
+export function waitNativeLiveTurnHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const prepareId = routeParam(request.params.prepareId);
+    if (!UUID_PATTERN.test(prepareId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_TURN_ID",
+          message: "Native live turn id is invalid.",
+        },
+      });
+      return;
+    }
+
+    const service = dependencies.turnWaitService;
+    if (!service) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_TURN_WAIT_UNAVAILABLE",
+          message:
+            "Native live turn completion wait is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const onClose = () => controller.abort();
+    response.once("close", onClose);
+    try {
+      const result = await service.wait({
+        userId: request.webUserId,
+        prepareId,
+        timeoutMs: 25_000,
+        signal: controller.signal,
+      });
+      if (response.writableEnded || controller.signal.aborted) return;
+
+      if (!result) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_TURN_NOT_FOUND",
+            message: "Native live turn was not found.",
+          },
+        });
+        return;
+      }
+
+      response.json({
+        success: true,
+        data:
+          result.outcome === "terminal"
+            ? {
+                outcome: "terminal",
+                turn: nativeLiveTurnResponseData(result.turn),
+              }
+            : { outcome: "timeout" },
+      });
+    } catch {
+      if (response.writableEnded || controller.signal.aborted) return;
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_TURN_WAIT_UNAVAILABLE",
+          message:
+            "Native live turn completion wait is temporarily unavailable.",
+        },
+      });
+    } finally {
+      response.off("close", onClose);
+    }
+  };
+}
+
+function nativeLiveTurnResponseData(
+  turn: NativeLiveBackendTurnReadModel,
+): Record<string, unknown> {
+  return {
+    prepareId: turn.prepareId,
+    requestId: turn.requestId,
+    conversationId: turn.conversationId,
+    operation: turn.operation,
+    userMessageId: turn.canonicalUserMessageId,
+    executionSelection: turn.executionSelection,
+    canonicalStatus: turn.canonicalStatus,
+    dispatchStatus: turn.dispatchStatus,
+    semanticStatus: turn.semanticStatus,
+    semanticFallbackCode: turn.semanticFallbackCode,
+    failureCode: turn.failureCode,
+    runtimeMetadata: turn.runtimeMetadata,
+    assistantMessage: turn.assistantMessage
+      ? {
+          id: turn.assistantMessage.id,
+          parentMessageId: turn.assistantMessage.parentMessageId,
+          status: turn.assistantMessage.status,
+          createdAt: turn.assistantMessage.createdAt,
+          completedAt: turn.assistantMessage.completedAt,
+          blocks: turn.assistantMessage.blocks,
+        }
+      : null,
   };
 }
 
@@ -963,6 +1085,26 @@ export function readNativeLiveCurrentPathHandler(
       return;
     }
 
+    const beforeMessageId =
+      parseOptionalUuidQuery(request.query.before_message_id);
+    const afterMessageId =
+      parseOptionalUuidQuery(request.query.after_message_id);
+    if (
+      beforeMessageId === null
+      || afterMessageId === null
+      || (beforeMessageId && afterMessageId)
+    ) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CURRENT_PATH_CURSOR",
+          message:
+            "Current path accepts one valid before_message_id or after_message_id cursor.",
+        },
+      });
+      return;
+    }
+
     const reader = dependencies.currentPathReader;
     if (!reader) {
       response.status(503).json({
@@ -981,6 +1123,8 @@ export function readNativeLiveCurrentPathHandler(
         userId: request.webUserId,
         conversationId,
         limit,
+        ...(beforeMessageId ? { beforeMessageId } : {}),
+        ...(afterMessageId ? { afterMessageId } : {}),
       });
       if (!snapshot) {
         response.status(404).json({
@@ -996,6 +1140,7 @@ export function readNativeLiveCurrentPathHandler(
       const etag = nativeLiveCurrentPathEtag(
         snapshot.syncToken,
         limit,
+        { beforeMessageId, afterMessageId },
       );
       response.setHeader("ETag", etag);
       if (ifNoneMatchContains(request.header("if-none-match"), etag)) {
@@ -1013,10 +1158,22 @@ export function readNativeLiveCurrentPathHandler(
           updatedAt: snapshot.updatedAt,
           syncToken: snapshot.syncToken,
           truncated: snapshot.truncated,
+          olderCursor: snapshot.olderCursor,
+          resetRequired: snapshot.resetRequired,
           messages: snapshot.messages,
         },
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof RangeError) {
+        response.status(400).json({
+          success: false,
+          error: {
+            code: "INVALID_NATIVE_LIVE_CURRENT_PATH_CURSOR",
+            message: error.message,
+          },
+        });
+        return;
+      }
       response.status(503).json({
         success: false,
         error: {
@@ -1130,6 +1287,24 @@ function parseCreateConversationBody(
     return { ok: false };
   }
   return { ok: true, title: trimmed };
+}
+
+function parseOptionalCursorQuery(
+  value: unknown,
+): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value;
+}
+
+function parseOptionalUuidQuery(
+  value: unknown,
+): string | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+    return null;
+  }
+  return value;
 }
 
 function parseCurrentPathLimit(

@@ -517,6 +517,102 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
   );
 });
 
+test("web turn completion wait is user scoped and returns terminal state without polling", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+  const waitCalls: unknown[] = [];
+  const turnWaitService = {
+    async wait(input: {
+      userId: string;
+      prepareId: string;
+      timeoutMs: number;
+      signal?: AbortSignal | null;
+    }) {
+      waitCalls.push({
+        userId: input.userId,
+        prepareId: input.prepareId,
+        timeoutMs: input.timeoutMs,
+        hasSignal: input.signal instanceof AbortSignal,
+      });
+      const turn = await turnReader.readTurn({
+        userId: input.userId,
+        prepareId: input.prepareId,
+      });
+      return {
+        outcome: "terminal" as const,
+        turn: turn!,
+      };
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator,
+          relayService,
+          turnReader,
+          turnWaitService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const unauthenticated = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/wait`,
+        { method: "POST" },
+      );
+      assert.equal(unauthenticated.status, 401);
+
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/turns/${prepareId}/wait`,
+        {
+          method: "POST",
+          headers: { "x-test-user": "owner" },
+        },
+      );
+      assert.equal(response.status, 200);
+      const payload = await response.json() as {
+        data: {
+          outcome: string;
+          turn: {
+            prepareId: string;
+            canonicalStatus: string;
+            dispatchStatus: string;
+            assistantMessage: {
+              blocks: Array<{ text: string | null }>;
+            } | null;
+          };
+        };
+      };
+      assert.equal(payload.data.outcome, "terminal");
+      assert.equal(payload.data.turn.prepareId, prepareId);
+      assert.equal(
+        payload.data.turn.canonicalStatus,
+        "finalized_success",
+      );
+      assert.equal(payload.data.turn.dispatchStatus, "completed");
+      assert.equal(
+        payload.data.turn.assistantMessage?.blocks[0]?.text,
+        "VISIBLE",
+      );
+      assert.deepEqual(waitCalls, [{
+        userId,
+        prepareId,
+        timeoutMs: 25_000,
+        hasSignal: true,
+      }]);
+    },
+  );
+});
+
 test("web current-path endpoint is authenticated, bounded, and supports head ETag refresh", async () => {
   const coordinator = new FakeCoordinator();
   const relayService = new FakeRelayService();
@@ -566,7 +662,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
       assert.equal(response.status, 200);
       assert.equal(
         response.headers.get("etag"),
-        '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+        '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
       );
       const payload = await response.json() as {
         data: {
@@ -605,7 +701,7 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
           headers: {
             "x-test-user": "owner",
             "if-none-match":
-              '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
           },
         },
       );
@@ -621,14 +717,14 @@ test("web current-path endpoint is authenticated, bounded, and supports head ETa
           headers: {
             "x-test-user": "owner",
             "if-none-match":
-              '"head:77777777-7777-4777-8777-777777777777:limit:2"',
+              '"head:77777777-7777-4777-8777-777777777777:limit:2:before:-:after:-"',
           },
         },
       );
       assert.equal(widerWindow.status, 200);
       assert.equal(
         widerWindow.headers.get("etag"),
-        '"head:77777777-7777-4777-8777-777777777777:limit:3"',
+        '"head:77777777-7777-4777-8777-777777777777:limit:3:before:-:after:-"',
       );
       assert.deepEqual(
         currentPathReader.calls[2],

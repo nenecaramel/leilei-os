@@ -4,7 +4,7 @@ import {
   CompanionBackgroundOpportunityService,
 } from "../src/domains/runtime/companion-background-opportunity.js";
 
-test("companion opportunity schedules one user across maintenance, effect, proactivity and topic work", async () => {
+test("due companion opportunity schedules cadence work across maintenance, effect, proactivity and topic", async () => {
   const maintenanceCalls: unknown[] = [];
   const effectCalls: string[] = [];
   const proactivityCalls: string[] = [];
@@ -19,7 +19,7 @@ test("companion opportunity schedules one user across maintenance, effect, proac
     {
       decide() {
         return {
-          opportunity: "maintenance_pulse" as const,
+          opportunity: "companion_due" as const,
           targets: [
             {
               kind: "decay" as const,
@@ -41,11 +41,6 @@ test("companion opportunity schedules one user across maintenance, effect, proac
               priority: "maintenance" as const,
               cost: 1,
             },
-            {
-              kind: "proactivity_wake" as const,
-              priority: "reflection" as const,
-              cost: 1,
-            },
           ],
         };
       },
@@ -65,9 +60,9 @@ test("companion opportunity schedules one user across maintenance, effect, proac
       async offer(input) {
         topicCalls.push(input);
         return {
-          outcome: "not_due" as const,
-          lastAttemptAt: "2026-09-25T00:00:00.000Z",
-          nextEligibleAt: "2026-09-25T01:00:00.000Z",
+          outcome: "attempted" as const,
+          attemptedAt: "2026-09-25T00:00:00.000Z",
+          result: { outcome: "idle" as const },
         };
       },
     },
@@ -75,7 +70,7 @@ test("companion opportunity schedules one user across maintenance, effect, proac
 
   const result = await service.offer({
     userId: " user-1 ",
-    reason: "startup",
+    reason: "due",
   });
 
   assert.deepEqual(maintenanceCalls, [{
@@ -91,7 +86,7 @@ test("companion opportunity schedules one user across maintenance, effect, proac
   assert.deepEqual(proactivityCalls, ["user-1"]);
   assert.deepEqual(topicCalls, [{ userId: "user-1" }]);
   assert.deepEqual(result, {
-    reason: "startup",
+    reason: "due",
     maintenanceKinds: [
       "decay",
       "thought_evolution",
@@ -105,17 +100,20 @@ test("companion opportunity schedules one user across maintenance, effect, proac
   });
 });
 
-test("companion opportunity is fail-soft per background subsystem", async () => {
+test("dirty companion opportunity only offers effect recovery", async () => {
+  const maintenanceCalls: unknown[] = [];
+  const proactivityCalls: string[] = [];
+  const topicCalls: unknown[] = [];
   const service = new CompanionBackgroundOpportunityService(
     {
-      schedule() {
-        throw new Error("maintenance unavailable");
+      schedule(input) {
+        maintenanceCalls.push(input);
       },
     } as never,
     {
       decide() {
         return {
-          opportunity: "maintenance_pulse" as const,
+          opportunity: "companion_due" as const,
           targets: [{
             kind: "thought_evolution" as const,
             priority: "maintenance" as const,
@@ -130,13 +128,19 @@ test("companion opportunity is fail-soft per background subsystem", async () => 
       },
     },
     {
-      async scheduleUser() {
-        throw new Error("proactivity unavailable");
+      async scheduleUser(userId) {
+        proactivityCalls.push(userId);
+        return 1 as const;
       },
     },
     {
-      async offer() {
-        throw new Error("topic unavailable");
+      async offer(input) {
+        topicCalls.push(input);
+        return {
+          outcome: "attempted" as const,
+          attemptedAt: "2026-09-25T00:00:00.000Z",
+          result: { outcome: "idle" as const },
+        };
       },
     },
   );
@@ -146,15 +150,110 @@ test("companion opportunity is fail-soft per background subsystem", async () => 
     reason: "dirty",
   }), {
     reason: "dirty",
-    maintenanceKinds: ["thought_evolution"],
+    maintenanceKinds: [],
     effectDeliveryScheduled: false,
     proactivityScheduled: false,
     topicResurfaceOffered: false,
-    failures: [
-      "subject_state",
-      "effect_delivery",
-      "proactivity",
-      "topic_resurface",
-    ],
+    failures: ["effect_delivery"],
+  });
+  assert.deepEqual(maintenanceCalls, []);
+  assert.deepEqual(proactivityCalls, []);
+  assert.deepEqual(topicCalls, []);
+});
+
+test("startup catch-up runs maintenance and proactivity without Topic resurfacing", async () => {
+  const maintenanceCalls: unknown[] = [];
+  const effectCalls: string[] = [];
+  const proactivityCalls: string[] = [];
+  const topicCalls: unknown[] = [];
+  const service = new CompanionBackgroundOpportunityService(
+    {
+      schedule(input) {
+        maintenanceCalls.push(input);
+      },
+    } as never,
+    {
+      decide() {
+        return {
+          opportunity: "companion_due" as const,
+          targets: [{
+            kind: "thought_evolution" as const,
+            priority: "maintenance" as const,
+            cost: 1,
+          }],
+        };
+      },
+    },
+    {
+      scheduleUser(userId) {
+        effectCalls.push(userId);
+      },
+    },
+    {
+      async scheduleUser(userId) {
+        proactivityCalls.push(userId);
+        return 0 as const;
+      },
+    },
+    {
+      async offer(input) {
+        topicCalls.push(input);
+        return {
+          outcome: "attempted" as const,
+          attemptedAt: "2026-09-25T00:00:00.000Z",
+          result: { outcome: "idle" as const },
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(await service.offer({
+    userId: " user-1 ",
+    reason: "startup",
+  }), {
+    reason: "startup",
+    maintenanceKinds: ["thought_evolution"],
+    effectDeliveryScheduled: true,
+    proactivityScheduled: false,
+    topicResurfaceOffered: false,
+    failures: [],
+  });
+  assert.deepEqual(maintenanceCalls, [{
+    userId: "user-1",
+    kinds: ["thought_evolution"],
+  }]);
+  assert.deepEqual(effectCalls, ["user-1"]);
+  assert.deepEqual(proactivityCalls, ["user-1"]);
+  assert.deepEqual(topicCalls, []);
+});
+
+
+test("dirty opportunity is a no-op when no effect producer is enabled", async () => {
+  const service = new CompanionBackgroundOpportunityService(
+    {
+      schedule() {
+        throw new Error("dirty must not schedule maintenance");
+      },
+    } as never,
+    {
+      decide() {
+        throw new Error("dirty must not consult timed policy");
+      },
+    },
+    null,
+    null,
+    null,
+  );
+
+  assert.deepEqual(await service.offer({
+    userId: "user-1",
+    reason: "dirty",
+  }), {
+    reason: "dirty",
+    maintenanceKinds: [],
+    effectDeliveryScheduled: false,
+    proactivityScheduled: false,
+    topicResurfaceOffered: false,
+    failures: [],
   });
 });

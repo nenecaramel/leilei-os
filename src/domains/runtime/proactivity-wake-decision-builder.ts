@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  evaluateProactivityWakeGate,
   hashProactivityMessagePayload,
   normalizeProactivityDeliberationDraft,
   proactivityGateReasonCode,
@@ -10,15 +9,6 @@ import {
   type ProactivityWakeDecision,
   type ProactivityWakeGateInput,
 } from "./proactivity-wake-contract.js";
-
-export interface ProactivityWakeDeliberator {
-  decide(input: {
-    wakeId: string;
-    userId: string;
-    subjectId: string;
-    offeredAt: string;
-  }): Promise<ProactivityDeliberationDraft>;
-}
 
 export class ProactivityWakeDecisionBuilder {
   constructor(
@@ -127,69 +117,5 @@ export class ProactivityWakeDecisionBuilder {
       ),
       ...body,
     };
-  }
-}
-
-/**
- * Synchronous-model adapter kept for local/unit use.
- *
- * Production Proactivity deliberation must use the durable cross-device
- * coordinator instead, so Railway owns wake/decision state while Mac only
- * performs the pure model transform.
- */
-export class ProactivityWakeService {
-  private readonly decisions: ProactivityWakeDecisionBuilder;
-
-  constructor(
-    private readonly deliberator: ProactivityWakeDeliberator,
-    now: () => string = () => new Date().toISOString(),
-    createDecisionId: () => string = randomUUID,
-  ) {
-    this.decisions =
-      new ProactivityWakeDecisionBuilder(now, createDecisionId);
-  }
-
-  async run(input: {
-    gate: ProactivityWakeGateInput;
-    contactTarget: string | null;
-  }): Promise<ProactivityWakeDecision> {
-    const gate = evaluateProactivityWakeGate(input.gate);
-    if (gate.outcome === "blocked") {
-      return this.decisions.blocked(
-        input.gate,
-        gate.reason,
-      );
-    }
-
-    let rawDraft: ProactivityDeliberationDraft;
-    try {
-      rawDraft = await this.deliberator.decide({
-        wakeId: input.gate.wakeId,
-        userId: input.gate.userId,
-        subjectId: input.gate.subjectId,
-        offeredAt: requireProactivityIso(
-          input.gate.offeredAt,
-          "offeredAt",
-        ),
-      });
-    } catch {
-      return this.decisions.failure(
-        input.gate,
-        "deliberation_failed",
-      );
-    }
-
-    try {
-      return this.decisions.fromDraft({
-        gate: input.gate,
-        contactTarget: input.contactTarget,
-        draft: rawDraft,
-      });
-    } catch {
-      return this.decisions.failure(
-        input.gate,
-        "invalid_deliberation_output",
-      );
-    }
   }
 }

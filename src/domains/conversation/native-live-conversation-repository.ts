@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationContentBlocks,
@@ -35,6 +35,11 @@ function notFound(): Error {
   });
 }
 
+export type NativeLiveConversationListPage = {
+  conversations: NativeLiveConversationSummary[];
+  nextCursor: string | null;
+};
+
 export type NativeLiveConversationDeleteResult =
   | {
       outcome: "deleted" | "already_deleted";
@@ -57,6 +62,12 @@ export interface NativeLiveConversationRepository {
     userId: string;
     limit: number;
   }): Promise<NativeLiveConversationSummary[]>;
+
+  listConversationPage?(input: {
+    userId: string;
+    limit: number;
+    cursor?: string | null;
+  }): Promise<NativeLiveConversationListPage>;
 
   getConversation(input: {
     userId: string;
@@ -177,6 +188,39 @@ implements NativeLiveConversationRepository {
     userId: string;
     limit: number;
   }): Promise<NativeLiveConversationSummary[]> {
+    return (
+      await this.listConversationPage({
+        ...input,
+        cursor: null,
+      })
+    ).conversations;
+  }
+
+  async listConversationPage(input: {
+    userId: string;
+    limit: number;
+    cursor?: string | null;
+  }): Promise<NativeLiveConversationListPage> {
+    const cursor = input.cursor
+      ? parseNativeLiveConversationListCursor(input.cursor)
+      : null;
+    const conditions = [
+      eq(conversations.userId, input.userId),
+      eq(conversations.origin, "native_live"),
+      eq(conversations.lifecycleStatus, "active"),
+    ];
+    if (cursor) {
+      const updatedAt = new Date(cursor.updatedAt);
+      const cursorCondition = or(
+        lt(conversations.updatedAt, updatedAt),
+        and(
+          eq(conversations.updatedAt, updatedAt),
+          lt(conversations.id, cursor.id),
+        ),
+      );
+      if (cursorCondition) conditions.push(cursorCondition);
+    }
+
     const rows = await this.db
       .select({
         id: conversations.id,
@@ -186,23 +230,31 @@ implements NativeLiveConversationRepository {
         updatedAt: conversations.updatedAt,
       })
       .from(conversations)
-      .where(
-        and(
-          eq(conversations.userId, input.userId),
-          eq(conversations.origin, "native_live"),
-          eq(conversations.lifecycleStatus, "active"),
-        ),
-      )
+      .where(and(...conditions))
       .orderBy(desc(conversations.updatedAt), desc(conversations.id))
-      .limit(input.limit);
+      .limit(input.limit + 1);
 
-    return rows.map((row) => ({
+    const hasMore = rows.length > input.limit;
+    const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+    const mapped = pageRows.map((row) => ({
       id: row.id,
       title: row.title,
       currentHeadMessageId: row.currentHeadMessageId,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
+    const last = pageRows[pageRows.length - 1];
+
+    return {
+      conversations: mapped,
+      nextCursor:
+        hasMore && last
+          ? encodeNativeLiveConversationListCursor({
+              updatedAt: last.updatedAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
   }
 
   async getConversation(input: {
@@ -834,5 +886,54 @@ implements NativeLiveConversationRepository {
 
     if (!row) throw notFound();
     return row;
+  }
+}
+
+const NATIVE_LIVE_CONVERSATION_CURSOR_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export function encodeNativeLiveConversationListCursor(input: {
+  updatedAt: string;
+  id: string;
+}): string {
+  const timestamp = new Date(input.updatedAt);
+  if (
+    !Number.isFinite(timestamp.getTime())
+    || !NATIVE_LIVE_CONVERSATION_CURSOR_UUID_PATTERN.test(input.id)
+  ) {
+    throw new RangeError("Native live conversation cursor is invalid.");
+  }
+  return Buffer.from(
+    JSON.stringify([timestamp.toISOString(), input.id]),
+    "utf8",
+  ).toString("base64url");
+}
+
+export function parseNativeLiveConversationListCursor(
+  value: string,
+): { updatedAt: string; id: string } {
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as unknown;
+    if (
+      !Array.isArray(decoded)
+      || decoded.length !== 2
+      || typeof decoded[0] !== "string"
+      || typeof decoded[1] !== "string"
+      || !NATIVE_LIVE_CONVERSATION_CURSOR_UUID_PATTERN.test(decoded[1])
+    ) {
+      throw new Error("invalid");
+    }
+    const timestamp = new Date(decoded[0]);
+    if (!Number.isFinite(timestamp.getTime())) {
+      throw new Error("invalid");
+    }
+    return {
+      updatedAt: timestamp.toISOString(),
+      id: decoded[1],
+    };
+  } catch {
+    throw new RangeError("Native live conversation cursor is invalid.");
   }
 }

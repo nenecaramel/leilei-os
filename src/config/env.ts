@@ -47,6 +47,7 @@ const baseEnvSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DATABASE_URL: z.string().url().optional(),
   MCP_AUTH_TOKEN: z.string().min(16).optional(),
+  NATIVE_LIVE_RELAY_AUTH_TOKEN: z.string().min(32).optional(),
   MCP_USER_ID: z.string().uuid().optional(),
   MCP_SERVER_URL: httpsUrl.optional(),
   AUTH0_ISSUER: httpsUrl.optional(),
@@ -68,7 +69,6 @@ const baseEnvSchema = z.object({
   LEILEI_HEALTH_SYNC_KEY: z.string().min(32).optional(),
   LEILEI_HEALTH_SYNC_USER_ID: z.string().uuid().optional(),
   NOTION_PAT: z.string().trim().min(16).optional(),
-  BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: booleanEnv.optional(),
   MCP_SESSION_IDLE_TTL_SECONDS: z.coerce.number().int().positive().default(7_200),
   MCP_SESSION_ABSOLUTE_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   MCP_SESSION_MAX_PER_USER: z.coerce.number().int().positive().default(8),
@@ -77,14 +77,9 @@ const baseEnvSchema = z.object({
   MCP_IDEMPOTENCY_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().positive().default(24),
   MCP_PUBLIC_TOOL_PROFILES: z.string().optional(),
   MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
-  NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS:
-    z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
-  NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS:
-    z.coerce.number().int().positive().optional(),
-  NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT:
-    z.coerce.number().int().positive().max(1_000).optional(),
   NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS:
     z.coerce.number().positive().optional(),
   NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS:
@@ -98,8 +93,6 @@ const baseEnvSchema = z.object({
     z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
     z.coerce.number().int().positive().optional(),
-  NATIVE_LIVE_PROACTIVITY_USER_LIMIT:
-    z.coerce.number().int().positive().max(1_000).optional(),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -156,7 +149,6 @@ const oauthEnvSchema = baseEnvSchema
     AUTH0_JWKS_URI: httpsUrl,
     AUTH0_REQUIRED_SCOPE: z.string().trim().min(1),
     AUTH0_ALLOWED_SUBJECT: z.string().trim().min(1),
-    BRIDGE_AMBIGUITY_ACCEPTANCE_ENABLED: z.boolean().optional(),
     OAUTH_AS_ENABLED: z.boolean().optional(),
   })
   .superRefine((config, context) => {
@@ -271,13 +263,7 @@ export type McpGovernanceConfig = {
 };
 
 export type TopicResurfaceOpportunityConfig = {
-  minIntervalMs: number;
   candidateLimit: number;
-};
-
-export type BackgroundMaintenancePulseConfig = {
-  intervalMs: number;
-  userLimit: number;
 };
 
 export type MemoryDecayConfig = {
@@ -292,25 +278,7 @@ export type MemoryDecayConfig = {
 export type ProactivityWakeOpportunityConfig = {
   minIdleMs: number;
   cooldownMs: number;
-  userLimit: number;
 };
-
-export function getBackgroundMaintenancePulseConfig(
-  environment: Pick<
-    RuntimeEnv,
-    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS"
-    | "NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT"
-  >,
-): BackgroundMaintenancePulseConfig {
-  return {
-    intervalMs:
-      (environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS
-        ?? 3_600) * 1_000,
-    userLimit:
-      environment.NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT
-      ?? 64,
-  };
-}
 
 export function getProactivityWakeOpportunityConfig(
   environment: Pick<
@@ -318,14 +286,12 @@ export function getProactivityWakeOpportunityConfig(
     | "NATIVE_LIVE_PROACTIVITY_ENABLED"
     | "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS"
     | "NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS"
-    | "NATIVE_LIVE_PROACTIVITY_USER_LIMIT"
   >,
 ): ProactivityWakeOpportunityConfig | undefined {
   const enabled = environment.NATIVE_LIVE_PROACTIVITY_ENABLED;
   const values = [
     environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS,
     environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS,
-    environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT,
   ];
 
   if (enabled !== true) {
@@ -339,7 +305,7 @@ export function getProactivityWakeOpportunityConfig(
 
   if (values.some((value) => value === undefined)) {
     throw new Error(
-      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS, NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS, and NATIVE_LIVE_PROACTIVITY_USER_LIMIT are required when Proactivity is enabled.",
+      "NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS and NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS are required when Proactivity is enabled.",
     );
   }
 
@@ -348,8 +314,6 @@ export function getProactivityWakeOpportunityConfig(
       environment.NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS! * 1_000,
     cooldownMs:
       environment.NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS! * 1_000,
-    userLimit:
-      environment.NATIVE_LIVE_PROACTIVITY_USER_LIMIT!,
   };
 }
 
@@ -402,26 +366,26 @@ export function getMemoryDecayConfig(
 export function getTopicResurfaceOpportunityConfig(
   environment: Pick<
     RuntimeEnv,
-    | "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS"
+    | "NATIVE_LIVE_TOPIC_RESURFACE_ENABLED"
     | "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT"
   >,
 ): TopicResurfaceOpportunityConfig | undefined {
-  const interval =
-    environment.NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS;
+  const enabled =
+    environment.NATIVE_LIVE_TOPIC_RESURFACE_ENABLED === true;
   const limit =
     environment.NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT;
 
-  if (interval === undefined && limit === undefined) {
+  if (!enabled) {
+    if (limit !== undefined) {
+      throw new Error(
+        "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT requires NATIVE_LIVE_TOPIC_RESURFACE_ENABLED=true.",
+      );
+    }
     return undefined;
   }
-  if (interval === undefined || limit === undefined) {
-    throw new Error(
-      "NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS and NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT must be configured together.",
-    );
-  }
+
   return {
-    minIntervalMs: interval * 1_000,
-    candidateLimit: limit,
+    candidateLimit: limit ?? 5,
   };
 }
 
