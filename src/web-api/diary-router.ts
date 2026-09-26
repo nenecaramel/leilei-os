@@ -30,6 +30,7 @@ import {
       listDiaries(input: {
         userId: string;
         limit?: number;
+        offset?: number;
         query?: import("../domains/diary/diary-service.js").RawDiaryListQuery;
       }): Promise<ListDiariesResult>;
   
@@ -333,8 +334,12 @@ export function createListDiariesByDateApiHandler(
       }
   
       try {
+        const rawLimit = getQueryParam(request.query.limit);
+        const rawOffset = getQueryParam(request.query.offset);
         const data = await dependencies.diaryService.listDiaries({
           userId: request.webUserId,
+          ...(rawLimit === undefined ? {} : { limit: Number(rawLimit) }),
+          ...(rawOffset === undefined ? {} : { offset: Number(rawOffset) }),
           query: {
             q: getQueryParam(request.query.q),
             tag: getQueryParam(request.query.tag),
