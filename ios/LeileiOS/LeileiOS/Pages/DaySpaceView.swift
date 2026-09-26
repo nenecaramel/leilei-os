@@ -2296,7 +2296,9 @@ private struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
         textView.delegate = context.coordinator
         textView.autocorrectionType = .default
         textView.spellCheckingType = .default
-        applyAppearance(to: textView)
+        configureTypingAppearance(
+            for: textView
+        )
         return textView
     }
 
@@ -2306,19 +2308,27 @@ private struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
     ) {
         context.coordinator.parent = self
         textView.isEditable = !disabled
-        applyAppearance(to: textView)
+        configureTypingAppearance(
+            for: textView
+        )
 
-        if textView.text != text {
-            let selection = textView.selectedRange
-            textView.text = text
-            textView.selectedRange = NSRange(
-                location: min(
-                    selection.location,
-                    text.utf16.count
-                ),
-                length: 0
-            )
+        guard textView.text != text,
+              textView.markedTextRange == nil
+        else {
+            return
         }
+
+        let selection = textView.selectedRange
+        textView.attributedText = attributedText(
+            text
+        )
+        textView.selectedRange = NSRange(
+            location: min(
+                selection.location,
+                text.utf16.count
+            ),
+            length: 0
+        )
     }
 
     func sizeThatFits(
@@ -2346,14 +2356,20 @@ private struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
         )
     }
 
-    private func applyAppearance(
-        to textView: UITextView
+    private func configureTypingAppearance(
+        for textView: UITextView
     ) {
+        textView.typingAttributes = textAttributes
+    }
+
+    private var textAttributes: [
+        NSAttributedString.Key: Any
+    ] {
         let paragraph = NSMutableParagraphStyle()
         paragraph.minimumLineHeight = 30
         paragraph.maximumLineHeight = 30
 
-        let attributes: [NSAttributedString.Key: Any] = [
+        return [
             .font: UIFont.systemFont(
                 ofSize: 14
             ),
@@ -2363,19 +2379,14 @@ private struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
             ),
             .paragraphStyle: paragraph,
         ]
+    }
 
-        let selection = textView.selectedRange
-        textView.attributedText = NSAttributedString(
-            string: textView.text ?? "",
-            attributes: attributes
-        )
-        textView.typingAttributes = attributes
-        textView.selectedRange = NSRange(
-            location: min(
-                selection.location,
-                textView.text.utf16.count
-            ),
-            length: 0
+    private func attributedText(
+        _ value: String
+    ) -> NSAttributedString {
+        NSAttributedString(
+            string: value,
+            attributes: textAttributes
         )
     }
 
@@ -3405,6 +3416,13 @@ private enum DaySpaceDate {
         }
 
         return "\(month)/\(day)"
+    }
+
+    static func paperLabel(_ value: String) -> String {
+        value.replacingOccurrences(
+            of: "-",
+            with: "."
+        )
     }
 
     static func fullLabel(_ value: String) -> String {
