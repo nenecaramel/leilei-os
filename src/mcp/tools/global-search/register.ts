@@ -7,7 +7,7 @@ import { compactMcpText, joinMcpContentLines, quoteMcpText } from "../content-co
 const MAX_QUERY_CODE_POINTS = 200;
 const MAX_CURSOR_ENCODED_LENGTH = 2_800;
 const DEFAULT_GLOBAL_SEARCH_MODULES = ["diary", "todo", "universe"] as const;
-const GLOBAL_SEARCH_MODULES = [...DEFAULT_GLOBAL_SEARCH_MODULES, "conversation"] as const;
+const GLOBAL_SEARCH_MODULES = DEFAULT_GLOBAL_SEARCH_MODULES;
 
 const globalSearchModuleSchema = z.enum(GLOBAL_SEARCH_MODULES);
 
@@ -16,10 +16,10 @@ const inputSchema = z.object({
     (value) => [...value].length <= MAX_QUERY_CODE_POINTS,
     { message: `query must be at most ${MAX_QUERY_CODE_POINTS} Unicode code points` },
   ).describe("Search phrase across the selected LeileiOS modules."),
-  modules: z.array(globalSearchModuleSchema).min(1).max(4)
+  modules: z.array(globalSearchModuleSchema).min(1).max(3)
     .default([...DEFAULT_GLOBAL_SEARCH_MODULES])
     .optional()
-    .describe("Domains to search. Defaults to Diary, Todo, and Universe; add Conversation explicitly."),
+    .describe("Domains to search. Defaults to Diary, Todo, and Universe."),
   scope: z.enum(["active", "archived", "all"]).default("active").optional(),
   mode: z.enum(["normal", "phrase"]).default("normal").optional().describe("normal collapses runs of whitespace before matching; phrase preserves internal whitespace and matches the literal contiguous phrase."),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -32,12 +32,6 @@ const globalSearchDetailArgumentsSchema = z.union([
   z.object({ id: z.string().uuid(), scope: z.enum(["active", "archived"]) }).strict(),
   z.object({ id: z.string().min(1).max(256) }).strict(),
   z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
-  z.object({
-    conversation_id: z.string().uuid(),
-    message_id: z.string().uuid(),
-    view: z.enum(["default", "all"]),
-    scope: z.enum(["active", "archived"]),
-  }).strict(),
 ]);
 
 const globalSearchResultSchema = z.object({
@@ -52,37 +46,11 @@ const globalSearchResultSchema = z.object({
   time_basis: z.enum(["updated_at", "diary_date", "todo_date", "message_time"]),
   updated_at: z.string().datetime(),
   author: z.enum(["L", "G", "C"]).nullable(),
-  detail_tool: z.enum(["get_diary", "read_todo_day", "get_universe_node", "read_conversation"]).nullable(),
+  detail_tool: z.enum(["get_diary", "read_todo_day", "get_universe_node"]).nullable(),
   detail_arguments: globalSearchDetailArgumentsSchema.nullable(),
-  conversation_id: z.string().uuid().nullable().optional(),
-  conversation_view: z.enum(["default", "all"]).nullable().optional(),
 }).strict().superRefine((result, context) => {
-  if (result.entity_type === "conversation") {
-    if (result.detail_tool !== "read_conversation") {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Conversation results must use read_conversation." });
-    }
-    if (!result.conversation_id || !result.conversation_view) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Conversation results require canonical conversation metadata." });
-    }
-    if (
-      result.detail_arguments === null
-      || !("conversation_id" in result.detail_arguments)
-      || result.detail_arguments.conversation_id !== result.conversation_id
-      || result.detail_arguments.message_id !== result.entity_id
-      || result.detail_arguments.view !== result.conversation_view
-      || result.detail_arguments.scope !== result.lifecycle_status
-    ) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_arguments"], message: "Conversation detail_arguments must point to the exact canonical message and view." });
-    }
-    return;
-  }
-
-  if (result.conversation_id != null || result.conversation_view != null) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["conversation_id"], message: "Only Conversation results may include Conversation deep-link metadata." });
-  }
-
   if (result.detail_tool === null || result.detail_arguments === null) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Non-Conversation results require an MCP detail pointer." });
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["detail_tool"], message: "Search results require an MCP detail pointer." });
     return;
   }
 
@@ -119,7 +87,7 @@ const globalSearchDataSchema = z.object({
     count: z.number().int().min(0).max(25),
     has_more: z.boolean(),
     next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
-    searched_modules: z.array(globalSearchModuleSchema).min(1).max(4),
+    searched_modules: z.array(globalSearchModuleSchema).min(1).max(3),
     searched_scope: z.enum(["active", "archived", "all"]),
   }).strict(),
 }).strict();
@@ -135,7 +103,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Search across LeileiOS modules. Defaults to Diary, Todo, and Universe; add Conversation explicitly. Prefer a domain search when the domain is known.",
+    description: "Search across LeileiOS Diary, Todo, and Universe. Prefer a domain search when the domain is known.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -184,10 +152,7 @@ function globalSearchContent(data: GlobalSearchResult): string {
     const detail = result.detail_tool && result.detail_arguments
       ? ` [detail_tool=${result.detail_tool}; detail_arguments=${compactMcpText(JSON.stringify(result.detail_arguments), 400)}]`
       : "";
-    const conversation = result.entity_type === "conversation" && result.conversation_id && result.conversation_view
-      ? ` [conversation_id=${result.conversation_id}; view=${result.conversation_view}]`
-      : "";
-    return `${result.entity_type} ${quoteMcpText(result.stable_name)} — ${quoteMcpText(result.snippet)}${detail}${conversation}`;
+    return `${result.entity_type} ${quoteMcpText(result.stable_name)} — ${quoteMcpText(result.snippet)}${detail}`;
   }));
 }
 

@@ -16,24 +16,17 @@ export type GlobalSearchResult = {
   time_basis: string;
   updated_at: string;
   author: "L" | "G" | "C" | null;
-  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | "read_conversation" | null;
+  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | null;
   detail_arguments: {
     id: string;
     scope: "active" | "archived";
-  } | { id: string } | { date: string } | {
-    conversation_id: string;
-    message_id: string;
-    view: "default" | "all";
-  } | null;
-  conversation_id?: string | null;
-  conversation_view?: "default" | "all" | null;
+  } | { id: string } | { date: string } | null;
 };
 
 export const GLOBAL_SEARCH_MODULE_LABELS: Record<SearchModule, string> = {
   diary: "Diary",
   universe: "Universe",
   todo: "Todo",
-  conversation: "Conversations",
 };
 
 export function formatGlobalSearchBusinessDate(value: string): string {
@@ -48,13 +41,6 @@ export function createGlobalSearchResultDetailLocation(
   result: GlobalSearchResult,
   returnTo: string,
 ): string {
-  if (result.entity_type === "conversation") {
-    if (!result.conversation_id) return "/conversations";
-    const params = new URLSearchParams({ anchor: result.entity_id });
-    if (result.conversation_view === "all") params.set("view", "all");
-    return `/conversations/${encodeURIComponent(result.conversation_id)}?${params.toString()}#message-${encodeURIComponent(result.entity_id)}`;
-  }
-
   if (result.entity_type === "diary") {
     return result.lifecycle_status === "archived"
       ? createArchivedDiaryDetailLocation(result.entity_id, returnTo)

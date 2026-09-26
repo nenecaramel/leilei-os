@@ -15,8 +15,6 @@ import { SystemActivityPage } from "./pages/SystemActivityPage";
 import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
 import { UniversePage } from "./pages/UniversePageContainer";
-import { ConversationArchivePage } from "./pages/ConversationArchivePageContainer";
-import { ConversationLifecyclePage } from "./pages/ConversationLifecyclePageContainer";
 
 import { DaySpacePage } from "./pages/DaySpacePageContainer";
 export default function App() {
@@ -28,10 +26,6 @@ export default function App() {
             <Route index element={<DashboardPage />} />
 
             <Route path="diary" element={<DiaryPage />} />
-            <Route path="conversations" element={<ConversationArchivePage />} />
-            <Route path="conversations/archive" element={<ConversationLifecyclePage />} />
-            <Route path="conversations/deleted" element={<Navigate to="/conversations/archive" replace />} />
-            <Route path="conversations/:conversationId" element={<ConversationArchivePage />} />
             <Route path="day-space" element={<DaySpacePage />} />
             <Route path="search" element={<GlobalSearchPage />} />
 

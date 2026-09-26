@@ -1304,7 +1304,7 @@ textarea:disabled {
 
 /* Mobile */
 
-/* Shared Memory / Diary / Conversation row typography at every viewport width. */
+/* Shared Memory / Diary row typography at every viewport width. */
 .memory-row-title {
   min-width: 0;
   overflow: hidden;

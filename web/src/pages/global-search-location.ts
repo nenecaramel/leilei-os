@@ -1,5 +1,5 @@
 export const DEFAULT_SEARCH_MODULES = ["diary", "todo", "universe"] as const;
-export const SEARCH_MODULES = [...DEFAULT_SEARCH_MODULES, "conversation"] as const;
+export const SEARCH_MODULES = DEFAULT_SEARCH_MODULES;
 const GLOBAL_SEARCH_QUERY_MAX_CODE_POINTS = 200;
 export type SearchModule = typeof SEARCH_MODULES[number];
 type SearchScope = "active" | "archived" | "all";
