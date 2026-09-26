@@ -5,7 +5,7 @@ import type {
 
 export type BackgroundOpportunityKind =
   | "post_turn"
-  | "maintenance_pulse"
+  | "companion_due"
   | "mac_idle";
 
 export type BackgroundOpportunityTarget =
@@ -23,7 +23,6 @@ export type BackgroundOpportunityDecision = {
 };
 
 export type BackgroundOpportunityPolicyConfig = {
-  maintenancePulseIntervalMs: number;
   decayEnabled: boolean;
   proactivityWakeEnabled: boolean;
   topicResurfaceEnabled: boolean;
@@ -82,12 +81,7 @@ export const DEFAULT_BACKGROUND_TARGET_PLANS = {
 export class BackgroundOpportunityPolicy {
   constructor(
     private readonly config: BackgroundOpportunityPolicyConfig,
-  ) {
-    requirePositiveCadence(
-      "maintenance_pulse",
-      config.maintenancePulseIntervalMs,
-    );
-  }
+  ) {}
 
   decide(input: {
     opportunity: BackgroundOpportunityKind;
@@ -99,7 +93,7 @@ export class BackgroundOpportunityPolicy {
           targets: [DEFAULT_BACKGROUND_TARGET_PLANS.distillation],
         };
 
-      case "maintenance_pulse":
+      case "companion_due":
         return {
           opportunity: input.opportunity,
           targets: [
@@ -125,20 +119,6 @@ export class BackgroundOpportunityPolicy {
     }
   }
 
-  cadenceMs(
-    opportunity: BackgroundOpportunityKind,
-  ): number | null {
-    switch (opportunity) {
-      case "post_turn":
-        return null;
-      case "maintenance_pulse":
-        return this.config.maintenancePulseIntervalMs;
-      case "mac_idle":
-        // Mac Companion owns idle cadence. Policy only decides eligibility.
-        return null;
-    }
-  }
-
   plan(
     opportunity: BackgroundOpportunityKind,
     target: BackgroundOpportunityTarget,
@@ -146,18 +126,5 @@ export class BackgroundOpportunityPolicy {
     return this.decide({ opportunity }).targets.find(
       (candidate) => candidate.kind === target,
     ) ?? null;
-  }
-}
-
-
-function requirePositiveCadence(
-  opportunity: BackgroundOpportunityKind,
-  value: number,
-): void {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(
-      "Background opportunity " + opportunity
-      + " cadence must be positive and finite.",
-    );
   }
 }

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   env,
-  getBackgroundMaintenancePulseConfig,
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
@@ -73,10 +72,6 @@ import {
   BackgroundOpportunityPolicy,
 } from "../domains/runtime/background-opportunity-policy.js";
 import {
-  createBackgroundMaintenancePulse,
-  DrizzleBackgroundMaintenanceUserSource,
-} from "../domains/runtime/background-maintenance-pulse.js";
-import {
   DistillationCrossDeviceCoordinator,
 } from "../domains/runtime/distillation-cross-device-coordinator.js";
 import {
@@ -112,8 +107,6 @@ import {
   RuntimeMessageEffectDeliveryAdapter,
 } from "../domains/runtime/runtime-message-effect-delivery-adapter.js";
 import {
-  DrizzleRuntimeEffectDeliveryUserSource,
-  RuntimeEffectDeliveryRecovery,
   RuntimeEffectDeliveryWorker,
 } from "../domains/runtime/runtime-effect-delivery-worker.js";
 import {
@@ -363,13 +356,10 @@ export function createProcessRuntime(
   });
   const topicResurfaceOpportunityConfig =
     getTopicResurfaceOpportunityConfig(runtimeEnv);
-  const maintenancePulseConfig =
-    getBackgroundMaintenancePulseConfig(runtimeEnv);
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
   const proactivityWakeOpportunityConfig =
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
-    maintenancePulseIntervalMs: maintenancePulseConfig.intervalMs,
     decayEnabled: Boolean(memoryDecayConfig),
     proactivityWakeEnabled:
       Boolean(proactivityWakeOpportunityConfig),
@@ -534,14 +524,6 @@ export function createProcessRuntime(
         logger.info(name, fields);
       },
     );
-  const runtimeEffectDeliveryRecovery =
-    proactivityWakeOpportunityConfig
-      ? new RuntimeEffectDeliveryRecovery(
-          new DrizzleRuntimeEffectDeliveryUserSource(db),
-          runtimeEffectDeliveryWorker,
-          proactivityWakeOpportunityConfig.userLimit,
-        )
-      : null;
   const proactivityWakeCrossDeviceCoordinator =
     new ProactivityWakeCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
@@ -557,7 +539,7 @@ export function createProcessRuntime(
   const proactivityWakePlan =
     proactivityWakeOpportunityConfig
       ? backgroundOpportunityPolicy.plan(
-          "maintenance_pulse",
+          "companion_due",
           "proactivity_wake",
         )
       : null;
@@ -573,27 +555,6 @@ export function createProcessRuntime(
           proactivityWakePlan,
         )
       : null;
-  const backgroundMaintenancePulse =
-    createBackgroundMaintenancePulse({
-      source: new DrizzleBackgroundMaintenanceUserSource(db),
-      maintenance: subjectStateBackgroundMaintenance,
-      policy: backgroundOpportunityPolicy,
-      subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-      config: {
-        userLimit: maintenancePulseConfig.userLimit,
-      },
-      ...(
-        runtimeEffectDeliveryRecovery
-        || proactivityWakeOpportunityProducer
-          ? {
-              afterCycle: async () => {
-                await runtimeEffectDeliveryRecovery?.schedulePulse();
-                await proactivityWakeOpportunityProducer?.schedulePulse();
-              },
-            }
-          : {}
-      ),
-    });
   const topicResurfaceCrossDeviceCoordinator =
     new TopicResurfaceCrossDeviceCoordinator(
       nativeLiveBackgroundModelService,
@@ -874,7 +835,6 @@ export function createProcessRuntime(
       sentinelScheduler.stopScheduling();
       nativeLiveMindFollowUpScheduler.stopScheduling();
       nativeLiveSemanticScheduler.stopScheduling();
-      backgroundMaintenancePulse.stopScheduling();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
@@ -882,7 +842,6 @@ export function createProcessRuntime(
         sentinelScheduler.drain(),
         nativeLiveMindFollowUpScheduler.drain(),
         nativeLiveSemanticScheduler.drain(),
-        backgroundMaintenancePulse.drain(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.

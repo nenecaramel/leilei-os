@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  getBackgroundMaintenancePulseConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
@@ -41,30 +40,6 @@ test("Topic resurface config is explicitly enabled while Companion owns cadence"
   );
 });
 
-
-test("background maintenance pulse uses one coarse default cadence with explicit overrides", () => {
-  assert.deepEqual(
-    getBackgroundMaintenancePulseConfig({
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS: undefined,
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT: undefined,
-    }),
-    {
-      intervalMs: 3_600_000,
-      userLimit: 64,
-    },
-  );
-
-  assert.deepEqual(
-    getBackgroundMaintenancePulseConfig({
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_PULSE_SECONDS: 900,
-      NATIVE_LIVE_BACKGROUND_MAINTENANCE_USER_LIMIT: 12,
-    }),
-    {
-      intervalMs: 900_000,
-      userLimit: 12,
-    },
-  );
-});
 
 test("Memory Decay stays disabled unless every semantic policy knob is explicit", () => {
   assert.equal(
@@ -122,7 +97,6 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: undefined,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: undefined,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: undefined,
     }),
     undefined,
   );
@@ -132,7 +106,6 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: undefined,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: undefined,
     }),
     /PROACTIVITY_ENABLED=true/,
   );
@@ -142,7 +115,6 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: true,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: undefined,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: 16,
     }),
     /are required when Proactivity is enabled/,
   );
@@ -152,12 +124,10 @@ test("Proactivity wake production opportunity is disabled by default and require
       NATIVE_LIVE_PROACTIVITY_ENABLED: true,
       NATIVE_LIVE_PROACTIVITY_MIN_IDLE_SECONDS: 7_200,
       NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS: 21_600,
-      NATIVE_LIVE_PROACTIVITY_USER_LIMIT: 16,
     }),
     {
       minIdleMs: 7_200_000,
       cooldownMs: 21_600_000,
-      userLimit: 16,
     },
   );
 });

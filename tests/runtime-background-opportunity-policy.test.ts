@@ -4,9 +4,8 @@ import {
   BackgroundOpportunityPolicy,
 } from "../src/domains/runtime/background-opportunity-policy.js";
 
-test("background opportunity policy keeps post-turn consolidation separate from time maintenance", () => {
+test("background opportunity policy keeps post-turn work separate from Companion due work", () => {
   const policy = new BackgroundOpportunityPolicy({
-    maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: false,
     proactivityWakeEnabled: false,
     topicResurfaceEnabled: true,
@@ -19,7 +18,7 @@ test("background opportunity policy keeps post-turn consolidation separate from 
     ["distillation"],
   );
   assert.deepEqual(
-    policy.decide({ opportunity: "maintenance_pulse" }).targets.map(
+    policy.decide({ opportunity: "companion_due" }).targets.map(
       (target) => target.kind,
     ),
     [
@@ -34,14 +33,10 @@ test("background opportunity policy keeps post-turn consolidation separate from 
     ),
     ["topic_resurface"],
   );
-  assert.equal(policy.cadenceMs("post_turn"), null);
-  assert.equal(policy.cadenceMs("maintenance_pulse"), 3_600_000);
-  assert.equal(policy.cadenceMs("mac_idle"), null);
 });
 
 test("Decay is opt-in and Breath is not a schedulable background target", () => {
   const policy = new BackgroundOpportunityPolicy({
-    maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: true,
     proactivityWakeEnabled: false,
     topicResurfaceEnabled: false,
@@ -49,7 +44,7 @@ test("Decay is opt-in and Breath is not a schedulable background target", () => 
 
   const kinds = [
     ...policy.decide({ opportunity: "post_turn" }).targets,
-    ...policy.decide({ opportunity: "maintenance_pulse" }).targets,
+    ...policy.decide({ opportunity: "companion_due" }).targets,
     ...policy.decide({ opportunity: "mac_idle" }).targets,
   ].map((target) => target.kind);
 
@@ -58,29 +53,15 @@ test("Decay is opt-in and Breath is not a schedulable background target", () => 
   assert.equal(kinds.includes("topic_resurface"), false);
 });
 
-
-test("background opportunity policy rejects invalid source cadence", () => {
-  assert.throws(
-    () => new BackgroundOpportunityPolicy({
-      maintenancePulseIntervalMs: 0,
-      decayEnabled: false,
-      topicResurfaceEnabled: false,
-    }),
-    /maintenance_pulse cadence/,
-  );
-});
-
-
-test("Proactivity wake is an explicit maintenance-pulse opportunity, not a second cadence source", () => {
+test("Proactivity wake is Companion due work, not a second scheduler", () => {
   const policy = new BackgroundOpportunityPolicy({
-    maintenancePulseIntervalMs: 3_600_000,
     decayEnabled: false,
     proactivityWakeEnabled: true,
     topicResurfaceEnabled: false,
   });
 
   assert.deepEqual(
-    policy.decide({ opportunity: "maintenance_pulse" }).targets.map(
+    policy.decide({ opportunity: "companion_due" }).targets.map(
       (target) => target.kind,
     ),
     [
@@ -91,8 +72,7 @@ test("Proactivity wake is an explicit maintenance-pulse opportunity, not a secon
     ],
   );
   assert.equal(
-    policy.plan("maintenance_pulse", "proactivity_wake")?.priority,
+    policy.plan("companion_due", "proactivity_wake")?.priority,
     "reflection",
   );
-  assert.equal(policy.cadenceMs("maintenance_pulse"), 3_600_000);
 });
