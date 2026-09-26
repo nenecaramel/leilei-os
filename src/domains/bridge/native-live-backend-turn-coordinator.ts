@@ -12,6 +12,7 @@ import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
 import type { MindWriteIntent } from "../runtime/mind-intent-parser.js";
+import type { MindSemanticAction } from "../runtime/mind-semantic-action.js";
 import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import {
   NativeLiveRelayContractError,
@@ -98,9 +99,7 @@ export type NativeLiveFinalizeSuccessRecord = {
 
 export type NativeLiveMindFollowUpPayload = {
   intents: readonly MindWriteIntent[];
-  actions: NonNullable<
-    ReturnType<NativeLiveBackendMindRuntime["parseAssistantBlocks"]>["actions"]
-  >;
+  actions: readonly MindSemanticAction[];
 };
 
 export interface NativeLivePostFinalizeRunner {
