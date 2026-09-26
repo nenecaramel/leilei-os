@@ -28,6 +28,9 @@ import {
   NativeLiveRuntimeControlError,
   type NativeLiveRuntimeControlService,
 } from "../domains/bridge/native-live-runtime-control.js";
+import type {
+  NativeLiveTurnWaitService,
+} from "../domains/bridge/native-live-turn-wait.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: {
@@ -43,6 +46,7 @@ export type NativeLiveApiDependencies = {
       prepareId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
   };
+  turnWaitService?: Pick<NativeLiveTurnWaitService, "wait">;
   currentPathReader?: NativeLiveCurrentPathReader;
   conversationService?: Pick<
     NativeLiveConversationService,
@@ -68,6 +72,12 @@ export function createNativeLiveApiRouter(
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
+  if (dependencies.turnWaitService) {
+    router.post(
+      "/turns/:prepareId/wait",
+      waitNativeLiveTurnHandler(dependencies),
+    );
+  }
   if (dependencies.runtimeEventService) {
     router.get(
       "/turns/:prepareId/events",
@@ -894,30 +904,7 @@ export function readNativeLiveTurnHandler(
 
       response.json({
         success: true,
-        data: {
-          prepareId: turn.prepareId,
-          requestId: turn.requestId,
-          conversationId: turn.conversationId,
-          operation: turn.operation,
-          userMessageId: turn.canonicalUserMessageId,
-          executionSelection: turn.executionSelection,
-          canonicalStatus: turn.canonicalStatus,
-          dispatchStatus: turn.dispatchStatus,
-          semanticStatus: turn.semanticStatus,
-          semanticFallbackCode: turn.semanticFallbackCode,
-          failureCode: turn.failureCode,
-          runtimeMetadata: turn.runtimeMetadata,
-          assistantMessage: turn.assistantMessage
-            ? {
-                id: turn.assistantMessage.id,
-                parentMessageId: turn.assistantMessage.parentMessageId,
-                status: turn.assistantMessage.status,
-                createdAt: turn.assistantMessage.createdAt,
-                completedAt: turn.assistantMessage.completedAt,
-                blocks: turn.assistantMessage.blocks,
-              }
-            : null,
-        },
+        data: nativeLiveTurnResponseData(turn),
       });
     } catch {
       response.status(503).json({
@@ -928,6 +915,115 @@ export function readNativeLiveTurnHandler(
         },
       });
     }
+  };
+}
+
+export function waitNativeLiveTurnHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const prepareId = routeParam(request.params.prepareId);
+    if (!UUID_PATTERN.test(prepareId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_TURN_ID",
+          message: "Native live turn id is invalid.",
+        },
+      });
+      return;
+    }
+
+    const service = dependencies.turnWaitService;
+    if (!service) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_TURN_WAIT_UNAVAILABLE",
+          message:
+            "Native live turn completion wait is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const onClose = () => controller.abort();
+    response.once("close", onClose);
+    try {
+      const result = await service.wait({
+        userId: request.webUserId,
+        prepareId,
+        timeoutMs: 25_000,
+        signal: controller.signal,
+      });
+      if (response.writableEnded || controller.signal.aborted) return;
+
+      if (!result) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_TURN_NOT_FOUND",
+            message: "Native live turn was not found.",
+          },
+        });
+        return;
+      }
+
+      response.json({
+        success: true,
+        data:
+          result.outcome === "terminal"
+            ? {
+                outcome: "terminal",
+                turn: nativeLiveTurnResponseData(result.turn),
+              }
+            : { outcome: "timeout" },
+      });
+    } catch {
+      if (response.writableEnded || controller.signal.aborted) return;
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_TURN_WAIT_UNAVAILABLE",
+          message:
+            "Native live turn completion wait is temporarily unavailable.",
+        },
+      });
+    } finally {
+      response.off("close", onClose);
+    }
+  };
+}
+
+function nativeLiveTurnResponseData(
+  turn: NativeLiveBackendTurnReadModel,
+): Record<string, unknown> {
+  return {
+    prepareId: turn.prepareId,
+    requestId: turn.requestId,
+    conversationId: turn.conversationId,
+    operation: turn.operation,
+    userMessageId: turn.canonicalUserMessageId,
+    executionSelection: turn.executionSelection,
+    canonicalStatus: turn.canonicalStatus,
+    dispatchStatus: turn.dispatchStatus,
+    semanticStatus: turn.semanticStatus,
+    semanticFallbackCode: turn.semanticFallbackCode,
+    failureCode: turn.failureCode,
+    runtimeMetadata: turn.runtimeMetadata,
+    assistantMessage: turn.assistantMessage
+      ? {
+          id: turn.assistantMessage.id,
+          parentMessageId: turn.assistantMessage.parentMessageId,
+          status: turn.assistantMessage.status,
+          createdAt: turn.assistantMessage.createdAt,
+          completedAt: turn.assistantMessage.completedAt,
+          blocks: turn.assistantMessage.blocks,
+        }
+      : null,
   };
 }
 
