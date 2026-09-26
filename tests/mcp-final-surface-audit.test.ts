@@ -132,16 +132,13 @@ test("default production public surface stays compact and reports final inventor
     "get_universe_node",
     "get_universe_relations",
     "global_search",
-    "list_conversations",
     "list_diary_comments",
     "list_todo_dates",
     "list_universe_galaxies",
     "list_universe_nodes",
-    "read_conversation",
     "read_todo_day",
     "replace_todo_paper",
     "render_note_card",
-    "search_conversations",
     "search_diary",
     "search_todo",
     "toy_set",
@@ -158,7 +155,7 @@ test("default production public surface stays compact and reports final inventor
     expectedPublicNames,
     "default public inventory must stay exact",
   );
-  assert.equal(tools.length, 38);
+  assert.equal(tools.length, 35);
   assert.ok(
     tools.length < fullTools.length,
     "default public surface must be smaller than internal full",
@@ -200,6 +197,13 @@ test("default production public surface stays compact and reports final inventor
     "restore_shared_paper",
     "permanently_delete_shared_paper",
     "delete_shared_paper",
+    "list_conversations",
+    "search_conversations",
+    "read_conversation",
+    "list_conversation_exclusions",
+    "inspect_conversation_restore_candidates",
+    "inspect_conversation_restore_path",
+    "restore_conversation_exclusion",
     "list_deleted_conversation_branches",
     "archive_conversation",
     "delete_conversation_item",
@@ -260,7 +264,6 @@ test("common user intents keep short model-facing tool paths", async () => {
   const scenarios = [
     { name: "append_20_todo_entries", calls: ["append_todo_entries"] },
     { name: "find_and_read_diary", calls: ["search_diary", "get_diary"] },
-    { name: "find_and_read_conversation", calls: ["search_conversations", "read_conversation"] },
     { name: "find_and_read_universe", calls: ["global_search", "get_universe_node"] },
     { name: "create_diary", calls: ["create_diary"] },
   ] as const;
