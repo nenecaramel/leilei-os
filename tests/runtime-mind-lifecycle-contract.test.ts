@@ -151,3 +151,34 @@ test("invalid lifecycle transitions fail closed", () => {
     /Invalid memory lifecycle transition/,
   );
 });
+
+
+test("Mind retirement policy has explicit terminal preconditions and no implicit retention", async () => {
+  const {
+    MIND_RETIREMENT_PRECONDITIONS,
+    validateMindRetirementPolicy,
+  } = await import("../src/domains/runtime/mind-retirement-policy.js");
+
+  assert.deepEqual(MIND_RETIREMENT_PRECONDITIONS, {
+    drive: "dormant",
+    thought: "dormant",
+    curiosity: "resolved_or_dormant",
+    topic: "dormant",
+  });
+
+  assert.deepEqual(validateMindRetirementPolicy({}), {});
+  assert.deepEqual(
+    validateMindRetirementPolicy({
+      topic: { retentionHours: 720 },
+    }),
+    {
+      topic: { retentionHours: 720 },
+    },
+  );
+  assert.throws(
+    () => validateMindRetirementPolicy({
+      drive: { retentionHours: 0 },
+    }),
+    /retentionHours must be positive/,
+  );
+});

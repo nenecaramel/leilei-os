@@ -41,6 +41,11 @@ test("due companion opportunity schedules cadence work across maintenance, effec
               priority: "maintenance" as const,
               cost: 1,
             },
+            {
+              kind: "mind_retirement" as const,
+              priority: "maintenance" as const,
+              cost: 1,
+            },
           ],
         };
       },
@@ -80,6 +85,7 @@ test("due companion opportunity schedules cadence work across maintenance, effec
       "thought_evolution",
       "drive_evolution",
       "topic_lifecycle",
+      "mind_retirement",
     ],
   }]);
   assert.deepEqual(effectCalls, ["user-1"]);
@@ -92,6 +98,7 @@ test("due companion opportunity schedules cadence work across maintenance, effec
       "thought_evolution",
       "drive_evolution",
       "topic_lifecycle",
+      "mind_retirement",
     ],
     effectDeliveryScheduled: true,
     proactivityScheduled: true,

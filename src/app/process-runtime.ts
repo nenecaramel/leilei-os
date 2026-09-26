@@ -340,6 +340,9 @@ export function createProcessRuntime(
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     decayEnabled: Boolean(memoryDecayConfig),
+    // Retirement stays disabled until an explicit per-kind retention policy
+    // and concrete lifecycle runner are wired. Never infer destructive policy.
+    mindRetirementEnabled: false,
   });
   const distillationPlan =
     DEFAULT_BACKGROUND_TARGET_PLANS.distillation;

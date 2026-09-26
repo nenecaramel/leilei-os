@@ -14,7 +14,8 @@ export type SubjectStateMaintenanceKind =
   | "decay"
   | "thought_evolution"
   | "drive_evolution"
-  | "topic_lifecycle";
+  | "topic_lifecycle"
+  | "mind_retirement";
 
 export type SubjectStateBackgroundLoopPlan = {
   priority: BackgroundLoopPriority;
@@ -27,6 +28,7 @@ export type SubjectStateBackgroundMaintenanceConfig = {
   thoughtEvolution?: SubjectStateBackgroundLoopPlan;
   driveEvolution?: SubjectStateBackgroundLoopPlan;
   topicLifecycle?: SubjectStateBackgroundLoopPlan;
+  mindRetirement?: SubjectStateBackgroundLoopPlan;
 };
 
 export type SubjectStateBackgroundMaintenanceRunners = {
@@ -35,6 +37,7 @@ export type SubjectStateBackgroundMaintenanceRunners = {
   driveEvolution?: SubjectStateBackgroundRunner | null;
   curiosityTopicProjection?: SubjectStateBackgroundRunner | null;
   topicEvolution?: SubjectStateBackgroundRunner | null;
+  mindRetirement?: SubjectStateBackgroundRunner | null;
 };
 
 /**
@@ -74,6 +77,11 @@ export class SubjectStateBackgroundMaintenance {
       runners.driveEvolution,
     );
     validateTopicPlan(config.topicLifecycle, runners);
+    validatePlan(
+      "mindRetirement",
+      config.mindRetirement,
+      runners.mindRetirement,
+    );
   }
 
   schedule(input: {
@@ -97,6 +105,7 @@ export class SubjectStateBackgroundMaintenance {
           "thought_evolution",
           "drive_evolution",
           "topic_lifecycle",
+          "mind_retirement",
         ],
     );
 
@@ -140,6 +149,20 @@ export class SubjectStateBackgroundMaintenance {
         kind: "drive_evolution",
         plan: this.config.driveEvolution,
         runner: this.runners.driveEvolution,
+      });
+    }
+    if (
+      selected.has("mind_retirement")
+      && this.config.mindRetirement
+      && this.runners.mindRetirement
+    ) {
+      this.scheduleOne({
+        userId,
+        mutex,
+        key: "mind-retirement",
+        kind: "mind_retirement",
+        plan: this.config.mindRetirement,
+        runner: this.runners.mindRetirement,
       });
     }
     if (
@@ -192,7 +215,11 @@ export class SubjectStateBackgroundMaintenance {
     userId: string;
     mutex: string;
     key: string;
-    kind: "decay" | "thought_evolution" | "drive_evolution";
+    kind:
+      | "decay"
+      | "thought_evolution"
+      | "drive_evolution"
+      | "mind_retirement";
     plan: SubjectStateBackgroundLoopPlan;
     runner: SubjectStateBackgroundRunner;
   }): void {

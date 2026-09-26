@@ -19,6 +19,7 @@ export type BackgroundOpportunityDecision = {
 
 export type BackgroundOpportunityPolicyConfig = {
   decayEnabled: boolean;
+  mindRetirementEnabled: boolean;
 };
 
 export const DEFAULT_BACKGROUND_TARGET_PLANS = {
@@ -44,6 +45,11 @@ export const DEFAULT_BACKGROUND_TARGET_PLANS = {
   },
   topicLifecycle: {
     kind: "topic_lifecycle",
+    priority: "maintenance",
+    cost: 1,
+  },
+  mindRetirement: {
+    kind: "mind_retirement",
     priority: "maintenance",
     cost: 1,
   },
@@ -85,6 +91,9 @@ export class BackgroundOpportunityPolicy {
         DEFAULT_BACKGROUND_TARGET_PLANS.thoughtEvolution,
         DEFAULT_BACKGROUND_TARGET_PLANS.driveEvolution,
         DEFAULT_BACKGROUND_TARGET_PLANS.topicLifecycle,
+        ...(this.config.mindRetirementEnabled
+          ? [DEFAULT_BACKGROUND_TARGET_PLANS.mindRetirement]
+          : []),
       ],
     };
   }

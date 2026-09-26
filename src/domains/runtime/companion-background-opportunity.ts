@@ -168,6 +168,8 @@ function toMaintenanceKind(
       return "drive_evolution";
     case "topic_lifecycle":
       return "topic_lifecycle";
+    case "mind_retirement":
+      return "mind_retirement";
     default:
       return null;
   }
