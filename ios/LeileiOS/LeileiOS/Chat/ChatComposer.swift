@@ -73,6 +73,13 @@ struct ChatComposer: View {
                     } label: {
                         Label("File", systemImage: "doc")
                     }
+
+                    Divider()
+
+                    Button {
+                    } label: {
+                        Label("Project File", systemImage: "folder")
+                    }
                 } label: {
                     ComposerCircleButton(
                         systemName: "plus",
