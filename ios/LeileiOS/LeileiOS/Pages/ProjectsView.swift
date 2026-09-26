@@ -1,36 +1,47 @@
 import SwiftUI
 
 struct ProjectsView: View {
+    @State private var query = ""
     @State private var showingWorkspacePicker = false
 
     var body: some View {
-        List {
-            Section("Workspace") {
-                LabeledContent("Current Workspace") {
-                    Text("Not connected")
-                        .foregroundStyle(.secondary)
-                }
-
-                Button("Change Workspace") {
-                    showingWorkspacePicker = true
-                }
+        AppStateSurface(title: "Nothing here")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground))
+            .searchable(text: $query, prompt: "Search")
+            .sheet(isPresented: $showingWorkspacePicker) {
+                WorkspacePickerSheet()
             }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Projects")
+                        .font(.headline)
+                }
 
-            Section("Projects") {
-                ContentUnavailableView(
-                    "No Projects",
-                    systemImage: "folder",
-                    description: Text(
-                        "Projects will appear here when project data is connected."
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingWorkspacePicker = true
+                        } label: {
+                            Label(
+                                "Workspace",
+                                systemImage: "externaldrive"
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 18, weight: .medium))
+                    }
+                    .accessibilityLabel("Project options")
+                }
+
+                if #available(iOS 26.0, *) {
+                    DefaultToolbarItem(
+                        kind: .search,
+                        placement: .bottomBar
                     )
-                )
-                .frame(maxWidth: .infinity)
-                .listRowBackground(Color.clear)
+                }
             }
-        }
-        .sheet(isPresented: $showingWorkspacePicker) {
-            WorkspacePickerSheet()
-        }
     }
 }
 
@@ -40,29 +51,20 @@ struct WorkspacePickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Workspace") {
-                    ContentUnavailableView(
-                        "No Workspace Connected",
-                        systemImage: "externaldrive",
-                        description: Text(
-                            "Available Mac workspaces will appear here."
-                        )
-                    )
-                    .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-                }
-            }
-            .navigationTitle("Workspace")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+            AppStateSurface(title: "Nothing here")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.settingsBackground)
+                .navigationTitle("Workspace")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
                     }
                 }
-            }
         }
+        .background(Color.settingsBackground)
     }
 }
 
@@ -73,29 +75,20 @@ struct ProjectPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Projects") {
-                    ContentUnavailableView(
-                        "No Projects",
-                        systemImage: "folder",
-                        description: Text(
-                            "Available projects will appear here."
-                        )
-                    )
-                    .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-                }
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
+            AppStateSurface(title: "Nothing here")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.settingsBackground)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
                     }
                 }
-            }
         }
+        .background(Color.settingsBackground)
     }
 }
 
@@ -105,7 +98,7 @@ struct ContextOverviewSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            Form {
                 Section("Context") {
                     LabeledContent("Usage") {
                         Text("—")
@@ -130,6 +123,9 @@ struct ContextOverviewSheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
             .navigationTitle("Context")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -140,5 +136,6 @@ struct ContextOverviewSheet: View {
                 }
             }
         }
+        .background(Color.settingsBackground)
     }
 }
