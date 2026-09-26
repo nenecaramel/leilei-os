@@ -89,10 +89,14 @@ test("diary API forwards separate raw filters with authenticated ownership", asy
       mood: "happy",
       date_from: "2026-07-01",
       date_to: "2026-07-31",
+      limit: "100",
+      offset: "50",
     },
   } as unknown as Request, response, () => {});
   assert.deepEqual(calls, [{
     userId: "owner",
+    limit: 100,
+    offset: 50,
     query: {
       q: "旅行",
       tag: "日本",
