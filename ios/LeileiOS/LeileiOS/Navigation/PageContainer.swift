@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PageContainer: View {
     @EnvironmentObject private var appModel: AppModel
@@ -116,11 +117,22 @@ struct PageContainer: View {
                                 Button(role: .destructive) {
                                     showingDeleteConfirmation = true
                                 } label: {
-                                    Label(
-                                        "Delete",
-                                        systemImage: "trash"
-                                    )
-                                    .foregroundStyle(.red)
+                                    Label {
+                                        Text("Delete")
+                                    } icon: {
+                                        Image(
+                                            uiImage:
+                                                UIImage(
+                                                    systemName: "trash"
+                                                )?
+                                                .withTintColor(
+                                                    .systemRed,
+                                                    renderingMode:
+                                                        .alwaysOriginal
+                                                )
+                                            ?? UIImage()
+                                        )
+                                    }
                                 }
                                 .disabled(
                                     appModel.activeNativeLiveConversationID == nil
