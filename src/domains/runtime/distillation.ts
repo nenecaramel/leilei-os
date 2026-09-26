@@ -84,7 +84,7 @@ export type DistillationRunResult =
 export class DistillationPlanningError extends Error {
   constructor(
     readonly code:
-      | "INVALID_SURFACE_LIMIT"
+      | "INVALID_SETTLEMENT_LAG"
       | "INVALID_BATCH_SIZE"
       | "INVALID_CANONICAL_TURN"
       | "UNSETTLED_SOURCE",
@@ -117,7 +117,7 @@ export function planDistillationWindow(input: {
 }): DistillationWindow | null {
   if (!Number.isInteger(input.settlementLagMessages) || input.settlementLagMessages < 1) {
     throw new DistillationPlanningError(
-      "INVALID_SURFACE_LIMIT",
+      "INVALID_SETTLEMENT_LAG",
       "Distillation settlementLagMessages must be a positive integer.",
     );
   }
@@ -144,11 +144,11 @@ export function planDistillationWindow(input: {
     input.previousWatermarkMessageId && previousIndex < 0,
   );
   const startIndex = previousIndex >= 0 ? previousIndex + 1 : 0;
-  const outsideSurfaceEndExclusive = path.length - input.settlementLagMessages;
+  const settledEndExclusive = path.length - input.settlementLagMessages;
 
   let endIndex = -1;
   for (
-    let index = outsideSurfaceEndExclusive - 1;
+    let index = settledEndExclusive - 1;
     index >= startIndex;
     index -= 1
   ) {

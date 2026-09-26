@@ -128,7 +128,7 @@ function service(
   });
 }
 
-test("Distillation plans only settled turns that have fallen outside Surface", () => {
+test("Distillation plans only settled turns that have fallen outside the settlement lag", () => {
   const planned = planDistillationWindow({
     conversation: linearConversation(),
     settlementLagMessages: 2,
@@ -287,7 +287,7 @@ test("model failure never advances the Distillation watermark", async () => {
   assert.equal(port.commits, 0);
 });
 
-test("successful no-op Distillation still advances watermark so the same old Surface is not reprocessed", async () => {
+test("successful no-op Distillation still advances watermark so the same old settled window is not reprocessed", async () => {
   const port = new MemoryPort();
   const calls: Array<{ ids: string[] }> = [];
   const distill = service(port, model(calls, []));
