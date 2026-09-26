@@ -19,13 +19,31 @@ function runtimeError(message, details = {}) {
 
 async function loadDefaultDeleteSession() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
-  if (typeof sdk.deleteSession !== "function") {
+  if (
+    typeof sdk.deleteSession !== "function"
+    || typeof sdk.getSessionMessages !== "function"
+  ) {
     throw runtimeError(
-      "Claude Agent SDK did not expose deleteSession().",
+      "Claude Agent SDK did not expose session deletion helpers.",
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
   }
-  return sdk.deleteSession;
+
+  return async (sessionId, options) => {
+    try {
+      await sdk.deleteSession(sessionId, options);
+    } catch (cause) {
+      // A durable cleanup acknowledgement may be lost after the local hard
+      // delete succeeds. Retrying the reservation must therefore treat an
+      // already-absent transcript as success.
+      const messages = await sdk.getSessionMessages(sessionId, {
+        ...(options?.dir ? { dir: options.dir } : {}),
+        limit: 1,
+      });
+      if (messages.length === 0) return;
+      throw cause;
+    }
+  };
 }
 
 async function loadDefaultQuery() {
@@ -455,7 +473,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     const deleteSessionImpl = await this.#resolveDeleteSession();
     try {
-      await deleteSessionImpl(id, { directory: this.cwd });
+      await deleteSessionImpl(id, { dir: this.cwd });
     } catch (cause) {
       throw runtimeError(
         `Failed to delete Claude Agent SDK session: ${cause instanceof Error ? cause.message : String(cause)}`,
