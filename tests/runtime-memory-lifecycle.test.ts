@@ -383,6 +383,7 @@ test("recall cannot resurrect archived or forgotten Memory/Feel", () => {
         },
         "2026-09-22T00:00:00.000Z",
         0.08,
+        "u-recall",
         policy,
       ),
       null,
