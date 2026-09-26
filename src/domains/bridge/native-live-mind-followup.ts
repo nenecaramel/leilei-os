@@ -384,6 +384,7 @@ function parseJob(row: RawFollowUpRow): NativeLiveMindFollowUpJob {
     assistantMessageId: row.assistant_message_id,
     operation: row.operation,
     intents: parseIntents(row.intents),
+    actions: parseActions(row.actions),
   };
 }
 
@@ -422,5 +423,55 @@ function parseIntents(value: unknown): MindWriteIntent[] {
       sourceEnd: record.sourceEnd as number,
       raw: record.raw,
     };
+  });
+}
+
+
+function parseActions(value: unknown): MindSemanticAction[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Native live Mind follow-up actions must be an array.");
+  }
+
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error("Native live Mind follow-up action is invalid.");
+    }
+    const record = candidate as Record<string, unknown>;
+    if (
+      (record.kind !== "mind_satisfy" && record.kind !== "mind_resolve")
+      || typeof record.stateId !== "string"
+      || !record.stateId.trim()
+      || typeof record.sourceStart !== "number"
+      || !Number.isInteger(record.sourceStart)
+      || typeof record.sourceEnd !== "number"
+      || !Number.isInteger(record.sourceEnd)
+      || typeof record.raw !== "string"
+    ) {
+      throw new Error("Native live Mind follow-up action is invalid.");
+    }
+    if (
+      record.kind === "mind_satisfy"
+      && record.level !== "partial"
+      && record.level !== "full"
+    ) {
+      throw new Error("Native live Mind satisfaction level is invalid.");
+    }
+
+    return record.kind === "mind_satisfy"
+      ? {
+          kind: "mind_satisfy" as const,
+          stateId: record.stateId,
+          level: record.level as "partial" | "full",
+          sourceStart: record.sourceStart,
+          sourceEnd: record.sourceEnd,
+          raw: record.raw,
+        }
+      : {
+          kind: "mind_resolve" as const,
+          stateId: record.stateId,
+          sourceStart: record.sourceStart,
+          sourceEnd: record.sourceEnd,
+          raw: record.raw,
+        };
   });
 }
