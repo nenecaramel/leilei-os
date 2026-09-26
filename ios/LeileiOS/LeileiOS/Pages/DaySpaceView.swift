@@ -142,15 +142,26 @@ struct DaySpaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .results(let entries):
-            List(entries) { entry in
-                Button {
-                    Task {
-                        await openSearchResult(entry)
+            List {
+                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                    Button {
+                        Task {
+                            await openSearchResult(entry)
+                        }
+                    } label: {
+                        DaySpaceTodoSearchRow(entry: entry)
                     }
-                } label: {
-                    DaySpaceTodoSearchRow(entry: entry)
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color(.systemBackground))
+                    .listRowSeparator(
+                        index == 0 ? .hidden : .visible,
+                        edges: .top
+                    )
+                    .listRowSeparator(
+                        index == entries.count - 1 ? .hidden : .visible,
+                        edges: .bottom
+                    )
                 }
-                .buttonStyle(.plain)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -551,6 +562,10 @@ private struct DaySpaceTodoSearchEntry: Decodable, Identifiable {
 private struct DaySpaceTodoSearchRow: View {
     let entry: DaySpaceTodoSearchEntry
 
+    private var metadataText: String {
+        "\(entry.author.rawValue)  \(entry.kind.rawValue.capitalized)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(entry.text)
@@ -563,7 +578,7 @@ private struct DaySpaceTodoSearchRow: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(entry.author.rawValue)  \(entry.kind.rawValue.capitalized)")
+                Text(metadataText)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
