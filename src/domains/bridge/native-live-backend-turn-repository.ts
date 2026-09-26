@@ -40,6 +40,7 @@ import type {
   NativeLiveRuntimeMetadata,
   NativeLiveRuntimeMode,
 } from "./native-live-runtime-protocol.js";
+import type { MemoryLifecyclePolicy } from "../runtime/memory-lifecycle.js";
 import {
   planCausalSubjectStatePurge,
   planExclusiveProviderSessionCleanup,
@@ -163,7 +164,10 @@ function requestConflictOrReplay(
 
 export class DrizzleNativeLiveBackendTurnPort
 implements NativeLiveBackendTurnPort {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly memoryLifecyclePolicy?: MemoryLifecyclePolicy,
+  ) {}
 
   async prepareSend(input: {
     prepareId: string;
@@ -1004,6 +1008,8 @@ implements NativeLiveBackendTurnPort {
       purgeMessageIds,
       purgeStateIds: purgeStateIdSet,
       additionalEvolutionCausalIds: actionProjectionCausalIds,
+      memoryLifecyclePolicy: this.memoryLifecyclePolicy,
+      repairedAt: new Date().toISOString(),
     });
     const causalIds = new Set<string>([
       ...purgeMessageIds,
