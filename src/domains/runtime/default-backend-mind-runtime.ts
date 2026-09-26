@@ -78,10 +78,9 @@ export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
 };
 
 const DEFAULT_THOUGHT_EVOLUTION_POLICY = {
-  flitHalfLifeHours: 168,
+  halfLifeHours: 168,
   baseStrength: 0.35,
   reinforcementBoost: 0.25,
-  fixationThreshold: 0.75,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
@@ -131,7 +130,8 @@ export function createDefaultBackendMindRuntime(
       breathSemanticCandidateLimit: 64,
       breathSemanticCandidateMaxChars: 2_000,
       driveLimit: 3,
-      fixationLimit: 3,
+      thoughtLimit: 3,
+      thoughtMinStrength: 0.1,
       topicLimit: 3,
       maxContextItems: 16,
       maxContextChars: 8_000,
