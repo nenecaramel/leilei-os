@@ -2601,8 +2601,14 @@ private struct DaySpacePaperDetailLayer<
             Color.clear
                 .ignoresSafeArea()
         )
-        .onExitCommand {
-            onRequestClose()
+        .overlay(alignment: .topLeading) {
+            Button(action: onRequestClose) {
+                Color.clear
+                    .frame(width: 1, height: 1)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .accessibilityHidden(true)
         }
     }
 
