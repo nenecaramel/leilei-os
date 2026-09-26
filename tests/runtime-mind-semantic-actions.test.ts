@@ -232,3 +232,58 @@ test("Drive semantic satisfaction maps partial/full meaning through Runtime poli
 
   assert.deepEqual(amounts, [0.2, 1]);
 });
+
+
+test("durable Drive satisfaction stays applied when derived post-projection refresh fails", async () => {
+  let evolutionRuns = 0;
+  const service = new DriveSatisfactionService(
+    {
+      async listCandidates() {
+        evolutionRuns += 1;
+        if (evolutionRuns > 1) {
+          throw new Error("derived refresh unavailable");
+        }
+        return [];
+      },
+      async applyUpdates() {
+        return { applied: 0, conflicts: 0 };
+      },
+    },
+    {
+      async applySatisfaction(input) {
+        return {
+          outcome: "applied" as const,
+          driveStateId: input.driveStateId,
+          pressure: 0,
+          phase: "satisfied" as const,
+          satisfactionTotal: input.amount,
+        };
+      },
+    },
+    {
+      basePressure: 0.4,
+      reinforcementBoost: 0.2,
+      activeThreshold: 0.1,
+      dormantAfterSatisfiedHours: 168,
+      minEvolutionIntervalHours: 6,
+      maxReinforcementSources: 16,
+    },
+  );
+
+  const result = await service.satisfySemantic({
+    userId,
+    subjectId: "G",
+    driveStateId,
+    level: "full",
+    idempotencyKey: "semantic-refresh-0001",
+    evidence: {
+      kind: "assistant_message",
+      conversationId,
+      messageId: assistantMessageId,
+    },
+    now: "2026-09-27T00:30:00.000Z",
+  });
+
+  assert.equal(result.outcome, "applied");
+  assert.equal(evolutionRuns, 2);
+});
