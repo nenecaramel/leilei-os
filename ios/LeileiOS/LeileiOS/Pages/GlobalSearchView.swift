@@ -217,22 +217,8 @@ private struct GlobalSearchResultsList: View {
         List {
             ForEach(groups) { group in
                 Section(group.module.title) {
-                    ForEach(
-                        Array(group.items.enumerated()),
-                        id: \.element.id
-                    ) { index, result in
+                    ForEach(group.items) { result in
                         GlobalSearchResultRow(result: result)
-                            .listRowBackground(Color(.systemBackground))
-                            .listRowSeparator(
-                                index == 0 ? .hidden : .visible,
-                                edges: .top
-                            )
-                            .listRowSeparator(
-                                index == group.items.count - 1
-                                    ? .hidden
-                                    : .visible,
-                                edges: .bottom
-                            )
                     }
                 }
             }
