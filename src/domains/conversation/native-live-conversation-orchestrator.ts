@@ -5,7 +5,7 @@ import type {
   NativeLiveProviderCheckpoint,
 } from "./native-live-conversation-types.js";
 import type { NativeLiveMindRuntime } from "../runtime/native-live-mind-runtime.js";
-import type { NativeLiveBackgroundOpportunity } from "../runtime/native-live-background-opportunity.js";
+import type { NativeLiveDistillationTrigger } from "../runtime/distillation-trigger-contract.js";
 
 export type NativeLiveNormalizedEventType =
   | "session"
@@ -196,7 +196,7 @@ export class NativeLiveConversationOrchestrator {
     private readonly conversations: NativeLiveConversationPort,
     private readonly runtime: NativeLiveClaudeRuntime,
     private readonly mind: NativeLiveMindRuntime | null = null,
-    private readonly backgroundOpportunity: NativeLiveBackgroundOpportunity | null = null,
+    private readonly backgroundOpportunity: Pick<NativeLiveDistillationTrigger, "schedule"> | null = null,
   ) {}
 
   async send(input: {
