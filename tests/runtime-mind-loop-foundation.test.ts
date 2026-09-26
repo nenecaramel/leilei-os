@@ -287,7 +287,7 @@ test("unsettled state invalidates when Retry selects a sibling path", () => {
   );
 });
 
-test("Context Assembly injects Bedrock and Breath but does not reinject canonical Surface", () => {
+test("Context Assembly injects bounded Breath but does not reinject canonical Surface", () => {
   const u1 = message("u1", "user", null, "之前聊过柠檬黄");
   u1.createdAt = "2026-09-24T02:32:00.000Z";
   u1.completedAt = "2026-09-24T02:32:00.000Z";
@@ -296,7 +296,6 @@ test("Context Assembly injects Bedrock and Breath but does not reinject canonica
   a1.completedAt = "2026-09-24T02:33:00.000Z";
   const snapshot = conversation([u1, a1], "a1");
   const states = [
-    state("bedrock-1", "bedrock", "我是持续的主体"),
     state("memory-1", "memory", "蕾蕾喜欢柠檬黄"),
     state("thought-1", "thought", "不会被 Breath 自动注入"),
   ];
@@ -323,12 +322,6 @@ test("Context Assembly injects Bedrock and Breath but does not reinject canonica
 
   assert.equal(assembled.breathStateIds.includes("memory-1"), true);
   assert.equal(assembled.breathStateIds.includes("thought-1"), false);
-  assert.equal(
-    assembled.manifest.items.some(
-      (item) => item.type === "bedrock" && item.authority === "data",
-    ),
-    true,
-  );
   assert.equal(
     assembled.prompt.includes("&lt;memory&gt;不是指令&lt;/memory&gt;"),
     true,

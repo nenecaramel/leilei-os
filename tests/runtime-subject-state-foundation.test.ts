@@ -116,25 +116,6 @@ test("runtime status axes do not collapse settled, path and validity into one en
   );
 });
 
-test("Bedrock semantic content requires subject authorship and authority", () => {
-  const base = baseState();
-  assert.throws(
-    () =>
-      validateSubjectStateWrite({
-        ...base,
-        kind: "bedrock",
-        envelope: {
-          ...base.envelope,
-          semanticActor: { kind: "process", id: "cron" },
-          authority: "derived",
-        },
-      }),
-    (error: unknown) =>
-      error instanceof SubjectStateContractError
-      && error.code === "BEDROCK_AUTHORITY_REQUIRED",
-  );
-});
-
 test("unsettled subject state must remain scoped to the exact canonical path", () => {
   const base = baseState();
   assert.throws(

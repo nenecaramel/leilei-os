@@ -7,7 +7,6 @@ export const SUBJECT_STATE_KINDS = [
   "feel",
   "memory",
   "dream",
-  "bedrock",
   "drive",
   "thought",
   "curiosity",
@@ -29,7 +28,6 @@ export class SubjectStateContractError extends Error {
     readonly code:
       | "INVALID_ID"
       | "EMPTY_STATE"
-      | "BEDROCK_AUTHORITY_REQUIRED"
       | "UNSETTLED_STATE_MUST_BE_PATH_SCOPED",
     message: string,
   ) {
@@ -69,19 +67,6 @@ export function validateSubjectStateWrite(
   }
 
   const envelope = validatePersistentWriteEnvelope(input.envelope);
-
-  if (
-    input.kind === "bedrock"
-    && (
-      envelope.semanticActor.kind !== "subject"
-      || envelope.authority !== "subject_authorized"
-    )
-  ) {
-    throw new SubjectStateContractError(
-      "BEDROCK_AUTHORITY_REQUIRED",
-      "Bedrock semantic content requires subject-authorized subject authorship.",
-    );
-  }
 
   if (
     envelope.status.settlementStatus === "unsettled"
