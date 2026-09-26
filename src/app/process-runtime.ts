@@ -373,8 +373,8 @@ export function createProcessRuntime(
     decayEnabled: Boolean(memoryDecayConfig),
     proactivityWakeEnabled:
       Boolean(proactivityWakeOpportunityConfig),
-    topicResurfaceMinIntervalMs:
-      topicResurfaceOpportunityConfig?.minIntervalMs ?? null,
+    topicResurfaceEnabled:
+      Boolean(topicResurfaceOpportunityConfig),
   });
   const distillationPlan = backgroundOpportunityPolicy.plan(
     "post_turn",
@@ -643,11 +643,7 @@ export function createProcessRuntime(
       ? new TopicResurfaceCrossDeviceOpportunity(
           topicResurfaceCrossDeviceCoordinator,
           DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          {
-            ...topicResurfaceOpportunityConfig,
-            minIntervalMs:
-              backgroundOpportunityPolicy.cadenceMs("mac_idle")!,
-          },
+          topicResurfaceOpportunityConfig,
         )
       : undefined;
   const companionBackgroundOpportunity =
