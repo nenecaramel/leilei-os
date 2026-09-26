@@ -55,7 +55,7 @@ export function ChatGPTMessageBridgeCard({
   return (
     <section className="system-section message-bridge-card" aria-label="ChatGPT / Claude Message Bridge">
       <h2 className="system-product-name">Message Bridge</h2>
-      <div className="sentinel-first-row">
+      <div className="message-bridge-note-row">
         <p className="system-note">Send one message to the connected ChatGPT / Claude conversation.</p>
       </div>
       <textarea
