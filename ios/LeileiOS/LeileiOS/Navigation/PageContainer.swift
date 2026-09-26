@@ -157,7 +157,7 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea(.container))
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
         }
