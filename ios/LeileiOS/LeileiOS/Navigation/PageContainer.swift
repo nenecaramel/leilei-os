@@ -32,7 +32,9 @@ struct PageContainer: View {
                 } else if selectedPage == .projects {
                     ProjectsView()
                 } else if selectedPage == .globalSearch {
-                    GlobalSearchView()
+                    GlobalSearchView(
+                        service: LeileiGlobalSearchService(api: appModel.api)
+                    )
                 } else if selectedPage == .diary {
                     DiaryView()
                 } else if selectedPage == .daySpace {
