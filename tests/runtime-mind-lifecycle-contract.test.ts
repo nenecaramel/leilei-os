@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SUBJECT_STATE_KINDS } from "../src/domains/runtime/subject-state-contract.js";
+import {
+  CURRENT_SUBJECT_STATE_KINDS,
+  LEGACY_SUBJECT_STATE_KINDS,
+  SUBJECT_STATE_KINDS,
+} from "../src/domains/runtime/subject-state-contract.js";
 import {
   MIND_LIFECYCLE_PROFILES,
   assertMindLifecycleTransition,
@@ -9,11 +13,17 @@ import {
   mindLifecycleProfile,
 } from "../src/domains/runtime/mind-lifecycle-contract.js";
 
-test("Mind lifecycle contract covers every Subject State kind exactly once", () => {
+test("Mind lifecycle contract covers only current Mind kinds and excludes retired Dream", () => {
   assert.deepEqual(
     Object.keys(MIND_LIFECYCLE_PROFILES).sort(),
-    [...SUBJECT_STATE_KINDS].sort(),
+    [...CURRENT_SUBJECT_STATE_KINDS].sort(),
   );
+  assert.deepEqual([...LEGACY_SUBJECT_STATE_KINDS], ["dream"]);
+  assert.deepEqual(
+    new Set(SUBJECT_STATE_KINDS),
+    new Set([...CURRENT_SUBJECT_STATE_KINDS, ...LEGACY_SUBJECT_STATE_KINDS]),
+  );
+  assert.equal("dream" in MIND_LIFECYCLE_PROFILES, false);
 });
 
 test("Memory and Feel share the recoverable decay chain before physical purge", () => {
@@ -120,21 +130,6 @@ test("Topic ownership stays hybrid until the authored Topic entry point is retir
   ] as const) {
     assert.equal(mindLifecycleProfile(kind).ownership, "authored");
   }
-});
-
-test("Dream remains an explicit pending decision instead of receiving invented semantics", () => {
-  const profile = mindLifecycleProfile("dream");
-  assert.equal(profile.management, "pending_decision");
-  assert.equal(profile.initialState, null);
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "dream",
-      from: "active",
-      to: "dormant",
-    }),
-    false,
-  );
-  assert.equal(canPurgeMindState({ kind: "dream", state: "dormant" }), false);
 });
 
 test("invalid lifecycle transitions fail closed", () => {

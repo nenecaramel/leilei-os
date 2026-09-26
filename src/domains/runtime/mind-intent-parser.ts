@@ -1,11 +1,20 @@
-export type MindWriteIntentKind =
+export type CurrentMindWriteIntentKind =
   | "feel"
   | "memory"
-  | "dream"
   | "drive"
   | "thought"
   | "curiosity"
   | "topic";
+
+export type LegacyMindWriteIntentKind = "dream";
+
+/**
+ * Dream remains in this union only so durable legacy follow-up replay can read
+ * previously queued intents. parseMindWriteIntents() never emits Dream.
+ */
+export type MindWriteIntentKind =
+  | CurrentMindWriteIntentKind
+  | LegacyMindWriteIntentKind;
 
 export type MindWriteIntent = {
   kind: MindWriteIntentKind;
@@ -36,7 +45,8 @@ export function parseMindWriteIntents(source: string): ParsedMindIntents {
 
   for (const match of source.matchAll(TAG_PATTERN)) {
     const raw = match[0];
-    const kind = match[1]?.toLowerCase() as MindWriteIntentKind | undefined;
+    const kind =
+      match[1]?.toLowerCase() as CurrentMindWriteIntentKind | undefined;
     const body = match[2]?.trim() ?? "";
     const start = match.index;
 

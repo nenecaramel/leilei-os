@@ -114,7 +114,7 @@ export type MindLoopConfig = {
  * 2. assemble and persist bounded context before a model invocation;
  * 3. convert explicit subject-authored Mind tags into provisional state.
  *
- * It does not decide Dream/Drive/Decay policy and does not perform external
+ * It does not decide Drive/Decay policy and does not perform external
  * effects.
  */
 export class NativeLiveMindLoopService {

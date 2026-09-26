@@ -1,4 +1,4 @@
-import type { SubjectStateKind } from "./subject-state-contract.js";
+import type { CurrentSubjectStateKind } from "./subject-state-contract.js";
 
 export type MindLifecycleState =
   | "active"
@@ -33,18 +33,7 @@ export type ManagedMindLifecycleProfile = {
   purgeFrom: readonly MindLifecycleState[];
 };
 
-export type PendingMindLifecycleProfile = {
-  management: "pending_decision";
-  ownership: MindLifecycleOwnership;
-  drivers: readonly [];
-  initialState: null;
-  transitions: Readonly<Record<string, never>>;
-  purgeFrom: readonly [];
-};
-
-export type MindLifecycleProfile =
-  | ManagedMindLifecycleProfile
-  | PendingMindLifecycleProfile;
+export type MindLifecycleProfile = ManagedMindLifecycleProfile;
 
 /**
  * Architectural lifecycle authority for Subject State kinds.
@@ -59,9 +48,9 @@ export type MindLifecycleProfile =
  * alongside deterministic Curiosity projection. It can become derived-only
  * only when that authored entry point is actually retired.
  *
- * Dream is deliberately left pending until its product role is decided. Keeping
- * that uncertainty explicit is safer than silently inventing lifecycle
- * semantics for a half-supported kind.
+ * Dream is retired. Legacy persisted Dream rows remain a storage/replay
+ * compatibility concern and are intentionally outside this current lifecycle
+ * authority.
  */
 export const MIND_LIFECYCLE_PROFILES = {
   memory: {
@@ -134,24 +123,16 @@ export const MIND_LIFECYCLE_PROFILES = {
     },
     purgeFrom: ["dormant"],
   },
-  dream: {
-    management: "pending_decision",
-    ownership: "authored",
-    drivers: [],
-    initialState: null,
-    transitions: {},
-    purgeFrom: [],
-  },
-} as const satisfies Record<SubjectStateKind, MindLifecycleProfile>;
+} as const satisfies Record<CurrentSubjectStateKind, MindLifecycleProfile>;
 
 export function mindLifecycleProfile(
-  kind: SubjectStateKind,
+  kind: CurrentSubjectStateKind,
 ): MindLifecycleProfile {
   return MIND_LIFECYCLE_PROFILES[kind];
 }
 
 export function isMindLifecycleTransitionAllowed(input: {
-  kind: SubjectStateKind;
+  kind: CurrentSubjectStateKind;
   from: MindLifecycleState;
   to: MindLifecycleState;
 }): boolean {
@@ -162,7 +143,7 @@ export function isMindLifecycleTransitionAllowed(input: {
 }
 
 export function assertMindLifecycleTransition(input: {
-  kind: SubjectStateKind;
+  kind: CurrentSubjectStateKind;
   from: MindLifecycleState;
   to: MindLifecycleState;
 }): void {
@@ -173,7 +154,7 @@ export function assertMindLifecycleTransition(input: {
 }
 
 export function canPurgeMindState(input: {
-  kind: SubjectStateKind;
+  kind: CurrentSubjectStateKind;
   state: MindLifecycleState;
 }): boolean {
   const profile = mindLifecycleProfile(input.kind);
