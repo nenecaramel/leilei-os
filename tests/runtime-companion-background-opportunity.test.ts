@@ -65,9 +65,9 @@ test("due companion opportunity schedules cadence work across maintenance, effec
       async offer(input) {
         topicCalls.push(input);
         return {
-          outcome: "not_due" as const,
-          lastAttemptAt: "2026-09-25T00:00:00.000Z",
-          nextEligibleAt: "2026-09-25T01:00:00.000Z",
+          outcome: "attempted" as const,
+          attemptedAt: "2026-09-25T00:00:00.000Z",
+          result: { outcome: "idle" as const },
         };
       },
     },
@@ -144,7 +144,6 @@ test("dirty companion opportunity only offers effect recovery", async () => {
         return {
           outcome: "attempted" as const,
           attemptedAt: "2026-09-25T00:00:00.000Z",
-          nextEligibleAt: "2026-09-25T01:00:00.000Z",
           result: { outcome: "idle" as const },
         };
       },
@@ -207,7 +206,6 @@ test("startup catch-up runs maintenance and proactivity without Topic resurfacin
         return {
           outcome: "attempted" as const,
           attemptedAt: "2026-09-25T00:00:00.000Z",
-          nextEligibleAt: "2026-09-25T01:00:00.000Z",
           result: { outcome: "idle" as const },
         };
       },
