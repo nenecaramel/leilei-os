@@ -5,6 +5,7 @@ import {
   evaluateLifecycle,
   evaluatePurge,
   evaluateRecallReinforcement,
+  removeRecallReinforcementSources,
   forgottenSubjectStatePayload,
   MemoryLifecycleService,
   type MemoryLifecyclePolicy,
@@ -252,6 +253,7 @@ test("selected recall decays to the recall instant before applying deterministic
     },
     "2026-09-21T00:00:00.000Z",
     0.08,
+    "u-recall",
     policy,
   );
 
@@ -265,6 +267,16 @@ test("selected recall decays to the recall instant before applying deterministic
   assert.equal(
     update.lifecycle.lastRecalledAt,
     "2026-09-21T00:00:00.000Z",
+  );
+  assert.deepEqual(
+    (update.nextPayload.recall_reinforcement_v1 as {
+      contributions: unknown[];
+    }).contributions,
+    [{
+      sourceMessageId: "u-recall",
+      recalledAt: "2026-09-21T00:00:00.000Z",
+      currentValue: 0.08,
+    }],
   );
 });
 
@@ -288,6 +300,7 @@ test("late recall commit catches its boost up to a newer decay checkpoint", () =
     },
     "2026-09-20T12:00:00.000Z",
     0.08,
+    "u-recall",
     policy,
   );
 
@@ -329,6 +342,7 @@ test("recall reinforcement is idempotent for the same or older recall evidence",
       candidate,
       "2026-09-21T00:00:00.000Z",
       0.08,
+      "u-recall",
       policy,
     ),
     null,
@@ -338,6 +352,7 @@ test("recall reinforcement is idempotent for the same or older recall evidence",
       candidate,
       "2026-09-20T23:00:00.000Z",
       0.08,
+      "u-recall",
       policy,
     ),
     null,
@@ -395,6 +410,7 @@ test("recall reinforcement without decay policy starts a new non-retroactive bas
     },
     "2026-09-22T00:00:00.000Z",
     0.08,
+    "u-recall",
   );
 
   assert.ok(update);
@@ -403,5 +419,140 @@ test("recall reinforcement without decay policy starts a new non-retroactive bas
   assert.equal(
     update.lifecycle.lastDecayedAt,
     "2026-09-22T00:00:00.000Z",
+  );
+});
+
+
+test("lifecycle decay advances recall contribution values with the same factor as salience", () => {
+  const update = evaluateLifecycle(
+    {
+      stateId: "m-contribution-decay",
+      kind: "memory",
+      payload: {
+        lifecycle_v1: {
+          status: "active",
+          salience: 0.8,
+          protected: false,
+          lastDecayedAt: "2026-09-20T00:00:00.000Z",
+          lastRecalledAt: "2026-09-20T00:00:00.000Z",
+          archivedAt: null,
+          forgottenAt: null,
+        },
+        recall_reinforcement_v1: {
+          contributions: [{
+            sourceMessageId: "u-old",
+            recalledAt: "2026-09-20T00:00:00.000Z",
+            currentValue: 0.08,
+          }],
+        },
+      },
+      updatedAt: "2026-09-20T00:00:01.000Z",
+    },
+    "2026-09-21T00:00:00.000Z",
+    policy,
+  );
+
+  assert.ok(update);
+  assert.equal(update.lifecycle.salience, 0.4);
+  assert.deepEqual(
+    (update.nextPayload.recall_reinforcement_v1 as {
+      contributions: unknown[];
+    }).contributions,
+    [{
+      sourceMessageId: "u-old",
+      recalledAt: "2026-09-20T00:00:00.000Z",
+      currentValue: 0.04,
+    }],
+  );
+});
+
+test("the same canonical user turn cannot reinforce the same Memory twice", () => {
+  const first = evaluateRecallReinforcement(
+    {
+      stateId: "m-retry",
+      kind: "memory",
+      payload: {
+        lifecycle_v1: {
+          status: "active",
+          salience: 0.5,
+          protected: false,
+          lastDecayedAt: "2026-09-20T00:00:00.000Z",
+          lastRecalledAt: null,
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
+      updatedAt: "2026-09-20T00:00:01.000Z",
+    },
+    "2026-09-20T01:00:00.000Z",
+    0.08,
+    "u-same-turn",
+  );
+  assert.ok(first);
+
+  const replay = evaluateRecallReinforcement(
+    {
+      stateId: "m-retry",
+      kind: "memory",
+      payload: first.nextPayload,
+      updatedAt: "2026-09-20T01:00:01.000Z",
+    },
+    "2026-09-20T02:00:00.000Z",
+    0.08,
+    "u-same-turn",
+  );
+
+  assert.ok(replay);
+  assert.equal(replay.lifecycle.salience, 0.58);
+  assert.equal(replay.lifecycle.lastRecalledAt, "2026-09-20T02:00:00.000Z");
+  assert.equal(
+    (replay.nextPayload.recall_reinforcement_v1 as {
+      contributions: unknown[];
+    }).contributions.length,
+    1,
+  );
+});
+
+test("causal Edit removal subtracts only recall reinforcement sourced by purged user messages", () => {
+  const repaired = removeRecallReinforcementSources(
+    {
+      lifecycle_v1: {
+        status: "active",
+        salience: 0.66,
+        protected: false,
+        lastDecayedAt: "2026-09-21T00:00:00.000Z",
+        lastRecalledAt: "2026-09-21T00:00:00.000Z",
+        archivedAt: null,
+        forgottenAt: null,
+      },
+      recall_reinforcement_v1: {
+        contributions: [
+          {
+            sourceMessageId: "u-purged",
+            recalledAt: "2026-09-20T00:00:00.000Z",
+            currentValue: 0.08,
+          },
+          {
+            sourceMessageId: "u-survives",
+            recalledAt: "2026-09-21T00:00:00.000Z",
+            currentValue: 0.08,
+          },
+        ],
+      },
+    },
+    new Set(["u-purged"]),
+  );
+
+  assert.ok(repaired);
+  assert.equal(repaired.lifecycle.salience, 0.58);
+  assert.deepEqual(
+    (repaired.nextPayload.recall_reinforcement_v1 as {
+      contributions: unknown[];
+    }).contributions,
+    [{
+      sourceMessageId: "u-survives",
+      recalledAt: "2026-09-21T00:00:00.000Z",
+      currentValue: 0.08,
+    }],
   );
 });
