@@ -53,7 +53,7 @@ test("process runtime exposes bridge service from the shared database resource",
 });
 
 
-test("process runtime exposes Topic resurface opportunity only with explicit cadence config", () => {
+test("process runtime exposes Topic resurface opportunity only when explicitly enabled", () => {
   const fake = { db: {} as never, probe: async () => undefined, close: async () => undefined };
   const disabled = createProcessRuntime({
     environment: {
@@ -74,7 +74,7 @@ test("process runtime exposes Topic resurface opportunity only with explicit cad
       DATABASE_URL: "postgres://local",
       LOG_LEVEL: "error",
       MCP_AUTH_TOKEN: "",
-      NATIVE_LIVE_TOPIC_RESURFACE_MIN_INTERVAL_SECONDS: 60,
+      NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: true,
       NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT: 5,
     } as never,
     createDatabaseResource: () => fake,
