@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   planCausalSubjectStatePurge,
   planReplacementMessagePurge,
+  planSubjectStateEvolutionRepairs,
   stateReferencesAnyId,
 } from "../src/domains/bridge/native-live-replacement-purge.js";
 import type {
@@ -149,6 +150,67 @@ test("causal Mind purge follows message provenance and derived state chains", ()
     })),
     new Set(["state-old", "state-derived"]),
   );
+});
+
+test("surviving state is preserved while contaminated evolution cache is stripped", () => {
+  const purgeMessageIds = new Set(["old-message"]);
+  const states = [
+    {
+      id: "surviving-drive",
+      kind: "drive",
+      payload: {
+        source_start: 1,
+        drive_v1: {
+          pressure: 0.8,
+          reinforcementSources: ["safe-message", "old-message"],
+        },
+      },
+      envelope: {
+        provenance: {
+          sources: [{ kind: "message", id: "safe-message" }],
+          causedBy: "safe-message",
+        },
+      },
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+    },
+    {
+      id: "old-drive",
+      kind: "drive",
+      payload: {
+        drive_v1: {
+          pressure: 0.8,
+          reinforcementSources: ["safe-message", "old-message"],
+        },
+      },
+      envelope: {
+        provenance: {
+          sources: [{ kind: "message", id: "old-message" }],
+          causedBy: "old-message",
+        },
+      },
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+    },
+  ];
+
+  const purgeStateIds = new Set(planCausalSubjectStatePurge({
+    conversationId: "c1",
+    purgeMessageIds,
+    resetDistillation: false,
+    states,
+  }));
+  assert.deepEqual(purgeStateIds, new Set(["old-drive"]));
+
+  const repairs = planSubjectStateEvolutionRepairs({
+    states,
+    purgeMessageIds,
+    purgeStateIds,
+  });
+  assert.deepEqual(repairs, [{
+    stateId: "surviving-drive",
+    nextPayload: { source_start: 1 },
+  }]);
 });
 
 test("distillation reset drops all distilled memories for that conversation", () => {
