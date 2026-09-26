@@ -8,7 +8,7 @@ import type {
 } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
 import {
   NativeLiveMindFollowUpService,
-  createNativeLiveMindFollowUpScheduler,
+  createNativeLiveMindFollowUpRecoveryRunner,
   nativeLiveMindFollowUpStateId,
   type NativeLiveMindFollowUpJob,
   type NativeLiveMindFollowUpPort,
@@ -207,16 +207,13 @@ test("Mind follow-up scheduler drains bounded work and never lets one failed job
     },
   };
 
-  const scheduler = createNativeLiveMindFollowUpScheduler({
+  const recovery = createNativeLiveMindFollowUpRecoveryRunner({
     service,
     batchLimit: 4,
-    intervalMs: 60_000,
-    schedule: () => ({ unref() {} }),
-    clearSchedule: () => undefined,
   });
 
-  assert.equal(await scheduler.runNow(), 1);
+  assert.equal(await recovery.runNow(), 1);
   assert.equal(calls, 3);
-  scheduler.stopScheduling();
-  await scheduler.drain();
+  recovery.stop();
+  await recovery.drain();
 });

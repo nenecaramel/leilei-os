@@ -151,12 +151,12 @@ import {
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
-  createNativeLiveMindFollowUpScheduler,
+  createNativeLiveMindFollowUpRecoveryRunner,
 } from "../domains/bridge/native-live-mind-followup.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
-  createNativeLiveSemanticCompletionScheduler,
+  createNativeLiveSemanticRecoveryRunner,
 } from "../domains/bridge/native-live-semantic-handshake.js";
 import { BRIDGE_TERMINAL_RETENTION_DAYS, deleteExpiredBridgeEventsBatch } from "../domains/bridge/bridge-retention.js";
 import {
@@ -434,8 +434,8 @@ export function createProcessRuntime(
     undefined,
     distillationCrossDeviceBackgroundTrigger,
   );
-  const nativeLiveMindFollowUpScheduler =
-    createNativeLiveMindFollowUpScheduler({
+  const nativeLiveMindFollowUpRecovery =
+    createNativeLiveMindFollowUpRecoveryRunner({
       service: nativeLiveMindFollowUpService,
     });
   const nativeLiveTurnCoordinator = new NativeLiveBackendTurnCoordinator(
@@ -597,8 +597,8 @@ export function createProcessRuntime(
     nativeLiveRelayService,
     nativeLiveWorkWakePublisher,
   );
-  const nativeLiveSemanticScheduler =
-    createNativeLiveSemanticCompletionScheduler({
+  const nativeLiveSemanticRecovery =
+    createNativeLiveSemanticRecoveryRunner({
       service: nativeLiveSemanticService,
     });
   const nativeLiveRelayPrepareCoordinator =
@@ -802,21 +802,21 @@ export function createProcessRuntime(
       // durable work once at process start; Mac Companion/event-driven paths
       // own subsequent opportunities.
       void retentionCoordinator.runNow().catch(() => undefined);
-      void nativeLiveMindFollowUpScheduler.runNow().catch(() => undefined);
-      void nativeLiveSemanticScheduler.runNow().catch(() => undefined);
+      void nativeLiveMindFollowUpRecovery.runNow().catch(() => undefined);
+      void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
       sentinelScheduler.stopScheduling();
-      nativeLiveMindFollowUpScheduler.stopScheduling();
-      nativeLiveSemanticScheduler.stopScheduling();
+      nativeLiveMindFollowUpRecovery.stop();
+      nativeLiveSemanticRecovery.stop();
     },
     drainBackgroundWork: async () => {
       await Promise.all([
         retentionCoordinator.drain(),
         sentinelScheduler.drain(),
-        nativeLiveMindFollowUpScheduler.drain(),
-        nativeLiveSemanticScheduler.drain(),
+        nativeLiveMindFollowUpRecovery.drain(),
+        nativeLiveSemanticRecovery.drain(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.
