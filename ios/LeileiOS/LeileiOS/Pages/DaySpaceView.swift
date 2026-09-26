@@ -2600,6 +2600,9 @@ private struct DaySpacePaperDetailLayer<
             Color.clear
                 .ignoresSafeArea()
         )
+        .onExitCommand {
+            onRequestClose()
+        }
     }
 
     private func paperDimensions(
