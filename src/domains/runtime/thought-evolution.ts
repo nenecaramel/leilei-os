@@ -271,6 +271,7 @@ function evaluateThread(
   now: string,
   policy: ThoughtEvolutionPolicy,
 ): {
+  phase: ThoughtPhase;
   updates: ThoughtEvolutionUpdate[];
 } {
   if (candidates.length === 0) {
