@@ -58,6 +58,9 @@ struct AppShell: View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
             let cardCornerRadius: CGFloat = menuOpen ? 50 : 0
+            let pageOffset =
+                (menuOpen ? revealOffset : 0)
+                + sidebarDragTranslation
 
             ZStack(alignment: .leading) {
                 Rectangle()
@@ -93,6 +96,20 @@ struct AppShell: View {
                 .frame(width: 300)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
+
+                Color(.systemBackground)
+                    .ignoresSafeArea(.keyboard)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: cardCornerRadius,
+                            bottomLeadingRadius: cardCornerRadius,
+                            bottomTrailingRadius: cardCornerRadius,
+                            topTrailingRadius: cardCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .offset(x: pageOffset)
+                    .allowsHitTesting(false)
 
                 MainPageLayer(
                     selectedPage: selectedPage,
@@ -138,11 +155,7 @@ struct AppShell: View {
                         }
                     }
                 }
-                .offset(
-                    x:
-                        (menuOpen ? revealOffset : 0)
-                        + sidebarDragTranslation
-                )
+                .offset(x: pageOffset)
                 .simultaneousGesture(
                     sidebarDragGesture(
                         revealOffset: revealOffset
