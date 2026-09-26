@@ -26,7 +26,7 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
 
 export type DriveSatisfactionEvidence =
   | {
-      kind: "user_message";
+      kind: "user_message" | "assistant_message";
       conversationId: string;
       messageId: string;
     }
@@ -69,6 +69,8 @@ export interface DriveSatisfactionRuntimePort {
   }): Promise<DriveSatisfactionResult>;
 }
 
+export type DriveSatisfactionLevel = "partial" | "full";
+
 export class DriveSatisfactionService {
   private readonly evolution: DriveEvolutionService;
 
@@ -95,9 +97,42 @@ export class DriveSatisfactionService {
       now: input.now,
     });
 
-    return this.satisfactionPort.applySatisfaction({
+    const result = await this.satisfactionPort.applySatisfaction({
       ...input,
       activeThreshold: this.policy.activeThreshold,
+    });
+    if (result.outcome !== "rejected") {
+      await this.evolution.runOnce({
+        userId: input.userId,
+        subjectId: input.subjectId,
+        now: input.now,
+        mode: "full",
+      });
+    }
+    return result;
+  }
+
+  async satisfySemantic(input: {
+    userId: string;
+    subjectId: string;
+    driveStateId: string;
+    level: DriveSatisfactionLevel;
+    idempotencyKey: string;
+    evidence: DriveSatisfactionEvidence;
+    now: string;
+  }): Promise<DriveSatisfactionResult> {
+    const amount =
+      input.level === "full"
+        ? 1
+        : this.policy.reinforcementBoost;
+    if (amount <= 0) {
+      throw new Error(
+        "Partial Drive satisfaction requires positive reinforcementBoost.",
+      );
+    }
+    return this.satisfy({
+      ...input,
+      amount,
     });
   }
 }
@@ -378,8 +413,15 @@ async function validateEvidence(
   if (!message) return "not_found";
   if (message.status !== "completed") return "invalid";
 
-  if (evidence.kind === "user_message") {
-    return message.role === "user" ? "valid" : "invalid";
+  if (
+    evidence.kind === "user_message"
+    || evidence.kind === "assistant_message"
+  ) {
+    return message.role === (
+      evidence.kind === "user_message" ? "user" : "assistant"
+    )
+      ? "valid"
+      : "invalid";
   }
 
   const [block] = await executor
