@@ -1,6 +1,6 @@
 export type PersistentReferenceState = {
   id: string;
-  payload: Record<string, unknown> | null;
+  payload?: Record<string, unknown> | null;
   envelope: Record<string, unknown>;
   scopePathHeadMessageId?: string | null;
 };
