@@ -124,8 +124,6 @@ test("Web global search forwards C author records unchanged", async () => {
         scope: "active",
       },
       author: "C",
-      conversation_id: null,
-      conversation_view: null,
     }],
     metadata: {
       count: 1,
