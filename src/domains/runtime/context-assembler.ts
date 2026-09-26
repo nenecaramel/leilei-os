@@ -143,7 +143,7 @@ function selectWithinBudget(
 
 /**
  * First Non-style Context Assembly slice:
- * current user message + settled Bedrock + active Drive + active Fixation + active Topic + bounded Breath.
+ * current user message + active Drive + active Fixation + active Topic + bounded Breath.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -203,25 +203,6 @@ export function assembleTurnContext(input: {
     },
     selection: selection("current_user_message", 0),
   };
-
-  const bedrock = input.subjectStates
-    .filter(
-      (state) =>
-        state.kind === "bedrock"
-        && stateApplies(state, {
-          userId: input.userId,
-          subjectId: input.subjectId,
-          conversationId: input.conversation.id,
-          currentPathMessageIds,
-        }),
-    )
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((state, index) =>
-      subjectStateToContextItem(
-        state,
-        selection("stable_bedrock", 100 + index),
-      ),
-    );
 
   const driveLimit = input.driveLimit ?? 0;
   if (!Number.isInteger(driveLimit) || driveLimit < 0) {
@@ -409,7 +390,6 @@ export function assembleTurnContext(input: {
   const selected = selectWithinBudget(
     [
       userItem,
-      ...bedrock,
       ...drives,
       ...fixations,
       ...topics,

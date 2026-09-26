@@ -484,6 +484,13 @@
       "when": 1790321600000,
       "tag": "0068_native_live_checkpoint_runtime_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1790420220000,
+      "tag": "0069_retire_bedrock",
+      "breakpoints": true
     }
   ]
 }
