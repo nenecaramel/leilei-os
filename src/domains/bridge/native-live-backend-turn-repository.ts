@@ -797,6 +797,10 @@ implements NativeLiveBackendTurnPort {
                 sourceEnd: intent.sourceEnd,
                 raw: intent.raw,
               })),
+              actions: input.mindFollowUp.actions.map((action) => ({
+                ...action,
+              })),
+              receipts: [],
               status: "pending",
               retryCount: 0,
             });
