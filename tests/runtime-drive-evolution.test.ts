@@ -322,6 +322,47 @@ test("Drive dormancy remains disabled when no dormancy window is configured", as
 });
 
 
+test("durable satisfaction projection overrides stale cached Drive satisfaction after branch repair", async () => {
+  const anchorId = "99999999-9999-4999-8999-999999999999";
+  const stale = writeDriveEvolution(null, {
+    phase: "satisfied",
+    role: "anchor",
+    threadKey: driveThreadKey("repair this drive"),
+    anchorStateId: anchorId,
+    pressure: 0,
+    reinforcementCount: 1,
+    reinforcementSources: ["m1"],
+    satisfactionTotal: 1,
+    lastEvolvedAt: "2026-09-26T10:00:00.000Z",
+    lastReinforcedAt: "2026-09-26T09:00:00.000Z",
+    lastSatisfiedAt: "2026-09-26T10:00:00.000Z",
+    dormantAt: null,
+  });
+  const port = new Port([{
+    ...candidate(
+      anchorId,
+      "repair this drive",
+      "m1",
+      "2026-09-26T09:00:00.000Z",
+      stale,
+    ),
+    durableSatisfactionTotal: 0,
+    durableLastSatisfiedAt: null,
+  }]);
+  const service = new DriveEvolutionService(port, policy);
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-27T00:00:00.000Z",
+  });
+
+  assert.equal(result.active, 1);
+  assert.equal(port.updates[0]?.evolution.satisfactionTotal, 0);
+  assert.equal(port.updates[0]?.evolution.pressure, 0.4);
+  assert.equal(port.updates[0]?.evolution.lastSatisfiedAt, null);
+});
+
 test("Drive dormancy policy rejects a non-positive window", () => {
   assert.throws(
     () => new DriveEvolutionService(new Port([]), {
