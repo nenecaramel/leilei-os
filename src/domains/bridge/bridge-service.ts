@@ -255,18 +255,6 @@ export class BridgeService {
     return event;
   }
 
-  async cancelSentinelEvent(userId: string, eventId: string): Promise<BridgeEventRecord> {
-    const cancel = this.repository.cancelSentinelEvent;
-    if (!cancel) {
-      throw new BridgeDomainError("EVENT_CONFLICT", "Sentinel wake cancellation is unavailable.");
-    }
-    const event = await cancel.call(this.repository, userId, eventId);
-    if (!event) {
-      throw new BridgeDomainError("EVENT_CONFLICT", "The Sentinel wake is no longer cancellable.");
-    }
-    return event;
-  }
-
   async claimEvent(userId: string, eventId: string): Promise<BridgeEventRecord> {
     const result = await this.repository.claimProcessing(userId, eventId);
     if (result.outcome === "not_found") {
