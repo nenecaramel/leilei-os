@@ -35,6 +35,7 @@ export type SubjectStateBackgroundMaintenanceRunners = {
   decay?: SubjectStateBackgroundRunner | null;
   thoughtEvolution?: SubjectStateBackgroundRunner | null;
   driveEvolution?: SubjectStateBackgroundRunner | null;
+  curiosityEvolution?: SubjectStateBackgroundRunner | null;
   curiosityTopicProjection?: SubjectStateBackgroundRunner | null;
   topicEvolution?: SubjectStateBackgroundRunner | null;
   mindRetirement?: SubjectStateBackgroundRunner | null;
@@ -44,8 +45,8 @@ export type SubjectStateBackgroundMaintenanceRunners = {
  * Adapts existing Subject State maintenance services into the shared
  * BackgroundLoopOrchestrator without changing their domain semantics.
  *
- * Topic lifecycle remains one ordered job: Curiosity projection first, Topic
- * evolution second. All Subject State mutation jobs for one user+subject share
+ * Topic lifecycle remains one ordered job: Curiosity evolution first,
+ * Curiosity projection second, Topic evolution third. All Subject State mutation jobs for one user+subject share
  * one mutex key, so a configured concurrent orchestrator cannot interleave
  * those writes.
  */
@@ -155,7 +156,8 @@ export class SubjectStateBackgroundMaintenance {
       selected.has("topic_lifecycle")
       && this.config.topicLifecycle
       && (
-        this.runners.curiosityTopicProjection
+        this.runners.curiosityEvolution
+        || this.runners.curiosityTopicProjection
         || this.runners.topicEvolution
       )
     ) {
@@ -172,6 +174,16 @@ export class SubjectStateBackgroundMaintenance {
         mutexKeys: [mutex],
         run: async () => {
           const now = normalizeIso(this.now());
+          if (this.runners.curiosityEvolution) {
+            await this.runners.curiosityEvolution.runOnce({
+              userId,
+              subjectId: this.subjectId,
+              now,
+              ...(plan.limit === undefined
+                ? {}
+                : { limit: plan.limit }),
+            });
+          }
           if (this.runners.curiosityTopicProjection) {
             await this.runners.curiosityTopicProjection.runOnce({
               userId,
@@ -283,19 +295,23 @@ function validateTopicPlan(
   runners: SubjectStateBackgroundMaintenanceRunners,
 ): void {
   const hasRunner = Boolean(
-    runners.curiosityTopicProjection || runners.topicEvolution,
+    runners.curiosityEvolution
+    || runners.curiosityTopicProjection
+    || runners.topicEvolution,
   );
   if (Boolean(plan) !== hasRunner) {
     throw new Error(
       "Background maintenance topicLifecycle requires an explicit plan "
-      + "when either Topic runner is configured.",
+      + "when any Curiosity/Topic runner is configured.",
     );
   }
   if (plan) {
     validatePlan(
       "topicLifecycle",
       plan,
-      runners.curiosityTopicProjection ?? runners.topicEvolution,
+      runners.curiosityEvolution
+        ?? runners.curiosityTopicProjection
+        ?? runners.topicEvolution,
     );
   }
 }
