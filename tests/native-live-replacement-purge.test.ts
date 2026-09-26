@@ -264,6 +264,61 @@ test("semantic action projections are invalidated when their branch provenance i
   assert.equal(repairs.every((repair) => repair.nextPayload === null), true);
 });
 
+test("Edit causal purge removes only Memory recall contribution from the purged user source", () => {
+  const repairs = planSubjectStateEvolutionRepairs({
+    states: [{
+      id: "memory-anchor",
+      kind: "memory",
+      payload: {
+        lifecycle_v1: {
+          status: "active",
+          salience: 0.66,
+          protected: false,
+          lastDecayedAt: "2026-09-26T10:00:00.000Z",
+          lastRecalledAt: "2026-09-26T10:00:00.000Z",
+          archivedAt: null,
+          forgottenAt: null,
+        },
+        recall_reinforcement_v1: {
+          contributions: [
+            {
+              sourceMessageId: "user-purged",
+              recalledAt: "2026-09-25T10:00:00.000Z",
+              currentValue: 0.08,
+            },
+            {
+              sourceMessageId: "user-survives",
+              recalledAt: "2026-09-26T10:00:00.000Z",
+              currentValue: 0.08,
+            },
+          ],
+        },
+      },
+    }],
+    purgeMessageIds: new Set(["user-purged"]),
+    purgeStateIds: new Set(),
+  });
+
+  assert.equal(repairs.length, 1);
+  assert.equal(repairs[0]?.stateId, "memory-anchor");
+  assert.equal(
+    (repairs[0]?.nextPayload?.lifecycle_v1 as { salience: number }).salience,
+    0.58,
+  );
+  assert.deepEqual(
+    (
+      repairs[0]?.nextPayload?.recall_reinforcement_v1 as {
+        contributions: unknown[];
+      }
+    ).contributions,
+    [{
+      sourceMessageId: "user-survives",
+      recalledAt: "2026-09-26T10:00:00.000Z",
+      currentValue: 0.08,
+    }],
+  );
+});
+
 test("distillation reset drops all distilled memories for that conversation", () => {
   const ids = planCausalSubjectStatePurge({
     conversationId: "c1",

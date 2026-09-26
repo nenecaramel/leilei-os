@@ -121,6 +121,7 @@ implements NativeLiveBackendMindRuntime {
       userMessage,
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
+      manifestId: input.preparation.prepareId,
       excludedReferenceIds,
     });
   }
@@ -163,6 +164,7 @@ implements NativeLiveBackendMindRuntime {
       userMessage,
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
+      manifestId: input.preparation.prepareId,
       excludedReferenceIds,
     });
   }
@@ -243,6 +245,11 @@ implements NativeLiveBackendMindRuntime {
     intents: readonly MindWriteIntent[];
     stateIds?: readonly string[];
   }): Promise<void> {
+    await this.mind.recordFinalizedBreathRecall?.({
+      userId: input.userId,
+      manifestId: input.preparation.prepareId,
+    });
+
     if (input.intents.length > 0) {
       await this.mind.recordAssistantIntents({
         userId: input.userId,

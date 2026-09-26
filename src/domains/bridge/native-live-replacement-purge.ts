@@ -6,6 +6,10 @@ import type {
   NativeLiveConversation,
   NativeLiveMessage,
 } from "../conversation/native-live-conversation-types.js";
+import {
+  removeRecallReinforcementSources,
+  type MemoryLifecyclePolicy,
+} from "../runtime/memory-lifecycle.js";
 
 export type ReplacementPurgePlan = {
   targetUserMessageId: string;
@@ -103,6 +107,8 @@ export function planSubjectStateEvolutionRepairs(input: {
   purgeMessageIds: ReadonlySet<string>;
   purgeStateIds: ReadonlySet<string>;
   additionalEvolutionCausalIds?: ReadonlySet<string>;
+  memoryLifecyclePolicy?: MemoryLifecyclePolicy;
+  repairedAt?: string;
 }): SubjectStateEvolutionRepair[] {
   const causalIds = new Set<string>([
     ...input.purgeMessageIds,
@@ -117,6 +123,26 @@ export function planSubjectStateEvolutionRepairs(input: {
 
   return input.states.flatMap((state) => {
     if (input.purgeStateIds.has(state.id) || !state.payload) return [];
+
+    if (state.kind === "memory" || state.kind === "feel") {
+      let repaired;
+      try {
+        repaired = removeRecallReinforcementSources(
+          state.payload,
+          input.purgeMessageIds,
+          input.memoryLifecyclePolicy,
+          input.repairedAt,
+        );
+      } catch {
+        repaired = null;
+      }
+      if (repaired) {
+        return [{
+          stateId: state.id,
+          nextPayload: repaired.nextPayload,
+        }];
+      }
+    }
 
     if (state.kind === "curiosity" && "curiosity_v1" in state.payload) {
       const evolution = state.payload.curiosity_v1;

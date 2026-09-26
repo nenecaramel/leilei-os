@@ -32,6 +32,7 @@ import {
 import { filterBreathEligibleStates } from "./breath-recall.js";
 import { canonicalPathToHead } from "./surface-projector.js";
 import { expandCausalStateReferences } from "./persistent-reference-scan.js";
+import type { MemoryLifecyclePolicy } from "./memory-lifecycle.js";
 
 export type SubjectStateTransition = {
   stateId: string;
@@ -80,6 +81,9 @@ export interface SubjectStateRuntimePort {
     subjectId: string;
     stateIds: readonly string[];
     recalledAt: string;
+    salienceBoost: number;
+    sourceMessageId: string;
+    lifecyclePolicy?: MemoryLifecyclePolicy;
   }): Promise<void>;
 }
 
@@ -94,6 +98,8 @@ export type MindLoopConfig = {
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
+  breathRecallSalienceBoost?: number;
+  memoryLifecyclePolicy?: MemoryLifecyclePolicy;
   breathSemanticWeight?: number;
   breathSemanticMinScore?: number;
   breathSemanticCandidateLimit?: number;
@@ -206,7 +212,6 @@ export class NativeLiveMindLoopService {
           persisted.conversationId !== input.conversation.id
           || persisted.pathHeadMessageId !== expectedHead
           || persisted.snapshotSequence !== input.snapshotSequence
-          || persisted.createdAt !== input.assembledAt
           || persisted.assemblyVersion !== this.config.assemblyVersion
           || persisted.promptContractVersion
             !== this.config.promptContractVersion
@@ -317,21 +322,53 @@ export class NativeLiveMindLoopService {
 
     await this.port.saveContextManifest({ manifest: assembled.manifest });
 
-    if (assembled.breathStateIds.length > 0 && this.port.recordBreathRecall) {
-      try {
-        await this.port.recordBreathRecall({
-          userId: input.userId,
-          subjectId: input.subjectId,
-          stateIds: assembled.breathStateIds,
-          recalledAt: input.assembledAt,
-        });
-      } catch {
-        // Recall metadata is non-authoritative. A failed cooldown marker must
-        // not block the foreground model invocation.
-      }
+    return assembled;
+  }
+
+  async recordFinalizedBreathRecall(input: {
+    userId: string;
+    subjectId: string;
+    manifestId: string;
+  }): Promise<string[]> {
+    if (!this.port.loadContextManifest || !this.port.recordBreathRecall) {
+      return [];
+    }
+    const manifest = await this.port.loadContextManifest({
+      userId: input.userId,
+      subjectId: input.subjectId,
+      manifestId: input.manifestId,
+    });
+    if (!manifest) return [];
+
+    const userItems = manifest.items.filter(
+      (item) => item.type === "user_message",
+    );
+    if (
+      userItems.length !== 1
+      || !userItems[0]?.sourceId
+    ) {
+      throw new Error(
+        "Finalized Breath recall requires one canonical user source.",
+      );
     }
 
-    return assembled;
+    const stateIds = manifest.items
+      .filter((item) => item.selection.reason.startsWith("breath_"))
+      .map((item) => item.sourceId);
+    if (stateIds.length === 0) return [];
+
+    await this.port.recordBreathRecall({
+      userId: input.userId,
+      subjectId: input.subjectId,
+      stateIds,
+      recalledAt: manifest.createdAt,
+      salienceBoost: this.config.breathRecallSalienceBoost ?? 0,
+      sourceMessageId: userItems[0].sourceId,
+      ...(this.config.memoryLifecyclePolicy
+        ? { lifecyclePolicy: this.config.memoryLifecyclePolicy }
+        : {}),
+    });
+    return stateIds;
   }
 
   async planSemanticRecall(input: {

@@ -48,7 +48,17 @@ test(
       id: stateId,
       kind: "memory",
       text: "蕾蕾喜欢柠檬黄",
-      payload: null,
+      payload: {
+        lifecycle_v1: {
+          status: "fading",
+          salience: 0.5,
+          protected: false,
+          lastDecayedAt: "2026-09-20T00:00:00.000Z",
+          lastRecalledAt: null,
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
       envelope: {
         semanticActor: { kind: "subject", id: "G" },
         producer: { kind: "model", id: "claude-code" },
@@ -93,6 +103,16 @@ test(
       subjectId: "G",
       stateIds: [stateId],
       recalledAt,
+      salienceBoost: 0.08,
+      sourceMessageId: "canonical-user-turn",
+    });
+    await port.recordBreathRecall({
+      userId,
+      subjectId: "G",
+      stateIds: [stateId],
+      recalledAt,
+      salienceBoost: 0.08,
+      sourceMessageId: "canonical-user-turn",
     });
 
     const [stored] = await port.list({
@@ -104,6 +124,7 @@ test(
     const lifecycle = readSubjectStateLifecycle(stored.payload);
     assert.ok(lifecycle);
     assert.equal(lifecycle.lastRecalledAt, recalledAt);
+    assert.equal(lifecycle.salience, 0.58);
 
     const hits = recallBreath(
       "柠檬黄",

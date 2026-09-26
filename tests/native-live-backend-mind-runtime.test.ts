@@ -111,6 +111,8 @@ class Reader {
 class Mind implements NativeLiveMindRuntime {
   calls: string[] = [];
   excludedReferenceIds: string[][] = [];
+  manifestIds: Array<string | undefined> = [];
+  recallInputs: unknown[] = [];
   transitions: Awaited<
     ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
   > = [];
@@ -118,6 +120,7 @@ class Mind implements NativeLiveMindRuntime {
   async prepareUserTurn(input: {
     surfaceHeadMessageId: string | null;
     userText: string;
+    manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
   }) {
     this.calls.push(
@@ -126,7 +129,14 @@ class Mind implements NativeLiveMindRuntime {
     this.excludedReferenceIds.push(
       [...(input.excludedReferenceIds ?? [])].sort(),
     );
+    this.manifestIds.push(input.manifestId);
     return "ASSEMBLED_PROMPT";
+  }
+
+  async recordFinalizedBreathRecall(input: unknown) {
+    this.calls.push("recall");
+    this.recallInputs.push(input);
+    return [];
   }
 
   parseAssistantBlocks(blocks: readonly NativeLiveContentBlockInput[]) {
@@ -188,6 +198,7 @@ test("send preparation settles the continued path, runs targeted catch-up, then 
     transitions: mind.transitions,
   }]);
   assert.deepEqual(mind.excludedReferenceIds, [[]]);
+  assert.deepEqual(mind.manifestIds, [prepared("send").prepareId]);
 });
 
 test("retry preparation excludes the old assistant suffix before replacement generation", async () => {
@@ -205,6 +216,7 @@ test("retry preparation excludes the old assistant suffix before replacement gen
     `prepare:${parentId}:hello`,
   ]);
   assert.deepEqual(mind.excludedReferenceIds, [[oldAssistantId]]);
+  assert.deepEqual(mind.manifestIds, [prepared("retry").prepareId]);
 });
 
 test("branch finalize records intents and then reconciles the finalized canonical head", async () => {
@@ -227,9 +239,14 @@ test("branch finalize records intents and then reconciles the finalized canonica
   });
 
   assert.deepEqual(mind.calls, [
+    "recall",
     "record",
     `reconcile:${assistantId}`,
   ]);
+  assert.deepEqual(mind.recallInputs, [{
+    userId,
+    manifestId: prepared("edit").prepareId,
+  }]);
 });
 
 test("ordinary send finalize records intents but leaves the new state provisional until next user continuation", async () => {
@@ -251,6 +268,10 @@ test("ordinary send finalize records intents but leaves the new state provisiona
     }],
   });
 
-  assert.deepEqual(mind.calls, ["record"]);
+  assert.deepEqual(mind.calls, ["recall", "record"]);
+  assert.deepEqual(mind.recallInputs, [{
+    userId,
+    manifestId: prepared("send").prepareId,
+  }]);
   assert.equal(reader.calls.length, 0);
 });

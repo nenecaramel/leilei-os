@@ -302,7 +302,11 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
-  const nativeLiveBackendMind = createDefaultBackendMindRuntime(db);
+  const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
+  const nativeLiveBackendMind = createDefaultBackendMindRuntime(
+    db,
+    memoryDecayConfig,
+  );
   const driveSatisfactionService =
     createDefaultDriveSatisfactionService(db);
   const curiosityResolutionService =
@@ -345,7 +349,6 @@ export function createProcessRuntime(
   });
   const topicResurfaceOpportunityConfig =
     getTopicResurfaceOpportunityConfig(runtimeEnv);
-  const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
   const proactivityWakeOpportunityConfig =
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
@@ -415,7 +418,10 @@ export function createProcessRuntime(
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
   );
-  const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(db);
+  const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(
+    db,
+    memoryDecayConfig,
+  );
   const nativeLiveTurnWaitService =
     new NativeLiveTurnWaitService(
       nativeLiveTurnPort,
