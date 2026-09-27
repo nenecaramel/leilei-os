@@ -405,22 +405,13 @@ struct UniverseView: View {
         _ selection: UniverseSheetSelection
     ) -> some View {
         if case .ready(let result) = state {
-            let selectedNode: UniverseNode?
-            let mode: UniverseNodeSheet.Mode
-
-            switch selection {
-            case .node(let id):
-                selectedNode =
-                    result.snapshot.nodes.first {
-                        $0.id == id
-                    }
-                mode = .detail
-
-            case .create(let position):
-                selectedNode = nil
-                mode = .create(position)
-            }
-
+            let context =
+                nodeSheetContext(
+                    selection,
+                    in: result
+                )
+            let selectedNode = context.node
+            let mode = context.mode
             let nodeID = selectedNode?.id
             let nodeConnections =
                 nodeID.map {
@@ -510,6 +501,31 @@ struct UniverseView: View {
                 .background(
                     UniversePalette.background
                 )
+        }
+    }
+
+    private func nodeSheetContext(
+        _ selection: UniverseSheetSelection,
+        in result: UniverseReadResult
+    ) -> (
+        node: UniverseNode?,
+        mode: UniverseNodeSheet.Mode
+    ) {
+        switch selection {
+        case .node(let id):
+            return (
+                node:
+                    result.snapshot.nodes.first {
+                        $0.id == id
+                    },
+                mode: .detail
+            )
+
+        case .create(let position):
+            return (
+                node: nil,
+                mode: .create(position)
+            )
         }
     }
 
