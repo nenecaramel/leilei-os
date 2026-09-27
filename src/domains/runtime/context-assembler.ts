@@ -379,6 +379,7 @@ export function assembleTurnContext(input: {
     .filter((state) => {
       if (
         state.kind !== "topic"
+        || state.envelope.authority !== "derived"
         || !stateApplies(state, {
           userId: input.userId,
           subjectId: input.subjectId,
