@@ -14,6 +14,7 @@ import type {
   ExportMindCuriosityResolutionEventRecord,
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
+  ExportMindSemanticGroupingResultRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
@@ -412,6 +413,10 @@ function cloneState(
       state.foreign_curiosity_resolution_event_ids
         ? new Set(state.foreign_curiosity_resolution_event_ids)
         : undefined,
+    foreign_semantic_grouping_result_ids:
+      state.foreign_semantic_grouping_result_ids
+        ? new Set(state.foreign_semantic_grouping_result_ids)
+        : undefined,
     foreign_conversation_ids:
       state.foreign_conversation_ids
         ? new Set(state.foreign_conversation_ids)
@@ -613,6 +618,7 @@ class FakeImportRepository implements ImportRepository {
       drive_satisfaction_events: [],
       curiosity_resolution_events: [],
       distillation_watermarks: [],
+      semantic_grouping_results: [],
     };
     continuity.drive_satisfaction_events.push(
       structuredClone(record),
@@ -628,6 +634,7 @@ class FakeImportRepository implements ImportRepository {
       drive_satisfaction_events: [],
       curiosity_resolution_events: [],
       distillation_watermarks: [],
+      semantic_grouping_results: [],
     };
     continuity.curiosity_resolution_events.push(
       structuredClone(record),
@@ -643,8 +650,25 @@ class FakeImportRepository implements ImportRepository {
       drive_satisfaction_events: [],
       curiosity_resolution_events: [],
       distillation_watermarks: [],
+      semantic_grouping_results: [],
     };
     continuity.distillation_watermarks.push(
+      structuredClone(record),
+    );
+    this.writes += 1;
+  }
+
+  async insertMindSemanticGroupingResult(
+    _userId: string,
+    record: ExportMindSemanticGroupingResultRecord,
+  ) {
+    const continuity = this.state.mind_continuity ??= {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+      semantic_grouping_results: [],
+    };
+    continuity.semantic_grouping_results.push(
       structuredClone(record),
     );
     this.writes += 1;
@@ -731,6 +755,7 @@ class FakeImportRepository implements ImportRepository {
             drive_satisfaction_events: [],
             curiosity_resolution_events: [],
             distillation_watermarks: [],
+            semantic_grouping_results: [],
           })
         : undefined,
       conversations: modules.has("conversations")
@@ -1333,6 +1358,7 @@ test("v3 Mind continuity restores semantic ledgers and watermark after canonical
       drive_satisfaction_events: [],
       curiosity_resolution_events: [],
       distillation_watermarks: [],
+      semantic_grouping_results: [],
     },
     conversations: {
       conversations: [],
@@ -1380,6 +1406,7 @@ test("v3 Mind continuity rejects semantic events without canonical evidence", as
       drive_satisfaction_events: [],
       curiosity_resolution_events: [],
       distillation_watermarks: [],
+      semantic_grouping_results: [],
     },
     conversations: {
       conversations: [],
