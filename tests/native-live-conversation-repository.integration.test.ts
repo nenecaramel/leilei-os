@@ -16,6 +16,10 @@ import {
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
+import {
+  DrizzleNativeLiveBackgroundModelQueueRepository,
+  NativeLiveBackgroundModelQueueService,
+} from "../src/domains/bridge/native-live-background-model-queue.js";
 import { DrizzleMindSemanticGroupingRepository } from "../src/domains/runtime/mind-semantic-grouping-runtime-repository.js";
 import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity-wake-repository.js";
 
@@ -600,37 +604,56 @@ test(
       },
     ]);
 
+    const proactivity = new DrizzleProactivityWakeRepository(
+      database.db,
+    );
     const wakeId = crypto.randomUUID();
-    await database.db.insert(runtimeProactivityWakes).values({
-      id: wakeId,
-      userId,
-      subjectId: "G",
-      gate: { wakeId, userId, subjectId: "G" },
+    await proactivity.createOrGet({
+      gate: {
+        wakeId,
+        userId,
+        subjectId: "G",
+        offeredAt: "2026-09-27T06:45:00.000Z",
+        mode: "live",
+        enabled: true,
+        foregroundActive: false,
+        outstandingEffectStatus: null,
+        quietUntil: null,
+        nextEligibleAt: null,
+      },
       contactTarget: null,
-      contextSnapshot: {
+      context: {
         version: 1,
+        contextManifestId: null,
         capsule: "deleted conversation context",
         sourceConversationId: deletedConversation.id,
         sourceHeadMessageId: secondAssistant.message.id,
+        sourceActivityAt: "2026-09-27T06:40:00.000Z",
       },
-      status: "created",
     });
 
+    const backgroundQueue = new NativeLiveBackgroundModelQueueService(
+      new DrizzleNativeLiveBackgroundModelQueueRepository(database.db),
+    );
     const proactivityJobId = crypto.randomUUID();
-    await database.db.insert(nativeLiveBackgroundModelJobs).values({
-      id: proactivityJobId,
+    await backgroundQueue.stage({
       userId,
       subjectId: "G",
-      workflowKind: "proactivity_wake",
-      workflowRunId: wakeId,
-      workflowPayload: {
-        version: 1,
-        wake_id: wakeId,
+      command: {
+        protocol_version: 1,
+        task_id: proactivityJobId,
+        task_kind: "proactivity_deliberate",
+        prompt_contract_version: "delete-test-v1",
+        prompt: "proactivity snapshot that must disappear",
       },
-      taskKind: "proactivity_deliberate",
-      promptContractVersion: "delete-test-v1",
-      prompt: "proactivity snapshot that must disappear",
-      status: "pending",
+      workflow: {
+        kind: "proactivity_wake",
+        runId: wakeId,
+        payload: {
+          version: 1,
+          wake_id: wakeId,
+        },
+      },
     });
 
     const backgroundJobId = crypto.randomUUID();
@@ -655,6 +678,37 @@ test(
       conversationId: deletedConversation.id,
     });
     assert.equal(archived.outcome, "archived");
+
+    await assert.rejects(
+      proactivity.markWaitingModel({
+        userId,
+        wakeId,
+        modelTaskId: proactivityJobId,
+      }),
+      /SourceConversationInactive/,
+    );
+    await assert.rejects(
+      backgroundQueue.stage({
+        userId,
+        subjectId: "G",
+        command: {
+          protocol_version: 1,
+          task_id: crypto.randomUUID(),
+          task_kind: "proactivity_deliberate",
+          prompt_contract_version: "delete-test-v1",
+          prompt: "must not stage while source conversation is archived",
+        },
+        workflow: {
+          kind: "proactivity_wake",
+          runId: wakeId,
+          payload: {
+            version: 1,
+            wake_id: wakeId,
+          },
+        },
+      }),
+      /BackgroundWorkflowSourceInactive/,
+    );
 
     const activePage = await service.listConversationPage({
       userId,
@@ -843,9 +897,6 @@ test(
     assert.ok(survivingDrive);
     assert.equal(survivingDrive.payload, null);
 
-    const proactivity = new DrizzleProactivityWakeRepository(
-      database.db,
-    );
     const postDeleteWakeId = crypto.randomUUID();
     await assert.rejects(
       proactivity.createOrGet({
