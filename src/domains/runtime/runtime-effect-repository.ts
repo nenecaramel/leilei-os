@@ -1,7 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { runtimeEffects } from "../../database/schema.js";
+import {
+  conversations,
+  runtimeEffects,
+} from "../../database/schema.js";
 import type {
   DurableEffect,
   EffectStatus,
