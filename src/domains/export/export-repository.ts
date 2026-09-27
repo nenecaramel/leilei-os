@@ -18,6 +18,7 @@ import {
   runtimeCuriosityResolutionEvents,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
+  runtimeMindSemanticGroupingRequests,
   runtimeSubjectStates,
   todoEntries,
   todoPapers,
@@ -488,6 +489,7 @@ export class DrizzleExportRepository implements ExportRepository {
       driveRows,
       curiosityRows,
       watermarkRows,
+      groupingRows,
     ] = await Promise.all([
       this.db.select({
         id: runtimeDriveSatisfactionEvents.id,
@@ -537,6 +539,26 @@ export class DrizzleExportRepository implements ExportRepository {
           asc(runtimeDistillationWatermarks.subjectId),
           asc(runtimeDistillationWatermarks.conversationId),
         ),
+      this.db.select({
+        id: runtimeMindSemanticGroupingRequests.id,
+        subjectId: runtimeMindSemanticGroupingRequests.subjectId,
+        kind: runtimeMindSemanticGroupingRequests.kind,
+        queryStateId: runtimeMindSemanticGroupingRequests.queryStateId,
+        query: runtimeMindSemanticGroupingRequests.query,
+        candidates: runtimeMindSemanticGroupingRequests.candidates,
+        scores: runtimeMindSemanticGroupingRequests.scores,
+        createdAt: runtimeMindSemanticGroupingRequests.createdAt,
+        updatedAt: runtimeMindSemanticGroupingRequests.updatedAt,
+        completedAt: runtimeMindSemanticGroupingRequests.completedAt,
+      }).from(runtimeMindSemanticGroupingRequests)
+        .where(and(
+          eq(runtimeMindSemanticGroupingRequests.userId, userId),
+          eq(runtimeMindSemanticGroupingRequests.status, "completed"),
+        ))
+        .orderBy(
+          asc(runtimeMindSemanticGroupingRequests.completedAt),
+          asc(runtimeMindSemanticGroupingRequests.id),
+        ),
     ]);
 
     return {
@@ -572,6 +594,25 @@ export class DrizzleExportRepository implements ExportRepository {
         process_version: row.processVersion,
         updated_at: toIso(row.updatedAt),
       })),
+      semantic_grouping_results: groupingRows.map((row) => {
+        if (!row.scores || !row.completedAt) {
+          throw new Error(
+            "Completed Mind semantic grouping result is incomplete.",
+          );
+        }
+        return {
+          id: row.id,
+          subject_id: row.subjectId,
+          kind: row.kind as "drive" | "thought" | "curiosity" | "topic",
+          query_state_id: row.queryStateId,
+          query: row.query,
+          candidates: row.candidates,
+          scores: row.scores,
+          created_at: toIso(row.createdAt),
+          updated_at: toIso(row.updatedAt),
+          completed_at: toIso(row.completedAt),
+        };
+      }),
     };
   }
 
