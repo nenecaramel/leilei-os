@@ -11,6 +11,10 @@ struct DaySpaceView: View {
 
     @State private var query = ""
     @State private var searchState: DaySpaceTodoSearchState = .idle
+    @State private var completeTodoSearch:
+        [DaySpaceTodoSearchEntry]?
+    @State private var searchHasMore = false
+    @State private var isLoadingMoreSearch = false
     @State private var selectedDate: String?
     @State private var discoveryState: DaySpaceDiscoveryState = .loading
     @State private var discoveryIncomplete = false
@@ -214,15 +218,39 @@ struct DaySpaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .results(let entries):
-            List(entries) { entry in
-                Button {
-                    Task {
-                        await openSearchResult(entry)
+            List {
+                ForEach(entries) { entry in
+                    Button {
+                        Task {
+                            await openSearchResult(entry)
+                        }
+                    } label: {
+                        DaySpaceTodoSearchRow(entry: entry)
                     }
-                } label: {
-                    DaySpaceTodoSearchRow(entry: entry)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+
+                if searchHasMore {
+                    Button {
+                        Task {
+                            await loadMoreTodoSearch()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isLoadingMoreSearch {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+
+                            Text("More")
+                        }
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .center
+                        )
+                    }
+                    .disabled(isLoadingMoreSearch)
+                }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -395,10 +423,16 @@ struct DaySpaceView: View {
 
         guard !normalized.isEmpty else {
             searchState = .idle
+            completeTodoSearch = nil
+            searchHasMore = false
+            isLoadingMoreSearch = false
             return
         }
 
         searchState = .loading
+        completeTodoSearch = nil
+        searchHasMore = false
+        isLoadingMoreSearch = false
 
         do {
             try await Task.sleep(for: .milliseconds(250))
@@ -410,15 +444,152 @@ struct DaySpaceView: View {
                 )
 
             try Task.checkCancellation()
-            searchState = response.data.entries.isEmpty
+
+            let firstPage = Array(
+                response.data.entries.prefix(50)
+            )
+            searchHasMore =
+                response.data.entries.count > firstPage.count
+            searchState = firstPage.isEmpty
                 ? .noResults
-                : .results(response.data.entries)
+                : .results(firstPage)
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             searchState = .unavailable
         }
+    }
+
+    @MainActor
+    private func loadMoreTodoSearch() async {
+        guard !isLoadingMoreSearch,
+              searchHasMore,
+              case .results(let visible) = searchState else {
+            return
+        }
+
+        let normalizedQuery = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalizedQuery.isEmpty else {
+            return
+        }
+
+        isLoadingMoreSearch = true
+        defer { isLoadingMoreSearch = false }
+
+        do {
+            let all: [DaySpaceTodoSearchEntry]
+            if let completeTodoSearch {
+                all = completeTodoSearch
+            } else {
+                let data = try await appModel.api.exportData(
+                    scope: "todo",
+                    includeAudit: false
+                )
+                let snapshot = try JSONDecoder().decode(
+                    LeileiExportSnapshot.self,
+                    from: data
+                )
+                all = completeTodoSearchResults(
+                    papers: snapshot.data.todo ?? [],
+                    query: normalizedQuery
+                )
+                completeTodoSearch = all
+            }
+
+            guard normalizedQuery
+                    == query.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ) else {
+                return
+            }
+
+            let nextCount = min(
+                visible.count + 50,
+                all.count
+            )
+            searchState = .results(
+                Array(all.prefix(nextCount))
+            )
+            searchHasMore = nextCount < all.count
+        } catch {
+            // Preserve the current search results.
+        }
+    }
+
+    private func completeTodoSearchResults(
+        papers: [LeileiExportTodoPaperSnapshot],
+        query: String
+    ) -> [DaySpaceTodoSearchEntry] {
+        let needle = normalizedTodoSearchText(query)
+
+        struct Candidate {
+            let entry: DaySpaceTodoSearchEntry
+            let paperUpdatedAt: String
+            let position: Int
+        }
+
+        var candidates: [Candidate] = []
+
+        for paper in papers {
+            guard let author =
+                    DaySpaceAuthor(rawValue: paper.author) else {
+                continue
+            }
+
+            for (position, rawEntry) in paper.entries.enumerated() {
+                guard let kind =
+                        DaySpaceTodoEntryKind(
+                            rawValue: rawEntry.kind
+                        ),
+                      normalizedTodoSearchText(
+                          rawEntry.text
+                      ).contains(needle) else {
+                    continue
+                }
+
+                candidates.append(
+                    Candidate(
+                        entry: DaySpaceTodoSearchEntry(
+                            entryID: rawEntry.id,
+                            date: paper.date,
+                            author: author,
+                            kind: kind,
+                            text: rawEntry.text,
+                            snippet: rawEntry.text
+                        ),
+                        paperUpdatedAt: paper.updatedAt,
+                        position: position
+                    )
+                )
+            }
+        }
+
+        return candidates.sorted {
+            if $0.entry.date != $1.entry.date {
+                return $0.entry.date > $1.entry.date
+            }
+            if $0.paperUpdatedAt != $1.paperUpdatedAt {
+                return $0.paperUpdatedAt > $1.paperUpdatedAt
+            }
+            if $0.position != $1.position {
+                return $0.position < $1.position
+            }
+            return $0.entry.entryID < $1.entry.entryID
+        }
+        .map(\.entry)
+    }
+
+    private func normalizedTodoSearchText(
+        _ value: String
+    ) -> String {
+        value
+            .precomposedStringWithCanonicalMapping
+            .lowercased()
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
     }
 
     private func todoSearchPath(for query: String) -> String {
