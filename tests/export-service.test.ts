@@ -67,6 +67,7 @@ const mindContinuity: ExportMindContinuityBundle = {
   drive_satisfaction_events: [],
   curiosity_resolution_events: [],
   distillation_watermarks: [],
+  semantic_grouping_results: [],
 };
 
 const universe: ExportUniverseBundle | null = null;
