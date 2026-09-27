@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
-  nativeLiveRuntimeListenerLeases,
   runtimeMindSemanticGroupingRequests,
 } from "../../database/schema.js";
 import type {
