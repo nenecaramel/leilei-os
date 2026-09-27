@@ -117,6 +117,16 @@ exit 0
   return bin;
 }
 
+test("database backup scripts parse as Bash", () => {
+  for (const script of [backupScript, restoreScript]) {
+    const result = spawnSync("bash", ["-n", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+  }
+});
+
 test("backup refuses to run without DATABASE_URL", () => {
   const result = run(backupScript, {});
   assert.notEqual(result.status, 0);
@@ -226,6 +236,88 @@ test("encrypted backup and local temporary restore verification work with fake P
   assert.match(restore.stdout, /Auth0 mapped-user count verified/);
   assert.match(restore.stdout, /Leilei migration ledger verified/);
   assert.match(restore.stdout, /runtime_subject_states count verified: 1/);
+});
+
+test("restore remains compatible with historical v1 backup manifests", () => {
+  const temp = mkdtempSync(join(tmpdir(), "leilei-backup-v1-"));
+  const payload = join(temp, "payload");
+  const archive = join(temp, "legacy.tar.gz");
+  const backupFile = join(temp, "legacy.backup.enc");
+  const checksumFile = `${backupFile}.sha256`;
+  const fakeBin = createFakePostgresTools(temp);
+  mkdirSync(payload);
+  writeFileSync(join(payload, "database.dump"), "fake custom dump");
+  writeFileSync(
+    join(payload, "manifest.txt"),
+    [
+      "format=leilei-os-postgres-backup-v1",
+      "created_at_utc=20260728T041029Z",
+      "schema_version=0006_large_chat",
+      "postgres_server_major=18",
+      "pg_dump_major=18",
+      "users=1",
+      "core_memories=7",
+      "diary_entries=7",
+      "tasks=7",
+      "user_settings=1",
+      "mapped_user_count=1",
+      "",
+    ].join("\n"),
+  );
+  execFileSync("tar", [
+    "-C",
+    payload,
+    "-czf",
+    archive,
+    "database.dump",
+    "manifest.txt",
+  ]);
+  execFileSync("openssl", [
+    "enc",
+    "-aes-256-cbc",
+    "-pbkdf2",
+    "-iter",
+    "200000",
+    "-salt",
+    "-pass",
+    "pass:test-passphrase-long-enough",
+    "-in",
+    archive,
+    "-out",
+    backupFile,
+  ]);
+  const checksum = execFileSync(
+    "shasum",
+    ["-a", "256", backupFile],
+    { encoding: "utf8" },
+  ).split(/\s+/)[0];
+  writeFileSync(
+    checksumFile,
+    `${checksum}  ${backupFile.split("/").at(-1)}\n`,
+  );
+
+  const restore = run(restoreScript, {
+    PATH: `${fakeBin}:${process.env.PATH}`,
+    LEILEI_ALLOW_TEMP_RESTORE: "1",
+    LEILEI_RESTORE_TARGET_ENV: "temporary",
+    TEMP_DATABASE_URL:
+      "postgresql://127.0.0.1/leilei_restore_verify_v1",
+    BACKUP_FILE: backupFile,
+    LEILEI_BACKUP_PASSPHRASE:
+      "test-passphrase-long-enough",
+    MCP_USER_ID:
+      "11111111-1111-4111-8111-111111111111",
+  });
+
+  assert.equal(restore.status, 0, restore.stderr);
+  assert.match(
+    restore.stdout,
+    /Temporary restore verification succeeded/,
+  );
+  assert.match(
+    restore.stdout,
+    /core_memories count verified: 7/,
+  );
 });
 
 test("gitignore covers common database backup artifacts", () => {
