@@ -23,6 +23,7 @@ import type {
   ProjectConversation,
   ProjectConversationMutationOutcome,
   ProjectResource,
+  ProjectResourceSummary,
   ProjectSummary,
   ProjectWorkspace,
   ProjectWorkspaceRepository,
@@ -247,12 +248,12 @@ implements ProjectWorkspaceRepository {
     userId: string;
     projectId: string;
     kind?: ProjectResourceKind;
-  }): Promise<ProjectResource[] | null> {
+  }): Promise<ProjectResourceSummary[] | null> {
     if (!await this.projectExists(input.userId, input.projectId)) {
       return null;
     }
     const rows = await this.db
-      .select(resourceSelection())
+      .select(resourceSummarySelection())
       .from(projectResources)
       .where(and(
         eq(projectResources.userId, input.userId),
@@ -264,7 +265,24 @@ implements ProjectWorkspaceRepository {
         asc(projectResources.resourceKey),
         asc(projectResources.id),
       );
-    return rows.map(mapResource);
+    return rows.map(mapResourceSummary);
+  }
+
+  async getResource(input: {
+    userId: string;
+    projectId: string;
+    resourceId: string;
+  }): Promise<ProjectResource | null> {
+    const [row] = await this.db
+      .select(resourceSelection())
+      .from(projectResources)
+      .where(and(
+        eq(projectResources.userId, input.userId),
+        eq(projectResources.projectId, input.projectId),
+        eq(projectResources.id, input.resourceId),
+      ))
+      .limit(1);
+    return row ? mapResource(row) : null;
   }
 
   async createResource(input: {
@@ -599,6 +617,20 @@ function projectSelection() {
   };
 }
 
+function resourceSummarySelection() {
+  return {
+    id: projectResources.id,
+    projectId: projectResources.projectId,
+    kind: projectResources.kind,
+    resourceKey: projectResources.resourceKey,
+    title: projectResources.title,
+    metadata: projectResources.metadata,
+    version: projectResources.version,
+    createdAt: projectResources.createdAt,
+    updatedAt: projectResources.updatedAt,
+  };
+}
+
 function resourceSelection() {
   return {
     id: projectResources.id,
@@ -631,6 +663,22 @@ function mapProject(row: ReturnType<typeof projectRowShape>): ProjectSummary {
     workspaceId: row.workspaceId,
     name: row.name,
     description: row.description,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapResourceSummary(
+  row: ReturnType<typeof resourceSummaryRowShape>,
+): ProjectResourceSummary {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    kind: row.kind,
+    key: row.resourceKey,
+    title: row.title,
+    metadata: row.metadata,
     version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -671,6 +719,20 @@ function projectRowShape() {
     workspaceId: "",
     name: "",
     description: null as string | null,
+    version: 1,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+function resourceSummaryRowShape() {
+  return {
+    id: "",
+    projectId: "",
+    kind: "file" as ProjectResourceKind,
+    resourceKey: "",
+    title: null as string | null,
+    metadata: {} as Record<string, unknown>,
     version: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
