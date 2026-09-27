@@ -836,7 +836,7 @@ function conversationItems(
     }
   }
 
-  const currentBlockOrdinals = new Map(
+  const currentBlockOrdinals = new Map<string, string>(
     currentConversations.content_blocks.map(
       (record) => [
         `${record.message_id}:${record.ordinal}`,
@@ -870,7 +870,7 @@ function conversationItems(
     }
   }
 
-  const currentAttachmentOrdinals = new Map(
+  const currentAttachmentOrdinals = new Map<string, string>(
     currentConversations.attachments.map(
       (record) => [
         `${record.message_id}:${record.ordinal}`,
