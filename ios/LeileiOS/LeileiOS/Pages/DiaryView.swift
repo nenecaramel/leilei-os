@@ -878,7 +878,7 @@ private struct DiaryArchivedCommentsSection: View {
                             Text(
                                 isLoadingMore
                                     ? "Loading…"
-                                    : "Load Earlier Comments"
+                                    : "More"
                             )
                         }
                         .frame(
@@ -1650,7 +1650,7 @@ private struct DiaryCommentsSection: View {
                         Text(
                             isLoadingMore
                                 ? "Loading…"
-                                : "Load Earlier Comments"
+                                : "More"
                         )
                     }
                     .frame(
