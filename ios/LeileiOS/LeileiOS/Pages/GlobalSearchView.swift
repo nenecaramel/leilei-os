@@ -9,6 +9,21 @@ struct GlobalSearchView: View {
     @State private var query = ""
     @State private var modules = GlobalSearchModule.defaultModules
     @State private var timePreset: GlobalSearchTimePreset = .anyTime
+    @State private var customDateRangePresented = false
+    @State private var customStartDate =
+        Calendar.current.date(
+            byAdding: .month,
+            value: -1,
+            to: .now
+        ) ?? .now
+    @State private var customEndDate = Date.now
+    @State private var draftCustomStartDate =
+        Calendar.current.date(
+            byAdding: .month,
+            value: -1,
+            to: .now
+        ) ?? .now
+    @State private var draftCustomEndDate = Date.now
     @State private var scope: GlobalSearchScope = .active
     @State private var mode: GlobalSearchMode = .normal
     @State private var state: SearchState = .idle
@@ -81,7 +96,7 @@ struct GlobalSearchView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 GlobalSearchFiltersMenu(
                     modules: $modules,
-                    timePreset: $timePreset,
+                    timePreset: timeSelection,
                     scope: $scope,
                     mode: $mode
                 )
@@ -89,6 +104,16 @@ struct GlobalSearchView: View {
 
             if #available(iOS 26.0, *) {
                 DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            }
+        }
+        .sheet(isPresented: $customDateRangePresented) {
+            GlobalSearchCustomDateRangeSheet(
+                startDate: $draftCustomStartDate,
+                endDate: $draftCustomEndDate
+            ) {
+                customStartDate = draftCustomStartDate
+                customEndDate = draftCustomEndDate
+                timePreset = .custom
             }
         }
         .onDisappear {
@@ -183,7 +208,7 @@ struct GlobalSearchView: View {
             return nil
         }
 
-        let dateRange = timePreset.dateRange()
+        let dateRange = selectedDateRange
         return GlobalSearchRequest(
             query: trimmedQuery,
             modules: modules,
@@ -191,6 +216,41 @@ struct GlobalSearchView: View {
             mode: mode,
             dateFrom: dateRange.dateFrom,
             dateTo: dateRange.dateTo
+        )
+    }
+
+    private var timeSelection:
+        Binding<GlobalSearchTimePreset> {
+        Binding(
+            get: { timePreset },
+            set: { selection in
+                if selection == .custom {
+                    draftCustomStartDate = customStartDate
+                    draftCustomEndDate = customEndDate
+                    customDateRangePresented = true
+                } else {
+                    timePreset = selection
+                }
+            }
+        )
+    }
+
+    private var selectedDateRange:
+        (dateFrom: String?, dateTo: String?) {
+        guard timePreset == .custom else {
+            return timePreset.dateRange()
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = .current
+        formatter.locale =
+            Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        return (
+            formatter.string(from: customStartDate),
+            formatter.string(from: customEndDate)
         )
     }
 
@@ -441,6 +501,54 @@ private struct GlobalSearchMetadataLine: View {
         }
         .font(.subheadline)
         .foregroundStyle(.secondary)
+    }
+}
+
+private struct GlobalSearchCustomDateRangeSheet: View {
+    @Binding var startDate: Date
+    @Binding var endDate: Date
+
+    let onApply: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker(
+                    "Start",
+                    selection: $startDate,
+                    in: ...endDate,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+
+                DatePicker(
+                    "End",
+                    selection: $endDate,
+                    in: startDate...,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+            }
+            .navigationTitle("Custom Range")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onApply()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
