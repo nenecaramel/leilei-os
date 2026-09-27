@@ -210,6 +210,16 @@ export function selectRetirableThreadMembers(
     .sort((left, right) => left.localeCompare(right));
 }
 
+export function hasMindRetirementThreadState(
+  candidate: MindRetirementCandidate,
+): boolean {
+  try {
+    return readThreadState(candidate) !== null;
+  } catch {
+    return false;
+  }
+}
+
 type RetirementThreadState = {
   role: "anchor" | "reinforcement";
   threadKey: string;
