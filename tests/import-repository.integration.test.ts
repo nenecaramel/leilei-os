@@ -84,6 +84,45 @@ test(
         updatedAt: now,
       });
 
+      await db.insert(schema.universeMeta).values({
+        userId,
+        name: "Round trip Universe",
+        schemaVersion: 2,
+        version: 7,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.universeGalaxies).values({
+        userId,
+        id: "galaxy-1",
+        title: "Galaxy",
+        description: "Description",
+        color: "#ffffff",
+        order: 0,
+      });
+      await db.insert(schema.universeNodes).values({
+        userId,
+        id: "node-1",
+        title: "Node",
+        summary: "Summary",
+        content: "Content",
+        type: "idea",
+        tags: ["portable"],
+        galaxies: [],
+        galaxyMemberships: [{
+          id: "galaxy-1",
+          weight: 1,
+        }],
+        position: { x: 1, y: 2 },
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.universeDiarySources).values({
+        userId,
+        nodeId: "node-1",
+        diaryId,
+      });
+
       await db.insert(schema.todoPapers).values({
         id: paperId,
         userId,
@@ -235,6 +274,7 @@ test(
           "projects",
           "mind",
           "conversations",
+          "universe",
         ],
       );
 
@@ -262,6 +302,25 @@ test(
       await db
         .delete(schema.conversations)
         .where(eq(schema.conversations.userId, userId));
+      await db
+        .delete(schema.universeDiarySources)
+        .where(eq(schema.universeDiarySources.userId, userId));
+      await db
+        .delete(schema.universeRelations)
+        .where(eq(schema.universeRelations.userId, userId));
+      await db
+        .delete(schema.universeRevisions)
+        .where(eq(schema.universeRevisions.userId, userId));
+      await db
+        .delete(schema.universeNodes)
+        .where(eq(schema.universeNodes.userId, userId));
+      await db
+        .delete(schema.universeGalaxies)
+        .where(eq(schema.universeGalaxies.userId, userId));
+      await db
+        .delete(schema.universeMeta)
+        .where(eq(schema.universeMeta.userId, userId));
+
       await db
         .delete(schema.todoPapers)
         .where(eq(schema.todoPapers.userId, userId));
@@ -291,6 +350,7 @@ test(
         1,
       );
       assert.equal(preview.summary.todo.create, 1);
+      assert.equal(preview.summary.universe?.create, 1);
       assert.equal(preview.summary.mind?.create, 1);
       assert.equal(preview.summary.projects?.create, 4);
       assert.equal(
@@ -313,6 +373,8 @@ test(
         messageCount,
         blockCount,
         mindCount,
+        universeMetaCount,
+        universeSourceCount,
         workspaceCount,
         projectCount,
         resourceCount,
@@ -340,6 +402,12 @@ test(
           .from(schema.runtimeSubjectStates)
           .where(eq(schema.runtimeSubjectStates.userId, userId)),
         db.select({ count: count() })
+          .from(schema.universeMeta)
+          .where(eq(schema.universeMeta.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.universeDiarySources)
+          .where(eq(schema.universeDiarySources.userId, userId)),
+        db.select({ count: count() })
           .from(schema.projectWorkspaces)
           .where(eq(schema.projectWorkspaces.userId, userId)),
         db.select({ count: count() })
@@ -360,10 +428,24 @@ test(
       assert.equal(messageCount[0]?.count, 2);
       assert.equal(blockCount[0]?.count, 1);
       assert.equal(mindCount[0]?.count, 1);
+      assert.equal(universeMetaCount[0]?.count, 1);
+      assert.equal(universeSourceCount[0]?.count, 1);
       assert.equal(workspaceCount[0]?.count, 1);
       assert.equal(projectCount[0]?.count, 1);
       assert.equal(resourceCount[0]?.count, 1);
       assert.equal(membershipCount[0]?.count, 1);
+
+      const [restoredUniverse] = await db
+        .select({
+          version: schema.universeMeta.version,
+          name: schema.universeMeta.name,
+        })
+        .from(schema.universeMeta)
+        .where(eq(schema.universeMeta.userId, userId));
+      assert.deepEqual(restoredUniverse, {
+        version: 7,
+        name: "Round trip Universe",
+      });
 
       const [restoredConversation] = await db
         .select({
@@ -441,6 +523,30 @@ test(
       await db
         .delete(schema.conversations)
         .where(eq(schema.conversations.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.universeDiarySources)
+        .where(eq(schema.universeDiarySources.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.universeRelations)
+        .where(eq(schema.universeRelations.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.universeRevisions)
+        .where(eq(schema.universeRevisions.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.universeNodes)
+        .where(eq(schema.universeNodes.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.universeGalaxies)
+        .where(eq(schema.universeGalaxies.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.universeMeta)
+        .where(eq(schema.universeMeta.userId, userId))
         .catch(() => undefined);
       await db
         .delete(schema.todoPapers)
