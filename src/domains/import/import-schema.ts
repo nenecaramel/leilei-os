@@ -133,6 +133,88 @@ const projectsBundle = z.object({
   conversations: z.array(projectConversationRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
+const conversationRecord = z.object({
+  id: uuid,
+  title: z.string().nullable(),
+  lifecycle_status: z.enum(["active", "archived"]),
+  current_head_message_id: uuid.nullable(),
+  default_model: z.string().nullable(),
+  provider_metadata: z.record(z.string(), z.unknown()),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+  archived_at: isoDateTime.nullable(),
+}).strict();
+
+const conversationMessageRecord = z.object({
+  id: uuid,
+  conversation_id: uuid,
+  parent_message_id: uuid.nullable(),
+  role: z.enum([
+    "user",
+    "assistant",
+    "system",
+    "tool",
+    "reasoning",
+    "unknown",
+  ]),
+  status: z.enum(["pending", "streaming", "completed", "error"]),
+  raw_role: z.string().nullable(),
+  model: z.string().nullable(),
+  is_current_path: z.boolean(),
+  current_path_index: z.number().int().nonnegative().nullable(),
+  turn_index: z.number().int().nonnegative().nullable(),
+  is_primary: z.boolean(),
+  display_text: z.string(),
+  created_at: isoDateTime,
+  completed_at: isoDateTime.nullable(),
+  updated_at: isoDateTime,
+}).strict();
+
+const conversationContentBlockRecord = z.object({
+  id: uuid,
+  message_id: uuid,
+  ordinal: z.number().int().nonnegative(),
+  kind: z.enum([
+    "text",
+    "thinking",
+    "reasoning_recap",
+    "tool_use",
+    "tool_result",
+    "image",
+    "audio",
+    "video",
+    "file",
+    "attachment",
+    "unknown",
+  ]),
+  raw_type: z.string().min(1),
+  text: z.string().nullable(),
+  payload: z.record(z.string(), z.unknown()).nullable(),
+  created_at: isoDateTime,
+}).strict();
+
+const conversationAttachmentRecord = z.object({
+  id: uuid,
+  message_id: uuid,
+  ordinal: z.number().int().nonnegative(),
+  source_attachment_id: z.string().nullable(),
+  name: z.string().nullable(),
+  mime_type: z.string().nullable(),
+  size_bytes: z.number().int().nonnegative().nullable(),
+  payload: z.record(z.string(), z.unknown()),
+}).strict();
+
+const conversationsBundle = z.object({
+  conversations: z.array(conversationRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  messages: z.array(conversationMessageRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  content_blocks: z.array(conversationContentBlockRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  attachments: z.array(conversationAttachmentRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE),
+}).strict();
+
 const mindStateRecord = z.object({
   id: uuid,
   subject_id: z.string().min(1),
@@ -195,6 +277,7 @@ const dataV3Schema = z.object({
   mind: z.array(mindStateRecord)
     .max(MAX_IMPORT_RECORDS_PER_MODULE)
     .optional(),
+  conversations: conversationsBundle.optional(),
 }).strict();
 
 const documentV2Schema = z.object({
@@ -252,6 +335,46 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
         );
       }
       ids.add(entry.id);
+    }
+  }
+
+  if (
+    document.schema_version === 3
+    && document.data.conversations
+  ) {
+    for (const conversation of document.data.conversations.conversations) {
+      const lifecycleValid =
+        (
+          conversation.lifecycle_status === "active"
+          && conversation.archived_at === null
+        )
+        || (
+          conversation.lifecycle_status === "archived"
+          && conversation.archived_at !== null
+        );
+      if (!lifecycleValid) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "conversation lifecycle timestamps are inconsistent",
+        );
+      }
+    }
+    for (const message of document.data.conversations.messages) {
+      const pathValid =
+        (
+          message.is_current_path
+          && message.current_path_index !== null
+        )
+        || (
+          !message.is_current_path
+          && message.current_path_index === null
+        );
+      if (!pathValid) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "conversation message path state is inconsistent",
+        );
+      }
     }
   }
 
