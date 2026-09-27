@@ -4,6 +4,7 @@ import {
   getBreathRankingConfig,
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
+  getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
   type RuntimeEnv,
@@ -164,6 +165,12 @@ import {
   createNativeLiveSemanticRecoveryRunner,
 } from "../domains/bridge/native-live-semantic-handshake.js";
 import {
+  MindSemanticGroupingService,
+} from "../domains/runtime/mind-semantic-grouping.js";
+import {
+  DrizzleMindSemanticGroupingRepository,
+} from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
+import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
@@ -305,6 +312,23 @@ export function createProcessRuntime(
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
   const breathRankingConfig = getBreathRankingConfig(runtimeEnv);
+  const mindSemanticGroupingConfig =
+    getMindSemanticGroupingConfig(runtimeEnv);
+  const mindSemanticGroupingRepository =
+    mindSemanticGroupingConfig
+      ? new DrizzleMindSemanticGroupingRepository(
+          db,
+          nativeLiveWorkWakePublisher,
+        )
+      : null;
+  const mindSemanticGrouping =
+    mindSemanticGroupingConfig
+      && mindSemanticGroupingRepository
+      ? new MindSemanticGroupingService(
+          mindSemanticGroupingRepository,
+          mindSemanticGroupingConfig,
+        )
+      : null;
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(
     db,
     memoryDecayConfig,
@@ -417,6 +441,7 @@ export function createProcessRuntime(
       db,
       backgroundLoopOrchestrator,
       memoryDecayConfig,
+      mindSemanticGrouping,
     );
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
