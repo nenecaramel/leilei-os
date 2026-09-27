@@ -7,6 +7,7 @@ import {
   projects,
   projectWorkspaces,
   resourceLifecycleEvents,
+  runtimeSubjectStates,
   todoEntries,
   todoPapers,
   toolCalls,
@@ -17,6 +18,7 @@ import type { ExportRepository } from "./export-service.js";
 import type {
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportMindStateRecord,
   ExportProjectsBundle,
   ExportToolActivity,
   ExportTodoPaper,
@@ -166,6 +168,49 @@ export class DrizzleExportRepository implements ExportRepository {
         added_at: toIso(row.addedAt),
       })),
     };
+  }
+
+  async listMind(userId: string): Promise<ExportMindStateRecord[]> {
+    const rows = await this.db.select({
+      id: runtimeSubjectStates.id,
+      subjectId: runtimeSubjectStates.subjectId,
+      kind: runtimeSubjectStates.kind,
+      text: runtimeSubjectStates.text,
+      payload: runtimeSubjectStates.payload,
+      scopeApplicability: runtimeSubjectStates.scopeApplicability,
+      scopeConversationId: runtimeSubjectStates.scopeConversationId,
+      scopePathHeadMessageId: runtimeSubjectStates.scopePathHeadMessageId,
+      settlementStatus: runtimeSubjectStates.settlementStatus,
+      pathStatus: runtimeSubjectStates.pathStatus,
+      validityStatus: runtimeSubjectStates.validityStatus,
+      envelope: runtimeSubjectStates.envelope,
+      createdAt: runtimeSubjectStates.createdAt,
+      updatedAt: runtimeSubjectStates.updatedAt,
+    }).from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, userId))
+      .orderBy(
+        asc(runtimeSubjectStates.subjectId),
+        asc(runtimeSubjectStates.kind),
+        asc(runtimeSubjectStates.createdAt),
+        asc(runtimeSubjectStates.id),
+      );
+
+    return rows.map((row) => ({
+      id: row.id,
+      subject_id: row.subjectId,
+      kind: row.kind,
+      text: row.text,
+      payload: row.payload,
+      scope_applicability: row.scopeApplicability,
+      scope_conversation_id: row.scopeConversationId,
+      scope_path_head_message_id: row.scopePathHeadMessageId,
+      settlement_status: row.settlementStatus,
+      path_status: row.pathStatus,
+      validity_status: row.validityStatus,
+      envelope: row.envelope,
+      created_at: toIso(row.createdAt),
+      updated_at: toIso(row.updatedAt),
+    }));
   }
 
   async listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]> {
