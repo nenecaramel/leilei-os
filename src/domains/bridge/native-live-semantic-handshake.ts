@@ -170,10 +170,15 @@ implements NativeLiveSemanticPreparationStager {
           INNER JOIN native_live_turn_preparations AS preparation
             ON preparation.id = semantic.prepare_id
            AND preparation.user_id = semantic.user_id
+          INNER JOIN conversations AS conversation
+            ON conversation.id = semantic.conversation_id
+           AND conversation.user_id = semantic.user_id
           WHERE semantic.user_id = ${input.userId}::uuid
             AND semantic.status = 'pending'
             AND preparation.status = 'prepared'
             AND preparation.mind_prepared = false
+            AND conversation.origin = 'native_live'
+            AND conversation.lifecycle_status = 'active'
           ORDER BY semantic.created_at ASC, semantic.prepare_id ASC
           FOR UPDATE OF semantic SKIP LOCKED
           LIMIT 1
@@ -439,9 +444,14 @@ implements NativeLiveSemanticPreparationStager {
           INNER JOIN native_live_turn_preparations AS preparation
             ON preparation.id = semantic.prepare_id
            AND preparation.user_id = semantic.user_id
+          INNER JOIN conversations AS conversation
+            ON conversation.id = semantic.conversation_id
+           AND conversation.user_id = semantic.user_id
           WHERE semantic.status IN ('completed', 'fallback')
             AND preparation.status = 'prepared'
             AND preparation.dispatch_status = 'staged'
+            AND conversation.origin = 'native_live'
+            AND conversation.lifecycle_status = 'active'
           ORDER BY
             semantic.user_id ASC,
             semantic.conversation_id ASC,
