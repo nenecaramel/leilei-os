@@ -312,7 +312,9 @@ struct AppShell: View {
                             ? nil
                             : appModel.activeNativeLiveConversationID,
                 onOpenConversation: openConversationFromSidebar,
-                onSettings: nil,
+                onSettings: {
+                    settingsPresented = true
+                },
                 onSelect: {}
             )
             .frame(width: 280)
