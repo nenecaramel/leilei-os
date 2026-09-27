@@ -14,12 +14,18 @@ struct PageContainer: View {
     @State private var showingWorkspacePicker = false
 
     let selectedPage: AppPage
+    let diaryTarget: DiaryNavigationTarget?
+    let daySpaceTarget: DaySpaceNavigationTarget?
     let universeTargetNodeID: String?
     let isDraftConversation: Bool
     let draftConversationID: UUID
     let onDraftCommitted: () -> Void
     let onMenu: (() -> Void)?
     let onOpenConversation: () -> Void
+    let onOpenDiary: (DiaryNavigationTarget) -> Void
+    let onDiaryTargetConsumed: () -> Void
+    let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
+    let onDaySpaceTargetConsumed: () -> Void
     let onOpenUniverseNode: (String) -> Void
     let onUniverseTargetConsumed: () -> Void
 
@@ -37,12 +43,20 @@ struct PageContainer: View {
                 } else if selectedPage == .globalSearch {
                     GlobalSearchView(
                         service: LeileiGlobalSearchService(api: appModel.api),
+                        onOpenDiary: onOpenDiary,
+                        onOpenDaySpace: onOpenDaySpace,
                         onOpenUniverseNode: onOpenUniverseNode
                     )
                 } else if selectedPage == .diary {
-                    DiaryView()
+                    DiaryView(
+                        target: diaryTarget,
+                        onTargetConsumed: onDiaryTargetConsumed
+                    )
                 } else if selectedPage == .daySpace {
-                    DaySpaceView()
+                    DaySpaceView(
+                        target: daySpaceTarget,
+                        onTargetConsumed: onDaySpaceTargetConsumed
+                    )
                 } else if selectedPage == .universe {
                     UniverseView(
                         targetNodeID: universeTargetNodeID,
