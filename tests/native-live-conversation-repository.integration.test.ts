@@ -176,6 +176,26 @@ test(
     assert.equal(stored.messages.length, 3);
     assert.equal(stored.currentHeadMessageId, second.message.id);
 
+    const secondHeadPage = await service.listConversationPage({
+      userId: userA,
+      limit: 10,
+    });
+    const secondHeadSummary = secondHeadPage.conversations.find(
+      (item) => item.id === conversation.id,
+    );
+    assert.equal(
+      secondHeadSummary?.lastMessageAt,
+      second.message.createdAt,
+    );
+
+    const renamed = await service.renameConversation({
+      userId: userA,
+      conversationId: conversation.id,
+      title: "Renamed without touching message time",
+    });
+    assert.equal(renamed?.lastMessageAt, second.message.createdAt);
+    assert.notEqual(renamed?.updatedAt, second.message.createdAt);
+
     const secondBranchPath = await currentPathReader.readCurrentPath({
       userId: userA,
       conversationId: conversation.id,
@@ -204,6 +224,17 @@ test(
       conversationId: conversation.id,
     });
     assert.equal(switched?.currentHeadMessageId, first.message.id);
+
+    const firstHeadPage = await service.listConversationPage({
+      userId: userA,
+      limit: 10,
+    });
+    assert.equal(
+      firstHeadPage.conversations.find(
+        (item) => item.id === conversation.id,
+      )?.lastMessageAt,
+      first.message.createdAt,
+    );
 
     const firstBranchPath = await currentPathReader.readCurrentPath({
       userId: userA,
