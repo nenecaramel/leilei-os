@@ -167,6 +167,45 @@ export type ExportConversationsBundle = {
   attachments: ExportConversationAttachmentRecord[];
 };
 
+export type ExportMindDriveSatisfactionEventRecord = {
+  id: string;
+  subject_id: string;
+  drive_state_id: string;
+  conversation_id: string;
+  evidence_message_id: string;
+  evidence_block_id: string | null;
+  evidence_kind: "user_message" | "assistant_message" | "tool_result";
+  amount: number;
+  idempotency_key: string;
+  created_at: string;
+};
+
+export type ExportMindCuriosityResolutionEventRecord = {
+  id: string;
+  subject_id: string;
+  curiosity_state_id: string;
+  conversation_id: string;
+  requested_resolution_source_id: string;
+  result_resolution_source_id: string;
+  resolved_at: string;
+  idempotency_key: string;
+  created_at: string;
+};
+
+export type ExportMindDistillationWatermarkRecord = {
+  subject_id: string;
+  conversation_id: string;
+  last_source_message_id: string;
+  process_version: string;
+  updated_at: string;
+};
+
+export type ExportMindContinuityBundle = {
+  drive_satisfaction_events: ExportMindDriveSatisfactionEventRecord[];
+  curiosity_resolution_events: ExportMindCuriosityResolutionEventRecord[];
+  distillation_watermarks: ExportMindDistillationWatermarkRecord[];
+};
+
 export type ExportMindStateRecord = {
   id: string;
   subject_id: string;
@@ -214,6 +253,7 @@ export type ExportDataV3 = ExportDataV2 & {
   diary_comments?: ExportDiaryCommentRecord[];
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
+  mind_continuity?: ExportMindContinuityBundle;
   conversations?: ExportConversationsBundle;
   universe?: ExportUniverseBundle | null;
 };
