@@ -830,6 +830,15 @@ final class AppModel: ObservableObject {
             } catch {
                 // Fail-soft; the next observation can recover.
             }
+
+            do {
+                surface.controls =
+                    try await api.nativeLiveRuntimeControls(
+                        prepareID: prepareID
+                    )
+            } catch {
+                // Fail-soft; the next observation can recover.
+            }
         }
 
         guard nativeLiveRuntimeSurface?.prepareID == prepareID else {
@@ -872,6 +881,75 @@ final class AppModel: ObservableObject {
                 latest.interactions.append(updated)
             }
             nativeLiveRuntimeSurface = latest
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
+    }
+
+    func sendNativeLiveMidTurnInput(
+        _ text: String
+    ) async throws {
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty,
+              normalized.count <= 8_000 else {
+            throw NativeLiveRuntimeControlClientError.invalidMidTurnInput
+        }
+
+        try await createNativeLiveRuntimeControl(
+            kind: "mid_turn_input",
+            payload: [
+                "text": .string(normalized),
+            ]
+        )
+    }
+
+    func interruptNativeLiveTurn() async throws {
+        try await createNativeLiveRuntimeControl(
+            kind: "interrupt",
+            payload: [:]
+        )
+    }
+
+    private func createNativeLiveRuntimeControl(
+        kind: String,
+        payload: [String: NativeLiveJSONValue]
+    ) async throws {
+        guard var surface = nativeLiveRuntimeSurface else {
+            throw NativeLiveRuntimeControlClientError.notReady
+        }
+
+        let controlID = UUID()
+
+        do {
+            let created =
+                try await api.createNativeLiveRuntimeControl(
+                    prepareID: surface.prepareID,
+                    controlID: controlID,
+                    kind: kind,
+                    payload: payload
+                )
+
+            guard nativeLiveRuntimeSurface?.prepareID
+                    == surface.prepareID else {
+                return
+            }
+
+            if let index = surface.controls.firstIndex(where: {
+                $0.controlID == created.controlID
+            }) {
+                surface.controls[index] = created
+            } else {
+                surface.controls.append(created)
+            }
+            nativeLiveRuntimeSurface = surface
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
             throw LeileiAPIError.missingAccessToken
@@ -1070,6 +1148,21 @@ private enum NativeLiveConversationLifecycleError: LocalizedError {
             return "Conversation title must contain 1-200 characters."
         case .busy:
             return "Wait for the current turn to finish before deleting this conversation."
+        }
+    }
+}
+
+private enum NativeLiveRuntimeControlClientError:
+    LocalizedError {
+    case notReady
+    case invalidMidTurnInput
+
+    var errorDescription: String? {
+        switch self {
+        case .notReady:
+            return "The current turn is not accepting input."
+        case .invalidMidTurnInput:
+            return "Mid-turn input must contain 1-8000 characters."
         }
     }
 }
