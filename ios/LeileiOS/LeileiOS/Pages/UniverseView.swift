@@ -896,12 +896,7 @@ struct UniverseView: View {
     private func connections(
         for nodeID: String,
         in result: UniverseReadResult
-    ) -> [
-        (
-            relation: UniverseRelation,
-            node: UniverseNode
-        )
-    ] {
+    ) -> [UniverseNodeConnection] {
         let nodes = Dictionary(
             uniqueKeysWithValues:
                 result.snapshot.nodes.map {
@@ -928,7 +923,7 @@ struct UniverseView: View {
                     return nil
                 }
 
-                return (
+                return UniverseNodeConnection(
                     relation: relation,
                     node: node
                 )
