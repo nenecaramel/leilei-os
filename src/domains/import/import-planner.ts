@@ -3,6 +3,7 @@ import type {
   ExportConversationAttachmentRecord,
   ExportConversationContentBlockRecord,
   ExportConversationMessageRecord,
+  ExportConversationProviderCheckpointRecord,
   ExportConversationRecord,
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
@@ -69,6 +70,7 @@ export type ImportCurrentState = {
   foreign_conversation_message_ids?: Set<string>;
   foreign_conversation_content_block_ids?: Set<string>;
   foreign_conversation_attachment_ids?: Set<string>;
+  foreign_conversation_checkpoint_ids?: Set<string>;
   native_live_conversation_ids?: Set<string>;
 };
 
@@ -116,6 +118,10 @@ export type ConversationRestoreRecord =
   | {
       entity: "attachment";
       value: ExportConversationAttachmentRecord;
+    }
+  | {
+      entity: "provider_checkpoint";
+      value: ExportConversationProviderCheckpointRecord;
     };
 
 export type MindContinuityRestoreRecord =
@@ -180,6 +186,7 @@ const emptyConversations = (): ExportConversationsBundle => ({
   messages: [],
   content_blocks: [],
   attachments: [],
+  provider_checkpoints: [],
 });
 
 function classify<
@@ -570,11 +577,19 @@ function conversationItems(
     currentConversations.attachments,
     (record) => record.id,
   );
+  const checkpointItems = classifyConversationEntity(
+    "provider_checkpoint",
+    imported.provider_checkpoints,
+    currentConversations.provider_checkpoints,
+    (record) =>
+      `${record.conversation_id}:${record.canonical_message_id}:${record.provider}`,
+  );
   const items = [
     ...conversationItems,
     ...messageItems,
     ...blockItems,
     ...attachmentItems,
+    ...checkpointItems,
   ];
 
   const conversationIds = new Set([
@@ -660,8 +675,34 @@ function conversationItems(
       item.classification = "conflict";
       continue;
     }
-    if (!messageById.has(record.value.message_id)) {
-      item.classification = "invalid";
+    if (record.entity === "attachment") {
+      if (!messageById.has(record.value.message_id)) {
+        item.classification = "invalid";
+      }
+      continue;
+    }
+
+    if (record.entity === "provider_checkpoint") {
+      if (
+        current.foreign_conversation_checkpoint_ids?.has(
+          record.value.id,
+        )
+      ) {
+        item.classification = "conflict";
+        continue;
+      }
+      const message = messageById.get(
+        record.value.canonical_message_id,
+      );
+      if (
+        !conversationIds.has(record.value.conversation_id)
+        || !message
+        || message.conversation_id !== record.value.conversation_id
+        || message.role !== "assistant"
+        || message.status !== "completed"
+      ) {
+        item.classification = "invalid";
+      }
     }
   }
 
@@ -802,6 +843,33 @@ function conversationItems(
       item.classification === "create"
       && currentOwner
       && currentOwner !== record.id
+    ) {
+      item.classification = "conflict";
+    }
+  }
+
+  const currentCheckpointIds = new Set(
+    currentConversations.provider_checkpoints.map(
+      (record) => record.id,
+    ),
+  );
+  const importedCheckpointIds = new Map<string, number>();
+  for (const record of imported.provider_checkpoints) {
+    importedCheckpointIds.set(
+      record.id,
+      (importedCheckpointIds.get(record.id) ?? 0) + 1,
+    );
+  }
+  for (const item of checkpointItems) {
+    const record = (item.record as ConversationRestoreRecord).value
+      as ExportConversationProviderCheckpointRecord;
+    if ((importedCheckpointIds.get(record.id) ?? 0) > 1) {
+      item.classification = "invalid";
+      continue;
+    }
+    if (
+      item.classification === "create"
+      && currentCheckpointIds.has(record.id)
     ) {
       item.classification = "conflict";
     }
