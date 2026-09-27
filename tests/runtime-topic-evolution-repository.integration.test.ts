@@ -121,6 +121,18 @@ test(
     const anchorId = crypto.randomUUID();
     const reinforcementId = crypto.randomUUID();
     const provisionalId = crypto.randomUUID();
+    const authoredId = crypto.randomUUID();
+    const authoredLegacy = topicState({
+      id: authoredId,
+      userId,
+      text: "Legacy authored Topic",
+      sourceId: "topic-source-authored",
+    });
+    authoredLegacy.envelope = {
+      ...authoredLegacy.envelope,
+      authority: "subject_authorized",
+    };
+
     await statePort.append({
       userId,
       subjectId: "G",
@@ -144,6 +156,7 @@ test(
           sourceId: "topic-source-unsettled",
           settled: false,
         }),
+        authoredLegacy,
       ],
     });
 
@@ -182,6 +195,14 @@ test(
     const provisional = rows.find((state) => state.id === provisionalId);
     assert.ok(provisional);
     assert.equal(readTopicEvolution(provisional.payload), null);
+
+    const authored = rows.find((state) => state.id === authoredId);
+    assert.ok(authored);
+    assert.equal(
+      readTopicEvolution(authored.payload),
+      null,
+      "legacy authored Topic must remain readable but outside derived evolution",
+    );
 
     const second = await service.runOnce({
       userId,
