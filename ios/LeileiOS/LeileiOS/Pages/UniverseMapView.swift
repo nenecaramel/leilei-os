@@ -76,6 +76,14 @@ struct UniverseMapView: View {
             .coordinateSpace(name: "UniverseNativeMap")
             .task(id: viewportInitializationKey(size: size)) {
                 initializeViewportIfNeeded(size: size)
+
+                if let selectedNodeID,
+                   let node = nodes.first(where: { $0.id == selectedNodeID }) {
+                    reveal(
+                        node.position,
+                        in: size
+                    )
+                }
             }
             .onChange(of: selectedNodeID) { _, nodeID in
                 guard let nodeID,
