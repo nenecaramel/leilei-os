@@ -4,6 +4,7 @@ import {
   getBreathRankingConfig,
   getMemoryDecayConfig,
   getMindLifecycleTuningConfig,
+  getMindRetirementConfig,
   getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
@@ -265,5 +266,56 @@ test("Mind lifecycle tuning defaults preserve current production semantics and a
       NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS: undefined,
     }),
     /Thought base strength must be at least dormant threshold/,
+  );
+});
+
+
+test("Mind retirement stays fail-closed until explicitly enabled with positive per-kind retention", () => {
+  assert.equal(
+    getMindRetirementConfig({
+      NATIVE_LIVE_MIND_RETIREMENT_ENABLED: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS: undefined,
+    }),
+    undefined,
+  );
+
+  assert.throws(
+    () => getMindRetirementConfig({
+      NATIVE_LIVE_MIND_RETIREMENT_ENABLED: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS: 720,
+      NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS: undefined,
+    }),
+    /RETIREMENT_ENABLED=true/,
+  );
+
+  assert.throws(
+    () => getMindRetirementConfig({
+      NATIVE_LIVE_MIND_RETIREMENT_ENABLED: true,
+      NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS: undefined,
+    }),
+    /at least one positive per-kind retention/,
+  );
+
+  assert.deepEqual(
+    getMindRetirementConfig({
+      NATIVE_LIVE_MIND_RETIREMENT_ENABLED: true,
+      NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS: 720,
+      NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS: 336,
+      NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS: undefined,
+      NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS: 168,
+    }),
+    {
+      drive: { retentionHours: 720 },
+      thought: { retentionHours: 336 },
+      topic: { retentionHours: 168 },
+    },
   );
 });
