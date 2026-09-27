@@ -1,6 +1,10 @@
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationAttachments,
+  conversationContentBlocks,
+  conversationMessages,
+  conversations,
   diaryEntries,
   projectConversations,
   projectResources,
@@ -16,6 +20,7 @@ import {
 import { MCP_WRITE_TOOL_NAMES } from "../../mcp/tools/write-context.js";
 import type { ExportRepository } from "./export-service.js";
 import type {
+  ExportConversationsBundle,
   ExportDiaryRecord,
   ExportLifecycleEvent,
   ExportMindStateRecord,
@@ -75,6 +80,151 @@ export class DrizzleExportRepository implements ExportRepository {
       date: paper.date, author: paper.author, revision: paper.revision,
       created_at: toIso(paper.createdAt), updated_at: toIso(paper.updatedAt), entries: grouped.get(paper.id) ?? [],
     }));
+  }
+
+  async listConversations(userId: string): Promise<ExportConversationsBundle> {
+    const conversationRows = await this.db.select({
+      id: conversations.id,
+      title: conversations.title,
+      lifecycleStatus: conversations.lifecycleStatus,
+      currentHeadMessageId: conversations.currentHeadMessageId,
+      defaultModel: conversations.defaultModel,
+      providerMetadata: conversations.providerMetadata,
+      createdAt: conversations.createdAt,
+      updatedAt: conversations.updatedAt,
+      archivedAt: conversations.archivedAt,
+    }).from(conversations)
+      .where(and(
+        eq(conversations.userId, userId),
+        eq(conversations.origin, "native_live"),
+        inArray(conversations.lifecycleStatus, ["active", "archived"]),
+      ))
+      .orderBy(asc(conversations.createdAt), asc(conversations.id));
+
+    const conversationIds = conversationRows.map((row) => row.id);
+    const messageRows = conversationIds.length === 0
+      ? []
+      : await this.db.select({
+          id: conversationMessages.id,
+          conversationId: conversationMessages.conversationId,
+          parentMessageId: conversationMessages.parentMessageId,
+          role: conversationMessages.role,
+          status: conversationMessages.status,
+          rawRole: conversationMessages.rawRole,
+          model: conversationMessages.model,
+          isCurrentPath: conversationMessages.isCurrentPath,
+          currentPathIndex: conversationMessages.currentPathIndex,
+          turnIndex: conversationMessages.turnIndex,
+          isPrimary: conversationMessages.isPrimary,
+          displayText: conversationMessages.displayText,
+          createdAt: conversationMessages.createdAt,
+          completedAt: conversationMessages.completedAt,
+          updatedAt: conversationMessages.updatedAt,
+        }).from(conversationMessages)
+          .where(and(
+            eq(conversationMessages.userId, userId),
+            inArray(conversationMessages.conversationId, conversationIds),
+          ))
+          .orderBy(
+            asc(conversationMessages.conversationId),
+            asc(conversationMessages.createdAt),
+            asc(conversationMessages.id),
+          );
+
+    const messageIds = messageRows.map((row) => row.id);
+    const [contentRows, attachmentRows] = messageIds.length === 0
+      ? [[], []] as const
+      : await Promise.all([
+          this.db.select({
+            id: conversationContentBlocks.id,
+            messageId: conversationContentBlocks.messageId,
+            ordinal: conversationContentBlocks.ordinal,
+            kind: conversationContentBlocks.kind,
+            rawType: conversationContentBlocks.rawType,
+            text: conversationContentBlocks.text,
+            payload: conversationContentBlocks.payload,
+            createdAt: conversationContentBlocks.createdAt,
+          }).from(conversationContentBlocks)
+            .where(and(
+              eq(conversationContentBlocks.userId, userId),
+              inArray(conversationContentBlocks.messageId, messageIds),
+            ))
+            .orderBy(
+              asc(conversationContentBlocks.messageId),
+              asc(conversationContentBlocks.ordinal),
+              asc(conversationContentBlocks.id),
+            ),
+          this.db.select({
+            id: conversationAttachments.id,
+            messageId: conversationAttachments.messageId,
+            ordinal: conversationAttachments.ordinal,
+            sourceAttachmentId: conversationAttachments.sourceAttachmentId,
+            name: conversationAttachments.name,
+            mimeType: conversationAttachments.mimeType,
+            sizeBytes: conversationAttachments.sizeBytes,
+            payload: conversationAttachments.payload,
+          }).from(conversationAttachments)
+            .where(and(
+              eq(conversationAttachments.userId, userId),
+              inArray(conversationAttachments.messageId, messageIds),
+            ))
+            .orderBy(
+              asc(conversationAttachments.messageId),
+              asc(conversationAttachments.ordinal),
+              asc(conversationAttachments.id),
+            ),
+        ]);
+
+    return {
+      conversations: conversationRows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        lifecycle_status: row.lifecycleStatus as "active" | "archived",
+        current_head_message_id: row.currentHeadMessageId,
+        default_model: row.defaultModel,
+        provider_metadata: row.providerMetadata,
+        created_at: toIso(row.createdAt),
+        updated_at: toIso(row.updatedAt),
+        archived_at: row.archivedAt ? toIso(row.archivedAt) : null,
+      })),
+      messages: messageRows.map((row) => ({
+        id: row.id,
+        conversation_id: row.conversationId,
+        parent_message_id: row.parentMessageId,
+        role: row.role,
+        status: row.status,
+        raw_role: row.rawRole,
+        model: row.model,
+        is_current_path: row.isCurrentPath,
+        current_path_index: row.currentPathIndex,
+        turn_index: row.turnIndex,
+        is_primary: row.isPrimary,
+        display_text: row.displayText,
+        created_at: toIso(row.createdAt),
+        completed_at: row.completedAt ? toIso(row.completedAt) : null,
+        updated_at: toIso(row.updatedAt),
+      })),
+      content_blocks: contentRows.map((row) => ({
+        id: row.id,
+        message_id: row.messageId,
+        ordinal: row.ordinal,
+        kind: row.kind,
+        raw_type: row.rawType,
+        text: row.text,
+        payload: row.payload,
+        created_at: toIso(row.createdAt),
+      })),
+      attachments: attachmentRows.map((row) => ({
+        id: row.id,
+        message_id: row.messageId,
+        ordinal: row.ordinal,
+        source_attachment_id: row.sourceAttachmentId,
+        name: row.name,
+        mime_type: row.mimeType,
+        size_bytes: row.sizeBytes,
+        payload: row.payload,
+      })),
+    };
   }
 
   async listProjects(userId: string): Promise<ExportProjectsBundle> {
