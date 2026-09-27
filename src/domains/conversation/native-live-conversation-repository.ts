@@ -277,10 +277,33 @@ implements NativeLiveConversationRepository {
 
     const hasMore = rows.length > input.limit;
     const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+    const headIds = pageRows
+      .map((row) => row.currentHeadMessageId)
+      .filter((value): value is string => value !== null);
+    const headRows = headIds.length === 0
+      ? []
+      : await this.db
+          .select({
+            id: conversationMessages.id,
+            createdAt: conversationMessages.createdAt,
+          })
+          .from(conversationMessages)
+          .where(and(
+            eq(conversationMessages.userId, input.userId),
+            inArray(conversationMessages.id, headIds),
+          ));
+    const headCreatedAtById = new Map(
+      headRows.map((row) => [row.id, row.createdAt] as const),
+    );
     const mapped = pageRows.map((row) => ({
       id: row.id,
       title: row.title,
       currentHeadMessageId: row.currentHeadMessageId,
+      lastMessageAt:
+        row.currentHeadMessageId
+          ? headCreatedAtById.get(row.currentHeadMessageId)?.toISOString()
+            ?? null
+          : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -460,15 +483,25 @@ implements NativeLiveConversationRepository {
         updatedAt: conversations.updatedAt,
       });
 
-    return row
-      ? {
-          id: row.id,
-          title: row.title,
-          currentHeadMessageId: row.currentHeadMessageId,
-          createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString(),
-        }
-      : null;
+    if (!row) return null;
+    const [head] = row.currentHeadMessageId
+      ? await this.db
+          .select({ createdAt: conversationMessages.createdAt })
+          .from(conversationMessages)
+          .where(and(
+            eq(conversationMessages.userId, input.userId),
+            eq(conversationMessages.id, row.currentHeadMessageId),
+          ))
+          .limit(1)
+      : [];
+    return {
+      id: row.id,
+      title: row.title,
+      currentHeadMessageId: row.currentHeadMessageId,
+      lastMessageAt: head?.createdAt.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
   async archiveConversation(input: {
