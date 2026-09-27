@@ -1,4 +1,5 @@
 import type {
+  ExportConversationsBundle,
   ExportDiaryRecord,
   ExportDocument,
   ExportLifecycleEvent,
@@ -20,6 +21,7 @@ export interface ExportRepository {
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
   listProjects(userId: string): Promise<ExportProjectsBundle>;
   listMind(userId: string): Promise<ExportMindStateRecord[]>;
+  listConversations(userId: string): Promise<ExportConversationsBundle>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
   listToolActivity(userId: string): Promise<ExportToolActivity[]>;
 }
@@ -61,12 +63,14 @@ export class ExportService {
       data.todo = await this.repository.listTodo(userId);
     }
     if (scope === "all") {
-      const [projects, mind] = await Promise.all([
+      const [projects, mind, conversations] = await Promise.all([
         this.repository.listProjects(userId),
         this.repository.listMind(userId),
+        this.repository.listConversations(userId),
       ]);
       data.projects = projects;
       data.mind = mind;
+      data.conversations = conversations;
     }
 
     const document: ExportDocument = {
