@@ -883,13 +883,14 @@ export function createProcessRuntime(
     },
     startBackgroundWork: () => {
       logger.info("cloud_background_mode", {
-        state: "startup_recovery_only",
+        state: "semantic_startup_recovery_only",
+        operationalRetention: "startup_then_while_process_awake",
       });
 
       // Semantic/model background cadence remains Mac Companion-owned.
       // Infrastructure retention is deterministic database housekeeping, so
-      // the cloud runtime owns its bounded cadence directly. start() also
-      // runs once immediately, which catches up after sleep/restart.
+      // the cloud runtime owns its bounded cadence while this process is awake.
+      // start() also runs once immediately, which catches up after sleep/restart.
       retentionCoordinator.start();
       const mindFollowUpStartupRecovery =
         nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
