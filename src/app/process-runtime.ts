@@ -751,6 +751,12 @@ export function createProcessRuntime(
           providerSessionCleanupService:
             nativeLiveProviderSessionCleanupService,
           semanticService: nativeLiveSemanticService,
+          ...(mindSemanticGroupingRepository
+            ? {
+                mindSemanticGrouping:
+                  mindSemanticGroupingRepository,
+              }
+            : {}),
           backgroundModelService:
             nativeLiveBackgroundModelService,
           backgroundModelCoordinator:
