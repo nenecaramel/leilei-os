@@ -30,10 +30,31 @@ import type {
 } from "./export-types.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
+type DbExecutor = Database | Transaction;
+
 const toIso = (value: Date) => value.toISOString();
 
 export class DrizzleExportRepository implements ExportRepository {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: DbExecutor) {}
+
+  async withConsistentSnapshot<T>(
+    work: (repository: ExportRepository) => Promise<T>,
+  ): Promise<T> {
+    return this.db.transaction(
+      async (transaction) =>
+        work(
+          new DrizzleExportRepository(
+            transaction as Transaction,
+          ),
+        ),
+      { isolationLevel: "repeatable read" },
+    );
+  }
 
   async findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null> {
     const [user] = await this.db
