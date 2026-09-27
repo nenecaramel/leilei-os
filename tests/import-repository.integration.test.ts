@@ -40,6 +40,8 @@ test(
     const mindId = randomUUID();
     const driveId = randomUUID();
     const driveEventId = randomUUID();
+    const curiosityId = randomUUID();
+    const curiosityEventId = randomUUID();
     const workspaceId = randomUUID();
     const projectId = randomUUID();
     const resourceId = randomUUID();
@@ -263,6 +265,45 @@ test(
         idempotencyKey: `roundtrip-drive-${userId}`,
         createdAt: now,
       });
+      await db.insert(schema.runtimeSubjectStates).values({
+        id: curiosityId,
+        userId,
+        subjectId: "claude",
+        kind: "curiosity",
+        text: "Durable curiosity",
+        payload: {
+          curiosity_v1: {
+            role: "anchor",
+            anchorStateId: curiosityId,
+            phase: "resolved",
+            resolvedAt: now.toISOString(),
+            resolutionSourceId: assistantMessageId,
+          },
+        },
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "subject_authorized",
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.runtimeCuriosityResolutionEvents).values({
+        id: curiosityEventId,
+        userId,
+        subjectId: "claude",
+        curiosityStateId: curiosityId,
+        conversationId,
+        requestedResolutionSourceId: assistantMessageId,
+        resultResolutionSourceId: assistantMessageId,
+        resolvedAt: now,
+        idempotencyKey: `roundtrip-curiosity-${userId}`,
+        createdAt: now,
+      });
       await db.insert(schema.runtimeDistillationWatermarks).values({
         userId,
         subjectId: "claude",
@@ -348,6 +389,9 @@ test(
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId));
       await db
+        .delete(schema.runtimeCuriosityResolutionEvents)
+        .where(eq(schema.runtimeCuriosityResolutionEvents.userId, userId));
+      await db
         .delete(schema.runtimeDistillationWatermarks)
         .where(eq(schema.runtimeDistillationWatermarks.userId, userId));
       await db
@@ -411,7 +455,7 @@ test(
       );
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
-      assert.equal(preview.summary.mind?.create, 4);
+      assert.equal(preview.summary.mind?.create, 6);
       assert.equal(preview.summary.projects?.create, 4);
       assert.equal(
         preview.summary.conversations?.create,
@@ -434,6 +478,7 @@ test(
         blockCount,
         mindCount,
         driveEventCount,
+        curiosityEventCount,
         watermarkCount,
         universeMetaCount,
         universeSourceCount,
@@ -467,6 +512,9 @@ test(
           .from(schema.runtimeDriveSatisfactionEvents)
           .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId)),
         db.select({ count: count() })
+          .from(schema.runtimeCuriosityResolutionEvents)
+          .where(eq(schema.runtimeCuriosityResolutionEvents.userId, userId)),
+        db.select({ count: count() })
           .from(schema.runtimeDistillationWatermarks)
           .where(eq(schema.runtimeDistillationWatermarks.userId, userId)),
         db.select({ count: count() })
@@ -495,8 +543,9 @@ test(
       assert.equal(conversationCount[0]?.count, 1);
       assert.equal(messageCount[0]?.count, 2);
       assert.equal(blockCount[0]?.count, 1);
-      assert.equal(mindCount[0]?.count, 2);
+      assert.equal(mindCount[0]?.count, 3);
       assert.equal(driveEventCount[0]?.count, 1);
+      assert.equal(curiosityEventCount[0]?.count, 1);
       assert.equal(watermarkCount[0]?.count, 1);
       assert.equal(universeMetaCount[0]?.count, 1);
       assert.equal(universeSourceCount[0]?.count, 1);
@@ -546,6 +595,25 @@ test(
       assert.deepEqual(restoredDriveEvent, {
         driveStateId: driveId,
         amount: 0.5,
+      });
+
+      const [restoredCuriosityEvent] = await db
+        .select({
+          curiosityStateId:
+            schema.runtimeCuriosityResolutionEvents.curiosityStateId,
+          resultResolutionSourceId:
+            schema.runtimeCuriosityResolutionEvents.resultResolutionSourceId,
+        })
+        .from(schema.runtimeCuriosityResolutionEvents)
+        .where(
+          eq(
+            schema.runtimeCuriosityResolutionEvents.id,
+            curiosityEventId,
+          ),
+        );
+      assert.deepEqual(restoredCuriosityEvent, {
+        curiosityStateId: curiosityId,
+        resultResolutionSourceId: assistantMessageId,
       });
 
       const [restoredWatermark] = await db
@@ -619,6 +687,10 @@ test(
       await db
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.runtimeCuriosityResolutionEvents)
+        .where(eq(schema.runtimeCuriosityResolutionEvents.userId, userId))
         .catch(() => undefined);
       await db
         .delete(schema.runtimeDistillationWatermarks)
