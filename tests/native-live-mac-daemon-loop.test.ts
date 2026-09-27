@@ -1120,3 +1120,58 @@ test("idle daemon scores durable Mind semantic grouping before offering backgrou
     true,
   );
 });
+
+
+test("Mind semantic grouping E5 fallback does not immediately reschedule maintenance", async () => {
+  class GroupingRelay extends FakeRelay {
+    groupingReservation = {
+      reservationId: "88888888-8888-4888-8888-888888888888",
+      query: "complete the backend cleanup",
+      candidates: [{
+        stateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        kind: "drive" as const,
+        text: "finish the runtime cleanup",
+      }],
+    };
+
+    async reserveMindSemanticGrouping(input: unknown) {
+      this.calls.push({ name: "reserveMindSemanticGrouping", input });
+      return this.groupingReservation;
+    }
+
+    async submitMindSemanticGroupingScores(input: unknown) {
+      this.calls.push({ name: "submitMindSemanticGroupingScores", input });
+    }
+
+    async submitMindSemanticGroupingFallback(input: unknown) {
+      this.calls.push({ name: "submitMindSemanticGroupingFallback", input });
+    }
+  }
+
+  const relay = new GroupingRelay();
+  relay.reservation = null;
+  let offers = 0;
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeExecutor(),
+    null,
+    {
+      async offer() {
+        offers += 1;
+      },
+    },
+  );
+
+  assert.equal(
+    (await loop.runOnce()).outcome,
+    "mind_semantic_grouping_completed",
+  );
+  assert.equal(offers, 0);
+  assert.equal(
+    relay.calls.some(
+      (entry) => entry.name === "submitMindSemanticGroupingFallback",
+    ),
+    true,
+  );
+});
