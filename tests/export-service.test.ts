@@ -12,6 +12,7 @@ import type {
   ExportMindStateRecord,
   ExportProjectsBundle,
   ExportToolActivity,
+  ExportUniverseBundle,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
@@ -26,7 +27,7 @@ const diary: ExportDiaryRecord[] = [{
   date: "2026-08-13",
   tags: [],
   mood: null,
-  source: "web",
+  source: "chatgpt_mcp",
   author: "G",
   status: "archived",
   created_at: EXPORTED_AT,
@@ -60,6 +61,8 @@ const projects: ExportProjectsBundle = {
 };
 
 const mind: ExportMindStateRecord[] = [];
+
+const universe: ExportUniverseBundle | null = null;
 
 const conversations: ExportConversationsBundle = {
   conversations: [],
@@ -121,6 +124,10 @@ function createRepository(calls: string[] = []): ExportRepository {
     async listConversations(userId) {
       calls.push(`conversations:${userId}`);
       return conversations;
+    },
+    async listUniverse(userId) {
+      calls.push(`universe:${userId}`);
+      return universe;
     },
     async listLifecycleAudit(userId) {
       calls.push(`lifecycle:${userId}`);
@@ -213,6 +220,7 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
       "projects",
       "mind",
       "conversations",
+      "universe",
     ],
   );
   assert.deepEqual(calls, [
@@ -223,6 +231,7 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
     `projects:${USER_ID}`,
     `mind:${USER_ID}`,
     `conversations:${USER_ID}`,
+    `universe:${USER_ID}`,
   ]);
 });
 
