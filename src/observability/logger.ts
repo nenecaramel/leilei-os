@@ -63,6 +63,18 @@ const SAFE_FIELD_NAMES = new Set([
   "reconciliation",
   "claimLatencyMs",
   "completionLatencyMs",
+  "mindKind",
+  "scannedAnchors",
+  "terminalAnchors",
+  "nonTerminalAnchors",
+  "unreadableAnchors",
+  "minAgeHours",
+  "p50AgeHours",
+  "p90AgeHours",
+  "maxAgeHours",
+  "retentionHours",
+  "eligibleThreads",
+  "truncated",
 ]);
 
 const defaultSink = (level: LogLevel, line: string): void => {
