@@ -106,6 +106,7 @@ struct UniverseNodeSheet: View {
     let mode: Mode
     let node: UniverseNode?
     let galaxies: [UniverseGalaxy]
+    let allNodes: [UniverseNode]
     let connections:
         [(relation: UniverseRelation, node: UniverseNode)]
     let sources: [UniverseDiarySourceSummary]
@@ -139,6 +140,7 @@ struct UniverseNodeSheet: View {
         mode: Mode,
         node: UniverseNode?,
         galaxies: [UniverseGalaxy],
+        allNodes: [UniverseNode],
         connections:
             [(relation: UniverseRelation, node: UniverseNode)],
         sources: [UniverseDiarySourceSummary],
@@ -171,6 +173,7 @@ struct UniverseNodeSheet: View {
         self.mode = mode
         self.node = node
         self.galaxies = galaxies
+        self.allNodes = allNodes
         self.connections = connections
         self.sources = sources
         self.revisionsAvailable = revisionsAvailable
@@ -263,7 +266,7 @@ struct UniverseNodeSheet: View {
             if let node {
                 UniverseRelationSheet(
                     source: node,
-                    nodes: connectionCandidates,
+                    nodes: relationCandidates,
                     onSave: { relation in
                         try await onCreateRelation(relation)
                     }
@@ -1023,9 +1026,15 @@ struct UniverseNodeSheet: View {
         return values
     }
 
-    private var connectionCandidates:
+    private var relationCandidates:
         [UniverseNode] {
-        connections.map(\.node)
+        guard let node else {
+            return []
+        }
+
+        return allNodes.filter {
+            $0.id != node.id
+        }
     }
 
     private func editorField<Content: View>(
@@ -1832,7 +1841,10 @@ private struct FlowLayout:
                 ),
                 anchor: .topLeading,
                 proposal:
-                    ProposedViewSize(size)
+                    ProposedViewSize(
+                        width: size.width,
+                        height: size.height
+                    )
             )
 
             x += size.width + spacing
