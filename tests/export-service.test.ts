@@ -9,6 +9,7 @@ import type {
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportMindContinuityBundle,
   ExportMindStateRecord,
   ExportProjectsBundle,
   ExportToolActivity,
@@ -61,6 +62,12 @@ const projects: ExportProjectsBundle = {
 };
 
 const mind: ExportMindStateRecord[] = [];
+
+const mindContinuity: ExportMindContinuityBundle = {
+  drive_satisfaction_events: [],
+  curiosity_resolution_events: [],
+  distillation_watermarks: [],
+};
 
 const universe: ExportUniverseBundle | null = null;
 
@@ -120,6 +127,14 @@ function createRepository(calls: string[] = []): ExportRepository {
     async listMind(userId) {
       calls.push(`mind:${userId}`);
       return mind;
+    },
+    async listMindContinuity(userId) {
+      calls.push(`mind_continuity:${userId}`);
+      return mindContinuity;
+    },
+    async hasIncompleteMindFollowUps(userId) {
+      calls.push(`mind_quiescence:${userId}`);
+      return false;
     },
     async listConversations(userId) {
       calls.push(`conversations:${userId}`);
@@ -219,6 +234,7 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
       "todo",
       "projects",
       "mind",
+      "mind_continuity",
       "conversations",
       "universe",
     ],
@@ -228,11 +244,30 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
     `diary:${USER_ID}`,
     `diary_comments:${USER_ID}`,
     `todo:${USER_ID}`,
+    `mind_quiescence:${USER_ID}`,
     `projects:${USER_ID}`,
     `mind:${USER_ID}`,
+    `mind_continuity:${USER_ID}`,
     `conversations:${USER_ID}`,
     `universe:${USER_ID}`,
   ]);
+});
+
+test("ExportService rejects all export while Mind follow-up is incomplete", async () => {
+  const repository = createRepository();
+  repository.hasIncompleteMindFollowUps = async () => true;
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
 });
 
 test("ExportService rejects an all export while a canonical turn is in progress", async () => {
