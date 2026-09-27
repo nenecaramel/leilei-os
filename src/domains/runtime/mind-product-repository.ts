@@ -11,7 +11,6 @@ import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
   nativeLiveBackgroundModelJobs,
-  runtimeContextManifests,
   runtimeEffects,
   runtimeMindSemanticGroupingRequests,
   runtimeProactivityWakes,
@@ -343,32 +342,6 @@ async function deleteOperationalReferences(
   subjectId: string,
   deleteIds: ReadonlySet<string>,
 ): Promise<void> {
-  const contextRows = await transaction
-    .select({
-      id: runtimeContextManifests.id,
-      budget: runtimeContextManifests.budget,
-      items: runtimeContextManifests.items,
-    })
-    .from(runtimeContextManifests)
-    .where(and(
-      eq(runtimeContextManifests.userId, userId),
-      eq(runtimeContextManifests.subjectId, subjectId),
-    ));
-  const contextIds = contextRows
-    .filter((row) =>
-      structuredValueReferencesAnyId(row.budget, deleteIds)
-      || structuredValueReferencesAnyId(row.items, deleteIds)
-    )
-    .map((row) => row.id);
-  if (contextIds.length > 0) {
-    await transaction
-      .delete(runtimeContextManifests)
-      .where(and(
-        eq(runtimeContextManifests.userId, userId),
-        inArray(runtimeContextManifests.id, contextIds),
-      ));
-  }
-
   const wakes = await transaction
     .select({
       id: runtimeProactivityWakes.id,
@@ -458,13 +431,18 @@ async function deleteOperationalReferences(
   const jobs = await transaction
     .select({
       id: nativeLiveBackgroundModelJobs.id,
+      workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
       payload: nativeLiveBackgroundModelJobs.workflowPayload,
     })
     .from(nativeLiveBackgroundModelJobs)
     .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
   const jobIds = jobs
     .filter((job) =>
-      structuredValueReferencesAnyId(job.payload, deleteIds)
+      (
+        job.workflowRunId !== null
+        && wakeIds.includes(job.workflowRunId)
+      )
+      || structuredValueReferencesAnyId(job.payload, deleteIds)
     )
     .map((job) => job.id);
   if (jobIds.length > 0) {
