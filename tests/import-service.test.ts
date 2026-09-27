@@ -152,6 +152,14 @@ const driveState: ExportMindStateRecord = {
   payload: { drive_v1: { phase: "active" } },
 };
 
+const driveCandidateState: ExportMindStateRecord = {
+  ...mindState,
+  id: "00000000-0000-4000-8000-000000000068",
+  kind: "drive",
+  text: "Earlier durable drive",
+  payload: { drive_v1: { phase: "active" } },
+};
+
 const curiosityState: ExportMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000065",
@@ -280,6 +288,24 @@ const mindContinuity: ExportMindContinuityBundle = {
       "00000000-0000-4000-8000-000000000043",
     process_version: "distill-v1",
     updated_at: NOW,
+  }],
+  semantic_grouping_results: [{
+    id: "00000000-0000-4000-8000-000000000069",
+    subject_id: "claude",
+    kind: "drive",
+    query_state_id: driveState.id,
+    query: "Durable drive",
+    candidates: [{
+      stateId: driveCandidateState.id,
+      kind: "drive",
+      text: "Earlier durable drive",
+    }],
+    scores: {
+      [driveCandidateState.id]: 0.91,
+    },
+    created_at: NOW,
+    updated_at: NOW,
+    completed_at: NOW,
   }],
 };
 
@@ -1371,12 +1397,12 @@ test("v3 Mind continuity restores semantic ledgers and watermark after canonical
   const service = new ImportService(repository);
   const raw = v3PackageBytes({
     conversations: conversationBundle,
-    mind: [driveState, curiosityState],
+    mind: [driveCandidateState, driveState, curiosityState],
     mind_continuity: mindContinuity,
   });
 
   const preview = await service.preview(raw, USER_ID);
-  assert.equal(preview.summary.mind?.create, 5);
+  assert.equal(preview.summary.mind?.create, 7);
   assert.equal(preview.summary.mind?.invalid, 0);
   assert.equal(preview.can_execute, true);
 
@@ -1388,13 +1414,13 @@ test("v3 Mind continuity restores semantic ledgers and watermark after canonical
 
   assert.deepEqual(
     repository.state.mind,
-    [driveState, curiosityState],
+    [driveCandidateState, driveState, curiosityState],
   );
   assert.deepEqual(
     repository.state.mind_continuity,
     mindContinuity,
   );
-  assert.equal(repository.writes, 11);
+  assert.equal(repository.writes, 13);
 });
 
 test("v3 Mind continuity rejects semantic events without canonical evidence", async () => {
@@ -1420,7 +1446,7 @@ test("v3 Mind continuity rejects semantic events without canonical evidence", as
 
   const preview = await service.preview(
     v3PackageBytes({
-      mind: [driveState, curiosityState],
+      mind: [driveCandidateState, driveState, curiosityState],
       mind_continuity: mindContinuity,
     }),
     USER_ID,
