@@ -273,5 +273,32 @@ test("ordinary send finalize records intents but leaves the new state provisiona
     userId,
     manifestId: prepared("send").prepareId,
   }]);
-  assert.equal(reader.calls.length, 0);
+  assert.equal(reader.calls.length, 1);
+});
+
+test("archived conversation blocks delayed Mind finalization before any mutation", async () => {
+  const reader = new Reader();
+  reader.value = {
+    ...conversation(assistantId),
+    lifecycleStatus: "archived",
+  };
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+
+  await assert.rejects(
+    runtime.afterFinalize({
+      userId,
+      preparation: prepared("send"),
+      assistantMessageId: assistantId,
+      intents: [{
+        kind: "memory",
+        text: "must not write",
+        sourceStart: 0,
+        sourceEnd: 1,
+        raw: "<memory>must not write</memory>",
+      }],
+    }),
+    /not active/i,
+  );
+  assert.deepEqual(mind.calls, []);
 });
