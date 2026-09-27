@@ -287,6 +287,16 @@ test("compact uses a dedicated non-verbatim control path and returns lifecycle o
       call = input;
       return {
         close() {},
+        async getContextUsage() {
+          return {
+            model: "claude-opus-5-5",
+            totalTokens: 1302,
+            maxTokens: 1000000,
+            rawMaxTokens: 1000000,
+            percentage: 0.1302,
+            categories: [],
+          };
+        },
         async *[Symbol.asyncIterator]() {
           yield {
             type: "system",
@@ -341,7 +351,14 @@ test("compact uses a dedicated non-verbatim control path and returns lifecycle o
   assert.equal(call.options.verbatimPrompts, false);
   assert.ok(call.options.hooks);
   assert.equal(result.providerSessionId, "provider-root");
-  assert.equal(result.contextUsage, null);
+  assert.deepEqual(result.contextUsage, {
+    model: "claude-opus-5-5",
+    total_tokens: 1302,
+    max_tokens: 1000000,
+    raw_max_tokens: 1000000,
+    percentage: 0.1302,
+    categories: [],
+  });
   assert.deepEqual(result.compaction.boundary, {
     trigger: "manual",
     pre_tokens: 28485,
