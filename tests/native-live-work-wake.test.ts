@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   NativeLiveWorkWakeBroker,
@@ -111,4 +112,16 @@ test("wake broker reuses a listener when the next lease arrives inside the idle 
   assert.equal(clients[0]?.endCalls, 1);
 
   await broker.close();
+});
+
+
+test("durable work availability includes pending Mind semantic grouping requests", () => {
+  const source = readFileSync(
+    new URL("../src/domains/bridge/native-live-work-wake.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /FROM runtime_mind_semantic_grouping_requests AS grouping[\s\S]*grouping\.status = 'pending'[\s\S]*grouping\.status = 'reserved'/,
+  );
 });
