@@ -17,6 +17,17 @@ function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
 }
 
+async function loadDefaultSessionMessages() {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  if (typeof sdk.getSessionMessages !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK did not expose getSessionMessages().",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+  return sdk.getSessionMessages;
+}
+
 async function loadDefaultDeleteSession() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
   if (
@@ -93,6 +104,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadQuery = loadDefaultQuery,
     deleteSessionImpl = null,
     loadDeleteSession = loadDefaultDeleteSession,
+    sessionMessagesImpl = null,
+    loadSessionMessages = loadDefaultSessionMessages,
     environment = process.env,
     cwd = process.cwd(),
     compactionThresholdPercent = 75,
@@ -107,6 +120,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.loadQuery = loadQuery;
     this.deleteSessionImpl = deleteSessionImpl;
     this.loadDeleteSession = loadDeleteSession;
+    this.sessionMessagesImpl = sessionMessagesImpl;
+    this.loadSessionMessages = loadSessionMessages;
     this.environment = environment;
     this.cwd = cwd;
     this.compactionThresholdPercent = compactionThresholdPercent;
@@ -123,7 +138,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     });
   }
 
-  resume(sessionId, prompt, execution = null) {
+  async resume(sessionId, prompt, execution = null) {
+    await this.#requireSession(sessionId);
     return this.#run(prompt, {
       mode: "resume",
       parentProviderSessionId: sessionId,
@@ -133,6 +149,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async fork(sessionId, prompt, execution = null) {
+    await this.#requireSession(sessionId);
     const result = await this.#run(prompt, {
       mode: "fork",
       parentProviderSessionId: sessionId,
@@ -486,6 +503,53 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.abortRequested = true;
     this.activeTurnHandle?.abort?.();
     this.activeQuery?.close?.();
+  }
+
+  async #requireSession(sessionId) {
+    const id = nonblankString(sessionId);
+    if (!id) {
+      throw runtimeError(
+        "Claude Agent SDK parent session id is required.",
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    }
+
+    const getSessionMessages = await this.#resolveSessionMessages();
+    let messages;
+    try {
+      messages = await getSessionMessages(id, {
+        dir: this.cwd,
+        limit: 1,
+      });
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to inspect Claude Agent SDK parent session: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw runtimeError(
+        "Claude Agent SDK parent session was not found.",
+        {
+          runtimeCode: "NO_PROVIDER_SESSION",
+          parentSessionId: id,
+        },
+      );
+    }
+  }
+
+  async #resolveSessionMessages() {
+    if (this.sessionMessagesImpl) return this.sessionMessagesImpl;
+    try {
+      this.sessionMessagesImpl = await this.loadSessionMessages();
+      return this.sessionMessagesImpl;
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to load Claude Agent SDK getSessionMessages(): ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
   }
 
   async #resolveDeleteSession() {
