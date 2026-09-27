@@ -75,6 +75,23 @@ export type ExportProjectsBundle = {
   conversations: ExportProjectConversationRecord[];
 };
 
+export type ExportMindStateRecord = {
+  id: string;
+  subject_id: string;
+  kind: "feel" | "memory" | "drive" | "thought" | "curiosity" | "topic";
+  text: string | null;
+  payload: Record<string, unknown> | null;
+  scope_applicability: "global" | "conversation" | "path";
+  scope_conversation_id: string | null;
+  scope_path_head_message_id: string | null;
+  settlement_status: "unsettled" | "settled" | "rejected";
+  path_status: "current" | "superseded";
+  validity_status: "valid" | "invalidated" | "tombstoned";
+  envelope: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ExportLifecycleEvent = {
   id: string;
   resource_type: string;
@@ -103,6 +120,7 @@ export type ExportDataV2 = {
 
 export type ExportDataV3 = ExportDataV2 & {
   projects?: ExportProjectsBundle;
+  mind?: ExportMindStateRecord[];
 };
 
 export type ExportAudit = {
