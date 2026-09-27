@@ -496,7 +496,6 @@ struct DaySpaceView: View {
                     papers: snapshot.data.todo ?? [],
                     query: normalizedQuery
                 )
-                completeTodoSearch = all
             }
 
             guard normalizedQuery
@@ -505,6 +504,8 @@ struct DaySpaceView: View {
                     ) else {
                 return
             }
+
+            completeTodoSearch = all
 
             let nextCount = min(
                 visible.count + 50,
