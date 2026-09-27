@@ -116,13 +116,21 @@ test("an existing unmerged thread can stage a semantic comparison on a later mai
 });
 
 
-test("process runtime exposes grouping repository to the internal relay only when configured", () => {
+test("process runtime keeps the grouping queue relay available while semantic merge stays config-gated", () => {
   const source = readFileSync(
     new URL("../src/app/process-runtime.ts", import.meta.url),
     "utf8",
   );
   assert.match(
     source,
-    /\.\.\.\(mindSemanticGroupingRepository[\s\S]*mindSemanticGrouping:[\s\S]*mindSemanticGroupingRepository/,
+    /const mindSemanticGroupingRepository\s*=\s*new DrizzleMindSemanticGroupingRepository/,
+  );
+  assert.match(
+    source,
+    /const mindSemanticGrouping\s*=\s*mindSemanticGroupingConfig[\s\S]*new MindSemanticGroupingService/,
+  );
+  assert.match(
+    source,
+    /mindSemanticGrouping:\s*mindSemanticGroupingRepository/,
   );
 });
