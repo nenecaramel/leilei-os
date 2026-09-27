@@ -415,7 +415,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       resume: sessionId,
       execution,
       verbatimPrompts: false,
-      captureContextUsage: false,
+      captureContextUsage: true,
       hooks,
     });
 
