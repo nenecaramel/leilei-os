@@ -10,6 +10,7 @@ import {
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpRecoveryRunner,
   nativeLiveMindFollowUpStateId,
+  parseNativeLiveMindFollowUpIntents,
   type NativeLiveMindFollowUpJob,
   type NativeLiveMindFollowUpPort,
 } from "../src/domains/bridge/native-live-mind-followup.js";
@@ -143,6 +144,40 @@ function setup(
   );
   return { port, mind, service };
 }
+
+
+
+test("durable Mind replay rejects retired authored Dream and Topic intents", () => {
+  for (const kind of ["dream", "topic"]) {
+    assert.throws(
+      () => parseNativeLiveMindFollowUpIntents([{
+        kind,
+        text: "legacy",
+        sourceStart: 0,
+        sourceEnd: 8,
+        raw: `<${kind}>legacy</${kind}>`,
+      }]),
+      /Mind follow-up intent is invalid/u,
+    );
+  }
+
+  assert.deepEqual(
+    parseNativeLiveMindFollowUpIntents([{
+      kind: "memory",
+      text: "current",
+      sourceStart: 0,
+      sourceEnd: 8,
+      raw: "<memory>current</memory>",
+    }]),
+    [{
+      kind: "memory",
+      text: "current",
+      sourceStart: 0,
+      sourceEnd: 8,
+      raw: "<memory>current</memory>",
+    }],
+  );
+});
 
 test("durable Mind follow-up uses stable per-intent UUIDs and completes only after Mind succeeds", async () => {
   const { port, mind, service } = setup();
