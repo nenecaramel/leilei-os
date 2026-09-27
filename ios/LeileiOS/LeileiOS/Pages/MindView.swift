@@ -164,9 +164,7 @@ private struct MindKindDetailPlaceholder: View {
                 }
                 .disabled(true)
             } footer: {
-                Text(
-                    "Delete becomes available after the authoritative Mind mutation contract is connected."
-                )
+                Text("Delete isn't available yet.")
             }
         }
         .listStyle(.insetGrouped)
@@ -214,19 +212,13 @@ private struct MindManualEntryPlaceholder: View {
                     }
                 }
 
-                Section {
+                Section("Source") {
                     LabeledContent(
-                        "Source",
+                        "Type",
                         value: "Manual"
                     )
-                    LabeledContent(
-                        "Authority",
-                        value: "Unavailable"
-                    )
                 } footer: {
-                    Text(
-                        "Manual Mind writes require the main authoritative contract. This form does not persist data yet."
-                    )
+                    Text("Saving isn't available yet.")
                 }
             }
             .formStyle(.grouped)
