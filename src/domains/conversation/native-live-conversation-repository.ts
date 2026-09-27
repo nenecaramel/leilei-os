@@ -267,10 +267,25 @@ implements NativeLiveConversationRepository {
         id: conversations.id,
         title: conversations.title,
         currentHeadMessageId: conversations.currentHeadMessageId,
+        lastMessageAt: conversationMessages.createdAt,
         createdAt: conversations.createdAt,
         updatedAt: conversations.updatedAt,
       })
       .from(conversations)
+      .leftJoin(
+        conversationMessages,
+        and(
+          eq(
+            conversationMessages.id,
+            conversations.currentHeadMessageId,
+          ),
+          eq(conversationMessages.userId, conversations.userId),
+          eq(
+            conversationMessages.conversationId,
+            conversations.id,
+          ),
+        ),
+      )
       .where(and(...conditions))
       .orderBy(desc(conversations.updatedAt), desc(conversations.id))
       .limit(input.limit + 1);
@@ -281,6 +296,7 @@ implements NativeLiveConversationRepository {
       id: row.id,
       title: row.title,
       currentHeadMessageId: row.currentHeadMessageId,
+      lastMessageAt: row.lastMessageAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -460,15 +476,38 @@ implements NativeLiveConversationRepository {
         updatedAt: conversations.updatedAt,
       });
 
-    return row
-      ? {
-          id: row.id,
-          title: row.title,
-          currentHeadMessageId: row.currentHeadMessageId,
-          createdAt: row.createdAt.toISOString(),
-          updatedAt: row.updatedAt.toISOString(),
-        }
-      : null;
+    if (!row) return null;
+
+    let lastMessageAt: string | null = null;
+    if (row.currentHeadMessageId) {
+      const [head] = await this.db
+        .select({ createdAt: conversationMessages.createdAt })
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.userId, input.userId),
+            eq(
+              conversationMessages.conversationId,
+              input.conversationId,
+            ),
+            eq(
+              conversationMessages.id,
+              row.currentHeadMessageId,
+            ),
+          ),
+        )
+        .limit(1);
+      lastMessageAt = head?.createdAt.toISOString() ?? null;
+    }
+
+    return {
+      id: row.id,
+      title: row.title,
+      currentHeadMessageId: row.currentHeadMessageId,
+      lastMessageAt,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
   }
 
   async archiveConversation(input: {
@@ -1045,6 +1084,7 @@ implements NativeLiveConversationRepository {
         canonicalMessageId: input.canonicalMessageId,
         provider: input.checkpoint.provider,
         providerSessionId: input.checkpoint.providerSessionId,
+        runtimeMetadata: input.checkpoint.runtimeMetadata ?? null,
         providerCheckpointId: input.checkpoint.providerCheckpointId ?? null,
       })
       .returning();
