@@ -647,7 +647,8 @@ export type NativeLiveRuntimeControlStatus =
 export type NativeLiveMindFollowUpStatus =
   | "pending"
   | "processing"
-  | "completed";
+  | "completed"
+  | "quarantined";
 export type NativeLiveSemanticScoringStatus =
   | "pending"
   | "reserved"
@@ -1661,6 +1662,11 @@ export const nativeLiveSemanticScoringRequests = pgTable(
     }),
     scores: jsonb("scores").$type<Record<string, number> | null>(),
     fallbackCode: varchar("fallback_code", { length: 64 }),
+    resumeRetryCount: integer("resume_retry_count").default(0).notNull(),
+    resumeAvailableAt: timestamp("resume_available_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    resumeLastErrorName: varchar("resume_last_error_name", { length: 128 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1693,6 +1699,12 @@ export const nativeLiveSemanticScoringRequests = pgTable(
       table.createdAt,
       table.prepareId,
     ),
+    index("native_live_semantic_scoring_requests_resume_idx").on(
+      table.status,
+      table.resumeAvailableAt,
+      table.completedAt,
+      table.prepareId,
+    ),
     check(
       "native_live_semantic_scoring_requests_query_not_blank",
       sql`char_length(btrim(${table.query})) > 0`,
@@ -1712,6 +1724,10 @@ export const nativeLiveSemanticScoringRequests = pgTable(
     check(
       "native_live_semantic_scoring_requests_status_allowed",
       sql`${table.status} IN ('pending', 'reserved', 'completed', 'fallback')`,
+    ),
+    check(
+      "native_live_semantic_scoring_requests_resume_retry_nonnegative",
+      sql`${table.resumeRetryCount} >= 0`,
     ),
     check(
       "native_live_semantic_scoring_requests_fallback_code_allowed",
@@ -2315,7 +2331,7 @@ export const nativeLiveMindFollowUps = pgTable(
     ),
     check(
       "native_live_mind_followups_status_allowed",
-      sql`${table.status} IN ('pending', 'processing', 'completed')`,
+      sql`${table.status} IN ('pending', 'processing', 'completed', 'quarantined')`,
     ),
     check(
       "native_live_mind_followups_retry_nonnegative",
@@ -2334,7 +2350,12 @@ export const nativeLiveMindFollowUps = pgTable(
         OR (${table.status} = 'completed'
           AND ${table.lockedBy} IS NULL
           AND ${table.lockedUntil} IS NULL
-          AND ${table.completedAt} IS NOT NULL)`,
+          AND ${table.completedAt} IS NOT NULL)
+        OR (${table.status} = 'quarantined'
+          AND ${table.lockedBy} IS NULL
+          AND ${table.lockedUntil} IS NULL
+          AND ${table.lastErrorName} IS NOT NULL
+          AND ${table.completedAt} IS NULL)`,
     ),
   ],
 );
