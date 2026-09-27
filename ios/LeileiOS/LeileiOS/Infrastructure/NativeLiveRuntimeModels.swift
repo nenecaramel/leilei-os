@@ -266,51 +266,57 @@ extension NativeLiveRuntimeInteractionSnapshot {
 
         return values.compactMap { value in
             guard let object = value.objectValue,
-                  let text = object["question"]?.stringValue
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty else {
+                  let text = trimmedString(
+                      object["question"]
+                  ) else {
                 return nil
             }
 
             let options =
                 object["options"]?.arrayValue?
-                    .compactMap { optionValue -> NativeLiveRuntimeQuestionOption? in
+                    .compactMap {
+                        optionValue
+                            -> NativeLiveRuntimeQuestionOption? in
                         guard let option = optionValue.objectValue,
-                              let label = option["label"]?.stringValue
-                                .trimmingCharacters(in: .whitespacesAndNewlines),
-                              !label.isEmpty else {
+                              let label = trimmedString(
+                                  option["label"]
+                              ) else {
                             return nil
                         }
 
-                        let description =
-                            option["description"]?.stringValue
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-
                         return NativeLiveRuntimeQuestionOption(
                             label: label,
-                            description:
-                                description?.isEmpty == false
-                                    ? description
-                                    : nil
+                            description: trimmedString(
+                                option["description"]
+                            )
                         )
                     } ?? []
 
-            let header =
-                object["header"]?.stringValue
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-
             return NativeLiveRuntimeQuestion(
                 text: text,
-                header:
-                    header?.isEmpty == false
-                        ? header
-                        : nil,
+                header: trimmedString(
+                    object["header"]
+                ),
                 options: options,
                 multiSelect:
                     object["multiSelect"]?.boolValue == true
             )
         }
     }
+
+    private func trimmedString(
+        _ value: NativeLiveJSONValue?
+    ) -> String? {
+        guard let raw = value?.stringValue else {
+            return nil
+        }
+
+        let trimmed = raw.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
 }
 
 struct NativeLiveRuntimeSurfaceState:
