@@ -24,6 +24,11 @@ struct NativeLiveConversationPage: Sendable, Equatable {
     let nextCursor: String?
 }
 
+enum NativeLiveConversationListScope: String, Sendable {
+    case active
+    case archived
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -406,14 +411,19 @@ final class LeileiAPIClient {
     }
 
     func nativeLiveConversations(
-        limit: Int = 50
+        limit: Int = 50,
+        scope: NativeLiveConversationListScope = .active
     ) async throws -> [NativeLiveConversationSummary] {
-        try await nativeLiveConversationPage(limit: limit).conversations
+        try await nativeLiveConversationPage(
+            limit: limit,
+            scope: scope
+        ).conversations
     }
 
     func nativeLiveConversationPage(
         limit: Int = 50,
-        cursor: String? = nil
+        cursor: String? = nil,
+        scope: NativeLiveConversationListScope = .active
     ) async throws -> NativeLiveConversationPage {
         guard (1...100).contains(limit) else {
             throw LeileiAPIError.invalidResponse
@@ -422,7 +432,8 @@ final class LeileiAPIClient {
         var components = URLComponents()
         components.path = "/api/v1/native-live/conversations"
         var queryItems = [
-            URLQueryItem(name: "limit", value: String(limit))
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "scope", value: scope.rawValue)
         ]
         if let cursor {
             guard !cursor.isEmpty else {
@@ -478,11 +489,34 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func archiveNativeLiveConversation(
+        conversationID: UUID
+    ) async throws {
+        let _: NoContentResponse = try await request(
+            path: "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())/archive",
+            method: "POST",
+            authenticated: true
+        )
+    }
+
+    func restoreNativeLiveConversation(
+        conversationID: UUID
+    ) async throws {
+        let _: NoContentResponse = try await request(
+            path: "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())/restore",
+            method: "POST",
+            authenticated: true
+        )
+    }
+
     func deleteNativeLiveConversation(
         conversationID: UUID
     ) async throws {
         let _: NoContentResponse = try await request(
-            path: "/api/v1/native-live/conversations/\(conversationID.uuidString.lowercased())",
+            path:
+                "/api/v1/native-live/conversations/"
+                + "\(conversationID.uuidString.lowercased())"
+                + "?confirm=true",
             method: "DELETE",
             authenticated: true
         )
