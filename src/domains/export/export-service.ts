@@ -9,6 +9,7 @@ import type {
   ExportScope,
   ExportToolActivity,
   ExportTodoPaper,
+  ExportUniverseBundle,
 } from "./export-types.js";
 import { createOwnerFingerprint } from "./owner-fingerprint.js";
 import { MAX_PRODUCT_BACKUP_BYTES } from "./product-backup-limits.js";
@@ -28,6 +29,7 @@ export interface ExportRepository {
   listProjects(userId: string): Promise<ExportProjectsBundle>;
   listMind(userId: string): Promise<ExportMindStateRecord[]>;
   listConversations(userId: string): Promise<ExportConversationsBundle>;
+  listUniverse(userId: string): Promise<ExportUniverseBundle | null>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
   listToolActivity(userId: string): Promise<ExportToolActivity[]>;
 }
@@ -101,10 +103,16 @@ export class ExportService {
       data.todo = await repository.listTodo(userId);
     }
     if (scope === "all") {
-      const [projects, mind, conversations] = await Promise.all([
+      const [
+        projects,
+        mind,
+        conversations,
+        universe,
+      ] = await Promise.all([
         repository.listProjects(userId),
         repository.listMind(userId),
         repository.listConversations(userId),
+        repository.listUniverse(userId),
       ]);
       if (
         conversations.messages.some(
@@ -118,6 +126,7 @@ export class ExportService {
       data.projects = projects;
       data.mind = mind;
       data.conversations = conversations;
+      data.universe = universe;
     }
 
     const document: ExportDocument = {
