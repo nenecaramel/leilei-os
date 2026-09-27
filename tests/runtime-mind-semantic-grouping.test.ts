@@ -91,3 +91,25 @@ test("new semantic thread stages an E5 comparison snapshot but remains exact unt
     }],
   });
 });
+
+
+test("an existing unmerged thread can stage a semantic comparison on a later maintenance opportunity", async () => {
+  const port = new Port();
+  const service = new MindSemanticGroupingService(port, {
+    threshold: 0.88,
+    candidateLimit: 32,
+  });
+
+  const result = await service.reconcile({
+    userId: "u1",
+    subjectId: "G",
+    kind: "drive",
+    groups: [
+      group("older", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "finish runtime cleanup", "2026-09-26T10:00:00.000Z", false),
+      group("existing", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "complete backend cleanup", "2026-09-27T00:00:00.000Z", false),
+    ],
+  });
+
+  assert.equal(result.staged, 1);
+  assert.equal(port.staged.length, 1);
+});
