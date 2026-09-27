@@ -36,7 +36,7 @@ export type MindProductItem = {
   kind: CurrentSubjectStateKind;
   text: string | null;
   source: MindProductSource;
-  authority: PersistentAuthority;
+  authority: PersistentAuthority | null;
   occurredAt: string | null;
   note: string | null;
   lifecycle: MindProductLifecycleProjection;
@@ -319,15 +319,18 @@ function manualEnvelope(input: {
 function projectRow(row: MindProductRow): MindProductItem {
   const payload = row.payload ?? {};
   const manual = record(payload.manual_v1);
+  const authority = persistentAuthorityOrNull(
+    row.envelope.authority,
+  );
   return {
     id: row.id,
     kind: row.kind,
     text: row.text,
     source:
-      row.envelope.authority === "user_asserted"
+      authority === "user_asserted"
         ? "manual"
         : "runtime",
-    authority: row.envelope.authority,
+    authority,
     occurredAt: isoOrNull(manual?.occurredAt),
     note: stringOrNull(manual?.note),
     lifecycle: lifecycleProjection(row.kind, payload),
@@ -366,11 +369,24 @@ function lifecycleProjection(
 function provenanceProjection(
   envelope: PersistentWriteEnvelope,
 ): MindProductProvenanceProjection {
+  const provenance = record(
+    (envelope as unknown as Record<string, unknown>).provenance,
+  );
+  const sources = Array.isArray(provenance?.sources)
+    ? provenance.sources.filter((value) => record(value) !== null)
+    : [];
   const sourceKinds = [
-    ...new Set(envelope.provenance.sources.map((source) => source.kind)),
+    ...new Set(
+      sources.flatMap((source) => {
+        const kind = record(source)?.kind;
+        return typeof kind === "string" && kind.trim()
+          ? [kind]
+          : [];
+      }),
+    ),
   ].sort();
   return {
-    sourceCount: envelope.provenance.sources.length,
+    sourceCount: sources.length,
     sourceKinds,
   };
 }
@@ -459,6 +475,17 @@ function isCurrentKind(value: unknown): value is CurrentSubjectStateKind {
     typeof value === "string"
     && (CURRENT_SUBJECT_STATE_KINDS as readonly string[]).includes(value)
   );
+}
+
+function persistentAuthorityOrNull(
+  value: unknown,
+): PersistentAuthority | null {
+  return value === "subject_authorized"
+    || value === "user_asserted"
+    || value === "derived"
+    || value === "system_generated"
+    ? value
+    : null;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
