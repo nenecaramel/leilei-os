@@ -393,114 +393,121 @@ struct UniverseView: View {
     private func nodeSheet(
         _ selection: UniverseSheetSelection
     ) -> some View {
-        guard case .ready(let result) = state else {
-            ProgressView()
-        }
+        if case .ready(let result) = state {
+            let selectedNode: UniverseNode?
+            let mode: UniverseNodeSheet.Mode
 
-        let selectedNode: UniverseNode?
-        let mode: UniverseNodeSheet.Mode
-
-        switch selection {
-        case .node(let id):
-            selectedNode =
-                result.snapshot.nodes.first {
-                    $0.id == id
-                }
-            mode = .detail
-
-        case .create(let position):
-            selectedNode = nil
-            mode = .create(position)
-        }
-
-        let nodeID = selectedNode?.id
-        let connections =
-            nodeID.map {
-                connections(
-                    for: $0,
-                    in: result
-                )
-            } ?? []
-        let sources =
-            nodeID.map {
-                sources(
-                    for: $0,
-                    in: result
-                )
-            } ?? []
-        let revisionsAvailable =
-            nodeID.map { id in
-                result.snapshot.revisions
-                    .contains {
-                        $0.nodeId == id
+            switch selection {
+            case .node(let id):
+                selectedNode =
+                    result.snapshot.nodes.first {
+                        $0.id == id
                     }
-            } ?? false
+                mode = .detail
 
-        UniverseNodeSheet(
-            mode: mode,
-            node: selectedNode,
-            galaxies: result.snapshot.galaxies,
-            allNodes: result.snapshot.nodes,
-            connections: connections,
-            sources: sources,
-            revisionsAvailable: revisionsAvailable,
-            onSearchDiarySources: {
-                query in
-                try await UniverseAPIService(
-                    api: appModel.api
-                )
-                .searchDiarySources(
-                    query: query
-                )
-            },
-            onSave: {
-                draft,
-                position in
-                try await saveNode(
-                    existing: selectedNode,
-                    draft: draft,
-                    position: position
-                )
-            },
-            onDelete: {
-                node in
-                try await deleteNode(node)
-            },
-            onRestore: {
-                node in
-                try await restoreNode(node)
-            },
-            onCreateRelation: {
-                relation in
-                try await createRelation(
-                    relation
-                )
-            },
-            onDeleteRelation: {
-                relation in
-                try await deleteRelation(
-                    relation
-                )
-            },
-            onOpenRelatedNode: {
-                nodeID in
-                openRelatedNode(nodeID)
-            },
-            onOpenDiarySource: {
-                source in
-                guard let nodeID else {
-                    return
-                }
-                sheetSelection = nil
-                onOpenDiarySource(
-                    source,
-                    nodeID
-                )
-            },
-            onClose: {
-                sheetSelection = nil
+            case .create(let position):
+                selectedNode = nil
+                mode = .create(position)
             }
-        )
+
+            let nodeID = selectedNode?.id
+            let nodeConnections =
+                nodeID.map {
+                    connections(
+                        for: $0,
+                        in: result
+                    )
+                } ?? []
+            let nodeSources =
+                nodeID.map {
+                    sources(
+                        for: $0,
+                        in: result
+                    )
+                } ?? []
+            let revisionsAvailable =
+                nodeID.map { id in
+                    result.snapshot.revisions
+                        .contains {
+                            $0.nodeId == id
+                        }
+                } ?? false
+
+            UniverseNodeSheet(
+                mode: mode,
+                node: selectedNode,
+                galaxies: result.snapshot.galaxies,
+                allNodes: result.snapshot.nodes,
+                connections: nodeConnections,
+                sources: nodeSources,
+                revisionsAvailable: revisionsAvailable,
+                onSearchDiarySources: {
+                    query in
+                    try await UniverseAPIService(
+                        api: appModel.api
+                    )
+                    .searchDiarySources(
+                        query: query
+                    )
+                },
+                onSave: {
+                    draft,
+                    position in
+                    try await saveNode(
+                        existing: selectedNode,
+                        draft: draft,
+                        position: position
+                    )
+                },
+                onDelete: {
+                    node in
+                    try await deleteNode(node)
+                },
+                onRestore: {
+                    node in
+                    try await restoreNode(node)
+                },
+                onCreateRelation: {
+                    relation in
+                    try await createRelation(
+                        relation
+                    )
+                },
+                onDeleteRelation: {
+                    relation in
+                    try await deleteRelation(
+                        relation
+                    )
+                },
+                onOpenRelatedNode: {
+                    nodeID in
+                    openRelatedNode(nodeID)
+                },
+                onOpenDiarySource: {
+                    source in
+                    guard let nodeID else {
+                        return
+                    }
+                    sheetSelection = nil
+                    onOpenDiarySource(
+                        source,
+                        nodeID
+                    )
+                },
+                onClose: {
+                    sheetSelection = nil
+                }
+            )
+        } else {
+            ProgressView()
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
+                .background(
+                    UniversePalette.background
+                )
+        }
     }
 
     private func load() async {
@@ -1026,18 +1033,14 @@ struct UniverseView: View {
                 data: data
             )
 
-        let date =
-            now.formatted(
-                .iso8601
-                    .year()
-                    .month()
-                    .day()
-                    .dateSeparator(
-                        .dash
-                    )
-            )
+        let filenameFormatter =
+            DateFormatter()
+        filenameFormatter.locale =
+            Locale(identifier: "en_US_POSIX")
+        filenameFormatter.dateFormat =
+            "yyyy-MM-dd"
         exportFilename =
-            "蕾蕾宇宙备份-\(date)"
+            "蕾蕾宇宙备份-\(filenameFormatter.string(from: now))"
         exportPresented = true
     }
 
