@@ -4,9 +4,13 @@ import {
   TopicEvolutionService,
   readTopicEvolution,
   topicThreadKey,
+  writeTopicEvolution,
   type TopicEvolutionCandidate,
   type TopicEvolutionUpdate,
 } from "../src/domains/runtime/topic-evolution.js";
+import type {
+  MindSemanticGroupingService,
+} from "../src/domains/runtime/mind-semantic-grouping.js";
 
 function candidate(
   stateId: string,
@@ -297,4 +301,77 @@ test("new independent evidence reactivates a dormant Topic thread", async () => 
   assert.equal(anchor?.evolution.phase, "active");
   assert.equal(anchor?.evolution.dormantAt, null);
   assert.equal(anchor?.evolution.reinforcementCount, 2);
+});
+
+
+test("derived Topic semantic grouping merges paraphrases into the older canonical pool", async () => {
+  const anchorId = "56565656-5656-4656-8656-565656565656";
+  const anchorText = "runtime lifecycle design";
+  const anchorPayload = writeTopicEvolution(null, {
+    phase: "active",
+    role: "anchor",
+    threadKey: topicThreadKey(anchorText),
+    anchorStateId: anchorId,
+    reinforcementCount: 1,
+    reinforcementSources: ["curiosity-1"],
+    lastEvolvedAt: "2026-09-26T10:00:00.000Z",
+    lastReinforcedAt: "2026-09-26T10:00:00.000Z",
+    dormantAt: null,
+  });
+  const paraphraseId = "78787878-7878-4878-8878-787878787878";
+  const paraphraseText = "designing the runtime state lifecycle";
+  const port = new Port([
+    candidate(
+      anchorId,
+      anchorText,
+      "curiosity-1",
+      "2026-09-26T10:00:00.000Z",
+      anchorPayload,
+    ),
+    candidate(
+      paraphraseId,
+      paraphraseText,
+      "curiosity-2",
+      "2026-09-27T00:00:00.000Z",
+    ),
+  ]);
+  const semanticGrouping = {
+    async reconcile(
+      _input: Parameters<MindSemanticGroupingService["reconcile"]>[0],
+    ) {
+      return {
+        canonicalThreadKeyByThread: new Map([
+          [topicThreadKey(paraphraseText), topicThreadKey(anchorText)],
+        ]),
+        staged: 0,
+      };
+    },
+  };
+  const service = new TopicEvolutionService(
+    port,
+    {
+      maxReinforcementSources: 16,
+      dormantAfterHours: 168,
+    },
+    semanticGrouping,
+  );
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-27T00:01:00.000Z",
+  });
+
+  assert.equal(result.threads, 1);
+  const anchor = port.updates.find((update) => update.stateId === anchorId);
+  const reinforcement = port.updates.find(
+    (update) => update.stateId === paraphraseId,
+  );
+  assert.equal(anchor?.evolution.reinforcementCount, 2);
+  assert.equal(reinforcement?.evolution.role, "reinforcement");
+  assert.equal(reinforcement?.evolution.anchorStateId, anchorId);
+  assert.equal(
+    reinforcement?.evolution.threadKey,
+    topicThreadKey(anchorText),
+  );
 });
