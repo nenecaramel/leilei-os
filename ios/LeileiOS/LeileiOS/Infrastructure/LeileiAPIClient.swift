@@ -592,6 +592,67 @@ final class LeileiAPIClient {
         }
     }
 
+
+    func nativeLiveRuntimeEvents(
+        prepareID: String,
+        afterSequence: Int,
+        limit: Int = 100
+    ) async throws -> NativeLiveRuntimeEventPage {
+        guard afterSequence >= 0,
+              (1...200).contains(limit) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: NativeLiveRuntimeEventsEnvelope = try await request(
+            path:
+                "/api/v1/native-live/turns/\(prepareID)/events"
+                + "?after_sequence=\(afterSequence)&limit=\(limit)",
+            authenticated: true
+        )
+
+        return NativeLiveRuntimeEventPage(
+            prepareID: envelope.data.prepareID,
+            events: envelope.data.events,
+            nextAfterSequence: envelope.data.nextAfterSequence
+        )
+    }
+
+    func nativeLiveRuntimeInteractions(
+        prepareID: String,
+        limit: Int = 50
+    ) async throws -> [NativeLiveRuntimeInteractionSnapshot] {
+        guard (1...100).contains(limit) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: NativeLiveRuntimeInteractionsEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/turns/\(prepareID)/interactions"
+                    + "?limit=\(limit)",
+                authenticated: true
+            )
+        return envelope.data.interactions
+    }
+
+    func nativeLiveRuntimeControls(
+        prepareID: String,
+        limit: Int = 50
+    ) async throws -> [NativeLiveRuntimeControlSnapshot] {
+        guard (1...100).contains(limit) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: NativeLiveRuntimeControlsEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/turns/\(prepareID)/controls"
+                    + "?limit=\(limit)",
+                authenticated: true
+            )
+        return envelope.data.controls
+    }
+
     func nativeLiveCurrentPath(
         conversationID: UUID,
         limit: Int = 100,
@@ -944,6 +1005,59 @@ private struct NativeLiveTurnWaitEnvelope: Decodable, Sendable {
         let outcome: String
         let turn: NativeLiveTurnSnapshot?
     }
+}
+
+private struct NativeLiveRuntimeEventsEnvelope:
+    Decodable,
+    Sendable {
+    struct EventData: Decodable, Sendable {
+        let prepareID: String
+        let events: [NativeLiveRuntimeEventSnapshot]
+        let nextAfterSequence: Int
+
+        enum CodingKeys: String, CodingKey {
+            case prepareID = "prepareId"
+            case events
+            case nextAfterSequence
+        }
+    }
+
+    let success: Bool
+    let data: EventData
+}
+
+private struct NativeLiveRuntimeInteractionsEnvelope:
+    Decodable,
+    Sendable {
+    struct InteractionData: Decodable, Sendable {
+        let prepareID: String
+        let interactions: [NativeLiveRuntimeInteractionSnapshot]
+
+        enum CodingKeys: String, CodingKey {
+            case prepareID = "prepareId"
+            case interactions
+        }
+    }
+
+    let success: Bool
+    let data: InteractionData
+}
+
+private struct NativeLiveRuntimeControlsEnvelope:
+    Decodable,
+    Sendable {
+    struct ControlData: Decodable, Sendable {
+        let prepareID: String
+        let controls: [NativeLiveRuntimeControlSnapshot]
+
+        enum CodingKeys: String, CodingKey {
+            case prepareID = "prepareId"
+            case controls
+        }
+    }
+
+    let success: Bool
+    let data: ControlData
 }
 
 private struct NativeLiveSendBody: Encodable, Sendable {
