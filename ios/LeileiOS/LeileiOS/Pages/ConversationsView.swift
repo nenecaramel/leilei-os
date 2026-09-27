@@ -5,9 +5,27 @@ struct ConversationsView: View {
 
     let onOpenConversation: () -> Void
 
+    @State private var scope:
+        ConversationListScope = .active
+
     var body: some View {
-        Group {
-            if !appModel.isAuthenticated {
+        VStack(spacing: 0) {
+            Picker("Scope", selection: $scope) {
+                ForEach(ConversationListScope.allCases) { scope in
+                    Text(scope.title)
+                        .tag(scope)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+
+            Group {
+                if scope == .archived {
+                    ConversationArchivePlaceholder()
+                } else if !appModel.isAuthenticated {
                 AppStateSurface(
                     title: "Sign in",
                     actionTitle: "Sign In"
@@ -34,17 +52,18 @@ struct ConversationsView: View {
                         }
                     }
                 }
-            } else {
-                ConversationList(
-                    conversations: appModel.nativeLiveConversations,
-                    activeConversationID: appModel.activeNativeLiveConversationID,
-                    onOpen: { conversation in
-                        await open(conversation)
-                    },
-                    onLoadMore: {
-                        await appModel.loadMoreNativeLiveConversations()
-                    }
-                )
+                } else {
+                    ConversationList(
+                        conversations: appModel.nativeLiveConversations,
+                        activeConversationID: appModel.activeNativeLiveConversationID,
+                        onOpen: { conversation in
+                            await open(conversation)
+                        },
+                        onLoadMore: {
+                            await appModel.loadMoreNativeLiveConversations()
+                        }
+                    )
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -81,11 +100,53 @@ struct ConversationsView: View {
     }
 }
 
+private enum ConversationListScope:
+    String,
+    CaseIterable,
+    Identifiable {
+    case active
+    case archived
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .active:
+            return "Active"
+        case .archived:
+            return "Archive"
+        }
+    }
+}
+
+private struct ConversationArchivePlaceholder: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            AppStateSurface(title: "Unavailable")
+
+            Text(
+                "Archived conversations, Restore, and true Delete will appear here after the lifecycle contract is connected."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 28)
+        }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
+    }
+}
+
 private struct ConversationList: View {
     let conversations: [NativeLiveConversationSummary]
     let activeConversationID: UUID?
     let onOpen: (NativeLiveConversationSummary) async -> Void
     let onLoadMore: () async -> Void
+
+    @State private var lifecycleNotice:
+        ConversationLifecycleNotice?
 
     var body: some View {
         List(conversations) { conversation in
@@ -119,16 +180,44 @@ private struct ConversationList: View {
                         alignment: .leading
                     )
 
-                    if isActive(conversation) {
-                        Image(systemName: "checkmark")
-                            .font(.system(
-                                size: 13,
-                                weight: .semibold
-                            ))
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(
-                                "Current conversation"
-                            )
+                    HStack(spacing: 10) {
+                        if isActive(conversation) {
+                            Image(systemName: "checkmark")
+                                .font(.system(
+                                    size: 13,
+                                    weight: .semibold
+                                ))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel(
+                                    "Current conversation"
+                                )
+                        }
+
+                        Menu {
+                            Button("Archive") {
+                                lifecycleNotice = .archive
+                            }
+
+                            Button(
+                                "Delete",
+                                role: .destructive
+                            ) {
+                                lifecycleNotice = .delete
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(
+                                    size: 16,
+                                    weight: .medium
+                                ))
+                                .frame(
+                                    width: 28,
+                                    height: 28
+                                )
+                        }
+                        .accessibilityLabel(
+                            "Conversation actions"
+                        )
                     }
                 }
                 .padding(.vertical, 4)
@@ -148,6 +237,25 @@ private struct ConversationList: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
+        .alert(
+            "Unavailable",
+            isPresented: Binding(
+                get: { lifecycleNotice != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        lifecycleNotice = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                lifecycleNotice = nil
+            }
+        } message: {
+            Text(
+                lifecycleNotice?.message ?? ""
+            )
+        }
     }
 
     private func displayTitle(
@@ -176,6 +284,20 @@ private struct ConversationList: View {
             return false
         }
         return activeConversationID == conversationID
+    }
+}
+
+private enum ConversationLifecycleNotice {
+    case archive
+    case delete
+
+    var message: String {
+        switch self {
+        case .archive:
+            return "Archive will become available after the authoritative conversation lifecycle contract is connected."
+        case .delete:
+            return "True Delete will become available after the authoritative conversation lifecycle contract is connected."
+        }
     }
 }
 
