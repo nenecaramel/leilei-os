@@ -27,6 +27,16 @@ export type MindSemanticGroupingPolicy = {
   candidateLimit: number;
 };
 
+export type MindSemanticGroupingFallbackCode =
+  | "E5_PROVIDER_UNAVAILABLE"
+  | "E5_SCORING_FAILED";
+
+export type MindSemanticGroupingReservation = {
+  reservationId: string;
+  query: string;
+  candidates: BreathSemanticCandidate[];
+};
+
 export interface MindSemanticGroupingPort {
   listCompletedMatches(input: {
     userId: string;
