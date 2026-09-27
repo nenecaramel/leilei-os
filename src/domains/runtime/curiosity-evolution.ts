@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
+import type {
+  MindSemanticGroupingService,
+  MindSemanticThreadGroup,
+} from "./mind-semantic-grouping.js";
 
 export type CuriosityPhase = "active" | "resolved" | "dormant";
 export type CuriosityEvolutionRole = "anchor" | "reinforcement";
@@ -77,6 +81,8 @@ export class CuriosityEvolutionService {
   constructor(
     private readonly port: CuriosityEvolutionRuntimePort,
     private readonly policy: CuriosityEvolutionPolicy,
+    private readonly semanticGrouping:
+      Pick<MindSemanticGroupingService, "reconcile"> | null = null,
   ) {
     validatePolicy(policy);
   }
@@ -94,14 +100,24 @@ export class CuriosityEvolutionService {
       subjectId: input.subjectId,
       limit: input.limit ?? 500,
     });
-    const groups = groupCandidates(candidates);
+    const exactGroups = groupCandidates(candidates);
+    const groups = await this.reconcileSemanticGroups(
+      input.userId,
+      input.subjectId,
+      exactGroups,
+    );
     const updates: CuriosityEvolutionUpdate[] = [];
     let active = 0;
     let resolved = 0;
     let dormant = 0;
 
-    for (const group of groups.values()) {
-      const evaluated = evaluateThread(group, now, this.policy);
+    for (const [threadKey, group] of groups) {
+      const evaluated = evaluateThread(
+        group,
+        now,
+        this.policy,
+        threadKey,
+      );
       updates.push(...evaluated.updates);
       if (evaluated.phase === "active") active += 1;
       else if (evaluated.phase === "resolved") resolved += 1;
@@ -136,6 +152,59 @@ export class CuriosityEvolutionService {
       resolved,
       dormant,
     };
+  }
+
+  private async reconcileSemanticGroups(
+    userId: string,
+    subjectId: string,
+    exactGroups: Map<string, CuriosityEvolutionCandidate[]>,
+  ): Promise<Map<string, CuriosityEvolutionCandidate[]>> {
+    if (!this.semanticGrouping || exactGroups.size <= 1) {
+      return exactGroups;
+    }
+
+    const semanticGroups: MindSemanticThreadGroup[] = [];
+    for (const [threadKey, group] of exactGroups) {
+      const anchor = group[0];
+      if (!anchor) continue;
+      semanticGroups.push({
+        threadKey,
+        anchorStateId: anchor.stateId,
+        anchorText: anchor.text,
+        createdAt: normalizeIso(anchor.createdAt, "createdAt"),
+        newThread: !group.some((candidate) =>
+          Boolean(safeReadCuriosityEvolution(candidate.payload))
+        ),
+      });
+    }
+
+    let canonical: ReadonlyMap<string, string>;
+    try {
+      canonical = (
+        await this.semanticGrouping.reconcile({
+          userId,
+          subjectId,
+          kind: "curiosity",
+          groups: semanticGroups,
+        })
+      ).canonicalThreadKeyByThread;
+    } catch {
+      return exactGroups;
+    }
+
+    const merged = new Map<string, CuriosityEvolutionCandidate[]>();
+    for (const [threadKey, group] of exactGroups) {
+      const target = canonical.get(threadKey) ?? threadKey;
+      const current = merged.get(target) ?? [];
+      current.push(...group);
+      current.sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt)
+          || left.stateId.localeCompare(right.stateId),
+      );
+      merged.set(target, current);
+    }
+    return merged;
   }
 }
 
@@ -281,7 +350,8 @@ function groupCandidates(
 
   for (const candidate of candidates) {
     if (!candidate.text.trim()) continue;
-    const key = curiosityThreadKey(candidate.text);
+    const current = safeReadCuriosityEvolution(candidate.payload);
+    const key = current?.threadKey ?? curiosityThreadKey(candidate.text);
     const group = groups.get(key) ?? [];
     group.push(candidate);
     groups.set(key, group);
@@ -301,6 +371,7 @@ function evaluateThread(
   candidates: readonly CuriosityEvolutionCandidate[],
   now: string,
   policy: CuriosityEvolutionPolicy,
+  threadKey: string,
 ): {
   phase: CuriosityPhase;
   updates: CuriosityEvolutionUpdate[];
@@ -325,6 +396,25 @@ function evaluateThread(
     .map((candidate) => candidate.sourceId)
     .slice(-policy.maxReinforcementSources);
   const currentAnchor = safeReadCuriosityEvolution(anchor.payload);
+  const currentStates = candidates
+    .map((candidate) => ({
+      candidate,
+      evolution: safeReadCuriosityEvolution(candidate.payload),
+    }))
+    .filter(
+      (entry): entry is {
+        candidate: CuriosityEvolutionCandidate;
+        evolution: CuriosityEvolutionState;
+      } => Boolean(entry.evolution),
+    );
+  const latestResolution = currentStates
+    .filter((entry) => Boolean(entry.evolution.resolvedAt))
+    .sort((left, right) =>
+      Date.parse(left.evolution.resolvedAt!)
+        - Date.parse(right.evolution.resolvedAt!)
+      || left.candidate.stateId.localeCompare(right.candidate.stateId)
+    )
+    .at(-1) ?? null;
   const hasNewIndependentEvidence = Boolean(
     currentAnchor
     && (
@@ -340,27 +430,42 @@ function evaluateThread(
     0,
     (nowMs - Date.parse(latest.createdAt)) / 3_600_000,
   );
+  const resolutionReopened = Boolean(
+    latestResolution?.evolution.resolvedAt
+    && evidence.some((candidate) =>
+      Date.parse(candidate.createdAt)
+        > Date.parse(latestResolution.evolution.resolvedAt!)
+      && !latestResolution.evolution.reinforcementSources.includes(
+        candidate.sourceId,
+      )
+    ),
+  );
+  const effectiveResolvedAt =
+    latestResolution && !resolutionReopened
+      ? latestResolution.evolution.resolvedAt
+      : null;
+  const effectiveResolutionSourceId =
+    latestResolution && !resolutionReopened
+      ? latestResolution.evolution.resolutionSourceId
+      : null;
   const resolvedHours =
-    currentAnchor?.resolvedAt
+    effectiveResolvedAt
       ? Math.max(
           0,
-          (nowMs - Date.parse(currentAnchor.resolvedAt)) / 3_600_000,
+          (nowMs - Date.parse(effectiveResolvedAt)) / 3_600_000,
         )
       : 0;
 
   const phase: CuriosityPhase =
-    !currentAnchor
-      ? "active"
-      : hasNewIndependentEvidence
-        && (
-          currentAnchor.phase === "dormant"
-          || currentAnchor.phase === "resolved"
-        )
+    effectiveResolvedAt
+      ? resolvedHours >= policy.dormantAfterHours
+        ? "dormant"
+        : "resolved"
+      : !currentAnchor
         ? "active"
-        : currentAnchor.phase === "resolved"
-          ? resolvedHours >= policy.dormantAfterHours
-            ? "dormant"
-            : "resolved"
+        : hasNewIndependentEvidence
+          && currentAnchor.phase === "dormant"
+          ? "active"
           : currentAnchor.phase === "dormant"
             ? "dormant"
             : inactivityHours >= policy.dormantAfterHours
@@ -369,23 +474,18 @@ function evaluateThread(
 
   const resolvedAt =
     phase === "resolved"
-      ? currentAnchor?.resolvedAt ?? null
-      : phase === "dormant" && currentAnchor?.phase === "resolved"
-        ? currentAnchor.resolvedAt
-        : phase === "dormant" && currentAnchor?.phase === "dormant"
-          ? currentAnchor.resolvedAt
-          : null;
+      || (phase === "dormant" && effectiveResolvedAt)
+      ? effectiveResolvedAt
+      : null;
   const resolutionSourceId =
     phase === "resolved"
-      ? currentAnchor?.resolutionSourceId ?? null
-      : phase === "dormant" && currentAnchor?.phase === "resolved"
-        ? currentAnchor.resolutionSourceId
-        : phase === "dormant" && currentAnchor?.phase === "dormant"
-          ? currentAnchor.resolutionSourceId
-          : null;
+      || (phase === "dormant" && effectiveResolvedAt)
+      ? effectiveResolutionSourceId
+      : null;
   const dormantAt =
     phase === "dormant"
       ? currentAnchor?.phase === "dormant"
+        && currentAnchor.dormantAt
         ? currentAnchor.dormantAt
         : now
       : null;
@@ -398,7 +498,7 @@ function evaluateThread(
     const evolution: CuriosityEvolutionState = {
       phase,
       role,
-      threadKey: curiosityThreadKey(anchor.text),
+      threadKey,
       anchorStateId: anchor.stateId,
       reinforcementCount,
       reinforcementSources,
@@ -442,8 +542,12 @@ function evolutionReason(
     current.anchorStateId !== next.anchorStateId
     || current.role !== next.role
     || current.threadKey !== next.threadKey
+    || current.phase !== next.phase
     || current.reinforcementCount !== next.reinforcementCount
     || current.lastReinforcedAt !== next.lastReinforcedAt
+    || current.resolvedAt !== next.resolvedAt
+    || current.resolutionSourceId !== next.resolutionSourceId
+    || current.dormantAt !== next.dormantAt
     || !sameStrings(current.reinforcementSources, next.reinforcementSources)
   ) {
     return "reinforce";
