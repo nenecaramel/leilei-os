@@ -51,6 +51,7 @@ import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { MindApiDependencies } from "../web-api/mind-router.js";
+import type { ProjectWorkspaceApiDependencies } from "../web-api/project-workspace-router.js";
 import type { NativeLiveApiDependencies } from "../web-api/native-live-router.js";
 import {
   createNativeLiveRelayInternalRouter,
@@ -96,6 +97,7 @@ export type AppDependencies = {
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
   webMindService?: MindApiDependencies["mindService"];
+  webProjectWorkspaceService?: ProjectWorkspaceApiDependencies["projectWorkspaceService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -324,6 +326,8 @@ export function createApp(
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
     const webMindService = dependencies.webMindService;
+    const webProjectWorkspaceService =
+      dependencies.webProjectWorkspaceService;
 
     if (
       !webDiaryService ||
@@ -382,6 +386,13 @@ export function createApp(
         universe: { universeService: webUniverseService },
         ...(webMindService
           ? { mind: { mindService: webMindService } }
+          : {}),
+        ...(webProjectWorkspaceService
+          ? {
+              projects: {
+                projectWorkspaceService: webProjectWorkspaceService,
+              },
+            }
           : {}),
         ...(dependencies.nativeLiveProduction
           ? {
