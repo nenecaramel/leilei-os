@@ -233,6 +233,17 @@ const conversationAttachmentRecord = z.object({
   payload: z.record(z.string(), z.unknown()),
 }).strict();
 
+const conversationProviderCheckpointRecord = z.object({
+  id: uuid,
+  conversation_id: uuid,
+  canonical_message_id: uuid,
+  provider: z.literal("claude_code"),
+  provider_session_id: nonBlankString(),
+  runtime_metadata: z.record(z.string(), z.unknown()).nullable(),
+  provider_checkpoint_id: nonBlankString().nullable(),
+  created_at: isoDateTime,
+}).strict();
+
 const conversationsBundle = z.object({
   conversations: z.array(conversationRecord)
     .max(MAX_IMPORT_RECORDS_PER_MODULE),
@@ -242,6 +253,9 @@ const conversationsBundle = z.object({
     .max(MAX_IMPORT_RECORDS_PER_MODULE),
   attachments: z.array(conversationAttachmentRecord)
     .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  provider_checkpoints:
+    z.array(conversationProviderCheckpointRecord)
+      .max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
 const mindDriveSatisfactionEventRecord = z.object({
