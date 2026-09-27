@@ -1,4 +1,5 @@
 import type { ContentAuthor } from "../content-author.js";
+import type { ProjectResourceKind } from "../../database/schema.js";
 
 export type ExportScope = "all" | "diary" | "todo";
 
@@ -29,6 +30,51 @@ export type ExportTodoPaper = {
   }>;
 };
 
+export type ExportProjectWorkspaceRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExportProjectRecord = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExportProjectResourceRecord = {
+  id: string;
+  project_id: string;
+  kind: ProjectResourceKind;
+  key: string;
+  title: string | null;
+  content: string | null;
+  metadata: Record<string, unknown>;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExportProjectConversationRecord = {
+  project_id: string;
+  conversation_id: string;
+  added_at: string;
+};
+
+export type ExportProjectsBundle = {
+  workspaces: ExportProjectWorkspaceRecord[];
+  projects: ExportProjectRecord[];
+  resources: ExportProjectResourceRecord[];
+  conversations: ExportProjectConversationRecord[];
+};
+
 export type ExportLifecycleEvent = {
   id: string;
   resource_type: string;
@@ -55,15 +101,33 @@ export type ExportDataV2 = {
   todo?: ExportTodoPaper[];
 };
 
+export type ExportDataV3 = ExportDataV2 & {
+  projects?: ExportProjectsBundle;
+};
+
+export type ExportAudit = {
+  lifecycle: ExportLifecycleEvent[];
+  tool_activity: ExportToolActivity[];
+};
+
 export type ExportDocumentV2 = {
   schema_version: 2;
   owner_fingerprint: string;
   exported_at: string;
   data: ExportDataV2;
-  audit?: {
-    lifecycle: ExportLifecycleEvent[];
-    tool_activity: ExportToolActivity[];
-  };
+  audit?: ExportAudit;
 };
 
-export type ExportDocument = ExportDocumentV2;
+export type ExportDocumentV3 = {
+  schema_version: 3;
+  owner_fingerprint: string;
+  exported_at: string;
+  data: ExportDataV3;
+  audit?: ExportAudit;
+};
+
+export type RestorableExportDocument =
+  | ExportDocumentV2
+  | ExportDocumentV3;
+
+export type ExportDocument = ExportDocumentV3;
