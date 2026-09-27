@@ -19,6 +19,17 @@ function validDocument(
   };
 }
 
+function validV3Document(
+  data: Record<string, unknown>,
+) {
+  return {
+    schema_version: 3,
+    owner_fingerprint: OWNER,
+    exported_at: "2026-08-14T00:00:00.000Z",
+    data,
+  };
+}
+
 function bytes(value: unknown): Uint8Array {
   return new TextEncoder().encode(
     JSON.stringify(value),
@@ -253,6 +264,81 @@ test("parseImportPackage enforces active-module collection limits before plannin
           || error.code === "IMPORT_TOO_LARGE"
         );
       },
+    );
+  }
+});
+
+
+test("parseImportPackage enforces Mind continuity database string constraints", () => {
+  const valid = {
+    drive_satisfaction_events: [{
+      id: "00000000-0000-4000-8000-000000000081",
+      subject_id: "claude",
+      drive_state_id:
+        "00000000-0000-4000-8000-000000000082",
+      conversation_id:
+        "00000000-0000-4000-8000-000000000083",
+      evidence_message_id:
+        "00000000-0000-4000-8000-000000000084",
+      evidence_block_id: null,
+      evidence_kind: "assistant_message",
+      amount: 0.5,
+      idempotency_key: "drive-satisfy-000001",
+      created_at: "2026-08-14T00:00:00.000Z",
+    }],
+    curiosity_resolution_events: [],
+    distillation_watermarks: [{
+      subject_id: "claude",
+      conversation_id:
+        "00000000-0000-4000-8000-000000000083",
+      last_source_message_id:
+        "00000000-0000-4000-8000-000000000084",
+      process_version: "distill-v1",
+      updated_at: "2026-08-14T00:00:00.000Z",
+    }],
+  };
+
+  assert.doesNotThrow(() =>
+    parseImportPackage(
+      bytes(validV3Document({
+        mind_continuity: valid,
+      })),
+    ),
+  );
+
+  for (const candidate of [
+    {
+      ...valid,
+      drive_satisfaction_events: [{
+        ...valid.drive_satisfaction_events[0],
+        idempotency_key: "contains space 0001",
+      }],
+    },
+    {
+      ...valid,
+      drive_satisfaction_events: [{
+        ...valid.drive_satisfaction_events[0],
+        subject_id: "   ",
+      }],
+    },
+    {
+      ...valid,
+      distillation_watermarks: [{
+        ...valid.distillation_watermarks[0],
+        process_version: "   ",
+      }],
+    },
+  ]) {
+    assert.throws(
+      () =>
+        parseImportPackage(
+          bytes(validV3Document({
+            mind_continuity: candidate,
+          })),
+        ),
+      (error: unknown) =>
+        error instanceof ImportValidationError
+        && error.code === "INVALID_IMPORT_FILE",
     );
   }
 });
