@@ -554,6 +554,13 @@
       "when": 1790483400000,
       "tag": "0078_retire_legacy_mind_write_compat",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1790487000000,
+      "tag": "0079_native_live_archive_delete",
+      "breakpoints": true
     }
   ]
 }
