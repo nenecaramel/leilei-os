@@ -14,6 +14,7 @@ import type {
   ExportProjectsBundle,
   ExportProjectWorkspaceRecord,
   ExportTodoPaper,
+  ExportUniverseBundle,
 } from "../export/export-types.js";
 import {
   ImportValidationError,
@@ -27,7 +28,8 @@ export type ImportModule =
   | "todo"
   | "projects"
   | "mind"
-  | "conversations";
+  | "conversations"
+  | "universe";
 
 export type ImportClassification =
   | "create"
@@ -49,6 +51,7 @@ export type ImportCurrentState = {
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
   conversations?: ExportConversationsBundle;
+  universe?: ExportUniverseBundle | null;
   foreign_diary_ids?: Set<string>;
   foreign_diary_comment_ids?: Set<string>;
   foreign_workspace_ids?: Set<string>;
@@ -69,6 +72,7 @@ export type ImportSummary = {
   projects?: ImportCounts;
   mind?: ImportCounts;
   conversations?: ImportCounts;
+  universe?: ImportCounts;
 };
 
 export type ProjectRestoreRecord =
@@ -107,6 +111,11 @@ export type ConversationRestoreRecord =
       value: ExportConversationAttachmentRecord;
     };
 
+export type UniverseRestoreRecord = {
+  entity: "universe";
+  value: ExportUniverseBundle;
+};
+
 export type ImportPlanItem = {
   module: ImportModule;
   logical_key: string;
@@ -117,7 +126,8 @@ export type ImportPlanItem = {
     | ExportTodoPaper
     | ExportMindStateRecord
     | ProjectRestoreRecord
-    | ConversationRestoreRecord;
+    | ConversationRestoreRecord
+    | UniverseRestoreRecord;
   current_hash: string | null;
 };
 
@@ -655,6 +665,7 @@ function summarize(
   includeProjects: boolean,
   includeMind: boolean,
   includeConversations: boolean,
+  includeUniverse: boolean,
 ): ImportSummary {
   const summary: ImportSummary = {
     diary: emptyCounts(),
@@ -670,6 +681,9 @@ function summarize(
       : {}),
     ...(includeConversations
       ? { conversations: emptyCounts() }
+      : {}),
+    ...(includeUniverse
+      ? { universe: emptyCounts() }
       : {}),
   };
 
@@ -762,6 +776,54 @@ export function buildImportPlan(
           `paper:${record.date}:${record.author}`,
       ),
     );
+  }
+
+  const importedUniverse =
+    parsed.document.schema_version === 3
+      ? parsed.document.data.universe
+      : undefined;
+  if (importedUniverse) {
+    const currentUniverse = current.universe ?? null;
+    let classification: ImportClassification;
+    if (!currentUniverse) {
+      classification = "create";
+    } else if (
+      hashCanonical(currentUniverse)
+      === hashCanonical(importedUniverse)
+    ) {
+      classification = "duplicate";
+    } else {
+      classification = "conflict";
+    }
+
+    if (classification === "create") {
+      const availableDiaryIds = new Set([
+        ...current.diary.map((record) => record.id),
+        ...(parsed.document.data.diary ?? [])
+          .map((record) => record.id),
+      ]);
+      if (
+        importedUniverse.diary_sources.some(
+          (source) =>
+            !availableDiaryIds.has(source.diary_id),
+        )
+      ) {
+        classification = "invalid";
+      }
+    }
+
+    items.push({
+      module: "universe",
+      logical_key: "universe",
+      classification,
+      record: {
+        entity: "universe",
+        value: importedUniverse,
+      } as UniverseRestoreRecord,
+      current_hash: currentUniverse
+        ? hashCanonical(currentUniverse)
+        : null,
+    });
   }
 
   const importedConversations =
@@ -858,6 +920,7 @@ export function buildImportPlan(
     Boolean(importedProjects),
     Boolean(importedMind),
     Boolean(importedConversations),
+    Boolean(importedUniverse),
   );
   const fingerprint = hashCanonical({
     package_sha256: parsed.package_sha256,
