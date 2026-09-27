@@ -11,6 +11,7 @@ import type {
   ExportTodoPaper,
 } from "./export-types.js";
 import { createOwnerFingerprint } from "./owner-fingerprint.js";
+import { MAX_PRODUCT_BACKUP_BYTES } from "./product-backup-limits.js";
 import {
   ActiveUserAuthorizationError,
   requireActiveUser,
@@ -34,14 +35,17 @@ export interface ExportRepository {
 export type ExportServiceErrorCode =
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
-  | "EXPORT_IN_PROGRESS";
+  | "EXPORT_IN_PROGRESS"
+  | "EXPORT_TOO_LARGE";
 
 export class ExportServiceError extends Error {
   constructor(public readonly code: ExportServiceErrorCode) {
     super(
       code === "EXPORT_IN_PROGRESS"
         ? "Product export is unavailable while a native/live turn is in progress."
-        : "Export is unavailable for the authenticated user.",
+        : code === "EXPORT_TOO_LARGE"
+          ? "Product export exceeds the current portable backup size limit."
+          : "Export is unavailable for the authenticated user.",
     );
     this.name = "ExportServiceError";
   }
@@ -129,6 +133,14 @@ export class ExportService {
       ]);
       document.audit = { lifecycle, tool_activity };
     }
+    const serializedBytes = Buffer.byteLength(
+      JSON.stringify(document),
+      "utf8",
+    );
+    if (serializedBytes > MAX_PRODUCT_BACKUP_BYTES) {
+      throw new ExportServiceError("EXPORT_TOO_LARGE");
+    }
+
     return document;
   }
 }
