@@ -12,6 +12,9 @@ import {
 import {
   DrizzleSubjectStateRuntimePort,
 } from "./subject-state-runtime-repository.js";
+import type {
+  MindSemanticGroupingService,
+} from "./mind-semantic-grouping.js";
 import {
   DriveEvolutionService,
   type DriveEvolutionPolicy,
@@ -212,6 +215,8 @@ export function createDefaultSubjectStateBackgroundMaintenance(
   db: Database,
   orchestrator: Pick<BackgroundLoopOrchestrator, "schedule">,
   decayPolicy?: MemoryLifecyclePolicy,
+  semanticGrouping:
+    Pick<MindSemanticGroupingService, "reconcile"> | null = null,
 ): SubjectStateBackgroundMaintenance {
   return new SubjectStateBackgroundMaintenance(
     orchestrator,
@@ -232,6 +237,7 @@ export function createDefaultSubjectStateBackgroundMaintenance(
       driveEvolution: new DriveEvolutionService(
         new DrizzleDriveEvolutionRuntimePort(db),
         DEFAULT_DRIVE_EVOLUTION_POLICY,
+        semanticGrouping,
       ),
       curiosityEvolution: new CuriosityEvolutionService(
         new DrizzleCuriosityEvolutionRuntimePort(db),

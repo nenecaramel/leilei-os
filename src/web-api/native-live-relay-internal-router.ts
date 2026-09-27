@@ -53,6 +53,10 @@ import {
   NativeLiveProviderSessionCleanupError,
   type NativeLiveProviderSessionCleanupService,
 } from "../domains/bridge/native-live-provider-session-cleanup.js";
+import {
+  MindSemanticGroupingRepositoryError,
+  type DrizzleMindSemanticGroupingRepository,
+} from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -67,6 +71,10 @@ export type NativeLiveRelayInternalDependencies = {
   semanticService?: Pick<
     NativeLiveSemanticHandshakeService,
     "reserveNext" | "submitScores" | "submitFallback"
+  >;
+  mindSemanticGrouping?: Pick<
+    DrizzleMindSemanticGroupingRepository,
+    "reserveNext" | "acceptScores" | "acceptFallback"
   >;
   backgroundModelService?: Pick<
     NativeLiveBackgroundModelQueueService,
@@ -139,6 +147,20 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/semantic/reservations/:reservationId/fallback",
       submitSemanticFallbackHandler(dependencies),
+    );
+  }
+  if (dependencies.mindSemanticGrouping) {
+    router.post(
+      "/mind-semantic-grouping/reserve",
+      reserveMindSemanticGroupingHandler(dependencies),
+    );
+    router.post(
+      "/mind-semantic-grouping/reservations/:reservationId/scores",
+      submitMindSemanticGroupingScoresHandler(dependencies),
+    );
+    router.post(
+      "/mind-semantic-grouping/reservations/:reservationId/fallback",
+      submitMindSemanticGroupingFallbackHandler(dependencies),
     );
   }
   if (dependencies.companionBackgroundOpportunity) {
@@ -384,6 +406,85 @@ function submitSemanticFallbackHandler(
       response.json({ success: true, data: { accepted: true } });
     } catch (error) {
       sendSemanticError(response, error);
+    }
+  };
+}
+
+function reserveMindSemanticGroupingHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.mindSemanticGrouping) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      const reservation =
+        await dependencies.mindSemanticGrouping.reserveNext({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+        });
+      response.json({ success: true, data: reservation });
+    } catch (error) {
+      sendMindSemanticGroupingError(response, error);
+    }
+  };
+}
+
+function submitMindSemanticGroupingScoresHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.mindSemanticGrouping) return;
+    const reservationId = parseReservationId(request.params.reservationId);
+    const body = parseSemanticScoresBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      await dependencies.mindSemanticGrouping.acceptScores({
+        userId,
+        listenerInstanceId: body.listener_instance_id,
+        requestId: reservationId,
+        scores: body.scores,
+      });
+      response.json({ success: true, data: { accepted: true } });
+    } catch (error) {
+      sendMindSemanticGroupingError(response, error);
+    }
+  };
+}
+
+function submitMindSemanticGroupingFallbackHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.mindSemanticGrouping) return;
+    const reservationId = parseReservationId(request.params.reservationId);
+    const body = parseSemanticFallbackBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+
+    try {
+      await dependencies.mindSemanticGrouping.acceptFallback({
+        userId,
+        listenerInstanceId: body.listener_instance_id,
+        requestId: reservationId,
+        code: body.code,
+      });
+      response.json({ success: true, data: { accepted: true } });
+    } catch (error) {
+      sendMindSemanticGroupingError(response, error);
     }
   };
 }
@@ -1594,6 +1695,35 @@ function sendSemanticError(
     error: {
       code: "NATIVE_LIVE_SEMANTIC_UNAVAILABLE",
       message: "Native live semantic scoring is temporarily unavailable.",
+    },
+  });
+}
+
+function sendMindSemanticGroupingError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof MindSemanticGroupingRepositoryError) {
+    const status = error.code === "SCORE_INVALID" ? 400 : 409;
+    response.status(status).json({
+      success: false,
+      error: {
+        code: error.code,
+        message:
+          error.code === "LISTENER_NOT_ACTIVE"
+            ? "Mind semantic grouping listener lease is not active."
+            : error.code === "SCORE_INVALID"
+              ? "Mind semantic grouping score payload is invalid."
+              : "Mind semantic grouping reservation is no longer valid.",
+      },
+    });
+    return;
+  }
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "MIND_SEMANTIC_GROUPING_UNAVAILABLE",
+      message: "Mind semantic grouping is temporarily unavailable.",
     },
   });
 }

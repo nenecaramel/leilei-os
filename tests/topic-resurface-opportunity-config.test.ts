@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getBreathRankingConfig,
   getMemoryDecayConfig,
+  getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
 } from "../src/config/env.js";
@@ -154,5 +155,32 @@ test("Breath salience ranking has a conservative production default and stays ex
       NATIVE_LIVE_BREATH_SALIENCE_WEIGHT: 1.1,
     } as never),
     /between 0 and 1/,
+  );
+});
+
+
+test("Mind semantic grouping is fail-closed until an explicit merge threshold is configured", () => {
+  assert.equal(
+    getMindSemanticGroupingConfig({
+      NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD: undefined,
+    }),
+    undefined,
+  );
+
+  assert.deepEqual(
+    getMindSemanticGroupingConfig({
+      NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD: 0.88,
+    }),
+    {
+      threshold: 0.88,
+      candidateLimit: 32,
+    },
+  );
+
+  assert.throws(
+    () => getMindSemanticGroupingConfig({
+      NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD: 0,
+    }),
+    /greater than 0 and at most 1/,
   );
 });

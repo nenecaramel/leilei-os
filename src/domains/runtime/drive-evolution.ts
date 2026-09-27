@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
+import type {
+  MindSemanticGroupingService,
+  MindSemanticThreadGroup,
+} from "./mind-semantic-grouping.js";
 
 export type DrivePhase = "active" | "satisfied" | "dormant";
 export type DriveRole = "anchor" | "reinforcement";
@@ -83,6 +87,8 @@ export class DriveEvolutionService {
   constructor(
     private readonly port: DriveEvolutionRuntimePort,
     private readonly policy: DriveEvolutionPolicy,
+    private readonly semanticGrouping:
+      Pick<MindSemanticGroupingService, "reconcile"> | null = null,
   ) {
     validatePolicy(policy);
   }
@@ -100,14 +106,24 @@ export class DriveEvolutionService {
       subjectId: input.subjectId,
       limit: input.limit ?? 500,
     });
-    const groups = groupCandidates(candidates);
+    const exactGroups = groupCandidates(candidates);
+    const groups = await this.reconcileSemanticGroups(
+      input.userId,
+      input.subjectId,
+      exactGroups,
+    );
     const updates: DriveEvolutionUpdate[] = [];
     let active = 0;
     let satisfied = 0;
     let dormant = 0;
 
-    for (const group of groups.values()) {
-      const evaluated = evaluateThread(group, now, this.policy);
+    for (const [threadKey, group] of groups) {
+      const evaluated = evaluateThread(
+        group,
+        now,
+        this.policy,
+        threadKey,
+      );
       updates.push(...evaluated.updates);
       if (evaluated.phase === "active") active += 1;
       else if (evaluated.phase === "satisfied") satisfied += 1;
@@ -140,6 +156,61 @@ export class DriveEvolutionService {
       satisfied,
       dormant,
     };
+  }
+
+  private async reconcileSemanticGroups(
+    userId: string,
+    subjectId: string,
+    exactGroups: Map<string, DriveEvolutionCandidate[]>,
+  ): Promise<Map<string, DriveEvolutionCandidate[]>> {
+    if (!this.semanticGrouping || exactGroups.size <= 1) {
+      return exactGroups;
+    }
+
+    const semanticGroups: MindSemanticThreadGroup[] = [];
+    for (const [threadKey, group] of exactGroups) {
+      const anchor = group[0];
+      if (!anchor) continue;
+      semanticGroups.push({
+        threadKey,
+        anchorStateId: anchor.stateId,
+        anchorText: anchor.text,
+        createdAt: normalizeIso(anchor.createdAt, "createdAt"),
+        newThread: !group.some((candidate) =>
+          Boolean(safeReadDriveEvolution(candidate.payload))
+        ),
+      });
+    }
+
+    let canonical: ReadonlyMap<string, string>;
+    try {
+      canonical = (
+        await this.semanticGrouping.reconcile({
+          userId,
+          subjectId,
+          kind: "drive",
+          groups: semanticGroups,
+        })
+      ).canonicalThreadKeyByThread;
+    } catch {
+      // Semantic grouping is derived and fail-soft. Exact grouping remains
+      // authoritative enough to keep Drive evolution available.
+      return exactGroups;
+    }
+
+    const merged = new Map<string, DriveEvolutionCandidate[]>();
+    for (const [threadKey, group] of exactGroups) {
+      const target = canonical.get(threadKey) ?? threadKey;
+      const current = merged.get(target) ?? [];
+      current.push(...group);
+      current.sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt)
+          || left.stateId.localeCompare(right.stateId),
+      );
+      merged.set(target, current);
+    }
+    return merged;
   }
 }
 
@@ -253,7 +324,8 @@ function groupCandidates(
   const groups = new Map<string, DriveEvolutionCandidate[]>();
   for (const candidate of candidates) {
     if (!candidate.text.trim()) continue;
-    const key = driveThreadKey(candidate.text);
+    const current = safeReadDriveEvolution(candidate.payload);
+    const key = current?.threadKey ?? driveThreadKey(candidate.text);
     const group = groups.get(key) ?? [];
     group.push(candidate);
     groups.set(key, group);
@@ -273,6 +345,7 @@ function evaluateThread(
   candidates: readonly DriveEvolutionCandidate[],
   now: string,
   policy: DriveEvolutionPolicy,
+  threadKey: string,
 ): {
   updates: DriveEvolutionUpdate[];
   phase: DrivePhase;
@@ -375,7 +448,7 @@ function evaluateThread(
     const evolution: DriveEvolutionState = {
       phase,
       role,
-      threadKey: driveThreadKey(anchor.text),
+      threadKey,
       anchorStateId: anchor.stateId,
       pressure,
       reinforcementCount,

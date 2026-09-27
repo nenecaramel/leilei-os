@@ -79,6 +79,8 @@ const baseEnvSchema = z.object({
   MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
   NATIVE_LIVE_BREATH_SALIENCE_WEIGHT:
     z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD:
+    z.coerce.number().positive().max(1).optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
@@ -272,6 +274,11 @@ export type TopicResurfaceOpportunityConfig = {
   candidateLimit: number;
 };
 
+export type MindSemanticGroupingConfig = {
+  threshold: number;
+  candidateLimit: number;
+};
+
 export type MemoryDecayConfig = {
   halfLifeHours: {
     memory: number;
@@ -304,6 +311,30 @@ export function getBreathRankingConfig(
     );
   }
   return { salienceWeight };
+}
+
+export function getMindSemanticGroupingConfig(
+  environment: Pick<
+    RuntimeEnv,
+    "NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD"
+  >,
+): MindSemanticGroupingConfig | undefined {
+  const threshold =
+    environment.NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD;
+  if (threshold === undefined) return undefined;
+  if (
+    !Number.isFinite(threshold)
+    || threshold <= 0
+    || threshold > 1
+  ) {
+    throw new Error(
+      "NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD must be greater than 0 and at most 1.",
+    );
+  }
+  return {
+    threshold,
+    candidateLimit: 32,
+  };
 }
 
 export function getProactivityWakeOpportunityConfig(

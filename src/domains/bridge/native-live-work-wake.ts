@@ -93,6 +93,19 @@ export class DrizzleNativeLiveWorkAvailability {
         UNION ALL
 
         SELECT 1
+        FROM runtime_mind_semantic_grouping_requests AS grouping
+        WHERE grouping.user_id = ${input.userId}::uuid
+          AND (
+            grouping.status = 'pending'
+            OR (
+              grouping.status = 'reserved'
+              AND grouping.reservation_expires_at <= now()
+            )
+          )
+
+        UNION ALL
+
+        SELECT 1
         FROM native_live_turn_preparations AS preparation
         WHERE preparation.user_id = ${input.userId}::uuid
           AND preparation.status = 'prepared'

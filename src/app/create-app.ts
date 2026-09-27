@@ -68,12 +68,14 @@ export type NativeLiveProductionDependencies = {
       Omit<
         NativeLiveRelayInternalDependencies,
         "backgroundModelOpportunity"
+        | "mindSemanticGrouping"
         | "observeCompanionBackgroundOpportunity"
       >
     >
     & Pick<
       NativeLiveRelayInternalDependencies,
       "backgroundModelOpportunity"
+      | "mindSemanticGrouping"
       | "observeCompanionBackgroundOpportunity"
     >;
 };
