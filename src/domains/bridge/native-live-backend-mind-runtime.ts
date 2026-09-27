@@ -245,6 +245,11 @@ implements NativeLiveBackendMindRuntime {
     intents: readonly MindWriteIntent[];
     stateIds?: readonly string[];
   }): Promise<void> {
+    const conversation = await this.requireConversation(
+      input.userId,
+      input.preparation.conversationId,
+    );
+
     await this.mind.recordFinalizedBreathRecall?.({
       userId: input.userId,
       manifestId: input.preparation.prepareId,
@@ -262,10 +267,6 @@ implements NativeLiveBackendMindRuntime {
 
     if (input.preparation.operation === "send") return;
 
-    const conversation = await this.requireConversation(
-      input.userId,
-      input.preparation.conversationId,
-    );
     await this.mind.reconcileSelectedPath({
       userId: input.userId,
       conversation,
@@ -305,8 +306,8 @@ implements NativeLiveBackendMindRuntime {
       userId,
       conversationId,
     });
-    if (!conversation) {
-      throw new Error("Prepared native/live conversation was not found.");
+    if (!conversation || conversation.lifecycleStatus !== "active") {
+      throw new Error("Prepared native/live conversation is not active.");
     }
     return conversation;
   }
