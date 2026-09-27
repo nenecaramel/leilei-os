@@ -157,55 +157,88 @@ implements RuntimeEffectPort {
       );
     }
 
-    await this.db
-      .insert(runtimeEffects)
-      .values({
-        id: input.effect.effectId,
-        userId: input.effect.userId,
-        subjectId: input.effect.subjectId,
-        sourceWakeId: input.sourceWakeId,
-        decisionId: input.effect.decisionId,
-        idempotencyKey: input.effect.idempotencyKey,
-        effectType: input.effect.effectType,
-        target: input.effect.target,
-        payload: input.payload,
-        payloadHash: input.effect.payloadHash,
-        status: input.effect.status,
-        attempt: input.effect.attempt,
-        retryable: input.effect.retryable,
-        observedAt: input.effect.observedAt
-          ? new Date(input.effect.observedAt)
-          : null,
-        failureCode: input.effect.failureCode ?? null,
-      })
-      .onConflictDoNothing();
+    return this.db.transaction(async (transaction) => {
+      const targetConversationId =
+        parseConversationTarget(input.effect.target);
+      if (targetConversationId) {
+        const active = await transaction.execute<{ id: string }>(sql`
+          SELECT id
+          FROM conversations
+          WHERE id = ${targetConversationId}::uuid
+            AND user_id = ${input.effect.userId}::uuid
+            AND origin = 'native_live'
+            AND lifecycle_status = 'active'
+          FOR SHARE
+        `);
+        if (active.length !== 1) {
+          throw new Error("RuntimeEffectTargetConversationInactive");
+        }
+      }
 
-    const current = await this.getBySourceWake({
-      userId: input.effect.userId,
-      sourceWakeId: input.sourceWakeId,
+      await transaction
+        .insert(runtimeEffects)
+        .values({
+          id: input.effect.effectId,
+          userId: input.effect.userId,
+          subjectId: input.effect.subjectId,
+          sourceWakeId: input.sourceWakeId,
+          decisionId: input.effect.decisionId,
+          idempotencyKey: input.effect.idempotencyKey,
+          effectType: input.effect.effectType,
+          target: input.effect.target,
+          payload: input.payload,
+          payloadHash: input.effect.payloadHash,
+          status: input.effect.status,
+          attempt: input.effect.attempt,
+          retryable: input.effect.retryable,
+          observedAt: input.effect.observedAt
+            ? new Date(input.effect.observedAt)
+            : null,
+          failureCode: input.effect.failureCode ?? null,
+        })
+        .onConflictDoNothing();
+
+      const rows = await transaction
+        .select({ id: runtimeEffects.id })
+        .from(runtimeEffects)
+        .where(
+          and(
+            eq(runtimeEffects.userId, input.effect.userId),
+            eq(runtimeEffects.sourceWakeId, input.sourceWakeId),
+          ),
+        )
+        .limit(1);
+      const effectId = rows[0]?.id;
+      const current = effectId
+        ? await this.getWithExecutor(
+            transaction as Transaction,
+            input.effect.userId,
+            effectId,
+          )
+        : null;
+      if (!current) {
+        throw new Error(
+          "Runtime effect disappeared after create.",
+        );
+      }
+
+      if (
+        current.effectId !== input.effect.effectId
+        || current.subjectId !== input.effect.subjectId
+        || current.decisionId !== input.effect.decisionId
+        || current.idempotencyKey !== input.effect.idempotencyKey
+        || current.effectType !== input.effect.effectType
+        || current.target !== input.effect.target
+        || current.payloadHash !== input.effect.payloadHash
+        || !isDeepStrictEqual(current.payload, input.payload)
+      ) {
+        throw new RuntimeEffectRepositoryError(
+          "EFFECT_CONFLICT",
+          "Runtime effect idempotency key conflicts with existing durable state.",
+        );
+      }
+      return current;
     });
-    if (!current) {
-      throw new Error(
-        "Runtime effect disappeared after create.",
-      );
-    }
-
-    if (
-      current.effectId !== input.effect.effectId
-      || current.subjectId !== input.effect.subjectId
-      || current.decisionId !== input.effect.decisionId
-      || current.idempotencyKey !== input.effect.idempotencyKey
-      || current.effectType !== input.effect.effectType
-      || current.target !== input.effect.target
-      || current.payloadHash !== input.effect.payloadHash
-      || !isDeepStrictEqual(current.payload, input.payload)
-    ) {
-      throw new RuntimeEffectRepositoryError(
-        "EFFECT_CONFLICT",
-        "Runtime effect idempotency key conflicts with existing durable state.",
-      );
-    }
-    return current;
   }
 
   get(input: {
@@ -743,6 +776,15 @@ function normalizeLease(
     );
   }
   return lease;
+}
+
+function parseConversationTarget(
+  target: string,
+): string | null {
+  const match = target.match(
+    /^conversation:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu,
+  );
+  return match?.[1] ?? null;
 }
 
 function requireUuid(value: string, field: string): void {
