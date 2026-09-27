@@ -159,7 +159,7 @@ struct PageContainer: View {
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
         }
@@ -245,6 +245,18 @@ struct PageContainer: View {
         } message: {
             Text(deleteErrorMessage ?? "")
         }
+    }
+
+    private var pageBackground: Color {
+        if selectedPage == .universe {
+            return Color(
+                red: 11.0 / 255.0,
+                green: 12.0 / 255.0,
+                blue: 18.0 / 255.0
+            )
+        }
+
+        return Color(.systemBackground)
     }
 
     private var pageTitle: String {
