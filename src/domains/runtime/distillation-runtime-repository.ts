@@ -101,6 +101,17 @@ export class DrizzleDistillationRuntimePort implements DistillationRuntimePort {
     );
 
     return this.db.transaction(async (transaction) => {
+      const active = await transaction.execute<{ id: string }>(sql`
+        SELECT id
+        FROM conversations
+        WHERE id = ${input.conversationId}::uuid
+          AND user_id = ${input.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR SHARE
+      `);
+      if (active.length !== 1) return "conflict" as const;
+
       const [watermark] = await transaction
         .select({
           lastSourceMessageId:
