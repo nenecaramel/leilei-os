@@ -4,6 +4,7 @@ import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
+  conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
   nativeLiveMindFollowUps,
@@ -57,6 +58,15 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   ? T
   : never;
 type Executor = Database | Transaction;
+
+export type NativeLiveConversationRuntimeReadModel = {
+  conversationId: string;
+  currentHeadMessageId: string | null;
+  prepareId: string | null;
+  providerSessionId: string | null;
+  finalizedAt: string | null;
+  runtimeMetadata: NativeLiveRuntimeMetadata | null;
+};
 
 export type NativeLiveBackendTurnReadModel = {
   prepareId: string;
@@ -486,6 +496,95 @@ implements NativeLiveBackendTurnPort {
     return row ? mapPreparation(row) : null;
   }
 
+  async readConversationRuntime(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationRuntimeReadModel | null> {
+    const [row] = await this.db
+      .select({
+        conversationId: conversations.id,
+        currentHeadMessageId: conversations.currentHeadMessageId,
+        checkpointRuntimeMetadata:
+          conversationProviderSessionCheckpoints.runtimeMetadata,
+        providerSessionId:
+          conversationProviderSessionCheckpoints.providerSessionId,
+        prepareId: nativeLiveTurnPreparations.id,
+        turnRuntimeMetadata:
+          nativeLiveTurnPreparations.runtimeMetadata,
+        finalizedAt: nativeLiveTurnPreparations.finalizedAt,
+      })
+      .from(conversations)
+      .leftJoin(
+        conversationProviderSessionCheckpoints,
+        and(
+          eq(
+            conversationProviderSessionCheckpoints.userId,
+            conversations.userId,
+          ),
+          eq(
+            conversationProviderSessionCheckpoints.conversationId,
+            conversations.id,
+          ),
+          eq(
+            conversationProviderSessionCheckpoints.canonicalMessageId,
+            conversations.currentHeadMessageId,
+          ),
+          eq(
+            conversationProviderSessionCheckpoints.provider,
+            "claude_code",
+          ),
+        ),
+      )
+      .leftJoin(
+        nativeLiveTurnPreparations,
+        and(
+          eq(
+            nativeLiveTurnPreparations.userId,
+            conversations.userId,
+          ),
+          eq(
+            nativeLiveTurnPreparations.conversationId,
+            conversations.id,
+          ),
+          eq(
+            nativeLiveTurnPreparations.assistantMessageId,
+            conversations.currentHeadMessageId,
+          ),
+          eq(
+            nativeLiveTurnPreparations.status,
+            "finalized_success",
+          ),
+        ),
+      )
+      .where(
+        and(
+          eq(conversations.userId, input.userId),
+          eq(conversations.id, input.conversationId),
+          eq(conversations.origin, "native_live"),
+          inArray(conversations.lifecycleStatus, [
+            "active",
+            "archived",
+          ]),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      conversationId: row.conversationId,
+      currentHeadMessageId: row.currentHeadMessageId,
+      prepareId: row.prepareId ?? null,
+      providerSessionId: row.providerSessionId ?? null,
+      finalizedAt: row.finalizedAt?.toISOString() ?? null,
+      runtimeMetadata:
+        (
+          row.checkpointRuntimeMetadata
+          ?? row.turnRuntimeMetadata
+        ) as NativeLiveRuntimeMetadata | null,
+    };
+  }
+
   async readTurn(input: {
     userId: string;
     prepareId: string;
@@ -741,6 +840,8 @@ implements NativeLiveBackendTurnPort {
             checkpoint: {
               provider: "claude_code",
               providerSessionId: input.providerSessionId,
+              runtimeMetadata:
+                input.runtimeMetadata as Record<string, unknown> | null,
             },
           });
 
