@@ -121,6 +121,9 @@ async function withServer(
   currentPathReader?: {
     readCurrentPath(input: unknown): Promise<unknown>;
   },
+  conversationRuntimeMetadataReader?: {
+    readLatest(input: unknown): Promise<unknown>;
+  },
 ): Promise<void> {
   const app = express();
   app.use(express.json());
@@ -148,6 +151,8 @@ async function withServer(
       },
       conversationService,
       currentPathReader: currentPathReader as never,
+      conversationRuntimeMetadataReader:
+        conversationRuntimeMetadataReader as never,
     }),
   );
 
@@ -281,6 +286,83 @@ test("native live current path rejects simultaneous older and delta cursors", as
     {
       async readCurrentPath() {
         throw new Error("must not be called");
+      },
+    },
+  );
+});
+
+test("native live conversation runtime metadata is read authoritatively by current conversation", async () => {
+  const service = new FakeConversationService();
+  const calls: unknown[] = [];
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/runtime-metadata`,
+      );
+      assert.equal(response.status, 200);
+      const payload = await response.json() as {
+        data: Record<string, unknown>;
+      };
+      assert.deepEqual(payload.data, {
+        conversationId,
+        currentHeadMessageId:
+          "77777777-7777-4777-8777-777777777777",
+        sourceMessageId:
+          "77777777-7777-4777-8777-777777777777",
+        runtimeMetadata: {
+          context_usage: {
+            percentage: 12,
+          },
+        },
+        observedAt: "2026-09-27T08:00:00.000Z",
+      });
+      assert.deepEqual(calls, [{ userId, conversationId }]);
+
+      const invalid = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/not-a-uuid/runtime-metadata`,
+      );
+      assert.equal(invalid.status, 400);
+      assert.equal(calls.length, 1);
+    },
+    true,
+    undefined,
+    {
+      async readLatest(input: unknown) {
+        calls.push(input);
+        return {
+          conversationId,
+          currentHeadMessageId:
+            "77777777-7777-4777-8777-777777777777",
+          sourceMessageId:
+            "77777777-7777-4777-8777-777777777777",
+          runtimeMetadata: {
+            context_usage: {
+              percentage: 12,
+            },
+          },
+          observedAt: "2026-09-27T08:00:00.000Z",
+        };
+      },
+    },
+  );
+});
+
+test("native live conversation runtime metadata returns not found without fabricating state", async () => {
+  const service = new FakeConversationService();
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/runtime-metadata`,
+      );
+      assert.equal(response.status, 404);
+    },
+    true,
+    undefined,
+    {
+      async readLatest() {
+        return null;
       },
     },
   );
