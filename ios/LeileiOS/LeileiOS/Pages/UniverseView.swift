@@ -963,11 +963,6 @@ struct UniverseView: View {
     ) {
         sheetSelection = nil
         selectedNodeID = nodeID
-
-        Task { @MainActor in
-            await Task.yield()
-            sheetSelection = .node(nodeID)
-        }
     }
 
     private func openTargetIfPossible() async {
