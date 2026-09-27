@@ -765,7 +765,7 @@ final class AppModel: ObservableObject {
                 )
 
                 try? await Task.sleep(
-                    for: .milliseconds(350)
+                    for: .milliseconds(500)
                 )
             }
         }
@@ -814,24 +814,6 @@ final class AppModel: ObservableObject {
         } catch {
             // Runtime observation is fail-soft. Canonical turn completion
             // remains authoritative.
-        }
-
-        do {
-            surface.interactions =
-                try await api.nativeLiveRuntimeInteractions(
-                    prepareID: prepareID
-                )
-        } catch {
-            // Fail-soft; a later observation can recover.
-        }
-
-        do {
-            surface.controls =
-                try await api.nativeLiveRuntimeControls(
-                    prepareID: prepareID
-                )
-        } catch {
-            // Fail-soft; a later observation can recover.
         }
 
         guard nativeLiveRuntimeSurface?.prepareID == prepareID else {
