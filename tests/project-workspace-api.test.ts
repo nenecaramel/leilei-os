@@ -73,6 +73,11 @@ class FakeService {
     this.calls.push({ name: "listResources", input });
     return [];
   }
+  async getResource(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "getResource", input });
+    return { id: resourceId, content: "detail" };
+  }
   async createResource(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "createResource", input });
@@ -184,6 +189,13 @@ test("Projects API exposes Workspace Project Resource and Conversation contracts
       200,
     );
 
+    assert.equal(
+      (await fetch(
+        `${baseUrl}/projects/${projectId}/resources/${resourceId}`,
+      )).status,
+      200,
+    );
+
     const attach = await fetch(
       `${baseUrl}/projects/${projectId}/conversations/${conversationId}`,
       { method: "PUT" },
@@ -238,6 +250,10 @@ test("Projects API exposes Workspace Project Resource and Conversation contracts
     {
       name: "listResources",
       input: { userId, projectId, kind: "instructions" },
+    },
+    {
+      name: "getResource",
+      input: { userId, projectId, resourceId },
     },
     {
       name: "attachConversation",
