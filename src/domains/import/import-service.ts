@@ -2,6 +2,7 @@ import type {
   ExportConversationAttachmentRecord,
   ExportConversationContentBlockRecord,
   ExportConversationMessageRecord,
+  ExportConversationProviderCheckpointRecord,
   ExportConversationRecord,
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
@@ -147,6 +148,7 @@ function hasExactConversationValue(
     messages: [],
     content_blocks: [],
     attachments: [],
+    provider_checkpoints: [],
   };
   if (record.entity === "conversation") {
     return conversations.conversations.some(
@@ -169,7 +171,14 @@ function hasExactConversationValue(
         && hashCanonical(candidate) === hashCanonical(record.value),
     );
   }
-  return conversations.attachments.some(
+  if (record.entity === "attachment") {
+    return conversations.attachments.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  return conversations.provider_checkpoints.some(
     (candidate) =>
       candidate.id === record.value.id
       && hashCanonical(candidate) === hashCanonical(record.value),
@@ -444,6 +453,18 @@ async function executeCreates(
     await repository.insertConversationAttachment(
       userId,
       record.value as ExportConversationAttachmentRecord,
+    );
+  }
+
+  for (
+    const record of conversationRecords(
+      creates,
+      "provider_checkpoint",
+    )
+  ) {
+    await repository.insertConversationProviderCheckpoint(
+      userId,
+      record.value as ExportConversationProviderCheckpointRecord,
     );
   }
 
