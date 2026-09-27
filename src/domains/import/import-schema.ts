@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CONTENT_AUTHORS } from "../content-author.js";
-import type { ExportDocumentV2 } from "../export/export-types.js";
+import {
+  PROJECT_RESOURCE_KINDS,
+} from "../project-workspace/project-workspace-types.js";
+import type {
+  RestorableExportDocument,
+} from "../export/export-types.js";
 import {
   DIARY_MOOD_MAX_LENGTH,
   DIARY_TAGS_MAX_COUNT,
@@ -10,6 +15,8 @@ import {
   MAX_IMPORT_RECORDS_PER_MODULE,
   MAX_TODO_ENTRIES,
 } from "../resource-limits.js";
+
+export const MAX_IMPORT_PACKAGE_BYTES = 50 * 1024 * 1024;
 
 export type ImportErrorCode =
   | "INVALID_IMPORT_FILE"
@@ -47,10 +54,9 @@ const businessDate = z.string().refine((value) => {
 });
 const uuid = z.string().uuid();
 const author = z.enum(CONTENT_AUTHORS).nullable();
+const nullableBounded = (max: number) =>
+  z.string().max(max).nullable();
 
-// Restore accepts the full DB text payload for unbounded text[]/text columns.
-// The raw package limit remains the outer resource bound so historical exports
-// are not narrowed to today's live-write limits.
 const diaryTags = z.array(z.string().min(1)).max(DIARY_TAGS_MAX_COUNT);
 
 const diaryRecord = z.object({
@@ -82,6 +88,51 @@ const todoPaper = z.object({
   entries: z.array(todoEntry).max(MAX_TODO_ENTRIES),
 }).strict();
 
+const projectWorkspaceRecord = z.object({
+  id: uuid,
+  name: z.string().min(1).max(200),
+  description: nullableBounded(4000),
+  version: z.number().int().min(1),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+}).strict();
+
+const projectRecord = z.object({
+  id: uuid,
+  workspace_id: uuid,
+  name: z.string().min(1).max(200),
+  description: nullableBounded(4000),
+  version: z.number().int().min(1),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+}).strict();
+
+const projectResourceRecord = z.object({
+  id: uuid,
+  project_id: uuid,
+  kind: z.enum(PROJECT_RESOURCE_KINDS),
+  key: z.string().min(1).max(1000),
+  title: nullableBounded(500),
+  content: nullableBounded(1_000_000),
+  metadata: z.record(z.string(), z.unknown()),
+  version: z.number().int().min(1),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+}).strict();
+
+const projectConversationRecord = z.object({
+  project_id: uuid,
+  conversation_id: uuid,
+  added_at: isoDateTime,
+}).strict();
+
+const projectsBundle = z.object({
+  workspaces: z.array(projectWorkspaceRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+  projects: z.array(projectRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+  resources: z.array(projectResourceRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+  conversations: z.array(projectConversationRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+}).strict();
+
 const lifecycleEvent = z.object({
   id: uuid,
   resource_type: z.string().min(1).max(32),
@@ -103,21 +154,39 @@ const toolActivity = z.object({
   created_at: isoDateTime,
 }).strict();
 
-const documentSchema = z.object({
-  schema_version: z.number().int(),
-  owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
-  exported_at: isoDateTime,
-  data: z.object({
-    diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
-    todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
-  }).strict(),
-  audit: z.object({
-    lifecycle: z.array(lifecycleEvent).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
-    tool_activity: z.array(toolActivity).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
-  }).strict().optional(),
+const auditSchema = z.object({
+  lifecycle: z.array(lifecycleEvent).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
+  tool_activity: z.array(toolActivity).max(MAX_IMPORT_AUDIT_EVENTS_PER_TYPE),
 }).strict();
 
-function assertBusinessInvariants(document: ExportDocumentV2): void {
+const dataV2Schema = z.object({
+  diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+  todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+}).strict();
+
+const dataV3Schema = z.object({
+  diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+  todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+  projects: projectsBundle.optional(),
+}).strict();
+
+const documentV2Schema = z.object({
+  schema_version: z.literal(2),
+  owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  exported_at: isoDateTime,
+  data: dataV2Schema,
+  audit: auditSchema.optional(),
+}).strict();
+
+const documentV3Schema = z.object({
+  schema_version: z.literal(3),
+  owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  exported_at: isoDateTime,
+  data: dataV3Schema,
+  audit: auditSchema.optional(),
+}).strict();
+
+function assertBusinessInvariants(document: RestorableExportDocument): void {
   const included = Object.keys(document.data);
   if (included.length === 0) {
     throw new ImportValidationError(
@@ -158,16 +227,43 @@ function assertBusinessInvariants(document: ExportDocumentV2): void {
       ids.add(entry.id);
     }
   }
+
+  if (document.schema_version === 3 && document.data.projects) {
+    for (const workspace of document.data.projects.workspaces) {
+      if (workspace.name.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "workspace name must not be blank",
+        );
+      }
+    }
+    for (const project of document.data.projects.projects) {
+      if (project.name.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "project name must not be blank",
+        );
+      }
+    }
+    for (const resource of document.data.projects.resources) {
+      if (resource.key.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "project resource key must not be blank",
+        );
+      }
+    }
+  }
 }
 
 export type ParsedImportPackage = {
-  document: ExportDocumentV2;
+  document: RestorableExportDocument;
   package_sha256: string;
   raw_bytes: number;
 };
 
 export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
-  if (input.byteLength > 10 * 1024 * 1024) {
+  if (input.byteLength > MAX_IMPORT_PACKAGE_BYTES) {
     throw new ImportValidationError("IMPORT_TOO_LARGE", "IMPORT_TOO_LARGE");
   }
 
@@ -183,28 +279,35 @@ export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
     );
   }
 
-  if (
-    !value
-    || typeof value !== "object"
-    || (value as { schema_version?: unknown }).schema_version !== 2
-  ) {
-    if (
-      value
-      && typeof value === "object"
-      && (value as { schema_version?: unknown }).schema_version === 1
-    ) {
-      throw new ImportValidationError(
-        "UNSUPPORTED_EXPORT_VERSION",
-        "export v1 cannot be restored",
-      );
-    }
+  if (!value || typeof value !== "object") {
+    throw new ImportValidationError(
+      "INVALID_IMPORT_FILE",
+      "invalid export document",
+    );
+  }
+
+  const version = (value as { schema_version?: unknown }).schema_version;
+  if (version === 1) {
+    throw new ImportValidationError(
+      "UNSUPPORTED_EXPORT_VERSION",
+      "export v1 cannot be restored",
+    );
+  }
+
+  const schema =
+    version === 2
+      ? documentV2Schema
+      : version === 3
+        ? documentV3Schema
+        : null;
+  if (!schema) {
     throw new ImportValidationError(
       "INVALID_IMPORT_FILE",
       "invalid export version",
     );
   }
 
-  const parsed = documentSchema.safeParse(value);
+  const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new ImportValidationError(
       "INVALID_IMPORT_FILE",
@@ -212,7 +315,7 @@ export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
     );
   }
 
-  const document = parsed.data as ExportDocumentV2;
+  const document = parsed.data as RestorableExportDocument;
   assertBusinessInvariants(document);
 
   return {
