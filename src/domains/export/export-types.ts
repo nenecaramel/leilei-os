@@ -1,4 +1,5 @@
 import type { ContentAuthor } from "../content-author.js";
+import type { UniverseSnapshot } from "../universe/universe-types.js";
 import type { ProjectResourceKind } from "../../database/schema.js";
 
 export type ExportScope = "all" | "diary" | "todo";
@@ -10,7 +11,7 @@ export type ExportDiaryRecord = {
   date: string;
   tags: string[];
   mood: string | null;
-  source: string;
+  source: "chatgpt_mcp";
   author: ContentAuthor | null;
   status: "active" | "archived";
   created_at: string;
@@ -83,6 +84,17 @@ export type ExportProjectsBundle = {
   projects: ExportProjectRecord[];
   resources: ExportProjectResourceRecord[];
   conversations: ExportProjectConversationRecord[];
+};
+
+export type ExportUniverseDiarySourceRecord = {
+  node_id: string;
+  diary_id: string;
+};
+
+export type ExportUniverseBundle = {
+  version: number;
+  snapshot: UniverseSnapshot;
+  diary_sources: ExportUniverseDiarySourceRecord[];
 };
 
 export type ExportConversationRecord = {
@@ -203,6 +215,7 @@ export type ExportDataV3 = ExportDataV2 & {
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
   conversations?: ExportConversationsBundle;
+  universe?: ExportUniverseBundle;
 };
 
 export type ExportAudit = {
