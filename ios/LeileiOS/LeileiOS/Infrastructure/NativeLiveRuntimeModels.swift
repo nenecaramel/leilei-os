@@ -266,7 +266,7 @@ extension NativeLiveRuntimeInteractionSnapshot {
 
         return values.compactMap { value in
             guard let object = value.objectValue,
-                  let text = object["question"]?.stringValue?
+                  let text = object["question"]?.stringValue
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else {
                 return nil
@@ -276,14 +276,14 @@ extension NativeLiveRuntimeInteractionSnapshot {
                 object["options"]?.arrayValue?
                     .compactMap { optionValue -> NativeLiveRuntimeQuestionOption? in
                         guard let option = optionValue.objectValue,
-                              let label = option["label"]?.stringValue?
+                              let label = option["label"]?.stringValue
                                 .trimmingCharacters(in: .whitespacesAndNewlines),
                               !label.isEmpty else {
                             return nil
                         }
 
                         let description =
-                            option["description"]?.stringValue?
+                            option["description"]?.stringValue
                                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
                         return NativeLiveRuntimeQuestionOption(
@@ -296,7 +296,7 @@ extension NativeLiveRuntimeInteractionSnapshot {
                     } ?? []
 
             let header =
-                object["header"]?.stringValue?
+                object["header"]?.stringValue
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
             return NativeLiveRuntimeQuestion(
