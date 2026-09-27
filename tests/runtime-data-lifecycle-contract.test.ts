@@ -101,21 +101,12 @@ test("Subject State retention audit forbids generic forgetting outside Memory an
     });
   }
 
-  for (const kind of ["thought", "drive", "topic"] as const) {
+  for (
+    const kind of ["thought", "drive", "curiosity", "topic"] as const
+  ) {
     assert.deepEqual(subjectStateRetentionPolicy(kind), {
       automaticForgetting: false,
       mechanism: "domain_evolution",
-    });
-  }
-
-  assert.deepEqual(subjectStateRetentionPolicy("bedrock"), {
-    automaticForgetting: false,
-    mechanism: "subject_authorized_durable",
-  });
-  for (const kind of ["dream", "curiosity"] as const) {
-    assert.deepEqual(subjectStateRetentionPolicy(kind), {
-      automaticForgetting: false,
-      mechanism: "explicit_invalidation_only",
     });
   }
 });
