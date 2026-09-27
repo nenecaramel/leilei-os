@@ -219,7 +219,7 @@ export function SystemDataPageContent({
     if (!file) return;
     const selection = importSelectionRef.current + 1;
     importSelectionRef.current = selection;
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > 50 * 1024 * 1024) {
       setImportState({ status: "error", message: "Import package is too large." });
       return;
     }
