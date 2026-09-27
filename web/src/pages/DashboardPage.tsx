@@ -7,7 +7,6 @@ import { formatTodoStorageDate } from "./todo-paper-storage";
 import { TodayPanel } from "./TodayPanel";
 import { TodoPaperDialog } from "./TodoPaperDialog";
 import { loadTodoDay, listTodoDates } from "./todo-api";
-import { migrateLegacyTodoPapers } from "./todo-legacy-migration";
 import type { TodoAuthor, TodoDay } from "./todo-types";
 
 
@@ -23,7 +22,6 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const [dialogAuthor, setDialogAuthor] = useState<TodoAuthor | null>(null);
   const [dialogDirty, setDialogDirty] = useState(false);
   const [, setPendingDate] = useState<string | null>(null);
-  const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
   const loadGeneration = useRef(0);
   const calendarLoadGeneration = useRef(0);
   const lTriggerRef = useRef<HTMLButtonElement>(null);
@@ -34,22 +32,11 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
     if (!api) { setLoadState("error"); return; }
     const generation = ++loadGeneration.current;
     setLoadState("loading");
-    setMigrationNotice(null);
     try {
       const response = await loadTodoDay(api, nextDate);
       if (generation !== loadGeneration.current) return;
       setPapers(response.papers);
       setLoadState("ready");
-      const storage = typeof window === "undefined" ? null : window.localStorage;
-      if (storage) void migrateLegacyTodoPapers({
-        storage,
-        api,
-        onNotice: ({ date, author }) => {
-          if (date === nextDate && generation === loadGeneration.current) {
-            setMigrationNotice(`${author} 的本地 Todo 已保留服务器内容。`);
-          }
-        },
-      }).catch(() => undefined);
     } catch {
       if (generation === loadGeneration.current) setLoadState("error");
     }
@@ -106,7 +93,6 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
         {loadState === "error" ? <div className="home-inline-unavailable" role="alert"><span>Unable to read Todo.</span><button type="button" onClick={() => void loadDay(dateKey)}>Retry</button></div> : null}
       </div>
       <main className="home-prototype-content">
-        {migrationNotice ? <div className="home-todo-notice" role="status">{migrationNotice}</div> : null}
         <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
         <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
         <TodayPanel author="C" notes={loadState === "ready" ? papers.C?.entries ?? [] : []} triggerRef={cTriggerRef} onOpen={() => setDialogAuthor("C")} />
