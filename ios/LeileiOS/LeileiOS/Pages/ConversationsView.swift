@@ -150,37 +150,44 @@ private struct ConversationList: View {
 
     var body: some View {
         List(conversations) { conversation in
-            Button {
-                Task {
-                    await onOpen(conversation)
-                }
-            } label: {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(
-                        alignment: .leading,
-                        spacing: 4
+            HStack(alignment: .center, spacing: 10) {
+                Button {
+                    Task {
+                        await onOpen(conversation)
+                    }
+                } label: {
+                    HStack(
+                        alignment: .center,
+                        spacing: 12
                     ) {
-                        Text(displayTitle(for: conversation))
+                        VStack(
+                            alignment: .leading,
+                            spacing: 4
+                        ) {
+                            Text(
+                                displayTitle(
+                                    for: conversation
+                                )
+                            )
                             .font(.body)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
 
-                        if let subtitle =
-                                lastMessageDateText(
-                                    for: conversation
-                                ) {
-                            Text(subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            if let subtitle =
+                                    lastMessageDateText(
+                                        for: conversation
+                                    ) {
+                                Text(subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading
-                    )
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .leading
+                        )
 
-                    HStack(spacing: 10) {
                         if isActive(conversation) {
                             Image(systemName: "checkmark")
                                 .font(.system(
@@ -192,38 +199,38 @@ private struct ConversationList: View {
                                     "Current conversation"
                                 )
                         }
-
-                        Menu {
-                            Button("Archive") {
-                                lifecycleNotice = .archive
-                            }
-
-                            Button(
-                                "Delete",
-                                role: .destructive
-                            ) {
-                                lifecycleNotice = .delete
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(
-                                    size: 16,
-                                    weight: .medium
-                                ))
-                                .frame(
-                                    width: 28,
-                                    height: 28
-                                )
-                        }
-                        .accessibilityLabel(
-                            "Conversation actions"
-                        )
                     }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                Menu {
+                    Button("Archive") {
+                        lifecycleNotice = .archive
+                    }
+
+                    Button(
+                        "Delete",
+                        role: .destructive
+                    ) {
+                        lifecycleNotice = .delete
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(
+                            size: 16,
+                            weight: .medium
+                        ))
+                        .frame(
+                            width: 28,
+                            height: 28
+                        )
+                }
+                .accessibilityLabel(
+                    "Conversation actions"
+                )
             }
-            .buttonStyle(.plain)
             .listRowBackground(Color(.systemBackground))
             .onAppear {
                 guard conversation.id == conversations.last?.id else {
