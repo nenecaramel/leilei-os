@@ -387,6 +387,7 @@ export class NativeLiveMacDaemonLoop {
               dispatchTarget: "claude_code",
             });
           if (grouping) {
+            let scored = false;
             try {
               if (!this.semanticScorer) {
                 await this.relay.submitMindSemanticGroupingFallback({
@@ -404,6 +405,7 @@ export class NativeLiveMacDaemonLoop {
                   reservationId: grouping.reservationId,
                   scores: Object.fromEntries(scored),
                 });
+                scored = true;
               }
             } catch (error) {
               if (this.semanticScorer && isSemanticProviderFailure(error)) {
@@ -426,7 +428,9 @@ export class NativeLiveMacDaemonLoop {
                 };
               }
             }
-            await this.bestEffortIdleOpportunity();
+            if (scored) {
+              await this.bestEffortIdleOpportunity();
+            }
             return {
               outcome: "mind_semantic_grouping_completed",
               reservationId: grouping.reservationId,
