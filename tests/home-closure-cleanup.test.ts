@@ -34,3 +34,11 @@ test("TodoPaperDialog has no entries or storage compatibility props", () => {
   assert.doesNotMatch(todoDialogSource, /paper\?\.entries\s*\?\?\s*entries/);
   assert.match(todoDialogSource, /paper\?\.entries\s*\?\?\s*\[\]/);
 });
+
+
+test("Home no longer references the retired Todo localStorage migration", () => {
+  assert.doesNotMatch(
+    dashboardSource,
+    /todo-legacy-migration|migrateLegacyTodoPapers|migrationNotice|localStorage/,
+  );
+});
