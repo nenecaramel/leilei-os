@@ -61,12 +61,22 @@ class FakeRepository implements NativeLiveConversationRepository {
     };
   }
 
+  async archiveConversation() {
+    this.events.push("archive");
+    return {
+      outcome: "archived" as const,
+      archivedAt: "2026-09-21T00:00:00.000Z",
+    };
+  }
+
+  async restoreConversation() {
+    this.events.push("restore");
+    return { outcome: "restored" as const };
+  }
+
   async deleteConversation() {
     this.events.push("delete");
-    return {
-      outcome: "deleted" as const,
-      deletedAt: "2026-09-21T00:00:00.000Z",
-    };
+    return { outcome: "deleted" as const };
   }
 
   async appendUserMessage(): Promise<NativeLiveMessage> {
@@ -192,6 +202,24 @@ test("completeAssistantTurn never advances head after checkpoint failure", async
   ]);
 });
 
+
+test("archive and restore delegate to the repository lifecycle boundary", async () => {
+  const repository = new FakeRepository();
+  const service = new NativeLiveConversationService(repository);
+
+  const archived = await service.archiveConversation({
+    userId: "user-1",
+    conversationId: "c1",
+  });
+  assert.equal(archived.outcome, "archived");
+
+  const restored = await service.restoreConversation({
+    userId: "user-1",
+    conversationId: "c1",
+  });
+  assert.equal(restored.outcome, "restored");
+  assert.deepEqual(repository.events, ["archive", "restore"]);
+});
 
 test("deleteConversation delegates to the repository lifecycle boundary", async () => {
   const repository = new FakeRepository();
