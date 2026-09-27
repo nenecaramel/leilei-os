@@ -242,7 +242,13 @@ export function hasMindRetirementThreadState(
   }
 }
 
-type RetirementThreadState = {
+export function inspectMindRetirementCandidate(
+  candidate: MindRetirementCandidate,
+): MindRetirementCandidateInspection | null {
+  return readThreadState(candidate);
+}
+
+export type MindRetirementCandidateInspection = {
   role: "anchor" | "reinforcement";
   threadKey: string;
   anchorStateId: string;
