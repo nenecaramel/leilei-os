@@ -75,6 +75,76 @@ export type ExportProjectsBundle = {
   conversations: ExportProjectConversationRecord[];
 };
 
+export type ExportConversationRecord = {
+  id: string;
+  title: string | null;
+  lifecycle_status: "active" | "archived";
+  current_head_message_id: string | null;
+  default_model: string | null;
+  provider_metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+export type ExportConversationMessageRecord = {
+  id: string;
+  conversation_id: string;
+  parent_message_id: string | null;
+  role: "user" | "assistant" | "system" | "tool" | "reasoning" | "unknown";
+  status: "pending" | "streaming" | "completed" | "error";
+  raw_role: string | null;
+  model: string | null;
+  is_current_path: boolean;
+  current_path_index: number | null;
+  turn_index: number | null;
+  is_primary: boolean;
+  display_text: string;
+  created_at: string;
+  completed_at: string | null;
+  updated_at: string;
+};
+
+export type ExportConversationContentBlockRecord = {
+  id: string;
+  message_id: string;
+  ordinal: number;
+  kind:
+    | "text"
+    | "thinking"
+    | "reasoning_recap"
+    | "tool_use"
+    | "tool_result"
+    | "image"
+    | "audio"
+    | "video"
+    | "file"
+    | "attachment"
+    | "unknown";
+  raw_type: string;
+  text: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ExportConversationAttachmentRecord = {
+  id: string;
+  message_id: string;
+  ordinal: number;
+  source_attachment_id: string | null;
+  name: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  payload: Record<string, unknown>;
+};
+
+export type ExportConversationsBundle = {
+  conversations: ExportConversationRecord[];
+  messages: ExportConversationMessageRecord[];
+  content_blocks: ExportConversationContentBlockRecord[];
+  attachments: ExportConversationAttachmentRecord[];
+};
+
 export type ExportMindStateRecord = {
   id: string;
   subject_id: string;
@@ -121,6 +191,7 @@ export type ExportDataV2 = {
 export type ExportDataV3 = ExportDataV2 & {
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
+  conversations?: ExportConversationsBundle;
 };
 
 export type ExportAudit = {
