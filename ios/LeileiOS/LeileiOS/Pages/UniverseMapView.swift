@@ -212,7 +212,7 @@ struct UniverseMapView: View {
                 dragOrigin = viewport
             }
 
-            guard distance > 6,
+            guard distance > 8,
                   let origin = dragOrigin
             else {
                 return
@@ -238,7 +238,7 @@ struct UniverseMapView: View {
                 value.translation.height
             )
 
-            if distance <= 6 {
+            if distance <= 8 {
                 if case .placingNode = mode {
                     let canonical = canonicalPosition(
                         fromScreen: value.location,
@@ -289,7 +289,10 @@ struct UniverseMapView: View {
         for node: UniverseNode,
         size: CGSize
     ) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.45)
+        LongPressGesture(
+            minimumDuration: 0.45,
+            maximumDistance: 8
+        )
             .sequenced(
                 before: DragGesture(
                     minimumDistance: 0,
@@ -321,10 +324,21 @@ struct UniverseMapView: View {
             }
             .onEnded { value in
                 guard case .second(true, let drag?) = value else {
+                    draftPositions.removeValue(forKey: node.id)
                     if case .movingNode(let nodeID) = mode,
                        nodeID == node.id {
                         onModeChange(.browse)
                     }
+                    return
+                }
+
+                let distance = hypot(
+                    drag.translation.width,
+                    drag.translation.height
+                )
+                guard distance > 8 else {
+                    draftPositions.removeValue(forKey: node.id)
+                    onModeChange(.browse)
                     return
                 }
 
