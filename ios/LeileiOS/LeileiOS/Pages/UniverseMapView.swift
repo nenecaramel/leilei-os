@@ -271,10 +271,7 @@ struct UniverseMapView: View {
 
                 viewport = zoomed(
                     origin,
-                    around: CGPoint(
-                        x: size.width / 2,
-                        y: size.height / 2
-                    ),
+                    around: value.startLocation,
                     requestedScale:
                         origin.scale
                         * Double(value.magnification)
