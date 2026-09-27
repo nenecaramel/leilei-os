@@ -5,17 +5,7 @@ export type CurrentMindWriteIntentKind =
   | "thought"
   | "curiosity";
 
-export type LegacyMindWriteIntentKind = "dream" | "topic";
-
-/**
- * Dream and authored Topic remain in this union only so durable legacy
- * follow-up replay can read previously queued intents. Live parsing emits
- * neither retired write surface. Topic itself remains a current derived
- * Subject State kind.
- */
-export type MindWriteIntentKind =
-  | CurrentMindWriteIntentKind
-  | LegacyMindWriteIntentKind;
+export type MindWriteIntentKind = CurrentMindWriteIntentKind;
 
 export type MindWriteIntentShape<
   K extends MindWriteIntentKind = MindWriteIntentKind,
@@ -37,7 +27,7 @@ export type ParsedMindIntents = {
 };
 
 const TAG_PATTERN = /<(feel|memory|drive|thought|curiosity)>([\s\S]*?)<\/\1>/gi;
-const NESTED_TAG_PATTERN = /<\/?(feel|memory|drive|thought|curiosity|topic)>/i;
+const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|drive|thought|curiosity|topic)>/i;
 
 /**
  * Parses only explicit subject-authored write intents.
