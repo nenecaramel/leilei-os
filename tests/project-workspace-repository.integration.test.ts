@@ -113,6 +113,28 @@ test(
     assert.equal(file.version, 1);
     assert.equal(instructions.kind, "instructions");
 
+    const listedFiles = await service.listResources({
+      userId,
+      projectId: project.id,
+      kind: "file",
+    });
+    assert.equal(listedFiles.length, 1);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(listedFiles[0]!, "content"),
+      false,
+      "resource collection reads must not return file bodies",
+    );
+    assert.equal(
+      (
+        await service.getResource({
+          userId,
+          projectId: project.id,
+          resourceId: file.id,
+        })
+      ).content,
+      "# Project",
+    );
+
     const updatedFile = await service.updateResource({
       userId,
       projectId: project.id,
