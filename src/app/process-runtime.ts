@@ -857,13 +857,13 @@ export function createProcessRuntime(
     },
     startBackgroundWork: () => {
       logger.info("cloud_background_mode", {
-        state: "startup_recovery_only",
+        state: "startup_recovery_plus_periodic_retention",
       });
 
-      // Cloud runtime does not own periodic background cadence. Recover
-      // durable work once at process start; Mac Companion/event-driven paths
-      // own subsequent opportunities.
-      void retentionCoordinator.runNow().catch(() => undefined);
+      // Semantic/background opportunity cadence stays with Mac Companion and
+      // event-driven paths. Cloud owns periodic data-hygiene retention so
+      // bounded operational records do not depend on process restarts.
+      retentionCoordinator.start();
       const mindFollowUpStartupRecovery =
         nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
       void mindFollowUpStartupRecovery;
