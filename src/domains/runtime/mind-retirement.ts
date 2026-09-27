@@ -138,8 +138,12 @@ export function planMindRetirement(
   const rule = validated[candidate.kind];
   if (!rule) return null;
 
-  const terminal = readTerminalThreadState(candidate);
-  if (!terminal || terminal.role !== "anchor") return null;
+  const terminal = readThreadState(candidate);
+  if (
+    !terminal
+    || terminal.role !== "anchor"
+    || !terminal.terminalAt
+  ) return null;
   const now = normalizeIso(nowIso, "now");
   if (!retentionElapsed(terminal.terminalAt, now, rule.retentionHours)) {
     return null;
@@ -165,7 +169,7 @@ export function selectRetirableThreadMembers(
     if (candidate.kind !== plan.kind) return [];
     let terminal: TerminalThreadState | null;
     try {
-      terminal = readTerminalThreadState(candidate);
+      terminal = readThreadState(candidate);
     } catch {
       return [];
     }
@@ -190,7 +194,8 @@ export function selectRetirableThreadMembers(
 
   for (const { terminal } of members) {
     if (
-      !retentionElapsed(
+      !terminal.terminalAt
+      || !retentionElapsed(
         terminal.terminalAt,
         now,
         plan.retentionHours,
@@ -205,47 +210,41 @@ export function selectRetirableThreadMembers(
     .sort((left, right) => left.localeCompare(right));
 }
 
-type TerminalThreadState = {
+type RetirementThreadState = {
   role: "anchor" | "reinforcement";
   threadKey: string;
   anchorStateId: string;
-  terminalAt: string;
+  terminalAt: string | null;
 };
 
-function readTerminalThreadState(
+function readThreadState(
   candidate: MindRetirementCandidate,
-): TerminalThreadState | null {
+): RetirementThreadState | null {
   switch (candidate.kind) {
     case "drive": {
       const evolution = readDriveEvolution(candidate.payload);
-      if (
-        !evolution
-        || evolution.phase !== "dormant"
-        || !evolution.dormantAt
-      ) {
-        return null;
-      }
+      if (!evolution) return null;
       return {
         role: evolution.role,
         threadKey: evolution.threadKey,
         anchorStateId: evolution.anchorStateId,
-        terminalAt: evolution.dormantAt,
+        terminalAt:
+          evolution.phase === "dormant"
+            ? evolution.dormantAt
+            : null,
       };
     }
     case "thought": {
       const evolution = readThoughtEvolution(candidate.payload);
-      if (
-        !evolution
-        || evolution.phase !== "dormant"
-        || !evolution.dormantAt
-      ) {
-        return null;
-      }
+      if (!evolution) return null;
       return {
         role: evolution.role,
         threadKey: evolution.threadKey,
         anchorStateId: evolution.anchorStateId,
-        terminalAt: evolution.dormantAt,
+        terminalAt:
+          evolution.phase === "dormant"
+            ? evolution.dormantAt
+            : null,
       };
     }
     case "curiosity": {
@@ -257,7 +256,6 @@ function readTerminalThreadState(
           : evolution.phase === "resolved"
             ? evolution.resolvedAt
             : null;
-      if (!terminalAt) return null;
       return {
         role: evolution.role,
         threadKey: evolution.threadKey,
@@ -267,18 +265,15 @@ function readTerminalThreadState(
     }
     case "topic": {
       const evolution = readTopicEvolution(candidate.payload);
-      if (
-        !evolution
-        || evolution.phase !== "dormant"
-        || !evolution.dormantAt
-      ) {
-        return null;
-      }
+      if (!evolution) return null;
       return {
         role: evolution.role,
         threadKey: evolution.threadKey,
         anchorStateId: evolution.anchorStateId,
-        terminalAt: evolution.dormantAt,
+        terminalAt:
+          evolution.phase === "dormant"
+            ? evolution.dormantAt
+            : null,
       };
     }
   }
