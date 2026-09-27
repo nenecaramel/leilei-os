@@ -332,14 +332,19 @@ function hasDatabaseErrorCode(error: unknown, code: string): boolean {
   return false;
 }
 
-function projectRecords(
+function projectRecords<
+  Entity extends ProjectRestoreRecord["entity"],
+>(
   creates: ImportPlanItem[],
-  entity: ProjectRestoreRecord["entity"],
-): ProjectRestoreRecord[] {
+  entity: Entity,
+): Array<Extract<ProjectRestoreRecord, { entity: Entity }>> {
   return creates.flatMap((item) => {
     if (item.module !== "projects") return [];
     const record = item.record as ProjectRestoreRecord;
-    return record.entity === entity ? [record] : [];
+    if (record.entity !== entity) return [];
+    return [
+      record as Extract<ProjectRestoreRecord, { entity: Entity }>,
+    ];
   });
 }
 
