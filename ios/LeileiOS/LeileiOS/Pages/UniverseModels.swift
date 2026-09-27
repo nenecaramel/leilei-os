@@ -481,7 +481,7 @@ enum UniverseNodeOptions {
         case "question":
             return "问题"
         case "claim":
-            return "主张"
+            return "观点"
         case "experience":
             return "经历"
         case "project":
