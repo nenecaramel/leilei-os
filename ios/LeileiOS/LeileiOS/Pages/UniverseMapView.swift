@@ -476,7 +476,7 @@ struct UniverseMapView: View {
             return viewport
         }
 
-        let padding = 36.0
+        let padding = 24.0
         let availableWidth = max(
             1,
             Double(size.width) - padding * 2
@@ -739,10 +739,18 @@ private struct UniverseMapCanvas: View {
                     y: end.y
                 )
             )
+            let relationColor =
+                UniversePalette.color(
+                    hex:
+                        emphasized
+                            ? "#676974"
+                            : "#343640"
+                )
+
             context.stroke(
                 path,
                 with: .color(
-                    Color.white.opacity(opacity)
+                    relationColor.opacity(opacity)
                 ),
                 lineWidth: width
             )
@@ -756,9 +764,13 @@ private struct UniverseMapCanvas: View {
                 Text(relation.relationType.label)
                     .font(.caption2)
                     .foregroundStyle(
-                        Color.white.opacity(
-                            emphasized ? 0.62 : 0.34
+                        UniversePalette.color(
+                            hex:
+                                emphasized
+                                    ? "#aaaab3"
+                                    : "#70727d"
                         )
+                        .opacity(opacity)
                     ),
                 at: midpoint,
                 anchor: .center
@@ -800,7 +812,7 @@ private struct UniverseMapCanvas: View {
             context.stroke(
                 arrow,
                 with: .color(
-                    Color.white.opacity(opacity)
+                    relationColor.opacity(opacity)
                 ),
                 lineWidth: width
             )
