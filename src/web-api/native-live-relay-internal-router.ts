@@ -54,8 +54,8 @@ import {
   type NativeLiveProviderSessionCleanupService,
 } from "../domains/bridge/native-live-provider-session-cleanup.js";
 import {
-  DrizzleMindSemanticGroupingRepository,
   MindSemanticGroupingRepositoryError,
+  type DrizzleMindSemanticGroupingRepository,
 } from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
 
 export type NativeLiveRelayInternalDependencies = {
