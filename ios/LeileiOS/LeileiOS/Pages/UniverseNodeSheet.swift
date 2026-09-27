@@ -1712,6 +1712,7 @@ private struct UniverseDiarySourcePicker: View {
         ) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
 
     @State private var query = ""
     @State private var selected:
@@ -1720,6 +1721,10 @@ private struct UniverseDiarySourcePicker: View {
         [String: UniverseDiarySourceOption]
     @State private var results:
         [UniverseDiarySourceOption] = []
+    @State private var completeResults:
+        [UniverseDiarySourceOption]?
+    @State private var hasMore = false
+    @State private var isLoadingMore = false
     @State private var state:
         PickerState = .loading
 
@@ -1760,63 +1765,88 @@ private struct UniverseDiarySourcePicker: View {
                         )
 
                 case .ready:
-                    List(results) { option in
-                        Button {
-                            if selected.contains(
-                                option.id
-                            ) {
-                                selected.remove(
-                                    option.id
-                                )
-                            } else {
-                                selected.insert(
-                                    option.id
-                                )
-                            }
-                            metadata[option.id] =
-                                option
-                        } label: {
-                            HStack(spacing: 10) {
-                                VStack(
-                                    alignment: .leading,
-                                    spacing: 2
-                                ) {
-                                    Text(option.title)
-                                        .foregroundStyle(
-                                            .primary
-                                        )
-                                    Text(
-                                        option.date
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(
-                                        .secondary
-                                    )
-                                }
-
-                                Spacer()
-
-                                if option.status
-                                    == "archived" {
-                                    Text("Archived")
-                                        .font(.caption2)
-                                        .foregroundStyle(
-                                            .secondary
-                                        )
-                                }
-
+                    List {
+                        ForEach(results) { option in
+                            Button {
                                 if selected.contains(
                                     option.id
                                 ) {
-                                    Image(
-                                        systemName:
-                                            "checkmark"
+                                    selected.remove(
+                                        option.id
                                     )
-                                    .font(.caption.weight(.semibold))
+                                } else {
+                                    selected.insert(
+                                        option.id
+                                    )
+                                }
+                                metadata[option.id] =
+                                    option
+                            } label: {
+                                HStack(spacing: 10) {
+                                    VStack(
+                                        alignment: .leading,
+                                        spacing: 2
+                                    ) {
+                                        Text(option.title)
+                                            .foregroundStyle(
+                                                .primary
+                                            )
+                                        Text(
+                                            option.date
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+                                    }
+
+                                    Spacer()
+
+                                    if option.status
+                                        == "archived" {
+                                        Text("Archived")
+                                            .font(.caption2)
+                                            .foregroundStyle(
+                                                .secondary
+                                            )
+                                    }
+
+                                    if selected.contains(
+                                        option.id
+                                    ) {
+                                        Image(
+                                            systemName:
+                                                "checkmark"
+                                        )
+                                        .font(.caption.weight(.semibold))
+                                    }
                                 }
                             }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+
+                        if hasMore {
+                            Button {
+                                Task {
+                                    await loadMore()
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if isLoadingMore {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    }
+
+                                    Text("More")
+                                }
+                                .frame(
+                                    maxWidth: .infinity,
+                                    alignment: .center
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isLoadingMore)
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(
@@ -1903,6 +1933,9 @@ private struct UniverseDiarySourcePicker: View {
 
     private func load() async {
         state = .loading
+        completeResults = nil
+        hasMore = false
+        isLoadingMore = false
 
         do {
             let response =
@@ -1912,6 +1945,7 @@ private struct UniverseDiarySourcePicker: View {
             }
 
             results = response
+            hasMore = response.count == 100
             for option in response {
                 metadata[option.id] = option
             }
@@ -1923,6 +1957,95 @@ private struct UniverseDiarySourcePicker: View {
                 return
             }
             state = .unavailable
+        }
+    }
+
+    @MainActor
+    private func loadMore() async {
+        guard hasMore,
+              !isLoadingMore else {
+            return
+        }
+
+        let currentQuery = query
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        do {
+            let all: [UniverseDiarySourceOption]
+            if let completeResults {
+                all = completeResults
+            } else {
+                let data = try await appModel.api.exportData(
+                    scope: "diary",
+                    includeAudit: false
+                )
+                let snapshot = try JSONDecoder().decode(
+                    LeileiExportSnapshot.self,
+                    from: data
+                )
+
+                let normalized = currentQuery
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    .lowercased()
+
+                all = (snapshot.data.diary ?? [])
+                    .filter { diary in
+                        guard !normalized.isEmpty else {
+                            return true
+                        }
+
+                        return diary.title
+                            .lowercased()
+                            .contains(normalized)
+                            || diary.date
+                                .contains(normalized)
+                            || diary.tags.contains {
+                                $0.lowercased()
+                                    .contains(normalized)
+                            }
+                    }
+                    .sorted {
+                        if $0.date != $1.date {
+                            return $0.date > $1.date
+                        }
+                        if $0.createdAt != $1.createdAt {
+                            return $0.createdAt > $1.createdAt
+                        }
+                        return $0.id > $1.id
+                    }
+                    .map {
+                        UniverseDiarySourceOption(
+                            id: $0.id,
+                            title: $0.title,
+                            date: $0.date,
+                            status: $0.status
+                        )
+                    }
+
+                completeResults = all
+            }
+
+            guard currentQuery == query else {
+                return
+            }
+
+            let nextCount = min(
+                results.count + 100,
+                all.count
+            )
+            results = Array(
+                all.prefix(nextCount)
+            )
+            hasMore = nextCount < all.count
+
+            for option in results {
+                metadata[option.id] = option
+            }
+        } catch {
+            // Keep the already loaded source options visible.
         }
     }
 
