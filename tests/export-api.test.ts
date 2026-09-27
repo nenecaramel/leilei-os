@@ -3,6 +3,7 @@ import express from "express";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import { createWebApiRouter } from "../src/web-api/router.js";
+import { ExportServiceError } from "../src/domains/export/export-service.js";
 import type {
   ExportDocument,
   ExportScope,
@@ -301,4 +302,47 @@ test("export maps service failures without attachment headers", async () => {
       });
     },
   );
+});
+
+
+test("export maps incomplete processing and oversized backups without attachment headers", async () => {
+  for (const [error, status, code] of [
+    [
+      new ExportServiceError("EXPORT_IN_PROGRESS"),
+      409,
+      "EXPORT_IN_PROGRESS",
+    ],
+    [
+      new ExportServiceError("EXPORT_TOO_LARGE"),
+      413,
+      "EXPORT_TOO_LARGE",
+    ],
+  ] as const) {
+    await withServer(
+      {
+        async createExport() {
+          throw error;
+        },
+      },
+      async (baseUrl) => {
+        const response = await fetch(
+          `${baseUrl}/api/v1/system/export?scope=all`,
+          {
+            headers: {
+              "x-test-user": "authenticated",
+            },
+          },
+        );
+        assert.equal(response.status, status);
+        assert.equal(
+          response.headers.get("content-disposition"),
+          null,
+        );
+        const body = await response.json() as {
+          error?: { code?: string };
+        };
+        assert.equal(body.error?.code, code);
+      },
+    );
+  }
 });
