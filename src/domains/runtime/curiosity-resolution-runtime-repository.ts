@@ -67,6 +67,22 @@ implements CuriosityResolutionRuntimePort {
         };
       }
 
+      const activeConversation = await transaction.execute<{ id: string }>(sql`
+        SELECT id
+        FROM conversations
+        WHERE id = ${input.conversationId}::uuid
+          AND user_id = ${input.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR SHARE
+      `);
+      if (activeConversation.length !== 1) {
+        return {
+          outcome: "rejected" as const,
+          code: "CURIOSITY_NOT_ELIGIBLE" as const,
+        };
+      }
+
       const [requested] = await transaction
         .select({
           id: runtimeSubjectStates.id,
