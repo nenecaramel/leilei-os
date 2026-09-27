@@ -36,7 +36,6 @@ struct UniverseMapView: View {
                 Color.clear
                     .contentShape(Rectangle())
                     .gesture(mapDragGesture(size: size))
-                    .simultaneousGesture(magnificationGesture(size: size))
 
                 UniverseMapCanvas(
                     nodes: nodes,
@@ -74,6 +73,9 @@ struct UniverseMapView: View {
                 .padding(16)
             }
             .coordinateSpace(name: "UniverseNativeMap")
+            .simultaneousGesture(
+                magnificationGesture(size: size)
+            )
             .task(id: viewportInitializationKey(size: size)) {
                 initializeViewportIfNeeded(size: size)
 
