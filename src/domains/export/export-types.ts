@@ -212,10 +212,24 @@ export type ExportMindDistillationWatermarkRecord = {
   updated_at: string;
 };
 
+export type ExportMindSemanticGroupingResultRecord = {
+  id: string;
+  subject_id: string;
+  kind: "drive" | "thought" | "curiosity" | "topic";
+  query_state_id: string;
+  query: string;
+  candidates: Record<string, unknown>[];
+  scores: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string;
+};
+
 export type ExportMindContinuityBundle = {
   drive_satisfaction_events: ExportMindDriveSatisfactionEventRecord[];
   curiosity_resolution_events: ExportMindCuriosityResolutionEventRecord[];
   distillation_watermarks: ExportMindDistillationWatermarkRecord[];
+  semantic_grouping_results: ExportMindSemanticGroupingResultRecord[];
 };
 
 export type ExportMindStateRecord = {
