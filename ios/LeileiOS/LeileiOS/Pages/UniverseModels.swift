@@ -238,6 +238,15 @@ enum UniverseImportParser {
         let export: StandaloneUniverseExport
 
         do {
+            let raw = try JSONSerialization.jsonObject(
+                with: data
+            )
+            guard let root = raw as? [String: Any],
+                  !root.keys.contains("backups")
+            else {
+                throw UniverseImportValidationError.invalid
+            }
+
             export = try decoder.decode(
                 StandaloneUniverseExport.self,
                 from: data
@@ -246,9 +255,7 @@ enum UniverseImportParser {
             throw UniverseImportValidationError.invalid
         }
 
-        guard export.schemaVersion == 2,
-              export.backups == nil
-        else {
+        guard export.schemaVersion == 2 else {
             throw UniverseImportValidationError.invalid
         }
 
@@ -296,6 +303,11 @@ enum UniverseImportParser {
 
     private static func validate(_ snapshot: UniverseSnapshot) throws {
         guard snapshot.schemaVersion == 2,
+              snapshot.galaxies.count <= 10_000,
+              snapshot.nodes.count <= 10_000,
+              snapshot.relations.count <= 10_000,
+              snapshot.revisions.count <= 10_000,
+              validText(snapshot.meta.name),
               validTimestamp(snapshot.meta.createdAt),
               validTimestamp(snapshot.meta.updatedAt)
         else {
@@ -311,7 +323,10 @@ enum UniverseImportParser {
         let nodeIDs = Set(snapshot.nodes.map(\.id))
 
         for galaxy in snapshot.galaxies {
-            guard !galaxy.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            guard validNonBlank(galaxy.id, max: 256),
+                  validText(galaxy.title),
+                  validText(galaxy.description),
+                  validText(galaxy.color, max: 128),
                   galaxy.order.isFinite
             else {
                 throw UniverseImportValidationError.invalid
@@ -319,36 +334,35 @@ enum UniverseImportParser {
         }
 
         for node in snapshot.nodes {
-            guard !node.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  !node.type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            guard validNonBlank(node.id, max: 256),
+                  validText(node.title),
+                  validText(node.summary),
+                  validText(node.content),
+                  validNonBlank(node.type, max: 128),
+                  validTags(node.tags),
+                  validMemberships(
+                    node.galaxies,
+                    galaxyIDs: galaxyIDs
+                  ),
                   node.position.x.isFinite,
                   node.position.y.isFinite,
                   validTimestamp(node.createdAt),
-                  validTimestamp(node.updatedAt)
+                  validTimestamp(node.updatedAt),
+                  node.importance.map {
+                      validText($0, max: 128)
+                  } ?? true,
+                  validMigration(node.migration)
             else {
                 throw UniverseImportValidationError.invalid
-            }
-
-            try requireUnique(node.galaxies.map(\.id))
-            guard node.galaxies.allSatisfy({
-                galaxyIDs.contains($0.id) && $0.weight.isFinite
-            }) else {
-                throw UniverseImportValidationError.invalid
-            }
-
-            if let migration = node.migration {
-                guard migration.source == "mind-universe-static"
-                    || migration.source == "mind-universe",
-                      validTimestamp(migration.migratedAt)
-                else {
-                    throw UniverseImportValidationError.invalid
-                }
             }
         }
 
         var relationKeys = Set<String>()
         for relation in snapshot.relations {
-            guard nodeIDs.contains(relation.source),
+            guard validNonBlank(relation.id, max: 256),
+                  validNonBlank(relation.source, max: 256),
+                  validNonBlank(relation.target, max: 256),
+                  nodeIDs.contains(relation.source),
                   nodeIDs.contains(relation.target),
                   relation.strength.isFinite,
                   validTimestamp(relation.createdAt)
@@ -368,19 +382,98 @@ enum UniverseImportParser {
         }
 
         for revision in snapshot.revisions {
-            guard nodeIDs.contains(revision.nodeId),
-                  validTimestamp(revision.createdAt)
+            guard validNonBlank(revision.id, max: 256),
+                  validNonBlank(revision.nodeId, max: 256),
+                  nodeIDs.contains(revision.nodeId),
+                  validTimestamp(revision.createdAt),
+                  validText(revision.reason, max: 1_000),
+                  validRevisionSnapshot(
+                      revision.snapshot,
+                      galaxyIDs: galaxyIDs
+                  )
             else {
                 throw UniverseImportValidationError.invalid
             }
-
-            try requireUnique(revision.snapshot.galaxies.map(\.id))
-            guard revision.snapshot.galaxies.allSatisfy({
-                galaxyIDs.contains($0.id) && $0.weight.isFinite
-            }) else {
-                throw UniverseImportValidationError.invalid
-            }
         }
+    }
+
+    private static func validRevisionSnapshot(
+        _ snapshot: UniverseRevisionSnapshot,
+        galaxyIDs: Set<String>
+    ) -> Bool {
+        validText(snapshot.title)
+            && validText(snapshot.summary)
+            && validText(snapshot.content)
+            && validNonBlank(snapshot.type, max: 128)
+            && validTags(snapshot.tags)
+            && validMemberships(
+                snapshot.galaxies,
+                galaxyIDs: galaxyIDs
+            )
+            && (
+                snapshot.importance.map {
+                    validText($0, max: 128)
+                } ?? true
+            )
+            && validMigration(snapshot.migration)
+    }
+
+    private static func validTags(
+        _ tags: [String]
+    ) -> Bool {
+        tags.count <= 500
+            && tags.allSatisfy {
+                validNonBlank($0, max: 512)
+            }
+    }
+
+    private static func validMemberships(
+        _ memberships: [UniverseGalaxyMembership],
+        galaxyIDs: Set<String>
+    ) -> Bool {
+        guard memberships.count <= 500,
+              Set(memberships.map(\.id)).count
+                == memberships.count
+        else {
+            return false
+        }
+
+        return memberships.allSatisfy {
+            validNonBlank($0.id, max: 256)
+                && $0.weight.isFinite
+                && galaxyIDs.contains($0.id)
+        }
+    }
+
+    private static func validMigration(
+        _ migration: UniverseNodeMigration?
+    ) -> Bool {
+        guard let migration else {
+            return true
+        }
+
+        return (
+            migration.source == "mind-universe-static"
+                || migration.source == "mind-universe"
+        )
+            && validTimestamp(migration.migratedAt)
+    }
+
+    private static func validText(
+        _ value: String,
+        max: Int = 100_000
+    ) -> Bool {
+        value.utf16.count <= max
+    }
+
+    private static func validNonBlank(
+        _ value: String,
+        max: Int
+    ) -> Bool {
+        validText(value, max: max)
+            && !value.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
     }
 
     private static func requireUnique(_ values: [String]) throws {
@@ -390,7 +483,11 @@ enum UniverseImportParser {
     }
 
     private static func validTimestamp(_ value: String) -> Bool {
-        guard value.contains("T") else { return false }
+        guard validText(value, max: 128),
+              value.contains("T")
+        else {
+            return false
+        }
 
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [
@@ -430,7 +527,6 @@ enum UniverseImportParser {
         let nodes: [UniverseNode]
         let edges: [UniverseRelation]
         let revisions: [UniverseRevision]
-        let backups: [UniverseBackup]?
     }
 }
 
