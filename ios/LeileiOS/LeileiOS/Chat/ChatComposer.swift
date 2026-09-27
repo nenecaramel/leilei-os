@@ -7,9 +7,14 @@ struct ChatComposer: View {
     @Binding var effort: NativeLiveEffortLevel
     var isFocused: FocusState<Bool>.Binding
     var isSending = false
+    var isRuntimeTurnActive = false
+    var isRuntimeControlInFlight = false
+    var interruptRequested = false
     var isEditing = false
     var onProjectFile: (() -> Void)? = nil
     var onCancelEdit: (() -> Void)? = nil
+    var onInterrupt: (() -> Void)? = nil
+    var onMidTurnInput: ((String) -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
     var body: some View {
@@ -144,10 +149,28 @@ struct ChatComposer: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    guard !text.trimmingCharacters(
+                    let normalized = text.trimmingCharacters(
                         in: .whitespacesAndNewlines
-                    ).isEmpty,
-                    !isSending else {
+                    )
+
+                    if isRuntimeTurnActive {
+                        guard !isRuntimeControlInFlight else {
+                            return
+                        }
+
+                        if normalized.isEmpty {
+                            guard !interruptRequested else {
+                                return
+                            }
+                            onInterrupt?()
+                        } else {
+                            onMidTurnInput?(normalized)
+                        }
+                        return
+                    }
+
+                    guard !normalized.isEmpty,
+                          !isSending else {
                         return
                     }
                     onSend?()
@@ -157,28 +180,36 @@ struct ChatComposer: View {
                             .fill(.black)
                             .frame(width: 36, height: 36)
 
-                        Image(
-                            systemName:
-                                text.trimmingCharacters(
-                                    in: .whitespacesAndNewlines
-                                ).isEmpty
-                                ? "waveform"
-                                : "arrow.up"
-                        )
-                        .font(.system(
-                            size: 15,
-                            weight:
-                                text.trimmingCharacters(
-                                    in: .whitespacesAndNewlines
-                                ).isEmpty
-                                ? .semibold
-                                : .regular
-                        ))
-                        .foregroundStyle(.white)
+                        if isRuntimeTurnActive,
+                           interruptRequested,
+                           text.trimmingCharacters(
+                               in: .whitespacesAndNewlines
+                           ).isEmpty {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                        } else {
+                            Image(
+                                systemName:
+                                    composerActionSymbol
+                            )
+                            .font(.system(
+                                size: 15,
+                                weight:
+                                    composerActionWeight
+                            ))
+                            .foregroundStyle(.white)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(isSending)
+                .disabled(
+                    isRuntimeControlInFlight
+                        || (
+                            isSending
+                            && !isRuntimeTurnActive
+                        )
+                )
             }
         }
         .padding(.horizontal, 16)
@@ -198,6 +229,37 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
+    }
+
+    private var composerActionSymbol: String {
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        if isRuntimeTurnActive {
+            return normalized.isEmpty
+                ? "square.fill"
+                : "arrow.up"
+        }
+
+        return normalized.isEmpty
+            ? "waveform"
+            : "arrow.up"
+    }
+
+    private var composerActionWeight: Font.Weight {
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        if isRuntimeTurnActive,
+           normalized.isEmpty {
+            return .regular
+        }
+
+        return normalized.isEmpty
+            ? .semibold
+            : .regular
     }
 
     private func selectModel(
