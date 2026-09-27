@@ -208,7 +208,7 @@ test("import execute requires the preview fingerprint", async () => {
           body,
         },
       );
-      assert.equal(response.status, 409);
+      assert.equal(response.status, 400);
       assert.deepEqual(await response.json(), {
         success: false,
         error: {
