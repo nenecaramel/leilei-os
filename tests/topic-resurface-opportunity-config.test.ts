@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   getBreathRankingConfig,
   getMemoryDecayConfig,
+  getMindLifecycleTuningConfig,
   getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
@@ -182,5 +183,87 @@ test("Mind semantic grouping is fail-closed until an explicit merge threshold is
       NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD: 0,
     }),
     /greater than 0 and at most 1/,
+  );
+});
+
+
+test("Mind lifecycle tuning defaults preserve current production semantics and allow validated overrides", () => {
+  const defaults = getMindLifecycleTuningConfig({
+    NATIVE_LIVE_DRIVE_BASE_PRESSURE: undefined,
+    NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST: undefined,
+    NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD: undefined,
+    NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS: undefined,
+    NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS: undefined,
+    NATIVE_LIVE_THOUGHT_BASE_STRENGTH: undefined,
+    NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST: undefined,
+    NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH: undefined,
+    NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS: undefined,
+    NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS: undefined,
+  });
+
+  assert.deepEqual(defaults, {
+    drive: {
+      basePressure: 0.4,
+      reinforcementBoost: 0.2,
+      activeThreshold: 0.1,
+      dormantAfterSatisfiedHours: 168,
+    },
+    thought: {
+      halfLifeHours: 168,
+      baseStrength: 0.35,
+      reinforcementBoost: 0.25,
+      dormantBelowStrength: 0.1,
+    },
+    curiosity: { dormantAfterHours: 168 },
+    topic: { dormantAfterHours: 168 },
+  });
+
+  const tuned = getMindLifecycleTuningConfig({
+    NATIVE_LIVE_DRIVE_BASE_PRESSURE: 0.45,
+    NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST: 0.15,
+    NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD: 0.12,
+    NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS: 120,
+    NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS: 144,
+    NATIVE_LIVE_THOUGHT_BASE_STRENGTH: 0.4,
+    NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST: 0.2,
+    NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH: 0.08,
+    NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS: 120,
+    NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS: 120,
+  });
+  assert.equal(tuned.drive.basePressure, 0.45);
+  assert.equal(tuned.thought.halfLifeHours, 144);
+  assert.equal(tuned.curiosity.dormantAfterHours, 120);
+  assert.equal(tuned.topic.dormantAfterHours, 120);
+
+  assert.throws(
+    () => getMindLifecycleTuningConfig({
+      NATIVE_LIVE_DRIVE_BASE_PRESSURE: 0.05,
+      NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST: undefined,
+      NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD: 0.1,
+      NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS: undefined,
+      NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS: undefined,
+      NATIVE_LIVE_THOUGHT_BASE_STRENGTH: undefined,
+      NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST: undefined,
+      NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH: undefined,
+      NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS: undefined,
+      NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS: undefined,
+    }),
+    /Drive base pressure must exceed active threshold/,
+  );
+
+  assert.throws(
+    () => getMindLifecycleTuningConfig({
+      NATIVE_LIVE_DRIVE_BASE_PRESSURE: undefined,
+      NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST: undefined,
+      NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD: undefined,
+      NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS: undefined,
+      NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS: undefined,
+      NATIVE_LIVE_THOUGHT_BASE_STRENGTH: 0.05,
+      NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST: undefined,
+      NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH: 0.1,
+      NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS: undefined,
+      NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS: undefined,
+    }),
+    /Thought base strength must be at least dormant threshold/,
   );
 });

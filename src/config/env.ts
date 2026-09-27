@@ -81,6 +81,26 @@ const baseEnvSchema = z.object({
     z.coerce.number().min(0).max(1).optional(),
   NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD:
     z.coerce.number().positive().max(1).optional(),
+  NATIVE_LIVE_DRIVE_BASE_PRESSURE:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_THOUGHT_BASE_STRENGTH:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH:
+    z.coerce.number().min(0).max(1).optional(),
+  NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS:
+    z.coerce.number().positive().optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
@@ -279,6 +299,27 @@ export type MindSemanticGroupingConfig = {
   candidateLimit: number;
 };
 
+export type MindLifecycleTuningConfig = {
+  drive: {
+    basePressure: number;
+    reinforcementBoost: number;
+    activeThreshold: number;
+    dormantAfterSatisfiedHours: number;
+  };
+  thought: {
+    halfLifeHours: number;
+    baseStrength: number;
+    reinforcementBoost: number;
+    dormantBelowStrength: number;
+  };
+  curiosity: {
+    dormantAfterHours: number;
+  };
+  topic: {
+    dormantAfterHours: number;
+  };
+};
+
 export type MemoryDecayConfig = {
   halfLifeHours: {
     memory: number;
@@ -311,6 +352,64 @@ export function getBreathRankingConfig(
     );
   }
   return { salienceWeight };
+}
+
+export function getMindLifecycleTuningConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_DRIVE_BASE_PRESSURE"
+    | "NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST"
+    | "NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD"
+    | "NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS"
+    | "NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS"
+    | "NATIVE_LIVE_THOUGHT_BASE_STRENGTH"
+    | "NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST"
+    | "NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH"
+    | "NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS"
+    | "NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS"
+  >,
+): MindLifecycleTuningConfig {
+  const drive = {
+    basePressure: environment.NATIVE_LIVE_DRIVE_BASE_PRESSURE ?? 0.4,
+    reinforcementBoost:
+      environment.NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST ?? 0.2,
+    activeThreshold:
+      environment.NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD ?? 0.1,
+    dormantAfterSatisfiedHours:
+      environment.NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS ?? 168,
+  };
+  const thought = {
+    halfLifeHours:
+      environment.NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS ?? 168,
+    baseStrength:
+      environment.NATIVE_LIVE_THOUGHT_BASE_STRENGTH ?? 0.35,
+    reinforcementBoost:
+      environment.NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST ?? 0.25,
+    dormantBelowStrength:
+      environment.NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH ?? 0.1,
+  };
+  if (drive.basePressure <= drive.activeThreshold) {
+    throw new Error(
+      "Drive base pressure must exceed active threshold.",
+    );
+  }
+  if (thought.baseStrength < thought.dormantBelowStrength) {
+    throw new Error(
+      "Thought base strength must be at least dormant threshold.",
+    );
+  }
+  return {
+    drive,
+    thought,
+    curiosity: {
+      dormantAfterHours:
+        environment.NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS ?? 168,
+    },
+    topic: {
+      dormantAfterHours:
+        environment.NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS ?? 168,
+    },
+  };
 }
 
 export function getMindSemanticGroupingConfig(

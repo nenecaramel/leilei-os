@@ -81,6 +81,48 @@ import {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export const DEFAULT_NATIVE_LIVE_SUBJECT_ID = "G";
+
+export type MindLifecycleTuning = {
+  drive: {
+    basePressure: number;
+    reinforcementBoost: number;
+    activeThreshold: number;
+    dormantAfterSatisfiedHours: number;
+  };
+  thought: {
+    halfLifeHours: number;
+    baseStrength: number;
+    reinforcementBoost: number;
+    dormantBelowStrength: number;
+  };
+  curiosity: {
+    dormantAfterHours: number;
+  };
+  topic: {
+    dormantAfterHours: number;
+  };
+};
+
+export const DEFAULT_MIND_LIFECYCLE_TUNING: MindLifecycleTuning = {
+  drive: {
+    basePressure: 0.4,
+    reinforcementBoost: 0.2,
+    activeThreshold: 0.1,
+    dormantAfterSatisfiedHours: 168,
+  },
+  thought: {
+    halfLifeHours: 168,
+    baseStrength: 0.35,
+    reinforcementBoost: 0.25,
+    dormantBelowStrength: 0.1,
+  },
+  curiosity: {
+    dormantAfterHours: 168,
+  },
+  topic: {
+    dormantAfterHours: 168,
+  },
+};
 export const DEFAULT_BREATH_RECALL_SALIENCE_BOOST = 0.08;
 export const DEFAULT_BREATH_SALIENCE_WEIGHT = 0.1;
 // Used by background Distillation only; foreground Claude prompt assembly no longer injects canonical Surface.
@@ -88,31 +130,25 @@ export const DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES = 8;
 export const DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE = "Asia/Shanghai";
 
 export const DEFAULT_DRIVE_EVOLUTION_POLICY: DriveEvolutionPolicy = {
-  basePressure: 0.4,
-  reinforcementBoost: 0.2,
-  activeThreshold: 0.1,
-  dormantAfterSatisfiedHours: 168,
+  ...DEFAULT_MIND_LIFECYCLE_TUNING.drive,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
 
 const DEFAULT_THOUGHT_EVOLUTION_POLICY = {
-  halfLifeHours: 168,
-  baseStrength: 0.35,
-  reinforcementBoost: 0.25,
-  dormantBelowStrength: 0.1,
+  ...DEFAULT_MIND_LIFECYCLE_TUNING.thought,
   minEvolutionIntervalHours: 6,
   maxReinforcementSources: 16,
 };
 
 export const DEFAULT_CURIOSITY_EVOLUTION_POLICY: CuriosityEvolutionPolicy = {
   maxReinforcementSources: 16,
-  dormantAfterHours: 168,
+  ...DEFAULT_MIND_LIFECYCLE_TUNING.curiosity,
 };
 
 const DEFAULT_TOPIC_EVOLUTION_POLICY = {
   maxReinforcementSources: 16,
-  dormantAfterHours: 168,
+  ...DEFAULT_MIND_LIFECYCLE_TUNING.topic,
 };
 
 export const DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG:
@@ -134,6 +170,38 @@ export const DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG:
     },
   };
 
+function drivePolicy(
+  tuning: MindLifecycleTuning,
+): DriveEvolutionPolicy {
+  return {
+    ...DEFAULT_DRIVE_EVOLUTION_POLICY,
+    ...tuning.drive,
+  };
+}
+
+function thoughtPolicy(tuning: MindLifecycleTuning) {
+  return {
+    ...DEFAULT_THOUGHT_EVOLUTION_POLICY,
+    ...tuning.thought,
+  };
+}
+
+function curiosityPolicy(
+  tuning: MindLifecycleTuning,
+): CuriosityEvolutionPolicy {
+  return {
+    ...DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+    ...tuning.curiosity,
+  };
+}
+
+function topicPolicy(tuning: MindLifecycleTuning) {
+  return {
+    ...DEFAULT_TOPIC_EVOLUTION_POLICY,
+    ...tuning.topic,
+  };
+}
+
 export function createDefaultBackendMindRuntime(
   db: Database,
   memoryLifecyclePolicy?: MemoryLifecyclePolicy,
@@ -142,6 +210,8 @@ export function createDefaultBackendMindRuntime(
   } = {
     salienceWeight: DEFAULT_BREATH_SALIENCE_WEIGHT,
   },
+  lifecycleTuning: MindLifecycleTuning =
+    DEFAULT_MIND_LIFECYCLE_TUNING,
 ): DefaultNativeLiveBackendMindRuntime {
   const conversations = new DrizzleNativeLiveConversationRepository(db);
   const subjectState = new DrizzleSubjectStateRuntimePort(db);
@@ -164,7 +234,7 @@ export function createDefaultBackendMindRuntime(
       breathSemanticCandidateMaxChars: 2_000,
       driveLimit: 3,
       thoughtLimit: 3,
-      thoughtMinStrength: 0.1,
+      thoughtMinStrength: lifecycleTuning.thought.dormantBelowStrength,
       curiosityLimit: 3,
       topicLimit: 3,
       maxContextItems: 16,
@@ -174,22 +244,22 @@ export function createDefaultBackendMindRuntime(
   );
   const driveEvolution = new DriveEvolutionService(
     new DrizzleDriveEvolutionRuntimePort(db),
-    DEFAULT_DRIVE_EVOLUTION_POLICY,
+    drivePolicy(lifecycleTuning),
   );
   const thoughtEvolution = new ThoughtEvolutionService(
     new DrizzleThoughtEvolutionRuntimePort(db),
-    DEFAULT_THOUGHT_EVOLUTION_POLICY,
+    thoughtPolicy(lifecycleTuning),
   );
   const curiosityEvolution = new CuriosityEvolutionService(
     new DrizzleCuriosityEvolutionRuntimePort(db),
-    DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+    curiosityPolicy(lifecycleTuning),
   );
   const curiosityTopicProjection = new CuriosityTopicProjectionService(
     new DrizzleCuriosityTopicProjectionRuntimePort(db),
   );
   const topicEvolution = new TopicEvolutionService(
     new DrizzleTopicEvolutionRuntimePort(db),
-    DEFAULT_TOPIC_EVOLUTION_POLICY,
+    topicPolicy(lifecycleTuning),
   );
   const mind = new DefaultNativeLiveMindRuntime(loop, {
     subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
@@ -217,6 +287,8 @@ export function createDefaultSubjectStateBackgroundMaintenance(
   decayPolicy?: MemoryLifecyclePolicy,
   semanticGrouping:
     Pick<MindSemanticGroupingService, "reconcile"> | null = null,
+  lifecycleTuning: MindLifecycleTuning =
+    DEFAULT_MIND_LIFECYCLE_TUNING,
 ): SubjectStateBackgroundMaintenance {
   return new SubjectStateBackgroundMaintenance(
     orchestrator,
@@ -232,17 +304,17 @@ export function createDefaultSubjectStateBackgroundMaintenance(
         : {}),
       thoughtEvolution: new ThoughtEvolutionService(
         new DrizzleThoughtEvolutionRuntimePort(db),
-        DEFAULT_THOUGHT_EVOLUTION_POLICY,
+        thoughtPolicy(lifecycleTuning),
         semanticGrouping,
       ),
       driveEvolution: new DriveEvolutionService(
         new DrizzleDriveEvolutionRuntimePort(db),
-        DEFAULT_DRIVE_EVOLUTION_POLICY,
+        drivePolicy(lifecycleTuning),
         semanticGrouping,
       ),
       curiosityEvolution: new CuriosityEvolutionService(
         new DrizzleCuriosityEvolutionRuntimePort(db),
-        DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+        curiosityPolicy(lifecycleTuning),
         semanticGrouping,
       ),
       curiosityTopicProjection: new CuriosityTopicProjectionService(
@@ -250,7 +322,7 @@ export function createDefaultSubjectStateBackgroundMaintenance(
       ),
       topicEvolution: new TopicEvolutionService(
         new DrizzleTopicEvolutionRuntimePort(db),
-        DEFAULT_TOPIC_EVOLUTION_POLICY,
+        topicPolicy(lifecycleTuning),
         semanticGrouping,
       ),
     },
@@ -270,22 +342,26 @@ export function createDefaultSubjectStateBackgroundMaintenance(
 
 export function createDefaultDriveSatisfactionService(
   db: Database,
+  lifecycleTuning: MindLifecycleTuning =
+    DEFAULT_MIND_LIFECYCLE_TUNING,
 ): DriveSatisfactionService {
   return new DriveSatisfactionService(
     new DrizzleDriveEvolutionRuntimePort(db),
     new DrizzleDriveSatisfactionRuntimePort(db),
-    DEFAULT_DRIVE_EVOLUTION_POLICY,
+    drivePolicy(lifecycleTuning),
   );
 }
 
 
 export function createDefaultCuriosityResolutionService(
   db: Database,
+  lifecycleTuning: MindLifecycleTuning =
+    DEFAULT_MIND_LIFECYCLE_TUNING,
 ): CuriosityResolutionService {
   return new CuriosityResolutionService(
     new CuriosityEvolutionService(
       new DrizzleCuriosityEvolutionRuntimePort(db),
-      DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+      curiosityPolicy(lifecycleTuning),
     ),
     new DrizzleCuriosityResolutionRuntimePort(db),
   );
