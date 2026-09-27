@@ -259,8 +259,8 @@ struct UniverseMapView: View {
     private func magnificationGesture(
         size: CGSize
     ) -> some Gesture {
-        MagnificationGesture()
-            .onChanged { magnification in
+        MagnifyGesture()
+            .onChanged { value in
                 if magnifyOrigin == nil {
                     magnifyOrigin = viewport
                 }
@@ -276,7 +276,8 @@ struct UniverseMapView: View {
                         y: size.height / 2
                     ),
                     requestedScale:
-                        origin.scale * Double(magnification)
+                        origin.scale
+                        * Double(value.magnification)
                 )
             }
             .onEnded { _ in
