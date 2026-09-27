@@ -1396,6 +1396,9 @@ private struct DiaryCommentsSection: View {
     let comments: [DiaryComment]
     let count: Int
     let errorMessage: String?
+    let hasMore: Bool
+    let isLoadingMore: Bool
+    let onLoadMore: () -> Void
     let onEdit: (DiaryComment) -> Void
     let onDelete: (DiaryComment) -> Void
 
@@ -1457,6 +1460,29 @@ private struct DiaryCommentsSection: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
+            }
+
+            if hasMore {
+                Button(action: onLoadMore) {
+                    HStack(spacing: 8) {
+                        if isLoadingMore {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+
+                        Text(
+                            isLoadingMore
+                                ? "Loading…"
+                                : "Load Earlier Comments"
+                        )
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .center
+                    )
+                }
+                .buttonStyle(.borderless)
+                .disabled(isLoadingMore)
             }
 
             if let errorMessage {
@@ -2010,6 +2036,11 @@ private struct DiaryEntry: Decodable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+}
+
+private enum DiaryCommentScope {
+    case active
+    case archived
 }
 
 private struct DiaryComment: Decodable, Identifiable {
