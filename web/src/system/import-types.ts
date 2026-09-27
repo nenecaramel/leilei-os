@@ -1,6 +1,12 @@
 import type { WebApiClient } from "../api/useWebApiClient";
 
-type WebImportModule = "diary" | "todo";
+type WebImportModule =
+  | "diary"
+  | "diary_comments"
+  | "todo"
+  | "projects"
+  | "mind"
+  | "conversations";
 
 export type WebImportModuleSummary = {
   create: number;
@@ -12,14 +18,14 @@ export type WebImportModuleSummary = {
 export type WebImportPreview = {
   package_sha256: string;
   preview_fingerprint: string;
-  summary: Record<WebImportModule, WebImportModuleSummary>;
+  summary: Partial<Record<WebImportModule, WebImportModuleSummary>>;
   can_execute: boolean;
 };
 
 export type WebImportExecution = {
   package_sha256: string;
   preview_fingerprint: string;
-  summary: Record<WebImportModule, WebImportModuleSummary>;
+  summary: Partial<Record<WebImportModule, WebImportModuleSummary>>;
 };
 
 export async function previewImport(api: WebApiClient, bytes: Uint8Array): Promise<WebImportPreview> {
