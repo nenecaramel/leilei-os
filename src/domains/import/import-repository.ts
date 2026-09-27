@@ -184,13 +184,20 @@ implements ImportRepository {
       workspaceRows,
       projectRows,
       resourceRows,
-      conversationRows,
+      projectConversationRows,
       mindRows,
+      nativeConversationRows,
+      nativeMessageRows,
+      nativeContentRows,
+      nativeAttachmentRows,
       allWorkspaceIds,
       allProjectIds,
       allResourceIds,
       allMindIds,
-      nativeLiveConversations,
+      allConversationIds,
+      allMessageIds,
+      allContentIds,
+      allAttachmentIds,
     ] = await Promise.all([
       this.db
         .select()
@@ -282,24 +289,136 @@ implements ImportRepository {
         .where(eq(runtimeSubjectStates.userId, userId))
         .orderBy(asc(runtimeSubjectStates.id)),
       this.db
-        .select({ id: projectWorkspaces.id })
-        .from(projectWorkspaces),
-      this.db
-        .select({ id: projects.id })
-        .from(projects),
-      this.db
-        .select({ id: projectResources.id })
-        .from(projectResources),
-      this.db
-        .select({ id: runtimeSubjectStates.id })
-        .from(runtimeSubjectStates),
-      this.db
-        .select({ id: conversations.id })
+        .select({
+          id: conversations.id,
+          title: conversations.title,
+          lifecycleStatus: conversations.lifecycleStatus,
+          currentHeadMessageId: conversations.currentHeadMessageId,
+          defaultModel: conversations.defaultModel,
+          providerMetadata: conversations.providerMetadata,
+          createdAt: conversations.createdAt,
+          updatedAt: conversations.updatedAt,
+          archivedAt: conversations.archivedAt,
+        })
         .from(conversations)
         .where(and(
           eq(conversations.userId, userId),
           eq(conversations.origin, "native_live"),
-        )),
+          inArray(conversations.lifecycleStatus, ["active", "archived"]),
+        ))
+        .orderBy(asc(conversations.id)),
+      this.db
+        .select({
+          id: conversationMessages.id,
+          conversationId: conversationMessages.conversationId,
+          parentMessageId: conversationMessages.parentMessageId,
+          role: conversationMessages.role,
+          status: conversationMessages.status,
+          rawRole: conversationMessages.rawRole,
+          model: conversationMessages.model,
+          isCurrentPath: conversationMessages.isCurrentPath,
+          currentPathIndex: conversationMessages.currentPathIndex,
+          turnIndex: conversationMessages.turnIndex,
+          isPrimary: conversationMessages.isPrimary,
+          displayText: conversationMessages.displayText,
+          createdAt: conversationMessages.createdAt,
+          completedAt: conversationMessages.completedAt,
+          updatedAt: conversationMessages.updatedAt,
+        })
+        .from(conversationMessages)
+        .innerJoin(
+          conversations,
+          and(
+            eq(conversationMessages.conversationId, conversations.id),
+            eq(conversationMessages.userId, conversations.userId),
+          ),
+        )
+        .where(and(
+          eq(conversations.userId, userId),
+          eq(conversations.origin, "native_live"),
+          inArray(conversations.lifecycleStatus, ["active", "archived"]),
+        ))
+        .orderBy(asc(conversationMessages.id)),
+      this.db
+        .select({
+          id: conversationContentBlocks.id,
+          messageId: conversationContentBlocks.messageId,
+          ordinal: conversationContentBlocks.ordinal,
+          kind: conversationContentBlocks.kind,
+          rawType: conversationContentBlocks.rawType,
+          text: conversationContentBlocks.text,
+          payload: conversationContentBlocks.payload,
+          createdAt: conversationContentBlocks.createdAt,
+        })
+        .from(conversationContentBlocks)
+        .innerJoin(
+          conversationMessages,
+          and(
+            eq(conversationContentBlocks.messageId, conversationMessages.id),
+            eq(conversationContentBlocks.userId, conversationMessages.userId),
+          ),
+        )
+        .innerJoin(
+          conversations,
+          and(
+            eq(conversationMessages.conversationId, conversations.id),
+            eq(conversationMessages.userId, conversations.userId),
+          ),
+        )
+        .where(and(
+          eq(conversations.userId, userId),
+          eq(conversations.origin, "native_live"),
+          inArray(conversations.lifecycleStatus, ["active", "archived"]),
+        ))
+        .orderBy(
+          asc(conversationContentBlocks.messageId),
+          asc(conversationContentBlocks.ordinal),
+          asc(conversationContentBlocks.id),
+        ),
+      this.db
+        .select({
+          id: conversationAttachments.id,
+          messageId: conversationAttachments.messageId,
+          ordinal: conversationAttachments.ordinal,
+          sourceAttachmentId: conversationAttachments.sourceAttachmentId,
+          name: conversationAttachments.name,
+          mimeType: conversationAttachments.mimeType,
+          sizeBytes: conversationAttachments.sizeBytes,
+          payload: conversationAttachments.payload,
+        })
+        .from(conversationAttachments)
+        .innerJoin(
+          conversationMessages,
+          and(
+            eq(conversationAttachments.messageId, conversationMessages.id),
+            eq(conversationAttachments.userId, conversationMessages.userId),
+          ),
+        )
+        .innerJoin(
+          conversations,
+          and(
+            eq(conversationMessages.conversationId, conversations.id),
+            eq(conversationMessages.userId, conversations.userId),
+          ),
+        )
+        .where(and(
+          eq(conversations.userId, userId),
+          eq(conversations.origin, "native_live"),
+          inArray(conversations.lifecycleStatus, ["active", "archived"]),
+        ))
+        .orderBy(
+          asc(conversationAttachments.messageId),
+          asc(conversationAttachments.ordinal),
+          asc(conversationAttachments.id),
+        ),
+      this.db.select({ id: projectWorkspaces.id }).from(projectWorkspaces),
+      this.db.select({ id: projects.id }).from(projects),
+      this.db.select({ id: projectResources.id }).from(projectResources),
+      this.db.select({ id: runtimeSubjectStates.id }).from(runtimeSubjectStates),
+      this.db.select({ id: conversations.id }).from(conversations),
+      this.db.select({ id: conversationMessages.id }).from(conversationMessages),
+      this.db.select({ id: conversationContentBlocks.id }).from(conversationContentBlocks),
+      this.db.select({ id: conversationAttachments.id }).from(conversationAttachments),
     ]);
 
     const entries =
@@ -343,6 +462,19 @@ implements ImportRepository {
       grouped.set(entry.paperId, list);
     }
 
+    const ownedConversationIds = new Set(
+      nativeConversationRows.map((row) => row.id),
+    );
+    const ownedMessageIds = new Set(
+      nativeMessageRows.map((row) => row.id),
+    );
+    const ownedContentIds = new Set(
+      nativeContentRows.map((row) => row.id),
+    );
+    const ownedAttachmentIds = new Set(
+      nativeAttachmentRows.map((row) => row.id),
+    );
+
     return {
       diary: diary.map((row) => ({
         id: row.id,
@@ -381,6 +513,61 @@ implements ImportRepository {
         created_at: toIso(row.createdAt),
         updated_at: toIso(row.updatedAt),
       })),
+      conversations: {
+        conversations: nativeConversationRows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          lifecycle_status:
+            row.lifecycleStatus as "active" | "archived",
+          current_head_message_id: row.currentHeadMessageId,
+          default_model: row.defaultModel,
+          provider_metadata: row.providerMetadata,
+          created_at: toIso(row.createdAt),
+          updated_at: toIso(row.updatedAt),
+          archived_at: row.archivedAt
+            ? toIso(row.archivedAt)
+            : null,
+        })),
+        messages: nativeMessageRows.map((row) => ({
+          id: row.id,
+          conversation_id: row.conversationId,
+          parent_message_id: row.parentMessageId,
+          role: row.role,
+          status: row.status,
+          raw_role: row.rawRole,
+          model: row.model,
+          is_current_path: row.isCurrentPath,
+          current_path_index: row.currentPathIndex,
+          turn_index: row.turnIndex,
+          is_primary: row.isPrimary,
+          display_text: row.displayText,
+          created_at: toIso(row.createdAt),
+          completed_at: row.completedAt
+            ? toIso(row.completedAt)
+            : null,
+          updated_at: toIso(row.updatedAt),
+        })),
+        content_blocks: nativeContentRows.map((row) => ({
+          id: row.id,
+          message_id: row.messageId,
+          ordinal: row.ordinal,
+          kind: row.kind,
+          raw_type: row.rawType,
+          text: row.text,
+          payload: row.payload,
+          created_at: toIso(row.createdAt),
+        })),
+        attachments: nativeAttachmentRows.map((row) => ({
+          id: row.id,
+          message_id: row.messageId,
+          ordinal: row.ordinal,
+          source_attachment_id: row.sourceAttachmentId,
+          name: row.name,
+          mime_type: row.mimeType,
+          size_bytes: row.sizeBytes,
+          payload: row.payload,
+        })),
+      },
       projects: {
         workspaces: workspaceRows.map((row) => ({
           id: row.id,
@@ -411,7 +598,7 @@ implements ImportRepository {
           created_at: toIso(row.createdAt),
           updated_at: toIso(row.updatedAt),
         })),
-        conversations: conversationRows.map((row) => ({
+        conversations: projectConversationRows.map((row) => ({
           project_id: row.projectId,
           conversation_id: row.conversationId,
           added_at: toIso(row.addedAt),
@@ -442,9 +629,27 @@ implements ImportRepository {
           .filter((row) => !mindRows.some((owned) => owned.id === row.id))
           .map((row) => row.id),
       ),
-      native_live_conversation_ids: new Set(
-        nativeLiveConversations.map((row) => row.id),
+      foreign_conversation_ids: new Set(
+        allConversationIds
+          .filter((row) => !ownedConversationIds.has(row.id))
+          .map((row) => row.id),
       ),
+      foreign_conversation_message_ids: new Set(
+        allMessageIds
+          .filter((row) => !ownedMessageIds.has(row.id))
+          .map((row) => row.id),
+      ),
+      foreign_conversation_content_block_ids: new Set(
+        allContentIds
+          .filter((row) => !ownedContentIds.has(row.id))
+          .map((row) => row.id),
+      ),
+      foreign_conversation_attachment_ids: new Set(
+        allAttachmentIds
+          .filter((row) => !ownedAttachmentIds.has(row.id))
+          .map((row) => row.id),
+      ),
+      native_live_conversation_ids: ownedConversationIds,
     };
   }
 
