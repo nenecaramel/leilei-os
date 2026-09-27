@@ -49,6 +49,7 @@ enum GlobalSearchTimePreset: String, CaseIterable, Identifiable, Hashable {
     case today
     case past7Days
     case past30Days
+    case custom
 
     var id: String { rawValue }
 
@@ -58,6 +59,7 @@ enum GlobalSearchTimePreset: String, CaseIterable, Identifiable, Hashable {
         case .today: "Today"
         case .past7Days: "Past 7 Days"
         case .past30Days: "Past 30 Days"
+        case .custom: "Custom"
         }
     }
 
@@ -65,7 +67,10 @@ enum GlobalSearchTimePreset: String, CaseIterable, Identifiable, Hashable {
         calendar: Calendar = .current,
         now: Date = .now
     ) -> (dateFrom: String?, dateTo: String?) {
-        guard self != .anyTime else { return (nil, nil) }
+        guard self != .anyTime,
+              self != .custom else {
+            return (nil, nil)
+        }
 
         let formatter = DateFormatter()
         formatter.calendar = calendar
