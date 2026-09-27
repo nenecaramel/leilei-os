@@ -9,6 +9,7 @@ import type {
   ExportMindCuriosityResolutionEventRecord,
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
+  ExportMindSemanticGroupingResultRecord,
   ExportMindStateRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
@@ -197,6 +198,7 @@ function isMindContinuityRecord(
     record.entity === "drive_satisfaction"
     || record.entity === "curiosity_resolution"
     || record.entity === "distillation_watermark"
+    || record.entity === "semantic_grouping"
   );
 }
 
@@ -208,6 +210,7 @@ function hasExactMindContinuityValue(
     drive_satisfaction_events: [],
     curiosity_resolution_events: [],
     distillation_watermarks: [],
+    semantic_grouping_results: [],
   };
   if (record.entity === "drive_satisfaction") {
     return continuity.drive_satisfaction_events.some(
@@ -225,10 +228,18 @@ function hasExactMindContinuityValue(
           === hashCanonical(record.value),
     );
   }
-  return continuity.distillation_watermarks.some(
+  if (record.entity === "distillation_watermark") {
+    return continuity.distillation_watermarks.some(
+      (candidate) =>
+        candidate.subject_id === record.value.subject_id
+        && candidate.conversation_id === record.value.conversation_id
+        && hashCanonical(candidate)
+          === hashCanonical(record.value),
+    );
+  }
+  return continuity.semantic_grouping_results.some(
     (candidate) =>
-      candidate.subject_id === record.value.subject_id
-      && candidate.conversation_id === record.value.conversation_id
+      candidate.id === record.value.id
       && hashCanonical(candidate)
         === hashCanonical(record.value),
   );
@@ -496,10 +507,15 @@ async function executeCreates(
         userId,
         record.value as ExportMindCuriosityResolutionEventRecord,
       );
-    } else {
+    } else if (record.entity === "distillation_watermark") {
       await repository.insertMindDistillationWatermark(
         userId,
         record.value as ExportMindDistillationWatermarkRecord,
+      );
+    } else {
+      await repository.insertMindSemanticGroupingResult(
+        userId,
+        record.value as ExportMindSemanticGroupingResultRecord,
       );
     }
   }
