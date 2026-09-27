@@ -153,6 +153,42 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Button {
+                selectedPage = .conversations
+                onSelect()
+            } label: {
+                HStack(spacing: 6) {
+                    Text("View all")
+                        .font(.system(
+                            size: 14.5,
+                            weight: .medium
+                        ))
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(
+                            size: 11,
+                            weight: .semibold
+                        ))
+
+                    Spacer()
+                }
+                .foregroundStyle(
+                    .secondary.opacity(0.9)
+                )
+                .padding(.horizontal, 10)
+                .offset(
+                    x: titleHorizontalOffset - 14,
+                    y: 2
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 36,
+                    alignment: .leading
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
