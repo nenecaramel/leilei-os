@@ -75,6 +75,13 @@ const SAFE_FIELD_NAMES = new Set([
   "retentionHours",
   "eligibleThreads",
   "truncated",
+  "legacyDreamStates",
+  "legacyAuthoredTopicStates",
+  "legacyMemoryRecallWithoutLedger",
+  "legacyOpenMindFollowUps",
+  "legacyOpenDreamIntents",
+  "legacyOpenTopicIntents",
+  "quarantinedMindFollowUps",
 ]);
 
 const defaultSink = (level: LogLevel, line: string): void => {

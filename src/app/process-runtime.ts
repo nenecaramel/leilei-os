@@ -180,6 +180,10 @@ import {
   DrizzleMindRetirementRuntimePort,
 } from "../domains/runtime/mind-retirement-runtime-repository.js";
 import {
+  MindCompatibilityCensusService,
+  type MindCompatibilityCensus,
+} from "../domains/runtime/mind-compatibility-census.js";
+import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
@@ -237,6 +241,22 @@ function logMindRetirementPreview(
       });
     }
   }
+}
+
+function logMindCompatibilityCensus(
+  logger: SafeLogger,
+  census: MindCompatibilityCensus,
+): void {
+  logger.info("mind_compatibility_census", {
+    legacyDreamStates: census.legacyDreamStates,
+    legacyAuthoredTopicStates: census.legacyAuthoredTopicStates,
+    legacyMemoryRecallWithoutLedger:
+      census.legacyMemoryRecallWithoutLedger,
+    legacyOpenMindFollowUps: census.legacyOpenMindFollowUps,
+    legacyOpenDreamIntents: census.legacyOpenDreamIntents,
+    legacyOpenTopicIntents: census.legacyOpenTopicIntents,
+    quarantinedMindFollowUps: census.quarantinedMindFollowUps,
+  });
 }
 
 type BackgroundWorkflowKind =
@@ -363,6 +383,10 @@ export function createProcessRuntime(
       )
     : null;
   let mindRetirementPreviewRun: Promise<void> | null = null;
+  const mindCompatibilityCensusService = runtimeEnv.MCP_USER_ID
+    ? new MindCompatibilityCensusService(db)
+    : null;
+  let mindCompatibilityCensusRun: Promise<void> | null = null;
   const mindSemanticGroupingRepository =
     new DrizzleMindSemanticGroupingRepository(
       db,
@@ -840,7 +864,9 @@ export function createProcessRuntime(
       // durable work once at process start; Mac Companion/event-driven paths
       // own subsequent opportunities.
       void retentionCoordinator.runNow().catch(() => undefined);
-      void nativeLiveMindFollowUpRecovery.runNow().catch(() => undefined);
+      const mindFollowUpStartupRecovery =
+        nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
+      void mindFollowUpStartupRecovery;
       void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
       if (
         mindRetirementPreviewService
@@ -860,6 +886,24 @@ export function createProcessRuntime(
           });
         });
       }
+      if (
+        mindCompatibilityCensusService
+        && runtimeEnv.MCP_USER_ID
+        && !mindCompatibilityCensusRun
+      ) {
+        mindCompatibilityCensusRun = mindFollowUpStartupRecovery
+          .then(() => mindCompatibilityCensusService.read({
+            userId: runtimeEnv.MCP_USER_ID!,
+            subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+          }))
+          .then((census) => {
+            logMindCompatibilityCensus(logger, census);
+          }).catch((error) => {
+            logger.warn("mind_compatibility_census_failed", {
+              name: error instanceof Error ? error.name : "UnknownError",
+            });
+          });
+      }
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
@@ -872,6 +916,7 @@ export function createProcessRuntime(
         nativeLiveMindFollowUpRecovery.drain(),
         nativeLiveSemanticRecovery.drain(),
         mindRetirementPreviewRun ?? Promise.resolve(),
+        mindCompatibilityCensusRun ?? Promise.resolve(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.

@@ -23,6 +23,7 @@ type Database = ReturnType<typeof createDatabase>["db"];
 
 export const NATIVE_LIVE_MIND_FOLLOW_UP_LEASE_MS = 60_000;
 export const NATIVE_LIVE_MIND_FOLLOW_UP_RETRY_MS = 5_000;
+export const NATIVE_LIVE_MIND_FOLLOW_UP_QUARANTINE_SCAN_LIMIT = 25;
 export type NativeLiveMindFollowUpJob = {
   prepareId: string;
   userId: string;
@@ -93,37 +94,92 @@ implements NativeLiveMindFollowUpPort {
       RETURNING prepare_id, user_id, conversation_id, assistant_message_id,
         operation, intents, actions
     `);
-    return rows[0] ? parseJob(rows[0]) : null;
+    const row = rows[0];
+    if (!row) return null;
+    try {
+      return parseJob(row);
+    } catch (error) {
+      const quarantined = await this.quarantineClaim({
+        prepareId: row.prepare_id,
+        workerId: input.workerId,
+        errorName: "NativeLiveMindFollowUpPayloadInvalid",
+      });
+      if (!quarantined) throw error;
+      return null;
+    }
   }
 
   async claimNext(input: {
     workerId: string;
   }): Promise<NativeLiveMindFollowUpJob | null> {
-    const rows = await this.db.execute<RawFollowUpRow>(sql`
-      WITH candidate AS (
-        SELECT prepare_id
-        FROM native_live_mind_followups
-        WHERE
-          (status = 'pending' AND available_at <= now())
-          OR
-          (status = 'processing' AND locked_until <= now())
-        ORDER BY available_at ASC, created_at ASC, prepare_id ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT 1
-      )
-      UPDATE native_live_mind_followups AS follow_up
-      SET status = 'processing',
-          locked_by = ${input.workerId}::uuid,
-          locked_until =
-            now() + ${NATIVE_LIVE_MIND_FOLLOW_UP_LEASE_MS} * interval '1 millisecond',
-          updated_at = now()
-      FROM candidate
-      WHERE follow_up.prepare_id = candidate.prepare_id
-      RETURNING follow_up.prepare_id, follow_up.user_id,
-        follow_up.conversation_id, follow_up.assistant_message_id,
-        follow_up.operation, follow_up.intents, follow_up.actions
-    `);
-    return rows[0] ? parseJob(rows[0]) : null;
+    for (
+      let scanned = 0;
+      scanned < NATIVE_LIVE_MIND_FOLLOW_UP_QUARANTINE_SCAN_LIMIT;
+      scanned += 1
+    ) {
+      const rows = await this.db.execute<RawFollowUpRow>(sql`
+        WITH candidate AS (
+          SELECT prepare_id
+          FROM native_live_mind_followups
+          WHERE
+            (status = 'pending' AND available_at <= now())
+            OR
+            (status = 'processing' AND locked_until <= now())
+          ORDER BY available_at ASC, created_at ASC, prepare_id ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        )
+        UPDATE native_live_mind_followups AS follow_up
+        SET status = 'processing',
+            locked_by = ${input.workerId}::uuid,
+            locked_until =
+              now() + ${NATIVE_LIVE_MIND_FOLLOW_UP_LEASE_MS} * interval '1 millisecond',
+            updated_at = now()
+        FROM candidate
+        WHERE follow_up.prepare_id = candidate.prepare_id
+        RETURNING follow_up.prepare_id, follow_up.user_id,
+          follow_up.conversation_id, follow_up.assistant_message_id,
+          follow_up.operation, follow_up.intents, follow_up.actions
+      `);
+      const row = rows[0];
+      if (!row) return null;
+
+      try {
+        return parseJob(row);
+      } catch (error) {
+        const quarantined = await this.quarantineClaim({
+          prepareId: row.prepare_id,
+          workerId: input.workerId,
+          errorName: "NativeLiveMindFollowUpPayloadInvalid",
+        });
+        if (!quarantined) throw error;
+      }
+    }
+    throw new Error("NativeLiveMindFollowUpQuarantineScanLimit");
+  }
+
+  private async quarantineClaim(input: {
+    prepareId: string;
+    workerId: string;
+    errorName: string;
+  }): Promise<boolean> {
+    const rows = await this.db
+      .update(nativeLiveMindFollowUps)
+      .set({
+        status: "quarantined",
+        retryCount: sql`${nativeLiveMindFollowUps.retryCount} + 1`,
+        lockedBy: null,
+        lockedUntil: null,
+        lastErrorName: input.errorName.slice(0, 128),
+        updatedAt: sql`now()`,
+      })
+      .where(sql`
+        ${nativeLiveMindFollowUps.prepareId} = ${input.prepareId}::uuid
+        AND ${nativeLiveMindFollowUps.status} = 'processing'
+        AND ${nativeLiveMindFollowUps.lockedBy} = ${input.workerId}::uuid
+      `)
+      .returning({ prepareId: nativeLiveMindFollowUps.prepareId });
+    return rows.length === 1;
   }
 
   async complete(input: {
