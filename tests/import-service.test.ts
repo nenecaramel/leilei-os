@@ -922,6 +922,43 @@ test("execute rejects a stale preview and rolls back", async () => {
   assert.equal(repository.writes, 0);
 });
 
+test("execute keeps a preview valid across unrelated concurrent records", async () => {
+  const repository = new FakeImportRepository();
+  const service = new ImportService(repository);
+  const raw = packageBytes();
+
+  const preview = await service.preview(
+    raw,
+    USER_ID,
+  );
+  repository.state.diary.push({
+    ...diary,
+    id: "00000000-0000-4000-8000-000000000032",
+    title: "Unrelated",
+  });
+
+  await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.equal(
+    repository.state.diary.some(
+      (record) =>
+        record.id
+        === "00000000-0000-4000-8000-000000000032",
+    ),
+    true,
+  );
+  assert.equal(
+    repository.state.diary.some(
+      (record) => record.id === diary.id,
+    ),
+    true,
+  );
+});
+
 test("execute rejects duplicate-only packages", async () => {
   const repository =
     new FakeImportRepository({
