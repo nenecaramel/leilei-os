@@ -1175,3 +1175,34 @@ test("Mind semantic grouping E5 fallback does not immediately reschedule mainten
     true,
   );
 });
+
+
+test("unavailable Mind semantic grouping reserve is fail-soft for the idle pipeline", async () => {
+  class GroupingReserveFailureRelay extends FakeRelay {
+    async reserveMindSemanticGrouping(input: unknown) {
+      this.calls.push({ name: "reserveMindSemanticGrouping", input });
+      throw new Error("grouping route unavailable");
+    }
+
+    async submitMindSemanticGroupingScores() {}
+    async submitMindSemanticGroupingFallback() {}
+  }
+
+  const relay = new GroupingReserveFailureRelay();
+  relay.reservation = null;
+  let offers = 0;
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeExecutor(),
+    new FakeSemanticScorer(),
+    {
+      async offer() {
+        offers += 1;
+      },
+    },
+  );
+
+  assert.deepEqual(await loop.runOnce(), { outcome: "idle" });
+  assert.equal(offers, 1);
+});
