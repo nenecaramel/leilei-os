@@ -9,6 +9,10 @@ import type {
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
+  ExportMindContinuityBundle,
+  ExportMindCuriosityResolutionEventRecord,
+  ExportMindDistillationWatermarkRecord,
+  ExportMindDriveSatisfactionEventRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
@@ -300,6 +304,9 @@ function cloneState(
     mind: state.mind
       ? structuredClone(state.mind)
       : undefined,
+    mind_continuity: state.mind_continuity
+      ? structuredClone(state.mind_continuity)
+      : undefined,
     conversations: state.conversations
       ? structuredClone(state.conversations)
       : undefined,
@@ -330,6 +337,14 @@ function cloneState(
     foreign_mind_ids:
       state.foreign_mind_ids
         ? new Set(state.foreign_mind_ids)
+        : undefined,
+    foreign_drive_satisfaction_event_ids:
+      state.foreign_drive_satisfaction_event_ids
+        ? new Set(state.foreign_drive_satisfaction_event_ids)
+        : undefined,
+    foreign_curiosity_resolution_event_ids:
+      state.foreign_curiosity_resolution_event_ids
+        ? new Set(state.foreign_curiosity_resolution_event_ids)
         : undefined,
     foreign_conversation_ids:
       state.foreign_conversation_ids
@@ -499,6 +514,51 @@ class FakeImportRepository implements ImportRepository {
     this.writes += 1;
   }
 
+  async insertMindDriveSatisfactionEvent(
+    _userId: string,
+    record: ExportMindDriveSatisfactionEventRecord,
+  ) {
+    const continuity = this.state.mind_continuity ??= {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+    };
+    continuity.drive_satisfaction_events.push(
+      structuredClone(record),
+    );
+    this.writes += 1;
+  }
+
+  async insertMindCuriosityResolutionEvent(
+    _userId: string,
+    record: ExportMindCuriosityResolutionEventRecord,
+  ) {
+    const continuity = this.state.mind_continuity ??= {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+    };
+    continuity.curiosity_resolution_events.push(
+      structuredClone(record),
+    );
+    this.writes += 1;
+  }
+
+  async insertMindDistillationWatermark(
+    _userId: string,
+    record: ExportMindDistillationWatermarkRecord,
+  ) {
+    const continuity = this.state.mind_continuity ??= {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+    };
+    continuity.distillation_watermarks.push(
+      structuredClone(record),
+    );
+    this.writes += 1;
+  }
+
   async insertProjectWorkspace(
     _userId: string,
     record: ExportProjectWorkspaceRecord,
@@ -574,6 +634,13 @@ class FakeImportRepository implements ImportRepository {
         : undefined,
       mind: modules.has("mind")
         ? structuredClone(this.state.mind ?? [])
+        : undefined,
+      mind_continuity: modules.has("mind")
+        ? structuredClone(this.state.mind_continuity ?? {
+            drive_satisfaction_events: [],
+            curiosity_resolution_events: [],
+            distillation_watermarks: [],
+          })
         : undefined,
       conversations: modules.has("conversations")
         ? structuredClone(this.state.conversations ?? {
