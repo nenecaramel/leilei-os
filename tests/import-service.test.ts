@@ -3,6 +3,11 @@ import test from "node:test";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 import type {
   ExportDiaryRecord,
+  ExportProjectConversationRecord,
+  ExportProjectRecord,
+  ExportProjectResourceRecord,
+  ExportProjectsBundle,
+  ExportProjectWorkspaceRecord,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
 import {
@@ -71,9 +76,28 @@ function cloneState(
   return {
     diary: structuredClone(state.diary),
     todo: structuredClone(state.todo),
+    projects: state.projects
+      ? structuredClone(state.projects)
+      : undefined,
     foreign_diary_ids:
       state.foreign_diary_ids
         ? new Set(state.foreign_diary_ids)
+        : undefined,
+    foreign_workspace_ids:
+      state.foreign_workspace_ids
+        ? new Set(state.foreign_workspace_ids)
+        : undefined,
+    foreign_project_ids:
+      state.foreign_project_ids
+        ? new Set(state.foreign_project_ids)
+        : undefined,
+    foreign_project_resource_ids:
+      state.foreign_project_resource_ids
+        ? new Set(state.foreign_project_resource_ids)
+        : undefined,
+    native_live_conversation_ids:
+      state.native_live_conversation_ids
+        ? new Set(state.native_live_conversation_ids)
         : undefined,
   };
 }
@@ -139,6 +163,62 @@ class FakeImportRepository implements ImportRepository {
     this.writes += 1;
   }
 
+  async insertProjectWorkspace(
+    _userId: string,
+    record: ExportProjectWorkspaceRecord,
+  ) {
+    const projects = this.state.projects ??= {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    };
+    projects.workspaces.push(structuredClone(record));
+    this.writes += 1;
+  }
+
+  async insertProject(
+    _userId: string,
+    record: ExportProjectRecord,
+  ) {
+    const projects = this.state.projects ??= {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    };
+    projects.projects.push(structuredClone(record));
+    this.writes += 1;
+  }
+
+  async insertProjectResource(
+    _userId: string,
+    record: ExportProjectResourceRecord,
+  ) {
+    const projects = this.state.projects ??= {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    };
+    projects.resources.push(structuredClone(record));
+    this.writes += 1;
+  }
+
+  async insertProjectConversation(
+    _userId: string,
+    record: ExportProjectConversationRecord,
+  ) {
+    const projects = this.state.projects ??= {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    };
+    projects.conversations.push(structuredClone(record));
+    this.writes += 1;
+  }
+
   async rereadCreatedState(
     _userId: string,
     modules: Set<ImportModule>,
@@ -150,6 +230,14 @@ class FakeImportRepository implements ImportRepository {
       todo: modules.has("todo")
         ? structuredClone(this.state.todo)
         : [],
+      projects: modules.has("projects")
+        ? structuredClone(this.state.projects ?? {
+            workspaces: [],
+            projects: [],
+            resources: [],
+            conversations: [],
+          })
+        : undefined,
     };
   }
 
