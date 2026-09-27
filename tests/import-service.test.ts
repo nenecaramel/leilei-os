@@ -1040,24 +1040,17 @@ test("v3 Diary comment without an available parent is invalid", async () => {
 });
 
 
-test("v3 scoped Mind restore rejects dangling conversation and path references", async () => {
-  const conversationScoped: ExportMindStateRecord = {
-    ...mindState,
-    id: "00000000-0000-4000-8000-000000000062",
-    scope_applicability: "conversation",
-    scope_conversation_id: CONVERSATION_ID,
-    scope_path_head_message_id: null,
-  };
-  const pathScoped: ExportMindStateRecord = {
+test("v3 scoped Mind restore preserves historical scope even after source deletion", async () => {
+  const historical: ExportMindStateRecord = {
     ...mindState,
     id: "00000000-0000-4000-8000-000000000063",
     scope_applicability: "path",
-    scope_conversation_id: CONVERSATION_ID,
+    scope_conversation_id:
+      "00000000-0000-4000-8000-000000000097",
     scope_path_head_message_id:
-      "00000000-0000-4000-8000-000000000043",
+      "00000000-0000-4000-8000-000000000098",
   };
-
-  const validRepository = new FakeImportRepository({
+  const repository = new FakeImportRepository({
     diary: [],
     todo: [],
     mind: [],
@@ -1068,60 +1061,23 @@ test("v3 scoped Mind restore rejects dangling conversation and path references",
       attachments: [],
     },
   });
-  const validService = new ImportService(validRepository);
-  const validRaw = v3PackageBytes({
-    conversations: conversationBundle,
-    mind: [conversationScoped, pathScoped],
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({
+    mind: [historical],
   });
 
-  const validPreview = await validService.preview(
-    validRaw,
+  const preview = await service.preview(raw, USER_ID);
+  assert.equal(preview.summary.mind?.create, 1);
+  assert.equal(preview.summary.mind?.invalid, 0);
+  assert.equal(preview.can_execute, true);
+
+  await service.execute(
+    raw,
     USER_ID,
+    preview.preview_fingerprint,
   );
-  assert.equal(validPreview.summary.mind?.invalid, 0);
-  assert.equal(validPreview.can_execute, true);
-
-  const danglingConversation = {
-    ...conversationScoped,
-    scope_conversation_id:
-      "00000000-0000-4000-8000-000000000099",
-  };
-  const danglingPath = {
-    ...pathScoped,
-    scope_path_head_message_id:
-      "00000000-0000-4000-8000-000000000098",
-  };
-
-  for (const candidate of [
-    danglingConversation,
-    danglingPath,
-  ]) {
-    const repository = new FakeImportRepository({
-      diary: [],
-      todo: [],
-      mind: [],
-      conversations: {
-        conversations: [],
-        messages: [],
-        content_blocks: [],
-        attachments: [],
-      },
-    });
-    const service = new ImportService(repository);
-    const preview = await service.preview(
-      v3PackageBytes({
-        conversations: conversationBundle,
-        mind: [candidate],
-      }),
-      USER_ID,
-    );
-
-    assert.equal(preview.summary.mind?.invalid, 1);
-    assert.equal(preview.can_execute, false);
-    assert.equal(repository.writes, 0);
-  }
+  assert.deepEqual(repository.state.mind, [historical]);
 });
-
 
 test("v3 Universe restore is atomic no-overwrite product state", async () => {
   const emptyRepository = new FakeImportRepository({
