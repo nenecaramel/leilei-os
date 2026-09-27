@@ -508,11 +508,9 @@ function mindContinuityItems(
       || queryState.subject_id !== record.subject_id
       || candidateStates.some(
         (candidate) =>
-          candidate !== undefined
-          && (
-            candidate.kind !== record.kind
-            || candidate.subject_id !== record.subject_id
-          ),
+          candidate === undefined
+          || candidate.kind !== record.kind
+          || candidate.subject_id !== record.subject_id,
       )
     ) {
       item.classification = "invalid";
