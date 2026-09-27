@@ -53,6 +53,49 @@ const todo: ExportTodoPaper = {
   ],
 };
 
+const CONVERSATION_ID =
+  "00000000-0000-4000-8000-000000000041";
+
+const projectBundle: ExportProjectsBundle = {
+  workspaces: [{
+    id: "00000000-0000-4000-8000-000000000051",
+    name: "Workspace",
+    description: "Portable workspace",
+    version: 3,
+    created_at: NOW,
+    updated_at: NOW,
+  }],
+  projects: [{
+    id: "00000000-0000-4000-8000-000000000052",
+    workspace_id:
+      "00000000-0000-4000-8000-000000000051",
+    name: "Project",
+    description: null,
+    version: 2,
+    created_at: NOW,
+    updated_at: NOW,
+  }],
+  resources: [{
+    id: "00000000-0000-4000-8000-000000000053",
+    project_id:
+      "00000000-0000-4000-8000-000000000052",
+    kind: "file",
+    key: "notes/context.md",
+    title: "Context",
+    content: "project content",
+    metadata: { source: "test" },
+    version: 4,
+    created_at: NOW,
+    updated_at: NOW,
+  }],
+  conversations: [{
+    project_id:
+      "00000000-0000-4000-8000-000000000052",
+    conversation_id: CONVERSATION_ID,
+    added_at: NOW,
+  }],
+};
+
 function packageBytes(
   data: Record<string, unknown> = {
     diary: [diary],
@@ -62,6 +105,22 @@ function packageBytes(
   return new TextEncoder().encode(
     JSON.stringify({
       schema_version: 2,
+      owner_fingerprint:
+        createOwnerFingerprint(USER_ID),
+      exported_at: NOW,
+      data,
+    }),
+  );
+}
+
+function v3PackageBytes(
+  data: Record<string, unknown> = {
+    projects: projectBundle,
+  },
+): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      schema_version: 3,
       owner_fingerprint:
         createOwnerFingerprint(USER_ID),
       exported_at: NOW,
@@ -422,4 +481,69 @@ test("disabled users cannot preview imports", async () => {
       USER_ID,
     ),
   );
+});
+
+
+test("v3 preview and execute restore Projects atomically with exact product state", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    projects: {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    },
+    native_live_conversation_ids:
+      new Set([CONVERSATION_ID]),
+  });
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes();
+
+  const preview = await service.preview(raw, USER_ID);
+  assert.deepEqual(preview.summary.projects, {
+    create: 4,
+    duplicate: 0,
+    conflict: 0,
+    invalid: 0,
+  });
+  assert.equal(preview.can_execute, true);
+
+  const result = await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.equal(result.summary.projects?.create, 4);
+  assert.deepEqual(repository.state.projects, projectBundle);
+  assert.equal(repository.writes, 4);
+  assert.equal(repository.audits[0]?.schema_version, 3);
+});
+
+test("v3 Projects preview rejects cross-user ids before any write", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    projects: {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    },
+    foreign_workspace_ids:
+      new Set([projectBundle.workspaces[0]!.id]),
+    native_live_conversation_ids:
+      new Set([CONVERSATION_ID]),
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes(),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.projects?.conflict, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
 });
