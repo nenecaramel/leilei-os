@@ -228,6 +228,30 @@ test(
       "provider-first",
     );
 
+    const conversationRuntime =
+      await port.readConversationRuntime({
+        userId: user.id,
+        conversationId: conversation.id,
+      });
+    assert.ok(conversationRuntime);
+    assert.equal(
+      conversationRuntime.currentHeadMessageId,
+      firstFinalize.assistantMessageId,
+    );
+    assert.equal(
+      conversationRuntime.prepareId,
+      firstPrepare.command.prepare_id,
+    );
+    assert.equal(
+      conversationRuntime.providerSessionId,
+      "provider-first",
+    );
+    assert.deepEqual(
+      conversationRuntime.runtimeMetadata,
+      runtimeMetadata,
+    );
+    assert.ok(conversationRuntime.finalizedAt);
+
     const finalizeReplay = await coordinator.finalize(user.id, {
       protocol_version: 1,
       prepare_id: firstPrepare.command.prepare_id,
