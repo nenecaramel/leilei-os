@@ -68,6 +68,7 @@ export type ImportCurrentState = {
   foreign_drive_satisfaction_event_ids?: Set<string>;
   foreign_curiosity_resolution_event_ids?: Set<string>;
   foreign_semantic_grouping_result_ids?: Set<string>;
+  occupied_semantic_grouping_keys?: Set<string>;
   foreign_conversation_ids?: Set<string>;
   foreign_conversation_message_ids?: Set<string>;
   foreign_conversation_content_block_ids?: Set<string>;
@@ -497,6 +498,9 @@ function mindContinuityItems(
     } else if (
       current.foreign_semantic_grouping_result_ids?.has(record.id)
       || currentGroupingIds.has(record.id)
+      || current.occupied_semantic_grouping_keys?.has(
+        `${record.subject_id}:${record.kind}:${record.query_state_id}`,
+      )
     ) {
       item.classification = "conflict";
     } else if (
