@@ -67,6 +67,8 @@ private extension AppPage {
             return "book.closed"
         case .daySpace:
             return "calendar"
+        case .mind:
+            return "brain.head.profile"
         case .universe:
             return "sparkles"
         default:
