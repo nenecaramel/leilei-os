@@ -215,7 +215,7 @@ export type ExportDataV3 = ExportDataV2 & {
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
   conversations?: ExportConversationsBundle;
-  universe?: ExportUniverseBundle;
+  universe?: ExportUniverseBundle | null;
 };
 
 export type ExportAudit = {
