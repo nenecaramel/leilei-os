@@ -38,6 +38,8 @@ test(
     const assistantMessageId = randomUUID();
     const contentBlockId = randomUUID();
     const mindId = randomUUID();
+    const driveId = randomUUID();
+    const driveEventId = randomUUID();
     const workspaceId = randomUUID();
     const projectId = randomUUID();
     const resourceId = randomUUID();
@@ -218,6 +220,57 @@ test(
         createdAt: now,
         updatedAt: now,
       });
+      await db.insert(schema.runtimeSubjectStates).values({
+        id: driveId,
+        userId,
+        subjectId: "claude",
+        kind: "drive",
+        text: "Durable drive",
+        payload: {
+          drive_v1: {
+            role: "anchor",
+            anchorStateId: driveId,
+            pressure: 0.5,
+            phase: "active",
+            satisfactionTotal: 0.5,
+            lastEvolvedAt: now.toISOString(),
+            lastSatisfiedAt: now.toISOString(),
+            dormantAt: null,
+          },
+        },
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "subject_authorized",
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.runtimeDriveSatisfactionEvents).values({
+        id: driveEventId,
+        userId,
+        subjectId: "claude",
+        driveStateId: driveId,
+        conversationId,
+        evidenceMessageId: assistantMessageId,
+        evidenceBlockId: null,
+        evidenceKind: "assistant_message",
+        amount: 0.5,
+        idempotencyKey: `roundtrip-drive-${userId}`,
+        createdAt: now,
+      });
+      await db.insert(schema.runtimeDistillationWatermarks).values({
+        userId,
+        subjectId: "claude",
+        conversationId,
+        lastSourceMessageId: assistantMessageId,
+        processVersion: "distill-v1",
+        updatedAt: now,
+      });
 
       await db.insert(schema.projectWorkspaces).values({
         id: workspaceId,
@@ -273,6 +326,7 @@ test(
           "todo",
           "projects",
           "mind",
+          "mind_continuity",
           "conversations",
           "universe",
         ],
@@ -290,6 +344,12 @@ test(
       await db
         .delete(schema.projectWorkspaces)
         .where(eq(schema.projectWorkspaces.userId, userId));
+      await db
+        .delete(schema.runtimeDriveSatisfactionEvents)
+        .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId));
+      await db
+        .delete(schema.runtimeDistillationWatermarks)
+        .where(eq(schema.runtimeDistillationWatermarks.userId, userId));
       await db
         .delete(schema.runtimeSubjectStates)
         .where(eq(schema.runtimeSubjectStates.userId, userId));
@@ -351,7 +411,7 @@ test(
       );
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
-      assert.equal(preview.summary.mind?.create, 1);
+      assert.equal(preview.summary.mind?.create, 4);
       assert.equal(preview.summary.projects?.create, 4);
       assert.equal(
         preview.summary.conversations?.create,
@@ -373,6 +433,8 @@ test(
         messageCount,
         blockCount,
         mindCount,
+        driveEventCount,
+        watermarkCount,
         universeMetaCount,
         universeSourceCount,
         workspaceCount,
@@ -402,6 +464,12 @@ test(
           .from(schema.runtimeSubjectStates)
           .where(eq(schema.runtimeSubjectStates.userId, userId)),
         db.select({ count: count() })
+          .from(schema.runtimeDriveSatisfactionEvents)
+          .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.runtimeDistillationWatermarks)
+          .where(eq(schema.runtimeDistillationWatermarks.userId, userId)),
+        db.select({ count: count() })
           .from(schema.universeMeta)
           .where(eq(schema.universeMeta.userId, userId)),
         db.select({ count: count() })
@@ -427,7 +495,9 @@ test(
       assert.equal(conversationCount[0]?.count, 1);
       assert.equal(messageCount[0]?.count, 2);
       assert.equal(blockCount[0]?.count, 1);
-      assert.equal(mindCount[0]?.count, 1);
+      assert.equal(mindCount[0]?.count, 2);
+      assert.equal(driveEventCount[0]?.count, 1);
+      assert.equal(watermarkCount[0]?.count, 1);
       assert.equal(universeMetaCount[0]?.count, 1);
       assert.equal(universeSourceCount[0]?.count, 1);
       assert.equal(workspaceCount[0]?.count, 1);
@@ -458,6 +528,44 @@ test(
         restoredConversation?.currentHeadMessageId,
         assistantMessageId,
       );
+
+      const [restoredDriveEvent] = await db
+        .select({
+          driveStateId:
+            schema.runtimeDriveSatisfactionEvents.driveStateId,
+          amount:
+            schema.runtimeDriveSatisfactionEvents.amount,
+        })
+        .from(schema.runtimeDriveSatisfactionEvents)
+        .where(
+          eq(
+            schema.runtimeDriveSatisfactionEvents.id,
+            driveEventId,
+          ),
+        );
+      assert.deepEqual(restoredDriveEvent, {
+        driveStateId: driveId,
+        amount: 0.5,
+      });
+
+      const [restoredWatermark] = await db
+        .select({
+          lastSourceMessageId:
+            schema.runtimeDistillationWatermarks.lastSourceMessageId,
+          processVersion:
+            schema.runtimeDistillationWatermarks.processVersion,
+        })
+        .from(schema.runtimeDistillationWatermarks)
+        .where(
+          eq(
+            schema.runtimeDistillationWatermarks.userId,
+            userId,
+          ),
+        );
+      assert.deepEqual(restoredWatermark, {
+        lastSourceMessageId: assistantMessageId,
+        processVersion: "distill-v1",
+      });
 
       const [restoredMind] = await db
         .select({
@@ -507,6 +615,14 @@ test(
       await db
         .delete(schema.projectWorkspaces)
         .where(eq(schema.projectWorkspaces.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.runtimeDriveSatisfactionEvents)
+        .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.runtimeDistillationWatermarks)
+        .where(eq(schema.runtimeDistillationWatermarks.userId, userId))
         .catch(() => undefined);
       await db
         .delete(schema.runtimeSubjectStates)
