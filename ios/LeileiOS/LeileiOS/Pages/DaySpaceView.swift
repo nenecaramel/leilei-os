@@ -1093,6 +1093,11 @@ private struct DaySpaceDatePickerSheet: View {
             )
             .datePickerStyle(.graphical)
             .padding()
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
+            .background(Color.settingsBackground)
             .navigationTitle("Choose Date")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1110,6 +1115,8 @@ private struct DaySpaceDatePickerSheet: View {
                 }
             }
         }
+        .background(Color.settingsBackground)
+        .presentationBackground(Color.settingsBackground)
         .presentationDetents([.medium])
     }
 }
