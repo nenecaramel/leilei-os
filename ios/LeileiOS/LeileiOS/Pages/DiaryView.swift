@@ -2215,7 +2215,7 @@ private struct DiaryEntry: Decodable, Identifiable {
     }
 }
 
-private enum DiaryCommentScope {
+private enum DiaryCommentScope: Equatable {
     case active
     case archived
 }
