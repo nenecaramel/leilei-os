@@ -314,6 +314,28 @@ function mindContinuityItems(
       ...importedMind,
     ].map((record) => [record.id, record] as const),
   );
+  const currentDriveIds = new Set(
+    currentContinuity.drive_satisfaction_events
+      .map((record) => record.id),
+  );
+  const currentCuriosityIds = new Set(
+    currentContinuity.curiosity_resolution_events
+      .map((record) => record.id),
+  );
+  const importedDriveIdCounts = new Map<string, number>();
+  for (const record of imported.drive_satisfaction_events) {
+    importedDriveIdCounts.set(
+      record.id,
+      (importedDriveIdCounts.get(record.id) ?? 0) + 1,
+    );
+  }
+  const importedCuriosityIdCounts = new Map<string, number>();
+  for (const record of imported.curiosity_resolution_events) {
+    importedCuriosityIdCounts.set(
+      record.id,
+      (importedCuriosityIdCounts.get(record.id) ?? 0) + 1,
+    );
+  }
   const conversations = new Set([
     ...(current.conversations?.conversations ?? [])
       .map((record) => record.id),
@@ -345,11 +367,17 @@ function mindContinuityItems(
       : undefined;
 
     if (
+      (importedDriveIdCounts.get(record.id) ?? 0) > 1
+    ) {
+      item.classification = "invalid";
+    } else if (
       current.foreign_drive_satisfaction_event_ids?.has(record.id)
+      || currentDriveIds.has(record.id)
     ) {
       item.classification = "conflict";
     } else if (
       state?.kind !== "drive"
+      || state.subject_id !== record.subject_id
       || !conversations.has(record.conversation_id)
       || !message
       || message.conversation_id !== record.conversation_id
@@ -386,11 +414,17 @@ function mindContinuityItems(
     );
 
     if (
+      (importedCuriosityIdCounts.get(record.id) ?? 0) > 1
+    ) {
+      item.classification = "invalid";
+    } else if (
       current.foreign_curiosity_resolution_event_ids?.has(record.id)
+      || currentCuriosityIds.has(record.id)
     ) {
       item.classification = "conflict";
     } else if (
       state?.kind !== "curiosity"
+      || state.subject_id !== record.subject_id
       || !conversations.has(record.conversation_id)
       || !message
       || message.conversation_id !== record.conversation_id
