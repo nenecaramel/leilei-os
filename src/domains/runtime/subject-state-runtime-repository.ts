@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   runtimeContextManifests,
@@ -113,6 +113,28 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     });
 
     await this.db.transaction(async (transaction) => {
+      const scopedConversationIds = [
+        ...new Set(
+          states
+            .map((state) => state.envelope.scope.conversationId ?? null)
+            .filter((value): value is string => value !== null),
+        ),
+      ];
+      for (const conversationId of scopedConversationIds) {
+        const active = await transaction.execute<{ id: string }>(sql`
+          SELECT id
+          FROM conversations
+          WHERE id = ${conversationId}::uuid
+            AND user_id = ${input.userId}::uuid
+            AND origin = 'native_live'
+            AND lifecycle_status = 'active'
+          FOR SHARE
+        `);
+        if (active.length !== 1) {
+          throw new Error("SubjectStateSourceConversationInactive");
+        }
+      }
+
       await transaction
         .insert(runtimeSubjectStates)
         .values(
@@ -182,6 +204,19 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     if (input.transitions.length === 0) return;
 
     await this.db.transaction(async (transaction) => {
+      const active = await transaction.execute<{ id: string }>(sql`
+        SELECT id
+        FROM conversations
+        WHERE id = ${input.conversationId}::uuid
+          AND user_id = ${input.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR SHARE
+      `);
+      if (active.length !== 1) {
+        throw new Error("SubjectStateSourceConversationInactive");
+      }
+
       for (const requested of input.transitions) {
         const [row] = await transaction
           .select({
@@ -298,6 +333,20 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     }
 
     await this.db.transaction(async (transaction) => {
+      const activeSource = await transaction.execute<{ id: string }>(sql`
+        SELECT conversation.id
+        FROM conversation_messages AS message
+        INNER JOIN conversations AS conversation
+          ON conversation.id = message.conversation_id
+         AND conversation.user_id = message.user_id
+        WHERE message.id = ${input.sourceMessageId}::uuid
+          AND message.user_id = ${input.userId}::uuid
+          AND conversation.origin = 'native_live'
+          AND conversation.lifecycle_status = 'active'
+        FOR SHARE OF conversation
+      `);
+      if (activeSource.length !== 1) return;
+
       for (const stateId of [...new Set(input.stateIds)]) {
         const [row] = await transaction
           .select({
@@ -410,62 +459,77 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     manifest: InitialContextManifest;
   }): Promise<void> {
     const manifest = input.manifest;
-    await this.db
-      .insert(runtimeContextManifests)
-      .values({
-        id: manifest.manifestId,
-        userId: manifest.userId,
-        subjectId: manifest.subjectId,
-        conversationId: manifest.conversationId,
-        pathHeadMessageId: manifest.pathHeadMessageId,
-        snapshotSequence: manifest.snapshotSequence,
-        assemblyVersion: manifest.assemblyVersion,
-        promptContractVersion: manifest.promptContractVersion,
-        budget: manifest.budget as unknown as Record<string, unknown>,
-        items: manifest.items as unknown as Record<string, unknown>[],
-        assembledAt: new Date(manifest.createdAt),
-      })
-      .onConflictDoNothing();
+    await this.db.transaction(async (transaction) => {
+      const active = await transaction.execute<{ id: string }>(sql`
+        SELECT id
+        FROM conversations
+        WHERE id = ${manifest.conversationId}::uuid
+          AND user_id = ${manifest.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR SHARE
+      `);
+      if (active.length !== 1) {
+        throw new Error("ContextManifestSourceConversationInactive");
+      }
 
-    const [row] = await this.db
-      .select({
-        id: runtimeContextManifests.id,
-        userId: runtimeContextManifests.userId,
-        subjectId: runtimeContextManifests.subjectId,
-        conversationId: runtimeContextManifests.conversationId,
-        pathHeadMessageId: runtimeContextManifests.pathHeadMessageId,
-        snapshotSequence: runtimeContextManifests.snapshotSequence,
-        assemblyVersion: runtimeContextManifests.assemblyVersion,
-        promptContractVersion: runtimeContextManifests.promptContractVersion,
-        budget: runtimeContextManifests.budget,
-        items: runtimeContextManifests.items,
-        assembledAt: runtimeContextManifests.assembledAt,
-      })
-      .from(runtimeContextManifests)
-      .where(eq(runtimeContextManifests.id, manifest.manifestId))
-      .limit(1);
+      await transaction
+        .insert(runtimeContextManifests)
+        .values({
+          id: manifest.manifestId,
+          userId: manifest.userId,
+          subjectId: manifest.subjectId,
+          conversationId: manifest.conversationId,
+          pathHeadMessageId: manifest.pathHeadMessageId,
+          snapshotSequence: manifest.snapshotSequence,
+          assemblyVersion: manifest.assemblyVersion,
+          promptContractVersion: manifest.promptContractVersion,
+          budget: manifest.budget as unknown as Record<string, unknown>,
+          items: manifest.items as unknown as Record<string, unknown>[],
+          assembledAt: new Date(manifest.createdAt),
+        })
+        .onConflictDoNothing();
 
-    if (!row) {
-      throw new Error("Context manifest idempotent save could not verify row.");
-    }
+      const [row] = await transaction
+        .select({
+          id: runtimeContextManifests.id,
+          userId: runtimeContextManifests.userId,
+          subjectId: runtimeContextManifests.subjectId,
+          conversationId: runtimeContextManifests.conversationId,
+          pathHeadMessageId: runtimeContextManifests.pathHeadMessageId,
+          snapshotSequence: runtimeContextManifests.snapshotSequence,
+          assemblyVersion: runtimeContextManifests.assemblyVersion,
+          promptContractVersion: runtimeContextManifests.promptContractVersion,
+          budget: runtimeContextManifests.budget,
+          items: runtimeContextManifests.items,
+          assembledAt: runtimeContextManifests.assembledAt,
+        })
+        .from(runtimeContextManifests)
+        .where(eq(runtimeContextManifests.id, manifest.manifestId))
+        .limit(1);
 
-    const actual = {
-      manifestId: row.id,
-      userId: row.userId,
-      subjectId: row.subjectId,
-      conversationId: row.conversationId,
-      pathHeadMessageId: row.pathHeadMessageId,
-      snapshotSequence: row.snapshotSequence,
-      assemblyVersion: row.assemblyVersion,
-      promptContractVersion: row.promptContractVersion,
-      createdAt: row.assembledAt.toISOString(),
-      budget: row.budget,
-      items: row.items,
-    };
-    if (!isDeepStrictEqual(actual, manifest)) {
-      throw new Error(
-        "Context manifest idempotent save encountered a conflicting manifest id.",
-      );
-    }
+      if (!row) {
+        throw new Error("Context manifest idempotent save could not verify row.");
+      }
+
+      const actual = {
+        manifestId: row.id,
+        userId: row.userId,
+        subjectId: row.subjectId,
+        conversationId: row.conversationId,
+        pathHeadMessageId: row.pathHeadMessageId,
+        snapshotSequence: row.snapshotSequence,
+        assemblyVersion: row.assemblyVersion,
+        promptContractVersion: row.promptContractVersion,
+        createdAt: row.assembledAt.toISOString(),
+        budget: row.budget,
+        items: row.items,
+      };
+      if (!isDeepStrictEqual(actual, manifest)) {
+        throw new Error(
+          "Context manifest idempotent save encountered a conflicting manifest id.",
+        );
+      }
+    });
   }
 }
