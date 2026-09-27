@@ -17,6 +17,16 @@ export type ExportDiaryRecord = {
   updated_at: string;
 };
 
+export type ExportDiaryCommentRecord = {
+  id: string;
+  diary_id: string;
+  author: ContentAuthor;
+  content: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ExportTodoPaper = {
   date: string;
   author: ContentAuthor;
@@ -189,6 +199,7 @@ export type ExportDataV2 = {
 };
 
 export type ExportDataV3 = ExportDataV2 & {
+  diary_comments?: ExportDiaryCommentRecord[];
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
   conversations?: ExportConversationsBundle;
