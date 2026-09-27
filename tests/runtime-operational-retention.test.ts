@@ -88,3 +88,15 @@ test("foreground runtime event, interaction and control records inherit the boun
     );
   }
 });
+
+
+test("Mind semantic grouping retention removes only terminal scoring requests", () => {
+  assert.match(
+    source,
+    /FROM runtime_mind_semantic_grouping_requests[\s\S]*status IN \('completed', 'fallback'\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /runtime_mind_semantic_grouping_requests[\s\S]{0,300}status IN \('pending', 'reserved'\)[\s\S]{0,300}DELETE FROM runtime_mind_semantic_grouping_requests/,
+  );
+});
