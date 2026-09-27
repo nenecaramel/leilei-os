@@ -339,6 +339,12 @@ struct UniverseView: View {
                 Image(systemName: "circle.grid.2x2")
             }
             .accessibilityLabel("选择星系")
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded {
+                        cancelPlacementForToolbarMenu()
+                    }
+            )
 
             Button {
                 if case .placingNode = mapMode {
@@ -379,6 +385,18 @@ struct UniverseView: View {
             .accessibilityLabel(
                 "更多 Universe 操作"
             )
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded {
+                        cancelPlacementForToolbarMenu()
+                    }
+            )
+        }
+    }
+
+    private func cancelPlacementForToolbarMenu() {
+        if case .placingNode = mapMode {
+            mapMode = .browse
         }
     }
 
