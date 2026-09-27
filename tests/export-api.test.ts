@@ -4,7 +4,7 @@ import test from "node:test";
 import type { AddressInfo } from "node:net";
 import { createWebApiRouter } from "../src/web-api/router.js";
 import type {
-  ExportDocumentV2,
+  ExportDocument,
   ExportScope,
 } from "../src/domains/export/export-types.js";
 
@@ -14,19 +14,35 @@ const USER_ID =
 function documentFor(
   scope: ExportScope,
   includeAudit: boolean,
-): ExportDocumentV2 {
+): ExportDocument {
   return {
-    schema_version: 2,
+    schema_version: 3,
     owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
     data:
       scope === "all"
-        ? { diary: [], todo: [] }
+        ? {
+            diary: [],
+            todo: [],
+            projects: {
+              workspaces: [],
+              projects: [],
+              resources: [],
+              conversations: [],
+            },
+            mind: [],
+            conversations: {
+              conversations: [],
+              messages: [],
+              content_blocks: [],
+              attachments: [],
+            },
+          }
         : { [scope]: [] },
     ...(includeAudit
       ? { audit: { lifecycle: [], tool_activity: [] } }
       : {}),
-  } as ExportDocumentV2;
+  } as ExportDocument;
 }
 
 function dependencies(exportService: {
@@ -34,7 +50,7 @@ function dependencies(exportService: {
     userId: string,
     scope: ExportScope,
     includeAudit: boolean,
-  ) => Promise<ExportDocumentV2>;
+  ) => Promise<ExportDocument>;
 }) {
   return {
     diary: { diaryService: {} as never },
@@ -54,7 +70,7 @@ async function withServer(
       userId: string,
       scope: ExportScope,
       includeAudit: boolean,
-    ) => Promise<ExportDocumentV2>;
+    ) => Promise<ExportDocument>;
   },
   callback: (baseUrl: string) => Promise<void>,
 ) {
