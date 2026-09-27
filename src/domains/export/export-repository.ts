@@ -7,11 +7,15 @@ import {
   conversations,
   diaryComments,
   diaryEntries,
+  nativeLiveMindFollowUps,
   projectConversations,
   projectResources,
   projects,
   projectWorkspaces,
   resourceLifecycleEvents,
+  runtimeCuriosityResolutionEvents,
+  runtimeDistillationWatermarks,
+  runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
   todoEntries,
   todoPapers,
@@ -26,6 +30,7 @@ import type {
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportMindContinuityBundle,
   ExportMindStateRecord,
   ExportProjectsBundle,
   ExportToolActivity,
@@ -388,6 +393,118 @@ export class DrizzleExportRepository implements ExportRepository {
         project_id: row.projectId,
         conversation_id: row.conversationId,
         added_at: toIso(row.addedAt),
+      })),
+    };
+  }
+
+  async hasIncompleteMindFollowUps(
+    userId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: nativeLiveMindFollowUps.prepareId })
+      .from(nativeLiveMindFollowUps)
+      .where(and(
+        eq(nativeLiveMindFollowUps.userId, userId),
+        inArray(nativeLiveMindFollowUps.status, [
+          "pending",
+          "processing",
+          "quarantined",
+        ]),
+      ))
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async listMindContinuity(
+    userId: string,
+  ): Promise<ExportMindContinuityBundle> {
+    const [
+      driveRows,
+      curiosityRows,
+      watermarkRows,
+    ] = await Promise.all([
+      this.db.select({
+        id: runtimeDriveSatisfactionEvents.id,
+        subjectId: runtimeDriveSatisfactionEvents.subjectId,
+        driveStateId: runtimeDriveSatisfactionEvents.driveStateId,
+        conversationId: runtimeDriveSatisfactionEvents.conversationId,
+        evidenceMessageId: runtimeDriveSatisfactionEvents.evidenceMessageId,
+        evidenceBlockId: runtimeDriveSatisfactionEvents.evidenceBlockId,
+        evidenceKind: runtimeDriveSatisfactionEvents.evidenceKind,
+        amount: runtimeDriveSatisfactionEvents.amount,
+        idempotencyKey: runtimeDriveSatisfactionEvents.idempotencyKey,
+        createdAt: runtimeDriveSatisfactionEvents.createdAt,
+      }).from(runtimeDriveSatisfactionEvents)
+        .where(eq(runtimeDriveSatisfactionEvents.userId, userId))
+        .orderBy(
+          asc(runtimeDriveSatisfactionEvents.createdAt),
+          asc(runtimeDriveSatisfactionEvents.id),
+        ),
+      this.db.select({
+        id: runtimeCuriosityResolutionEvents.id,
+        subjectId: runtimeCuriosityResolutionEvents.subjectId,
+        curiosityStateId: runtimeCuriosityResolutionEvents.curiosityStateId,
+        conversationId: runtimeCuriosityResolutionEvents.conversationId,
+        requestedResolutionSourceId:
+          runtimeCuriosityResolutionEvents.requestedResolutionSourceId,
+        resultResolutionSourceId:
+          runtimeCuriosityResolutionEvents.resultResolutionSourceId,
+        resolvedAt: runtimeCuriosityResolutionEvents.resolvedAt,
+        idempotencyKey: runtimeCuriosityResolutionEvents.idempotencyKey,
+        createdAt: runtimeCuriosityResolutionEvents.createdAt,
+      }).from(runtimeCuriosityResolutionEvents)
+        .where(eq(runtimeCuriosityResolutionEvents.userId, userId))
+        .orderBy(
+          asc(runtimeCuriosityResolutionEvents.createdAt),
+          asc(runtimeCuriosityResolutionEvents.id),
+        ),
+      this.db.select({
+        subjectId: runtimeDistillationWatermarks.subjectId,
+        conversationId: runtimeDistillationWatermarks.conversationId,
+        lastSourceMessageId:
+          runtimeDistillationWatermarks.lastSourceMessageId,
+        processVersion: runtimeDistillationWatermarks.processVersion,
+        updatedAt: runtimeDistillationWatermarks.updatedAt,
+      }).from(runtimeDistillationWatermarks)
+        .where(eq(runtimeDistillationWatermarks.userId, userId))
+        .orderBy(
+          asc(runtimeDistillationWatermarks.subjectId),
+          asc(runtimeDistillationWatermarks.conversationId),
+        ),
+    ]);
+
+    return {
+      drive_satisfaction_events: driveRows.map((row) => ({
+        id: row.id,
+        subject_id: row.subjectId,
+        drive_state_id: row.driveStateId,
+        conversation_id: row.conversationId,
+        evidence_message_id: row.evidenceMessageId,
+        evidence_block_id: row.evidenceBlockId,
+        evidence_kind: row.evidenceKind,
+        amount: row.amount,
+        idempotency_key: row.idempotencyKey,
+        created_at: toIso(row.createdAt),
+      })),
+      curiosity_resolution_events: curiosityRows.map((row) => ({
+        id: row.id,
+        subject_id: row.subjectId,
+        curiosity_state_id: row.curiosityStateId,
+        conversation_id: row.conversationId,
+        requested_resolution_source_id:
+          row.requestedResolutionSourceId,
+        result_resolution_source_id:
+          row.resultResolutionSourceId,
+        resolved_at: toIso(row.resolvedAt),
+        idempotency_key: row.idempotencyKey,
+        created_at: toIso(row.createdAt),
+      })),
+      distillation_watermarks: watermarkRows.map((row) => ({
+        subject_id: row.subjectId,
+        conversation_id: row.conversationId,
+        last_source_message_id: row.lastSourceMessageId,
+        process_version: row.processVersion,
+        updated_at: toIso(row.updatedAt),
       })),
     };
   }
