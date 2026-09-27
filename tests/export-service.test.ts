@@ -79,7 +79,11 @@ const toolActivity: ExportToolActivity[] = [{
 }];
 
 function createRepository(calls: string[] = []): ExportRepository {
-  return {
+  const repository: ExportRepository = {
+    async withConsistentSnapshot(work) {
+      calls.push("snapshot");
+      return work(repository);
+    },
     async findUserById() {
       return { status: "active" };
     },
@@ -112,6 +116,7 @@ function createRepository(calls: string[] = []): ExportRepository {
       return toolActivity;
     },
   };
+  return repository;
 }
 
 test("ExportService emits the owner-bound v3 contract", async () => {
@@ -153,7 +158,10 @@ test("ExportService reads only the selected active-module scope", async () => {
     ).createExport(USER_ID, scope, false);
 
     assert.deepEqual(Object.keys(document.data), [key]);
-    assert.deepEqual(calls, [`${key}:${USER_ID}`]);
+    assert.deepEqual(calls, [
+      "snapshot",
+      `${key}:${USER_ID}`,
+    ]);
   }
 });
 
@@ -169,12 +177,52 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
     ["diary", "todo", "projects", "mind", "conversations"],
   );
   assert.deepEqual(calls, [
+    "snapshot",
     `diary:${USER_ID}`,
     `todo:${USER_ID}`,
     `projects:${USER_ID}`,
     `mind:${USER_ID}`,
     `conversations:${USER_ID}`,
   ]);
+});
+
+test("ExportService rejects an all export while a canonical turn is in progress", async () => {
+  const repository = createRepository();
+  repository.listConversations = async () => ({
+    conversations: [],
+    messages: [{
+      id: "00000000-0000-4000-8000-000000000001",
+      conversation_id:
+        "00000000-0000-4000-8000-000000000002",
+      parent_message_id: null,
+      role: "assistant",
+      status: "streaming",
+      raw_role: null,
+      model: null,
+      is_current_path: true,
+      current_path_index: 0,
+      turn_index: 0,
+      is_primary: true,
+      display_text: "",
+      created_at: EXPORTED_AT,
+      completed_at: null,
+      updated_at: EXPORTED_AT,
+    }],
+    content_blocks: [],
+    attachments: [],
+  });
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
 });
 
 test("ExportService includes audit only when requested", async () => {
