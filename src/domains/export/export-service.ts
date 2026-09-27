@@ -16,6 +16,9 @@ import {
 } from "../require-active-user.js";
 
 export interface ExportRepository {
+  withConsistentSnapshot<T>(
+    work: (repository: ExportRepository) => Promise<T>,
+  ): Promise<T>;
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
@@ -26,11 +29,18 @@ export interface ExportRepository {
   listToolActivity(userId: string): Promise<ExportToolActivity[]>;
 }
 
-export type ExportServiceErrorCode = "USER_NOT_FOUND" | "USER_DISABLED";
+export type ExportServiceErrorCode =
+  | "USER_NOT_FOUND"
+  | "USER_DISABLED"
+  | "EXPORT_IN_PROGRESS";
 
 export class ExportServiceError extends Error {
   constructor(public readonly code: ExportServiceErrorCode) {
-    super("Export is unavailable for the authenticated user.");
+    super(
+      code === "EXPORT_IN_PROGRESS"
+        ? "Product export is unavailable while a native/live turn is in progress."
+        : "Export is unavailable for the authenticated user.",
+    );
     this.name = "ExportServiceError";
   }
 }
@@ -46,8 +56,25 @@ export class ExportService {
     scope: ExportScope,
     includeAudit: boolean,
   ): Promise<ExportDocument> {
+    return this.repository.withConsistentSnapshot(
+      async (repository) =>
+        this.createExportFromSnapshot(
+          repository,
+          userId,
+          scope,
+          includeAudit,
+        ),
+    );
+  }
+
+  private async createExportFromSnapshot(
+    repository: ExportRepository,
+    userId: string,
+    scope: ExportScope,
+    includeAudit: boolean,
+  ): Promise<ExportDocument> {
     try {
-      await requireActiveUser(this.repository, userId);
+      await requireActiveUser(repository, userId);
     } catch (error) {
       if (error instanceof ActiveUserAuthorizationError) {
         throw new ExportServiceError(error.code);
@@ -57,17 +84,26 @@ export class ExportService {
 
     const data: ExportDocument["data"] = {};
     if (scope === "all" || scope === "diary") {
-      data.diary = await this.repository.listDiary(userId);
+      data.diary = await repository.listDiary(userId);
     }
     if (scope === "all" || scope === "todo") {
-      data.todo = await this.repository.listTodo(userId);
+      data.todo = await repository.listTodo(userId);
     }
     if (scope === "all") {
       const [projects, mind, conversations] = await Promise.all([
-        this.repository.listProjects(userId),
-        this.repository.listMind(userId),
-        this.repository.listConversations(userId),
+        repository.listProjects(userId),
+        repository.listMind(userId),
+        repository.listConversations(userId),
       ]);
+      if (
+        conversations.messages.some(
+          (message) =>
+            message.status === "pending"
+            || message.status === "streaming",
+        )
+      ) {
+        throw new ExportServiceError("EXPORT_IN_PROGRESS");
+      }
       data.projects = projects;
       data.mind = mind;
       data.conversations = conversations;
@@ -81,8 +117,8 @@ export class ExportService {
     };
     if (includeAudit) {
       const [lifecycle, tool_activity] = await Promise.all([
-        this.repository.listLifecycleAudit(userId),
-        this.repository.listToolActivity(userId),
+        repository.listLifecycleAudit(userId),
+        repository.listToolActivity(userId),
       ]);
       document.audit = { lifecycle, tool_activity };
     }
