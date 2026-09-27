@@ -215,6 +215,22 @@ implements DriveSatisfactionRuntimePort {
           };
         }
 
+        const activeConversation = await transaction.execute<{ id: string }>(sql`
+          SELECT id
+          FROM conversations
+          WHERE id = ${input.evidence.conversationId}::uuid
+            AND user_id = ${input.userId}::uuid
+            AND origin = 'native_live'
+            AND lifecycle_status = 'active'
+          FOR SHARE
+        `);
+        if (activeConversation.length !== 1) {
+          return {
+            outcome: "rejected" as const,
+            code: "EVIDENCE_INVALID" as const,
+          };
+        }
+
         const requested = await this.loadDrive(
           transaction as Transaction,
           input.userId,
