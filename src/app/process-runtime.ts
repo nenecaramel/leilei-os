@@ -187,6 +187,12 @@ import {
   type MindCompatibilityCensus,
 } from "../domains/runtime/mind-compatibility-census.js";
 import {
+  MindProductService,
+} from "../domains/runtime/mind-product-service.js";
+import {
+  DrizzleMindProductRepository,
+} from "../domains/runtime/mind-product-repository.js";
+import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
@@ -372,6 +378,10 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
+  const mindProductService = new MindProductService(
+    new DrizzleMindProductRepository(db),
+    DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+  );
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
   const breathRankingConfig = getBreathRankingConfig(runtimeEnv);
   const mindSemanticGroupingConfig =
@@ -808,6 +818,7 @@ export function createProcessRuntime(
       webExportService: exportService,
       webImportService: importService,
       webUniverseService: universeService,
+      webMindService: mindProductService,
       nativeLiveProduction: {
         web: {
           coordinator: nativeLiveRelayPrepareCoordinator,
