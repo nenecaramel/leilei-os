@@ -33,17 +33,20 @@ export type ProjectSummary = {
   updatedAt: string;
 };
 
-export type ProjectResource = {
+export type ProjectResourceSummary = {
   id: string;
   projectId: string;
   kind: ProjectResourceKind;
   key: string;
   title: string | null;
-  content: string | null;
   metadata: Record<string, unknown>;
   version: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProjectResource = ProjectResourceSummary & {
+  content: string | null;
 };
 
 export type ProjectConversation = {
@@ -140,7 +143,13 @@ export interface ProjectWorkspaceRepository {
     userId: string;
     projectId: string;
     kind?: ProjectResourceKind;
-  }): Promise<ProjectResource[] | null>;
+  }): Promise<ProjectResourceSummary[] | null>;
+
+  getResource(input: {
+    userId: string;
+    projectId: string;
+    resourceId: string;
+  }): Promise<ProjectResource | null>;
 
   createResource(input: {
     userId: string;
