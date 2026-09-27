@@ -24,39 +24,15 @@ struct MindView: View {
                             .frame(width: 22)
                             .foregroundStyle(.secondary)
 
-                            VStack(
-                                alignment: .leading,
-                                spacing: 3
-                            ) {
-                                Text(kind.title)
-                                    .foregroundStyle(.primary)
-
-                                Text(kind.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+                            Text(kind.title)
+                                .foregroundStyle(.primary)
 
                             Spacer(minLength: 8)
-
-                            Text("Unavailable")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
 
-            Section("Source") {
-                LabeledContent(
-                    "Runtime",
-                    value: "Unavailable"
-                )
-                LabeledContent(
-                    "Manual",
-                    value: "Unavailable"
-                )
-            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -94,23 +70,6 @@ private enum MindKind:
         rawValue.capitalized
     }
 
-    var subtitle: String {
-        switch self {
-        case .feel:
-            return "Affective state"
-        case .memory:
-            return "Long-term remembered state"
-        case .drive:
-            return "Ongoing pressure and direction"
-        case .thought:
-            return "Persistent thought"
-        case .curiosity:
-            return "Open question or curiosity"
-        case .topic:
-            return "Derived active topic"
-        }
-    }
-
     var systemImage: String {
         switch self {
         case .feel:
@@ -133,47 +92,10 @@ private struct MindKindDetailPlaceholder: View {
     let kind: MindKind
 
     var body: some View {
-        List {
-            Section("State") {
-                LabeledContent("Kind", value: kind.title)
-                LabeledContent("Lifecycle", value: "—")
-                LabeledContent("Strength", value: "—")
-            }
-
-            Section("Source") {
-                LabeledContent("Type", value: "—")
-                LabeledContent("Runtime / Manual", value: "—")
-            }
-
-            Section("Time") {
-                LabeledContent("Occurred", value: "—")
-                LabeledContent("Created", value: "—")
-                LabeledContent("Updated", value: "—")
-            }
-
-            Section("Provenance") {
-                Text("Unavailable")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Button(
-                    "Delete",
-                    role: .destructive
-                ) {
-                }
-                .disabled(true)
-            } footer: {
-                Text(
-                    "Delete becomes available after the authoritative Mind mutation contract is connected."
-                )
-            }
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
-        .navigationTitle(kind.title)
-        .navigationBarTitleDisplayMode(.inline)
+        AppStateSurface(title: "Nothing here")
+            .background(Color(.systemBackground))
+            .navigationTitle(kind.title)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -218,14 +140,6 @@ private struct MindManualEntryPlaceholder: View {
                     LabeledContent(
                         "Source",
                         value: "Manual"
-                    )
-                    LabeledContent(
-                        "Authority",
-                        value: "Unavailable"
-                    )
-                } footer: {
-                    Text(
-                        "Manual Mind writes require the main authoritative contract. This form does not persist data yet."
                     )
                 }
             }
