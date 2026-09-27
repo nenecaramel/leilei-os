@@ -23,6 +23,9 @@ import {
 import {
   NativeLiveConversationService,
 } from "../src/domains/conversation/native-live-conversation-service.js";
+import {
+  DrizzleNativeLiveConversationRuntimeMetadataReader,
+} from "../src/domains/conversation/native-live-conversation-runtime-metadata.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST === "1";
@@ -69,6 +72,8 @@ test(
     const conversationService = new NativeLiveConversationService(
       new DrizzleNativeLiveConversationRepository(database.db),
     );
+    const runtimeMetadataReader =
+      new DrizzleNativeLiveConversationRuntimeMetadataReader(database.db);
     const conversation = await conversationService.createConversation({
       userId: user.id,
       title: "Backend turn persistence",
@@ -228,6 +233,25 @@ test(
       "provider-first",
     );
 
+    const firstDurableMetadata = await runtimeMetadataReader.readLatest({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(firstDurableMetadata);
+    assert.equal(
+      firstDurableMetadata.currentHeadMessageId,
+      firstFinalize.assistantMessageId,
+    );
+    assert.equal(
+      firstDurableMetadata.sourceMessageId,
+      firstFinalize.assistantMessageId,
+    );
+    assert.deepEqual(
+      firstDurableMetadata.runtimeMetadata,
+      runtimeMetadata,
+    );
+    assert.ok(firstDurableMetadata.observedAt);
+
     const finalizeReplay = await coordinator.finalize(user.id, {
       protocol_version: 1,
       prepare_id: firstPrepare.command.prepare_id,
@@ -315,6 +339,25 @@ test(
     assert.equal(secondFinalize.ok, true);
     if (!secondFinalize.ok) throw new Error("expected second finalize success");
     const oldSecondAssistantId = secondFinalize.assistantMessageId;
+
+    const secondDurableMetadata = await runtimeMetadataReader.readLatest({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(secondDurableMetadata);
+    assert.equal(
+      secondDurableMetadata.currentHeadMessageId,
+      oldSecondAssistantId,
+    );
+    assert.equal(
+      secondDurableMetadata.sourceMessageId,
+      oldSecondAssistantId,
+    );
+    assert.equal(
+      secondDurableMetadata.runtimeMetadata,
+      null,
+      "latest checkpoint without metadata must not fall back to stale older metadata",
+    );
 
     const causalStateId = crypto.randomUUID();
     const safeStateId = crypto.randomUUID();
