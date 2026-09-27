@@ -235,3 +235,177 @@ test(
     }]);
   },
 );
+
+
+test(
+  "malformed durable Mind follow-up is quarantined without starving the next valid job",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let userId: string | null = null;
+
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(runtimeSubjectStates)
+            .where(eq(runtimeSubjectStates.userId, userId));
+          await database.db
+            .delete(runtimeContextManifests)
+            .where(eq(runtimeContextManifests.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db
+            .delete(users)
+            .where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-followup-quarantine-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Follow-up Quarantine",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Mind follow-up quarantine",
+    });
+    const turnPort = new DrizzleNativeLiveBackendTurnPort(database.db);
+    const backendMind = createDefaultBackendMindRuntime(database.db);
+    const leavePending = {
+      async processPreparation() {
+        throw new Error("leave durable follow-up pending");
+      },
+    };
+    const coordinator = new NativeLiveBackendTurnCoordinator(
+      turnPort,
+      undefined,
+      backendMind,
+      leavePending,
+    );
+
+    async function finalizeTurn(
+      requestId: string,
+      expectedHeadMessageId: string | null,
+      userText: string,
+      memoryText: string,
+      providerSessionId: string,
+    ) {
+      const prepared = await coordinator.prepare(userId!, {
+        dispatch_target: "claude_code",
+        request_id: requestId,
+        operation: "send",
+        conversation_id: conversation.id,
+        expected_head_message_id: expectedHeadMessageId,
+        text: userText,
+      });
+      assert.equal(prepared.ok, true);
+      if (!prepared.ok) throw new Error("expected prepare success");
+
+      const finalized = await coordinator.finalize(userId!, {
+        protocol_version: 1,
+        prepare_id: prepared.command.prepare_id,
+        request_id: requestId,
+        conversation_id: conversation.id,
+        status: "success",
+        provider_session_id: providerSessionId,
+        normalized_events: [
+          {
+            type: "text",
+            payload: {
+              text: `VISIBLE <memory>${memoryText}</memory>`,
+            },
+          },
+          {
+            type: "result",
+            payload: {
+              status: "success",
+              final_text: `VISIBLE <memory>${memoryText}</memory>`,
+            },
+          },
+        ],
+      });
+      assert.equal(finalized.ok, true);
+      if (!finalized.ok) throw new Error("expected finalize success");
+      return {
+        prepareId: prepared.command.prepare_id,
+        assistantMessageId: finalized.assistantMessageId,
+      };
+    }
+
+    const first = await finalizeTurn(
+      crypto.randomUUID(),
+      null,
+      "first",
+      "first memory",
+      "quarantine-provider-1",
+    );
+    const second = await finalizeTurn(
+      crypto.randomUUID(),
+      first.assistantMessageId,
+      "second",
+      "second memory",
+      "quarantine-provider-2",
+    );
+
+    await database.db
+      .update(nativeLiveMindFollowUps)
+      .set({
+        intents: [{ kind: "dream" }],
+        availableAt: new Date(0),
+      })
+      .where(eq(nativeLiveMindFollowUps.prepareId, first.prepareId));
+    await database.db
+      .update(nativeLiveMindFollowUps)
+      .set({ availableAt: new Date(1) })
+      .where(eq(nativeLiveMindFollowUps.prepareId, second.prepareId));
+
+    const repository =
+      new DrizzleNativeLiveMindFollowUpRepository(database.db);
+    const workerId = crypto.randomUUID();
+    const claimed = await repository.claimNext({ workerId });
+    assert.ok(claimed);
+    assert.equal(claimed.prepareId, second.prepareId);
+
+    const [malformed] = await database.db
+      .select({
+        status: nativeLiveMindFollowUps.status,
+        lockedBy: nativeLiveMindFollowUps.lockedBy,
+        lockedUntil: nativeLiveMindFollowUps.lockedUntil,
+        lastErrorName: nativeLiveMindFollowUps.lastErrorName,
+      })
+      .from(nativeLiveMindFollowUps)
+      .where(eq(nativeLiveMindFollowUps.prepareId, first.prepareId))
+      .limit(1);
+    assert.equal(malformed?.status, "quarantined");
+    assert.equal(malformed?.lockedBy, null);
+    assert.equal(malformed?.lockedUntil, null);
+    assert.equal(typeof malformed?.lastErrorName, "string");
+
+    const [valid] = await database.db
+      .select({
+        status: nativeLiveMindFollowUps.status,
+        lockedBy: nativeLiveMindFollowUps.lockedBy,
+      })
+      .from(nativeLiveMindFollowUps)
+      .where(eq(nativeLiveMindFollowUps.prepareId, second.prepareId))
+      .limit(1);
+    assert.equal(valid?.status, "processing");
+    assert.equal(valid?.lockedBy, workerId);
+  },
+);
