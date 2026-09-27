@@ -70,6 +70,24 @@ jobs:
         run: >-
           pnpm exec tsx --test --test-concurrency=1
           tests/native-live-conversation-repository.integration.test.ts
+      - name: Run Runtime Mind PostgreSQL regressions
+        env:
+          RUN_RUNTIME_BREATH_DATABASE_TEST: "1"
+          RUN_RUNTIME_CURIOSITY_RESOLUTION_DATABASE_TEST: "1"
+          RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST: "1"
+          RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST: "1"
+          RUN_NATIVE_LIVE_TURN_DATABASE_TEST: "1"
+          RUN_RUNTIME_MIND_DATABASE_TEST: "1"
+          RUN_NATIVE_LIVE_RELAY_DATABASE_TEST: "1"
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/runtime-breath-recall-repository.integration.test.ts
+          tests/runtime-curiosity-resolution-idempotency.integration.test.ts
+          tests/native-live-mind-followup.integration.test.ts
+          tests/native-live-semantic-handshake.integration.test.ts
+          tests/native-live-backend-turn-repository.integration.test.ts
+          tests/runtime-subject-state-repository.integration.test.ts
+          tests/native-live-background-model-queue.integration.test.ts
       - name: Run retention PostgreSQL regression
         env:
           RUN_DATA_RETENTION_DATABASE_TEST: "1"
