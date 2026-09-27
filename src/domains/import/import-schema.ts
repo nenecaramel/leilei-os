@@ -73,6 +73,16 @@ const diaryRecord = z.object({
   updated_at: isoDateTime,
 }).strict();
 
+const diaryCommentRecord = z.object({
+  id: uuid,
+  diary_id: uuid,
+  author: z.enum(CONTENT_AUTHORS),
+  content: z.string().min(1).max(10_000),
+  revision: z.number().int().min(1),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+}).strict();
+
 const todoEntry = z.object({
   id: z.string().min(1),
   kind: z.enum(["pending", "completed", "record"]),
@@ -272,6 +282,9 @@ const dataV2Schema = z.object({
 
 const dataV3Schema = z.object({
   diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+  diary_comments: z.array(diaryCommentRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE)
+    .optional(),
   todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   projects: projectsBundle.optional(),
   mind: z.array(mindStateRecord)
@@ -318,6 +331,20 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
         "INVALID_IMPORT_FILE",
         "diary text must not be blank",
       );
+    }
+  }
+
+  if (
+    document.schema_version === 3
+    && document.data.diary_comments
+  ) {
+    for (const comment of document.data.diary_comments) {
+      if (comment.content.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Diary comment content must not be blank",
+        );
+      }
     }
   }
 
