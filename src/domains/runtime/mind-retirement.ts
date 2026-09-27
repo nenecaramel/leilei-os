@@ -171,7 +171,7 @@ export function selectRetirableThreadMembers(
   const now = normalizeIso(nowIso, "now");
   const members = candidates.flatMap((candidate) => {
     if (candidate.kind !== plan.kind) return [];
-    let terminal: RetirementThreadState | null;
+    let terminal: MindRetirementCandidateInspection | null;
     try {
       terminal = readThreadState(candidate);
     } catch {
