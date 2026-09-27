@@ -85,6 +85,21 @@ SERVER_MAJOR="$((SERVER_VERSION_NUM / 10000))"
 [[ "${PG_DUMP_MAJOR}" -ge "${SERVER_MAJOR}" ]] ||
   fail "pg_dump must not be older than the PostgreSQL server"
 
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/leilei-backup.XXXXXX")"
+DUMP_PATH="${TEMP_DIR}/database.dump"
+MANIFEST_PATH="${TEMP_DIR}/manifest.txt"
+ARCHIVE_PATH="${TEMP_DIR}/backup.tar.gz"
+FINAL_TEMP=""
+CHECKSUM_TEMP=""
+
+cleanup() {
+  unset LEILEI_BACKUP_PASSPHRASE
+  [[ -z "${FINAL_TEMP}" ]] || rm -f "${FINAL_TEMP}"
+  [[ -z "${CHECKSUM_TEMP}" ]] || rm -f "${CHECKSUM_TEMP}"
+  rm -rf "${TEMP_DIR}"
+}
+trap cleanup EXIT HUP INT TERM
+
 if ! MIGRATION_LEDGER="$(
   "${PSQL_BIN}" "${DATABASE_URL}" \
     -X -A -t -v ON_ERROR_STOP=1 \
@@ -124,6 +139,8 @@ UTC_TIMESTAMP="$(date -u '+%Y%m%dT%H%M%SZ')"
 BASE_NAME="leilei-os_${UTC_TIMESTAMP}_${SCHEMA_VERSION}.backup.enc"
 FINAL_PATH="${OUTPUT_DIR}/${BASE_NAME}"
 CHECKSUM_PATH="${FINAL_PATH}.sha256"
+FINAL_TEMP="${FINAL_PATH}.tmp"
+CHECKSUM_TEMP="${CHECKSUM_PATH}.tmp"
 
 [[ ! -e "${FINAL_PATH}" && ! -e "${CHECKSUM_PATH}" ]] ||
   fail "the destination backup or checksum already exists"
