@@ -50,7 +50,7 @@ export class ExportServiceError extends Error {
   constructor(public readonly code: ExportServiceErrorCode) {
     super(
       code === "EXPORT_IN_PROGRESS"
-        ? "Product export is unavailable while native/live conversation processing is incomplete."
+        ? "Product export is unavailable while runtime processing is incomplete."
         : code === "EXPORT_TOO_LARGE"
           ? "Product export exceeds the current portable backup size limit."
           : "Export is unavailable for the authenticated user.",
