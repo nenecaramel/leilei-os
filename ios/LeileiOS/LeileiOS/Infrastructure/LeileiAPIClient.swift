@@ -677,6 +677,38 @@ final class LeileiAPIClient {
         return envelope.data.interaction
     }
 
+
+    func createNativeLiveRuntimeControl(
+        prepareID: String,
+        controlID: UUID,
+        kind: String,
+        payload: [String: NativeLiveJSONValue]
+    ) async throws -> NativeLiveRuntimeControlSnapshot {
+        guard kind == "mid_turn_input"
+                || kind == "interrupt" else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let body = try JSONEncoder().encode(
+            NativeLiveRuntimeControlCreateBody(
+                controlID:
+                    controlID.uuidString.lowercased(),
+                kind: kind,
+                payload: payload
+            )
+        )
+
+        let envelope: NativeLiveRuntimeControlCreateEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/turns/\(prepareID)/controls",
+                method: "POST",
+                body: body,
+                authenticated: true
+            )
+        return envelope.data.control
+    }
+
     func nativeLiveCurrentPath(
         conversationID: UUID,
         limit: Int = 100,
@@ -1029,6 +1061,32 @@ private struct NativeLiveTurnWaitEnvelope: Decodable, Sendable {
         let outcome: String
         let turn: NativeLiveTurnSnapshot?
     }
+}
+
+private struct NativeLiveRuntimeControlCreateBody:
+    Encodable,
+    Sendable {
+    let controlID: String
+    let kind: String
+    let payload: [String: NativeLiveJSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case controlID = "control_id"
+        case kind
+        case payload
+    }
+}
+
+private struct NativeLiveRuntimeControlCreateEnvelope:
+    Decodable,
+    Sendable {
+    struct ControlData: Decodable, Sendable {
+        let outcome: String
+        let control: NativeLiveRuntimeControlSnapshot
+    }
+
+    let success: Bool
+    let data: ControlData
 }
 
 private struct NativeLiveRuntimeInteractionResponseBody:
