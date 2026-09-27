@@ -411,6 +411,8 @@ private struct DiaryArchiveView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var state: DiaryArchiveLoadState = .loading
     @State private var diaryCount: Int?
+    @State private var completeArchive: [DiaryEntry]?
+    @State private var isLoadingMoreArchive = false
 
     var body: some View {
         Group {
@@ -434,7 +436,17 @@ private struct DiaryArchiveView: View {
                         title: "Nothing here",
                     )
                 } else {
-                    DiaryArchiveList(diaries: diaries) {
+                    DiaryArchiveList(
+                        diaries: diaries,
+                        hasMore:
+                            diaries.count < (diaryCount ?? diaries.count),
+                        isLoadingMore: isLoadingMoreArchive,
+                        onLoadMore: {
+                            Task {
+                                await loadMoreArchive()
+                            }
+                        }
+                    ) {
                         Task {
                             await loadArchive()
                         }
@@ -466,6 +478,8 @@ private struct DiaryArchiveView: View {
     @MainActor
     private func loadArchive() async {
         state = .loading
+        completeArchive = nil
+        isLoadingMoreArchive = false
 
         do {
             let response: DiaryListEnvelope = try await appModel.api.request(
@@ -477,10 +491,83 @@ private struct DiaryArchiveView: View {
             state = .unavailable("Unavailable")
         }
     }
+
+    @MainActor
+    private func loadMoreArchive() async {
+        guard !isLoadingMoreArchive,
+              case .loaded(let visible) = state,
+              visible.count < (diaryCount ?? visible.count) else {
+            return
+        }
+
+        isLoadingMoreArchive = true
+        defer { isLoadingMoreArchive = false }
+
+        do {
+            let all: [DiaryEntry]
+            if let completeArchive {
+                all = completeArchive
+            } else {
+                let data = try await appModel.api.exportData(
+                    scope: "diary",
+                    includeAudit: false
+                )
+                let snapshot = try JSONDecoder().decode(
+                    LeileiExportSnapshot.self,
+                    from: data
+                )
+
+                all = (snapshot.data.diary ?? [])
+                    .filter { $0.status == "archived" }
+                    .sorted {
+                        if $0.date != $1.date {
+                            return $0.date > $1.date
+                        }
+                        if $0.createdAt != $1.createdAt {
+                            return $0.createdAt > $1.createdAt
+                        }
+                        return $0.id > $1.id
+                    }
+                    .map {
+                        DiaryEntry(
+                            id: $0.id,
+                            title: $0.title,
+                            content: $0.content,
+                            date: $0.date,
+                            tags: $0.tags,
+                            mood: $0.mood,
+                            createdAt: $0.createdAt,
+                            updatedAt: $0.updatedAt,
+                            author: $0.author,
+                            comments: nil,
+                            commentsMetadata: nil
+                        )
+                    }
+                completeArchive = all
+                diaryCount = all.count
+            }
+
+            state = .loaded(
+                Array(
+                    all.prefix(
+                        min(
+                            visible.count + 50,
+                            all.count
+                        )
+                    )
+                )
+            )
+        } catch {
+            // Keep the already loaded archive visible.
+        }
+    }
 }
 
 private struct DiaryArchiveList: View {
     let diaries: [DiaryEntry]
+    let hasMore: Bool
+    let isLoadingMore: Bool
+    let onLoadMore: () -> Void
     let onChanged: () -> Void
 
     var body: some View {
@@ -503,6 +590,26 @@ private struct DiaryArchiveList: View {
                             edges: .bottom
                         )
                     }
+                }
+            }
+
+            if hasMore {
+                Section {
+                    Button(action: onLoadMore) {
+                        HStack(spacing: 8) {
+                            if isLoadingMore {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+
+                            Text("More")
+                        }
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .center
+                        )
+                    }
+                    .disabled(isLoadingMore)
                 }
             }
         }
