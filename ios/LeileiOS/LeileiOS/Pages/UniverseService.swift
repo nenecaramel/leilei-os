@@ -234,7 +234,7 @@ final class UniverseAPIService {
     }
 
     static func userMessage(for error: Error) -> String {
-        if isVersionConflict(error) {
+        if Self.isVersionConflict(error) {
             return "Universe 已在其他设备发生变化，请重新读取后再试。"
         }
 
