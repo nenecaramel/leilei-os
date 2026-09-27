@@ -125,7 +125,7 @@ private struct ConversationArchivePlaceholder: View {
             AppStateSurface(title: "Unavailable")
 
             Text(
-                "Archived conversations will appear here when Archive is available."
+                "Archived conversations, Restore, and true Delete will appear here after the lifecycle contract is connected."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -301,9 +301,9 @@ private enum ConversationLifecycleNotice {
     var message: String {
         switch self {
         case .archive:
-            return "Archive isn't available yet."
+            return "Archive will become available after the authoritative conversation lifecycle contract is connected."
         case .delete:
-            return "Delete isn't available yet."
+            return "True Delete will become available after the authoritative conversation lifecycle contract is connected."
         }
     }
 }
@@ -364,9 +364,6 @@ struct ConversationCreateSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.settingsBackground)
             .navigationTitle("New Session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -387,8 +384,6 @@ struct ConversationCreateSheet: View {
                 }
             }
         }
-        .background(Color.settingsBackground)
-        .presentationBackground(Color.settingsBackground)
         .presentationDetents([.medium])
     }
 

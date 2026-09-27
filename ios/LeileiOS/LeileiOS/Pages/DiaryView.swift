@@ -384,9 +384,6 @@ private struct DiaryCustomDateRangeSheet: View {
                 )
                 .datePickerStyle(.compact)
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.settingsBackground)
             .navigationTitle("Custom Range")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -404,8 +401,6 @@ private struct DiaryCustomDateRangeSheet: View {
                 }
             }
         }
-        .background(Color.settingsBackground)
-        .presentationBackground(Color.settingsBackground)
         .presentationDetents([.medium])
     }
 }
