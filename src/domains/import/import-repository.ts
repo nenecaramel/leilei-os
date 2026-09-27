@@ -554,7 +554,7 @@ implements ImportRepository {
       semanticGroupingRows,
       allDriveSatisfactionIds,
       allCuriosityResolutionIds,
-      allSemanticGroupingIds,
+      allSemanticGroupingRows,
     ] = await Promise.all([
       this.db.select({
         id: runtimeDriveSatisfactionEvents.id,
@@ -628,8 +628,13 @@ implements ImportRepository {
         .from(runtimeDriveSatisfactionEvents),
       this.db.select({ id: runtimeCuriosityResolutionEvents.id })
         .from(runtimeCuriosityResolutionEvents),
-      this.db.select({ id: runtimeMindSemanticGroupingRequests.id })
-        .from(runtimeMindSemanticGroupingRequests),
+      this.db.select({
+        id: runtimeMindSemanticGroupingRequests.id,
+        userId: runtimeMindSemanticGroupingRequests.userId,
+        subjectId: runtimeMindSemanticGroupingRequests.subjectId,
+        kind: runtimeMindSemanticGroupingRequests.kind,
+        queryStateId: runtimeMindSemanticGroupingRequests.queryStateId,
+      }).from(runtimeMindSemanticGroupingRequests),
     ]);
 
     const entries =
@@ -960,14 +965,17 @@ implements ImportRepository {
           .map((row) => row.id),
       ),
       foreign_semantic_grouping_result_ids: new Set(
-        allSemanticGroupingIds
-          .filter(
-            (row) =>
-              !semanticGroupingRows.some(
-                (owned) => owned.id === row.id,
-              ),
-          )
+        allSemanticGroupingRows
+          .filter((row) => row.userId !== userId)
           .map((row) => row.id),
+      ),
+      occupied_semantic_grouping_keys: new Set(
+        allSemanticGroupingRows
+          .filter((row) => row.userId === userId)
+          .map(
+            (row) =>
+              `${row.subjectId}:${row.kind}:${row.queryStateId}`,
+          ),
       ),
       foreign_conversation_ids: new Set(
         allConversationIds
