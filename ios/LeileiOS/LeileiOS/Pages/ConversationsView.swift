@@ -7,6 +7,9 @@ struct ConversationsView: View {
 
     @State private var scope:
         ConversationListScope = .active
+    @State private var pendingDelete:
+        NativeLiveConversationSummary?
+    @State private var lifecycleErrorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,46 +26,17 @@ struct ConversationsView: View {
             .padding(.bottom, 10)
 
             Group {
-                if scope == .archived {
-                    ConversationArchivePlaceholder()
-                } else if !appModel.isAuthenticated {
-                AppStateSurface(
-                    title: "Sign in",
-                    actionTitle: "Sign In"
-                ) {
-                    Task {
-                        await reauthorizeAndReload()
-                    }
-                }
-            } else if appModel.nativeLiveConversations.isEmpty {
-                switch appModel.conversationBootstrapState {
-                case .idle, .loading:
-                    ConversationListSkeleton()
-
-                case .ready:
-                    AppStateSurface(title: "Nothing here")
-
-                case .unavailable:
+                if !appModel.isAuthenticated {
                     AppStateSurface(
-                        title: "Unavailable",
-                        actionTitle: "Retry"
+                        title: "Sign in",
+                        actionTitle: "Sign In"
                     ) {
                         Task {
-                            await appModel.refreshNativeLiveConversations()
+                            await reauthorizeAndReload()
                         }
                     }
-                }
                 } else {
-                    ConversationList(
-                        conversations: appModel.nativeLiveConversations,
-                        activeConversationID: appModel.activeNativeLiveConversationID,
-                        onOpen: { conversation in
-                            await open(conversation)
-                        },
-                        onLoadMore: {
-                            await appModel.loadMoreNativeLiveConversations()
-                        }
-                    )
+                    conversationContent
                 }
             }
         }
@@ -70,10 +44,128 @@ struct ConversationsView: View {
         .background(Color(.systemBackground))
         .task {
             guard appModel.isAuthenticated else { return }
-            await appModel.refreshNativeLiveConversations()
+            await refreshCurrentScope()
+        }
+        .onChange(of: scope) { _, _ in
+            Task {
+                await refreshCurrentScope()
+            }
         }
         .refreshable {
-            await appModel.refreshNativeLiveConversations()
+            await refreshCurrentScope()
+        }
+        .alert(
+            "Delete conversation?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingDelete = nil
+                    }
+                }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                pendingDelete = nil
+            }
+
+            Button("Delete", role: .destructive) {
+                guard let conversation = pendingDelete else {
+                    return
+                }
+                pendingDelete = nil
+                Task {
+                    await delete(conversation)
+                }
+            }
+        } message: {
+            Text(
+                "This conversation will be permanently deleted. "
+                + "This can’t be undone."
+            )
+        }
+        .alert(
+            "Failed",
+            isPresented: Binding(
+                get: { lifecycleErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        lifecycleErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                lifecycleErrorMessage = nil
+            }
+        } message: {
+            Text(lifecycleErrorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var conversationContent: some View {
+        switch scope {
+        case .active:
+            listContent(
+                conversations: appModel.nativeLiveConversations,
+                state: appModel.conversationBootstrapState
+            )
+        case .archived:
+            listContent(
+                conversations: appModel.nativeLiveArchivedConversations,
+                state: appModel.archivedConversationBootstrapState
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func listContent(
+        conversations: [NativeLiveConversationSummary],
+        state: AppModel.ConversationBootstrapState
+    ) -> some View {
+        if conversations.isEmpty {
+            switch state {
+            case .idle, .loading:
+                ConversationListSkeleton()
+
+            case .ready:
+                AppStateSurface(title: "Nothing here")
+
+            case .unavailable:
+                AppStateSurface(
+                    title: "Unavailable",
+                    actionTitle: "Retry"
+                ) {
+                    Task {
+                        await refreshCurrentScope()
+                    }
+                }
+            }
+        } else {
+            ConversationList(
+                scope: scope,
+                conversations: conversations,
+                activeConversationID:
+                    scope == .active
+                        ? appModel.activeNativeLiveConversationID
+                        : nil,
+                onOpen: { conversation in
+                    await open(conversation)
+                },
+                onArchive: { conversation in
+                    await archive(conversation)
+                },
+                onRestore: { conversation in
+                    await restore(conversation)
+                },
+                onDelete: { conversation in
+                    pendingDelete = conversation
+                },
+                onLoadMore: {
+                    await loadMoreCurrentScope()
+                }
+            )
         }
     }
 
@@ -81,7 +173,8 @@ struct ConversationsView: View {
     private func open(
         _ conversation: NativeLiveConversationSummary
     ) async {
-        guard let conversationID = UUID(uuidString: conversation.id) else {
+        guard scope == .active,
+              let conversationID = UUID(uuidString: conversation.id) else {
             return
         }
 
@@ -90,10 +183,83 @@ struct ConversationsView: View {
     }
 
     @MainActor
+    private func archive(
+        _ conversation: NativeLiveConversationSummary
+    ) async {
+        guard let conversationID = UUID(uuidString: conversation.id) else {
+            return
+        }
+
+        do {
+            try await appModel.archiveNativeLiveConversation(
+                conversationID: conversationID
+            )
+        } catch {
+            lifecycleErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func restore(
+        _ conversation: NativeLiveConversationSummary
+    ) async {
+        guard let conversationID = UUID(uuidString: conversation.id) else {
+            return
+        }
+
+        do {
+            try await appModel.restoreNativeLiveConversation(
+                conversationID: conversationID
+            )
+        } catch {
+            lifecycleErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func delete(
+        _ conversation: NativeLiveConversationSummary
+    ) async {
+        guard let conversationID = UUID(uuidString: conversation.id) else {
+            return
+        }
+
+        do {
+            try await appModel.deleteNativeLiveConversation(
+                conversationID: conversationID
+            )
+        } catch {
+            lifecycleErrorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func refreshCurrentScope() async {
+        guard appModel.isAuthenticated else { return }
+
+        switch scope {
+        case .active:
+            await appModel.refreshNativeLiveConversations()
+        case .archived:
+            await appModel.refreshNativeLiveArchivedConversations()
+        }
+    }
+
+    @MainActor
+    private func loadMoreCurrentScope() async {
+        switch scope {
+        case .active:
+            await appModel.loadMoreNativeLiveConversations()
+        case .archived:
+            await appModel.loadMoreNativeLiveArchivedConversations()
+        }
+    }
+
+    @MainActor
     private func reauthorizeAndReload() async {
         do {
             try await appModel.reauthorize()
-            await appModel.refreshNativeLiveConversations()
+            await refreshCurrentScope()
         } catch {
             return
         }
@@ -119,86 +285,55 @@ private enum ConversationListScope:
     }
 }
 
-private struct ConversationArchivePlaceholder: View {
-    var body: some View {
-        AppStateSurface(title: "Unavailable")
-    }
-}
-
 private struct ConversationList: View {
+    let scope: ConversationListScope
     let conversations: [NativeLiveConversationSummary]
     let activeConversationID: UUID?
     let onOpen: (NativeLiveConversationSummary) async -> Void
+    let onArchive: (NativeLiveConversationSummary) async -> Void
+    let onRestore: (NativeLiveConversationSummary) async -> Void
+    let onDelete: (NativeLiveConversationSummary) -> Void
     let onLoadMore: () async -> Void
 
     var body: some View {
         List(conversations) { conversation in
             HStack(alignment: .center, spacing: 10) {
-                Button {
-                    Task {
-                        await onOpen(conversation)
-                    }
-                } label: {
-                    HStack(
-                        alignment: .center,
-                        spacing: 12
-                    ) {
-                        VStack(
-                            alignment: .leading,
-                            spacing: 4
-                        ) {
-                            Text(
-                                displayTitle(
-                                    for: conversation
-                                )
-                            )
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                            if let subtitle =
-                                    lastMessageDateText(
-                                        for: conversation
-                                    ) {
-                                Text(subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+                if scope == .active {
+                    Button {
+                        Task {
+                            await onOpen(conversation)
                         }
-                        .frame(
-                            maxWidth: .infinity,
-                            alignment: .leading
-                        )
-
-                        if isActive(conversation) {
-                            Image(systemName: "checkmark")
-                                .font(.system(
-                                    size: 13,
-                                    weight: .semibold
-                                ))
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel(
-                                    "Current conversation"
-                                )
-                        }
+                    } label: {
+                        rowContent(conversation)
                     }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                } else {
+                    rowContent(conversation)
                 }
-                .buttonStyle(.plain)
 
                 Menu {
-                    Button("Archive") {
+                    switch scope {
+                    case .active:
+                        Button("Archive") {
+                            Task {
+                                await onArchive(conversation)
+                            }
+                        }
+
+                    case .archived:
+                        Button("Restore") {
+                            Task {
+                                await onRestore(conversation)
+                            }
+                        }
                     }
-                    .disabled(true)
 
                     Button(
                         "Delete",
                         role: .destructive
                     ) {
+                        onDelete(conversation)
                     }
-                    .disabled(true)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(
@@ -229,6 +364,57 @@ private struct ConversationList: View {
         .background(Color(.systemBackground))
     }
 
+    private func rowContent(
+        _ conversation: NativeLiveConversationSummary
+    ) -> some View {
+        HStack(
+            alignment: .center,
+            spacing: 12
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 4
+            ) {
+                Text(
+                    displayTitle(
+                        for: conversation
+                    )
+                )
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+                if let subtitle =
+                        lastMessageDateText(
+                            for: conversation
+                        ) {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
+
+            if isActive(conversation) {
+                Image(systemName: "checkmark")
+                    .font(.system(
+                        size: 13,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(
+                        "Current conversation"
+                    )
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
     private func displayTitle(
         for conversation: NativeLiveConversationSummary
     ) -> String {
@@ -248,10 +434,9 @@ private struct ConversationList: View {
     private func isActive(
         _ conversation: NativeLiveConversationSummary
     ) -> Bool {
-        guard
-            let activeConversationID,
-            let conversationID = UUID(uuidString: conversation.id)
-        else {
+        guard scope == .active,
+              let activeConversationID,
+              let conversationID = UUID(uuidString: conversation.id) else {
             return false
         }
         return activeConversationID == conversationID
