@@ -6,7 +6,8 @@ type WebImportModule =
   | "todo"
   | "projects"
   | "mind"
-  | "conversations";
+  | "conversations"
+  | "universe";
 
 export type WebImportModuleSummary = {
   create: number;
