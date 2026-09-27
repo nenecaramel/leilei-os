@@ -864,7 +864,9 @@ export function createProcessRuntime(
       // durable work once at process start; Mac Companion/event-driven paths
       // own subsequent opportunities.
       void retentionCoordinator.runNow().catch(() => undefined);
-      void nativeLiveMindFollowUpRecovery.runNow().catch(() => undefined);
+      const mindFollowUpStartupRecovery =
+        nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
+      void mindFollowUpStartupRecovery;
       void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
       if (
         mindRetirementPreviewService
@@ -889,16 +891,18 @@ export function createProcessRuntime(
         && runtimeEnv.MCP_USER_ID
         && !mindCompatibilityCensusRun
       ) {
-        mindCompatibilityCensusRun = mindCompatibilityCensusService.read({
-          userId: runtimeEnv.MCP_USER_ID,
-          subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-        }).then((census) => {
-          logMindCompatibilityCensus(logger, census);
-        }).catch((error) => {
-          logger.warn("mind_compatibility_census_failed", {
-            name: error instanceof Error ? error.name : "UnknownError",
+        mindCompatibilityCensusRun = mindFollowUpStartupRecovery
+          .then(() => mindCompatibilityCensusService.read({
+            userId: runtimeEnv.MCP_USER_ID!,
+            subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+          }))
+          .then((census) => {
+            logMindCompatibilityCensus(logger, census);
+          }).catch((error) => {
+            logger.warn("mind_compatibility_census_failed", {
+              name: error instanceof Error ? error.name : "UnknownError",
+            });
           });
-        });
       }
     },
     stopBackgroundWork: () => {
