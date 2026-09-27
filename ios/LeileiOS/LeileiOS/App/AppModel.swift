@@ -564,7 +564,10 @@ final class AppModel: ObservableObject {
         await refreshNativeLiveCurrentPath(force: true)
     }
 
-    func refreshNativeLiveCurrentPath(force: Bool = false) async {
+    func refreshNativeLiveCurrentPath(
+        force: Bool = false,
+        surfaceTransientFailure: Bool = true
+    ) async {
         guard isAuthenticated,
               activeNativeLiveConversationID != nil else {
             return
@@ -627,7 +630,11 @@ final class AppModel: ObservableObject {
             } catch LeileiAPIError.unauthorized {
                 clearNativeLiveSessionData()
             } catch {
-                chatSyncState = .unavailable(error.localizedDescription)
+                if surfaceTransientFailure {
+                    chatSyncState = .unavailable(
+                        error.localizedDescription
+                    )
+                }
             }
 
             chatRefreshInFlight = false
