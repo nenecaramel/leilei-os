@@ -239,7 +239,8 @@ else
           WHERE schemaname = 'public'
             AND tablename <> 'leilei_schema_migrations'
           ORDER BY tablename;" \
-      2>"${TEMP_DIR}/table_inventory.error"
+      2>"${TEMP_DIR}/table_inventory.error" |
+    LC_ALL=C sort
   )"
   [[ "${ACTUAL_PUBLIC_TABLES}" == "${EXPECTED_PUBLIC_TABLES}" ]] ||
     fail "restored public table inventory does not match the backup manifest"
