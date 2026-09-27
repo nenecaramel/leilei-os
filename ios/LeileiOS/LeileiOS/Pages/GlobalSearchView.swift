@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GlobalSearchView: View {
     private let service: any GlobalSearchService
+    private let onOpenUniverseNode: (String) -> Void
 
     @State private var query = ""
     @State private var modules = GlobalSearchModule.defaultModules
@@ -13,8 +14,12 @@ struct GlobalSearchView: View {
     @State private var isLoadingMore = false
     @State private var loadMoreFailed = false
 
-    init(service: any GlobalSearchService = UnavailableGlobalSearchService()) {
+    init(
+        service: any GlobalSearchService = UnavailableGlobalSearchService(),
+        onOpenUniverseNode: @escaping (String) -> Void = { _ in }
+    ) {
         self.service = service
+        self.onOpenUniverseNode = onOpenUniverseNode
     }
 
     var body: some View {
@@ -34,7 +39,8 @@ struct GlobalSearchView: View {
                     loadMoreFailed: loadMoreFailed,
                     onLoadMore: {
                         loadMore(response)
-                    }
+                    },
+                    onOpenUniverseNode: onOpenUniverseNode
                 )
 
             case .noResults:
@@ -198,6 +204,7 @@ private struct GlobalSearchResultsList: View {
     let isLoadingMore: Bool
     let loadMoreFailed: Bool
     let onLoadMore: () -> Void
+    let onOpenUniverseNode: (String) -> Void
 
     private var groups: [GlobalSearchResultGroup] {
         GlobalSearchModule.allCases.compactMap { module in
@@ -218,7 +225,10 @@ private struct GlobalSearchResultsList: View {
             ForEach(groups) { group in
                 Section(group.module.title) {
                     ForEach(group.items) { result in
-                        GlobalSearchResultRow(result: result)
+                        GlobalSearchResultRow(
+                            result: result,
+                            onOpenUniverseNode: onOpenUniverseNode
+                        )
                     }
                 }
             }
@@ -261,6 +271,7 @@ private struct GlobalSearchResultGroup: Identifiable {
 
 private struct GlobalSearchResultRow: View {
     let result: GlobalSearchResultItem
+    let onOpenUniverseNode: (String) -> Void
 
     var body: some View {
         switch result.entityType {
@@ -269,7 +280,17 @@ private struct GlobalSearchResultRow: View {
         case .todo:
             GlobalSearchTodoRow(result: result)
         case .universe:
-            GlobalSearchUniverseRow(result: result)
+            Button {
+                onOpenUniverseNode(
+                    result.detailArguments?["id"]
+                        ?? result.entityID
+                )
+            } label: {
+                GlobalSearchUniverseRow(
+                    result: result
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 }
