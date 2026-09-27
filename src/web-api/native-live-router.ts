@@ -4,6 +4,7 @@ import type {
 } from "../domains/bridge/native-live-backend-relay-prepare.js";
 import type {
   NativeLiveBackendTurnReadModel,
+  NativeLiveConversationRuntimeReadModel,
 } from "../domains/bridge/native-live-backend-turn-repository.js";
 import type {
   NativeLiveBackendRelayService,
@@ -45,6 +46,10 @@ export type NativeLiveApiDependencies = {
       userId: string;
       prepareId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
+    readConversationRuntime(input: {
+      userId: string;
+      conversationId: string;
+    }): Promise<NativeLiveConversationRuntimeReadModel | null>;
   };
   turnWaitService?: Pick<NativeLiveTurnWaitService, "wait">;
   currentPathReader?: NativeLiveCurrentPathReader;
@@ -130,6 +135,10 @@ export function createNativeLiveApiRouter(
       deleteNativeLiveConversationHandler(dependencies),
     );
   }
+  router.get(
+    "/conversations/:conversationId/runtime",
+    readNativeLiveConversationRuntimeHandler(dependencies),
+  );
   if (dependencies.currentPathReader) {
     router.get(
       "/conversations/:conversationId/current-path",
@@ -1161,6 +1170,58 @@ function nativeLiveTurnResponseData(
           blocks: turn.assistantMessage.blocks,
         }
       : null,
+  };
+}
+
+export function readNativeLiveConversationRuntimeHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const conversationId =
+      routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const runtime =
+        await dependencies.turnReader.readConversationRuntime({
+          userId: request.webUserId,
+          conversationId,
+        });
+      if (!runtime) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Native live conversation was not found.",
+          },
+        });
+        return;
+      }
+      response.json({
+        success: true,
+        data: runtime,
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_RUNTIME_UNAVAILABLE",
+          message:
+            "Native live conversation runtime metadata is temporarily unavailable.",
+        },
+      });
+    }
   };
 }
 
