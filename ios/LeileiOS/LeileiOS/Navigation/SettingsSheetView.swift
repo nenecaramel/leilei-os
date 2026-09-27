@@ -184,7 +184,7 @@ private struct SettingsHomeContent: View {
                 }
             }
 
-            Section("Preference") {
+            Section("Preferences") {
                 Picker(selection: $appearanceModeRawValue) {
                     ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
                         Text(mode.title)
