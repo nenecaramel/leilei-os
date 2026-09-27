@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import postgres from "postgres";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversationMessages,
@@ -20,7 +20,6 @@ import {
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueService,
 } from "../src/domains/bridge/native-live-background-model-queue.js";
-import { DrizzleMindSemanticGroupingRepository } from "../src/domains/runtime/mind-semantic-grouping-runtime-repository.js";
 import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity-wake-repository.js";
 
 const enabled =
@@ -471,7 +470,7 @@ test(
         userId,
         subjectId: "G",
         kind: "drive",
-        text: "must disappear with deleted conversation",
+        text: "exclusive Mind survives deleted conversation",
         payload: { source: "runtime" },
         scopeApplicability: "global",
         scopeConversationId: null,
@@ -522,7 +521,7 @@ test(
         userId,
         subjectId: "G",
         kind: "memory",
-        text: "shared memory survives with repaired provenance",
+        text: "shared memory survives with original provenance",
         payload: {
           lifecycle_v1: {
             status: "active",
@@ -575,7 +574,7 @@ test(
         userId,
         subjectId: "G",
         kind: "drive",
-        text: "drive survives while deleted evolution is stripped",
+        text: "drive survives with original evolution payload",
         payload: {
           drive_v1: {
             reinforcementSources: [
@@ -840,42 +839,43 @@ test(
       text: "Mind survives conversation deletion",
     }]);
 
-    const purgedMind = await database.db
-      .select({ id: runtimeSubjectStates.id })
-      .from(runtimeSubjectStates)
-      .where(inArray(runtimeSubjectStates.id, [
-        exclusiveMindStateId,
-        scopedMindStateId,
-      ]));
-    assert.equal(purgedMind.length, 0);
-
-    const [sharedMind] = await database.db
+    const preservedMind = await database.db
       .select({
+        id: runtimeSubjectStates.id,
         payload: runtimeSubjectStates.payload,
         envelope: runtimeSubjectStates.envelope,
+        scopeConversationId: runtimeSubjectStates.scopeConversationId,
       })
       .from(runtimeSubjectStates)
-      .where(eq(runtimeSubjectStates.id, sharedMindStateId));
+      .where(eq(runtimeSubjectStates.userId, userId));
+    const preservedById = new Map(
+      preservedMind.map((state) => [state.id, state]),
+    );
+    assert.equal(preservedById.has(exclusiveMindStateId), true);
+    assert.equal(preservedById.has(scopedMindStateId), true);
+
+    const sharedMind = preservedById.get(sharedMindStateId);
     assert.ok(sharedMind);
     assert.deepEqual(
       (
         sharedMind.envelope.provenance as {
           sources: Array<{ kind: string; id: string }>;
-          causedBy: string | null;
+          causedBy: string;
         }
       ),
       {
-        sources: [{ kind: "message", id: survivingUser.id }],
-        causedBy: null,
+        sources: [
+          { kind: "message", id: firstUser.id },
+          { kind: "message", id: survivingUser.id },
+        ],
+        causedBy: firstUser.id,
       },
     );
     assert.equal(
-      Math.abs(
-        (
-          sharedMind.payload?.lifecycle_v1 as { salience: number }
-        ).salience - 0.58,
-      ) < 1e-12,
-      true,
+      (
+        sharedMind.payload?.lifecycle_v1 as { salience: number }
+      ).salience,
+      0.66,
     );
     assert.deepEqual(
       (
@@ -883,19 +883,35 @@ test(
           contributions: unknown[];
         }
       ).contributions,
-      [{
-        sourceMessageId: survivingUser.id,
-        recalledAt: "2026-09-27T07:00:00.000Z",
-        currentValue: 0.08,
-      }],
+      [
+        {
+          sourceMessageId: firstUser.id,
+          recalledAt: "2026-09-27T06:30:00.000Z",
+          currentValue: 0.08,
+        },
+        {
+          sourceMessageId: survivingUser.id,
+          recalledAt: "2026-09-27T07:00:00.000Z",
+          currentValue: 0.08,
+        },
+      ],
     );
 
-    const [survivingDrive] = await database.db
-      .select({ payload: runtimeSubjectStates.payload })
-      .from(runtimeSubjectStates)
-      .where(eq(runtimeSubjectStates.id, survivingDriveStateId));
+    const survivingDrive = preservedById.get(survivingDriveStateId);
     assert.ok(survivingDrive);
-    assert.equal(survivingDrive.payload, null);
+    assert.deepEqual(survivingDrive.payload, {
+      drive_v1: {
+        reinforcementSources: [
+          survivingUser.id,
+          secondAssistant.message.id,
+        ],
+      },
+    });
+    assert.equal(
+      preservedById.get(scopedMindStateId)?.scopeConversationId,
+      deletedConversation.id,
+      "Mind keeps historical source/scope ids even after the source window is deleted",
+    );
 
     const postDeleteWakeId = crypto.randomUUID();
     await assert.rejects(
@@ -925,25 +941,6 @@ test(
       /SourceConversationInactive/,
     );
 
-    const grouping = new DrizzleMindSemanticGroupingRepository(
-      database.db,
-    );
-    assert.equal(
-      await grouping.stage({
-        userId,
-        subjectId: "G",
-        kind: "drive",
-        queryStateId: exclusiveMindStateId,
-        query: "deleted state",
-        candidates: [{
-          stateId: survivingDriveStateId,
-          kind: "drive",
-          text: "surviving state",
-        }],
-      }),
-      false,
-    );
-
     assert.equal(
       (await service.deleteConversation({
         userId,
@@ -956,7 +953,7 @@ test(
 
 
 test(
-  "true Delete fails closed and rolls back when an unknown surviving Mind payload still references deleted causality",
+  "true Delete removes the source conversation while opaque Mind payload and provenance survive unchanged",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -992,8 +989,8 @@ test(
     const [user] = await database.db
       .insert(users)
       .values({
-        email: `native-live-delete-fail-closed-${crypto.randomUUID()}@example.com`,
-        displayName: "Native Live Delete Fail Closed",
+        email: `native-live-delete-mind-survives-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Delete Mind Survives",
       })
       .returning({ id: users.id });
     assert.ok(user);
@@ -1004,7 +1001,7 @@ test(
     );
     const conversation = await service.createConversation({
       userId,
-      title: "Fail closed",
+      title: "Mind source can disappear",
     });
     const userMessage = await service.appendUserMessage({
       userId,
@@ -1014,66 +1011,71 @@ test(
     });
 
     const stateId = crypto.randomUUID();
+    const payload = {
+      future_unknown_projection_v1: {
+        sourceId: userMessage.id,
+      },
+    };
+    const envelope = {
+      authority: "derived",
+      scope: {
+        userId,
+        subjectId: "G",
+        applicability: "global",
+      },
+      provenance: {
+        sources: [{ kind: "message", id: userMessage.id }],
+        causedBy: userMessage.id,
+      },
+    };
     await database.db.insert(runtimeSubjectStates).values({
       id: stateId,
       userId,
       subjectId: "G",
       kind: "memory",
-      text: "surviving state with unknown causal cache",
-      payload: {
-        future_unknown_projection_v1: {
-          sourceId: userMessage.id,
-        },
-      },
+      text: "Mind state outlives its source conversation",
+      payload,
       scopeApplicability: "global",
       scopeConversationId: null,
       scopePathHeadMessageId: null,
       settlementStatus: "settled",
       pathStatus: "current",
       validityStatus: "valid",
-      envelope: {
-        authority: "derived",
-        scope: {
-          userId,
-          subjectId: "G",
-          applicability: "global",
-        },
-        provenance: {
-          sources: [{ kind: "artifact", id: "safe-artifact" }],
-        },
-      },
+      envelope,
     });
 
-    await assert.rejects(
-      service.deleteConversation({
+    assert.equal(
+      (await service.deleteConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "deleted",
+    );
+    assert.equal(
+      await service.getConversation({
         userId,
         conversationId: conversation.id,
       }),
-      /CausalReferenceConflict/,
+      null,
     );
-
-    assert.equal(
-      (await service.getConversation({
-        userId,
-        conversationId: conversation.id,
-      }))?.id,
-      conversation.id,
-    );
-    const survivingMessages = await database.db
+    const deletedMessages = await database.db
       .select({ id: conversationMessages.id })
       .from(conversationMessages)
-      .where(eq(
-        conversationMessages.conversationId,
-        conversation.id,
-      ));
-    assert.deepEqual(
-      survivingMessages.map((row) => row.id),
-      [userMessage.id],
-    );
-    const survivingStates = await database.db
-      .select({ id: runtimeSubjectStates.id })
+      .where(eq(conversationMessages.conversationId, conversation.id));
+    assert.deepEqual(deletedMessages, []);
+
+    const [survivingState] = await database.db
+      .select({
+        id: runtimeSubjectStates.id,
+        payload: runtimeSubjectStates.payload,
+        envelope: runtimeSubjectStates.envelope,
+      })
       .from(runtimeSubjectStates)
       .where(eq(runtimeSubjectStates.id, stateId));
-    assert.deepEqual(survivingStates, [{ id: stateId }]);
+    assert.deepEqual(survivingState, {
+      id: stateId,
+      payload,
+      envelope,
+    });
   },
 );
