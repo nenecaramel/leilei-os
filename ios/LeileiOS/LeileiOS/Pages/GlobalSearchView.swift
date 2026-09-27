@@ -556,6 +556,9 @@ private struct GlobalSearchCustomDateRangeSheet: View {
                 )
                 .datePickerStyle(.compact)
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
             .navigationTitle("Custom Range")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -573,6 +576,8 @@ private struct GlobalSearchCustomDateRangeSheet: View {
                 }
             }
         }
+        .background(Color.settingsBackground)
+        .presentationBackground(Color.settingsBackground)
         .presentationDetents([.medium])
     }
 }
