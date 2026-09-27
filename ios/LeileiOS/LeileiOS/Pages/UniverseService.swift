@@ -194,7 +194,7 @@ final class UniverseAPIService {
         } catch let error as InitializationError {
             throw error
         } catch {
-            guard isNotInitialized(error) else {
+            guard Self.isNotInitialized(error) else {
                 throw InitializationError.uncertain
             }
         }
@@ -212,7 +212,7 @@ final class UniverseAPIService {
         do {
             return try await load()
         } catch {
-            if writeFailed, isNotInitialized(error) {
+            if writeFailed, Self.isNotInitialized(error) {
                 throw InitializationError.notWritten
             }
             throw InitializationError.uncertain
