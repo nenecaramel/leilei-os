@@ -11,6 +11,10 @@ import {
   readTopicEvolution,
 } from "./topic-evolution.js";
 import {
+  structuredValueReferencesAnyId,
+  type PersistentReferenceState,
+} from "./persistent-reference-scan.js";
+import {
   validateMindRetirementPolicy,
   type MindRetirementKind,
   type MindRetirementPolicy,
@@ -208,6 +212,24 @@ export function selectRetirableThreadMembers(
   return members
     .map(({ candidate }) => candidate.stateId)
     .sort((left, right) => left.localeCompare(right));
+}
+
+export function hasExternalMindRetirementReferences(
+  states: readonly PersistentReferenceState[],
+  memberStateIds: ReadonlySet<string>,
+): boolean {
+  if (memberStateIds.size === 0) return false;
+  return states.some((state) => {
+    if (memberStateIds.has(state.id)) return false;
+    return Boolean(
+      (
+        state.scopePathHeadMessageId
+        && memberStateIds.has(state.scopePathHeadMessageId)
+      )
+      || structuredValueReferencesAnyId(state.envelope, memberStateIds)
+      || structuredValueReferencesAnyId(state.payload, memberStateIds)
+    );
+  });
 }
 
 export function hasMindRetirementThreadState(
