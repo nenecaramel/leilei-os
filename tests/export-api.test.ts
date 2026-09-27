@@ -38,6 +38,7 @@ function documentFor(
               content_blocks: [],
               attachments: [],
             },
+            universe: null,
           }
         : scope === "diary"
           ? { diary: [], diary_comments: [] }
