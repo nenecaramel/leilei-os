@@ -245,5 +245,103 @@ test(
       stateId,
       reason: "user_continued_current_path",
     }]);
+
+    assert.equal(
+      (await conversations.archiveConversation({
+        userId: user.id,
+        conversationId: firstConversation.id,
+      })).outcome,
+      "archived",
+    );
+
+    const blockedState: SubjectStateWrite = {
+      ...provisional,
+      id: crypto.randomUUID(),
+      text: "must not be written from archived source",
+      envelope: {
+        ...provisional.envelope,
+        scope: {
+          ...provisional.envelope.scope,
+          applicability: "global",
+          conversationId: null,
+          pathHeadMessageId: null,
+        },
+        provenance: {
+          ...provisional.envelope.provenance,
+          sources: [{
+            kind: "message",
+            id: rootAssistant.message.id,
+          }],
+        },
+      },
+    };
+    await assert.rejects(
+      port.append({
+        userId: user.id,
+        subjectId: "G",
+        sourceConversationId: firstConversation.id,
+        states: [blockedState],
+      }),
+      /SubjectStateSourceConversationInactive/,
+    );
+
+    await assert.rejects(
+      port.transition({
+        userId: user.id,
+        subjectId: "G",
+        conversationId: firstConversation.id,
+        transitions: [{
+          stateId,
+          reason: "user_continued_current_path",
+          settlementStatus: "settled",
+          pathStatus: "current",
+          validityStatus: "valid",
+          promoteScopeToGlobal: true,
+        }],
+      }),
+      /SubjectStateSourceConversationInactive/,
+    );
+
+    await port.recordBreathRecall({
+      userId: user.id,
+      subjectId: "G",
+      stateIds: [stateId],
+      recalledAt: "2026-09-22T09:00:00.000Z",
+      salienceBoost: 0.08,
+      sourceMessageId: rootUser.id,
+    });
+    const [afterArchivedRecall] = await database.db
+      .select({ payload: runtimeSubjectStates.payload })
+      .from(runtimeSubjectStates)
+      .where(and(
+        eq(runtimeSubjectStates.userId, user.id),
+        eq(runtimeSubjectStates.id, stateId),
+      ));
+    assert.equal(afterArchivedRecall?.payload, null);
+
+    await assert.rejects(
+      port.saveContextManifest({
+        manifest: {
+          manifestId: crypto.randomUUID(),
+          userId: user.id,
+          subjectId: "G",
+          conversationId: firstConversation.id,
+          pathHeadMessageId: rootAssistant.message.id,
+          snapshotSequence: 3,
+          assemblyVersion: "assembly-v1",
+          promptContractVersion: "prompt-v1",
+          createdAt: "2026-09-22T09:00:00.000Z",
+          budget: {
+            maxItems: 8,
+            maxChars: 4000,
+            usedItems: 0,
+            usedChars: 0,
+            overflowPolicy: "drop_lowest_rank",
+          },
+          items: [],
+        },
+      }),
+      /ContextManifestSourceConversationInactive/,
+    );
   },
 );
