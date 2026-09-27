@@ -257,7 +257,8 @@ struct NativeLiveMessageSurface: View {
                 }
             }
             .onChange(of: snapshot?.syncToken) { _, _ in
-                guard pendingOperation?.isSend == true else {
+                guard pendingOperation?.isSend == true
+                        || !isAwayFromBottom else {
                     return
                 }
                 scrollToBottom(proxy)
