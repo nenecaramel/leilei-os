@@ -123,7 +123,7 @@ struct UniverseNodeSheet: View {
     let onDeleteRelation:
         (UniverseRelation) async throws -> Void
     let onOpenRelatedNode: (String) -> Void
-    let onOpenDiarySource: (UniverseDiarySourceSummary) -> Void
+    let onDiarySourceChanged: () async -> Void
     let onClose: () -> Void
 
     @State private var isEditing: Bool
@@ -132,6 +132,7 @@ struct UniverseNodeSheet: View {
         [String: UniverseDiarySourceOption]
     @State private var sourcePickerPresented = false
     @State private var relationPresented = false
+    @State private var diarySourceSelection: UniverseDiarySourceSummary?
     @State private var deletePresented = false
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -165,8 +166,8 @@ struct UniverseNodeSheet: View {
             @escaping (UniverseRelation) async throws -> Void,
         onOpenRelatedNode:
             @escaping (String) -> Void,
-        onOpenDiarySource:
-            @escaping (UniverseDiarySourceSummary) -> Void,
+        onDiarySourceChanged:
+            @escaping () async -> Void,
         onClose:
             @escaping () -> Void
     ) {
@@ -184,7 +185,7 @@ struct UniverseNodeSheet: View {
         self.onCreateRelation = onCreateRelation
         self.onDeleteRelation = onDeleteRelation
         self.onOpenRelatedNode = onOpenRelatedNode
-        self.onOpenDiarySource = onOpenDiarySource
+        self.onDiarySourceChanged = onDiarySourceChanged
         self.onClose = onClose
 
         let creating: Bool
@@ -273,6 +274,15 @@ struct UniverseNodeSheet: View {
                 )
                 .environment(\.colorScheme, .dark)
             }
+        }
+        .sheet(item: $diarySourceSelection) { source in
+            UniverseDiarySourceSheet(
+                source: source,
+                onChanged: {
+                    await onDiarySourceChanged()
+                }
+            )
+            .environment(\.colorScheme, .dark)
         }
         .confirmationDialog(
             "让它离开宇宙？",
@@ -912,7 +922,7 @@ struct UniverseNodeSheet: View {
                 }
             ) { source in
                 Button {
-                    onOpenDiarySource(source)
+                    diarySourceSelection = source
                 } label: {
                     HStack(spacing: 12) {
                         VStack(spacing: 0) {
@@ -1377,6 +1387,49 @@ struct UniverseNodeSheet: View {
         }
 
         return "\(parts[0]).\(parts[1]).\(parts[2])"
+    }
+}
+
+private struct UniverseDiarySourceSheet: View {
+    let source: UniverseDiarySourceSummary
+    let onChanged: () async -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if source.status == "archived" {
+                    DiaryArchivedDetailView(
+                        diaryID: source.diaryId,
+                        onChanged: {
+                            Task {
+                                await onChanged()
+                            }
+                        }
+                    )
+                } else {
+                    DiaryDetailView(
+                        diaryID: source.diaryId,
+                        onChanged: {
+                            Task {
+                                await onChanged()
+                            }
+                        }
+                    )
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close diary")
+                }
+            }
+        }
     }
 }
 
