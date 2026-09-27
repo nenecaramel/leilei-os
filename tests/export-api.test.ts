@@ -37,6 +37,7 @@ function documentFor(
               drive_satisfaction_events: [],
               curiosity_resolution_events: [],
               distillation_watermarks: [],
+              semantic_grouping_results: [],
             },
             conversations: {
               conversations: [],
