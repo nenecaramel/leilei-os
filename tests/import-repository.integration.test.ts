@@ -37,6 +37,7 @@ test(
     const userMessageId = randomUUID();
     const assistantMessageId = randomUUID();
     const contentBlockId = randomUUID();
+    const checkpointId = randomUUID();
     const mindId = randomUUID();
     const driveId = randomUUID();
     const driveEventId = randomUUID();
@@ -202,6 +203,22 @@ test(
         payload: null,
         createdAt: now,
       });
+      await db
+        .insert(schema.conversationProviderSessionCheckpoints)
+        .values({
+          id: checkpointId,
+          userId,
+          conversationId,
+          canonicalMessageId: assistantMessageId,
+          provider: "claude_code",
+          providerSessionId: "roundtrip-session-1",
+          runtimeMetadata: {
+            context_window: 200000,
+            compacted: false,
+          },
+          providerCheckpointId: "roundtrip-checkpoint-1",
+          createdAt: now,
+        });
 
       await db.insert(schema.runtimeSubjectStates).values({
         id: mindId,
@@ -398,6 +415,14 @@ test(
         .delete(schema.runtimeSubjectStates)
         .where(eq(schema.runtimeSubjectStates.userId, userId));
       await db
+        .delete(schema.conversationProviderSessionCheckpoints)
+        .where(
+          eq(
+            schema.conversationProviderSessionCheckpoints.userId,
+            userId,
+          ),
+        );
+      await db
         .delete(schema.conversationContentBlocks)
         .where(eq(schema.conversationContentBlocks.userId, userId));
       await db
@@ -459,7 +484,7 @@ test(
       assert.equal(preview.summary.projects?.create, 4);
       assert.equal(
         preview.summary.conversations?.create,
-        4,
+        5,
       );
       assert.equal(preview.can_execute, true);
 
@@ -476,6 +501,7 @@ test(
         conversationCount,
         messageCount,
         blockCount,
+        checkpointCount,
         mindCount,
         driveEventCount,
         curiosityEventCount,
@@ -505,6 +531,14 @@ test(
         db.select({ count: count() })
           .from(schema.conversationContentBlocks)
           .where(eq(schema.conversationContentBlocks.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.conversationProviderSessionCheckpoints)
+          .where(
+            eq(
+              schema.conversationProviderSessionCheckpoints.userId,
+              userId,
+            ),
+          ),
         db.select({ count: count() })
           .from(schema.runtimeSubjectStates)
           .where(eq(schema.runtimeSubjectStates.userId, userId)),
@@ -543,6 +577,7 @@ test(
       assert.equal(conversationCount[0]?.count, 1);
       assert.equal(messageCount[0]?.count, 2);
       assert.equal(blockCount[0]?.count, 1);
+      assert.equal(checkpointCount[0]?.count, 1);
       assert.equal(mindCount[0]?.count, 3);
       assert.equal(driveEventCount[0]?.count, 1);
       assert.equal(curiosityEventCount[0]?.count, 1);
@@ -564,6 +599,31 @@ test(
       assert.deepEqual(restoredUniverse, {
         version: 7,
         name: "Round trip Universe",
+      });
+
+      const [restoredCheckpoint] = await db
+        .select({
+          providerSessionId:
+            schema.conversationProviderSessionCheckpoints.providerSessionId,
+          runtimeMetadata:
+            schema.conversationProviderSessionCheckpoints.runtimeMetadata,
+          providerCheckpointId:
+            schema.conversationProviderSessionCheckpoints.providerCheckpointId,
+        })
+        .from(schema.conversationProviderSessionCheckpoints)
+        .where(
+          eq(
+            schema.conversationProviderSessionCheckpoints.id,
+            checkpointId,
+          ),
+        );
+      assert.deepEqual(restoredCheckpoint, {
+        providerSessionId: "roundtrip-session-1",
+        runtimeMetadata: {
+          context_window: 200000,
+          compacted: false,
+        },
+        providerCheckpointId: "roundtrip-checkpoint-1",
       });
 
       const [restoredConversation] = await db
@@ -699,6 +759,15 @@ test(
       await db
         .delete(schema.runtimeSubjectStates)
         .where(eq(schema.runtimeSubjectStates.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.conversationProviderSessionCheckpoints)
+        .where(
+          eq(
+            schema.conversationProviderSessionCheckpoints.userId,
+            userId,
+          ),
+        )
         .catch(() => undefined);
       await db
         .delete(schema.conversationContentBlocks)
