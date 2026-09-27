@@ -1,6 +1,7 @@
 import { createOwnerFingerprint } from "../export/owner-fingerprint.js";
 import type {
   ExportDiaryRecord,
+  ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
   ExportProjectResourceRecord,
@@ -14,7 +15,7 @@ import {
 } from "./import-schema.js";
 import { hashCanonical } from "./import-canonical.js";
 
-export type ImportModule = "diary" | "todo" | "projects";
+export type ImportModule = "diary" | "todo" | "projects" | "mind";
 export type ImportClassification =
   | "create"
   | "duplicate"
@@ -32,10 +33,12 @@ export type ImportCurrentState = {
   diary: ExportDiaryRecord[];
   todo: ExportTodoPaper[];
   projects?: ExportProjectsBundle;
+  mind?: ExportMindStateRecord[];
   foreign_diary_ids?: Set<string>;
   foreign_workspace_ids?: Set<string>;
   foreign_project_ids?: Set<string>;
   foreign_project_resource_ids?: Set<string>;
+  foreign_mind_ids?: Set<string>;
   native_live_conversation_ids?: Set<string>;
 };
 
@@ -43,6 +46,7 @@ export type ImportSummary = {
   diary: ImportCounts;
   todo: ImportCounts;
   projects?: ImportCounts;
+  mind?: ImportCounts;
 };
 
 export type ProjectRestoreRecord =
@@ -67,7 +71,11 @@ export type ImportPlanItem = {
   module: ImportModule;
   logical_key: string;
   classification: ImportClassification;
-  record: ExportDiaryRecord | ExportTodoPaper | ProjectRestoreRecord;
+  record:
+    | ExportDiaryRecord
+    | ExportTodoPaper
+    | ExportMindStateRecord
+    | ProjectRestoreRecord;
   current_hash: string | null;
 };
 
@@ -86,8 +94,8 @@ const emptyCounts = (): ImportCounts => ({
   invalid: 0,
 });
 
-function classify<T extends ExportDiaryRecord | ExportTodoPaper>(
-  module: "diary" | "todo",
+function classify<T extends ExportDiaryRecord | ExportTodoPaper | ExportMindStateRecord>(
+  module: "diary" | "todo" | "mind",
   imported: T[],
   current: T[],
   key: (record: T) => string,
@@ -283,12 +291,16 @@ function projectItems(
 function summarize(
   items: ImportPlanItem[],
   includeProjects: boolean,
+  includeMind: boolean,
 ): ImportSummary {
   const summary: ImportSummary = {
     diary: emptyCounts(),
     todo: emptyCounts(),
     ...(includeProjects
       ? { projects: emptyCounts() }
+      : {}),
+    ...(includeMind
+      ? { mind: emptyCounts() }
       : {}),
   };
 
@@ -361,7 +373,35 @@ export function buildImportPlan(
     items.push(...projectItems(importedProjects, current));
   }
 
-  const summary = summarize(items, Boolean(importedProjects));
+  const importedMind =
+    parsed.document.schema_version === 3
+      ? parsed.document.data.mind
+      : undefined;
+  if (importedMind) {
+    const mindItems = classify(
+      "mind",
+      importedMind,
+      current.mind ?? [],
+      (record) => `id:${record.id}`,
+    );
+    for (const item of mindItems) {
+      if (
+        item.classification === "create"
+        && current.foreign_mind_ids?.has(
+          (item.record as ExportMindStateRecord).id,
+        )
+      ) {
+        item.classification = "conflict";
+      }
+    }
+    items.push(...mindItems);
+  }
+
+  const summary = summarize(
+    items,
+    Boolean(importedProjects),
+    Boolean(importedMind),
+  );
   const fingerprint = hashCanonical({
     package_sha256: parsed.package_sha256,
     items: items.map(
