@@ -605,6 +605,12 @@ export class ImportService {
           "IMPORT_CONFLICT",
         );
       }
+      if (hasDatabaseErrorCode(error, "23514")) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "INVALID_IMPORT_FILE",
+        );
+      }
       if (hasDatabaseErrorCode(error, "40001")) {
         throw new ImportValidationError(
           "IMPORT_PREVIEW_STALE",
