@@ -6,6 +6,7 @@ import {
   conversationMessages,
   conversations,
   dataImportRuns,
+  diaryComments,
   diaryEntries,
   projectConversations,
   projectResources,
@@ -22,6 +23,7 @@ import type {
   ExportConversationMessageRecord,
   ExportConversationRecord,
   ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
@@ -65,6 +67,11 @@ export interface ImportRepository {
   insertDiary(
     userId: string,
     record: ExportDiaryRecord,
+  ): Promise<void>;
+
+  insertDiaryComment(
+    userId: string,
+    record: ExportDiaryCommentRecord,
   ): Promise<void>;
 
   insertTodo(
@@ -179,8 +186,10 @@ implements ImportRepository {
   ): Promise<ImportCurrentState> {
     const [
       diary,
+      diaryCommentRows,
       papers,
       allDiary,
+      allDiaryCommentIds,
       workspaceRows,
       projectRows,
       resourceRows,
@@ -205,6 +214,23 @@ implements ImportRepository {
         .where(eq(diaryEntries.userId, userId))
         .orderBy(asc(diaryEntries.id)),
       this.db
+        .select({
+          id: diaryComments.id,
+          diaryId: diaryComments.diaryId,
+          author: diaryComments.author,
+          content: diaryComments.content,
+          revision: diaryComments.revision,
+          createdAt: diaryComments.createdAt,
+          updatedAt: diaryComments.updatedAt,
+        })
+        .from(diaryComments)
+        .where(eq(diaryComments.userId, userId))
+        .orderBy(
+          asc(diaryComments.diaryId),
+          asc(diaryComments.createdAt),
+          asc(diaryComments.id),
+        ),
+      this.db
         .select()
         .from(todoPapers)
         .where(eq(todoPapers.userId, userId))
@@ -215,6 +241,9 @@ implements ImportRepository {
       this.db
         .select({ id: diaryEntries.id })
         .from(diaryEntries),
+      this.db
+        .select({ id: diaryComments.id })
+        .from(diaryComments),
       this.db
         .select({
           id: projectWorkspaces.id,
@@ -489,6 +518,15 @@ implements ImportRepository {
         created_at: toIso(row.createdAt),
         updated_at: toIso(row.updatedAt),
       })),
+      diary_comments: diaryCommentRows.map((row) => ({
+        id: row.id,
+        diary_id: row.diaryId,
+        author: row.author,
+        content: row.content,
+        revision: row.revision,
+        created_at: toIso(row.createdAt),
+        updated_at: toIso(row.updatedAt),
+      })),
       todo: papers.map((row) => ({
         date: row.businessDate,
         author: row.author,
@@ -609,6 +647,16 @@ implements ImportRepository {
           .filter((row) => !diary.some((owned) => owned.id === row.id))
           .map((row) => row.id),
       ),
+      foreign_diary_comment_ids: new Set(
+        allDiaryCommentIds
+          .filter(
+            (row) =>
+              !diaryCommentRows.some(
+                (owned) => owned.id === row.id,
+              ),
+          )
+          .map((row) => row.id),
+      ),
       foreign_workspace_ids: new Set(
         allWorkspaceIds
           .filter((row) => !workspaceRows.some((owned) => owned.id === row.id))
@@ -675,6 +723,24 @@ implements ImportRepository {
     } as unknown as typeof diaryEntries.$inferInsert;
 
     await this.db.insert(diaryEntries).values(values);
+  }
+
+  async insertDiaryComment(
+    userId: string,
+    record: ExportDiaryCommentRecord,
+  ): Promise<void> {
+    await this.db.insert(diaryComments).values({
+      id: record.id,
+      userId,
+      diaryId: record.diary_id,
+      author: record.author,
+      content: record.content,
+      revision: record.revision,
+      idempotencyKey: `restore:${record.id}`,
+      requestHash: hashCanonical(record),
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+    });
   }
 
   async insertTodo(
@@ -902,6 +968,9 @@ implements ImportRepository {
       diary: modules.has("diary")
         ? state.diary
         : [],
+      diary_comments: modules.has("diary_comments")
+        ? state.diary_comments
+        : undefined,
       todo: modules.has("todo")
         ? state.todo
         : [],
