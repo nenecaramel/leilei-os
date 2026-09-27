@@ -521,10 +521,7 @@ export function createProcessRuntime(
       mindRetirementConfig,
     );
   const nativeLiveConversationService = new NativeLiveConversationService(
-    new DrizzleNativeLiveConversationRepository(
-      db,
-      memoryDecayConfig,
-    ),
+    new DrizzleNativeLiveConversationRepository(db),
   );
   const nativeLiveTurnPort = new DrizzleNativeLiveBackendTurnPort(
     db,
