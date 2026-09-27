@@ -212,7 +212,7 @@ async function main(): Promise<void> {
       ) {
         throw new Error("Production migration ledger is not at the checked-in migration head.");
       }
-      console.error(
+      console.log(
         `MIGRATION_LEDGER_HEAD_MATCH=YES created_at=${expectedLatest.folderMillis}`,
       );
 
