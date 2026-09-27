@@ -883,12 +883,11 @@ struct UniverseView: View {
                 )
             }
         } catch {
-            if UniverseAPIService
-                .isVersionConflict(error) {
-                if let fresh =
-                    try? await service.load() {
-                    state = .ready(fresh)
-                }
+            if let fresh =
+                try? await service.load() {
+                state = .ready(fresh)
+            } else {
+                state = .ready(current)
             }
             throw error
         }
