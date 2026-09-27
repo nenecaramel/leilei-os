@@ -16,6 +16,7 @@ import type {
   ExportProjectsBundle,
   ExportProjectWorkspaceRecord,
   ExportTodoPaper,
+  ExportUniverseBundle,
 } from "../src/domains/export/export-types.js";
 import {
   ImportService,
@@ -42,7 +43,7 @@ const diary: ExportDiaryRecord = {
   date: "2026-08-13",
   tags: [],
   mood: null,
-  source: "web",
+  source: "chatgpt_mcp",
   author: "C",
   status: "active",
   created_at: NOW,
@@ -68,6 +69,43 @@ const todo: ExportTodoPaper = {
   entries: [
     { id: "entry-1", kind: "pending", text: "Todo" },
   ],
+};
+
+const universeBundle: ExportUniverseBundle = {
+  version: 7,
+  snapshot: {
+    schemaVersion: 2,
+    meta: {
+      name: "蕾蕾宇宙",
+      createdAt: NOW,
+      updatedAt: NOW,
+    },
+    galaxies: [{
+      id: "galaxy-1",
+      title: "Galaxy",
+      description: "Description",
+      color: "#ffffff",
+      order: 0,
+    }],
+    nodes: [{
+      id: "node-1",
+      title: "Node",
+      summary: "Summary",
+      content: "Content",
+      type: "idea",
+      tags: ["portable"],
+      galaxies: [{ id: "galaxy-1", weight: 1 }],
+      position: { x: 1, y: 2 },
+      createdAt: NOW,
+      updatedAt: NOW,
+    }],
+    relations: [],
+    revisions: [],
+  },
+  diary_sources: [{
+    node_id: "node-1",
+    diary_id: diary.id,
+  }],
 };
 
 const CONVERSATION_ID =
@@ -265,6 +303,10 @@ function cloneState(
     conversations: state.conversations
       ? structuredClone(state.conversations)
       : undefined,
+    universe:
+      state.universe === undefined
+        ? undefined
+        : structuredClone(state.universe),
     foreign_diary_ids:
       state.foreign_diary_ids
         ? new Set(state.foreign_diary_ids)
@@ -379,6 +421,14 @@ class FakeImportRepository implements ImportRepository {
     this.state.todo.push(
       structuredClone(record),
     );
+    this.writes += 1;
+  }
+
+  async insertUniverse(
+    _userId: string,
+    record: ExportUniverseBundle,
+  ) {
+    this.state.universe = structuredClone(record);
     this.writes += 1;
   }
 
@@ -519,6 +569,9 @@ class FakeImportRepository implements ImportRepository {
       todo: modules.has("todo")
         ? structuredClone(this.state.todo)
         : [],
+      universe: modules.has("universe")
+        ? structuredClone(this.state.universe ?? null)
+        : undefined,
       mind: modules.has("mind")
         ? structuredClone(this.state.mind ?? [])
         : undefined,
@@ -863,6 +916,8 @@ test("v3 all-state restore creates canonical conversations before Project member
     conversations: conversationBundle,
     projects: projectBundle,
     mind: [mindState],
+    diary: [diary],
+    universe: universeBundle,
   });
 
   const preview = await service.preview(raw, USER_ID);
@@ -895,7 +950,8 @@ test("v3 all-state restore creates canonical conversations before Project member
     projectBundle,
   );
   assert.deepEqual(repository.state.mind, [mindState]);
-  assert.equal(repository.writes, 10);
+  assert.deepEqual(repository.state.universe, universeBundle);
+  assert.equal(repository.writes, 12);
 });
 
 test("v3 conversation preview rejects a parent cycle before execute", async () => {
@@ -1064,4 +1120,87 @@ test("v3 scoped Mind restore rejects dangling conversation and path references",
     assert.equal(preview.can_execute, false);
     assert.equal(repository.writes, 0);
   }
+});
+
+
+test("v3 Universe restore is atomic no-overwrite product state", async () => {
+  const emptyRepository = new FakeImportRepository({
+    diary: [diary],
+    todo: [],
+    universe: null,
+  });
+  const emptyService = new ImportService(emptyRepository);
+  const raw = v3PackageBytes({
+    universe: universeBundle,
+  });
+
+  const preview = await emptyService.preview(raw, USER_ID);
+  assert.deepEqual(preview.summary.universe, {
+    create: 1,
+    duplicate: 0,
+    conflict: 0,
+    invalid: 0,
+  });
+  assert.equal(preview.can_execute, true);
+
+  await emptyService.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+  assert.deepEqual(
+    emptyRepository.state.universe,
+    universeBundle,
+  );
+
+  const duplicateRepository = new FakeImportRepository({
+    diary: [diary],
+    todo: [],
+    universe: universeBundle,
+  });
+  const duplicatePreview = await new ImportService(
+    duplicateRepository,
+  ).preview(raw, USER_ID);
+  assert.equal(
+    duplicatePreview.summary.universe?.duplicate,
+    1,
+  );
+  assert.equal(duplicatePreview.can_execute, false);
+
+  const conflictRepository = new FakeImportRepository({
+    diary: [diary],
+    todo: [],
+    universe: {
+      ...universeBundle,
+      version: universeBundle.version + 1,
+    },
+  });
+  const conflictPreview = await new ImportService(
+    conflictRepository,
+  ).preview(raw, USER_ID);
+  assert.equal(
+    conflictPreview.summary.universe?.conflict,
+    1,
+  );
+  assert.equal(conflictPreview.can_execute, false);
+});
+
+test("v3 Universe provenance rejects a missing Diary parent", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    universe: null,
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({
+      universe: universeBundle,
+    }),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.universe?.invalid, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
 });
