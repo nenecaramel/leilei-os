@@ -2664,7 +2664,7 @@ export const runtimeCuriosityResolutionEvents = pgTable(
     curiosityStateId: uuid("curiosity_state_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
     requestedResolutionSourceId: uuid("requested_resolution_source_id").notNull(),
-    resultResolutionSourceId: uuid("result_resolution_source_id").notNull(),
+    resultResolutionSourceId: text("result_resolution_source_id").notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }).notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -2694,19 +2694,6 @@ export const runtimeCuriosityResolutionEvents = pgTable(
         conversationMessages.userId,
       ],
       name: "runtime_curiosity_resolution_events_requested_message_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    foreignKey({
-      columns: [
-        table.resultResolutionSourceId,
-        table.conversationId,
-        table.userId,
-      ],
-      foreignColumns: [
-        conversationMessages.id,
-        conversationMessages.conversationId,
-        conversationMessages.userId,
-      ],
-      name: "runtime_curiosity_resolution_events_result_message_fk",
     }).onDelete("cascade").onUpdate("cascade"),
     uniqueIndex("runtime_curiosity_resolution_events_user_idempotency_uidx").on(
       table.userId,
