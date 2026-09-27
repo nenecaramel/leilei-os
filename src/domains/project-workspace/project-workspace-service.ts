@@ -207,6 +207,23 @@ export class ProjectWorkspaceService {
     return rows;
   }
 
+  async getResource(input: {
+    userId: string;
+    projectId: unknown;
+    resourceId: unknown;
+  }): Promise<ProjectResource> {
+    await this.requireUser(input.userId);
+    const resource = await this.repository.getResource({
+      userId: input.userId,
+      projectId: uuid(input.projectId, "projectId"),
+      resourceId: uuid(input.resourceId, "resourceId"),
+    });
+    if (!resource) {
+      throw new ProjectWorkspaceServiceError("RESOURCE_NOT_FOUND");
+    }
+    return resource;
+  }
+
   async createResource(input: {
     userId: string;
     projectId: unknown;
