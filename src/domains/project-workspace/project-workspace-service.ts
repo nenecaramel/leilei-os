@@ -6,6 +6,7 @@ import {
 import {
   PROJECT_RESOURCE_KINDS,
   type ProjectResource,
+  type ProjectResourceSummary,
   type ProjectSummary,
   type ProjectWorkspace,
   type ProjectWorkspaceRepository,
@@ -192,7 +193,7 @@ export class ProjectWorkspaceService {
     userId: string;
     projectId: unknown;
     kind?: unknown;
-  }): Promise<ProjectResource[]> {
+  }): Promise<ProjectResourceSummary[]> {
     await this.requireUser(input.userId);
     const rows = await this.repository.listResources({
       userId: input.userId,
