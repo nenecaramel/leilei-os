@@ -35,6 +35,10 @@ import {
   createNativeLiveApiRouter,
   type NativeLiveApiDependencies,
 } from "./native-live-router.js";
+import {
+  createMindApiRouter,
+  type MindApiDependencies,
+} from "./mind-router.js";
 
 export type WebApiRouterDependencies = {
   diary: DiaryApiDependencies;
@@ -45,6 +49,7 @@ export type WebApiRouterDependencies = {
   export?: ExportApiDependencies;
   import?: ImportApiDependencies;
   universe?: UniverseApiDependencies;
+  mind?: MindApiDependencies;
   nativeLive?: NativeLiveApiDependencies;
 };
 
@@ -90,6 +95,7 @@ export function createWebApiRouter(
   if (dependencies.export) router.use("/system/export", createExportApiRouter(dependencies.export));
   if (dependencies.import) router.use("/system/import", createImportApiRouter(dependencies.import));
   if (dependencies.universe) router.use("/universe", createUniverseApiRouter(dependencies.universe));
+  if (dependencies.mind) router.use("/mind", createMindApiRouter(dependencies.mind));
   if (dependencies.nativeLive) router.use("/native-live", createNativeLiveApiRouter(dependencies.nativeLive));
 
   return router;
