@@ -257,7 +257,7 @@ export type MindRetirementCandidateInspection = {
 
 function readThreadState(
   candidate: MindRetirementCandidate,
-): RetirementThreadState | null {
+): MindRetirementCandidateInspection | null {
   switch (candidate.kind) {
     case "drive": {
       const evolution = readDriveEvolution(candidate.payload);
