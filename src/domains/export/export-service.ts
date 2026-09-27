@@ -2,6 +2,7 @@ import type {
   ExportDiaryRecord,
   ExportDocument,
   ExportLifecycleEvent,
+  ExportProjectsBundle,
   ExportScope,
   ExportToolActivity,
   ExportTodoPaper,
@@ -16,6 +17,7 @@ export interface ExportRepository {
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
+  listProjects(userId: string): Promise<ExportProjectsBundle>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
   listToolActivity(userId: string): Promise<ExportToolActivity[]>;
 }
@@ -48,6 +50,7 @@ export class ExportService {
       }
       throw error;
     }
+
     const data: ExportDocument["data"] = {};
     if (scope === "all" || scope === "diary") {
       data.diary = await this.repository.listDiary(userId);
@@ -55,9 +58,12 @@ export class ExportService {
     if (scope === "all" || scope === "todo") {
       data.todo = await this.repository.listTodo(userId);
     }
+    if (scope === "all") {
+      data.projects = await this.repository.listProjects(userId);
+    }
 
     const document: ExportDocument = {
-      schema_version: 2,
+      schema_version: 3,
       owner_fingerprint: createOwnerFingerprint(userId),
       exported_at: this.now().toISOString(),
       data,
