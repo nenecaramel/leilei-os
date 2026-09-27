@@ -19,7 +19,8 @@ export type CuriosityResolutionResult =
         | "CURIOSITY_NOT_FOUND"
         | "CURIOSITY_NOT_ELIGIBLE"
         | "CURIOSITY_NOT_EVOLVED"
-        | "CURIOSITY_NOT_ACTIVE";
+        | "CURIOSITY_NOT_ACTIVE"
+        | "IDEMPOTENCY_CONFLICT";
     };
 
 export interface CuriosityResolutionRuntimePort {
@@ -27,7 +28,9 @@ export interface CuriosityResolutionRuntimePort {
     userId: string;
     subjectId: string;
     curiosityStateId: string;
+    conversationId: string;
     resolutionSourceId: string;
+    idempotencyKey: string;
     now: string;
   }): Promise<CuriosityResolutionResult>;
 }
@@ -52,7 +55,9 @@ export class CuriosityResolutionService {
     userId: string;
     subjectId: string;
     curiosityStateId: string;
+    conversationId: string;
     resolutionSourceId: string;
+    idempotencyKey: string;
     now: string;
   }): Promise<CuriosityResolutionResult> {
     await this.evolution.runOnce({
