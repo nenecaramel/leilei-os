@@ -1045,6 +1045,7 @@ implements NativeLiveConversationRepository {
         canonicalMessageId: input.canonicalMessageId,
         provider: input.checkpoint.provider,
         providerSessionId: input.checkpoint.providerSessionId,
+        runtimeMetadata: input.checkpoint.runtimeMetadata ?? null,
         providerCheckpointId: input.checkpoint.providerCheckpointId ?? null,
       })
       .returning();
