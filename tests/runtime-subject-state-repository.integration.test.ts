@@ -262,9 +262,6 @@ test(
         ...provisional.envelope,
         scope: {
           ...provisional.envelope.scope,
-          applicability: "global",
-          conversationId: null,
-          pathHeadMessageId: null,
         },
         provenance: {
           ...provisional.envelope.provenance,
