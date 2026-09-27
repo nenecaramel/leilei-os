@@ -105,7 +105,40 @@ implements MindSemanticGroupingPort {
       })
       .returning({ id: runtimeMindSemanticGroupingRequests.id });
 
-    if (inserted.length === 0) return false;
+    let staged = inserted.length === 1;
+    if (!staged) {
+      const resetAt = new Date();
+      const reset = await this.db
+        .update(runtimeMindSemanticGroupingRequests)
+        .set({
+          query,
+          candidates: input.candidates.map(candidateRecord),
+          status: "pending",
+          reservedBy: null,
+          reservedAt: null,
+          reservationExpiresAt: null,
+          scores: null,
+          fallbackCode: null,
+          completedAt: null,
+          updatedAt: resetAt,
+        })
+        .where(
+          and(
+            eq(runtimeMindSemanticGroupingRequests.userId, input.userId),
+            eq(runtimeMindSemanticGroupingRequests.subjectId, input.subjectId),
+            eq(runtimeMindSemanticGroupingRequests.kind, input.kind),
+            eq(
+              runtimeMindSemanticGroupingRequests.queryStateId,
+              input.queryStateId,
+            ),
+            eq(runtimeMindSemanticGroupingRequests.status, "fallback"),
+          ),
+        )
+        .returning({ id: runtimeMindSemanticGroupingRequests.id });
+      staged = reset.length === 1;
+    }
+    if (!staged) return false;
+
     try {
       await this.workWake?.notify({
         userId: input.userId,
