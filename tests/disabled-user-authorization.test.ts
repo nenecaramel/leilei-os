@@ -93,16 +93,54 @@ test("SystemService rejects disabled and missing users before summary or activit
 });
 
 function createExportRepository(user: { status: "active" | "disabled" } | null, calls: string[]): ExportRepository {
-  return {
+  const repository = {
+    async withConsistentSnapshot(
+      work: (snapshot: ExportRepository) => Promise<unknown>,
+    ) {
+      return work(repository as unknown as ExportRepository);
+    },
     findUserById: async () => user,
-    async listMemory() { calls.push("memory"); return []; },
     async listDiary() { calls.push("diary"); return []; },
-    async listTasks() { calls.push("task"); return []; },
+    async listDiaryComments() { calls.push("diary_comments"); return []; },
     async listTodo() { calls.push("todo"); return []; },
-    async listSharedPapers() { calls.push("shared_paper"); return []; },
+    async listProjects() {
+      calls.push("projects");
+      return {
+        workspaces: [],
+        projects: [],
+        resources: [],
+        conversations: [],
+      };
+    },
+    async listMind() { calls.push("mind"); return []; },
+    async listMindContinuity() {
+      calls.push("mind_continuity");
+      return {
+        drive_satisfaction_events: [],
+        curiosity_resolution_events: [],
+        distillation_watermarks: [],
+        semantic_grouping_results: [],
+      };
+    },
+    async hasIncompleteMindFollowUps() { return false; },
+    async hasIncompleteTurnPreparations() { return false; },
+    async hasIncompleteMindSemanticGrouping() { return false; },
+    async hasIncompleteBackgroundModelJobs() { return false; },
+    async listConversations() {
+      calls.push("conversations");
+      return {
+        conversations: [],
+        messages: [],
+        content_blocks: [],
+        attachments: [],
+        provider_checkpoints: [],
+      };
+    },
+    async listUniverse() { calls.push("universe"); return null; },
     async listLifecycleAudit() { calls.push("lifecycle"); return []; },
     async listToolActivity() { calls.push("tool"); return []; },
   };
+  return repository as unknown as ExportRepository;
 }
 
 test("ExportService rejects disabled and missing users before export reads", async () => {
