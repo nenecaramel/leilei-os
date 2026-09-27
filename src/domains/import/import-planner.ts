@@ -391,8 +391,7 @@ function mindContinuityItems(
   for (const item of driveItems) {
     if (item.classification !== "create") continue;
     const record =
-      (item.record as MindContinuityRestoreRecord).value
-        as ExportMindDriveSatisfactionEventRecord;
+      (item.record as MindContinuityRestoreRecord).value as ExportMindDriveSatisfactionEventRecord;
     const state = states.get(record.drive_state_id);
     const message = messages.get(record.evidence_message_id);
     const block = record.evidence_block_id
@@ -439,8 +438,7 @@ function mindContinuityItems(
   for (const item of curiosityItems) {
     if (item.classification !== "create") continue;
     const record =
-      (item.record as MindContinuityRestoreRecord).value
-        as ExportMindCuriosityResolutionEventRecord;
+      (item.record as MindContinuityRestoreRecord).value as ExportMindCuriosityResolutionEventRecord;
     const state = states.get(record.curiosity_state_id);
     const message = messages.get(
       record.requested_resolution_source_id,
@@ -469,8 +467,7 @@ function mindContinuityItems(
   for (const item of watermarkItems) {
     if (item.classification !== "create") continue;
     const record =
-      (item.record as MindContinuityRestoreRecord).value
-        as ExportMindDistillationWatermarkRecord;
+      (item.record as MindContinuityRestoreRecord).value as ExportMindDistillationWatermarkRecord;
     const message = messages.get(record.last_source_message_id);
     if (
       !conversations.has(record.conversation_id)
@@ -484,8 +481,7 @@ function mindContinuityItems(
   for (const item of groupingItems) {
     if (item.classification !== "create") continue;
     const record =
-      (item.record as MindContinuityRestoreRecord).value
-        as ExportMindSemanticGroupingResultRecord;
+      (item.record as MindContinuityRestoreRecord).value as ExportMindSemanticGroupingResultRecord;
     const queryState = states.get(record.query_state_id);
     const candidateStates = record.candidates.map(
       (candidate) => states.get(String(candidate.stateId)),
@@ -812,8 +808,7 @@ function conversationItems(
   }
   const importedPathKeys = new Map<string, string>();
   for (const item of messageItems) {
-    const record = (item.record as ConversationRestoreRecord).value
-      as ExportConversationMessageRecord;
+    const record = (item.record as ConversationRestoreRecord).value as ExportConversationMessageRecord;
     if (
       !record.is_current_path
       || record.current_path_index === null
@@ -851,8 +846,7 @@ function conversationItems(
   );
   const importedBlockOrdinals = new Map<string, string>();
   for (const item of blockItems) {
-    const record = (item.record as ConversationRestoreRecord).value
-      as ExportConversationContentBlockRecord;
+    const record = (item.record as ConversationRestoreRecord).value as ExportConversationContentBlockRecord;
     const key = `${record.message_id}:${record.ordinal}`;
     const importedOwner = importedBlockOrdinals.get(key);
     if (importedOwner && importedOwner !== record.id) {
@@ -886,8 +880,7 @@ function conversationItems(
   );
   const importedAttachmentOrdinals = new Map<string, string>();
   for (const item of attachmentItems) {
-    const record = (item.record as ConversationRestoreRecord).value
-      as ExportConversationAttachmentRecord;
+    const record = (item.record as ConversationRestoreRecord).value as ExportConversationAttachmentRecord;
     const key = `${record.message_id}:${record.ordinal}`;
     const importedOwner = importedAttachmentOrdinals.get(key);
     if (importedOwner && importedOwner !== record.id) {
@@ -924,8 +917,7 @@ function conversationItems(
     );
   }
   for (const item of checkpointItems) {
-    const record = (item.record as ConversationRestoreRecord).value
-      as ExportConversationProviderCheckpointRecord;
+    const record = (item.record as ConversationRestoreRecord).value as ExportConversationProviderCheckpointRecord;
     if ((importedCheckpointIds.get(record.id) ?? 0) > 1) {
       item.classification = "invalid";
       continue;
