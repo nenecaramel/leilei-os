@@ -387,7 +387,7 @@ export class NativeLiveMacDaemonLoop {
               dispatchTarget: "claude_code",
             });
           if (grouping) {
-            let scored = false;
+            let groupingScored = false;
             try {
               if (!this.semanticScorer) {
                 await this.relay.submitMindSemanticGroupingFallback({
@@ -396,16 +396,16 @@ export class NativeLiveMacDaemonLoop {
                   code: "E5_PROVIDER_UNAVAILABLE",
                 });
               } else {
-                const scored = await this.semanticScorer.score({
+                const semanticScores = await this.semanticScorer.score({
                   query: grouping.query,
                   candidates: grouping.candidates,
                 });
                 await this.relay.submitMindSemanticGroupingScores({
                   listenerInstanceId: this.listenerInstanceId,
                   reservationId: grouping.reservationId,
-                  scores: Object.fromEntries(scored),
+                  scores: Object.fromEntries(semanticScores),
                 });
-                scored = true;
+                groupingScored = true;
               }
             } catch (error) {
               if (this.semanticScorer && isSemanticProviderFailure(error)) {
@@ -428,7 +428,7 @@ export class NativeLiveMacDaemonLoop {
                 };
               }
             }
-            if (scored) {
+            if (groupingScored) {
               await this.bestEffortIdleOpportunity();
             }
             return {
