@@ -50,7 +50,7 @@ export type NativeLiveApiDependencies = {
   currentPathReader?: NativeLiveCurrentPathReader;
   conversationService?: Pick<
     NativeLiveConversationService,
-    "listConversations" | "listConversationPage" | "createConversation" | "renameConversation" | "deleteConversation"
+    "listConversations" | "listConversationPage" | "createConversation" | "renameConversation" | "archiveConversation" | "restoreConversation" | "deleteConversation"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
@@ -117,6 +117,14 @@ export function createNativeLiveApiRouter(
       "/conversations/:conversationId",
       renameNativeLiveConversationHandler(dependencies),
     );
+    router.post(
+      "/conversations/:conversationId/archive",
+      archiveNativeLiveConversationHandler(dependencies),
+    );
+    router.post(
+      "/conversations/:conversationId/restore",
+      restoreNativeLiveConversationHandler(dependencies),
+    );
     router.delete(
       "/conversations/:conversationId",
       deleteNativeLiveConversationHandler(dependencies),
@@ -150,6 +158,18 @@ export function listNativeLiveConversationsHandler(
       return;
     }
 
+    const scope = parseConversationListScope(request.query.scope);
+    if (scope === null) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_LIST_SCOPE",
+          message: "Conversation list scope must be active or archived.",
+        },
+      });
+      return;
+    }
+
     const cursor = parseOptionalCursorQuery(request.query.cursor);
     if (cursor === null) {
       response.status(400).json({
@@ -178,6 +198,7 @@ export function listNativeLiveConversationsHandler(
       const page = await service.listConversationPage({
         userId: request.webUserId,
         limit,
+        ...(scope ? { scope } : {}),
         ...(cursor ? { cursor } : {}),
       });
       response.json({
@@ -360,12 +381,11 @@ export function renameNativeLiveConversationHandler(
   };
 }
 
-export function deleteNativeLiveConversationHandler(
+export function archiveNativeLiveConversationHandler(
   dependencies: NativeLiveApiDependencies,
 ): RequestHandler {
   return async (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
-
     const conversationId = routeParam(request.params.conversationId);
     if (!UUID_PATTERN.test(conversationId)) {
       response.status(400).json({
@@ -377,26 +397,120 @@ export function deleteNativeLiveConversationHandler(
       });
       return;
     }
-
-    const service = dependencies.conversationService;
-    if (!service) {
+    try {
+      const result = await dependencies.conversationService!.archiveConversation({
+        userId: request.webUserId,
+        conversationId,
+      });
+      if (result.outcome === "busy") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_BUSY",
+            message:
+              "Native live conversation has an active turn and cannot be archived yet.",
+          },
+        });
+        return;
+      }
+      if (result.outcome === "not_found") {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Native live conversation was not found.",
+          },
+        });
+        return;
+      }
+      response.status(204).end();
+    } catch {
       response.status(503).json({
         success: false,
         error: {
           code: "NATIVE_LIVE_CONVERSATION_LIFECYCLE_UNAVAILABLE",
-          message:
-            "Native live conversation lifecycle is temporarily unavailable.",
+          message: "Native live conversation could not be archived.",
+        },
+      });
+    }
+  };
+}
+
+export function restoreNativeLiveConversationHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const conversationId = routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
         },
       });
       return;
     }
-
     try {
-      const result = await service.deleteConversation({
+      const result = await dependencies.conversationService!.restoreConversation({
         userId: request.webUserId,
         conversationId,
       });
+      if (result.outcome === "not_found") {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Archived native live conversation was not found.",
+          },
+        });
+        return;
+      }
+      response.status(204).end();
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_LIFECYCLE_UNAVAILABLE",
+          message: "Native live conversation could not be restored.",
+        },
+      });
+    }
+  };
+}
 
+export function deleteNativeLiveConversationHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const conversationId = routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
+        },
+      });
+      return;
+    }
+    if (request.query.confirm !== "true") {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_CONVERSATION_DELETE_CONFIRMATION_REQUIRED",
+          message: "True conversation deletion requires confirm=true.",
+        },
+      });
+      return;
+    }
+    try {
+      const result = await dependencies.conversationService!.deleteConversation({
+        userId: request.webUserId,
+        conversationId,
+      });
       if (result.outcome === "busy") {
         response.status(409).json({
           success: false,
@@ -408,7 +522,6 @@ export function deleteNativeLiveConversationHandler(
         });
         return;
       }
-
       if (result.outcome === "not_found") {
         response.status(404).json({
           success: false,
@@ -419,15 +532,13 @@ export function deleteNativeLiveConversationHandler(
         });
         return;
       }
-
       response.status(204).end();
     } catch {
       response.status(503).json({
         success: false,
         error: {
           code: "NATIVE_LIVE_CONVERSATION_LIFECYCLE_UNAVAILABLE",
-          message:
-            "Native live conversation could not be deleted.",
+          message: "Native live conversation could not be deleted.",
         },
       });
     }
@@ -1287,6 +1398,15 @@ function parseCreateConversationBody(
     return { ok: false };
   }
   return { ok: true, title: trimmed };
+}
+
+function parseConversationListScope(
+  value: unknown,
+): "active" | "archived" | undefined | null {
+  if (value === undefined) return undefined;
+  return value === "active" || value === "archived"
+    ? value
+    : null;
 }
 
 function parseOptionalCursorQuery(

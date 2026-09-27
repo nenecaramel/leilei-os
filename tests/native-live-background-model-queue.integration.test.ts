@@ -3,10 +3,17 @@ import test from "node:test";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
+  conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveRuntimeListenerLeases,
   users,
 } from "../src/database/schema.js";
+import {
+  DrizzleNativeLiveConversationRepository,
+} from "../src/domains/conversation/native-live-conversation-repository.js";
+import {
+  NativeLiveConversationService,
+} from "../src/domains/conversation/native-live-conversation-service.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
   DrizzleNativeLiveBackgroundModelQueueRepository,
@@ -165,5 +172,169 @@ test(
       ).get({ userId, taskId }),
       null,
     );
+  },
+);
+
+
+test(
+  "background model queue pauses conversation workflow while archived and resumes after Restore",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let userId: string | null = null;
+
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(nativeLiveBackgroundModelJobs)
+            .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
+          await database.db
+            .delete(nativeLiveRuntimeListenerLeases)
+            .where(eq(nativeLiveRuntimeListenerLeases.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `background-archive-${crypto.randomUUID()}@example.com`,
+        displayName: "Background Archive Fence",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Archive background source",
+    });
+
+    const queue = new NativeLiveBackgroundModelQueueService(
+      new DrizzleNativeLiveBackgroundModelQueueRepository(database.db),
+    );
+    const listenerInstanceId = crypto.randomUUID();
+    await database.db.insert(nativeLiveRuntimeListenerLeases).values({
+      userId,
+      dispatchTarget: "claude_code",
+      listenerInstanceId,
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const firstTaskId = crypto.randomUUID();
+    const workflow = {
+      kind: "distillation" as const,
+      runId: crypto.randomUUID(),
+      payload: {
+        conversation_id: conversation.id,
+        source_head_message_id: crypto.randomUUID(),
+      },
+    };
+    await queue.stage({
+      userId,
+      subjectId: "G",
+      workflow,
+      command: {
+        protocol_version: 1,
+        task_id: firstTaskId,
+        task_kind: "distillation",
+        prompt_contract_version: "archive-fence-v1",
+        prompt: "queued before archive",
+      },
+    });
+
+    assert.equal(
+      (await conversationService.archiveConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "archived",
+    );
+
+    assert.equal(
+      await queue.reserveNext({
+        userId,
+        listenerInstanceId,
+      }),
+      null,
+      "queued work must remain pending while its source conversation is archived",
+    );
+
+    await assert.rejects(
+      queue.stage({
+        userId,
+        subjectId: "G",
+        workflow: {
+          ...workflow,
+          runId: crypto.randomUUID(),
+        },
+        command: {
+          protocol_version: 1,
+          task_id: crypto.randomUUID(),
+          task_kind: "distillation",
+          prompt_contract_version: "archive-fence-v1",
+          prompt: "must not stage while archived",
+        },
+      }),
+      /BackgroundWorkflowSourceInactive/,
+    );
+
+    assert.equal(
+      (await conversationService.restoreConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "restored",
+    );
+
+    const resumed = await queue.reserveNext({
+      userId,
+      listenerInstanceId,
+    });
+    assert.ok(resumed);
+    assert.equal(resumed.reservationId, firstTaskId);
+
+    assert.equal(
+      (await conversationService.archiveConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "archived",
+    );
+
+    await assert.rejects(
+      queue.submitResult({
+        userId,
+        listenerInstanceId,
+        taskId: firstTaskId,
+        result: {
+          protocol_version: 1,
+          task_id: firstTaskId,
+          task_kind: "distillation",
+          status: "success",
+          final_text: '{"memories":[]}',
+        },
+      }),
+      /BackgroundWorkflowSourceInactive/,
+      "a result that finishes after Archive must not become terminal/consumable",
+    );
+
+    const stillReserved = await new DrizzleNativeLiveBackgroundModelQueueRepository(
+      database.db,
+    ).get({ userId, taskId: firstTaskId });
+    assert.equal(stillReserved?.status, "reserved");
+    assert.equal(stillReserved?.resultText, null);
   },
 );

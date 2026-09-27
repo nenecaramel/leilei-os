@@ -168,6 +168,36 @@ test(
       backendMind,
       crypto.randomUUID(),
     );
+
+    assert.equal(
+      (await conversationService.archiveConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "archived",
+    );
+    assert.equal(
+      await service.processPreparation({
+        userId,
+        prepareId: prepared.command.prepare_id,
+      }),
+      "idle",
+      "archived conversation must fence delayed Mind follow-up",
+    );
+
+    const stillBeforeRestore = await database.db
+      .select({ id: runtimeSubjectStates.id })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.userId, userId));
+    assert.equal(stillBeforeRestore.length, 0);
+
+    assert.equal(
+      (await conversationService.restoreConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "restored",
+    );
     assert.equal(
       await service.processPreparation({
         userId,

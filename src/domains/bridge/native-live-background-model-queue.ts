@@ -2,7 +2,10 @@ import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversations,
   nativeLiveBackgroundModelJobs,
+  runtimeProactivityWakes,
+  runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
   RETENTION_BATCH_SIZE,
@@ -76,44 +79,54 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       throw new Error("Background model subject id must not be blank.");
     }
 
-    await this.db
-      .insert(nativeLiveBackgroundModelJobs)
-      .values({
-        id: command.task_id,
-        userId: input.userId,
+    return this.db.transaction(async (transaction) => {
+      await assertWorkflowSourceActive(
+        transaction as Transaction,
+        input.userId,
         subjectId,
-        workflowKind: input.workflow?.kind ?? null,
-        workflowRunId: input.workflow?.runId ?? null,
-        workflowPayload: input.workflow?.payload ?? null,
-        taskKind: command.task_kind,
-        promptContractVersion: command.prompt_contract_version,
-        prompt: command.prompt,
-        status: "pending",
-      })
-      .onConflictDoNothing();
-
-    const existing = await this.get({
-      userId: input.userId,
-      taskId: command.task_id,
-    });
-    if (
-      !existing
-      || existing.subjectId !== subjectId
-      || existing.command.task_kind !== command.task_kind
-      || existing.command.prompt_contract_version
-        !== command.prompt_contract_version
-      || existing.command.prompt !== command.prompt
-      || !isDeepStrictEqual(
-        existing.workflow,
-        input.workflow ?? null,
-      )
-    ) {
-      throw new NativeLiveBackgroundModelQueueError(
-        "TASK_CONFLICT",
-        "Background model task conflicts with an existing task id.",
+        input.workflow,
       );
-    }
-    return existing;
+
+      await transaction
+        .insert(nativeLiveBackgroundModelJobs)
+        .values({
+          id: command.task_id,
+          userId: input.userId,
+          subjectId,
+          workflowKind: input.workflow?.kind ?? null,
+          workflowRunId: input.workflow?.runId ?? null,
+          workflowPayload: input.workflow?.payload ?? null,
+          taskKind: command.task_kind,
+          promptContractVersion: command.prompt_contract_version,
+          prompt: command.prompt,
+          status: "pending",
+        })
+        .onConflictDoNothing();
+
+      const existing = await this.getWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        command.task_id,
+      );
+      if (
+        !existing
+        || existing.subjectId !== subjectId
+        || existing.command.task_kind !== command.task_kind
+        || existing.command.prompt_contract_version
+          !== command.prompt_contract_version
+        || existing.command.prompt !== command.prompt
+        || !isDeepStrictEqual(
+          existing.workflow,
+          input.workflow ?? null,
+        )
+      ) {
+        throw new NativeLiveBackgroundModelQueueError(
+          "TASK_CONFLICT",
+          "Background model task conflicts with an existing task id.",
+        );
+      }
+      return existing;
+    });
   }
 
   async reserveNext(input: {
@@ -157,6 +170,55 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
           FROM native_live_background_model_jobs
           WHERE user_id = ${input.userId}::uuid
             AND status = 'pending'
+            AND (
+              workflow_kind IS NULL
+              OR workflow_kind = 'topic_resurface'
+              OR (
+                workflow_kind = 'distillation'
+                AND EXISTS (
+                  SELECT 1
+                  FROM conversations AS source_conversation
+                  WHERE source_conversation.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND source_conversation.origin = 'native_live'
+                    AND source_conversation.lifecycle_status = 'active'
+                    AND source_conversation.id::text =
+                      native_live_background_model_jobs.workflow_payload
+                        ->> 'conversation_id'
+                )
+              )
+              OR (
+                workflow_kind = 'proactivity_wake'
+                AND EXISTS (
+                  SELECT 1
+                  FROM runtime_proactivity_wakes AS source_wake
+                  WHERE source_wake.id =
+                      native_live_background_model_jobs.workflow_run_id
+                    AND source_wake.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND (
+                      NULLIF(
+                        btrim(
+                          source_wake.context_snapshot
+                            ->> 'sourceConversationId'
+                        ),
+                        ''
+                      ) IS NULL
+                      OR EXISTS (
+                        SELECT 1
+                        FROM conversations AS source_conversation
+                        WHERE source_conversation.user_id =
+                            source_wake.user_id
+                          AND source_conversation.origin = 'native_live'
+                          AND source_conversation.lifecycle_status = 'active'
+                          AND source_conversation.id::text =
+                            source_wake.context_snapshot
+                              ->> 'sourceConversationId'
+                      )
+                    )
+                )
+              )
+            )
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
@@ -261,6 +323,13 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
           "Background model task is not reserved by this listener.",
         );
       }
+
+      await assertWorkflowSourceActive(
+        transaction as Transaction,
+        current.userId,
+        current.subjectId,
+        current.workflow ?? undefined,
+      );
 
       const completedAt = new Date();
       await transaction
@@ -484,6 +553,55 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
             eq(nativeLiveBackgroundModelJobs.status, "completed"),
             eq(nativeLiveBackgroundModelJobs.status, "failed"),
           ),
+          sql`(
+              workflow_kind IS NULL
+              OR workflow_kind = 'topic_resurface'
+              OR (
+                workflow_kind = 'distillation'
+                AND EXISTS (
+                  SELECT 1
+                  FROM conversations AS source_conversation
+                  WHERE source_conversation.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND source_conversation.origin = 'native_live'
+                    AND source_conversation.lifecycle_status = 'active'
+                    AND source_conversation.id::text =
+                      native_live_background_model_jobs.workflow_payload
+                        ->> 'conversation_id'
+                )
+              )
+              OR (
+                workflow_kind = 'proactivity_wake'
+                AND EXISTS (
+                  SELECT 1
+                  FROM runtime_proactivity_wakes AS source_wake
+                  WHERE source_wake.id =
+                      native_live_background_model_jobs.workflow_run_id
+                    AND source_wake.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND (
+                      NULLIF(
+                        btrim(
+                          source_wake.context_snapshot
+                            ->> 'sourceConversationId'
+                        ),
+                        ''
+                      ) IS NULL
+                      OR EXISTS (
+                        SELECT 1
+                        FROM conversations AS source_conversation
+                        WHERE source_conversation.user_id =
+                            source_wake.user_id
+                          AND source_conversation.origin = 'native_live'
+                          AND source_conversation.lifecycle_status = 'active'
+                          AND source_conversation.id::text =
+                            source_wake.context_snapshot
+                              ->> 'sourceConversationId'
+                      )
+                    )
+                )
+              )
+            )`,
         ),
       )
       .orderBy(
@@ -607,6 +725,135 @@ export class NativeLiveBackgroundModelQueueService {
   }): Promise<void> {
     return this.repository.markConsumed(input);
   }
+}
+
+async function assertWorkflowSourceActive(
+  transaction: Transaction,
+  userId: string,
+  subjectId: string,
+  workflow: NativeLiveBackgroundModelWorkflow | undefined,
+): Promise<void> {
+  if (!workflow) return;
+
+  if (workflow.kind === "distillation") {
+    const conversationId = workflow.payload.conversation_id;
+    if (typeof conversationId !== "string") {
+      throw new Error("Distillation workflow source conversation is invalid.");
+    }
+    const active = await transaction.execute<{ id: string }>(sql`
+      SELECT id
+      FROM conversations
+      WHERE id = ${conversationId}::uuid
+        AND user_id = ${userId}::uuid
+        AND origin = 'native_live'
+        AND lifecycle_status = 'active'
+      FOR SHARE
+    `);
+    if (active.length !== 1) {
+      throw new Error("BackgroundWorkflowSourceInactive");
+    }
+    return;
+  }
+
+  if (workflow.kind === "proactivity_wake") {
+    const [snapshot] = await transaction
+      .select({
+        id: runtimeProactivityWakes.id,
+        contextSnapshot: runtimeProactivityWakes.contextSnapshot,
+      })
+      .from(runtimeProactivityWakes)
+      .where(and(
+        eq(runtimeProactivityWakes.id, workflow.runId),
+        eq(runtimeProactivityWakes.userId, userId),
+      ))
+      .limit(1);
+    if (!snapshot) {
+      throw new Error("BackgroundWorkflowSourceInactive");
+    }
+
+    const sourceConversationId =
+      typeof snapshot.contextSnapshot.sourceConversationId === "string"
+        ? snapshot.contextSnapshot.sourceConversationId.trim()
+        : "";
+    if (sourceConversationId) {
+      const active = await transaction.execute<{ id: string }>(sql`
+        SELECT id
+        FROM conversations
+        WHERE id = ${sourceConversationId}::uuid
+          AND user_id = ${userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR SHARE
+      `);
+      if (active.length !== 1) {
+        throw new Error("BackgroundWorkflowSourceInactive");
+      }
+    }
+
+    const locked = await transaction
+      .select({ id: runtimeProactivityWakes.id })
+      .from(runtimeProactivityWakes)
+      .where(and(
+        eq(runtimeProactivityWakes.id, workflow.runId),
+        eq(runtimeProactivityWakes.userId, userId),
+      ))
+      .for("share")
+      .limit(1);
+    if (locked.length !== 1) {
+      throw new Error("BackgroundWorkflowSourceInactive");
+    }
+    return;
+  }
+
+  const stateIds = collectWorkflowStateIds(workflow.payload);
+  if (stateIds.length === 0) {
+    throw new Error("Topic resurface workflow source state is missing.");
+  }
+  const rows = await transaction
+    .select({ id: runtimeSubjectStates.id })
+    .from(runtimeSubjectStates)
+    .where(and(
+      eq(runtimeSubjectStates.userId, userId),
+      eq(runtimeSubjectStates.subjectId, subjectId),
+      inArray(runtimeSubjectStates.id, stateIds),
+      eq(runtimeSubjectStates.validityStatus, "valid"),
+    ))
+    .for("share");
+  if (rows.length !== stateIds.length) {
+    throw new Error("BackgroundWorkflowSourceInactive");
+  }
+}
+
+function collectWorkflowStateIds(value: unknown): string[] {
+  const ids = new Set<string>();
+  const visit = (candidate: unknown): void => {
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) visit(item);
+      return;
+    }
+    if (
+      !candidate
+      || typeof candidate !== "object"
+      || Array.isArray(candidate)
+    ) {
+      return;
+    }
+    for (const [key, child] of Object.entries(
+      candidate as Record<string, unknown>,
+    )) {
+      if (
+        key === "stateId"
+        && typeof child === "string"
+        && child.trim()
+      ) {
+        ids.add(child);
+      } else {
+        visit(child);
+      }
+    }
+  };
+  visit(value);
+  return [...ids];
 }
 
 export async function deleteExpiredNativeLiveBackgroundModelJobsBatch(

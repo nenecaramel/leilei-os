@@ -243,5 +243,67 @@ test(
     });
     assert.deepEqual(second, { outcome: "idle" });
     assert.equal(modelCalls.length, 1);
+
+    const u4 = await conversations.appendUserMessage({
+      userId: user.id,
+      conversationId: conversation.id,
+      parentMessageId: (
+        await conversations.getConversation({
+          userId: user.id,
+          conversationId: conversation.id,
+        })
+      )?.currentHeadMessageId ?? null,
+      blocks: [{ kind: "text", rawType: "text", text: "第四轮 Archive fence" }],
+    });
+    await conversations.completeAssistantTurn({
+      userId: user.id,
+      conversationId: conversation.id,
+      parentMessageId: u4.id,
+      blocks: [{ kind: "text", rawType: "text", text: "第四轮回复" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: `distill-${suffix}-4`,
+      },
+    });
+
+    const beforeArchive = await conversations.getConversation({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(beforeArchive);
+    assert.equal(
+      (await conversations.archiveConversation({
+        userId: user.id,
+        conversationId: conversation.id,
+      })).outcome,
+      "archived",
+    );
+
+    const blocked = await distillation.runOnce({
+      userId: user.id,
+      subjectId: "G",
+      conversation: beforeArchive,
+    });
+    assert.equal(blocked.outcome, "conflict");
+
+    const [watermarkAfterArchive] = await database.db
+      .select({
+        lastSourceMessageId:
+          runtimeDistillationWatermarks.lastSourceMessageId,
+      })
+      .from(runtimeDistillationWatermarks)
+      .where(and(
+        eq(runtimeDistillationWatermarks.userId, user.id),
+        eq(runtimeDistillationWatermarks.subjectId, "G"),
+        eq(
+          runtimeDistillationWatermarks.conversationId,
+          conversation.id,
+        ),
+      ));
+    assert.equal(
+      watermarkAfterArchive?.lastSourceMessageId,
+      a2.message.id,
+      "Archive must block the stale snapshot from advancing Distillation",
+    );
   },
 );

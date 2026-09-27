@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversations,
   runtimeProactivityWakes,
 } from "../../database/schema.js";
 import type {
@@ -20,6 +21,12 @@ import {
 } from "./proactivity-wake-state.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
+type Executor = Database | Transaction;
 
 type RawWakeRow = {
   id: string;
@@ -49,46 +56,248 @@ implements ProactivityWakePort {
     const context = normalizeProactivityWakeContext(input.context);
     const contactTarget = normalizeTarget(input.contactTarget);
 
-    await this.db
-      .insert(runtimeProactivityWakes)
-      .values({
-        id: gate.wakeId,
-        userId: gate.userId,
-        subjectId: gate.subjectId,
-        gate,
-        contactTarget,
-        contextSnapshot: context,
-        status: "created",
-      })
-      .onConflictDoNothing();
+    return this.db.transaction(async (transaction) => {
+      await assertSourceConversationActive(
+        transaction as Transaction,
+        gate.userId,
+        context,
+      );
 
-    const current = await this.get({
-      userId: gate.userId,
-      wakeId: gate.wakeId,
+      await transaction
+        .insert(runtimeProactivityWakes)
+        .values({
+          id: gate.wakeId,
+          userId: gate.userId,
+          subjectId: gate.subjectId,
+          gate,
+          contactTarget,
+          contextSnapshot: context,
+          status: "created",
+        })
+        .onConflictDoNothing();
+
+      const current = await this.getWithExecutor(
+        transaction as Transaction,
+        gate.userId,
+        gate.wakeId,
+        true,
+      );
+      if (!current) {
+        throw new Error(
+          "Proactivity wake disappeared after create.",
+        );
+      }
+      if (
+        current.subjectId !== gate.subjectId
+        || !isDeepStrictEqual(current.gate, gate)
+        || current.contactTarget !== contactTarget
+        || !isDeepStrictEqual(current.context, context)
+      ) {
+        throw new Error(
+          "Proactivity wake id conflicts with existing durable state.",
+        );
+      }
+      return current;
     });
-    if (!current) {
-      throw new Error(
-        "Proactivity wake disappeared after create.",
-      );
-    }
-    if (
-      current.subjectId !== gate.subjectId
-      || !isDeepStrictEqual(current.gate, gate)
-      || current.contactTarget !== contactTarget
-      || !isDeepStrictEqual(current.context, context)
-    ) {
-      throw new Error(
-        "Proactivity wake id conflicts with existing durable state.",
-      );
-    }
-    return current;
   }
 
-  async get(input: {
+  get(input: {
     userId: string;
     wakeId: string;
   }): Promise<ProactivityWakeRecord | null> {
-    const rows = await this.db
+    return this.getWithExecutor(
+      this.db,
+      input.userId,
+      input.wakeId,
+      false,
+    );
+  }
+
+  async markWaitingModel(input: {
+    userId: string;
+    wakeId: string;
+    modelTaskId: string;
+  }): Promise<ProactivityWakeRecord> {
+    const taskId = input.modelTaskId.trim();
+    if (!taskId) {
+      throw new Error(
+        "Proactivity wake model task id must not be blank.",
+      );
+    }
+
+    return this.db.transaction(async (transaction) => {
+      const snapshot = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        false,
+      );
+      if (snapshot.status === "decided") return snapshot;
+
+      await assertSourceConversationActive(
+        transaction as Transaction,
+        input.userId,
+        snapshot.context,
+      );
+
+      const current = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        true,
+      );
+      if (
+        current.status === "waiting_model"
+        && current.modelTaskId === taskId
+      ) {
+        return current;
+      }
+      if (current.status === "decided") return current;
+      if (current.status !== "created") {
+        throw new Error(
+          "Proactivity wake model task binding conflicted.",
+        );
+      }
+
+      await transaction
+        .update(runtimeProactivityWakes)
+        .set({
+          status: "waiting_model",
+          modelTaskId: taskId,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(runtimeProactivityWakes.id, input.wakeId),
+            eq(runtimeProactivityWakes.userId, input.userId),
+            eq(runtimeProactivityWakes.status, "created"),
+          ),
+        );
+
+      const updated = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        false,
+      );
+      if (
+        updated.status === "waiting_model"
+        && updated.modelTaskId === taskId
+      ) {
+        return updated;
+      }
+      throw new Error(
+        "Proactivity wake model task binding conflicted.",
+      );
+    });
+  }
+
+  async completeDecision(input: {
+    userId: string;
+    wakeId: string;
+    decision: ProactivityWakeDecision;
+  }): Promise<ProactivityWakeRecord> {
+    if (
+      input.decision.wakeId !== input.wakeId
+      || input.decision.userId !== input.userId
+    ) {
+      throw new Error(
+        "Proactivity decision does not match wake identity.",
+      );
+    }
+
+    return this.db.transaction(async (transaction) => {
+      const snapshot = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        false,
+      );
+      if (
+        input.decision.subjectId !== snapshot.subjectId
+        || input.decision.offeredAt !== snapshot.gate.offeredAt
+      ) {
+        throw new Error(
+          "Proactivity decision does not match durable wake snapshot.",
+        );
+      }
+      if (snapshot.status === "decided") {
+        if (!isDeepStrictEqual(snapshot.decision, input.decision)) {
+          throw new Error(
+            "Proactivity wake already has a different decision.",
+          );
+        }
+        return snapshot;
+      }
+
+      await assertSourceConversationActive(
+        transaction as Transaction,
+        input.userId,
+        snapshot.context,
+      );
+
+      const current = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        true,
+      );
+      if (current.status === "decided") {
+        if (!isDeepStrictEqual(current.decision, input.decision)) {
+          throw new Error(
+            "Proactivity wake already has a different decision.",
+          );
+        }
+        return current;
+      }
+
+      await transaction
+        .update(runtimeProactivityWakes)
+        .set({
+          status: "decided",
+          decision: input.decision,
+          decidedAt: new Date(input.decision.decidedAt),
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(runtimeProactivityWakes.id, input.wakeId),
+            eq(runtimeProactivityWakes.userId, input.userId),
+            inArray(runtimeProactivityWakes.status, [
+              "created",
+              "waiting_model",
+            ]),
+          ),
+        );
+
+      const completed = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        false,
+      );
+      if (
+        completed.status !== "decided"
+        || !isDeepStrictEqual(
+          completed.decision,
+          input.decision,
+        )
+      ) {
+        throw new Error(
+          "Proactivity wake decision completion conflicted.",
+        );
+      }
+      return completed;
+    });
+  }
+
+  private async getWithExecutor(
+    executor: Executor,
+    userId: string,
+    wakeId: string,
+    lock: boolean,
+  ): Promise<ProactivityWakeRecord | null> {
+    const query = executor
       .select({
         id: runtimeProactivityWakes.id,
         userId: runtimeProactivityWakes.userId,
@@ -107,131 +316,54 @@ implements ProactivityWakePort {
       .from(runtimeProactivityWakes)
       .where(
         and(
-          eq(runtimeProactivityWakes.id, input.wakeId),
-          eq(runtimeProactivityWakes.userId, input.userId),
+          eq(runtimeProactivityWakes.id, wakeId),
+          eq(runtimeProactivityWakes.userId, userId),
         ),
-      )
-      .limit(1);
+      );
+    const rows = lock
+      ? await query.for("update").limit(1)
+      : await query.limit(1);
     return rows[0] ? parseRow(rows[0] as RawWakeRow) : null;
   }
 
-  async markWaitingModel(input: {
-    userId: string;
-    wakeId: string;
-    modelTaskId: string;
-  }): Promise<ProactivityWakeRecord> {
-    const taskId = input.modelTaskId.trim();
-    if (!taskId) {
-      throw new Error(
-        "Proactivity wake model task id must not be blank.",
-      );
-    }
-
-    await this.db
-      .update(runtimeProactivityWakes)
-      .set({
-        status: "waiting_model",
-        modelTaskId: taskId,
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          eq(runtimeProactivityWakes.id, input.wakeId),
-          eq(runtimeProactivityWakes.userId, input.userId),
-          eq(runtimeProactivityWakes.status, "created"),
-        ),
-      );
-
-    const current = await this.requireCurrent(input);
-    if (
-      current.status === "waiting_model"
-      && current.modelTaskId === taskId
-    ) {
-      return current;
-    }
-    if (current.status === "decided") {
-      return current;
-    }
-    throw new Error(
-      "Proactivity wake model task binding conflicted.",
+  private async requireCurrentWithExecutor(
+    executor: Executor,
+    userId: string,
+    wakeId: string,
+    lock: boolean,
+  ): Promise<ProactivityWakeRecord> {
+    const current = await this.getWithExecutor(
+      executor,
+      userId,
+      wakeId,
+      lock,
     );
-  }
-
-  async completeDecision(input: {
-    userId: string;
-    wakeId: string;
-    decision: ProactivityWakeDecision;
-  }): Promise<ProactivityWakeRecord> {
-    if (
-      input.decision.wakeId !== input.wakeId
-      || input.decision.userId !== input.userId
-    ) {
-      throw new Error(
-        "Proactivity decision does not match wake identity.",
-      );
-    }
-
-    const current = await this.requireCurrent(input);
-    if (
-      input.decision.subjectId !== current.subjectId
-      || input.decision.offeredAt !== current.gate.offeredAt
-    ) {
-      throw new Error(
-        "Proactivity decision does not match durable wake snapshot.",
-      );
-    }
-    if (current.status === "decided") {
-      if (!isDeepStrictEqual(current.decision, input.decision)) {
-        throw new Error(
-          "Proactivity wake already has a different decision.",
-        );
-      }
-      return current;
-    }
-
-    await this.db
-      .update(runtimeProactivityWakes)
-      .set({
-        status: "decided",
-        decision: input.decision,
-        decidedAt: new Date(input.decision.decidedAt),
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          eq(runtimeProactivityWakes.id, input.wakeId),
-          eq(runtimeProactivityWakes.userId, input.userId),
-          inArray(runtimeProactivityWakes.status, [
-            "created",
-            "waiting_model",
-          ]),
-        ),
-      );
-
-    const completed = await this.requireCurrent(input);
-    if (
-      completed.status !== "decided"
-      || !isDeepStrictEqual(
-        completed.decision,
-        input.decision,
-      )
-    ) {
-      throw new Error(
-        "Proactivity wake decision completion conflicted.",
-      );
-    }
-    return completed;
-  }
-
-  private async requireCurrent(input: {
-    userId: string;
-    wakeId: string;
-  }): Promise<ProactivityWakeRecord> {
-    const current = await this.get(input);
     if (!current) {
       throw new Error("Proactivity wake was not found.");
     }
     return current;
+  }
+}
+
+async function assertSourceConversationActive(
+  transaction: Transaction,
+  userId: string,
+  context: ProactivityWakeContextSnapshot,
+): Promise<void> {
+  const conversationId = context.sourceConversationId?.trim() ?? "";
+  if (!conversationId) return;
+
+  const rows = await transaction.execute<{ id: string }>(sql`
+    SELECT id
+    FROM conversations
+    WHERE id = ${conversationId}::uuid
+      AND user_id = ${userId}::uuid
+      AND origin = 'native_live'
+      AND lifecycle_status = 'active'
+    FOR SHARE
+  `);
+  if (rows.length !== 1) {
+    throw new Error("ProactivityWakeSourceConversationInactive");
   }
 }
 

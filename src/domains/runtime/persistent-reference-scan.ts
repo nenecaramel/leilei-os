@@ -14,8 +14,10 @@ export function structuredValueReferencesAnyId(
     return value.some((item) => structuredValueReferencesAnyId(item, ids));
   }
   if (!value || typeof value !== "object") return false;
-  return Object.values(value as Record<string, unknown>).some((item) =>
-    structuredValueReferencesAnyId(item, ids)
+  return Object.entries(value as Record<string, unknown>).some(
+    ([key, item]) =>
+      ids.has(key)
+      || structuredValueReferencesAnyId(item, ids),
   );
 }
 

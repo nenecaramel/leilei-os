@@ -1,11 +1,20 @@
-import { and, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationContentBlocks,
+  conversationFavorites,
   conversationMessages,
   conversationProviderSessionCheckpoints,
   conversations,
+  nativeLiveBackgroundModelJobs,
   nativeLiveTurnPreparations,
+  runtimeDistillationWatermarks,
+  runtimeDriveSatisfactionEvents,
+  runtimeEffects,
+  runtimeMindSemanticGroupingRequests,
+  runtimeProactivityWakes,
+  runtimeSubjectStates,
+  runtimeSubjectStateTransitions,
 } from "../../database/schema.js";
 import type {
   NativeLiveContentBlock,
@@ -16,6 +25,12 @@ import type {
   NativeLiveProviderCheckpoint,
   NativeLiveProviderCheckpointInput,
 } from "./native-live-conversation-types.js";
+import {
+  workflowReferencesAnyId,
+} from "../bridge/native-live-replacement-purge.js";
+import {
+  structuredValueReferencesAnyId,
+} from "../runtime/persistent-reference-scan.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (
@@ -40,11 +55,22 @@ export type NativeLiveConversationListPage = {
   nextCursor: string | null;
 };
 
-export type NativeLiveConversationDeleteResult =
+export type NativeLiveConversationListScope = "active" | "archived";
+
+export type NativeLiveConversationArchiveResult =
   | {
-      outcome: "deleted" | "already_deleted";
-      deletedAt: string;
+      outcome: "archived" | "already_archived";
+      archivedAt: string;
     }
+  | { outcome: "busy" }
+  | { outcome: "not_found" };
+
+export type NativeLiveConversationRestoreResult =
+  | { outcome: "restored" | "already_active" }
+  | { outcome: "not_found" };
+
+export type NativeLiveConversationDeleteResult =
+  | { outcome: "deleted" }
   | { outcome: "busy" }
   | { outcome: "not_found" };
 
@@ -61,12 +87,14 @@ export interface NativeLiveConversationRepository {
   listConversations?(input: {
     userId: string;
     limit: number;
+    scope?: NativeLiveConversationListScope;
   }): Promise<NativeLiveConversationSummary[]>;
 
   listConversationPage?(input: {
     userId: string;
     limit: number;
     cursor?: string | null;
+    scope?: NativeLiveConversationListScope;
   }): Promise<NativeLiveConversationListPage>;
 
   getConversation(input: {
@@ -79,6 +107,16 @@ export interface NativeLiveConversationRepository {
     conversationId: string;
     title: string;
   }): Promise<NativeLiveConversationSummary | null>;
+
+  archiveConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationArchiveResult>;
+
+  restoreConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationRestoreResult>;
 
   deleteConversation(input: {
     userId: string;
@@ -187,6 +225,7 @@ implements NativeLiveConversationRepository {
   async listConversations(input: {
     userId: string;
     limit: number;
+    scope?: NativeLiveConversationListScope;
   }): Promise<NativeLiveConversationSummary[]> {
     return (
       await this.listConversationPage({
@@ -200,14 +239,16 @@ implements NativeLiveConversationRepository {
     userId: string;
     limit: number;
     cursor?: string | null;
+    scope?: NativeLiveConversationListScope;
   }): Promise<NativeLiveConversationListPage> {
     const cursor = input.cursor
       ? parseNativeLiveConversationListCursor(input.cursor)
       : null;
+    const lifecycleStatus = input.scope ?? "active";
     const conditions = [
       eq(conversations.userId, input.userId),
       eq(conversations.origin, "native_live"),
-      eq(conversations.lifecycleStatus, "active"),
+      eq(conversations.lifecycleStatus, lifecycleStatus),
     ];
     if (cursor) {
       const updatedAt = new Date(cursor.updatedAt);
@@ -430,44 +471,39 @@ implements NativeLiveConversationRepository {
       : null;
   }
 
-  async deleteConversation(input: {
+  async archiveConversation(input: {
     userId: string;
     conversationId: string;
-  }): Promise<NativeLiveConversationDeleteResult> {
+  }): Promise<NativeLiveConversationArchiveResult> {
     return this.db.transaction(
       async (transaction) => {
-        const rows = await transaction
+        const [conversation] = await transaction
           .select({
             id: conversations.id,
             lifecycleStatus: conversations.lifecycleStatus,
-            deletedAt: conversations.deletedAt,
+            archivedAt: conversations.archivedAt,
           })
           .from(conversations)
-          .where(
-            and(
-              eq(conversations.userId, input.userId),
-              eq(conversations.id, input.conversationId),
-              eq(conversations.origin, "native_live"),
-            ),
-          )
+          .where(and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, input.conversationId),
+            eq(conversations.origin, "native_live"),
+          ))
           .for("update")
           .limit(1);
 
-        const conversation = rows[0];
         if (!conversation) return { outcome: "not_found" as const };
-
-        if (conversation.lifecycleStatus === "deleted") {
-          if (!conversation.deletedAt) {
+        if (conversation.lifecycleStatus === "archived") {
+          if (!conversation.archivedAt) {
             throw new Error(
-              "Deleted native live conversation is missing deleted_at.",
+              "Archived native live conversation is missing archived_at.",
             );
           }
           return {
-            outcome: "already_deleted" as const,
-            deletedAt: conversation.deletedAt.toISOString(),
+            outcome: "already_archived" as const,
+            archivedAt: conversation.archivedAt.toISOString(),
           };
         }
-
         if (conversation.lifecycleStatus !== "active") {
           return { outcome: "not_found" as const };
         }
@@ -475,60 +511,317 @@ implements NativeLiveConversationRepository {
         const activeTurns = await transaction
           .select({ id: nativeLiveTurnPreparations.id })
           .from(nativeLiveTurnPreparations)
-          .where(
-            and(
-              eq(nativeLiveTurnPreparations.userId, input.userId),
-              eq(
-                nativeLiveTurnPreparations.conversationId,
-                input.conversationId,
-              ),
-              inArray(
-                nativeLiveTurnPreparations.dispatchStatus,
-                [
-                  "staged",
-                  "pending",
-                  "reserved",
-                  "executing",
-                  "delivery_unknown",
-                ],
-              ),
+          .where(and(
+            eq(nativeLiveTurnPreparations.userId, input.userId),
+            eq(
+              nativeLiveTurnPreparations.conversationId,
+              input.conversationId,
             ),
-          )
+            inArray(nativeLiveTurnPreparations.dispatchStatus, [
+              "staged",
+              "pending",
+              "reserved",
+              "executing",
+              "delivery_unknown",
+            ]),
+          ))
           .limit(1);
+        if (activeTurns.length > 0) return { outcome: "busy" as const };
 
-        if (activeTurns.length > 0) {
-          return { outcome: "busy" as const };
-        }
-
-        const deletedAt = new Date();
+        const archivedAt = new Date();
         const updated = await transaction
           .update(conversations)
           .set({
-            lifecycleStatus: "deleted",
-            archivedAt: null,
-            deletedAt,
-            updatedAt: deletedAt,
+            lifecycleStatus: "archived",
+            archivedAt,
+            deletedAt: null,
+            updatedAt: archivedAt,
           })
-          .where(
-            and(
-              eq(conversations.userId, input.userId),
-              eq(conversations.id, input.conversationId),
-              eq(conversations.origin, "native_live"),
-              eq(conversations.lifecycleStatus, "active"),
-            ),
-          )
+          .where(and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, input.conversationId),
+            eq(conversations.origin, "native_live"),
+            eq(conversations.lifecycleStatus, "active"),
+          ))
           .returning({ id: conversations.id });
-
         if (updated.length !== 1) {
+          throw new Error(
+            "Native live conversation archive lost its lifecycle lock.",
+          );
+        }
+        return {
+          outcome: "archived" as const,
+          archivedAt: archivedAt.toISOString(),
+        };
+      },
+      { isolationLevel: "serializable" },
+    );
+  }
+
+  async restoreConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationRestoreResult> {
+    return this.db.transaction(
+      async (transaction) => {
+        const [conversation] = await transaction
+          .select({
+            id: conversations.id,
+            lifecycleStatus: conversations.lifecycleStatus,
+          })
+          .from(conversations)
+          .where(and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, input.conversationId),
+            eq(conversations.origin, "native_live"),
+          ))
+          .for("update")
+          .limit(1);
+
+        if (!conversation) return { outcome: "not_found" as const };
+        if (conversation.lifecycleStatus === "active") {
+          return { outcome: "already_active" as const };
+        }
+        if (conversation.lifecycleStatus !== "archived") {
+          return { outcome: "not_found" as const };
+        }
+
+        const updatedAt = new Date();
+        const updated = await transaction
+          .update(conversations)
+          .set({
+            lifecycleStatus: "active",
+            archivedAt: null,
+            deletedAt: null,
+            updatedAt,
+          })
+          .where(and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, input.conversationId),
+            eq(conversations.origin, "native_live"),
+            eq(conversations.lifecycleStatus, "archived"),
+          ))
+          .returning({ id: conversations.id });
+        if (updated.length !== 1) {
+          throw new Error(
+            "Native live conversation restore lost its lifecycle lock.",
+          );
+        }
+        return { outcome: "restored" as const };
+      },
+      { isolationLevel: "serializable" },
+    );
+  }
+
+  async deleteConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationDeleteResult> {
+    return this.db.transaction(
+      async (transaction) => {
+        const [conversation] = await transaction
+          .select({
+            id: conversations.id,
+            lifecycleStatus: conversations.lifecycleStatus,
+          })
+          .from(conversations)
+          .where(and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, input.conversationId),
+            eq(conversations.origin, "native_live"),
+          ))
+          .for("update")
+          .limit(1);
+        if (!conversation) return { outcome: "not_found" as const };
+
+        const activeTurns = await transaction
+          .select({ id: nativeLiveTurnPreparations.id })
+          .from(nativeLiveTurnPreparations)
+          .where(and(
+            eq(nativeLiveTurnPreparations.userId, input.userId),
+            eq(
+              nativeLiveTurnPreparations.conversationId,
+              input.conversationId,
+            ),
+            inArray(nativeLiveTurnPreparations.dispatchStatus, [
+              "staged",
+              "pending",
+              "reserved",
+              "executing",
+              "delivery_unknown",
+            ]),
+          ))
+          .limit(1);
+        if (activeTurns.length > 0) return { outcome: "busy" as const };
+
+        const messages = await transaction
+          .select({ id: conversationMessages.id })
+          .from(conversationMessages)
+          .where(and(
+            eq(conversationMessages.userId, input.userId),
+            eq(conversationMessages.conversationId, input.conversationId),
+          ));
+        const purgeMessageIds = new Set(
+          messages.map((message) => message.id),
+        );
+
+        await transaction.execute(sql`
+          INSERT INTO native_live_provider_session_cleanups (
+            user_id, provider, provider_session_id
+          )
+          SELECT DISTINCT
+            checkpoint.user_id,
+            checkpoint.provider,
+            checkpoint.provider_session_id
+          FROM conversation_provider_session_checkpoints AS checkpoint
+          WHERE checkpoint.user_id = ${input.userId}::uuid
+            AND checkpoint.conversation_id = ${input.conversationId}::uuid
+            AND NOT EXISTS (
+              SELECT 1
+              FROM conversation_provider_session_checkpoints AS surviving
+              WHERE surviving.user_id = checkpoint.user_id
+                AND surviving.provider = checkpoint.provider
+                AND surviving.provider_session_id =
+                  checkpoint.provider_session_id
+                AND surviving.conversation_id <>
+                  checkpoint.conversation_id
+            )
+          ON CONFLICT (user_id, provider, provider_session_id)
+          DO NOTHING
+        `);
+
+        const wakes = await transaction
+          .select({
+            id: runtimeProactivityWakes.id,
+            gate: runtimeProactivityWakes.gate,
+            contactTarget: runtimeProactivityWakes.contactTarget,
+            contextSnapshot: runtimeProactivityWakes.contextSnapshot,
+            decision: runtimeProactivityWakes.decision,
+          })
+          .from(runtimeProactivityWakes)
+          .where(eq(runtimeProactivityWakes.userId, input.userId))
+          .for("update");
+        const target = "conversation:" + input.conversationId;
+        const workflowRootIds = new Set<string>([
+          input.conversationId,
+          ...purgeMessageIds,
+        ]);
+        const purgeWakeIds = wakes
+          .filter((wake) =>
+            wake.contactTarget === target
+            || structuredValueReferencesAnyId(wake.gate, workflowRootIds)
+            || structuredValueReferencesAnyId(
+              wake.contextSnapshot,
+              workflowRootIds,
+            )
+            || structuredValueReferencesAnyId(
+              wake.decision,
+              workflowRootIds,
+            )
+          )
+          .map((wake) => wake.id);
+        const workflowCausalIds = new Set<string>([
+          input.conversationId,
+          ...purgeMessageIds,
+          ...purgeWakeIds,
+        ]);
+
+        const backgroundJobs = await transaction
+          .select({
+            id: nativeLiveBackgroundModelJobs.id,
+            workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
+            workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
+            workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
+          })
+          .from(nativeLiveBackgroundModelJobs)
+          .where(eq(nativeLiveBackgroundModelJobs.userId, input.userId));
+        const purgeBackgroundJobIds = backgroundJobs
+          .filter((job) =>
+            (
+              job.workflowKind === "distillation"
+              && job.workflowPayload?.conversation_id
+                === input.conversationId
+            )
+            || (
+              job.workflowRunId !== null
+              && purgeWakeIds.includes(job.workflowRunId)
+            )
+            || workflowReferencesAnyId(
+              job.workflowPayload,
+              workflowCausalIds,
+            )
+          )
+          .map((job) => job.id);
+
+        if (purgeBackgroundJobIds.length > 0) {
+          await transaction
+            .delete(nativeLiveBackgroundModelJobs)
+            .where(and(
+              eq(nativeLiveBackgroundModelJobs.userId, input.userId),
+              inArray(
+                nativeLiveBackgroundModelJobs.id,
+                purgeBackgroundJobIds,
+              ),
+            ));
+        }
+
+        if (purgeWakeIds.length > 0) {
+          await transaction
+            .delete(runtimeEffects)
+            .where(and(
+              eq(runtimeEffects.userId, input.userId),
+              inArray(runtimeEffects.sourceWakeId, purgeWakeIds),
+            ));
+        }
+        await transaction
+          .delete(runtimeEffects)
+          .where(and(
+            eq(runtimeEffects.userId, input.userId),
+            eq(runtimeEffects.target, target),
+          ));
+        if (purgeWakeIds.length > 0) {
+          await transaction
+            .delete(runtimeProactivityWakes)
+            .where(and(
+              eq(runtimeProactivityWakes.userId, input.userId),
+              inArray(runtimeProactivityWakes.id, purgeWakeIds),
+            ));
+        }
+
+        await transaction
+          .delete(runtimeDistillationWatermarks)
+          .where(and(
+            eq(runtimeDistillationWatermarks.userId, input.userId),
+            eq(
+              runtimeDistillationWatermarks.conversationId,
+              input.conversationId,
+            ),
+          ));
+
+        await transaction
+          .delete(conversationFavorites)
+          .where(and(
+            eq(conversationFavorites.userId, input.userId),
+            eq(
+              conversationFavorites.conversationId,
+              input.conversationId,
+            ),
+          ));
+
+        const deleted = await transaction
+          .delete(conversations)
+          .where(and(
+            eq(conversations.userId, input.userId),
+            eq(conversations.id, input.conversationId),
+            eq(conversations.origin, "native_live"),
+          ))
+          .returning({ id: conversations.id });
+        if (deleted.length !== 1) {
           throw new Error(
             "Native live conversation delete lost its lifecycle lock.",
           );
         }
-
-        return {
-          outcome: "deleted" as const,
-          deletedAt: deletedAt.toISOString(),
-        };
+        return { outcome: "deleted" as const };
       },
       { isolationLevel: "serializable" },
     );

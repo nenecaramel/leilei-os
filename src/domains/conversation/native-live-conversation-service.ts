@@ -7,9 +7,12 @@ import type {
   NativeLiveProviderCheckpointInput,
 } from "./native-live-conversation-types.js";
 import type {
+  NativeLiveConversationArchiveResult,
   NativeLiveConversationDeleteResult,
   NativeLiveConversationListPage,
+  NativeLiveConversationListScope,
   NativeLiveConversationRepository,
+  NativeLiveConversationRestoreResult,
 } from "./native-live-conversation-repository.js";
 
 export class NativeLiveConversationService {
@@ -25,6 +28,7 @@ export class NativeLiveConversationService {
   listConversations(input: {
     userId: string;
     limit: number;
+    scope?: NativeLiveConversationListScope;
   }): Promise<NativeLiveConversationSummary[]> {
     if (!this.repository.listConversations) {
       throw new Error("Native live conversation listing is unavailable.");
@@ -36,6 +40,7 @@ export class NativeLiveConversationService {
     userId: string;
     limit: number;
     cursor?: string | null;
+    scope?: NativeLiveConversationListScope;
   }): Promise<NativeLiveConversationListPage> {
     if (this.repository.listConversationPage) {
       return this.repository.listConversationPage(input);
@@ -44,6 +49,7 @@ export class NativeLiveConversationService {
       conversations: await this.listConversations({
         userId: input.userId,
         limit: input.limit,
+        ...(input.scope ? { scope: input.scope } : {}),
       }),
       nextCursor: null,
     };
@@ -62,6 +68,20 @@ export class NativeLiveConversationService {
     title: string;
   }): Promise<NativeLiveConversationSummary | null> {
     return this.repository.renameConversation(input);
+  }
+
+  archiveConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationArchiveResult> {
+    return this.repository.archiveConversation(input);
+  }
+
+  restoreConversation(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationRestoreResult> {
+    return this.repository.restoreConversation(input);
   }
 
   deleteConversation(input: {

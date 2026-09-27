@@ -57,6 +57,7 @@ export interface SubjectStateRuntimePort {
     userId: string;
     subjectId: string;
     states: SubjectStateWrite[];
+    sourceConversationId?: string;
   }): Promise<void>;
 
   transition(input: {
@@ -561,6 +562,7 @@ export class NativeLiveMindLoopService {
         userId: input.userId,
         subjectId: input.subjectId,
         states,
+        sourceConversationId: input.conversationId,
       });
     }
     return states;

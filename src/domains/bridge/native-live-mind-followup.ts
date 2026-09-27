@@ -86,6 +86,16 @@ implements NativeLiveMindFollowUpPort {
           updated_at = now()
       WHERE prepare_id = ${input.prepareId}::uuid
         AND user_id = ${input.userId}::uuid
+        AND EXISTS (
+          SELECT 1
+          FROM conversations AS conversation
+          WHERE conversation.id =
+            native_live_mind_followups.conversation_id
+            AND conversation.user_id =
+              native_live_mind_followups.user_id
+            AND conversation.origin = 'native_live'
+            AND conversation.lifecycle_status = 'active'
+        )
         AND (
           (status = 'pending' AND available_at <= now())
           OR
@@ -119,13 +129,26 @@ implements NativeLiveMindFollowUpPort {
     ) {
       const rows = await this.db.execute<RawFollowUpRow>(sql`
         WITH candidate AS (
-          SELECT prepare_id
-          FROM native_live_mind_followups
-          WHERE
-            (status = 'pending' AND available_at <= now())
-            OR
-            (status = 'processing' AND locked_until <= now())
-          ORDER BY available_at ASC, created_at ASC, prepare_id ASC
+          SELECT candidate_follow_up.prepare_id
+          FROM native_live_mind_followups AS candidate_follow_up
+          WHERE EXISTS (
+            SELECT 1
+            FROM conversations AS conversation
+            WHERE conversation.id = candidate_follow_up.conversation_id
+              AND conversation.user_id = candidate_follow_up.user_id
+              AND conversation.origin = 'native_live'
+              AND conversation.lifecycle_status = 'active'
+          )
+            AND (
+              (candidate_follow_up.status = 'pending'
+                AND candidate_follow_up.available_at <= now())
+              OR
+              (candidate_follow_up.status = 'processing'
+                AND candidate_follow_up.locked_until <= now())
+            )
+          ORDER BY candidate_follow_up.available_at ASC,
+            candidate_follow_up.created_at ASC,
+            candidate_follow_up.prepare_id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         )

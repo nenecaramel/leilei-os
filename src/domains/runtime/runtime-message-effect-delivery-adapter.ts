@@ -227,14 +227,14 @@ export class RuntimeMessageEffectDeliveryAdapter {
 
       const targetRows = await transaction.execute<{
         id: string;
+        lifecycle_status: string;
         current_head_message_id: string | null;
       }>(sql`
-        SELECT id, current_head_message_id
+        SELECT id, lifecycle_status, current_head_message_id
         FROM conversations
         WHERE id = ${conversationId}::uuid
           AND user_id = ${input.effect.userId}::uuid
           AND origin = 'native_live'
-          AND lifecycle_status = 'active'
         FOR UPDATE
       `);
       const target = targetRows[0];
@@ -243,6 +243,13 @@ export class RuntimeMessageEffectDeliveryAdapter {
           outcome: "failed" as const,
           failureCode: "TARGET_UNAVAILABLE" as const,
           retryable: false as const,
+        };
+      }
+      if (target.lifecycle_status !== "active") {
+        return {
+          outcome: "failed" as const,
+          failureCode: "TARGET_BUSY" as const,
+          retryable: true as const,
         };
       }
       if (

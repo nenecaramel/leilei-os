@@ -3,6 +3,8 @@ import test from "node:test";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
+  nativeLiveBackgroundModelJobs,
+  nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   conversations,
   runtimeDistillationWatermarks,
@@ -46,6 +48,15 @@ test(
 
     t.after(async () => {
       try {
+        await database.db
+          .delete(nativeLiveBackgroundModelJobs)
+          .where(eq(nativeLiveBackgroundModelJobs.userId, user.id));
+        await database.db
+          .delete(nativeLiveProviderSessionCleanups)
+          .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db
+          .delete(runtimeSubjectStates)
+          .where(eq(runtimeSubjectStates.userId, user.id));
         await database.db
           .delete(conversations)
           .where(eq(conversations.userId, user.id));
@@ -471,6 +482,23 @@ test(
       processVersion: "test",
     });
 
+    const staleDistillationJobId = crypto.randomUUID();
+    await database.db.insert(nativeLiveBackgroundModelJobs).values({
+      id: staleDistillationJobId,
+      userId: user.id,
+      subjectId: "G",
+      workflowKind: "distillation",
+      workflowRunId: crypto.randomUUID(),
+      workflowPayload: {
+        conversation_id: conversation.id,
+        source_head_message_id: oldSecondAssistantId,
+      },
+      taskKind: "distillation",
+      promptContractVersion: "replacement-purge-test-v1",
+      prompt: "stale branch distillation payload",
+      status: "pending",
+    });
+
     const retryRequestId =
       "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const retry = await coordinator.prepare(user.id, {
@@ -539,6 +567,31 @@ test(
       .from(runtimeDistillationWatermarks)
       .where(eq(runtimeDistillationWatermarks.userId, user.id));
     assert.equal(watermarksAfterRetry.length, 0);
+
+    const staleJobsAfterRetry = await database.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(eq(
+        nativeLiveBackgroundModelJobs.id,
+        staleDistillationJobId,
+      ));
+    assert.equal(
+      staleJobsAfterRetry.length,
+      0,
+      "Retry purge must remove background work derived from the old branch",
+    );
+
+    const providerCleanupsAfterRetry = await database.db
+      .select({
+        providerSessionId:
+          nativeLiveProviderSessionCleanups.providerSessionId,
+      })
+      .from(nativeLiveProviderSessionCleanups)
+      .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+    assert.deepEqual(
+      providerCleanupsAfterRetry.map((row) => row.providerSessionId).sort(),
+      ["provider-second"],
+    );
 
     const retryCausalStateId = crypto.randomUUID();
     await database.db.insert(runtimeSubjectStates).values({
@@ -652,6 +705,18 @@ test(
     const stateIdsAfterEdit = new Set(statesAfterEdit.map((row) => row.id));
     assert.equal(stateIdsAfterEdit.has(retryCausalStateId), false);
     assert.equal(stateIdsAfterEdit.has(safeStateId), true);
+
+    const providerCleanupsAfterEdit = await database.db
+      .select({
+        providerSessionId:
+          nativeLiveProviderSessionCleanups.providerSessionId,
+      })
+      .from(nativeLiveProviderSessionCleanups)
+      .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+    assert.deepEqual(
+      providerCleanupsAfterEdit.map((row) => row.providerSessionId).sort(),
+      ["provider-retry", "provider-second"],
+    );
 
     const failureRequestId =
       "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
