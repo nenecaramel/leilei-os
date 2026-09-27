@@ -5,7 +5,13 @@ import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
   conversations,
+  nativeLiveBackgroundModelJobs,
   nativeLiveTurnPreparations,
+  runtimeDistillationWatermarks,
+  runtimeDriveSatisfactionEvents,
+  runtimeEffects,
+  runtimeProactivityWakes,
+  runtimeSubjectStates,
 } from "../../database/schema.js";
 import type {
   NativeLiveContentBlock,
@@ -16,6 +22,17 @@ import type {
   NativeLiveProviderCheckpoint,
   NativeLiveProviderCheckpointInput,
 } from "./native-live-conversation-types.js";
+import type {
+  MemoryLifecyclePolicy,
+} from "../runtime/memory-lifecycle.js";
+import {
+  planConversationDeletionSubjectStateChanges,
+  planSubjectStateEvolutionRepairs,
+  workflowReferencesAnyId,
+} from "../bridge/native-live-replacement-purge.js";
+import {
+  structuredValueReferencesAnyId,
+} from "../runtime/persistent-reference-scan.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (
@@ -150,7 +167,10 @@ export interface NativeLiveConversationRepository {
 
 export class DrizzleNativeLiveConversationRepository
 implements NativeLiveConversationRepository {
-  constructor(private readonly db: DbExecutor) {}
+  constructor(
+    private readonly db: DbExecutor,
+    private readonly memoryLifecyclePolicy?: MemoryLifecyclePolicy,
+  ) {}
 
   async withTransaction<T>(
     work: (repository: NativeLiveConversationRepository) => Promise<T>,
@@ -160,6 +180,7 @@ implements NativeLiveConversationRepository {
         work(
           new DrizzleNativeLiveConversationRepository(
             transaction as Transaction,
+            this.memoryLifecyclePolicy,
           ),
         ),
       { isolationLevel: "serializable" },
@@ -639,6 +660,17 @@ implements NativeLiveConversationRepository {
           .limit(1);
         if (activeTurns.length > 0) return { outcome: "busy" as const };
 
+        const messages = await transaction
+          .select({ id: conversationMessages.id })
+          .from(conversationMessages)
+          .where(and(
+            eq(conversationMessages.userId, input.userId),
+            eq(conversationMessages.conversationId, input.conversationId),
+          ));
+        const purgeMessageIds = new Set(
+          messages.map((message) => message.id),
+        );
+
         await transaction.execute(sql`
           INSERT INTO native_live_provider_session_cleanups (
             user_id, provider, provider_session_id
@@ -664,42 +696,200 @@ implements NativeLiveConversationRepository {
           DO NOTHING
         `);
 
-        await transaction.execute(sql`
-          DELETE FROM native_live_background_model_jobs
-          WHERE user_id = ${input.userId}::uuid
-            AND workflow_kind = 'distillation'
-            AND workflow_payload ->> 'conversation_id' =
-              ${input.conversationId}
-        `);
+        const affectedDriveSatisfaction =
+          purgeMessageIds.size === 0
+            ? []
+            : await transaction
+                .select({
+                  driveStateId:
+                    runtimeDriveSatisfactionEvents.driveStateId,
+                })
+                .from(runtimeDriveSatisfactionEvents)
+                .where(and(
+                  eq(runtimeDriveSatisfactionEvents.userId, input.userId),
+                  inArray(
+                    runtimeDriveSatisfactionEvents.evidenceMessageId,
+                    [...purgeMessageIds],
+                  ),
+                ));
+        const actionProjectionCausalIds = new Set(
+          affectedDriveSatisfaction.map((event) => event.driveStateId),
+        );
 
+        const states = await transaction
+          .select({
+            id: runtimeSubjectStates.id,
+            kind: runtimeSubjectStates.kind,
+            payload: runtimeSubjectStates.payload,
+            envelope: runtimeSubjectStates.envelope,
+            scopeConversationId: runtimeSubjectStates.scopeConversationId,
+            scopePathHeadMessageId:
+              runtimeSubjectStates.scopePathHeadMessageId,
+          })
+          .from(runtimeSubjectStates)
+          .where(eq(runtimeSubjectStates.userId, input.userId));
+
+        const subjectStateChanges =
+          planConversationDeletionSubjectStateChanges({
+            conversationId: input.conversationId,
+            purgeMessageIds,
+            states,
+          });
+        const purgeStateIds = new Set(
+          subjectStateChanges.purgeStateIds,
+        );
+        const evolutionRepairs = planSubjectStateEvolutionRepairs({
+          states,
+          purgeMessageIds,
+          purgeStateIds,
+          additionalEvolutionCausalIds: actionProjectionCausalIds,
+          memoryLifecyclePolicy: this.memoryLifecyclePolicy,
+          repairedAt: new Date().toISOString(),
+        });
+
+        const causalIds = new Set<string>([
+          input.conversationId,
+          ...purgeMessageIds,
+          ...purgeStateIds,
+        ]);
+
+        const wakes = await transaction
+          .select({
+            id: runtimeProactivityWakes.id,
+            gate: runtimeProactivityWakes.gate,
+            contactTarget: runtimeProactivityWakes.contactTarget,
+            contextSnapshot: runtimeProactivityWakes.contextSnapshot,
+            decision: runtimeProactivityWakes.decision,
+          })
+          .from(runtimeProactivityWakes)
+          .where(eq(runtimeProactivityWakes.userId, input.userId));
         const target = "conversation:" + input.conversationId;
-        await transaction.execute(sql`
-          DELETE FROM native_live_background_model_jobs AS job
-          USING runtime_proactivity_wakes AS wake
-          WHERE wake.user_id = ${input.userId}::uuid
-            AND wake.contact_target = ${target}
-            AND job.user_id = wake.user_id
-            AND job.workflow_kind = 'proactivity_wake'
-            AND job.workflow_run_id = wake.id
-        `);
-        await transaction.execute(sql`
-          DELETE FROM runtime_effects AS effect
-          USING runtime_proactivity_wakes AS wake
-          WHERE wake.user_id = ${input.userId}::uuid
-            AND wake.contact_target = ${target}
-            AND effect.user_id = wake.user_id
-            AND effect.source_wake_id = wake.id
-        `);
-        await transaction.execute(sql`
-          DELETE FROM runtime_effects
-          WHERE user_id = ${input.userId}::uuid
-            AND target = ${target}
-        `);
-        await transaction.execute(sql`
-          DELETE FROM runtime_proactivity_wakes
-          WHERE user_id = ${input.userId}::uuid
-            AND contact_target = ${target}
-        `);
+        const purgeWakeIds = wakes
+          .filter((wake) =>
+            wake.contactTarget === target
+            || structuredValueReferencesAnyId(wake.gate, causalIds)
+            || structuredValueReferencesAnyId(
+              wake.contextSnapshot,
+              causalIds,
+            )
+            || structuredValueReferencesAnyId(
+              wake.decision,
+              causalIds,
+            )
+          )
+          .map((wake) => wake.id);
+        const workflowCausalIds = new Set<string>([
+          ...causalIds,
+          ...purgeWakeIds,
+        ]);
+
+        const backgroundJobs = await transaction
+          .select({
+            id: nativeLiveBackgroundModelJobs.id,
+            workflowKind: nativeLiveBackgroundModelJobs.workflowKind,
+            workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
+            workflowPayload: nativeLiveBackgroundModelJobs.workflowPayload,
+          })
+          .from(nativeLiveBackgroundModelJobs)
+          .where(eq(nativeLiveBackgroundModelJobs.userId, input.userId));
+        const purgeBackgroundJobIds = backgroundJobs
+          .filter((job) =>
+            (
+              job.workflowKind === "distillation"
+              && job.workflowPayload?.conversation_id
+                === input.conversationId
+            )
+            || (
+              job.workflowRunId !== null
+              && purgeWakeIds.includes(job.workflowRunId)
+            )
+            || workflowReferencesAnyId(
+              job.workflowPayload,
+              workflowCausalIds,
+            )
+          )
+          .map((job) => job.id);
+
+        if (purgeBackgroundJobIds.length > 0) {
+          await transaction
+            .delete(nativeLiveBackgroundModelJobs)
+            .where(and(
+              eq(nativeLiveBackgroundModelJobs.userId, input.userId),
+              inArray(
+                nativeLiveBackgroundModelJobs.id,
+                purgeBackgroundJobIds,
+              ),
+            ));
+        }
+
+        if (purgeWakeIds.length > 0) {
+          await transaction
+            .delete(runtimeEffects)
+            .where(and(
+              eq(runtimeEffects.userId, input.userId),
+              inArray(runtimeEffects.sourceWakeId, purgeWakeIds),
+            ));
+        }
+        await transaction
+          .delete(runtimeEffects)
+          .where(and(
+            eq(runtimeEffects.userId, input.userId),
+            eq(runtimeEffects.target, target),
+          ));
+        if (purgeWakeIds.length > 0) {
+          await transaction
+            .delete(runtimeProactivityWakes)
+            .where(and(
+              eq(runtimeProactivityWakes.userId, input.userId),
+              inArray(runtimeProactivityWakes.id, purgeWakeIds),
+            ));
+        }
+
+        await transaction
+          .delete(runtimeDistillationWatermarks)
+          .where(and(
+            eq(runtimeDistillationWatermarks.userId, input.userId),
+            eq(
+              runtimeDistillationWatermarks.conversationId,
+              input.conversationId,
+            ),
+          ));
+
+        if (purgeStateIds.size > 0) {
+          await transaction
+            .delete(runtimeSubjectStates)
+            .where(and(
+              eq(runtimeSubjectStates.userId, input.userId),
+              inArray(runtimeSubjectStates.id, [...purgeStateIds]),
+            ));
+        }
+
+        for (const repair of subjectStateChanges.envelopeRepairs) {
+          await transaction
+            .update(runtimeSubjectStates)
+            .set({
+              envelope: repair.nextEnvelope,
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.id, repair.stateId),
+            ));
+        }
+
+        for (const repair of evolutionRepairs) {
+          if (purgeStateIds.has(repair.stateId)) continue;
+          await transaction
+            .update(runtimeSubjectStates)
+            .set({
+              payload: repair.nextPayload,
+              updatedAt: new Date(),
+            })
+            .where(and(
+              eq(runtimeSubjectStates.userId, input.userId),
+              eq(runtimeSubjectStates.id, repair.stateId),
+            ));
+        }
 
         const deleted = await transaction
           .delete(conversations)
