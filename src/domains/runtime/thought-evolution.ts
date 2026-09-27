@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
+import type {
+  MindSemanticGroupingService,
+  MindSemanticThreadGroup,
+} from "./mind-semantic-grouping.js";
 
 export type ThoughtPhase = "active" | "dormant";
 export type ThoughtEvolutionRole = "anchor" | "reinforcement";
@@ -85,6 +89,8 @@ export class ThoughtEvolutionService {
   constructor(
     private readonly port: ThoughtEvolutionRuntimePort,
     private readonly policy: ThoughtEvolutionPolicy,
+    private readonly semanticGrouping:
+      Pick<MindSemanticGroupingService, "reconcile"> | null = null,
   ) {
     validatePolicy(policy);
   }
@@ -103,12 +109,22 @@ export class ThoughtEvolutionService {
       limit: input.limit ?? 500,
     });
 
-    const grouped = groupCandidates(candidates);
+    const exactGroups = groupCandidates(candidates);
+    const grouped = await this.reconcileSemanticGroups(
+      input.userId,
+      input.subjectId,
+      exactGroups,
+    );
     const updates: ThoughtEvolutionUpdate[] = [];
     let active = 0;
     let dormant = 0;
-    for (const group of grouped.values()) {
-      const evaluated = evaluateThread(group, now, this.policy);
+    for (const [threadKey, group] of grouped) {
+      const evaluated = evaluateThread(
+        group,
+        now,
+        this.policy,
+        threadKey,
+      );
       updates.push(...evaluated.updates);
       if (evaluated.phase === "active") active += 1;
       else dormant += 1;
@@ -143,6 +159,60 @@ export class ThoughtEvolutionService {
       active,
       dormant,
     };
+  }
+
+  private async reconcileSemanticGroups(
+    userId: string,
+    subjectId: string,
+    exactGroups: Map<string, ThoughtEvolutionCandidate[]>,
+  ): Promise<Map<string, ThoughtEvolutionCandidate[]>> {
+    if (!this.semanticGrouping || exactGroups.size <= 1) {
+      return exactGroups;
+    }
+
+    const semanticGroups: MindSemanticThreadGroup[] = [];
+    for (const [threadKey, group] of exactGroups) {
+      const anchor = group[0];
+      if (!anchor) continue;
+      semanticGroups.push({
+        threadKey,
+        anchorStateId: anchor.stateId,
+        anchorText: anchor.text,
+        createdAt: normalizeIso(anchor.createdAt, "createdAt"),
+        newThread: !group.some((candidate) =>
+          Boolean(safeReadThoughtEvolution(candidate.payload))
+        ),
+      });
+    }
+
+    let canonical: ReadonlyMap<string, string>;
+    try {
+      canonical = (
+        await this.semanticGrouping.reconcile({
+          userId,
+          subjectId,
+          kind: "thought",
+          groups: semanticGroups,
+        })
+      ).canonicalThreadKeyByThread;
+    } catch {
+      // Semantic grouping is derived and fail-soft.
+      return exactGroups;
+    }
+
+    const merged = new Map<string, ThoughtEvolutionCandidate[]>();
+    for (const [threadKey, group] of exactGroups) {
+      const target = canonical.get(threadKey) ?? threadKey;
+      const current = merged.get(target) ?? [];
+      current.push(...group);
+      current.sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt)
+          || left.stateId.localeCompare(right.stateId),
+      );
+      merged.set(target, current);
+    }
+    return merged;
   }
 }
 
@@ -249,7 +319,8 @@ function groupCandidates(
 
   for (const candidate of candidates) {
     if (!candidate.text.trim()) continue;
-    const key = thoughtThreadKey(candidate.text);
+    const current = safeReadThoughtEvolution(candidate.payload);
+    const key = current?.threadKey ?? thoughtThreadKey(candidate.text);
     const group = groups.get(key) ?? [];
     group.push(candidate);
     groups.set(key, group);
@@ -270,6 +341,7 @@ function evaluateThread(
   candidates: readonly ThoughtEvolutionCandidate[],
   now: string,
   policy: ThoughtEvolutionPolicy,
+  threadKey: string,
 ): {
   phase: ThoughtPhase;
   updates: ThoughtEvolutionUpdate[];
@@ -279,7 +351,6 @@ function evaluateThread(
   }
 
   const anchor = candidates[0]!;
-  const key = thoughtThreadKey(anchor.text);
   const uniqueSources = new Map<string, ThoughtEvolutionCandidate>();
   for (const candidate of candidates) {
     const existing = uniqueSources.get(candidate.sourceId);
@@ -354,7 +425,7 @@ function evaluateThread(
     const evolution: ThoughtEvolutionState = {
       phase,
       role,
-      threadKey: key,
+      threadKey,
       anchorStateId: anchor.stateId,
       strength,
       reinforcementCount,

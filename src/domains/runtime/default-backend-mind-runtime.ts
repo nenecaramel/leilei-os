@@ -233,6 +233,7 @@ export function createDefaultSubjectStateBackgroundMaintenance(
       thoughtEvolution: new ThoughtEvolutionService(
         new DrizzleThoughtEvolutionRuntimePort(db),
         DEFAULT_THOUGHT_EVOLUTION_POLICY,
+        semanticGrouping,
       ),
       driveEvolution: new DriveEvolutionService(
         new DrizzleDriveEvolutionRuntimePort(db),
