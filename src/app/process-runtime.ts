@@ -123,6 +123,9 @@ import {
 import {
   DrizzleNativeLiveCurrentPathReader,
 } from "../domains/conversation/native-live-current-path-read-repository.js";
+import {
+  DrizzleNativeLiveConversationRuntimeMetadataReader,
+} from "../domains/conversation/native-live-conversation-runtime-metadata.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/native-live-backend-relay-prepare.js";
@@ -813,6 +816,8 @@ export function createProcessRuntime(
           turnWaitService: nativeLiveTurnWaitService,
           currentPathReader:
             new DrizzleNativeLiveCurrentPathReader(db),
+          conversationRuntimeMetadataReader:
+            new DrizzleNativeLiveConversationRuntimeMetadataReader(db),
           conversationService:
             nativeLiveConversationService,
           runtimeEventService:

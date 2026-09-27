@@ -43,6 +43,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
     sessionId: string,
     execution?: NativeLiveExecutionSelection | null,
   ) => Promise<NativeLiveRuntimeResult & {
+    contextUsage?: NativeLiveRuntimeContextUsage | null;
     compaction?: {
       boundary?: Record<string, unknown> | null;
       postCompact?: Array<{
@@ -256,7 +257,8 @@ export class NativeLiveMacRuntimeExecutor {
       }
 
       return {
-        context_usage: contextUsage,
+        context_usage:
+          compacted.contextUsage ?? contextUsage,
         compaction_advisory: advisory,
         compaction: {
           source: "runtime_threshold",

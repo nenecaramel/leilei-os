@@ -18,6 +18,9 @@ import type {
   NativeLiveConversationService,
 } from "../domains/conversation/native-live-conversation-service.js";
 import type {
+  NativeLiveConversationRuntimeMetadataReader,
+} from "../domains/conversation/native-live-conversation-runtime-metadata.js";
+import type {
   NativeLiveRuntimeEventService,
 } from "../domains/bridge/native-live-runtime-event-stream.js";
 import {
@@ -48,6 +51,8 @@ export type NativeLiveApiDependencies = {
   };
   turnWaitService?: Pick<NativeLiveTurnWaitService, "wait">;
   currentPathReader?: NativeLiveCurrentPathReader;
+  conversationRuntimeMetadataReader?:
+    NativeLiveConversationRuntimeMetadataReader;
   conversationService?: Pick<
     NativeLiveConversationService,
     "listConversations" | "listConversationPage" | "createConversation" | "renameConversation" | "archiveConversation" | "restoreConversation" | "deleteConversation"
@@ -134,6 +139,12 @@ export function createNativeLiveApiRouter(
     router.get(
       "/conversations/:conversationId/current-path",
       readNativeLiveCurrentPathHandler(dependencies),
+    );
+  }
+  if (dependencies.conversationRuntimeMetadataReader) {
+    router.get(
+      "/conversations/:conversationId/runtime-metadata",
+      readNativeLiveConversationRuntimeMetadataHandler(dependencies),
     );
   }
   return router;
@@ -1161,6 +1172,69 @@ function nativeLiveTurnResponseData(
           blocks: turn.assistantMessage.blocks,
         }
       : null,
+  };
+}
+
+export function readNativeLiveConversationRuntimeMetadataHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const conversationId = routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Conversation id must be a UUID.",
+        },
+      });
+      return;
+    }
+
+    const reader = dependencies.conversationRuntimeMetadataReader;
+    if (!reader) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_RUNTIME_METADATA_UNAVAILABLE",
+          message:
+            "Native live conversation runtime metadata is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const snapshot = await reader.readLatest({
+        userId: request.webUserId,
+        conversationId,
+      });
+      if (!snapshot) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Native live conversation was not found.",
+          },
+        });
+        return;
+      }
+      response.json({
+        success: true,
+        data: snapshot,
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_RUNTIME_METADATA_UNAVAILABLE",
+          message:
+            "Native live conversation runtime metadata is temporarily unavailable.",
+        },
+      });
+    }
   };
 }
 
