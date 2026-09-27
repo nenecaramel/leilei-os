@@ -7,6 +7,7 @@ import {
 import type {
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportMindStateRecord,
   ExportProjectsBundle,
   ExportToolActivity,
   ExportTodoPaper,
@@ -46,6 +47,8 @@ const projects: ExportProjectsBundle = {
   conversations: [],
 };
 
+const mind: ExportMindStateRecord[] = [];
+
 const lifecycle: ExportLifecycleEvent[] = [{
   id: "lifecycle-1",
   resource_type: "diary",
@@ -83,6 +86,10 @@ function createRepository(calls: string[] = []): ExportRepository {
     async listProjects(userId) {
       calls.push(`projects:${userId}`);
       return projects;
+    },
+    async listMind(userId) {
+      calls.push(`mind:${userId}`);
+      return mind;
     },
     async listLifecycleAudit(userId) {
       calls.push(`lifecycle:${userId}`);
@@ -147,12 +154,13 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
 
   assert.deepEqual(
     Object.keys(document.data),
-    ["diary", "todo", "projects"],
+    ["diary", "todo", "projects", "mind"],
   );
   assert.deepEqual(calls, [
     `diary:${USER_ID}`,
     `todo:${USER_ID}`,
     `projects:${USER_ID}`,
+    `mind:${USER_ID}`,
   ]);
 });
 
