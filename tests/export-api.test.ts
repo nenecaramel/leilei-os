@@ -32,6 +32,11 @@ function documentFor(
               conversations: [],
             },
             mind: [],
+            mind_continuity: {
+              drive_satisfaction_events: [],
+              curiosity_resolution_events: [],
+              distillation_watermarks: [],
+            },
             conversations: {
               conversations: [],
               messages: [],
