@@ -77,6 +77,15 @@ import {
 import {
   DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "./background-opportunity-policy.js";
+import {
+  MindRetirementService,
+} from "./mind-retirement.js";
+import {
+  DrizzleMindRetirementRuntimePort,
+} from "./mind-retirement-runtime-repository.js";
+import type {
+  MindRetirementPolicy,
+} from "./mind-retirement-policy.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -289,6 +298,7 @@ export function createDefaultSubjectStateBackgroundMaintenance(
     Pick<MindSemanticGroupingService, "reconcile"> | null = null,
   lifecycleTuning: MindLifecycleTuning =
     DEFAULT_MIND_LIFECYCLE_TUNING,
+  retirementPolicy?: MindRetirementPolicy,
 ): SubjectStateBackgroundMaintenance {
   return new SubjectStateBackgroundMaintenance(
     orchestrator,
@@ -325,6 +335,14 @@ export function createDefaultSubjectStateBackgroundMaintenance(
         topicPolicy(lifecycleTuning),
         semanticGrouping,
       ),
+      ...(retirementPolicy && Object.keys(retirementPolicy).length > 0
+        ? {
+            mindRetirement: new MindRetirementService(
+              new DrizzleMindRetirementRuntimePort(db),
+              retirementPolicy,
+            ),
+          }
+        : {}),
     },
     {
       ...(decayPolicy
@@ -336,6 +354,16 @@ export function createDefaultSubjectStateBackgroundMaintenance(
           }
         : {}),
       ...DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG,
+      ...(retirementPolicy && Object.keys(retirementPolicy).length > 0
+        ? {
+            mindRetirement: {
+              priority:
+                DEFAULT_BACKGROUND_TARGET_PLANS.mindRetirement.priority,
+              cost: DEFAULT_BACKGROUND_TARGET_PLANS.mindRetirement.cost,
+              limit: 100,
+            },
+          }
+        : {}),
     },
   );
 }
