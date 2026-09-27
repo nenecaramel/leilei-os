@@ -81,6 +81,7 @@ struct NativeLiveMessageSurface: View {
     let hasActiveConversation: Bool
     let isTurnInFlight: Bool
     let pendingOperation: NativeLivePendingOperation?
+    let runtimeSurface: NativeLiveRuntimeSurfaceState?
     let onRefresh: () async -> Void
     let onLoadOlder: () async -> Void
     let onRetryMessage: (String) -> Void
@@ -172,11 +173,13 @@ struct NativeLiveMessageSurface: View {
                            let targetUserMessageID =
                                 pendingOperation?.targetUserMessageID,
                            message.id == targetUserMessageID {
-                            AssistantTypingIndicatorRow()
-                                .id(
-                                    "pending-assistant-"
-                                        + (pendingOperation?.id.uuidString ?? "")
-                                )
+                            NativeLiveRuntimeAssistantRow(
+                                runtimeSurface: runtimeSurface
+                            )
+                            .id(
+                                "pending-assistant-"
+                                    + (pendingOperation?.id.uuidString ?? "")
+                            )
                         }
                     }
 
@@ -191,11 +194,13 @@ struct NativeLiveMessageSurface: View {
                                 + pendingOperation.id.uuidString
                         )
 
-                        AssistantTypingIndicatorRow()
-                            .id(
-                                "pending-assistant-"
-                                    + pendingOperation.id.uuidString
-                            )
+                        NativeLiveRuntimeAssistantRow(
+                            runtimeSurface: runtimeSurface
+                        )
+                        .id(
+                            "pending-assistant-"
+                                + pendingOperation.id.uuidString
+                        )
                     }
 
                     Color.clear
@@ -244,6 +249,12 @@ struct NativeLiveMessageSurface: View {
             }
             .onChange(of: snapshot?.syncToken) { _, _ in
                 guard pendingOperation?.isSend == true else {
+                    return
+                }
+                scrollToBottom(proxy)
+            }
+            .onChange(of: runtimeSurface?.events.count) { _, _ in
+                guard pendingOperation != nil else {
                     return
                 }
                 scrollToBottom(proxy)
@@ -628,6 +639,57 @@ private struct NativeLiveOptimisticUserRow: View {
                 )
             )
         }
+    }
+}
+
+
+private struct NativeLiveRuntimeAssistantRow: View {
+    let runtimeSurface: NativeLiveRuntimeSurfaceState?
+
+    var body: some View {
+        let text = runtimeSurface?.streamingText
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        let activity = runtimeSurface?.activityText
+
+        VStack(alignment: .leading, spacing: 10) {
+            if let text,
+               !text.isEmpty {
+                ChatMarkdownView(
+                    text: text,
+                    fillsAvailableWidth: true,
+                    lineSpacing: 6,
+                    paragraphSpacing: 22
+                )
+            }
+
+            if let activity,
+               !activity.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+
+                    Text(activity)
+                        .font(.system(
+                            size: 13.5,
+                            weight: .regular
+                        ))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                .transition(.opacity)
+            }
+
+            if (text?.isEmpty ?? true)
+                && activity == nil {
+                AssistantTypingIndicatorRow()
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
     }
 }
 
