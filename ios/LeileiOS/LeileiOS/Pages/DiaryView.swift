@@ -525,6 +525,10 @@ struct DiaryArchivedDetailView: View {
     @State private var showingRestoreConfirmation = false
     @State private var showingDeleteConfirmation = false
     @State private var actionError: String?
+    @State private var commentError: String?
+    @State private var commentNextBefore: String?
+    @State private var commentsHaveMore = false
+    @State private var isLoadingOlderComments = false
 
     var body: some View {
         Group {
@@ -547,7 +551,15 @@ struct DiaryArchivedDetailView: View {
                             comments: diary.comments ?? [],
                             count: diary.commentsMetadata?.count
                                 ?? diary.comments?.count
-                                ?? 0
+                                ?? 0,
+                            errorMessage: commentError,
+                            hasMore: commentsHaveMore,
+                            isLoadingMore: isLoadingOlderComments,
+                            onLoadMore: {
+                                Task {
+                                    await loadOlderComments()
+                                }
+                            }
                         )
                         .padding(.top, 24)
 
@@ -628,9 +640,141 @@ struct DiaryArchivedDetailView: View {
                 path: "/api/v1/diary/archived/\(diaryID)"
             )
             state = .loaded(response.data)
+            commentError = nil
+            commentNextBefore = nil
+            commentsHaveMore =
+                response.data.commentsMetadata?.truncated == true
+
+            if commentsHaveMore {
+                await primeCommentPagination()
+            }
         } catch {
             state = .unavailable("Unavailable")
         }
+    }
+
+    @MainActor
+    private func primeCommentPagination() async {
+        guard commentsHaveMore,
+              commentNextBefore == nil,
+              !isLoadingOlderComments else {
+            return
+        }
+
+        isLoadingOlderComments = true
+        defer { isLoadingOlderComments = false }
+
+        do {
+            let page = try await readCommentPage(
+                before: nil
+            )
+            reconcileCommentPage(
+                page,
+                replaceVisiblePage: true
+            )
+            commentError = nil
+        } catch {
+            commentError = "Failed"
+        }
+    }
+
+    @MainActor
+    private func loadOlderComments() async {
+        guard commentsHaveMore,
+              !isLoadingOlderComments else {
+            return
+        }
+
+        if commentNextBefore == nil {
+            await primeCommentPagination()
+        }
+
+        guard let before = commentNextBefore,
+              commentsHaveMore,
+              !isLoadingOlderComments else {
+            return
+        }
+
+        isLoadingOlderComments = true
+        defer { isLoadingOlderComments = false }
+
+        do {
+            let page = try await readCommentPage(
+                before: before
+            )
+            reconcileCommentPage(
+                page,
+                replaceVisiblePage: false
+            )
+            commentError = nil
+        } catch {
+            commentError = "Failed"
+        }
+    }
+
+    @MainActor
+    private func readCommentPage(
+        before: String?
+    ) async throws -> DiaryCommentListData {
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: "50"),
+        ]
+        if let before {
+            components.queryItems?.append(
+                URLQueryItem(
+                    name: "before",
+                    value: before
+                )
+            )
+        }
+
+        let response: DiaryCommentListEnvelope =
+            try await appModel.api.request(
+                path:
+                    "/api/v1/diary/archived/\(diaryID)/comments"
+                    + "?\(components.percentEncodedQuery ?? "")"
+            )
+        return response.data
+    }
+
+    private func reconcileCommentPage(
+        _ page: DiaryCommentListData,
+        replaceVisiblePage: Bool
+    ) {
+        guard case .loaded(var diary) = state else {
+            return
+        }
+
+        let existing =
+            replaceVisiblePage
+                ? []
+                : (diary.comments ?? [])
+        let existingIDs = Set(existing.map(\.id))
+        let incoming = page.comments.filter {
+            !existingIDs.contains($0.id)
+        }
+
+        var combined =
+            replaceVisiblePage
+                ? page.comments
+                : incoming + existing
+        combined.sort {
+            if $0.createdAt == $1.createdAt {
+                return $0.id < $1.id
+            }
+            return $0.createdAt < $1.createdAt
+        }
+
+        diary.comments = combined
+        diary.commentsMetadata = DiaryCommentsMetadata(
+            count: page.metadata.count,
+            returned: combined.count,
+            truncated: page.metadata.hasMore
+        )
+        state = .loaded(diary)
+        commentsHaveMore = page.metadata.hasMore
+        commentNextBefore = page.metadata.nextBefore
     }
 
     @MainActor
