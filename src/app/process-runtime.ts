@@ -5,6 +5,7 @@ import {
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
   getMindLifecycleTuningConfig,
+  getMindRetirementConfig,
   getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
@@ -317,6 +318,8 @@ export function createProcessRuntime(
     getMindSemanticGroupingConfig(runtimeEnv);
   const mindLifecycleTuningConfig =
     getMindLifecycleTuningConfig(runtimeEnv);
+  const mindRetirementConfig =
+    getMindRetirementConfig(runtimeEnv);
   const mindSemanticGroupingRepository =
     new DrizzleMindSemanticGroupingRepository(
       db,
@@ -387,9 +390,7 @@ export function createProcessRuntime(
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     decayEnabled: Boolean(memoryDecayConfig),
-    // Retirement stays disabled until an explicit per-kind retention policy
-    // and concrete lifecycle runner are wired. Never infer destructive policy.
-    mindRetirementEnabled: false,
+    mindRetirementEnabled: Boolean(mindRetirementConfig),
   });
   const distillationPlan =
     DEFAULT_BACKGROUND_TARGET_PLANS.distillation;
@@ -450,6 +451,7 @@ export function createProcessRuntime(
       memoryDecayConfig,
       mindSemanticGrouping,
       mindLifecycleTuningConfig,
+      mindRetirementConfig,
     );
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
