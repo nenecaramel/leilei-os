@@ -233,6 +233,55 @@ const conversationsBundle = z.object({
     .max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
+const mindDriveSatisfactionEventRecord = z.object({
+  id: uuid,
+  subject_id: z.string().min(1),
+  drive_state_id: uuid,
+  conversation_id: uuid,
+  evidence_message_id: uuid,
+  evidence_block_id: uuid.nullable(),
+  evidence_kind: z.enum([
+    "user_message",
+    "assistant_message",
+    "tool_result",
+  ]),
+  amount: z.number().gt(0).max(1),
+  idempotency_key: z.string().min(16).max(128),
+  created_at: isoDateTime,
+}).strict();
+
+const mindCuriosityResolutionEventRecord = z.object({
+  id: uuid,
+  subject_id: z.string().min(1),
+  curiosity_state_id: uuid,
+  conversation_id: uuid,
+  requested_resolution_source_id: uuid,
+  result_resolution_source_id: z.string().min(1),
+  resolved_at: isoDateTime,
+  idempotency_key: z.string().min(16).max(128),
+  created_at: isoDateTime,
+}).strict();
+
+const mindDistillationWatermarkRecord = z.object({
+  subject_id: z.string().min(1),
+  conversation_id: uuid,
+  last_source_message_id: uuid,
+  process_version: z.string().min(1).max(64),
+  updated_at: isoDateTime,
+}).strict();
+
+const mindContinuityBundle = z.object({
+  drive_satisfaction_events:
+    z.array(mindDriveSatisfactionEventRecord)
+      .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  curiosity_resolution_events:
+    z.array(mindCuriosityResolutionEventRecord)
+      .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  distillation_watermarks:
+    z.array(mindDistillationWatermarkRecord)
+      .max(MAX_IMPORT_RECORDS_PER_MODULE),
+}).strict();
+
 const mindStateRecord = z.object({
   id: uuid,
   subject_id: z.string().min(1),
@@ -309,6 +358,7 @@ const dataV3Schema = z.object({
   mind: z.array(mindStateRecord)
     .max(MAX_IMPORT_RECORDS_PER_MODULE)
     .optional(),
+  mind_continuity: mindContinuityBundle.optional(),
   conversations: conversationsBundle.optional(),
   universe: universeBundle.nullable().optional(),
 }).strict();
@@ -459,6 +509,32 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
         throw new ImportValidationError(
           "INVALID_IMPORT_FILE",
           "conversation message path state is inconsistent",
+        );
+      }
+    }
+  }
+
+  if (
+    document.schema_version === 3
+    && document.data.mind_continuity
+  ) {
+    for (
+      const event of
+        document.data.mind_continuity.drive_satisfaction_events
+    ) {
+      const blockShapeValid =
+        (
+          event.evidence_kind === "tool_result"
+          && event.evidence_block_id !== null
+        )
+        || (
+          event.evidence_kind !== "tool_result"
+          && event.evidence_block_id === null
+        );
+      if (!blockShapeValid) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Drive satisfaction evidence shape is invalid",
         );
       }
     }
