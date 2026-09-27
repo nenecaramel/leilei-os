@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var inheritedColorScheme
     @EnvironmentObject private var appModel: AppModel
 
     @State private var selectedPage: AppPage = .chat
@@ -20,6 +21,7 @@ struct AppShell: View {
                 iPhoneLayout
             }
         }
+        .environment(\.colorScheme, shellColorScheme)
         .tint(.primary)
         .onPreferenceChange(FloatingControlCenterPreferenceKey.self) { centers in
             guard selectedPage == .chat,
@@ -36,6 +38,38 @@ struct AppShell: View {
                 dataService: LeileiSettingsDataService(api: appModel.api)
             )
         }
+    }
+
+    private var isUniverseTheme: Bool {
+        selectedPage == .universe
+    }
+
+    private var shellColorScheme: ColorScheme {
+        isUniverseTheme ? .dark : inheritedColorScheme
+    }
+
+    private var universeBackground: Color {
+        Color(
+            red: 11.0 / 255.0,
+            green: 12.0 / 255.0,
+            blue: 18.0 / 255.0
+        )
+    }
+
+    private var shellBackground: Color {
+        isUniverseTheme
+            ? universeBackground
+            : Color(.systemBackground)
+    }
+
+    private var sidebarBackground: Color {
+        isUniverseTheme
+            ? universeBackground
+            : Color(
+                red: 0.98,
+                green: 0.98,
+                blue: 0.98
+            )
     }
 
 
@@ -70,7 +104,7 @@ struct AppShell: View {
 
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color(red: 0.98, green: 0.98, blue: 0.98))
+                    .fill(sidebarBackground)
                     .ignoresSafeArea()
 
                 SidebarView(
@@ -120,7 +154,7 @@ struct AppShell: View {
                     }
                 )
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .background(Color(.systemBackground))
+                .background(shellBackground)
                 .clipShape(
                     UnevenRoundedRectangle(
                         topLeadingRadius: cardCornerRadius,
@@ -251,7 +285,7 @@ struct AppShell: View {
                 onSelect: {}
             )
             .frame(width: 280)
-            .background(Color(red: 0.98, green: 0.98, blue: 0.98))
+            .background(sidebarBackground)
 
             Divider()
 
@@ -279,9 +313,21 @@ private struct MainPageLayer: View {
     let onMenu: () -> Void
     let onOpenConversation: () -> Void
 
+    private var pageBackground: Color {
+        if selectedPage == .universe {
+            return Color(
+                red: 11.0 / 255.0,
+                green: 12.0 / 255.0,
+                blue: 18.0 / 255.0
+            )
+        }
+
+        return Color(.systemBackground)
+    }
+
     var body: some View {
         ZStack {
-            Color(.systemBackground)
+            pageBackground
                 .ignoresSafeArea()
 
             PageContainer(
