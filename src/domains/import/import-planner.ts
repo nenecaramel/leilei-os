@@ -1,6 +1,11 @@
 import { createOwnerFingerprint } from "../export/owner-fingerprint.js";
 import type {
   ExportDiaryRecord,
+  ExportProjectConversationRecord,
+  ExportProjectRecord,
+  ExportProjectResourceRecord,
+  ExportProjectsBundle,
+  ExportProjectWorkspaceRecord,
   ExportTodoPaper,
 } from "../export/export-types.js";
 import {
@@ -9,34 +14,60 @@ import {
 } from "./import-schema.js";
 import { hashCanonical } from "./import-canonical.js";
 
-export type ImportModule = "diary" | "todo";
+export type ImportModule = "diary" | "todo" | "projects";
 export type ImportClassification =
   | "create"
   | "duplicate"
   | "conflict"
   | "invalid";
 
+export type ImportCounts = {
+  create: number;
+  duplicate: number;
+  conflict: number;
+  invalid: number;
+};
+
 export type ImportCurrentState = {
   diary: ExportDiaryRecord[];
   todo: ExportTodoPaper[];
+  projects: ExportProjectsBundle;
   foreign_diary_ids?: Set<string>;
+  foreign_workspace_ids?: Set<string>;
+  foreign_project_ids?: Set<string>;
+  foreign_project_resource_ids?: Set<string>;
+  native_live_conversation_ids?: Set<string>;
 };
 
-export type ImportSummary = Record<
-  ImportModule,
-  {
-    create: number;
-    duplicate: number;
-    conflict: number;
-    invalid: number;
-  }
->;
+export type ImportSummary = {
+  diary: ImportCounts;
+  todo: ImportCounts;
+  projects?: ImportCounts;
+};
+
+export type ProjectRestoreRecord =
+  | {
+      entity: "workspace";
+      value: ExportProjectWorkspaceRecord;
+    }
+  | {
+      entity: "project";
+      value: ExportProjectRecord;
+    }
+  | {
+      entity: "resource";
+      value: ExportProjectResourceRecord;
+    }
+  | {
+      entity: "conversation";
+      value: ExportProjectConversationRecord;
+    };
 
 export type ImportPlanItem = {
   module: ImportModule;
   logical_key: string;
   classification: ImportClassification;
-  record: ExportDiaryRecord | ExportTodoPaper;
+  record: ExportDiaryRecord | ExportTodoPaper | ProjectRestoreRecord;
   current_hash: string | null;
 };
 
@@ -48,7 +79,7 @@ export type ImportPlan = {
   items: ImportPlanItem[];
 };
 
-const emptyCounts = () => ({
+const emptyCounts = (): ImportCounts => ({
   create: 0,
   duplicate: 0,
   conflict: 0,
@@ -56,7 +87,7 @@ const emptyCounts = () => ({
 });
 
 function classify<T extends ExportDiaryRecord | ExportTodoPaper>(
-  module: ImportModule,
+  module: "diary" | "todo",
   imported: T[],
   current: T[],
   key: (record: T) => string,
@@ -103,14 +134,161 @@ function classify<T extends ExportDiaryRecord | ExportTodoPaper>(
   return items;
 }
 
-function summarize(items: ImportPlanItem[]): ImportSummary {
-  const summary = {
-    diary: emptyCounts(),
-    todo: emptyCounts(),
-  } satisfies ImportSummary;
+function classifyProjectEntity<T>(
+  entity: ProjectRestoreRecord["entity"],
+  imported: T[],
+  current: T[],
+  key: (record: T) => string,
+): ImportPlanItem[] {
+  const occurrences = new Map<string, number>();
+  for (const record of imported) {
+    const logicalKey = `${entity}:${key(record)}`;
+    occurrences.set(
+      logicalKey,
+      (occurrences.get(logicalKey) ?? 0) + 1,
+    );
+  }
+
+  return imported.map((record) => {
+    const logicalKey = `${entity}:${key(record)}`;
+    const existing = current.find(
+      (candidate) => key(candidate) === key(record),
+    );
+    let classification: ImportClassification;
+    if ((occurrences.get(logicalKey) ?? 0) > 1) {
+      classification = "invalid";
+    } else if (!existing) {
+      classification = "create";
+    } else if (
+      hashCanonical(existing) === hashCanonical(record)
+    ) {
+      classification = "duplicate";
+    } else {
+      classification = "conflict";
+    }
+
+    return {
+      module: "projects" as const,
+      logical_key: logicalKey,
+      classification,
+      record: {
+        entity,
+        value: record,
+      } as ProjectRestoreRecord,
+      current_hash: existing
+        ? hashCanonical(existing)
+        : null,
+    };
+  });
+}
+
+function projectItems(
+  imported: ExportProjectsBundle,
+  current: ImportCurrentState,
+): ImportPlanItem[] {
+  const items = [
+    ...classifyProjectEntity(
+      "workspace",
+      imported.workspaces,
+      current.projects.workspaces,
+      (record) => record.id,
+    ),
+    ...classifyProjectEntity(
+      "project",
+      imported.projects,
+      current.projects.projects,
+      (record) => record.id,
+    ),
+    ...classifyProjectEntity(
+      "resource",
+      imported.resources,
+      current.projects.resources,
+      (record) => record.id,
+    ),
+    ...classifyProjectEntity(
+      "conversation",
+      imported.conversations,
+      current.projects.conversations,
+      (record) =>
+        `${record.project_id}:${record.conversation_id}`,
+    ),
+  ];
+
+  const workspaceIds = new Set([
+    ...current.projects.workspaces.map((record) => record.id),
+    ...imported.workspaces.map((record) => record.id),
+  ]);
+  const projectIds = new Set([
+    ...current.projects.projects.map((record) => record.id),
+    ...imported.projects.map((record) => record.id),
+  ]);
+  const conversationIds =
+    current.native_live_conversation_ids ?? new Set<string>();
 
   for (const item of items) {
-    summary[item.module][item.classification] += 1;
+    if (item.classification !== "create") continue;
+    const record = item.record as ProjectRestoreRecord;
+
+    if (
+      record.entity === "workspace"
+      && current.foreign_workspace_ids?.has(record.value.id)
+    ) {
+      item.classification = "conflict";
+      continue;
+    }
+    if (
+      record.entity === "project"
+      && (
+        current.foreign_project_ids?.has(record.value.id)
+        || !workspaceIds.has(record.value.workspace_id)
+      )
+    ) {
+      item.classification = current.foreign_project_ids?.has(record.value.id)
+        ? "conflict"
+        : "invalid";
+      continue;
+    }
+    if (
+      record.entity === "resource"
+      && (
+        current.foreign_project_resource_ids?.has(record.value.id)
+        || !projectIds.has(record.value.project_id)
+      )
+    ) {
+      item.classification = current.foreign_project_resource_ids?.has(record.value.id)
+        ? "conflict"
+        : "invalid";
+      continue;
+    }
+    if (
+      record.entity === "conversation"
+      && (
+        !projectIds.has(record.value.project_id)
+        || !conversationIds.has(record.value.conversation_id)
+      )
+    ) {
+      item.classification = "invalid";
+    }
+  }
+
+  return items;
+}
+
+function summarize(
+  items: ImportPlanItem[],
+  includeProjects: boolean,
+): ImportSummary {
+  const summary: ImportSummary = {
+    diary: emptyCounts(),
+    todo: emptyCounts(),
+    ...(includeProjects
+      ? { projects: emptyCounts() }
+      : {}),
+  };
+
+  for (const item of items) {
+    const counts = summary[item.module];
+    if (counts) counts[item.classification] += 1;
   }
   return summary;
 }
@@ -169,7 +347,15 @@ export function buildImportPlan(
     );
   }
 
-  const summary = summarize(items);
+  const importedProjects =
+    parsed.document.schema_version === 3
+      ? parsed.document.data.projects
+      : undefined;
+  if (importedProjects) {
+    items.push(...projectItems(importedProjects, current));
+  }
+
+  const summary = summarize(items, Boolean(importedProjects));
   const fingerprint = hashCanonical({
     package_sha256: parsed.package_sha256,
     items: items.map(
