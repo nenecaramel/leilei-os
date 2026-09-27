@@ -5,6 +5,9 @@ import type {
   ExportConversationRecord,
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
+  ExportMindCuriosityResolutionEventRecord,
+  ExportMindDistillationWatermarkRecord,
+  ExportMindDriveSatisfactionEventRecord,
   ExportMindStateRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
@@ -18,6 +21,7 @@ import {
   type ImportPlan,
   type ImportPlanItem,
   type ImportSummary,
+  type MindContinuityRestoreRecord,
   type ProjectRestoreRecord,
   type UniverseRestoreRecord,
 } from "./import-planner.js";
@@ -77,7 +81,13 @@ function includedModules(document: RestorableExportDocument): Set<ImportModule> 
   ) {
     modules.push("universe");
   }
-  if (document.schema_version === 3 && document.data.mind) {
+  if (
+    document.schema_version === 3
+    && (
+      document.data.mind
+      || document.data.mind_continuity
+    )
+  ) {
     modules.push("mind");
   }
   if (document.schema_version === 3 && document.data.projects) {
@@ -166,6 +176,55 @@ function hasExactConversationValue(
   );
 }
 
+function isMindContinuityRecord(
+  record: ImportPlanItem["record"],
+): record is MindContinuityRestoreRecord {
+  if (
+    !record
+    || typeof record !== "object"
+    || !("entity" in record)
+  ) return false;
+  return (
+    record.entity === "drive_satisfaction"
+    || record.entity === "curiosity_resolution"
+    || record.entity === "distillation_watermark"
+  );
+}
+
+function hasExactMindContinuityValue(
+  record: MindContinuityRestoreRecord,
+  state: ImportCurrentState,
+): boolean {
+  const continuity = state.mind_continuity ?? {
+    drive_satisfaction_events: [],
+    curiosity_resolution_events: [],
+    distillation_watermarks: [],
+  };
+  if (record.entity === "drive_satisfaction") {
+    return continuity.drive_satisfaction_events.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate)
+          === hashCanonical(record.value),
+    );
+  }
+  if (record.entity === "curiosity_resolution") {
+    return continuity.curiosity_resolution_events.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate)
+          === hashCanonical(record.value),
+    );
+  }
+  return continuity.distillation_watermarks.some(
+    (candidate) =>
+      candidate.subject_id === record.value.subject_id
+      && candidate.conversation_id === record.value.conversation_id
+      && hashCanonical(candidate)
+        === hashCanonical(record.value),
+  );
+}
+
 function hasExactCreatedValue(
   item: ImportPlanItem,
   state: ImportCurrentState,
@@ -210,6 +269,12 @@ function hasExactCreatedValue(
   }
 
   if (item.module === "mind") {
+    if (isMindContinuityRecord(item.record)) {
+      return hasExactMindContinuityValue(
+        item.record,
+        state,
+      );
+    }
     const record = item.record as ExportMindStateRecord;
     return (state.mind ?? []).some(
       (candidate) =>
@@ -383,10 +448,37 @@ async function executeCreates(
   }
 
   for (const item of creates) {
-    if (item.module === "mind") {
+    if (
+      item.module === "mind"
+      && !isMindContinuityRecord(item.record)
+    ) {
       await repository.insertMind(
         userId,
         item.record as ExportMindStateRecord,
+      );
+    }
+  }
+
+  for (const item of creates) {
+    if (
+      item.module !== "mind"
+      || !isMindContinuityRecord(item.record)
+    ) continue;
+    const record = item.record;
+    if (record.entity === "drive_satisfaction") {
+      await repository.insertMindDriveSatisfactionEvent(
+        userId,
+        record.value as ExportMindDriveSatisfactionEventRecord,
+      );
+    } else if (record.entity === "curiosity_resolution") {
+      await repository.insertMindCuriosityResolutionEvent(
+        userId,
+        record.value as ExportMindCuriosityResolutionEventRecord,
+      );
+    } else {
+      await repository.insertMindDistillationWatermark(
+        userId,
+        record.value as ExportMindDistillationWatermarkRecord,
       );
     }
   }
