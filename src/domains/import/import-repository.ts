@@ -112,6 +112,12 @@ export interface ImportRepository {
     record: ExportConversationMessageRecord,
   ): Promise<void>;
 
+  setConversationCurrentHead(
+    userId: string,
+    conversationId: string,
+    currentHeadMessageId: string,
+  ): Promise<void>;
+
   insertConversationContentBlock(
     userId: string,
     record: ExportConversationContentBlockRecord,
@@ -1185,7 +1191,7 @@ implements ImportRepository {
       sourceConversationId: null,
       title: record.title,
       lifecycleStatus: record.lifecycle_status,
-      currentHeadMessageId: record.current_head_message_id,
+      currentHeadMessageId: null,
       sourceCreatedAt: null,
       sourceUpdatedAt: null,
       currentLeafSourceNodeId: null,
@@ -1235,6 +1241,22 @@ implements ImportRepository {
         : null,
       updatedAt: new Date(record.updated_at),
     });
+  }
+
+  async setConversationCurrentHead(
+    userId: string,
+    conversationId: string,
+    currentHeadMessageId: string,
+  ): Promise<void> {
+    await this.db
+      .update(conversations)
+      .set({
+        currentHeadMessageId,
+      })
+      .where(and(
+        eq(conversations.userId, userId),
+        eq(conversations.id, conversationId),
+      ));
   }
 
   async insertConversationContentBlock(
