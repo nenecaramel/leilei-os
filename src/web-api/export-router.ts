@@ -103,6 +103,20 @@ function sendInvalidExportRequest(response: Response): void {
 function sendExportError(response: Response, error: unknown): void {
   if (
     error instanceof ExportServiceError
+    && error.code === "EXPORT_TOO_LARGE"
+  ) {
+    response.status(413).json({
+      success: false,
+      error: {
+        code: "EXPORT_TOO_LARGE",
+        message:
+          "Product data is too large for the current portable backup format.",
+      },
+    });
+    return;
+  }
+  if (
+    error instanceof ExportServiceError
     && error.code === "EXPORT_IN_PROGRESS"
   ) {
     response.status(409).json({
