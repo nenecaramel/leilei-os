@@ -902,3 +902,127 @@ test(
     );
   },
 );
+
+
+test(
+  "true Delete fails closed and rolls back when an unknown surviving Mind payload still references deleted causality",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, {
+      createClient: (url, maxConnections, ssl) =>
+        postgres(url, {
+          max: maxConnections,
+          prepare: false,
+          ssl,
+          connect_timeout: 15,
+          idle_timeout: 60,
+        }),
+    });
+    let userId: string | null = null;
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(runtimeSubjectStates)
+            .where(eq(runtimeSubjectStates.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-delete-fail-closed-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Delete Fail Closed",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const service = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const conversation = await service.createConversation({
+      userId,
+      title: "Fail closed",
+    });
+    const userMessage = await service.appendUserMessage({
+      userId,
+      conversationId: conversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "causal source" }],
+    });
+
+    const stateId = crypto.randomUUID();
+    await database.db.insert(runtimeSubjectStates).values({
+      id: stateId,
+      userId,
+      subjectId: "G",
+      kind: "memory",
+      text: "surviving state with unknown causal cache",
+      payload: {
+        future_unknown_projection_v1: {
+          sourceId: userMessage.id,
+        },
+      },
+      scopeApplicability: "global",
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+      settlementStatus: "settled",
+      pathStatus: "current",
+      validityStatus: "valid",
+      envelope: {
+        authority: "derived",
+        scope: {
+          userId,
+          subjectId: "G",
+          applicability: "global",
+        },
+        provenance: {
+          sources: [{ kind: "artifact", id: "safe-artifact" }],
+        },
+      },
+    });
+
+    await assert.rejects(
+      service.deleteConversation({
+        userId,
+        conversationId: conversation.id,
+      }),
+      /CausalReferenceConflict/,
+    );
+
+    assert.equal(
+      (await service.getConversation({
+        userId,
+        conversationId: conversation.id,
+      }))?.id,
+      conversation.id,
+    );
+    const survivingMessages = await database.db
+      .select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(eq(
+        conversationMessages.conversationId,
+        conversation.id,
+      ));
+    assert.deepEqual(
+      survivingMessages.map((row) => row.id),
+      [userMessage.id],
+    );
+    const survivingStates = await database.db
+      .select({ id: runtimeSubjectStates.id })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, stateId));
+    assert.deepEqual(survivingStates, [{ id: stateId }]);
+  },
+);
