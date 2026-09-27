@@ -335,6 +335,14 @@ test("auto-compact runs once after a due foreground turn and keeps the provider 
       return {
         providerSessionId: sessionId,
         normalizedEvents: [],
+        contextUsage: {
+          model: "claude-opus-5-5",
+          total_tokens: 120000,
+          max_tokens: 1000000,
+          raw_max_tokens: 1000000,
+          percentage: 12,
+          categories: [],
+        },
         compaction: {
           boundary: {
             trigger: "manual",
@@ -376,10 +384,10 @@ test("auto-compact runs once after a due foreground turn and keeps the provider 
   assert.deepEqual(result.runtime_metadata, {
     context_usage: {
       model: "claude-opus-5-5",
-      total_tokens: 760000,
+      total_tokens: 120000,
       max_tokens: 1000000,
       raw_max_tokens: 1000000,
-      percentage: 76,
+      percentage: 12,
       categories: [],
     },
     compaction_advisory: {
