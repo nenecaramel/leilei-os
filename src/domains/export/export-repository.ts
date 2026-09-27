@@ -527,7 +527,6 @@ export class DrizzleExportRepository implements ExportRepository {
         inArray(nativeLiveMindFollowUps.status, [
           "pending",
           "processing",
-          "quarantined",
         ]),
       ))
       .limit(1);
