@@ -1321,7 +1321,7 @@ private enum NativeLiveConversationLifecycleError: LocalizedError {
         case .invalidTitle:
             return "Conversation title must contain 1-200 characters."
         case .busy:
-            return "Wait for the current turn to finish before deleting this conversation."
+            return "Wait for the current turn to finish."
         }
     }
 }
