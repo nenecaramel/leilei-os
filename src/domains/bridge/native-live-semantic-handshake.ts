@@ -30,6 +30,7 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   : never;
 
 const SEMANTIC_RESERVATION_LEASE_MS = 300_000;
+export const SEMANTIC_COMPLETION_RETRY_MS = 5_000;
 
 export type NativeLiveSemanticScoringReservation = {
   reservationId: string;
@@ -397,6 +398,31 @@ implements NativeLiveSemanticPreparationStager {
     return this.getWithExecutor(this.db, input.userId, input.prepareId);
   }
 
+  async deferCompletion(input: {
+    userId: string;
+    prepareId: string;
+    errorName: string;
+  }): Promise<boolean> {
+    const rows = await this.db
+      .update(nativeLiveSemanticScoringRequests)
+      .set({
+        resumeRetryCount:
+          sql`${nativeLiveSemanticScoringRequests.resumeRetryCount} + 1`,
+        resumeAvailableAt:
+          sql`now() + ${SEMANTIC_COMPLETION_RETRY_MS} * interval '1 millisecond'`,
+        resumeLastErrorName: input.errorName.slice(0, 128),
+        updatedAt: sql`now()`,
+      })
+      .where(sql`
+        ${nativeLiveSemanticScoringRequests.userId} = ${input.userId}::uuid
+        AND ${nativeLiveSemanticScoringRequests.prepareId} = ${input.prepareId}::uuid
+        AND ${nativeLiveSemanticScoringRequests.status}
+          IN ('completed', 'fallback')
+      `)
+      .returning({ prepareId: nativeLiveSemanticScoringRequests.prepareId });
+    return rows.length === 1;
+  }
+
   async findCompletionPending(): Promise<SemanticRequest | null> {
     const rows = await this.db.execute<{ prepare_id: string; user_id: string }>(
       sql`
@@ -406,9 +432,12 @@ implements NativeLiveSemanticPreparationStager {
           ON preparation.id = semantic.prepare_id
          AND preparation.user_id = semantic.user_id
         WHERE semantic.status IN ('completed', 'fallback')
+          AND semantic.resume_available_at <= now()
           AND preparation.status = 'prepared'
           AND preparation.dispatch_status = 'staged'
-        ORDER BY semantic.completed_at ASC, semantic.prepare_id ASC
+        ORDER BY semantic.resume_available_at ASC,
+          semantic.completed_at ASC,
+          semantic.prepare_id ASC
         LIMIT 1
       `,
     );
@@ -532,7 +561,7 @@ implements NativeLiveSemanticPreparationStager {
     scores: Record<string, number>;
   }): Promise<void> {
     const request = await this.repository.acceptScores(input);
-    await this.resume(request);
+    await this.resumeWithRecovery(request);
   }
 
   async submitFallback(input: {
@@ -542,14 +571,39 @@ implements NativeLiveSemanticPreparationStager {
     code: NativeLiveSemanticFallbackCode;
   }): Promise<void> {
     const request = await this.repository.acceptFallback(input);
-    await this.resume(request);
+    await this.resumeWithRecovery(request);
   }
 
-  async processNextCompletion(): Promise<"processed" | "idle"> {
+  async processNextCompletion(): Promise<
+    "processed" | "deferred" | "idle"
+  > {
     const request = await this.repository.findCompletionPending();
     if (!request) return "idle";
-    await this.resume(request);
-    return "processed";
+    try {
+      await this.resume(request);
+      return "processed";
+    } catch (error) {
+      const deferred = await this.repository.deferCompletion({
+        userId: request.userId,
+        prepareId: request.prepareId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      }).catch(() => false);
+      if (!deferred) throw error;
+      return "deferred";
+    }
+  }
+
+  private async resumeWithRecovery(request: SemanticRequest): Promise<void> {
+    try {
+      await this.resume(request);
+    } catch (error) {
+      await this.repository.deferCompletion({
+        userId: request.userId,
+        prepareId: request.prepareId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      }).catch(() => false);
+      throw error;
+    }
   }
 
   private async resume(request: SemanticRequest): Promise<void> {
@@ -630,7 +684,7 @@ export function createNativeLiveSemanticRecoveryRunner(input: {
         try {
           const outcome = await input.service.processNextCompletion();
           if (outcome === "idle") break;
-          processed += 1;
+          if (outcome === "processed") processed += 1;
         } catch {
           break;
         }
