@@ -51,7 +51,9 @@ export class SubjectStateContractError extends Error {
     readonly code:
       | "INVALID_ID"
       | "EMPTY_STATE"
-      | "UNSETTLED_STATE_MUST_BE_PATH_SCOPED",
+      | "UNSETTLED_STATE_MUST_BE_PATH_SCOPED"
+      | "RETIRED_KIND_WRITE"
+      | "TOPIC_MUST_BE_DERIVED",
     message: string,
   ) {
     super(message);
@@ -76,6 +78,28 @@ function hasPayload(payload: Record<string, unknown> | null | undefined): boolea
  * The envelope keeps semantic actor, producer, committer, authority, status
  * axes, scope, provenance and versions separate.
  */
+export function validateCurrentSubjectStateAppend(
+  input: SubjectStateWrite,
+): SubjectStateWrite {
+  const state = validateSubjectStateWrite(input);
+  if (state.kind === "dream") {
+    throw new SubjectStateContractError(
+      "RETIRED_KIND_WRITE",
+      "Dream is retired and cannot be appended as current Subject State.",
+    );
+  }
+  if (
+    state.kind === "topic"
+    && state.envelope.authority !== "derived"
+  ) {
+    throw new SubjectStateContractError(
+      "TOPIC_MUST_BE_DERIVED",
+      "Topic is derived-only and cannot be appended as authored Subject State.",
+    );
+  }
+  return state;
+}
+
 export function validateSubjectStateWrite(
   input: SubjectStateWrite,
 ): SubjectStateWrite {
