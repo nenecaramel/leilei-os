@@ -10,6 +10,10 @@ import type {
   NativeLiveSemanticScoringReservation,
 } from "./native-live-semantic-handshake.js";
 import type {
+  MindSemanticGroupingFallbackCode,
+  MindSemanticGroupingReservation,
+} from "../runtime/mind-semantic-grouping.js";
+import type {
   NativeLiveBackgroundModelCommand,
   NativeLiveBackgroundModelExecutionResult,
 } from "./native-live-background-model-protocol.js";
@@ -56,6 +60,14 @@ export type NativeLiveDaemonRunOutcome =
     }
   | {
       outcome: "semantic_delivery_unknown";
+      reservationId: string;
+    }
+  | {
+      outcome: "mind_semantic_grouping_completed";
+      reservationId: string;
+    }
+  | {
+      outcome: "mind_semantic_grouping_delivery_unknown";
       reservationId: string;
     }
   | {
@@ -140,6 +152,23 @@ export interface NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     reservationId: string;
     code: NativeLiveSemanticFallbackCode;
+  }): Promise<void>;
+
+  reserveMindSemanticGrouping?(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<MindSemanticGroupingReservation | null>;
+
+  submitMindSemanticGroupingScores?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    scores: Record<string, number>;
+  }): Promise<void>;
+
+  submitMindSemanticGroupingFallback?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    code: MindSemanticGroupingFallbackCode;
   }): Promise<void>;
 
   renewLease(input: {
@@ -345,6 +374,64 @@ export class NativeLiveMacDaemonLoop {
             outcome: "semantic_completed",
             reservationId: semanticReservationId,
           };
+        }
+
+        if (
+          this.relay.reserveMindSemanticGrouping
+          && this.relay.submitMindSemanticGroupingScores
+          && this.relay.submitMindSemanticGroupingFallback
+        ) {
+          const grouping =
+            await this.relay.reserveMindSemanticGrouping({
+              listenerInstanceId: this.listenerInstanceId,
+              dispatchTarget: "claude_code",
+            });
+          if (grouping) {
+            try {
+              if (!this.semanticScorer) {
+                await this.relay.submitMindSemanticGroupingFallback({
+                  listenerInstanceId: this.listenerInstanceId,
+                  reservationId: grouping.reservationId,
+                  code: "E5_PROVIDER_UNAVAILABLE",
+                });
+              } else {
+                const scored = await this.semanticScorer.score({
+                  query: grouping.query,
+                  candidates: grouping.candidates,
+                });
+                await this.relay.submitMindSemanticGroupingScores({
+                  listenerInstanceId: this.listenerInstanceId,
+                  reservationId: grouping.reservationId,
+                  scores: Object.fromEntries(scored),
+                });
+              }
+            } catch (error) {
+              if (this.semanticScorer && isSemanticProviderFailure(error)) {
+                try {
+                  await this.relay.submitMindSemanticGroupingFallback({
+                    listenerInstanceId: this.listenerInstanceId,
+                    reservationId: grouping.reservationId,
+                    code: semanticFallbackCode(error),
+                  });
+                } catch {
+                  return {
+                    outcome: "mind_semantic_grouping_delivery_unknown",
+                    reservationId: grouping.reservationId,
+                  };
+                }
+              } else {
+                return {
+                  outcome: "mind_semantic_grouping_delivery_unknown",
+                  reservationId: grouping.reservationId,
+                };
+              }
+            }
+            await this.bestEffortIdleOpportunity();
+            return {
+              outcome: "mind_semantic_grouping_completed",
+              reservationId: grouping.reservationId,
+            };
+          }
         }
 
         if (
