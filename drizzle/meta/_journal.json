@@ -547,6 +547,13 @@
       "when": 1790482800000,
       "tag": "0077_runtime_recovery_compat_census",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1790483400000,
+      "tag": "0078_retire_legacy_mind_write_compat",
+      "breakpoints": true
     }
   ]
 }
