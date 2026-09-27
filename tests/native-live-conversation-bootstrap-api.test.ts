@@ -16,12 +16,14 @@ class FakeConversationService {
     id: string;
     title: string | null;
     currentHeadMessageId: string | null;
+    lastMessageAt: string | null;
     createdAt: string;
     updatedAt: string;
   } | null = {
     id: conversationId,
     title: "Renamed",
     currentHeadMessageId: null,
+    lastMessageAt: null,
     createdAt: "2026-09-24T00:00:00.000Z",
     updatedAt: "2026-09-24T01:30:00.000Z",
   };
@@ -56,6 +58,7 @@ class FakeConversationService {
         id: conversationId,
         title: "Existing",
         currentHeadMessageId: null,
+        lastMessageAt: "2026-09-24T00:30:00.000Z",
         createdAt: "2026-09-24T00:00:00.000Z",
         updatedAt: "2026-09-24T01:00:00.000Z",
       }],
@@ -185,6 +188,10 @@ test("native live bootstrap lists owner-scoped active summaries with a bounded l
     assert.equal(payload.data.conversations.length, 1);
     assert.equal(payload.data.nextCursor, "next-page");
     assert.equal(payload.data.conversations[0]?.id, conversationId);
+    assert.equal(
+      payload.data.conversations[0]?.lastMessageAt,
+      "2026-09-24T00:30:00.000Z",
+    );
     assert.equal("userId" in (payload.data.conversations[0] ?? {}), false);
     assert.deepEqual(service.listCalls, [{ userId, limit: 2 }]);
   });
