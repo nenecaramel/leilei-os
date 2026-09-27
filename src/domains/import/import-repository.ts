@@ -1,6 +1,9 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationAttachments,
+  conversationContentBlocks,
+  conversationMessages,
   conversations,
   dataImportRuns,
   diaryEntries,
@@ -14,6 +17,11 @@ import {
   users,
 } from "../../database/schema.js";
 import type {
+  ExportConversationAttachmentRecord,
+  ExportConversationContentBlockRecord,
+  ExportConversationMessageRecord,
+  ExportConversationRecord,
+  ExportConversationsBundle,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
@@ -64,6 +72,26 @@ export interface ImportRepository {
     record: ExportTodoPaper,
   ): Promise<void>;
 
+  insertConversation(
+    userId: string,
+    record: ExportConversationRecord,
+  ): Promise<void>;
+
+  insertConversationMessage(
+    userId: string,
+    record: ExportConversationMessageRecord,
+  ): Promise<void>;
+
+  insertConversationContentBlock(
+    userId: string,
+    record: ExportConversationContentBlockRecord,
+  ): Promise<void>;
+
+  insertConversationAttachment(
+    userId: string,
+    record: ExportConversationAttachmentRecord,
+  ): Promise<void>;
+
   insertMind(
     userId: string,
     record: ExportMindStateRecord,
@@ -108,6 +136,13 @@ const emptyProjects = (): ExportProjectsBundle => ({
   projects: [],
   resources: [],
   conversations: [],
+});
+
+const emptyConversations = (): ExportConversationsBundle => ({
+  conversations: [],
+  messages: [],
+  content_blocks: [],
+  attachments: [],
 });
 
 export class DrizzleImportRepository
