@@ -324,6 +324,13 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
         );
       }
 
+      await assertWorkflowSourceActive(
+        transaction as Transaction,
+        current.userId,
+        current.subjectId,
+        current.workflow ?? undefined,
+      );
+
       const completedAt = new Date();
       await transaction
         .update(nativeLiveBackgroundModelJobs)
