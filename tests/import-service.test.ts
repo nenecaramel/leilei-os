@@ -563,7 +563,10 @@ class FakeImportRepository implements ImportRepository {
       attachments: [],
       provider_checkpoints: [],
     };
-    conversations.conversations.push(structuredClone(record));
+    conversations.conversations.push({
+      ...structuredClone(record),
+      current_head_message_id: null,
+    });
     this.state.native_live_conversation_ids ??= new Set();
     this.state.native_live_conversation_ids.add(record.id);
     this.writes += 1;
@@ -582,6 +585,21 @@ class FakeImportRepository implements ImportRepository {
     };
     conversations.messages.push(structuredClone(record));
     this.writes += 1;
+  }
+
+  async setConversationCurrentHead(
+    _userId: string,
+    conversationId: string,
+    currentHeadMessageId: string,
+  ) {
+    const conversations = this.state.conversations;
+    const conversation = conversations?.conversations.find(
+      (candidate) => candidate.id === conversationId,
+    );
+    if (!conversation) {
+      throw new Error("conversation not found");
+    }
+    conversation.current_head_message_id = currentHeadMessageId;
   }
 
   async insertConversationContentBlock(
