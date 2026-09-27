@@ -10,7 +10,10 @@ struct UniverseNodeDraft: Equatable {
             guard let value = Double(weightText) else {
                 return ""
             }
-            return UniverseNodeDraft.numberText(value * 100)
+            return UniverseNodeDraft.roundedText(
+                value * 100,
+                maximumFractionDigits: 3
+            )
         }
     }
 
@@ -91,10 +94,34 @@ struct UniverseNodeDraft: Equatable {
     static func numberText(
         _ value: Double
     ) -> String {
-        String(
-            format: "%.6g",
-            value
+        String(value)
+    }
+
+    static func canonicalWeightText(
+        fromPercent percent: Double
+    ) -> String {
+        roundedText(
+            percent / 100,
+            maximumFractionDigits: 6
         )
+    }
+
+    static func roundedText(
+        _ value: Double,
+        maximumFractionDigits: Int
+    ) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale =
+            Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits =
+            maximumFractionDigits
+
+        return formatter.string(
+            from: NSNumber(value: value)
+        ) ?? String(value)
     }
 }
 
@@ -516,6 +543,13 @@ struct UniverseNodeSheet: View {
                 }
 
                 metadataEditor
+
+                if !draft.memberships.isEmpty,
+                   draft.canonicalMemberships == nil {
+                    Text("请填写星系权重")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
 
                 sourceEditor
 
@@ -1272,8 +1306,9 @@ struct UniverseNodeSheet: View {
                                         currentIndex
                                     ].weightText =
                                         UniverseNodeDraft
-                                            .numberText(
-                                                percent / 100
+                                            .canonicalWeightText(
+                                                fromPercent:
+                                                    percent
                                             )
                                 } else {
                                     draft.memberships[
