@@ -57,6 +57,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var nativeLiveConversations: [NativeLiveConversationSummary] = []
     @Published private(set) var nativeLiveConversationNextCursor: String?
     @Published private(set) var conversationBootstrapState: ConversationBootstrapState = .idle
+    @Published private(set) var nativeLiveArchivedConversations: [NativeLiveConversationSummary] = []
+    @Published private(set) var nativeLiveArchivedConversationNextCursor: String?
+    @Published private(set) var archivedConversationBootstrapState: ConversationBootstrapState = .idle
     @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
     @Published private(set) var chatSyncState: ChatSyncState = .idle
     @Published private(set) var chatSendState: ChatSendState = .idle
@@ -69,6 +72,8 @@ final class AppModel: ObservableObject {
     private var nativeLiveRuntimeObservationTask: Task<Void, Never>?
     private var conversationBootstrapInFlight = false
     private var conversationPaginationInFlight = false
+    private var archivedConversationBootstrapInFlight = false
+    private var archivedConversationPaginationInFlight = false
     private var chatRefreshInFlight = false
     private var chatOlderHistoryInFlight = false
     private var chatRefreshPendingForce = false
@@ -244,6 +249,181 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshNativeLiveArchivedConversations() async {
+        guard isAuthenticated,
+              !archivedConversationBootstrapInFlight else {
+            return
+        }
+
+        archivedConversationBootstrapInFlight = true
+        if nativeLiveArchivedConversations.isEmpty {
+            archivedConversationBootstrapState = .loading
+        }
+        defer {
+            archivedConversationBootstrapInFlight = false
+        }
+
+        do {
+            let page = try await api.nativeLiveConversationPage(
+                scope: .archived
+            )
+            nativeLiveArchivedConversations = page.conversations
+            nativeLiveArchivedConversationNextCursor = page.nextCursor
+            archivedConversationBootstrapState = .ready
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            archivedConversationBootstrapState = .unavailable(
+                error.localizedDescription
+            )
+        }
+    }
+
+    func loadMoreNativeLiveArchivedConversations() async {
+        guard isAuthenticated,
+              !archivedConversationBootstrapInFlight,
+              !archivedConversationPaginationInFlight,
+              let cursor = nativeLiveArchivedConversationNextCursor else {
+            return
+        }
+
+        archivedConversationPaginationInFlight = true
+        defer {
+            archivedConversationPaginationInFlight = false
+        }
+
+        do {
+            let page = try await api.nativeLiveConversationPage(
+                cursor: cursor,
+                scope: .archived
+            )
+            let existingIDs = Set(
+                nativeLiveArchivedConversations.map { $0.id.lowercased() }
+            )
+            nativeLiveArchivedConversations.append(
+                contentsOf: page.conversations.filter {
+                    !existingIDs.contains($0.id.lowercased())
+                }
+            )
+            nativeLiveArchivedConversationNextCursor = page.nextCursor
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            return
+        }
+    }
+
+    func archiveNativeLiveConversation(
+        conversationID: UUID
+    ) async throws {
+        guard isAuthenticated else {
+            throw NativeLiveConversationLifecycleError.notReady
+        }
+        if activeNativeLiveConversationID == conversationID,
+           chatSendInFlight {
+            throw NativeLiveConversationLifecycleError.busy
+        }
+
+        do {
+            try await api.archiveNativeLiveConversation(
+                conversationID: conversationID
+            )
+
+            nativeLiveConversations.removeAll {
+                UUID(uuidString: $0.id) == conversationID
+            }
+
+            clearActiveNativeLiveConversationIfMatching(conversationID)
+
+            await refreshNativeLiveConversations()
+            await refreshNativeLiveArchivedConversations()
+            await openFirstActiveNativeLiveConversationIfNeeded()
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
+    }
+
+    func restoreNativeLiveConversation(
+        conversationID: UUID
+    ) async throws {
+        guard isAuthenticated else {
+            throw NativeLiveConversationLifecycleError.notReady
+        }
+
+        do {
+            try await api.restoreNativeLiveConversation(
+                conversationID: conversationID
+            )
+
+            nativeLiveArchivedConversations.removeAll {
+                UUID(uuidString: $0.id) == conversationID
+            }
+
+            await refreshNativeLiveConversations()
+            await refreshNativeLiveArchivedConversations()
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
+    }
+
+    func deleteNativeLiveConversation(
+        conversationID: UUID
+    ) async throws {
+        guard isAuthenticated else {
+            throw NativeLiveConversationLifecycleError.notReady
+        }
+        if activeNativeLiveConversationID == conversationID,
+           chatSendInFlight {
+            throw NativeLiveConversationLifecycleError.busy
+        }
+
+        do {
+            try await api.deleteNativeLiveConversation(
+                conversationID: conversationID
+            )
+
+            nativeLiveConversations.removeAll {
+                UUID(uuidString: $0.id) == conversationID
+            }
+            nativeLiveArchivedConversations.removeAll {
+                UUID(uuidString: $0.id) == conversationID
+            }
+            nativeLiveRuntimeMetadataByConversationID.removeValue(
+                forKey: conversationID
+            )
+
+            clearActiveNativeLiveConversationIfMatching(conversationID)
+
+            await refreshNativeLiveConversations()
+            await refreshNativeLiveArchivedConversations()
+            await openFirstActiveNativeLiveConversationIfNeeded()
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
+    }
+
     @discardableResult
     func createNativeLiveConversation(
         title: String? = nil
@@ -319,55 +499,12 @@ final class AppModel: ObservableObject {
     }
 
     func deleteActiveNativeLiveConversation() async throws {
-        guard isAuthenticated,
-              let conversationID = activeNativeLiveConversationID else {
+        guard let conversationID = activeNativeLiveConversationID else {
             throw NativeLiveConversationLifecycleError.notReady
         }
-        guard !chatSendInFlight else {
-            throw NativeLiveConversationLifecycleError.busy
-        }
-
-        do {
-            try await api.deleteNativeLiveConversation(
-                conversationID: conversationID
-            )
-
-            nativeLiveConversations.removeAll {
-                guard let id = UUID(uuidString: $0.id) else {
-                    return false
-                }
-                return id == conversationID
-            }
-            nativeLiveRuntimeMetadataByConversationID.removeValue(
-                forKey: conversationID
-            )
-
-            if activeNativeLiveConversationID == conversationID {
-                activeNativeLiveConversationID = nil
-                nativeLiveCurrentPath = nil
-                nativeLiveRuntimeMetadata = nil
-                chatSyncState = .idle
-                UserDefaults.standard.removeObject(
-                    forKey: Self.activeNativeLiveConversationDefaultsKey
-                )
-            }
-
-            await refreshNativeLiveConversations()
-
-            if activeNativeLiveConversationID == nil,
-               let next = nativeLiveConversations.first,
-               let nextID = UUID(uuidString: next.id) {
-                await openNativeLiveConversation(nextID)
-            }
-        } catch LeileiAPIError.missingAccessToken {
-            clearNativeLiveSessionData()
-            throw LeileiAPIError.missingAccessToken
-        } catch LeileiAPIError.unauthorized {
-            clearNativeLiveSessionData()
-            throw LeileiAPIError.unauthorized
-        } catch {
-            throw error
-        }
+        try await deleteNativeLiveConversation(
+            conversationID: conversationID
+        )
     }
 
     func sendNativeLiveMessage(
@@ -1123,10 +1260,38 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func clearActiveNativeLiveConversationIfMatching(
+        _ conversationID: UUID
+    ) {
+        guard activeNativeLiveConversationID == conversationID else {
+            return
+        }
+
+        activeNativeLiveConversationID = nil
+        nativeLiveCurrentPath = nil
+        nativeLiveRuntimeMetadata = nil
+        chatSyncState = .idle
+        UserDefaults.standard.removeObject(
+            forKey: Self.activeNativeLiveConversationDefaultsKey
+        )
+    }
+
+    private func openFirstActiveNativeLiveConversationIfNeeded() async {
+        guard activeNativeLiveConversationID == nil,
+              let next = nativeLiveConversations.first,
+              let nextID = UUID(uuidString: next.id) else {
+            return
+        }
+        await openNativeLiveConversation(nextID)
+    }
+
     private func clearNativeLiveSessionData() {
         nativeLiveConversations = []
         nativeLiveConversationNextCursor = nil
         conversationBootstrapState = .idle
+        nativeLiveArchivedConversations = []
+        nativeLiveArchivedConversationNextCursor = nil
+        archivedConversationBootstrapState = .idle
         nativeLiveCurrentPath = nil
         nativeLiveRuntimeMetadata = nil
         nativeLiveRuntimeMetadataByConversationID.removeAll()
@@ -1135,6 +1300,8 @@ final class AppModel: ObservableObject {
         nativeLiveRuntimeSurface = nil
         chatSyncState = .idle
         conversationPaginationInFlight = false
+        archivedConversationBootstrapInFlight = false
+        archivedConversationPaginationInFlight = false
         chatRefreshInFlight = false
         chatOlderHistoryInFlight = false
         chatRefreshPendingForce = false
