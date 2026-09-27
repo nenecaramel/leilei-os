@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationContentBlocks,
+  conversationFavorites,
   conversationMessages,
   conversationProviderSessionCheckpoints,
   conversations,
@@ -10,8 +11,10 @@ import {
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
   runtimeEffects,
+  runtimeMindSemanticGroupingRequests,
   runtimeProactivityWakes,
   runtimeSubjectStates,
+  runtimeSubjectStateTransitions,
 } from "../../database/schema.js";
 import type {
   NativeLiveContentBlock,
@@ -754,6 +757,82 @@ implements NativeLiveConversationRepository {
           ...purgeStateIds,
         ]);
 
+        const transitions = await transaction
+          .select({
+            id: runtimeSubjectStateTransitions.id,
+            beforeEnvelope:
+              runtimeSubjectStateTransitions.beforeEnvelope,
+            afterEnvelope:
+              runtimeSubjectStateTransitions.afterEnvelope,
+          })
+          .from(runtimeSubjectStateTransitions)
+          .where(eq(runtimeSubjectStateTransitions.userId, input.userId));
+        const purgeTransitionIds = transitions
+          .filter((transition) =>
+            structuredValueReferencesAnyId(
+              transition.beforeEnvelope,
+              causalIds,
+            )
+            || structuredValueReferencesAnyId(
+              transition.afterEnvelope,
+              causalIds,
+            )
+          )
+          .map((transition) => transition.id);
+        if (purgeTransitionIds.length > 0) {
+          await transaction
+            .delete(runtimeSubjectStateTransitions)
+            .where(and(
+              eq(runtimeSubjectStateTransitions.userId, input.userId),
+              inArray(
+                runtimeSubjectStateTransitions.id,
+                purgeTransitionIds,
+              ),
+            ));
+        }
+
+        const groupingRequests = await transaction
+          .select({
+            id: runtimeMindSemanticGroupingRequests.id,
+            queryStateId:
+              runtimeMindSemanticGroupingRequests.queryStateId,
+            candidates:
+              runtimeMindSemanticGroupingRequests.candidates,
+            scores: runtimeMindSemanticGroupingRequests.scores,
+          })
+          .from(runtimeMindSemanticGroupingRequests)
+          .where(eq(
+            runtimeMindSemanticGroupingRequests.userId,
+            input.userId,
+          ));
+        const purgeGroupingRequestIds = groupingRequests
+          .filter((request) =>
+            purgeStateIds.has(request.queryStateId)
+            || structuredValueReferencesAnyId(
+              request.candidates,
+              causalIds,
+            )
+            || structuredValueReferencesAnyId(
+              request.scores,
+              causalIds,
+            )
+          )
+          .map((request) => request.id);
+        if (purgeGroupingRequestIds.length > 0) {
+          await transaction
+            .delete(runtimeMindSemanticGroupingRequests)
+            .where(and(
+              eq(
+                runtimeMindSemanticGroupingRequests.userId,
+                input.userId,
+              ),
+              inArray(
+                runtimeMindSemanticGroupingRequests.id,
+                purgeGroupingRequestIds,
+              ),
+            ));
+        }
+
         const wakes = await transaction
           .select({
             id: runtimeProactivityWakes.id,
@@ -892,6 +971,16 @@ implements NativeLiveConversationRepository {
               eq(runtimeSubjectStates.id, repair.stateId),
             ));
         }
+
+        await transaction
+          .delete(conversationFavorites)
+          .where(and(
+            eq(conversationFavorites.userId, input.userId),
+            eq(
+              conversationFavorites.conversationId,
+              input.conversationId,
+            ),
+          ));
 
         const deleted = await transaction
           .delete(conversations)
