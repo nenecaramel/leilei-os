@@ -173,6 +173,13 @@ import {
   DrizzleMindSemanticGroupingRepository,
 } from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
 import {
+  MindRetirementPreviewService,
+  type MindRetirementPreview,
+} from "../domains/runtime/mind-retirement-preview.js";
+import {
+  DrizzleMindRetirementRuntimePort,
+} from "../domains/runtime/mind-retirement-runtime-repository.js";
+import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";
 import { deleteExpiredDataImportRunsBatch } from "../domains/import/import-retention.js";
@@ -201,6 +208,36 @@ import {
 } from "../observability/runtime-observers.js";
 
 type DatabaseResource = ReturnType<typeof createDatabase>;
+
+function logMindRetirementPreview(
+  logger: SafeLogger,
+  preview: MindRetirementPreview,
+): void {
+  logger.info("mind_retirement_preview_summary", {
+    scannedAnchors: preview.scannedAnchors,
+    truncated: preview.truncated,
+  });
+  for (const kind of preview.kinds) {
+    logger.info("mind_retirement_preview_kind", {
+      mindKind: kind.kind,
+      scannedAnchors: kind.scannedAnchors,
+      terminalAnchors: kind.terminalAnchors,
+      nonTerminalAnchors: kind.nonTerminalAnchors,
+      unreadableAnchors: kind.unreadableAnchors,
+      minAgeHours: kind.terminalAgeHours?.min ?? null,
+      p50AgeHours: kind.terminalAgeHours?.p50 ?? null,
+      p90AgeHours: kind.terminalAgeHours?.p90 ?? null,
+      maxAgeHours: kind.terminalAgeHours?.max ?? null,
+    });
+    for (const retention of kind.eligibleByRetention) {
+      logger.info("mind_retirement_preview_retention", {
+        mindKind: kind.kind,
+        retentionHours: retention.retentionHours,
+        eligibleThreads: retention.threads,
+      });
+    }
+  }
+}
 
 type BackgroundWorkflowKind =
   | "distillation"
@@ -320,6 +357,12 @@ export function createProcessRuntime(
     getMindLifecycleTuningConfig(runtimeEnv);
   const mindRetirementConfig =
     getMindRetirementConfig(runtimeEnv);
+  const mindRetirementPreviewService = runtimeEnv.MCP_USER_ID
+    ? new MindRetirementPreviewService(
+        new DrizzleMindRetirementRuntimePort(db),
+      )
+    : null;
+  let mindRetirementPreviewRun: Promise<void> | null = null;
   const mindSemanticGroupingRepository =
     new DrizzleMindSemanticGroupingRepository(
       db,
@@ -799,6 +842,24 @@ export function createProcessRuntime(
       void retentionCoordinator.runNow().catch(() => undefined);
       void nativeLiveMindFollowUpRecovery.runNow().catch(() => undefined);
       void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
+      if (
+        mindRetirementPreviewService
+        && runtimeEnv.MCP_USER_ID
+        && !mindRetirementPreviewRun
+      ) {
+        mindRetirementPreviewRun = mindRetirementPreviewService.preview({
+          userId: runtimeEnv.MCP_USER_ID,
+          subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
+          now: new Date().toISOString(),
+          limit: 2_000,
+        }).then((preview) => {
+          logMindRetirementPreview(logger, preview);
+        }).catch((error) => {
+          logger.warn("mind_retirement_preview_failed", {
+            name: error instanceof Error ? error.name : "UnknownError",
+          });
+        });
+      }
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
@@ -810,6 +871,7 @@ export function createProcessRuntime(
         retentionCoordinator.drain(),
         nativeLiveMindFollowUpRecovery.drain(),
         nativeLiveSemanticRecovery.drain(),
+        mindRetirementPreviewRun ?? Promise.resolve(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.
