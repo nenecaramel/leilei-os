@@ -1,5 +1,6 @@
 import type {
   ExportDiaryRecord,
+  ExportMindStateRecord,
   ExportTodoPaper,
   RestorableExportDocument,
 } from "../export/export-types.js";
@@ -56,6 +57,9 @@ function includedModules(document: RestorableExportDocument): Set<ImportModule> 
   const modules: ImportModule[] = [];
   if (document.data.diary) modules.push("diary");
   if (document.data.todo) modules.push("todo");
+  if (document.schema_version === 3 && document.data.mind) {
+    modules.push("mind");
+  }
   if (document.schema_version === 3 && document.data.projects) {
     modules.push("projects");
   }
@@ -121,6 +125,15 @@ function hasExactCreatedValue(
         paper.date === record.date
         && paper.author === record.author
         && hashCanonical(paper) === hashCanonical(record),
+    );
+  }
+
+  if (item.module === "mind") {
+    const record = item.record as ExportMindStateRecord;
+    return (state.mind ?? []).some(
+      (candidate) =>
+        candidate.id === record.id
+        && hashCanonical(candidate) === hashCanonical(record),
     );
   }
 
@@ -205,6 +218,13 @@ export class ImportService {
             await transaction.insertTodo(
               userId,
               item.record as ExportTodoPaper,
+            );
+            continue;
+          }
+          if (item.module === "mind") {
+            await transaction.insertMind(
+              userId,
+              item.record as ExportMindStateRecord,
             );
             continue;
           }
