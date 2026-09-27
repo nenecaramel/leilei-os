@@ -415,7 +415,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       resume: sessionId,
       execution,
       verbatimPrompts: false,
-      captureContextUsage: true,
+      captureContextUsage: false,
+      captureFinalContextUsage: true,
       hooks,
     });
 
@@ -524,6 +525,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       execution = null,
       verbatimPrompts = true,
       captureContextUsage = true,
+      captureFinalContextUsage = false,
       hooks = null,
     } = {},
   ) {
@@ -655,6 +657,23 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
         if (sdkResultFailed(message)) {
           terminalFailure = message;
+        }
+      }
+
+      if (
+        captureFinalContextUsage
+        && typeof activeQuery.getContextUsage === "function"
+      ) {
+        try {
+          rawContextUsage = await activeQuery.getContextUsage({
+            detail: "summary",
+          });
+          contextUsageError = null;
+        } catch (cause) {
+          if (!rawContextUsage) {
+            contextUsageError =
+              cause instanceof Error ? cause.message : String(cause);
+          }
         }
       }
     } catch (cause) {
