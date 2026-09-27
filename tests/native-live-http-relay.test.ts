@@ -1905,3 +1905,89 @@ test("internal relay reserves and receipts provider session cleanup in authentic
     },
   );
 });
+
+
+test("internal relay Mind semantic grouping endpoints preserve authenticated user scope", async () => {
+  const relayService = new FakeRelayService();
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const grouping = {
+    async reserveNext(input: unknown) {
+      calls.push({ name: "reserveNext", input });
+      return {
+        reservationId: "99999999-9999-4999-8999-999999999999",
+        query: "complete the backend cleanup",
+        candidates: [{
+          stateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          kind: "drive" as const,
+          text: "finish the runtime cleanup",
+        }],
+      };
+    },
+    async acceptScores(input: unknown) {
+      calls.push({ name: "acceptScores", input });
+    },
+    async acceptFallback(input: unknown) {
+      calls.push({ name: "acceptFallback", input });
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          mindSemanticGrouping: grouping,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const reservationId = "99999999-9999-4999-8999-999999999999";
+      const candidateId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+      const reserve = await fetch(
+        `${baseUrl}/internal/native-live-relay/mind-semantic-grouping/reserve`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(reserve.status, 200);
+
+      const scores = await fetch(
+        `${baseUrl}/internal/native-live-relay/mind-semantic-grouping/reservations/${reservationId}/scores`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            scores: { [candidateId]: 0.93 },
+          }),
+        },
+      );
+      assert.equal(scores.status, 200);
+      assert.deepEqual(calls, [{
+        name: "reserveNext",
+        input: {
+          userId,
+          listenerInstanceId: listenerId,
+        },
+      }, {
+        name: "acceptScores",
+        input: {
+          userId,
+          listenerInstanceId: listenerId,
+          requestId: reservationId,
+          scores: { [candidateId]: 0.93 },
+        },
+      }]);
+    },
+  );
+});
