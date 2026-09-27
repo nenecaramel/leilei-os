@@ -513,7 +513,7 @@ struct UniverseNodeSheet: View {
                     }
 
                     Text(
-                        "更新于 \(formattedDate(node.updatedAt))"
+                        "创建于 \(formattedDate(node.createdAt)) · 更新于 \(formattedDate(node.updatedAt))"
                     )
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -530,6 +530,18 @@ struct UniverseNodeSheet: View {
                 }
 
                 detailMetadata(node)
+
+                HStack(spacing: 6) {
+                    Text("一阶关联")
+                        .foregroundStyle(.secondary)
+
+                    Text("\(connections.count)")
+                        .fontWeight(.semibold)
+
+                    Text("条")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
 
                 if !connections.isEmpty {
                     connectionsSection
@@ -812,12 +824,9 @@ struct UniverseNodeSheet: View {
                             Spacer()
 
                             Text(
-                                UniverseNodeDraft
-                                    .numberText(
-                                        membership.weight
-                                            * 100
-                                    )
-                                + "%"
+                                formattedMembershipWeight(
+                                    membership.weight
+                                )
                             )
                             .foregroundStyle(.secondary)
                         }
@@ -1365,6 +1374,21 @@ struct UniverseNodeSheet: View {
         return date.formatted(
             date: .abbreviated,
             time: .omitted
+        )
+    }
+
+    private func formattedMembershipWeight(
+        _ weight: Double
+    ) -> String {
+        if weight >= 0,
+           weight <= 1 {
+            return "\(Int((weight * 100).rounded()))%"
+        }
+
+        return weight.formatted(
+            .number.precision(
+                .fractionLength(0...2)
+            )
         )
     }
 
