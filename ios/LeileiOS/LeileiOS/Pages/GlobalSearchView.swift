@@ -74,6 +74,12 @@ struct GlobalSearchView: View {
                 AppStateSurface(title: "Nothing here")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            case .queryTooLong:
+                AppStateSurface(
+                    title: "Search is too long"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             case .unavailable:
                 AppStateSurface(
                     title: "Unavailable",
@@ -127,6 +133,17 @@ struct GlobalSearchView: View {
         loadMoreTask?.cancel()
         isLoadingMore = false
         loadMoreFailed = false
+
+        let normalizedQuery = query
+            .precomposedStringWithCanonicalMapping
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        guard normalizedQuery.unicodeScalars.count <= 200 else {
+            state = .queryTooLong
+            return
+        }
 
         guard let request = currentRequest else {
             state = .idle
@@ -199,9 +216,11 @@ struct GlobalSearchView: View {
     }
 
     private var currentRequest: GlobalSearchRequest? {
-        let trimmedQuery = query.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
+        let trimmedQuery = query
+            .precomposedStringWithCanonicalMapping
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
         guard !trimmedQuery.isEmpty,
               !modules.isEmpty
         else {
@@ -270,6 +289,7 @@ private extension GlobalSearchView {
         case loading
         case results(GlobalSearchResponse)
         case noResults
+        case queryTooLong
         case unavailable
     }
 }
