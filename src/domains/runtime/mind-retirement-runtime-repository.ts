@@ -113,6 +113,12 @@ implements MindRetirementRuntimePort {
         )
         .for("update");
 
+      // A new current state of this kind may still settle into an old thread.
+      // Destructive retirement waits until that ambiguity is gone.
+      if (rows.some((row) => row.settlementStatus === "unsettled")) {
+        return { outcome: "conflict" as const, deleted: 0 as const };
+      }
+
       const settledRows = rows.filter(
         (row) => row.settlementStatus === "settled",
       );
