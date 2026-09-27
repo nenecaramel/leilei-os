@@ -9,6 +9,7 @@ import {
   diaryComments,
   diaryEntries,
   nativeLiveMindFollowUps,
+  nativeLiveTurnPreparations,
   projectConversations,
   projectResources,
   projects,
@@ -446,6 +447,20 @@ export class DrizzleExportRepository implements ExportRepository {
         added_at: toIso(row.addedAt),
       })),
     };
+  }
+
+  async hasIncompleteTurnPreparations(
+    userId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: nativeLiveTurnPreparations.id })
+      .from(nativeLiveTurnPreparations)
+      .where(and(
+        eq(nativeLiveTurnPreparations.userId, userId),
+        eq(nativeLiveTurnPreparations.status, "prepared"),
+      ))
+      .limit(1);
+    return rows.length > 0;
   }
 
   async hasIncompleteMindFollowUps(
