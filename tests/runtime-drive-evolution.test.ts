@@ -9,6 +9,9 @@ import {
   type DriveEvolutionPolicy,
   type DriveEvolutionUpdate,
 } from "../src/domains/runtime/drive-evolution.js";
+import type {
+  MindSemanticGroupingService,
+} from "../src/domains/runtime/mind-semantic-grouping.js";
 
 const policy: DriveEvolutionPolicy = {
   basePressure: 0.4,
@@ -420,4 +423,60 @@ test("fresh reinforcement postpones dormancy even when pressure stays satisfied"
     port.updates[0]?.evolution.lastReinforcedAt,
     "2026-09-23T11:00:00.000Z",
   );
+});
+
+
+test("Drive semantic grouping can merge a paraphrase into an older thread without blocking exact initialization", async () => {
+  const anchorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const anchorText = "finish the runtime cleanup";
+  const anchorPayload = writeDriveEvolution(null, {
+    phase: "active",
+    role: "anchor",
+    threadKey: driveThreadKey(anchorText),
+    anchorStateId: anchorId,
+    pressure: 0.4,
+    reinforcementCount: 1,
+    reinforcementSources: ["source-1"],
+    satisfactionTotal: 0,
+    lastEvolvedAt: "2026-09-26T10:00:00.000Z",
+    lastReinforcedAt: "2026-09-26T10:00:00.000Z",
+    lastSatisfiedAt: null,
+    dormantAt: null,
+  });
+  const paraphraseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const paraphraseText = "complete the backend cleanup";
+  const port = new Port([
+    candidate(anchorId, anchorText, "source-1", "2026-09-26T10:00:00.000Z", anchorPayload),
+    candidate(paraphraseId, paraphraseText, "source-2", "2026-09-27T00:00:00.000Z"),
+  ]);
+  const semanticGrouping = {
+    async reconcile(input: Parameters<MindSemanticGroupingService["reconcile"]>[0]) {
+      return {
+        canonicalThreadKeyByThread: new Map([
+          [driveThreadKey(paraphraseText), driveThreadKey(anchorText)],
+        ]),
+        staged: 0,
+      };
+    },
+  };
+  const service = new DriveEvolutionService(
+    port,
+    policy,
+    semanticGrouping,
+  );
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-27T00:00:00.000Z",
+  });
+
+  assert.equal(result.threads, 1);
+  const anchor = port.updates.find((update) => update.stateId === anchorId);
+  const reinforcement = port.updates.find((update) => update.stateId === paraphraseId);
+  assert.equal(anchor?.evolution.reinforcementCount, 2);
+  assert.equal(anchor?.evolution.pressure, 0.6);
+  assert.equal(reinforcement?.evolution.role, "reinforcement");
+  assert.equal(reinforcement?.evolution.anchorStateId, anchorId);
+  assert.equal(reinforcement?.evolution.threadKey, driveThreadKey(anchorText));
 });
