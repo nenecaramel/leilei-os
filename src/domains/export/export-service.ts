@@ -31,6 +31,7 @@ export interface ExportRepository {
   listMind(userId: string): Promise<ExportMindStateRecord[]>;
   listMindContinuity(userId: string): Promise<ExportMindContinuityBundle>;
   hasIncompleteMindFollowUps(userId: string): Promise<boolean>;
+  hasIncompleteTurnPreparations(userId: string): Promise<boolean>;
   listConversations(userId: string): Promise<ExportConversationsBundle>;
   listUniverse(userId: string): Promise<ExportUniverseBundle | null>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
@@ -106,7 +107,14 @@ export class ExportService {
       data.todo = await repository.listTodo(userId);
     }
     if (scope === "all") {
-      if (await repository.hasIncompleteMindFollowUps(userId)) {
+      const [
+        incompleteTurns,
+        incompleteMind,
+      ] = await Promise.all([
+        repository.hasIncompleteTurnPreparations(userId),
+        repository.hasIncompleteMindFollowUps(userId),
+      ]);
+      if (incompleteTurns || incompleteMind) {
         throw new ExportServiceError("EXPORT_IN_PROGRESS");
       }
 
