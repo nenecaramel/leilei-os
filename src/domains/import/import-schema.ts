@@ -133,6 +133,30 @@ const projectsBundle = z.object({
   conversations: z.array(projectConversationRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
+const mindStateRecord = z.object({
+  id: uuid,
+  subject_id: z.string().min(1),
+  kind: z.enum([
+    "feel",
+    "memory",
+    "drive",
+    "thought",
+    "curiosity",
+    "topic",
+  ]),
+  text: z.string().nullable(),
+  payload: z.record(z.string(), z.unknown()).nullable(),
+  scope_applicability: z.enum(["global", "conversation", "path"]),
+  scope_conversation_id: uuid.nullable(),
+  scope_path_head_message_id: uuid.nullable(),
+  settlement_status: z.enum(["unsettled", "settled", "rejected"]),
+  path_status: z.enum(["current", "superseded"]),
+  validity_status: z.enum(["valid", "invalidated", "tombstoned"]),
+  envelope: z.record(z.string(), z.unknown()),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+}).strict();
+
 const lifecycleEvent = z.object({
   id: uuid,
   resource_type: z.string().min(1).max(32),
@@ -168,6 +192,9 @@ const dataV3Schema = z.object({
   diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   projects: projectsBundle.optional(),
+  mind: z.array(mindStateRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE)
+    .optional(),
 }).strict();
 
 const documentV2Schema = z.object({
@@ -225,6 +252,51 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
         );
       }
       ids.add(entry.id);
+    }
+  }
+
+  if (document.schema_version === 3 && document.data.mind) {
+    for (const state of document.data.mind) {
+      if (state.subject_id.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Mind subject must not be blank",
+        );
+      }
+      const hasText =
+        state.text !== null
+        && state.text.trim().length > 0;
+      const hasPayload =
+        state.payload !== null
+        && Object.keys(state.payload).length > 0;
+      if (!hasText && !hasPayload) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Mind state must contain text or payload",
+        );
+      }
+      const scopeValid =
+        (
+          state.scope_applicability === "global"
+          && state.scope_conversation_id === null
+          && state.scope_path_head_message_id === null
+        )
+        || (
+          state.scope_applicability === "conversation"
+          && state.scope_conversation_id !== null
+          && state.scope_path_head_message_id === null
+        )
+        || (
+          state.scope_applicability === "path"
+          && state.scope_conversation_id !== null
+          && state.scope_path_head_message_id !== null
+        );
+      if (!scopeValid) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Mind scope is inconsistent",
+        );
+      }
     }
   }
 
