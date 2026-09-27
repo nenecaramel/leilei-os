@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   planCausalSubjectStatePurge,
+  planConversationDeletionSubjectStateChanges,
   planExclusiveProviderSessionCleanup,
   planReplacementMessagePurge,
   planSubjectStateEvolutionRepairs,
@@ -385,4 +386,101 @@ test("provider session cleanup only selects sessions exclusive to purged message
   });
 
   assert.deepEqual(sessions, ["session-old"]);
+});
+
+
+test("whole conversation deletion purges exclusive Mind and repairs shared provenance", () => {
+  const changes = planConversationDeletionSubjectStateChanges({
+    conversationId: "c-delete",
+    purgeMessageIds: new Set(["deleted-message"]),
+    states: [
+      {
+        id: "conversation-scoped",
+        envelope: {
+          scope: {
+            applicability: "conversation",
+            conversationId: "c-delete",
+          },
+          provenance: {
+            sources: [{ kind: "message", id: "surviving-message" }],
+          },
+        },
+        scopeConversationId: "c-delete",
+        scopePathHeadMessageId: null,
+      },
+      {
+        id: "exclusive-global",
+        envelope: {
+          scope: { applicability: "global" },
+          provenance: {
+            sources: [{ kind: "message", id: "deleted-message" }],
+          },
+        },
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+      },
+      {
+        id: "shared-global",
+        envelope: {
+          scope: { applicability: "global" },
+          provenance: {
+            sources: [
+              { kind: "message", id: "deleted-message" },
+              { kind: "message", id: "surviving-message" },
+            ],
+            causedBy: "deleted-message",
+            derivedFrom: ["exclusive-global", "safe-state"],
+          },
+        },
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+      },
+      {
+        id: "dependent-exclusive",
+        envelope: {
+          scope: { applicability: "global" },
+          provenance: {
+            sources: [{
+              kind: "persistent_state",
+              id: "exclusive-global",
+            }],
+          },
+        },
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    new Set(changes.purgeStateIds),
+    new Set([
+      "conversation-scoped",
+      "exclusive-global",
+      "dependent-exclusive",
+    ]),
+  );
+  assert.deepEqual(changes.envelopeRepairs, [{
+    stateId: "shared-global",
+    nextEnvelope: {
+      scope: { applicability: "global" },
+      provenance: {
+        sources: [
+          { kind: "message", id: "surviving-message" },
+        ],
+        causedBy: null,
+        derivedFrom: ["safe-state"],
+      },
+    },
+  }]);
+});
+
+test("structured reference scan also detects ids used as JSON object keys", () => {
+  assert.equal(
+    stateReferencesAnyId(
+      { scores: { "state-to-delete": 0.91 } },
+      new Set(["state-to-delete"]),
+    ),
+    true,
+  );
 });
