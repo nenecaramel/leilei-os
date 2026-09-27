@@ -8,6 +8,9 @@ import type {
   RestorableExportDocument,
 } from "../export/export-types.js";
 import {
+  MAX_PRODUCT_BACKUP_BYTES,
+} from "../export/product-backup-limits.js";
+import {
   DIARY_MOOD_MAX_LENGTH,
   DIARY_TAGS_MAX_COUNT,
   DIARY_TITLE_MAX_LENGTH,
@@ -16,7 +19,8 @@ import {
   MAX_TODO_ENTRIES,
 } from "../resource-limits.js";
 
-export const MAX_IMPORT_PACKAGE_BYTES = 50 * 1024 * 1024;
+export const MAX_IMPORT_PACKAGE_BYTES =
+  MAX_PRODUCT_BACKUP_BYTES;
 
 export type ImportErrorCode =
   | "INVALID_IMPORT_FILE"
