@@ -586,19 +586,29 @@ struct UniverseView: View {
     private func handleImportedFile(
         _ result: Result<[URL], Error>
     ) {
-        importPreview = nil
-        importError = nil
-        importUncertain = false
+        if case .failure(let error) = result {
+            let cocoaError = error as NSError
+            if cocoaError.domain == NSCocoaErrorDomain,
+               cocoaError.code == NSUserCancelledError {
+                return
+            }
+
+            importPreview = nil
+            importError =
+                "文件无法用于迁移"
+            importUncertain = false
+            return
+        }
 
         guard case .success(let urls) = result,
               let url = urls.first
         else {
-            if case .failure = result {
-                importError =
-                    "文件无法用于迁移"
-            }
             return
         }
+
+        importPreview = nil
+        importError = nil
+        importUncertain = false
 
         let didAccess =
             url.startAccessingSecurityScopedResource()
@@ -686,9 +696,8 @@ struct UniverseView: View {
                     "服务器已有内容，未覆盖现有内容，请重新读取。"
             }
         } catch {
-            importUncertain = true
             importError =
-                "迁移状态暂时无法确认，请先重新读取；不要再次提交。"
+                "迁移未完成，请重新确认。"
         }
     }
 
