@@ -101,7 +101,7 @@ function state(
       semanticActor: { kind: "subject", id: "G" },
       producer: { kind: "model", id: "claude-code" },
       committer: { kind: "service", id: "leileios-runtime" },
-      authority: "subject_authorized",
+      authority: kind === "topic" ? "derived" : "subject_authorized",
       scope: {
         userId: "u1",
         subjectId: "G",
