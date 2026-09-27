@@ -5,6 +5,7 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   nativeLiveRuntimeListenerLeases,
+  nativeLiveSemanticScoringRequests,
   runtimeContextManifests,
   runtimeSubjectStates,
   users,
@@ -323,5 +324,152 @@ test(
     );
     assert.equal(typeof selected.selection?.score, "number");
     assert.ok((selected.selection?.score as number) > 0);
+  },
+);
+
+
+test(
+  "semantic completion recovery preserves per-conversation order while other conversations can progress",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let cleanupUserId: string | null = null;
+    t.after(async () => {
+      try {
+        if (cleanupUserId) {
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, cleanupUserId));
+          await database.db
+            .delete(users)
+            .where(eq(users.id, cleanupUserId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email:
+          `native-live-semantic-order-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Semantic Order",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    cleanupUserId = user.id;
+
+    const conversationsRepo =
+      new DrizzleNativeLiveConversationRepository(database.db);
+    const conversationA = await conversationsRepo.createConversation({
+      userId: user.id,
+      title: "Semantic FIFO A",
+    });
+    const conversationB = await conversationsRepo.createConversation({
+      userId: user.id,
+      title: "Semantic FIFO B",
+    });
+    const turnPort = new DrizzleNativeLiveBackendTurnPort(database.db);
+
+    async function prepareSend(
+      conversationId: string,
+      expectedHeadMessageId: string | null,
+      text: string,
+    ) {
+      const result = await turnPort.prepareSend({
+        prepareId: crypto.randomUUID(),
+        userId: user.id,
+        requestId: crypto.randomUUID(),
+        conversationId,
+        expectedHeadMessageId,
+        text,
+        executionSelection: null,
+      });
+      assert.equal(result.ok, true);
+      if (!result.ok) throw new Error("expected prepare success");
+      return result.preparation;
+    }
+
+    const a1 = await prepareSend(conversationA.id, null, "A1");
+    const a2 = await prepareSend(
+      conversationA.id,
+      a1.canonicalUserMessageId,
+      "A2",
+    );
+    const b1 = await prepareSend(conversationB.id, null, "B1");
+
+    const a1Candidate = crypto.randomUUID();
+    const a2Candidate = crypto.randomUUID();
+    const b1Candidate = crypto.randomUUID();
+    await database.db.insert(nativeLiveSemanticScoringRequests).values([
+      {
+        prepareId: a1.prepareId,
+        userId: user.id,
+        conversationId: conversationA.id,
+        manifestId: crypto.randomUUID(),
+        assembledAt: new Date("2026-09-27T03:00:00.000Z"),
+        snapshotSequence: 1,
+        query: "A1",
+        candidates: [{
+          stateId: a1Candidate,
+          kind: "memory",
+          text: "A1 memory",
+        }],
+        status: "completed",
+        scores: { [a1Candidate]: 0.8 },
+        completedAt: new Date("2026-09-27T03:01:00.000Z"),
+        resumeAvailableAt: new Date("2099-01-01T00:00:00.000Z"),
+      },
+      {
+        prepareId: a2.prepareId,
+        userId: user.id,
+        conversationId: conversationA.id,
+        manifestId: crypto.randomUUID(),
+        assembledAt: new Date("2026-09-27T03:02:00.000Z"),
+        snapshotSequence: 2,
+        query: "A2",
+        candidates: [{
+          stateId: a2Candidate,
+          kind: "memory",
+          text: "A2 memory",
+        }],
+        status: "completed",
+        scores: { [a2Candidate]: 0.8 },
+        completedAt: new Date("2026-09-27T03:03:00.000Z"),
+        resumeAvailableAt: new Date("2000-01-01T00:00:00.000Z"),
+      },
+      {
+        prepareId: b1.prepareId,
+        userId: user.id,
+        conversationId: conversationB.id,
+        manifestId: crypto.randomUUID(),
+        assembledAt: new Date("2026-09-27T03:04:00.000Z"),
+        snapshotSequence: 1,
+        query: "B1",
+        candidates: [{
+          stateId: b1Candidate,
+          kind: "memory",
+          text: "B1 memory",
+        }],
+        status: "completed",
+        scores: { [b1Candidate]: 0.8 },
+        completedAt: new Date("2026-09-27T03:05:00.000Z"),
+        resumeAvailableAt: new Date("2000-01-01T00:00:00.000Z"),
+      },
+    ]);
+
+    const semanticRepository =
+      new DrizzleNativeLiveSemanticScoringRepository(database.db);
+    const selected = await semanticRepository.findCompletionPending();
+    assert.ok(selected);
+    assert.equal(
+      selected.prepareId,
+      b1.prepareId,
+      "deferred A1 must block A2 without blocking conversation B",
+    );
   },
 );
