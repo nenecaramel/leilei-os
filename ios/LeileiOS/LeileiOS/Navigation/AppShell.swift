@@ -6,6 +6,8 @@ struct AppShell: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var selectedPage: AppPage = .chat
+    @State private var diaryTarget: DiaryNavigationTarget?
+    @State private var daySpaceTarget: DaySpaceNavigationTarget?
     @State private var universeTargetNodeID: String?
     @State private var menuOpen = false
     @State private var settingsPresented = false
@@ -144,6 +146,8 @@ struct AppShell: View {
 
                 MainPageLayer(
                     selectedPage: selectedPage,
+                    diaryTarget: diaryTarget,
+                    daySpaceTarget: daySpaceTarget,
                     universeTargetNodeID: universeTargetNodeID,
                     isDraftConversation: isDraftConversation,
                     draftConversationID: draftConversationID,
@@ -157,6 +161,20 @@ struct AppShell: View {
                     },
                     onOpenConversation: {
                         selectedPage = .chat
+                    },
+                    onOpenDiary: { target in
+                        diaryTarget = target
+                        selectedPage = .diary
+                    },
+                    onDiaryTargetConsumed: {
+                        diaryTarget = nil
+                    },
+                    onOpenDaySpace: { target in
+                        daySpaceTarget = target
+                        selectedPage = .daySpace
+                    },
+                    onDaySpaceTargetConsumed: {
+                        daySpaceTarget = nil
                     },
                     onOpenUniverseNode: { nodeID in
                         universeTargetNodeID = nodeID
@@ -304,6 +322,8 @@ struct AppShell: View {
 
             PageContainer(
                 selectedPage: selectedPage,
+                diaryTarget: diaryTarget,
+                daySpaceTarget: daySpaceTarget,
                 universeTargetNodeID: universeTargetNodeID,
                 isDraftConversation: isDraftConversation,
                 draftConversationID: draftConversationID,
@@ -313,6 +333,20 @@ struct AppShell: View {
                 onMenu: nil,
                 onOpenConversation: {
                     selectedPage = .chat
+                },
+                onOpenDiary: { target in
+                    diaryTarget = target
+                    selectedPage = .diary
+                },
+                onDiaryTargetConsumed: {
+                    diaryTarget = nil
+                },
+                onOpenDaySpace: { target in
+                    daySpaceTarget = target
+                    selectedPage = .daySpace
+                },
+                onDaySpaceTargetConsumed: {
+                    daySpaceTarget = nil
                 },
                 onOpenUniverseNode: { nodeID in
                     universeTargetNodeID = nodeID
@@ -328,12 +362,18 @@ struct AppShell: View {
 
 private struct MainPageLayer: View {
     let selectedPage: AppPage
+    let diaryTarget: DiaryNavigationTarget?
+    let daySpaceTarget: DaySpaceNavigationTarget?
     let universeTargetNodeID: String?
     let isDraftConversation: Bool
     let draftConversationID: UUID
     let onDraftCommitted: () -> Void
     let onMenu: () -> Void
     let onOpenConversation: () -> Void
+    let onOpenDiary: (DiaryNavigationTarget) -> Void
+    let onDiaryTargetConsumed: () -> Void
+    let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
+    let onDaySpaceTargetConsumed: () -> Void
     let onOpenUniverseNode: (String) -> Void
     let onUniverseTargetConsumed: () -> Void
 
@@ -356,12 +396,18 @@ private struct MainPageLayer: View {
 
             PageContainer(
                 selectedPage: selectedPage,
+                diaryTarget: diaryTarget,
+                daySpaceTarget: daySpaceTarget,
                 universeTargetNodeID: universeTargetNodeID,
                 isDraftConversation: isDraftConversation,
                 draftConversationID: draftConversationID,
                 onDraftCommitted: onDraftCommitted,
                 onMenu: onMenu,
                 onOpenConversation: onOpenConversation,
+                onOpenDiary: onOpenDiary,
+                onDiaryTargetConsumed: onDiaryTargetConsumed,
+                onOpenDaySpace: onOpenDaySpace,
+                onDaySpaceTargetConsumed: onDaySpaceTargetConsumed,
                 onOpenUniverseNode: onOpenUniverseNode,
                 onUniverseTargetConsumed: onUniverseTargetConsumed
             )
