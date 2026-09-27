@@ -1,5 +1,10 @@
 import { createOwnerFingerprint } from "../export/owner-fingerprint.js";
 import type {
+  ExportConversationAttachmentRecord,
+  ExportConversationContentBlockRecord,
+  ExportConversationMessageRecord,
+  ExportConversationRecord,
+  ExportConversationsBundle,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
@@ -15,7 +20,13 @@ import {
 } from "./import-schema.js";
 import { hashCanonical } from "./import-canonical.js";
 
-export type ImportModule = "diary" | "todo" | "projects" | "mind";
+export type ImportModule =
+  | "diary"
+  | "todo"
+  | "projects"
+  | "mind"
+  | "conversations";
+
 export type ImportClassification =
   | "create"
   | "duplicate"
@@ -34,11 +45,16 @@ export type ImportCurrentState = {
   todo: ExportTodoPaper[];
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
+  conversations?: ExportConversationsBundle;
   foreign_diary_ids?: Set<string>;
   foreign_workspace_ids?: Set<string>;
   foreign_project_ids?: Set<string>;
   foreign_project_resource_ids?: Set<string>;
   foreign_mind_ids?: Set<string>;
+  foreign_conversation_ids?: Set<string>;
+  foreign_conversation_message_ids?: Set<string>;
+  foreign_conversation_content_block_ids?: Set<string>;
+  foreign_conversation_attachment_ids?: Set<string>;
   native_live_conversation_ids?: Set<string>;
 };
 
@@ -47,6 +63,7 @@ export type ImportSummary = {
   todo: ImportCounts;
   projects?: ImportCounts;
   mind?: ImportCounts;
+  conversations?: ImportCounts;
 };
 
 export type ProjectRestoreRecord =
@@ -67,6 +84,24 @@ export type ProjectRestoreRecord =
       value: ExportProjectConversationRecord;
     };
 
+export type ConversationRestoreRecord =
+  | {
+      entity: "conversation";
+      value: ExportConversationRecord;
+    }
+  | {
+      entity: "message";
+      value: ExportConversationMessageRecord;
+    }
+  | {
+      entity: "content_block";
+      value: ExportConversationContentBlockRecord;
+    }
+  | {
+      entity: "attachment";
+      value: ExportConversationAttachmentRecord;
+    };
+
 export type ImportPlanItem = {
   module: ImportModule;
   logical_key: string;
@@ -75,7 +110,8 @@ export type ImportPlanItem = {
     | ExportDiaryRecord
     | ExportTodoPaper
     | ExportMindStateRecord
-    | ProjectRestoreRecord;
+    | ProjectRestoreRecord
+    | ConversationRestoreRecord;
   current_hash: string | null;
 };
 
@@ -94,7 +130,23 @@ const emptyCounts = (): ImportCounts => ({
   invalid: 0,
 });
 
-function classify<T extends ExportDiaryRecord | ExportTodoPaper | ExportMindStateRecord>(
+const emptyProjects = (): ExportProjectsBundle => ({
+  workspaces: [],
+  projects: [],
+  resources: [],
+  conversations: [],
+});
+
+const emptyConversations = (): ExportConversationsBundle => ({
+  conversations: [],
+  messages: [],
+  content_blocks: [],
+  attachments: [],
+});
+
+function classify<
+  T extends ExportDiaryRecord | ExportTodoPaper | ExportMindStateRecord,
+>(
   module: "diary" | "todo" | "mind",
   imported: T[],
   current: T[],
@@ -109,8 +161,7 @@ function classify<T extends ExportDiaryRecord | ExportTodoPaper | ExportMindStat
     );
   }
 
-  const items: ImportPlanItem[] = [];
-  for (const record of imported) {
+  return imported.map((record) => {
     const logicalKey = key(record);
     const existing = current.find(
       (candidate) => key(candidate) === logicalKey,
@@ -121,25 +172,20 @@ function classify<T extends ExportDiaryRecord | ExportTodoPaper | ExportMindStat
       classification = "invalid";
     } else if (!existing) {
       classification = "create";
-    } else if (
-      hashCanonical(existing) === hashCanonical(record)
-    ) {
+    } else if (hashCanonical(existing) === hashCanonical(record)) {
       classification = "duplicate";
     } else {
       classification = "conflict";
     }
 
-    items.push({
+    return {
       module,
       logical_key: logicalKey,
       classification,
       record,
-      current_hash: existing
-        ? hashCanonical(existing)
-        : null,
-    });
-  }
-  return items;
+      current_hash: existing ? hashCanonical(existing) : null,
+    };
+  });
 }
 
 function classifyProjectEntity<T>(
@@ -163,13 +209,12 @@ function classifyProjectEntity<T>(
       (candidate) => key(candidate) === key(record),
     );
     let classification: ImportClassification;
+
     if ((occurrences.get(logicalKey) ?? 0) > 1) {
       classification = "invalid";
     } else if (!existing) {
       classification = "create";
-    } else if (
-      hashCanonical(existing) === hashCanonical(record)
-    ) {
+    } else if (hashCanonical(existing) === hashCanonical(record)) {
       classification = "duplicate";
     } else {
       classification = "conflict";
@@ -179,27 +224,331 @@ function classifyProjectEntity<T>(
       module: "projects" as const,
       logical_key: logicalKey,
       classification,
-      record: {
-        entity,
-        value: record,
-      } as ProjectRestoreRecord,
-      current_hash: existing
-        ? hashCanonical(existing)
-        : null,
+      record: { entity, value: record } as ProjectRestoreRecord,
+      current_hash: existing ? hashCanonical(existing) : null,
     };
   });
+}
+
+function classifyConversationEntity<T>(
+  entity: ConversationRestoreRecord["entity"],
+  imported: T[],
+  current: T[],
+  key: (record: T) => string,
+): ImportPlanItem[] {
+  const occurrences = new Map<string, number>();
+  for (const record of imported) {
+    const logicalKey = `${entity}:${key(record)}`;
+    occurrences.set(
+      logicalKey,
+      (occurrences.get(logicalKey) ?? 0) + 1,
+    );
+  }
+
+  return imported.map((record) => {
+    const logicalKey = `${entity}:${key(record)}`;
+    const existing = current.find(
+      (candidate) => key(candidate) === key(record),
+    );
+    let classification: ImportClassification;
+
+    if ((occurrences.get(logicalKey) ?? 0) > 1) {
+      classification = "invalid";
+    } else if (!existing) {
+      classification = "create";
+    } else if (hashCanonical(existing) === hashCanonical(record)) {
+      classification = "duplicate";
+    } else {
+      classification = "conflict";
+    }
+
+    return {
+      module: "conversations" as const,
+      logical_key: logicalKey,
+      classification,
+      record: { entity, value: record } as ConversationRestoreRecord,
+      current_hash: existing ? hashCanonical(existing) : null,
+    };
+  });
+}
+
+function conversationItems(
+  imported: ExportConversationsBundle,
+  current: ImportCurrentState,
+): ImportPlanItem[] {
+  const currentConversations =
+    current.conversations ?? emptyConversations();
+
+  const conversationItems = classifyConversationEntity(
+    "conversation",
+    imported.conversations,
+    currentConversations.conversations,
+    (record) => record.id,
+  );
+  const messageItems = classifyConversationEntity(
+    "message",
+    imported.messages,
+    currentConversations.messages,
+    (record) => record.id,
+  );
+  const blockItems = classifyConversationEntity(
+    "content_block",
+    imported.content_blocks,
+    currentConversations.content_blocks,
+    (record) => record.id,
+  );
+  const attachmentItems = classifyConversationEntity(
+    "attachment",
+    imported.attachments,
+    currentConversations.attachments,
+    (record) => record.id,
+  );
+  const items = [
+    ...conversationItems,
+    ...messageItems,
+    ...blockItems,
+    ...attachmentItems,
+  ];
+
+  const conversationIds = new Set([
+    ...currentConversations.conversations.map((record) => record.id),
+    ...imported.conversations.map((record) => record.id),
+  ]);
+  const messageById = new Map<string, ExportConversationMessageRecord>([
+    ...currentConversations.messages.map(
+      (record) => [record.id, record] as const,
+    ),
+    ...imported.messages.map(
+      (record) => [record.id, record] as const,
+    ),
+  ]);
+
+  for (const item of items) {
+    if (item.classification !== "create") continue;
+    const record = item.record as ConversationRestoreRecord;
+
+    if (
+      record.entity === "conversation"
+      && current.foreign_conversation_ids?.has(record.value.id)
+    ) {
+      item.classification = "conflict";
+      continue;
+    }
+
+    if (record.entity === "conversation") {
+      const headId = record.value.current_head_message_id;
+      if (headId) {
+        const head = messageById.get(headId);
+        if (!head || head.conversation_id !== record.value.id) {
+          item.classification = "invalid";
+        }
+      }
+      continue;
+    }
+
+    if (
+      record.entity === "message"
+      && current.foreign_conversation_message_ids?.has(record.value.id)
+    ) {
+      item.classification = "conflict";
+      continue;
+    }
+
+    if (record.entity === "message") {
+      if (!conversationIds.has(record.value.conversation_id)) {
+        item.classification = "invalid";
+        continue;
+      }
+      if (record.value.parent_message_id) {
+        const parent = messageById.get(record.value.parent_message_id);
+        if (
+          !parent
+          || parent.conversation_id !== record.value.conversation_id
+          || parent.id === record.value.id
+        ) {
+          item.classification = "invalid";
+        }
+      }
+      continue;
+    }
+
+    if (
+      record.entity === "content_block"
+      && current.foreign_conversation_content_block_ids?.has(record.value.id)
+    ) {
+      item.classification = "conflict";
+      continue;
+    }
+    if (record.entity === "content_block") {
+      if (!messageById.has(record.value.message_id)) {
+        item.classification = "invalid";
+      }
+      continue;
+    }
+
+    if (
+      record.entity === "attachment"
+      && current.foreign_conversation_attachment_ids?.has(record.value.id)
+    ) {
+      item.classification = "conflict";
+      continue;
+    }
+    if (!messageById.has(record.value.message_id)) {
+      item.classification = "invalid";
+    }
+  }
+
+  const importedMessageIds = new Set(
+    imported.messages.map((record) => record.id),
+  );
+  const cycleIds = new Set<string>();
+  for (const message of imported.messages) {
+    const seen = new Set<string>();
+    let currentId: string | null = message.id;
+    while (currentId && importedMessageIds.has(currentId)) {
+      if (seen.has(currentId)) {
+        for (const id of seen) cycleIds.add(id);
+        break;
+      }
+      seen.add(currentId);
+      const currentMessage = messageById.get(currentId);
+      currentId = currentMessage?.parent_message_id ?? null;
+    }
+  }
+  if (cycleIds.size > 0) {
+    for (const item of messageItems) {
+      const record = item.record as ConversationRestoreRecord;
+      if (
+        record.entity === "message"
+        && cycleIds.has(record.value.id)
+      ) {
+        item.classification = "invalid";
+      }
+    }
+  }
+
+  const currentPathKeys = new Map<string, string>();
+  for (const message of currentConversations.messages) {
+    if (
+      message.is_current_path
+      && message.current_path_index !== null
+    ) {
+      currentPathKeys.set(
+        `${message.conversation_id}:${message.current_path_index}`,
+        message.id,
+      );
+    }
+  }
+  const importedPathKeys = new Map<string, string>();
+  for (const item of messageItems) {
+    const record = (item.record as ConversationRestoreRecord).value
+      as ExportConversationMessageRecord;
+    if (
+      !record.is_current_path
+      || record.current_path_index === null
+    ) continue;
+    const key = `${record.conversation_id}:${record.current_path_index}`;
+    const importedOwner = importedPathKeys.get(key);
+    if (importedOwner && importedOwner !== record.id) {
+      item.classification = "invalid";
+      const previous = messageItems.find(
+        (candidate) =>
+          (candidate.record as ConversationRestoreRecord).entity === "message"
+          && ((candidate.record as ConversationRestoreRecord).value as ExportConversationMessageRecord).id === importedOwner,
+      );
+      if (previous) previous.classification = "invalid";
+    } else {
+      importedPathKeys.set(key, record.id);
+    }
+    const currentOwner = currentPathKeys.get(key);
+    if (
+      item.classification === "create"
+      && currentOwner
+      && currentOwner !== record.id
+    ) {
+      item.classification = "conflict";
+    }
+  }
+
+  const currentBlockOrdinals = new Map(
+    currentConversations.content_blocks.map(
+      (record) => [
+        `${record.message_id}:${record.ordinal}`,
+        record.id,
+      ] as const,
+    ),
+  );
+  const importedBlockOrdinals = new Map<string, string>();
+  for (const item of blockItems) {
+    const record = (item.record as ConversationRestoreRecord).value
+      as ExportConversationContentBlockRecord;
+    const key = `${record.message_id}:${record.ordinal}`;
+    const importedOwner = importedBlockOrdinals.get(key);
+    if (importedOwner && importedOwner !== record.id) {
+      item.classification = "invalid";
+      const previous = blockItems.find(
+        (candidate) =>
+          (candidate.record as ConversationRestoreRecord).entity === "content_block"
+          && ((candidate.record as ConversationRestoreRecord).value as ExportConversationContentBlockRecord).id === importedOwner,
+      );
+      if (previous) previous.classification = "invalid";
+    } else {
+      importedBlockOrdinals.set(key, record.id);
+    }
+    const currentOwner = currentBlockOrdinals.get(key);
+    if (
+      item.classification === "create"
+      && currentOwner
+      && currentOwner !== record.id
+    ) {
+      item.classification = "conflict";
+    }
+  }
+
+  const currentAttachmentOrdinals = new Map(
+    currentConversations.attachments.map(
+      (record) => [
+        `${record.message_id}:${record.ordinal}`,
+        record.id,
+      ] as const,
+    ),
+  );
+  const importedAttachmentOrdinals = new Map<string, string>();
+  for (const item of attachmentItems) {
+    const record = (item.record as ConversationRestoreRecord).value
+      as ExportConversationAttachmentRecord;
+    const key = `${record.message_id}:${record.ordinal}`;
+    const importedOwner = importedAttachmentOrdinals.get(key);
+    if (importedOwner && importedOwner !== record.id) {
+      item.classification = "invalid";
+      const previous = attachmentItems.find(
+        (candidate) =>
+          (candidate.record as ConversationRestoreRecord).entity === "attachment"
+          && ((candidate.record as ConversationRestoreRecord).value as ExportConversationAttachmentRecord).id === importedOwner,
+      );
+      if (previous) previous.classification = "invalid";
+    } else {
+      importedAttachmentOrdinals.set(key, record.id);
+    }
+    const currentOwner = currentAttachmentOrdinals.get(key);
+    if (
+      item.classification === "create"
+      && currentOwner
+      && currentOwner !== record.id
+    ) {
+      item.classification = "conflict";
+    }
+  }
+
+  return items;
 }
 
 function projectItems(
   imported: ExportProjectsBundle,
   current: ImportCurrentState,
+  additionalConversationIds: Set<string>,
 ): ImportPlanItem[] {
-  const currentProjects = current.projects ?? {
-    workspaces: [],
-    projects: [],
-    resources: [],
-    conversations: [],
-  };
+  const currentProjects = current.projects ?? emptyProjects();
   const items = [
     ...classifyProjectEntity(
       "workspace",
@@ -236,8 +585,10 @@ function projectItems(
     ...currentProjects.projects.map((record) => record.id),
     ...imported.projects.map((record) => record.id),
   ]);
-  const conversationIds =
-    current.native_live_conversation_ids ?? new Set<string>();
+  const conversationIds = new Set([
+    ...(current.native_live_conversation_ids ?? new Set<string>()),
+    ...additionalConversationIds,
+  ]);
 
   for (const item of items) {
     if (item.classification !== "create") continue;
@@ -292,6 +643,7 @@ function summarize(
   items: ImportPlanItem[],
   includeProjects: boolean,
   includeMind: boolean,
+  includeConversations: boolean,
 ): ImportSummary {
   const summary: ImportSummary = {
     diary: emptyCounts(),
@@ -301,6 +653,9 @@ function summarize(
       : {}),
     ...(includeMind
       ? { mind: emptyCounts() }
+      : {}),
+    ...(includeConversations
+      ? { conversations: emptyCounts() }
       : {}),
   };
 
@@ -365,12 +720,32 @@ export function buildImportPlan(
     );
   }
 
+  const importedConversations =
+    parsed.document.schema_version === 3
+      ? parsed.document.data.conversations
+      : undefined;
+  if (importedConversations) {
+    items.push(
+      ...conversationItems(importedConversations, current),
+    );
+  }
+
   const importedProjects =
     parsed.document.schema_version === 3
       ? parsed.document.data.projects
       : undefined;
   if (importedProjects) {
-    items.push(...projectItems(importedProjects, current));
+    items.push(
+      ...projectItems(
+        importedProjects,
+        current,
+        new Set(
+          importedConversations?.conversations.map(
+            (record) => record.id,
+          ) ?? [],
+        ),
+      ),
+    );
   }
 
   const importedMind =
@@ -401,6 +776,7 @@ export function buildImportPlan(
     items,
     Boolean(importedProjects),
     Boolean(importedMind),
+    Boolean(importedConversations),
   );
   const fingerprint = hashCanonical({
     package_sha256: parsed.package_sha256,
