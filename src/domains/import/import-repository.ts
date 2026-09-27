@@ -16,6 +16,7 @@ import {
   runtimeCuriosityResolutionEvents,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
+  runtimeMindSemanticGroupingRequests,
   runtimeSubjectStates,
   universeDiarySources,
   universeGalaxies,
@@ -39,6 +40,7 @@ import type {
   ExportMindCuriosityResolutionEventRecord,
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
+  ExportMindSemanticGroupingResultRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
@@ -143,6 +145,11 @@ export interface ImportRepository {
   insertMindDistillationWatermark(
     userId: string,
     record: ExportMindDistillationWatermarkRecord,
+  ): Promise<void>;
+
+  insertMindSemanticGroupingResult(
+    userId: string,
+    record: ExportMindSemanticGroupingResultRecord,
   ): Promise<void>;
 
   insertProjectWorkspace(
@@ -544,8 +551,10 @@ implements ImportRepository {
       driveSatisfactionRows,
       curiosityResolutionRows,
       distillationWatermarkRows,
+      semanticGroupingRows,
       allDriveSatisfactionIds,
       allCuriosityResolutionIds,
+      allSemanticGroupingIds,
     ] = await Promise.all([
       this.db.select({
         id: runtimeDriveSatisfactionEvents.id,
@@ -595,10 +604,32 @@ implements ImportRepository {
           asc(runtimeDistillationWatermarks.subjectId),
           asc(runtimeDistillationWatermarks.conversationId),
         ),
+      this.db.select({
+        id: runtimeMindSemanticGroupingRequests.id,
+        subjectId: runtimeMindSemanticGroupingRequests.subjectId,
+        kind: runtimeMindSemanticGroupingRequests.kind,
+        queryStateId: runtimeMindSemanticGroupingRequests.queryStateId,
+        query: runtimeMindSemanticGroupingRequests.query,
+        candidates: runtimeMindSemanticGroupingRequests.candidates,
+        scores: runtimeMindSemanticGroupingRequests.scores,
+        createdAt: runtimeMindSemanticGroupingRequests.createdAt,
+        updatedAt: runtimeMindSemanticGroupingRequests.updatedAt,
+        completedAt: runtimeMindSemanticGroupingRequests.completedAt,
+      }).from(runtimeMindSemanticGroupingRequests)
+        .where(and(
+          eq(runtimeMindSemanticGroupingRequests.userId, userId),
+          eq(runtimeMindSemanticGroupingRequests.status, "completed"),
+        ))
+        .orderBy(
+          asc(runtimeMindSemanticGroupingRequests.completedAt),
+          asc(runtimeMindSemanticGroupingRequests.id),
+        ),
       this.db.select({ id: runtimeDriveSatisfactionEvents.id })
         .from(runtimeDriveSatisfactionEvents),
       this.db.select({ id: runtimeCuriosityResolutionEvents.id })
         .from(runtimeCuriosityResolutionEvents),
+      this.db.select({ id: runtimeMindSemanticGroupingRequests.id })
+        .from(runtimeMindSemanticGroupingRequests),
     ]);
 
     const entries =
@@ -750,6 +781,26 @@ implements ImportRepository {
             process_version: row.processVersion,
             updated_at: toIso(row.updatedAt),
           })),
+        semantic_grouping_results:
+          semanticGroupingRows.map((row) => {
+            if (!row.scores || !row.completedAt) {
+              throw new Error(
+                "Completed Mind semantic grouping result is incomplete.",
+              );
+            }
+            return {
+              id: row.id,
+              subject_id: row.subjectId,
+              kind: row.kind as "drive" | "thought" | "curiosity" | "topic",
+              query_state_id: row.queryStateId,
+              query: row.query,
+              candidates: row.candidates,
+              scores: row.scores,
+              created_at: toIso(row.createdAt),
+              updated_at: toIso(row.updatedAt),
+              completed_at: toIso(row.completedAt),
+            };
+          }),
       },
       conversations: {
         conversations: nativeConversationRows.map((row) => ({
@@ -903,6 +954,16 @@ implements ImportRepository {
           .filter(
             (row) =>
               !curiosityResolutionRows.some(
+                (owned) => owned.id === row.id,
+              ),
+          )
+          .map((row) => row.id),
+      ),
+      foreign_semantic_grouping_result_ids: new Set(
+        allSemanticGroupingIds
+          .filter(
+            (row) =>
+              !semanticGroupingRows.some(
                 (owned) => owned.id === row.id,
               ),
           )
@@ -1295,6 +1356,32 @@ implements ImportRepository {
       processVersion: record.process_version,
       updatedAt: new Date(record.updated_at),
     });
+  }
+
+  async insertMindSemanticGroupingResult(
+    userId: string,
+    record: ExportMindSemanticGroupingResultRecord,
+  ): Promise<void> {
+    await this.db
+      .insert(runtimeMindSemanticGroupingRequests)
+      .values({
+        id: record.id,
+        userId,
+        subjectId: record.subject_id,
+        kind: record.kind,
+        queryStateId: record.query_state_id,
+        query: record.query,
+        candidates: record.candidates,
+        status: "completed",
+        reservedBy: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
+        scores: record.scores,
+        fallbackCode: null,
+        createdAt: new Date(record.created_at),
+        updatedAt: new Date(record.updated_at),
+        completedAt: new Date(record.completed_at),
+      });
   }
 
   async insertProjectWorkspace(
