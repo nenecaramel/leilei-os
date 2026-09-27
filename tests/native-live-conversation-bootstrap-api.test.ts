@@ -16,12 +16,14 @@ class FakeConversationService {
     id: string;
     title: string | null;
     currentHeadMessageId: string | null;
+    lastMessageAt: string | null;
     createdAt: string;
     updatedAt: string;
   } | null = {
     id: conversationId,
     title: "Renamed",
     currentHeadMessageId: null,
+    lastMessageAt: null,
     createdAt: "2026-09-24T00:00:00.000Z",
     updatedAt: "2026-09-24T01:30:00.000Z",
   };
@@ -56,6 +58,7 @@ class FakeConversationService {
         id: conversationId,
         title: "Existing",
         currentHeadMessageId: null,
+        lastMessageAt: "2026-09-24T00:30:00.000Z",
         createdAt: "2026-09-24T00:00:00.000Z",
         updatedAt: "2026-09-24T01:00:00.000Z",
       }],
@@ -145,6 +148,32 @@ async function withServer(
         async readTurn() {
           return null;
         },
+        async readConversationRuntime(input: {
+          userId: string;
+          conversationId: string;
+        }) {
+          return {
+            conversationId: input.conversationId,
+            currentHeadMessageId:
+              "77777777-7777-4777-8777-777777777777",
+            prepareId:
+              "88888888-8888-4888-8888-888888888888",
+            providerSessionId: "provider-runtime",
+            finalizedAt: "2026-09-24T00:31:00.000Z",
+            runtimeMetadata: {
+              context_usage: {
+                model: "claude-opus-5-5",
+                total_tokens: 1234,
+                max_tokens: 1000000,
+                raw_max_tokens: 1000000,
+                percentage: 0.1234,
+                categories: [],
+              },
+              compaction_advisory: null,
+              compaction: null,
+            },
+          };
+        },
       },
       conversationService,
       currentPathReader: currentPathReader as never,
@@ -182,6 +211,48 @@ test("native live bootstrap lists owner-scoped active summaries with a bounded l
     assert.equal(payload.data.conversations[0]?.id, conversationId);
     assert.equal("userId" in (payload.data.conversations[0] ?? {}), false);
     assert.deepEqual(service.listCalls, [{ userId, limit: 2 }]);
+  });
+});
+
+test("native live conversation list exposes canonical lastMessageAt", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations?limit=2`,
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json() as {
+      data: { conversations: Array<{ lastMessageAt: string | null }> };
+    };
+    assert.equal(
+      payload.data.conversations[0]?.lastMessageAt,
+      "2026-09-24T00:30:00.000Z",
+    );
+  });
+});
+
+test("native live conversation runtime reads durable current-head metadata", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/runtime`,
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json() as {
+      data: {
+        conversationId: string;
+        currentHeadMessageId: string | null;
+        providerSessionId: string | null;
+        runtimeMetadata: Record<string, unknown> | null;
+      };
+    };
+    assert.equal(payload.data.conversationId, conversationId);
+    assert.equal(
+      payload.data.currentHeadMessageId,
+      "77777777-7777-4777-8777-777777777777",
+    );
+    assert.equal(payload.data.providerSessionId, "provider-runtime");
+    assert.ok(payload.data.runtimeMetadata);
   });
 });
 
