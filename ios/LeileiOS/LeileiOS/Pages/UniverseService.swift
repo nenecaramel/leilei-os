@@ -235,7 +235,7 @@ final class UniverseAPIService {
 
     static func userMessage(for error: Error) -> String {
         if isVersionConflict(error) {
-            return "Universe 已在其他设备发生变化，已重新读取。"
+            return "Universe 已在其他设备发生变化，请重新读取后再试。"
         }
 
         guard case let LeileiAPIError.backend(_, code, _) = error else {
