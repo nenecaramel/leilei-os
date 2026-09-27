@@ -82,23 +82,21 @@ export class MindRetirementPreviewService {
     const agesByKind = new Map<
       MindRetirementKind,
       { stats: MindRetirementPreviewKindStats; ages: number[] }
-    >(
-      RETIREMENT_KINDS.map((kind) => [
-        kind,
-        {
-          stats: {
-            kind,
-            scannedAnchors: 0,
-            terminalAnchors: 0,
-            nonTerminalAnchors: 0,
-            unreadableAnchors: 0,
-            terminalAgeHours: null,
-            eligibleByRetention: [],
-          },
-          ages: [],
+    >();
+    for (const kind of RETIREMENT_KINDS) {
+      agesByKind.set(kind, {
+        stats: {
+          kind,
+          scannedAnchors: 0,
+          terminalAnchors: 0,
+          nonTerminalAnchors: 0,
+          unreadableAnchors: 0,
+          terminalAgeHours: null,
+          eligibleByRetention: [],
         },
-      ]),
-    );
+        ages: [],
+      });
+    }
 
     for (const candidate of candidates) {
       const bucket = agesByKind.get(candidate.kind);
