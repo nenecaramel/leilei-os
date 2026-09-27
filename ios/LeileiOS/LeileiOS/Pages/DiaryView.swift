@@ -1725,6 +1725,30 @@ private struct DiaryCommentEnvelope: Decodable {
     let data: DiaryComment
 }
 
+private struct DiaryCommentListEnvelope: Decodable {
+    let success: Bool
+    let data: DiaryCommentListData
+}
+
+private struct DiaryCommentListData: Decodable {
+    let comments: [DiaryComment]
+    let metadata: DiaryCommentListMetadata
+}
+
+private struct DiaryCommentListMetadata: Decodable {
+    let count: Int
+    let returned: Int
+    let hasMore: Bool
+    let nextBefore: String?
+
+    enum CodingKeys: String, CodingKey {
+        case count
+        case returned
+        case hasMore = "has_more"
+        case nextBefore = "next_before"
+    }
+}
+
 private struct DiaryCommentUpdateRequest: Encodable {
     let expectedRevision: Int
     let content: String
