@@ -171,6 +171,25 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
       const rows = await transaction.execute<{ id: string }>(sql`
         WITH victims AS (
           SELECT id
+          FROM runtime_mind_semantic_grouping_requests
+          WHERE status IN ('completed', 'fallback')
+            AND updated_at < ${cutoff.toISOString()}::timestamptz
+          ORDER BY updated_at ASC, id ASC
+          LIMIT ${remaining}
+          FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM runtime_mind_semantic_grouping_requests AS grouping
+        USING victims
+        WHERE grouping.id = victims.id
+        RETURNING grouping.id
+      `);
+      consume(rows.length);
+    }
+
+    if (remaining > 0) {
+      const rows = await transaction.execute<{ id: string }>(sql`
+        WITH victims AS (
+          SELECT id
           FROM native_live_provider_session_cleanups
           WHERE status IN ('completed', 'failed')
             AND updated_at < ${cutoff.toISOString()}::timestamptz
