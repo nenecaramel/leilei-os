@@ -7,6 +7,9 @@ import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
   conversations,
+  nativeLiveBackgroundModelJobs,
+  nativeLiveProviderSessionCleanups,
+  runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -306,5 +309,295 @@ test(
         ),
       );
     assert.equal(checkpoints.length, 2);
+  },
+);
+
+
+test(
+  "native live Archive / Restore / true Delete preserves Mind while deleting conversation-owned data",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, {
+      createClient: (url, maxConnections, ssl) =>
+        postgres(url, {
+          max: maxConnections,
+          prepare: false,
+          ssl,
+          connect_timeout: 15,
+          idle_timeout: 60,
+        }),
+    });
+    let userId: string | null = null;
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(nativeLiveBackgroundModelJobs)
+            .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
+          await database.db
+            .delete(runtimeSubjectStates)
+            .where(eq(runtimeSubjectStates.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-lifecycle-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Lifecycle",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const service = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+
+    const deletedConversation = await service.createConversation({
+      userId,
+      title: "Delete me",
+    });
+    const firstUser = await service.appendUserMessage({
+      userId,
+      conversationId: deletedConversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "first" }],
+    });
+    const firstAssistant = await service.completeAssistantTurn({
+      userId,
+      conversationId: deletedConversation.id,
+      parentMessageId: firstUser.id,
+      blocks: [{ kind: "text", text: "first reply" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: "exclusive-delete-session",
+      },
+    });
+    const secondUser = await service.appendUserMessage({
+      userId,
+      conversationId: deletedConversation.id,
+      parentMessageId: firstAssistant.message.id,
+      blocks: [{ kind: "text", text: "second" }],
+    });
+    await service.completeAssistantTurn({
+      userId,
+      conversationId: deletedConversation.id,
+      parentMessageId: secondUser.id,
+      blocks: [{ kind: "text", text: "second reply" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: "shared-delete-session",
+      },
+    });
+
+    const survivingConversation = await service.createConversation({
+      userId,
+      title: "Keep me",
+    });
+    const survivingUser = await service.appendUserMessage({
+      userId,
+      conversationId: survivingConversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "keep" }],
+    });
+    await service.completeAssistantTurn({
+      userId,
+      conversationId: survivingConversation.id,
+      parentMessageId: survivingUser.id,
+      blocks: [{ kind: "text", text: "keep reply" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: "shared-delete-session",
+      },
+    });
+
+    const mindStateId = crypto.randomUUID();
+    await database.db.insert(runtimeSubjectStates).values({
+      id: mindStateId,
+      userId,
+      subjectId: "G",
+      kind: "memory",
+      text: "Mind survives conversation deletion",
+      payload: { source: "runtime" },
+      scopeApplicability: "global",
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+      settlementStatus: "settled",
+      pathStatus: "current",
+      validityStatus: "valid",
+      envelope: {
+        authority: "derived",
+        scope: {
+          userId,
+          subjectId: "G",
+          applicability: "global",
+          conversationId: null,
+          pathHeadMessageId: null,
+        },
+      },
+    });
+
+    const backgroundJobId = crypto.randomUUID();
+    await database.db.insert(nativeLiveBackgroundModelJobs).values({
+      id: backgroundJobId,
+      userId,
+      subjectId: "G",
+      workflowKind: "distillation",
+      workflowRunId: crypto.randomUUID(),
+      workflowPayload: {
+        conversation_id: deletedConversation.id,
+        source_head_message_id: secondUser.id,
+      },
+      taskKind: "distillation",
+      promptContractVersion: "delete-test-v1",
+      prompt: "transcript snapshot that must disappear",
+      status: "pending",
+    });
+
+    const archived = await service.archiveConversation({
+      userId,
+      conversationId: deletedConversation.id,
+    });
+    assert.equal(archived.outcome, "archived");
+
+    const activePage = await service.listConversationPage({
+      userId,
+      limit: 20,
+    });
+    assert.deepEqual(
+      activePage.conversations.map((item) => item.id),
+      [survivingConversation.id],
+    );
+
+    const archivedPage = await service.listConversationPage({
+      userId,
+      limit: 20,
+      scope: "archived",
+    });
+    assert.deepEqual(
+      archivedPage.conversations.map((item) => item.id),
+      [deletedConversation.id],
+    );
+
+    await assert.rejects(
+      service.appendUserMessage({
+        userId,
+        conversationId: deletedConversation.id,
+        parentMessageId: null,
+        blocks: [{ kind: "text", text: "must not write while archived" }],
+      }),
+      /not found/i,
+    );
+
+    const restored = await service.restoreConversation({
+      userId,
+      conversationId: deletedConversation.id,
+    });
+    assert.equal(restored.outcome, "restored");
+    assert.equal(
+      (await service.getConversation({
+        userId,
+        conversationId: deletedConversation.id,
+      }))?.lifecycleStatus,
+      "active",
+    );
+
+    assert.equal(
+      (await service.archiveConversation({
+        userId,
+        conversationId: deletedConversation.id,
+      })).outcome,
+      "archived",
+    );
+
+    const deleted = await service.deleteConversation({
+      userId,
+      conversationId: deletedConversation.id,
+    });
+    assert.equal(deleted.outcome, "deleted");
+    assert.equal(
+      await service.getConversation({
+        userId,
+        conversationId: deletedConversation.id,
+      }),
+      null,
+    );
+    assert.equal(
+      (await service.getConversation({
+        userId,
+        conversationId: survivingConversation.id,
+      }))?.id,
+      survivingConversation.id,
+    );
+
+    const deletedMessages = await database.db
+      .select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(eq(
+        conversationMessages.conversationId,
+        deletedConversation.id,
+      ));
+    assert.equal(deletedMessages.length, 0);
+
+    const deletedCheckpoints = await database.db
+      .select({ id: conversationProviderSessionCheckpoints.id })
+      .from(conversationProviderSessionCheckpoints)
+      .where(eq(
+        conversationProviderSessionCheckpoints.conversationId,
+        deletedConversation.id,
+      ));
+    assert.equal(deletedCheckpoints.length, 0);
+
+    const background = await database.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(eq(nativeLiveBackgroundModelJobs.id, backgroundJobId));
+    assert.equal(background.length, 0);
+
+    const cleanups = await database.db
+      .select({
+        providerSessionId:
+          nativeLiveProviderSessionCleanups.providerSessionId,
+      })
+      .from(nativeLiveProviderSessionCleanups)
+      .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
+    assert.deepEqual(
+      cleanups.map((row) => row.providerSessionId).sort(),
+      ["exclusive-delete-session"],
+    );
+
+    const survivingMind = await database.db
+      .select({
+        id: runtimeSubjectStates.id,
+        text: runtimeSubjectStates.text,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, mindStateId));
+    assert.deepEqual(survivingMind, [{
+      id: mindStateId,
+      text: "Mind survives conversation deletion",
+    }]);
+
+    assert.equal(
+      (await service.deleteConversation({
+        userId,
+        conversationId: deletedConversation.id,
+      })).outcome,
+      "not_found",
+    );
   },
 );
