@@ -1023,14 +1023,23 @@ struct UniverseView: View {
 
     private func openTargetIfPossible() async {
         guard let targetNodeID,
-              case .ready(let result) = state,
-              result.snapshot.nodes
-                .contains(
-                    where: {
-                        $0.id == targetNodeID
-                    }
-                )
+              case .ready(let result) = state
         else {
+            return
+        }
+
+        onTargetConsumed()
+
+        guard result.snapshot.nodes
+            .contains(
+                where: {
+                    $0.id == targetNodeID
+                }
+            )
+        else {
+            showNotice(
+                "这颗星球已不在当前 Universe"
+            )
             return
         }
 
@@ -1038,7 +1047,6 @@ struct UniverseView: View {
         sheetSelection = .node(
             targetNodeID
         )
-        onTargetConsumed()
     }
 
     private func prepareExport(
