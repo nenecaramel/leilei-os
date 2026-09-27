@@ -12,6 +12,9 @@ import {
   projectResources,
   projects,
   projectWorkspaces,
+  runtimeCuriosityResolutionEvents,
+  runtimeDistillationWatermarks,
+  runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
   universeDiarySources,
   universeGalaxies,
@@ -31,6 +34,9 @@ import type {
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
+  ExportMindCuriosityResolutionEventRecord,
+  ExportMindDistillationWatermarkRecord,
+  ExportMindDriveSatisfactionEventRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
@@ -115,6 +121,21 @@ export interface ImportRepository {
   insertMind(
     userId: string,
     record: ExportMindStateRecord,
+  ): Promise<void>;
+
+  insertMindDriveSatisfactionEvent(
+    userId: string,
+    record: ExportMindDriveSatisfactionEventRecord,
+  ): Promise<void>;
+
+  insertMindCuriosityResolutionEvent(
+    userId: string,
+    record: ExportMindCuriosityResolutionEventRecord,
+  ): Promise<void>;
+
+  insertMindDistillationWatermark(
+    userId: string,
+    record: ExportMindDistillationWatermarkRecord,
   ): Promise<void>;
 
   insertProjectWorkspace(
@@ -463,6 +484,67 @@ implements ImportRepository {
       this.db.select({ id: conversationAttachments.id }).from(conversationAttachments),
     ]);
 
+    const [
+      driveSatisfactionRows,
+      curiosityResolutionRows,
+      distillationWatermarkRows,
+      allDriveSatisfactionIds,
+      allCuriosityResolutionIds,
+    ] = await Promise.all([
+      this.db.select({
+        id: runtimeDriveSatisfactionEvents.id,
+        subjectId: runtimeDriveSatisfactionEvents.subjectId,
+        driveStateId: runtimeDriveSatisfactionEvents.driveStateId,
+        conversationId: runtimeDriveSatisfactionEvents.conversationId,
+        evidenceMessageId: runtimeDriveSatisfactionEvents.evidenceMessageId,
+        evidenceBlockId: runtimeDriveSatisfactionEvents.evidenceBlockId,
+        evidenceKind: runtimeDriveSatisfactionEvents.evidenceKind,
+        amount: runtimeDriveSatisfactionEvents.amount,
+        idempotencyKey: runtimeDriveSatisfactionEvents.idempotencyKey,
+        createdAt: runtimeDriveSatisfactionEvents.createdAt,
+      }).from(runtimeDriveSatisfactionEvents)
+        .where(eq(runtimeDriveSatisfactionEvents.userId, userId))
+        .orderBy(
+          asc(runtimeDriveSatisfactionEvents.createdAt),
+          asc(runtimeDriveSatisfactionEvents.id),
+        ),
+      this.db.select({
+        id: runtimeCuriosityResolutionEvents.id,
+        subjectId: runtimeCuriosityResolutionEvents.subjectId,
+        curiosityStateId: runtimeCuriosityResolutionEvents.curiosityStateId,
+        conversationId: runtimeCuriosityResolutionEvents.conversationId,
+        requestedResolutionSourceId:
+          runtimeCuriosityResolutionEvents.requestedResolutionSourceId,
+        resultResolutionSourceId:
+          runtimeCuriosityResolutionEvents.resultResolutionSourceId,
+        resolvedAt: runtimeCuriosityResolutionEvents.resolvedAt,
+        idempotencyKey: runtimeCuriosityResolutionEvents.idempotencyKey,
+        createdAt: runtimeCuriosityResolutionEvents.createdAt,
+      }).from(runtimeCuriosityResolutionEvents)
+        .where(eq(runtimeCuriosityResolutionEvents.userId, userId))
+        .orderBy(
+          asc(runtimeCuriosityResolutionEvents.createdAt),
+          asc(runtimeCuriosityResolutionEvents.id),
+        ),
+      this.db.select({
+        subjectId: runtimeDistillationWatermarks.subjectId,
+        conversationId: runtimeDistillationWatermarks.conversationId,
+        lastSourceMessageId:
+          runtimeDistillationWatermarks.lastSourceMessageId,
+        processVersion: runtimeDistillationWatermarks.processVersion,
+        updatedAt: runtimeDistillationWatermarks.updatedAt,
+      }).from(runtimeDistillationWatermarks)
+        .where(eq(runtimeDistillationWatermarks.userId, userId))
+        .orderBy(
+          asc(runtimeDistillationWatermarks.subjectId),
+          asc(runtimeDistillationWatermarks.conversationId),
+        ),
+      this.db.select({ id: runtimeDriveSatisfactionEvents.id })
+        .from(runtimeDriveSatisfactionEvents),
+      this.db.select({ id: runtimeCuriosityResolutionEvents.id })
+        .from(runtimeCuriosityResolutionEvents),
+    ]);
+
     const entries =
       papers.length === 0
         ? []
@@ -579,6 +661,43 @@ implements ImportRepository {
         created_at: toIso(row.createdAt),
         updated_at: toIso(row.updatedAt),
       })),
+      mind_continuity: {
+        drive_satisfaction_events:
+          driveSatisfactionRows.map((row) => ({
+            id: row.id,
+            subject_id: row.subjectId,
+            drive_state_id: row.driveStateId,
+            conversation_id: row.conversationId,
+            evidence_message_id: row.evidenceMessageId,
+            evidence_block_id: row.evidenceBlockId,
+            evidence_kind: row.evidenceKind,
+            amount: row.amount,
+            idempotency_key: row.idempotencyKey,
+            created_at: toIso(row.createdAt),
+          })),
+        curiosity_resolution_events:
+          curiosityResolutionRows.map((row) => ({
+            id: row.id,
+            subject_id: row.subjectId,
+            curiosity_state_id: row.curiosityStateId,
+            conversation_id: row.conversationId,
+            requested_resolution_source_id:
+              row.requestedResolutionSourceId,
+            result_resolution_source_id:
+              row.resultResolutionSourceId,
+            resolved_at: toIso(row.resolvedAt),
+            idempotency_key: row.idempotencyKey,
+            created_at: toIso(row.createdAt),
+          })),
+        distillation_watermarks:
+          distillationWatermarkRows.map((row) => ({
+            subject_id: row.subjectId,
+            conversation_id: row.conversationId,
+            last_source_message_id: row.lastSourceMessageId,
+            process_version: row.processVersion,
+            updated_at: toIso(row.updatedAt),
+          })),
+      },
       conversations: {
         conversations: nativeConversationRows.map((row) => ({
           id: row.id,
@@ -704,6 +823,26 @@ implements ImportRepository {
       foreign_mind_ids: new Set(
         allMindIds
           .filter((row) => !mindRows.some((owned) => owned.id === row.id))
+          .map((row) => row.id),
+      ),
+      foreign_drive_satisfaction_event_ids: new Set(
+        allDriveSatisfactionIds
+          .filter(
+            (row) =>
+              !driveSatisfactionRows.some(
+                (owned) => owned.id === row.id,
+              ),
+          )
+          .map((row) => row.id),
+      ),
+      foreign_curiosity_resolution_event_ids: new Set(
+        allCuriosityResolutionIds
+          .filter(
+            (row) =>
+              !curiosityResolutionRows.some(
+                (owned) => owned.id === row.id,
+              ),
+          )
           .map((row) => row.id),
       ),
       foreign_conversation_ids: new Set(
@@ -1013,6 +1152,59 @@ implements ImportRepository {
     });
   }
 
+  async insertMindDriveSatisfactionEvent(
+    userId: string,
+    record: ExportMindDriveSatisfactionEventRecord,
+  ): Promise<void> {
+    await this.db.insert(runtimeDriveSatisfactionEvents).values({
+      id: record.id,
+      userId,
+      subjectId: record.subject_id,
+      driveStateId: record.drive_state_id,
+      conversationId: record.conversation_id,
+      evidenceMessageId: record.evidence_message_id,
+      evidenceBlockId: record.evidence_block_id,
+      evidenceKind: record.evidence_kind,
+      amount: record.amount,
+      idempotencyKey: record.idempotency_key,
+      createdAt: new Date(record.created_at),
+    });
+  }
+
+  async insertMindCuriosityResolutionEvent(
+    userId: string,
+    record: ExportMindCuriosityResolutionEventRecord,
+  ): Promise<void> {
+    await this.db.insert(runtimeCuriosityResolutionEvents).values({
+      id: record.id,
+      userId,
+      subjectId: record.subject_id,
+      curiosityStateId: record.curiosity_state_id,
+      conversationId: record.conversation_id,
+      requestedResolutionSourceId:
+        record.requested_resolution_source_id,
+      resultResolutionSourceId:
+        record.result_resolution_source_id,
+      resolvedAt: new Date(record.resolved_at),
+      idempotencyKey: record.idempotency_key,
+      createdAt: new Date(record.created_at),
+    });
+  }
+
+  async insertMindDistillationWatermark(
+    userId: string,
+    record: ExportMindDistillationWatermarkRecord,
+  ): Promise<void> {
+    await this.db.insert(runtimeDistillationWatermarks).values({
+      userId,
+      subjectId: record.subject_id,
+      conversationId: record.conversation_id,
+      lastSourceMessageId: record.last_source_message_id,
+      processVersion: record.process_version,
+      updatedAt: new Date(record.updated_at),
+    });
+  }
+
   async insertProjectWorkspace(
     userId: string,
     record: ExportProjectWorkspaceRecord,
@@ -1095,6 +1287,9 @@ implements ImportRepository {
         : undefined,
       mind: modules.has("mind")
         ? state.mind
+        : undefined,
+      mind_continuity: modules.has("mind")
+        ? state.mind_continuity
         : undefined,
       conversations: modules.has("conversations")
         ? state.conversations
