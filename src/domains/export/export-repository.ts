@@ -459,6 +459,23 @@ export class DrizzleExportRepository implements ExportRepository {
     };
   }
 
+  async hasIncompleteMindSemanticGrouping(
+    userId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: runtimeMindSemanticGroupingRequests.id })
+      .from(runtimeMindSemanticGroupingRequests)
+      .where(and(
+        eq(runtimeMindSemanticGroupingRequests.userId, userId),
+        inArray(runtimeMindSemanticGroupingRequests.status, [
+          "pending",
+          "reserved",
+        ]),
+      ))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async hasIncompleteBackgroundModelJobs(
     userId: string,
   ): Promise<boolean> {
