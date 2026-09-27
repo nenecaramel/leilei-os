@@ -19,6 +19,7 @@ import {
   users,
 } from "../../database/schema.js";
 import { MCP_WRITE_TOOL_NAMES } from "../../mcp/tools/write-context.js";
+import { DrizzleUniverseRepository } from "../universe/universe-repository-drizzle.js";
 import type { ExportRepository } from "./export-service.js";
 import type {
   ExportConversationsBundle,
@@ -29,6 +30,7 @@ import type {
   ExportProjectsBundle,
   ExportToolActivity,
   ExportTodoPaper,
+  ExportUniverseBundle,
 } from "./export-types.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
@@ -133,6 +135,23 @@ export class DrizzleExportRepository implements ExportRepository {
       date: paper.date, author: paper.author, revision: paper.revision,
       created_at: toIso(paper.createdAt), updated_at: toIso(paper.updatedAt), entries: grouped.get(paper.id) ?? [],
     }));
+  }
+
+  async listUniverse(
+    userId: string,
+  ): Promise<ExportUniverseBundle | null> {
+    const result = await new DrizzleUniverseRepository(
+      this.db as never,
+    ).loadUniverseWeb(userId);
+    if (!result) return null;
+    return {
+      version: result.version,
+      snapshot: result.snapshot,
+      diary_sources: result.sources.map((source) => ({
+        node_id: source.nodeId,
+        diary_id: source.diaryId,
+      })),
+    };
   }
 
   async listConversations(userId: string): Promise<ExportConversationsBundle> {
