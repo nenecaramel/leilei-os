@@ -18,8 +18,6 @@ export type RuntimeRetentionSpec = {
 export type SubjectStateRetentionKind =
   | "memory"
   | "feel"
-  | "dream"
-  | "bedrock"
   | "drive"
   | "thought"
   | "curiosity"
@@ -32,20 +30,16 @@ export type SubjectStateRetentionPolicy =
     }
   | {
       automaticForgetting: false;
-      mechanism:
-        | "domain_evolution"
-        | "subject_authorized_durable"
-        | "explicit_invalidation_only";
+      mechanism: "domain_evolution";
     };
 
 /**
  * Generic age-based Subject State deletion is intentionally forbidden.
  *
- * Memory / Feel are the only kinds with the shared lifecycle_v1
- * active→fading→archived→forgotten→purged contract. Thought / Drive / Topic
- * have their own non-terminal evolution and may reactivate; Bedrock is
- * subject-authorized durable state; Dream / Curiosity require an explicit
- * domain invalidation rule rather than inheriting Memory decay semantics.
+ * Memory / Feel are the only current kinds with the shared lifecycle_v1
+ * active→fading→archived→forgotten→purged contract. Drive / Thought /
+ * Curiosity / Topic use their own domain evolution and retirement semantics
+ * and must not inherit Memory decay just because they are Subject State.
  */
 export function subjectStateRetentionPolicy(
   kind: SubjectStateRetentionKind,
@@ -59,21 +53,11 @@ export function subjectStateRetentionPolicy(
       };
     case "thought":
     case "drive":
+    case "curiosity":
     case "topic":
       return {
         automaticForgetting: false,
         mechanism: "domain_evolution",
-      };
-    case "bedrock":
-      return {
-        automaticForgetting: false,
-        mechanism: "subject_authorized_durable",
-      };
-    case "dream":
-    case "curiosity":
-      return {
-        automaticForgetting: false,
-        mechanism: "explicit_invalidation_only",
       };
     default:
       return assertNeverSubjectStateKind(kind);
