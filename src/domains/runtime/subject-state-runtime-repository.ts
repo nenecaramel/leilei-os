@@ -99,6 +99,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     userId: string;
     subjectId: string;
     states: SubjectStateWrite[];
+    sourceConversationId?: string;
   }): Promise<void> {
     if (input.states.length === 0) return;
 
@@ -114,11 +115,14 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
 
     await this.db.transaction(async (transaction) => {
       const scopedConversationIds = [
-        ...new Set(
-          states
+        ...new Set([
+          ...(input.sourceConversationId
+            ? [input.sourceConversationId]
+            : []),
+          ...states
             .map((state) => state.envelope.scope.conversationId ?? null)
             .filter((value): value is string => value !== null),
-        ),
+        ]),
       ];
       for (const conversationId of scopedConversationIds) {
         const active = await transaction.execute<{ id: string }>(sql`
