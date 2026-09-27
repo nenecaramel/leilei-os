@@ -187,6 +187,132 @@ struct NativeLiveRuntimeControlSnapshot:
     }
 }
 
+struct NativeLiveRuntimeQuestionOption:
+    Sendable,
+    Equatable,
+    Identifiable {
+    let label: String
+    let description: String?
+
+    var id: String { label }
+}
+
+struct NativeLiveRuntimeQuestion:
+    Sendable,
+    Equatable,
+    Identifiable {
+    let text: String
+    let header: String?
+    let options: [NativeLiveRuntimeQuestionOption]
+    let multiSelect: Bool
+
+    var id: String { text }
+}
+
+extension NativeLiveRuntimeInteractionSnapshot {
+    var isPending: Bool {
+        status == "pending"
+    }
+
+    var permissionToolName: String? {
+        request["toolName"]?.stringValue
+    }
+
+    var permissionTitle: String {
+        if let title = request["title"]?.stringValue,
+           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return title
+        }
+        if let displayName = request["displayName"]?.stringValue,
+           !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return displayName
+        }
+        if let tool = permissionToolName {
+            return "Allow \(tool)?"
+        }
+        return "Allow this action?"
+    }
+
+    var permissionDetail: String? {
+        if let description = request["description"]?.stringValue,
+           !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return description
+        }
+
+        guard let input = request["input"]?.objectValue else {
+            return nil
+        }
+
+        for key in ["command", "file_path", "path", "url", "query"] {
+            if let value = input[key]?.stringValue,
+               !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+        }
+
+        if let blockedPath = request["blockedPath"]?.stringValue,
+           !blockedPath.isEmpty {
+            return blockedPath
+        }
+
+        return nil
+    }
+
+    var questions: [NativeLiveRuntimeQuestion] {
+        guard kind == "question",
+              let values = request["questions"]?.arrayValue else {
+            return []
+        }
+
+        return values.compactMap { value in
+            guard let object = value.objectValue,
+                  let text = object["question"]?.stringValue?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else {
+                return nil
+            }
+
+            let options =
+                object["options"]?.arrayValue?
+                    .compactMap { optionValue -> NativeLiveRuntimeQuestionOption? in
+                        guard let option = optionValue.objectValue,
+                              let label = option["label"]?.stringValue?
+                                .trimmingCharacters(in: .whitespacesAndNewlines),
+                              !label.isEmpty else {
+                            return nil
+                        }
+
+                        let description =
+                            option["description"]?.stringValue?
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        return NativeLiveRuntimeQuestionOption(
+                            label: label,
+                            description:
+                                description?.isEmpty == false
+                                    ? description
+                                    : nil
+                        )
+                    } ?? []
+
+            let header =
+                object["header"]?.stringValue?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            return NativeLiveRuntimeQuestion(
+                text: text,
+                header:
+                    header?.isEmpty == false
+                        ? header
+                        : nil,
+                options: options,
+                multiSelect:
+                    object["multiSelect"]?.boolValue == true
+            )
+        }
+    }
+}
+
 struct NativeLiveRuntimeSurfaceState:
     Sendable,
     Equatable {
