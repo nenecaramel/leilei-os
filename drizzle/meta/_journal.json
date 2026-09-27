@@ -533,6 +533,13 @@
       "when": 1790476800000,
       "tag": "0075_runtime_mind_retirement_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1790480400000,
+      "tag": "0076_runtime_curiosity_resolution_idempotency",
+      "breakpoints": true
     }
   ]
 }
