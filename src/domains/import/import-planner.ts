@@ -5,6 +5,7 @@ import type {
   ExportConversationMessageRecord,
   ExportConversationRecord,
   ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
@@ -22,6 +23,7 @@ import { hashCanonical } from "./import-canonical.js";
 
 export type ImportModule =
   | "diary"
+  | "diary_comments"
   | "todo"
   | "projects"
   | "mind"
@@ -42,11 +44,13 @@ export type ImportCounts = {
 
 export type ImportCurrentState = {
   diary: ExportDiaryRecord[];
+  diary_comments?: ExportDiaryCommentRecord[];
   todo: ExportTodoPaper[];
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
   conversations?: ExportConversationsBundle;
   foreign_diary_ids?: Set<string>;
+  foreign_diary_comment_ids?: Set<string>;
   foreign_workspace_ids?: Set<string>;
   foreign_project_ids?: Set<string>;
   foreign_project_resource_ids?: Set<string>;
@@ -60,6 +64,7 @@ export type ImportCurrentState = {
 
 export type ImportSummary = {
   diary: ImportCounts;
+  diary_comments?: ImportCounts;
   todo: ImportCounts;
   projects?: ImportCounts;
   mind?: ImportCounts;
@@ -108,6 +113,7 @@ export type ImportPlanItem = {
   classification: ImportClassification;
   record:
     | ExportDiaryRecord
+    | ExportDiaryCommentRecord
     | ExportTodoPaper
     | ExportMindStateRecord
     | ProjectRestoreRecord
@@ -145,9 +151,13 @@ const emptyConversations = (): ExportConversationsBundle => ({
 });
 
 function classify<
-  T extends ExportDiaryRecord | ExportTodoPaper | ExportMindStateRecord,
+  T extends
+    | ExportDiaryRecord
+    | ExportDiaryCommentRecord
+    | ExportTodoPaper
+    | ExportMindStateRecord,
 >(
-  module: "diary" | "todo" | "mind",
+  module: "diary" | "diary_comments" | "todo" | "mind",
   imported: T[],
   current: T[],
   key: (record: T) => string,
@@ -641,12 +651,16 @@ function projectItems(
 
 function summarize(
   items: ImportPlanItem[],
+  includeDiaryComments: boolean,
   includeProjects: boolean,
   includeMind: boolean,
   includeConversations: boolean,
 ): ImportSummary {
   const summary: ImportSummary = {
     diary: emptyCounts(),
+    ...(includeDiaryComments
+      ? { diary_comments: emptyCounts() }
+      : {}),
     todo: emptyCounts(),
     ...(includeProjects
       ? { projects: emptyCounts() }
@@ -706,6 +720,36 @@ export function buildImportPlan(
         item.classification = "conflict";
       }
     }
+  }
+
+  const importedDiaryComments =
+    parsed.document.schema_version === 3
+      ? parsed.document.data.diary_comments
+      : undefined;
+  if (importedDiaryComments) {
+    const commentItems = classify(
+      "diary_comments",
+      importedDiaryComments,
+      current.diary_comments ?? [],
+      (record) => `id:${record.id}`,
+    );
+    const availableDiaryIds = new Set([
+      ...current.diary.map((record) => record.id),
+      ...(parsed.document.data.diary ?? [])
+        .map((record) => record.id),
+    ]);
+    for (const item of commentItems) {
+      if (item.classification !== "create") continue;
+      const record = item.record as ExportDiaryCommentRecord;
+      if (
+        current.foreign_diary_comment_ids?.has(record.id)
+      ) {
+        item.classification = "conflict";
+      } else if (!availableDiaryIds.has(record.diary_id)) {
+        item.classification = "invalid";
+      }
+    }
+    items.push(...commentItems);
   }
 
   if (parsed.document.data.todo) {
@@ -774,6 +818,7 @@ export function buildImportPlan(
 
   const summary = summarize(
     items,
+    Boolean(importedDiaryComments),
     Boolean(importedProjects),
     Boolean(importedMind),
     Boolean(importedConversations),
