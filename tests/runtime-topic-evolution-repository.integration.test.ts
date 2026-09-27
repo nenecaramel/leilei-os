@@ -40,7 +40,7 @@ function topicState(input: {
       semanticActor: { kind: "subject", id: "G" },
       producer: { kind: "model", id: "claude-code" },
       committer: { kind: "runtime", id: "leileios-runtime" },
-      authority: "subject_authorized",
+      authority: "derived",
       scope: settled
         ? {
             userId: input.userId,
