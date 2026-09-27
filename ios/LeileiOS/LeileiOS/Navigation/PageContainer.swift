@@ -57,6 +57,8 @@ struct PageContainer: View {
                         target: daySpaceTarget,
                         onTargetConsumed: onDaySpaceTargetConsumed
                     )
+                } else if selectedPage == .mind {
+                    MindView()
                 } else if selectedPage == .universe {
                     UniverseView(
                         targetNodeID: universeTargetNodeID,
@@ -88,6 +90,7 @@ struct PageContainer: View {
                     && selectedPage != .diary
                     && selectedPage != .daySpace
                     && selectedPage != .universe
+                    && selectedPage != .mind
                     && selectedPage != .conversations
                     && selectedPage != .projects {
                     ToolbarItem(placement: .topBarTrailing) {
