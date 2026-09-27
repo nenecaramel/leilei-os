@@ -9,6 +9,7 @@ import {
   conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
+  runtimeEffects,
   runtimeProactivityWakes,
   runtimeSubjectStates,
   users,
@@ -21,6 +22,7 @@ import {
   NativeLiveBackgroundModelQueueService,
 } from "../src/domains/bridge/native-live-background-model-queue.js";
 import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity-wake-repository.js";
+import { DrizzleRuntimeEffectRepository } from "../src/domains/runtime/runtime-effect-repository.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST === "1";
@@ -347,6 +349,9 @@ test(
             .delete(nativeLiveProviderSessionCleanups)
             .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
           await database.db
+            .delete(runtimeEffects)
+            .where(eq(runtimeEffects.userId, userId));
+          await database.db
             .delete(runtimeProactivityWakes)
             .where(eq(runtimeProactivityWakes.userId, userId));
           await database.db
@@ -655,6 +660,37 @@ test(
       },
     });
 
+    const effects = new DrizzleRuntimeEffectRepository(
+      database.db,
+    );
+    const effectId = crypto.randomUUID();
+    const effectWorkerId = crypto.randomUUID();
+    await effects.createOrGet({
+      sourceWakeId: wakeId,
+      effect: {
+        effectId,
+        userId,
+        subjectId: "G",
+        decisionId: "archive-delete-effect",
+        idempotencyKey: "d".repeat(64),
+        effectType: "message_send",
+        target: `conversation:${deletedConversation.id}`,
+        payloadHash: "e".repeat(64),
+        status: "pending",
+        attempt: 0,
+        retryable: true,
+        createdAt: "2026-09-27T06:46:00.000Z",
+        updatedAt: "2026-09-27T06:46:00.000Z",
+        reservedBy: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
+        dispatchStartedAt: null,
+        observedAt: null,
+        failureCode: null,
+      },
+      payload: { text: "pending proactive message" },
+    });
+
     const backgroundJobId = crypto.randomUUID();
     await database.db.insert(nativeLiveBackgroundModelJobs).values({
       id: backgroundJobId,
@@ -709,6 +745,15 @@ test(
       /BackgroundWorkflowSourceInactive/,
     );
 
+    assert.equal(
+      await effects.reserveNext({
+        userId,
+        workerInstanceId: effectWorkerId,
+      }),
+      null,
+      "Archive must pause a pending effect targeted at the conversation",
+    );
+
     const activePage = await service.listConversationPage({
       userId,
       limit: 20,
@@ -750,6 +795,18 @@ test(
       }))?.lifecycleStatus,
       "active",
     );
+
+    const resumedEffect = await effects.reserveNext({
+      userId,
+      workerInstanceId: effectWorkerId,
+    });
+    assert.ok(resumedEffect);
+    assert.equal(resumedEffect.effectId, effectId);
+    await effects.releaseReservation({
+      userId,
+      effectId,
+      workerInstanceId: effectWorkerId,
+    });
 
     assert.equal(
       (await service.archiveConversation({
@@ -802,6 +859,12 @@ test(
       .from(nativeLiveBackgroundModelJobs)
       .where(eq(nativeLiveBackgroundModelJobs.id, backgroundJobId));
     assert.equal(background.length, 0);
+
+    const deletedEffect = await database.db
+      .select({ id: runtimeEffects.id })
+      .from(runtimeEffects)
+      .where(eq(runtimeEffects.id, effectId));
+    assert.equal(deletedEffect.length, 0);
 
     const deletedWake = await database.db
       .select({ id: runtimeProactivityWakes.id })
