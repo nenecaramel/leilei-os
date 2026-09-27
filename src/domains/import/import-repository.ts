@@ -1,14 +1,24 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversations,
   dataImportRuns,
   diaryEntries,
+  projectConversations,
+  projectResources,
+  projects,
+  projectWorkspaces,
   todoEntries,
   todoPapers,
   users,
 } from "../../database/schema.js";
 import type {
   ExportDiaryRecord,
+  ExportProjectConversationRecord,
+  ExportProjectRecord,
+  ExportProjectResourceRecord,
+  ExportProjectsBundle,
+  ExportProjectWorkspaceRecord,
   ExportTodoPaper,
 } from "../export/export-types.js";
 import { hashCanonical } from "./import-canonical.js";
@@ -52,6 +62,26 @@ export interface ImportRepository {
     record: ExportTodoPaper,
   ): Promise<void>;
 
+  insertProjectWorkspace(
+    userId: string,
+    record: ExportProjectWorkspaceRecord,
+  ): Promise<void>;
+
+  insertProject(
+    userId: string,
+    record: ExportProjectRecord,
+  ): Promise<void>;
+
+  insertProjectResource(
+    userId: string,
+    record: ExportProjectResourceRecord,
+  ): Promise<void>;
+
+  insertProjectConversation(
+    userId: string,
+    record: ExportProjectConversationRecord,
+  ): Promise<void>;
+
   rereadCreatedState(
     userId: string,
     modules: Set<ImportModule>,
@@ -65,6 +95,13 @@ export interface ImportRepository {
 
 const toIso = (value: Date): string =>
   value.toISOString();
+
+const emptyProjects = (): ExportProjectsBundle => ({
+  workspaces: [],
+  projects: [],
+  resources: [],
+  conversations: [],
+});
 
 export class DrizzleImportRepository
 implements ImportRepository {
@@ -98,25 +135,105 @@ implements ImportRepository {
   async readCurrentState(
     userId: string,
   ): Promise<ImportCurrentState> {
-    const [diary, papers, allDiary] =
-      await Promise.all([
-        this.db
-          .select()
-          .from(diaryEntries)
-          .where(eq(diaryEntries.userId, userId))
-          .orderBy(asc(diaryEntries.id)),
-        this.db
-          .select()
-          .from(todoPapers)
-          .where(eq(todoPapers.userId, userId))
-          .orderBy(
-            asc(todoPapers.businessDate),
-            asc(todoPapers.author),
-          ),
-        this.db
-          .select({ id: diaryEntries.id })
-          .from(diaryEntries),
-      ]);
+    const [
+      diary,
+      papers,
+      allDiary,
+      workspaceRows,
+      projectRows,
+      resourceRows,
+      conversationRows,
+      allWorkspaceIds,
+      allProjectIds,
+      allResourceIds,
+      nativeLiveConversations,
+    ] = await Promise.all([
+      this.db
+        .select()
+        .from(diaryEntries)
+        .where(eq(diaryEntries.userId, userId))
+        .orderBy(asc(diaryEntries.id)),
+      this.db
+        .select()
+        .from(todoPapers)
+        .where(eq(todoPapers.userId, userId))
+        .orderBy(
+          asc(todoPapers.businessDate),
+          asc(todoPapers.author),
+        ),
+      this.db
+        .select({ id: diaryEntries.id })
+        .from(diaryEntries),
+      this.db
+        .select({
+          id: projectWorkspaces.id,
+          name: projectWorkspaces.name,
+          description: projectWorkspaces.description,
+          version: projectWorkspaces.version,
+          createdAt: projectWorkspaces.createdAt,
+          updatedAt: projectWorkspaces.updatedAt,
+        })
+        .from(projectWorkspaces)
+        .where(eq(projectWorkspaces.userId, userId))
+        .orderBy(asc(projectWorkspaces.id)),
+      this.db
+        .select({
+          id: projects.id,
+          workspaceId: projects.workspaceId,
+          name: projects.name,
+          description: projects.description,
+          version: projects.version,
+          createdAt: projects.createdAt,
+          updatedAt: projects.updatedAt,
+        })
+        .from(projects)
+        .where(eq(projects.userId, userId))
+        .orderBy(asc(projects.id)),
+      this.db
+        .select({
+          id: projectResources.id,
+          projectId: projectResources.projectId,
+          kind: projectResources.kind,
+          key: projectResources.resourceKey,
+          title: projectResources.title,
+          content: projectResources.content,
+          metadata: projectResources.metadata,
+          version: projectResources.version,
+          createdAt: projectResources.createdAt,
+          updatedAt: projectResources.updatedAt,
+        })
+        .from(projectResources)
+        .where(eq(projectResources.userId, userId))
+        .orderBy(asc(projectResources.id)),
+      this.db
+        .select({
+          projectId: projectConversations.projectId,
+          conversationId: projectConversations.conversationId,
+          addedAt: projectConversations.addedAt,
+        })
+        .from(projectConversations)
+        .where(eq(projectConversations.userId, userId))
+        .orderBy(
+          asc(projectConversations.projectId),
+          asc(projectConversations.conversationId),
+        ),
+      this.db
+        .select({ id: projectWorkspaces.id })
+        .from(projectWorkspaces),
+      this.db
+        .select({ id: projects.id })
+        .from(projects),
+      this.db
+        .select({ id: projectResources.id })
+        .from(projectResources),
+      this.db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.userId, userId),
+          eq(conversations.origin, "native_live"),
+        )),
+    ]);
 
     const entries =
       papers.length === 0
@@ -181,8 +298,64 @@ implements ImportRepository {
         updated_at: toIso(row.updatedAt),
         entries: grouped.get(row.id) ?? [],
       })),
+      projects: {
+        workspaces: workspaceRows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          version: row.version,
+          created_at: toIso(row.createdAt),
+          updated_at: toIso(row.updatedAt),
+        })),
+        projects: projectRows.map((row) => ({
+          id: row.id,
+          workspace_id: row.workspaceId,
+          name: row.name,
+          description: row.description,
+          version: row.version,
+          created_at: toIso(row.createdAt),
+          updated_at: toIso(row.updatedAt),
+        })),
+        resources: resourceRows.map((row) => ({
+          id: row.id,
+          project_id: row.projectId,
+          kind: row.kind,
+          key: row.key,
+          title: row.title,
+          content: row.content,
+          metadata: row.metadata,
+          version: row.version,
+          created_at: toIso(row.createdAt),
+          updated_at: toIso(row.updatedAt),
+        })),
+        conversations: conversationRows.map((row) => ({
+          project_id: row.projectId,
+          conversation_id: row.conversationId,
+          added_at: toIso(row.addedAt),
+        })),
+      },
       foreign_diary_ids: new Set(
-        allDiary.map((row) => row.id),
+        allDiary
+          .filter((row) => !diary.some((owned) => owned.id === row.id))
+          .map((row) => row.id),
+      ),
+      foreign_workspace_ids: new Set(
+        allWorkspaceIds
+          .filter((row) => !workspaceRows.some((owned) => owned.id === row.id))
+          .map((row) => row.id),
+      ),
+      foreign_project_ids: new Set(
+        allProjectIds
+          .filter((row) => !projectRows.some((owned) => owned.id === row.id))
+          .map((row) => row.id),
+      ),
+      foreign_project_resource_ids: new Set(
+        allResourceIds
+          .filter((row) => !resourceRows.some((owned) => owned.id === row.id))
+          .map((row) => row.id),
+      ),
+      native_live_conversation_ids: new Set(
+        nativeLiveConversations.map((row) => row.id),
       ),
     };
   }
@@ -244,6 +417,68 @@ implements ImportRepository {
     }
   }
 
+  async insertProjectWorkspace(
+    userId: string,
+    record: ExportProjectWorkspaceRecord,
+  ): Promise<void> {
+    await this.db.insert(projectWorkspaces).values({
+      id: record.id,
+      userId,
+      name: record.name,
+      description: record.description,
+      version: record.version,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+    });
+  }
+
+  async insertProject(
+    userId: string,
+    record: ExportProjectRecord,
+  ): Promise<void> {
+    await this.db.insert(projects).values({
+      id: record.id,
+      userId,
+      workspaceId: record.workspace_id,
+      name: record.name,
+      description: record.description,
+      version: record.version,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+    });
+  }
+
+  async insertProjectResource(
+    userId: string,
+    record: ExportProjectResourceRecord,
+  ): Promise<void> {
+    await this.db.insert(projectResources).values({
+      id: record.id,
+      userId,
+      projectId: record.project_id,
+      kind: record.kind,
+      resourceKey: record.key,
+      title: record.title,
+      content: record.content,
+      metadata: record.metadata,
+      version: record.version,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+    });
+  }
+
+  async insertProjectConversation(
+    userId: string,
+    record: ExportProjectConversationRecord,
+  ): Promise<void> {
+    await this.db.insert(projectConversations).values({
+      userId,
+      projectId: record.project_id,
+      conversationId: record.conversation_id,
+      addedAt: new Date(record.added_at),
+    });
+  }
+
   async rereadCreatedState(
     userId: string,
     modules: Set<ImportModule>,
@@ -256,6 +491,9 @@ implements ImportRepository {
       todo: modules.has("todo")
         ? state.todo
         : [],
+      projects: modules.has("projects")
+        ? state.projects
+        : emptyProjects(),
     };
   }
 
