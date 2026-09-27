@@ -580,6 +580,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
       const candidateIdSet = new Set(candidateIds);
       if (
         candidateIdSet.size !== candidateIds.length
+        || candidateIdSet.has(result.query_state_id)
         || result.candidates.some(
           (candidate) => candidate.kind !== result.kind,
         )
