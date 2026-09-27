@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversationMessages,
