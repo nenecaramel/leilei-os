@@ -113,7 +113,7 @@ struct SidebarView: View {
                 .padding(.horizontal, 10)
                 .offset(x: titleHorizontalOffset - 14, y: 2)
 
-            ForEach(conversations) { conversation in
+            ForEach(Array(conversations.prefix(50))) { conversation in
                 Button {
                     selectedPage = .chat
                     onSelect()
