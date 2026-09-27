@@ -415,7 +415,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       resume: sessionId,
       execution,
       verbatimPrompts: false,
-      captureContextUsage: false,
+      captureContextUsage: true,
       hooks,
     });
 
@@ -655,6 +655,23 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
         if (sdkResultFailed(message)) {
           terminalFailure = message;
+        }
+      }
+
+      if (
+        captureContextUsage
+        && typeof activeQuery.getContextUsage === "function"
+      ) {
+        try {
+          rawContextUsage = await activeQuery.getContextUsage({
+            detail: "summary",
+          });
+          contextUsageError = null;
+        } catch (cause) {
+          if (!rawContextUsage) {
+            contextUsageError =
+              cause instanceof Error ? cause.message : String(cause);
+          }
         }
       }
     } catch (cause) {
