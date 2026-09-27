@@ -6,8 +6,6 @@ struct UniverseView: View {
 
     let targetNodeID: String?
     let onTargetConsumed: () -> Void
-    let onOpenDiarySource:
-        (UniverseDiarySourceSummary, String) -> Void
 
     @State private var state: UniversePageState = .loading
     @State private var selectedNodeID: String?
@@ -30,16 +28,10 @@ struct UniverseView: View {
 
     init(
         targetNodeID: String? = nil,
-        onTargetConsumed: @escaping () -> Void = {},
-        onOpenDiarySource:
-            @escaping (
-                UniverseDiarySourceSummary,
-                String
-            ) -> Void = { _, _ in }
+        onTargetConsumed: @escaping () -> Void = {}
     ) {
         self.targetNodeID = targetNodeID
         self.onTargetConsumed = onTargetConsumed
-        self.onOpenDiarySource = onOpenDiarySource
     }
 
     var body: some View {
@@ -483,16 +475,8 @@ struct UniverseView: View {
                     nodeID in
                     openRelatedNode(nodeID)
                 },
-                onOpenDiarySource: {
-                    source in
-                    guard let nodeID else {
-                        return
-                    }
-                    sheetSelection = nil
-                    onOpenDiarySource(
-                        source,
-                        nodeID
-                    )
+                onDiarySourceChanged: {
+                    await refreshReadyState()
                 },
                 onClose: {
                     sheetSelection = nil
@@ -959,6 +943,23 @@ struct UniverseView: View {
             .filter {
                 $0.nodeId == nodeID
             }
+    }
+
+    private func refreshReadyState() async {
+        guard case .ready(let current) = state else {
+            return
+        }
+
+        do {
+            let fresh =
+                try await UniverseAPIService(
+                    api: appModel.api
+                )
+                .load()
+            state = .ready(fresh)
+        } catch {
+            state = .ready(current)
+        }
     }
 
     private func openRelatedNode(
