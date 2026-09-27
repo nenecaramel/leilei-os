@@ -124,7 +124,7 @@ function sendExportError(response: Response, error: unknown): void {
       error: {
         code: "EXPORT_IN_PROGRESS",
         message:
-          "Finish the current conversation turn before exporting all data.",
+          "Finish current conversation processing before exporting all data.",
       },
     });
     return;
