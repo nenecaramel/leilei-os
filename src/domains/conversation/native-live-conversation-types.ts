@@ -71,4 +71,5 @@ export type NativeLiveProviderCheckpointInput = {
   provider: ConversationRuntimeProvider;
   providerSessionId: string;
   providerCheckpointId?: string | null;
+  runtimeMetadata?: Record<string, unknown> | null;
 };
