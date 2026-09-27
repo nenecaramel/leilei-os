@@ -167,6 +167,16 @@ test(
       phase: "dormant",
       settled: false,
     });
+    const authoredDormant = topicState({
+      id: crypto.randomUUID(),
+      userId,
+      text: "Legacy authored dormant Topic",
+      phase: "dormant",
+    });
+    authoredDormant.envelope = {
+      ...authoredDormant.envelope,
+      authority: "subject_authorized",
+    };
 
     const subjectStates = new DrizzleSubjectStateRuntimePort(database.db);
     await subjectStates.append({
@@ -177,6 +187,7 @@ test(
         activeAnchor,
         dormantReinforcement,
         provisionalDormant,
+        authoredDormant,
       ],
     });
 
@@ -197,6 +208,12 @@ test(
     assert.equal(
       result.candidates[0]?.threadKey,
       topicThreadKey("Dormant anchor"),
+    );
+    assert.equal(
+      result.candidates.some(
+        (candidate) => candidate.stateId === authoredDormant.id,
+      ),
+      false,
     );
 
     const rows = await database.db
