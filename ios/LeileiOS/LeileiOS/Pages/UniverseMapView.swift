@@ -23,6 +23,7 @@ struct UniverseMapView: View {
     @State private var viewport = UniverseViewport(x: 0, y: 0, scale: 1)
     @State private var dragOrigin: UniverseViewport?
     @State private var magnifyOrigin: UniverseViewport?
+    @State private var suppressMapDragCompletion = false
     @State private var draftPositions: [String: UniversePosition] = [:]
     @State private var hasInitializedViewport = false
 
@@ -208,6 +209,10 @@ struct UniverseMapView: View {
                 value.translation.height
             )
 
+            guard magnifyOrigin == nil else {
+                return
+            }
+
             if dragOrigin == nil {
                 dragOrigin = viewport
             }
@@ -231,6 +236,10 @@ struct UniverseMapView: View {
         .onEnded { value in
             defer {
                 dragOrigin = nil
+            }
+
+            guard !suppressMapDragCompletion else {
+                return
             }
 
             let distance = hypot(
@@ -263,6 +272,8 @@ struct UniverseMapView: View {
             .onChanged { value in
                 if magnifyOrigin == nil {
                     magnifyOrigin = viewport
+                    suppressMapDragCompletion = true
+                    dragOrigin = nil
                 }
 
                 guard let origin = magnifyOrigin else {
@@ -280,6 +291,13 @@ struct UniverseMapView: View {
             .onEnded { _ in
                 magnifyOrigin = nil
                 persistViewport()
+
+                Task { @MainActor in
+                    try? await Task.sleep(
+                        for: .milliseconds(120)
+                    )
+                    suppressMapDragCompletion = false
+                }
             }
     }
 
