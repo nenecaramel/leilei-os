@@ -31,7 +31,7 @@ export type ImportCounts = {
 export type ImportCurrentState = {
   diary: ExportDiaryRecord[];
   todo: ExportTodoPaper[];
-  projects: ExportProjectsBundle;
+  projects?: ExportProjectsBundle;
   foreign_diary_ids?: Set<string>;
   foreign_workspace_ids?: Set<string>;
   foreign_project_ids?: Set<string>;
@@ -186,40 +186,46 @@ function projectItems(
   imported: ExportProjectsBundle,
   current: ImportCurrentState,
 ): ImportPlanItem[] {
+  const currentProjects = current.projects ?? {
+    workspaces: [],
+    projects: [],
+    resources: [],
+    conversations: [],
+  };
   const items = [
     ...classifyProjectEntity(
       "workspace",
       imported.workspaces,
-      current.projects.workspaces,
+      currentProjects.workspaces,
       (record) => record.id,
     ),
     ...classifyProjectEntity(
       "project",
       imported.projects,
-      current.projects.projects,
+      currentProjects.projects,
       (record) => record.id,
     ),
     ...classifyProjectEntity(
       "resource",
       imported.resources,
-      current.projects.resources,
+      currentProjects.resources,
       (record) => record.id,
     ),
     ...classifyProjectEntity(
       "conversation",
       imported.conversations,
-      current.projects.conversations,
+      currentProjects.conversations,
       (record) =>
         `${record.project_id}:${record.conversation_id}`,
     ),
   ];
 
   const workspaceIds = new Set([
-    ...current.projects.workspaces.map((record) => record.id),
+    ...currentProjects.workspaces.map((record) => record.id),
     ...imported.workspaces.map((record) => record.id),
   ]);
   const projectIds = new Set([
-    ...current.projects.projects.map((record) => record.id),
+    ...currentProjects.projects.map((record) => record.id),
     ...imported.projects.map((record) => record.id),
   ]);
   const conversationIds =
