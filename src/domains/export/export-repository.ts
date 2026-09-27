@@ -4,6 +4,7 @@ import {
   conversationAttachments,
   conversationContentBlocks,
   conversationMessages,
+  conversationProviderSessionCheckpoints,
   conversations,
   diaryComments,
   diaryEntries,
@@ -209,8 +210,12 @@ export class DrizzleExportRepository implements ExportRepository {
           );
 
     const messageIds = messageRows.map((row) => row.id);
-    const [contentRows, attachmentRows] = messageIds.length === 0
-      ? [[], []] as const
+    const [
+      contentRows,
+      attachmentRows,
+      checkpointRows,
+    ] = messageIds.length === 0
+      ? [[], [], []] as const
       : await Promise.all([
           this.db.select({
             id: conversationContentBlocks.id,
@@ -249,6 +254,42 @@ export class DrizzleExportRepository implements ExportRepository {
               asc(conversationAttachments.messageId),
               asc(conversationAttachments.ordinal),
               asc(conversationAttachments.id),
+            ),
+          this.db.select({
+            id: conversationProviderSessionCheckpoints.id,
+            conversationId:
+              conversationProviderSessionCheckpoints.conversationId,
+            canonicalMessageId:
+              conversationProviderSessionCheckpoints.canonicalMessageId,
+            provider:
+              conversationProviderSessionCheckpoints.provider,
+            providerSessionId:
+              conversationProviderSessionCheckpoints.providerSessionId,
+            runtimeMetadata:
+              conversationProviderSessionCheckpoints.runtimeMetadata,
+            providerCheckpointId:
+              conversationProviderSessionCheckpoints.providerCheckpointId,
+            createdAt:
+              conversationProviderSessionCheckpoints.createdAt,
+          }).from(conversationProviderSessionCheckpoints)
+            .where(and(
+              eq(
+                conversationProviderSessionCheckpoints.userId,
+                userId,
+              ),
+              inArray(
+                conversationProviderSessionCheckpoints.canonicalMessageId,
+                messageIds,
+              ),
+            ))
+            .orderBy(
+              asc(
+                conversationProviderSessionCheckpoints.conversationId,
+              ),
+              asc(
+                conversationProviderSessionCheckpoints.canonicalMessageId,
+              ),
+              asc(conversationProviderSessionCheckpoints.provider),
             ),
         ]);
 
@@ -300,6 +341,16 @@ export class DrizzleExportRepository implements ExportRepository {
         mime_type: row.mimeType,
         size_bytes: row.sizeBytes,
         payload: row.payload,
+      })),
+      provider_checkpoints: checkpointRows.map((row) => ({
+        id: row.id,
+        conversation_id: row.conversationId,
+        canonical_message_id: row.canonicalMessageId,
+        provider: row.provider,
+        provider_session_id: row.providerSessionId,
+        runtime_metadata: row.runtimeMetadata,
+        provider_checkpoint_id: row.providerCheckpointId,
+        created_at: toIso(row.createdAt),
       })),
     };
   }
