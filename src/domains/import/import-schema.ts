@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CONTENT_AUTHORS } from "../content-author.js";
 import {
+  UniverseValidationError,
+  validateUniverseSnapshot,
+} from "../universe/universe-validation.js";
+import {
   PROJECT_RESOURCE_KINDS,
 } from "../project-workspace/project-workspace-types.js";
 import type {
@@ -253,6 +257,17 @@ const mindStateRecord = z.object({
   updated_at: isoDateTime,
 }).strict();
 
+const universeBundle = z.object({
+  version: z.number().int().nonnegative(),
+  snapshot: z.unknown(),
+  diary_sources: z.array(
+    z.object({
+      node_id: z.string().min(1).max(256),
+      diary_id: uuid,
+    }).strict(),
+  ).max(MAX_IMPORT_RECORDS_PER_MODULE),
+}).strict();
+
 const lifecycleEvent = z.object({
   id: uuid,
   resource_type: z.string().min(1).max(32),
@@ -295,6 +310,7 @@ const dataV3Schema = z.object({
     .max(MAX_IMPORT_RECORDS_PER_MODULE)
     .optional(),
   conversations: conversationsBundle.optional(),
+  universe: universeBundle.nullable().optional(),
 }).strict();
 
 const documentV2Schema = z.object({
@@ -366,6 +382,45 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
         );
       }
       ids.add(entry.id);
+    }
+  }
+
+  if (
+    document.schema_version === 3
+    && document.data.universe
+  ) {
+    try {
+      validateUniverseSnapshot(
+        document.data.universe.snapshot,
+      );
+    } catch (error) {
+      if (error instanceof UniverseValidationError) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Universe snapshot is invalid",
+        );
+      }
+      throw error;
+    }
+
+    const nodeIds = new Set(
+      document.data.universe.snapshot.nodes.map(
+        (node) => node.id,
+      ),
+    );
+    const provenanceKeys = new Set<string>();
+    for (const source of document.data.universe.diary_sources) {
+      const key = `${source.node_id}:\u0000:${source.diary_id}`;
+      if (
+        !nodeIds.has(source.node_id)
+        || provenanceKeys.has(key)
+      ) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Universe Diary provenance is invalid",
+        );
+      }
+      provenanceKeys.add(key);
     }
   }
 
