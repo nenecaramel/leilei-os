@@ -112,8 +112,14 @@ function ArchivedCountRow({
   );
 }
 
-function countImport(summary: Record<string, WebImportModuleSummary>, key: keyof WebImportModuleSummary): number {
-  return Object.values(summary).reduce((total, counts) => total + counts[key], 0);
+function countImport(
+  summary: Partial<Record<string, WebImportModuleSummary>>,
+  key: keyof WebImportModuleSummary,
+): number {
+  return Object.values(summary).reduce(
+    (total, counts) => total + (counts?.[key] ?? 0),
+    0,
+  );
 }
 
 function recordLabel(count: number): string {
@@ -128,7 +134,10 @@ function fileSummary(filename: string, size: number): string {
   return `${filename} · ${(size / 1024).toFixed(1)} KB`;
 }
 
-function importCounts(summary: Record<string, WebImportModuleSummary>, module: ImportModuleKey): WebImportModuleSummary {
+function importCounts(
+  summary: Partial<Record<string, WebImportModuleSummary>>,
+  module: ImportModuleKey,
+): WebImportModuleSummary {
   return summary[module] ?? EMPTY_IMPORT_COUNTS;
 }
 
