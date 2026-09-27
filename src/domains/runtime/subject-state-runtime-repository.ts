@@ -16,6 +16,7 @@ import type {
 } from "./native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "./persistent-write-envelope.js";
 import {
+  validateCurrentSubjectStateAppend,
   validateSubjectStateWrite,
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
@@ -103,7 +104,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     if (input.states.length === 0) return;
 
     const states = input.states.map((candidate) => {
-      const state = validateSubjectStateWrite(candidate);
+      const state = validateCurrentSubjectStateAppend(candidate);
       requirePortIdentity(state, input);
       return {
         ...state,
