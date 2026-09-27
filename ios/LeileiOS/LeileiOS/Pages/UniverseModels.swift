@@ -157,6 +157,13 @@ struct UniverseSnapshot: Codable, Equatable, Sendable {
     let revisions: [UniverseRevision]
 }
 
+struct UniverseNodeConnection: Identifiable, Equatable, Sendable {
+    let relation: UniverseRelation
+    let node: UniverseNode
+
+    var id: String { relation.id }
+}
+
 struct UniverseDiarySourceSummary: Codable, Equatable, Sendable, Identifiable {
     let nodeId: String
     let diaryId: String
