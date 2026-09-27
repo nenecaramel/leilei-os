@@ -3,6 +3,7 @@ import test from "node:test";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 import type {
   ExportDiaryRecord,
+  ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
   ExportProjectResourceRecord,
@@ -55,6 +56,33 @@ const todo: ExportTodoPaper = {
 
 const CONVERSATION_ID =
   "00000000-0000-4000-8000-000000000041";
+const mindState: ExportMindStateRecord = {
+  id: "00000000-0000-4000-8000-000000000061",
+  subject_id: "claude",
+  kind: "memory",
+  text: "Durable memory",
+  payload: {
+    lifecycle_v1: {
+      status: "active",
+      reinforcementCount: 2,
+    },
+  },
+  scope_applicability: "global",
+  scope_conversation_id: null,
+  scope_path_head_message_id: null,
+  settlement_status: "settled",
+  path_status: "current",
+  validity_status: "valid",
+  envelope: {
+    authority: "subject_authorized",
+    provenance: {
+      sources: [{ kind: "conversation_message", id: "source-1" }],
+    },
+  },
+  created_at: NOW,
+  updated_at: NOW,
+};
+
 
 const projectBundle: ExportProjectsBundle = {
   workspaces: [{
@@ -138,6 +166,9 @@ function cloneState(
     projects: state.projects
       ? structuredClone(state.projects)
       : undefined,
+    mind: state.mind
+      ? structuredClone(state.mind)
+      : undefined,
     foreign_diary_ids:
       state.foreign_diary_ids
         ? new Set(state.foreign_diary_ids)
@@ -153,6 +184,10 @@ function cloneState(
     foreign_project_resource_ids:
       state.foreign_project_resource_ids
         ? new Set(state.foreign_project_resource_ids)
+        : undefined,
+    foreign_mind_ids:
+      state.foreign_mind_ids
+        ? new Set(state.foreign_mind_ids)
         : undefined,
     native_live_conversation_ids:
       state.native_live_conversation_ids
@@ -219,6 +254,15 @@ class FakeImportRepository implements ImportRepository {
     this.state.todo.push(
       structuredClone(record),
     );
+    this.writes += 1;
+  }
+
+  async insertMind(
+    _userId: string,
+    record: ExportMindStateRecord,
+  ) {
+    const mind = this.state.mind ??= [];
+    mind.push(structuredClone(record));
     this.writes += 1;
   }
 
@@ -289,6 +333,9 @@ class FakeImportRepository implements ImportRepository {
       todo: modules.has("todo")
         ? structuredClone(this.state.todo)
         : [],
+      mind: modules.has("mind")
+        ? structuredClone(this.state.mind ?? [])
+        : undefined,
       projects: modules.has("projects")
         ? structuredClone(this.state.projects ?? {
             workspaces: [],
@@ -544,6 +591,55 @@ test("v3 Projects preview rejects cross-user ids before any write", async () => 
   );
 
   assert.equal(preview.summary.projects?.conflict, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
+
+test("v3 Mind restore preserves durable state semantics exactly", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [],
+  });
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({
+    mind: [mindState],
+  });
+
+  const preview = await service.preview(raw, USER_ID);
+  assert.deepEqual(preview.summary.mind, {
+    create: 1,
+    duplicate: 0,
+    conflict: 0,
+    invalid: 0,
+  });
+
+  await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.deepEqual(repository.state.mind, [mindState]);
+  assert.equal(repository.writes, 1);
+});
+
+test("v3 Mind restore rejects a state id owned by another user", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [],
+    foreign_mind_ids: new Set([mindState.id]),
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({ mind: [mindState] }),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.mind?.conflict, 1);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
