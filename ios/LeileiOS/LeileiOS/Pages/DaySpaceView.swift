@@ -6,6 +6,9 @@ private let daySpaceStateHeight: CGFloat = 470
 struct DaySpaceView: View {
     @EnvironmentObject private var appModel: AppModel
 
+    let target: DaySpaceNavigationTarget?
+    let onTargetConsumed: () -> Void
+
     @State private var query = ""
     @State private var searchState: DaySpaceTodoSearchState = .idle
     @State private var selectedDate: String?
@@ -187,8 +190,12 @@ struct DaySpaceView: View {
             .presentationBackground(.clear)
             .interactiveDismissDisabled()
         }
-        .task {
-            await discoverAndLoad()
+        .task(id: target) {
+            if let target {
+                await openExternalTarget(target)
+            } else if selectedDate == nil {
+                await discoverAndLoad()
+            }
         }
         .task(id: query) {
             await searchTodoIfNeeded()
@@ -351,6 +358,33 @@ struct DaySpaceView: View {
         Task {
             await loadDate(date)
         }
+    }
+
+    @MainActor
+    private func openExternalTarget(
+        _ target: DaySpaceNavigationTarget
+    ) async {
+        query = ""
+        searchState = .idle
+        discoveryState = .ready
+
+        await loadDate(target.date)
+
+        defer {
+            onTargetConsumed()
+        }
+
+        guard let authorRaw = target.author,
+              let author = DaySpaceAuthor(
+                  rawValue: authorRaw
+              ),
+              let day = todoState.value,
+              let paper = day.papers[author]
+        else {
+            return
+        }
+
+        selection = .todo(paper)
     }
 
     @MainActor
