@@ -5,6 +5,7 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   nativeLiveMindFollowUps,
+  nativeLiveTurnPreparations,
   runtimeContextManifests,
   runtimeSubjectStates,
   users,
@@ -135,6 +136,13 @@ test(
     });
     assert.equal(finalized.ok, true);
     if (!finalized.ok) throw new Error("expected canonical success");
+
+    // This fixture drives the coordinator directly and therefore bypasses the
+    // relay that normally marks provider delivery terminal.
+    await database.db
+      .update(nativeLiveTurnPreparations)
+      .set({ dispatchStatus: "completed" })
+      .where(eq(nativeLiveTurnPreparations.id, prepared.command.prepare_id));
 
     const [pending] = await database.db
       .select({
