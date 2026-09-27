@@ -61,9 +61,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var chatSyncState: ChatSyncState = .idle
     @Published private(set) var chatSendState: ChatSendState = .idle
     @Published private(set) var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
+    @Published private(set) var nativeLiveRuntimeSurface:
+        NativeLiveRuntimeSurfaceState?
 
     private var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
+    private var nativeLiveRuntimeObservationTask: Task<Void, Never>?
     private var conversationBootstrapInFlight = false
     private var conversationPaginationInFlight = false
     private var chatRefreshInFlight = false
@@ -408,12 +411,11 @@ final class AppModel: ObservableObject {
                 throw LeileiAPIError.invalidResponse
             }
 
-            try await waitForNativeLiveTurn(
-                prepareID: prepared.prepareId,
+            try await completePreparedNativeLiveTurn(
+                prepared,
                 conversationID: conversationID
             )
 
-            await refreshNativeLiveCurrentPath(force: true)
             await refreshNativeLiveConversations()
             chatSendState = .idle
         } catch LeileiAPIError.missingAccessToken {
@@ -720,11 +722,122 @@ final class AppModel: ObservableObject {
             throw LeileiAPIError.invalidResponse
         }
 
+        beginNativeLiveRuntimeObservation(
+            prepareID: prepared.prepareId,
+            conversationID: conversationID
+        )
+        defer {
+            stopNativeLiveRuntimeObservation(
+                prepareID: prepared.prepareId
+            )
+        }
+
         try await waitForNativeLiveTurn(
             prepareID: prepared.prepareId,
             conversationID: conversationID
         )
         await refreshNativeLiveCurrentPath(force: true)
+    }
+
+    private func beginNativeLiveRuntimeObservation(
+        prepareID: String,
+        conversationID: UUID
+    ) {
+        nativeLiveRuntimeObservationTask?.cancel()
+
+        nativeLiveRuntimeSurface = NativeLiveRuntimeSurfaceState(
+            prepareID: prepareID,
+            conversationID: conversationID,
+            events: [],
+            interactions: [],
+            controls: [],
+            nextAfterSequence: 0
+        )
+
+        nativeLiveRuntimeObservationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled,
+                  self.nativeLiveRuntimeSurface?.prepareID == prepareID {
+                await self.refreshNativeLiveRuntimeSurface(
+                    prepareID: prepareID,
+                    conversationID: conversationID
+                )
+
+                try? await Task.sleep(
+                    for: .milliseconds(350)
+                )
+            }
+        }
+    }
+
+    private func stopNativeLiveRuntimeObservation(
+        prepareID: String
+    ) {
+        guard nativeLiveRuntimeSurface?.prepareID == prepareID else {
+            return
+        }
+
+        nativeLiveRuntimeObservationTask?.cancel()
+        nativeLiveRuntimeObservationTask = nil
+        nativeLiveRuntimeSurface = nil
+    }
+
+    private func refreshNativeLiveRuntimeSurface(
+        prepareID: String,
+        conversationID: UUID
+    ) async {
+        guard var surface = nativeLiveRuntimeSurface,
+              surface.prepareID == prepareID,
+              surface.conversationID == conversationID else {
+            return
+        }
+
+        do {
+            let page = try await api.nativeLiveRuntimeEvents(
+                prepareID: prepareID,
+                afterSequence: surface.nextAfterSequence
+            )
+            guard page.prepareID == prepareID else {
+                return
+            }
+
+            if !page.events.isEmpty {
+                let known = Set(surface.events.map(\.sequence))
+                surface.events.append(
+                    contentsOf: page.events.filter {
+                        !known.contains($0.sequence)
+                    }
+                )
+            }
+            surface.nextAfterSequence = page.nextAfterSequence
+        } catch {
+            // Runtime observation is fail-soft. Canonical turn completion
+            // remains authoritative.
+        }
+
+        do {
+            surface.interactions =
+                try await api.nativeLiveRuntimeInteractions(
+                    prepareID: prepareID
+                )
+        } catch {
+            // Fail-soft; a later observation can recover.
+        }
+
+        do {
+            surface.controls =
+                try await api.nativeLiveRuntimeControls(
+                    prepareID: prepareID
+                )
+        } catch {
+            // Fail-soft; a later observation can recover.
+        }
+
+        guard nativeLiveRuntimeSurface?.prepareID == prepareID else {
+            return
+        }
+        nativeLiveRuntimeSurface = surface
     }
 
     private func waitForNativeLiveTurn(
@@ -889,6 +1002,9 @@ final class AppModel: ObservableObject {
         nativeLiveCurrentPath = nil
         nativeLiveRuntimeMetadata = nil
         nativeLiveRuntimeMetadataByConversationID.removeAll()
+        nativeLiveRuntimeObservationTask?.cancel()
+        nativeLiveRuntimeObservationTask = nil
+        nativeLiveRuntimeSurface = nil
         chatSyncState = .idle
         conversationPaginationInFlight = false
         chatRefreshInFlight = false
