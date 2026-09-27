@@ -7,6 +7,7 @@ import {
 import type {
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportProjectsBundle,
   ExportToolActivity,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
@@ -37,6 +38,13 @@ const todo: ExportTodoPaper[] = [{
   updated_at: EXPORTED_AT,
   entries: [],
 }];
+
+const projects: ExportProjectsBundle = {
+  workspaces: [],
+  projects: [],
+  resources: [],
+  conversations: [],
+};
 
 const lifecycle: ExportLifecycleEvent[] = [{
   id: "lifecycle-1",
@@ -72,6 +80,10 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`todo:${userId}`);
       return todo;
     },
+    async listProjects(userId) {
+      calls.push(`projects:${userId}`);
+      return projects;
+    },
     async listLifecycleAudit(userId) {
       calls.push(`lifecycle:${userId}`);
       return lifecycle;
@@ -93,7 +105,7 @@ test("ExportService emits the owner-bound v2 contract", async () => {
     Object.keys(document),
     ["schema_version", "owner_fingerprint", "exported_at", "data"],
   );
-  assert.equal(document.schema_version, 2);
+  assert.equal(document.schema_version, 3);
   assert.equal(document.owner_fingerprint, createOwnerFingerprint(USER_ID));
   assert.equal(document.exported_at, EXPORTED_AT);
   assert.deepEqual(document.data, { diary });
@@ -126,7 +138,7 @@ test("ExportService reads only the selected active-module scope", async () => {
   }
 });
 
-test("ExportService reads Diary and Todo for all scope", async () => {
+test("ExportService reads Diary, Todo, and Projects for all scope", async () => {
   const calls: string[] = [];
   const document = await new ExportService(
     createRepository(calls),
@@ -135,11 +147,12 @@ test("ExportService reads Diary and Todo for all scope", async () => {
 
   assert.deepEqual(
     Object.keys(document.data),
-    ["diary", "todo"],
+    ["diary", "todo", "projects"],
   );
   assert.deepEqual(calls, [
     `diary:${USER_ID}`,
     `todo:${USER_ID}`,
+    `projects:${USER_ID}`,
   ]);
 });
 
