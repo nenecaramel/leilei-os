@@ -48,6 +48,10 @@ test("turn preparation retention preserves unresolved follow-up and semantic wor
     source,
     /followup\.status IN \('pending', 'processing'\)/,
   );
+  assert.doesNotMatch(
+    source,
+    /followup\.status IN \('pending', 'processing', 'quarantined'\)/,
+  );
   assert.match(
     source,
     /scoring\.status IN \('pending', 'reserved'\)/,
