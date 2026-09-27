@@ -42,6 +42,7 @@ struct ChatView: View {
                         appModel.chatSendState == .sending
                             || pendingOperation != nil,
                     pendingOperation: pendingOperation,
+                    runtimeSurface: visibleRuntimeSurface,
                     onRefresh: {
                         await appModel.refreshNativeLiveCurrentPath(force: true)
                     },
@@ -158,6 +159,16 @@ struct ChatView: View {
                     .ignoresSafeArea()
             }
         }
+    }
+
+    private var visibleRuntimeSurface:
+        NativeLiveRuntimeSurfaceState? {
+        guard let surface = appModel.nativeLiveRuntimeSurface,
+              surface.conversationID
+                == appModel.activeNativeLiveConversationID else {
+            return nil
+        }
+        return surface
     }
 
     private var isConversationLoading: Bool {
