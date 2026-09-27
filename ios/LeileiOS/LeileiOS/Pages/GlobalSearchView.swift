@@ -344,7 +344,7 @@ private struct GlobalSearchResultsList: View {
                                 Text(
                                     loadMoreFailed
                                         ? "Retry"
-                                        : "Load More"
+                                        : "More"
                                 )
                             }
 
