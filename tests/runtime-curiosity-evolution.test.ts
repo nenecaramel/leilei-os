@@ -10,6 +10,9 @@ import {
   type CuriosityEvolutionPolicy,
   type CuriosityEvolutionUpdate,
 } from "../src/domains/runtime/curiosity-evolution.js";
+import type {
+  MindSemanticGroupingService,
+} from "../src/domains/runtime/mind-semantic-grouping.js";
 
 const policy: CuriosityEvolutionPolicy = {
   maxReinforcementSources: 16,
@@ -392,5 +395,167 @@ test("settlement catch-up initializes and reactivates Curiosity but never perfor
   assert.deepEqual(
     port.updates.map((update) => [update.stateId, update.reason]),
     [["dddddddd-dddd-4ddd-8ddd-dddddddddddd", "initialize"]],
+  );
+});
+
+
+test("Curiosity semantic grouping merges a paraphrase into the older canonical thread", async () => {
+  const anchorId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const anchorText = "why does the runtime keep this state alive";
+  const anchorPayload = writeCuriosityEvolution(null, {
+    phase: "active",
+    role: "anchor",
+    threadKey: curiosityThreadKey(anchorText),
+    anchorStateId: anchorId,
+    reinforcementCount: 1,
+    reinforcementSources: ["m1"],
+    lastEvolvedAt: "2026-09-26T10:00:00.000Z",
+    lastReinforcedAt: "2026-09-26T10:00:00.000Z",
+    resolvedAt: null,
+    resolutionSourceId: null,
+    dormantAt: null,
+  });
+  const paraphraseId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const paraphraseText = "what makes this runtime state persist";
+  const port = new Port([
+    candidate(
+      anchorId,
+      anchorText,
+      "m1",
+      "2026-09-26T10:00:00.000Z",
+      anchorPayload,
+    ),
+    candidate(
+      paraphraseId,
+      paraphraseText,
+      "m2",
+      "2026-09-27T00:00:00.000Z",
+    ),
+  ]);
+  const semanticGrouping = {
+    async reconcile(
+      _input: Parameters<MindSemanticGroupingService["reconcile"]>[0],
+    ) {
+      return {
+        canonicalThreadKeyByThread: new Map([
+          [curiosityThreadKey(paraphraseText), curiosityThreadKey(anchorText)],
+        ]),
+        staged: 0,
+      };
+    },
+  };
+  const service = new CuriosityEvolutionService(
+    port,
+    policy,
+    semanticGrouping,
+  );
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-27T00:01:00.000Z",
+  });
+
+  assert.equal(result.threads, 1);
+  const anchor = port.updates.find((update) => update.stateId === anchorId);
+  const reinforcement = port.updates.find(
+    (update) => update.stateId === paraphraseId,
+  );
+  assert.equal(anchor?.evolution.reinforcementCount, 2);
+  assert.equal(reinforcement?.evolution.role, "reinforcement");
+  assert.equal(reinforcement?.evolution.anchorStateId, anchorId);
+  assert.equal(
+    reinforcement?.evolution.threadKey,
+    curiosityThreadKey(anchorText),
+  );
+});
+
+test("Curiosity semantic grouping preserves a newer explicit resolution on the merged canonical thread", async () => {
+  const anchorId = "12121212-1212-4212-8212-121212121212";
+  const anchorText = "why does this lifecycle settle";
+  const anchorPayload = writeCuriosityEvolution(null, {
+    phase: "active",
+    role: "anchor",
+    threadKey: curiosityThreadKey(anchorText),
+    anchorStateId: anchorId,
+    reinforcementCount: 1,
+    reinforcementSources: ["m-old"],
+    lastEvolvedAt: "2026-09-26T10:00:00.000Z",
+    lastReinforcedAt: "2026-09-26T10:00:00.000Z",
+    resolvedAt: null,
+    resolutionSourceId: null,
+    dormantAt: null,
+  });
+  const resolvedId = "34343434-3434-4434-8434-343434343434";
+  const resolvedText = "what makes this lifecycle reach a settled answer";
+  const resolvedPayload = writeCuriosityEvolution(null, {
+    phase: "resolved",
+    role: "anchor",
+    threadKey: curiosityThreadKey(resolvedText),
+    anchorStateId: resolvedId,
+    reinforcementCount: 1,
+    reinforcementSources: ["m-resolved"],
+    lastEvolvedAt: "2026-09-27T12:00:00.000Z",
+    lastReinforcedAt: "2026-09-27T11:00:00.000Z",
+    resolvedAt: "2026-09-27T12:00:00.000Z",
+    resolutionSourceId: "answer-message-1",
+    dormantAt: null,
+  });
+  const port = new Port([
+    candidate(
+      anchorId,
+      anchorText,
+      "m-old",
+      "2026-09-26T10:00:00.000Z",
+      anchorPayload,
+    ),
+    candidate(
+      resolvedId,
+      resolvedText,
+      "m-resolved",
+      "2026-09-27T11:00:00.000Z",
+      resolvedPayload,
+    ),
+  ]);
+  const semanticGrouping = {
+    async reconcile(
+      _input: Parameters<MindSemanticGroupingService["reconcile"]>[0],
+    ) {
+      return {
+        canonicalThreadKeyByThread: new Map([
+          [curiosityThreadKey(resolvedText), curiosityThreadKey(anchorText)],
+        ]),
+        staged: 0,
+      };
+    },
+  };
+  const service = new CuriosityEvolutionService(
+    port,
+    policy,
+    semanticGrouping,
+  );
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-27T13:00:00.000Z",
+  });
+
+  assert.equal(result.threads, 1);
+  assert.equal(result.resolved, 1);
+  const anchor = port.updates.find((update) => update.stateId === anchorId);
+  assert.equal(anchor?.evolution.phase, "resolved");
+  assert.equal(
+    anchor?.evolution.resolutionSourceId,
+    "answer-message-1",
+  );
+  assert.equal(
+    anchor?.evolution.resolvedAt,
+    "2026-09-27T12:00:00.000Z",
+  );
+  assert.equal(anchor?.evolution.anchorStateId, anchorId);
+  assert.equal(
+    anchor?.evolution.threadKey,
+    curiosityThreadKey(anchorText),
   );
 });
