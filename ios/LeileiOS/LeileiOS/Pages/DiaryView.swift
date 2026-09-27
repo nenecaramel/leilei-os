@@ -821,6 +821,10 @@ struct DiaryArchivedDetailView: View {
 private struct DiaryArchivedCommentsSection: View {
     let comments: [DiaryComment]
     let count: Int
+    let errorMessage: String?
+    let hasMore: Bool
+    let isLoadingMore: Bool
+    let onLoadMore: () -> Void
 
     var body: some View {
         if count > 0 {
@@ -861,6 +865,35 @@ private struct DiaryArchivedCommentsSection: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                     }
+                }
+
+                if hasMore {
+                    Button(action: onLoadMore) {
+                        HStack(spacing: 8) {
+                            if isLoadingMore {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+
+                            Text(
+                                isLoadingMore
+                                    ? "Loading…"
+                                    : "Load Earlier Comments"
+                            )
+                        }
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .center
+                        )
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isLoadingMore)
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
