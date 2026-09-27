@@ -61,6 +61,17 @@ const businessDate = z.string().refine((value) => {
   );
 });
 const uuid = z.string().uuid();
+const nonBlankString = (max?: number) => {
+  const schema = z.string().refine(
+    (value) => value.trim().length > 0,
+  );
+  return max === undefined
+    ? schema
+    : schema.refine((value) => value.length <= max);
+};
+const runtimeIdempotencyKey = z.string().regex(
+  /^[A-Za-z0-9._:-]{16,128}$/u,
+);
 const author = z.enum(CONTENT_AUTHORS).nullable();
 const nullableBounded = (max: number) =>
   z.string().max(max).nullable();
@@ -235,7 +246,7 @@ const conversationsBundle = z.object({
 
 const mindDriveSatisfactionEventRecord = z.object({
   id: uuid,
-  subject_id: z.string().min(1),
+  subject_id: nonBlankString(),
   drive_state_id: uuid,
   conversation_id: uuid,
   evidence_message_id: uuid,
@@ -246,27 +257,27 @@ const mindDriveSatisfactionEventRecord = z.object({
     "tool_result",
   ]),
   amount: z.number().gt(0).max(1),
-  idempotency_key: z.string().min(16).max(128),
+  idempotency_key: runtimeIdempotencyKey,
   created_at: isoDateTime,
 }).strict();
 
 const mindCuriosityResolutionEventRecord = z.object({
   id: uuid,
-  subject_id: z.string().min(1),
+  subject_id: nonBlankString(),
   curiosity_state_id: uuid,
   conversation_id: uuid,
   requested_resolution_source_id: uuid,
-  result_resolution_source_id: z.string().min(1),
+  result_resolution_source_id: nonBlankString(),
   resolved_at: isoDateTime,
-  idempotency_key: z.string().min(16).max(128),
+  idempotency_key: runtimeIdempotencyKey,
   created_at: isoDateTime,
 }).strict();
 
 const mindDistillationWatermarkRecord = z.object({
-  subject_id: z.string().min(1),
+  subject_id: nonBlankString(),
   conversation_id: uuid,
   last_source_message_id: uuid,
-  process_version: z.string().min(1).max(64),
+  process_version: nonBlankString(64),
   updated_at: isoDateTime,
 }).strict();
 
@@ -284,7 +295,7 @@ const mindContinuityBundle = z.object({
 
 const mindStateRecord = z.object({
   id: uuid,
-  subject_id: z.string().min(1),
+  subject_id: nonBlankString(),
   kind: z.enum([
     "feel",
     "memory",
