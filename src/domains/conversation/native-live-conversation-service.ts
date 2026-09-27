@@ -49,6 +49,7 @@ export class NativeLiveConversationService {
       conversations: await this.listConversations({
         userId: input.userId,
         limit: input.limit,
+        ...(input.scope ? { scope: input.scope } : {}),
       }),
       nextCursor: null,
     };
