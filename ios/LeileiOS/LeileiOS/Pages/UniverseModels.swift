@@ -348,9 +348,10 @@ enum UniverseImportParser {
                   node.position.y.isFinite,
                   validTimestamp(node.createdAt),
                   validTimestamp(node.updatedAt),
-                  node.importance.map {
-                      validText($0, max: 128)
-                  } ?? true,
+                  validOptionalText(
+                      node.importance,
+                      max: 128
+                  ),
                   validMigration(node.migration)
             else {
                 throw UniverseImportValidationError.invalid
@@ -410,10 +411,9 @@ enum UniverseImportParser {
                 snapshot.galaxies,
                 galaxyIDs: galaxyIDs
             )
-            && (
-                snapshot.importance.map {
-                    validText($0, max: 128)
-                } ?? true
+            && validOptionalText(
+                snapshot.importance,
+                max: 128
             )
             && validMigration(snapshot.migration)
     }
@@ -457,6 +457,20 @@ enum UniverseImportParser {
                 || migration.source == "mind-universe"
         )
             && validTimestamp(migration.migratedAt)
+    }
+
+    private static func validOptionalText(
+        _ value: String?,
+        max: Int
+    ) -> Bool {
+        guard let value else {
+            return true
+        }
+
+        return validText(
+            value,
+            max: max
+        )
     }
 
     private static func validText(
