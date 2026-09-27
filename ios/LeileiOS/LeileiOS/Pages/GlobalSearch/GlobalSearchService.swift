@@ -30,6 +30,20 @@ enum GlobalSearchScope: String, CaseIterable, Identifiable, Hashable, Codable {
     var title: String { rawValue.capitalized }
 }
 
+enum GlobalSearchMode: String, CaseIterable, Identifiable, Hashable, Codable {
+    case normal
+    case phrase
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .normal: "Normal"
+        case .phrase: "Exact Phrase"
+        }
+    }
+}
+
 enum GlobalSearchTimePreset: String, CaseIterable, Identifiable, Hashable {
     case anyTime
     case today
@@ -78,6 +92,7 @@ struct GlobalSearchRequest: Equatable {
     let query: String
     let modules: Set<GlobalSearchModule>
     let scope: GlobalSearchScope
+    let mode: GlobalSearchMode
     let dateFrom: String?
     let dateTo: String?
 }
@@ -189,6 +204,7 @@ final class LeileiGlobalSearchService: GlobalSearchService {
                 value: orderedModules.map(\.rawValue).joined(separator: ",")
             ),
             URLQueryItem(name: "scope", value: request.scope.rawValue),
+            URLQueryItem(name: "mode", value: request.mode.rawValue),
             URLQueryItem(name: "limit", value: "25"),
         ]
 
