@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 enum UniverseMapMode: Equatable {
@@ -75,6 +76,18 @@ struct UniverseMapView: View {
             .coordinateSpace(name: "UniverseNativeMap")
             .task(id: viewportInitializationKey(size: size)) {
                 initializeViewportIfNeeded(size: size)
+            }
+            .onChange(of: selectedNodeID) { _, nodeID in
+                guard let nodeID,
+                      let node = nodes.first(where: { $0.id == nodeID })
+                else {
+                    return
+                }
+
+                reveal(
+                    node.position,
+                    in: size
+                )
             }
         }
         .background(UniversePalette.background)
@@ -192,9 +205,12 @@ struct UniverseMapView: View {
             }
 
             guard distance > 6,
-                  let origin = dragOrigin,
-                  mode != .movingNode("")
+                  let origin = dragOrigin
             else {
+                return
+            }
+
+            if case .movingNode = mode {
                 return
             }
 
@@ -482,10 +498,51 @@ struct UniverseMapView: View {
         )
     }
 
-    private func persistViewport() {
-        guard let data = try? JSONEncoder().encode(
-            viewport.clamped()
-        ) else {
+    private func reveal(
+        _ position: UniversePosition,
+        in size: CGSize,
+        padding: Double = 48
+    ) {
+        guard size.width > 0,
+              size.height > 0
+        else {
+            return
+        }
+
+        let point = screenPoint(
+            for: position,
+            viewport: viewport
+        )
+        var next = viewport
+
+        if point.x < padding {
+            next.x += padding - point.x
+        } else if point.x > Double(size.width) - padding {
+            next.x -= point.x - (Double(size.width) - padding)
+        }
+
+        if point.y < padding {
+            next.y += padding - point.y
+        } else if point.y > Double(size.height) - padding {
+            next.y -= point.y - (Double(size.height) - padding)
+        }
+
+        guard next != viewport else {
+            return
+        }
+
+        withAnimation(.snappy) {
+            viewport = next
+        }
+        persistViewport(next)
+    }
+
+    private func persistViewport(
+        _ value: UniverseViewport? = nil
+    ) {
+        let value = (value ?? viewport).clamped()
+
+        guard let data = try? JSONEncoder().encode(value) else {
             return
         }
 
@@ -655,8 +712,11 @@ private struct UniverseMapCanvas: View {
                 : selectedNodeID == nil
                     ? 0.18 + strength * 0.22
                     : 0.10
-            let width = 0.75
-                + strength * (emphasized ? 1.15 : 0.85)
+            let width = CGFloat(
+                0.75
+                    + strength
+                        * (emphasized ? 1.15 : 0.85)
+            )
 
             var path = Path()
             path.move(
@@ -743,12 +803,14 @@ private struct UniverseMapCanvas: View {
         _ position: UniversePosition
     ) -> CGPoint {
         CGPoint(
-            x:
+            x: CGFloat(
                 position.x * 10 * viewport.scale
-                + viewport.x,
-            y:
+                    + viewport.x
+            ),
+            y: CGFloat(
                 position.y * 10 * viewport.scale
-                + viewport.y
+                    + viewport.y
+            )
         )
     }
 }
