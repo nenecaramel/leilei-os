@@ -214,6 +214,7 @@ implements CuriosityResolutionRuntimePort {
     userId: string,
     idempotencyKey: string,
   ): Promise<{
+    subjectId: string;
     curiosityStateId: string;
     conversationId: string;
     requestedResolutionSourceId: string;
@@ -222,6 +223,7 @@ implements CuriosityResolutionRuntimePort {
   } | null> {
     const [row] = await transaction
       .select({
+        subjectId: runtimeCuriosityResolutionEvents.subjectId,
         curiosityStateId: runtimeCuriosityResolutionEvents.curiosityStateId,
         conversationId: runtimeCuriosityResolutionEvents.conversationId,
         requestedResolutionSourceId:
@@ -276,17 +278,20 @@ implements CuriosityResolutionRuntimePort {
 
 function matchesReplay(
   event: {
+    subjectId: string;
     curiosityStateId: string;
     conversationId: string;
     requestedResolutionSourceId: string;
   },
   input: {
+    subjectId: string;
     curiosityStateId: string;
     conversationId: string;
     resolutionSourceId: string;
   },
 ): boolean {
-  return event.curiosityStateId === input.curiosityStateId
+  return event.subjectId === input.subjectId
+    && event.curiosityStateId === input.curiosityStateId
     && event.conversationId === input.conversationId
     && event.requestedResolutionSourceId === input.resolutionSourceId;
 }
