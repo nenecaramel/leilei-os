@@ -126,26 +126,33 @@ implements ProactivityWakePort {
     }
 
     return this.db.transaction(async (transaction) => {
+      const snapshot = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        false,
+      );
+      if (snapshot.status === "decided") return snapshot;
+
+      await assertSourceConversationActive(
+        transaction as Transaction,
+        input.userId,
+        snapshot.context,
+      );
+
       const current = await this.requireCurrentWithExecutor(
         transaction as Transaction,
         input.userId,
         input.wakeId,
         true,
       );
-      if (current.status === "decided") return current;
-
-      await assertSourceConversationActive(
-        transaction as Transaction,
-        input.userId,
-        current.context,
-      );
-
       if (
         current.status === "waiting_model"
         && current.modelTaskId === taskId
       ) {
         return current;
       }
+      if (current.status === "decided") return current;
       if (current.status !== "created") {
         throw new Error(
           "Proactivity wake model task binding conflicted.",
@@ -200,20 +207,41 @@ implements ProactivityWakePort {
     }
 
     return this.db.transaction(async (transaction) => {
+      const snapshot = await this.requireCurrentWithExecutor(
+        transaction as Transaction,
+        input.userId,
+        input.wakeId,
+        false,
+      );
+      if (
+        input.decision.subjectId !== snapshot.subjectId
+        || input.decision.offeredAt !== snapshot.gate.offeredAt
+      ) {
+        throw new Error(
+          "Proactivity decision does not match durable wake snapshot.",
+        );
+      }
+      if (snapshot.status === "decided") {
+        if (!isDeepStrictEqual(snapshot.decision, input.decision)) {
+          throw new Error(
+            "Proactivity wake already has a different decision.",
+          );
+        }
+        return snapshot;
+      }
+
+      await assertSourceConversationActive(
+        transaction as Transaction,
+        input.userId,
+        snapshot.context,
+      );
+
       const current = await this.requireCurrentWithExecutor(
         transaction as Transaction,
         input.userId,
         input.wakeId,
         true,
       );
-      if (
-        input.decision.subjectId !== current.subjectId
-        || input.decision.offeredAt !== current.gate.offeredAt
-      ) {
-        throw new Error(
-          "Proactivity decision does not match durable wake snapshot.",
-        );
-      }
       if (current.status === "decided") {
         if (!isDeepStrictEqual(current.decision, input.decision)) {
           throw new Error(
@@ -222,12 +250,6 @@ implements ProactivityWakePort {
         }
         return current;
       }
-
-      await assertSourceConversationActive(
-        transaction as Transaction,
-        input.userId,
-        current.context,
-      );
 
       await transaction
         .update(runtimeProactivityWakes)
