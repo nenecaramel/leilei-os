@@ -1,6 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { runtimeSubjectStates } from "../../database/schema.js";
+import {
+  runtimeCuriosityResolutionEvents,
+  runtimeSubjectStates,
+} from "../../database/schema.js";
 import {
   readCuriosityEvolution,
   resolveCuriosityEvolution,
@@ -12,6 +15,11 @@ import type {
 } from "./curiosity-resolution.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
 
 export class DrizzleCuriosityResolutionRuntimePort
 implements CuriosityResolutionRuntimePort {
@@ -21,10 +29,44 @@ implements CuriosityResolutionRuntimePort {
     userId: string;
     subjectId: string;
     curiosityStateId: string;
+    conversationId: string;
     resolutionSourceId: string;
+    idempotencyKey: string;
     now: string;
   }): Promise<CuriosityResolutionResult> {
+    const now = normalizeIso(input.now);
+
     return this.db.transaction(async (transaction) => {
+      await transaction.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(
+            ${input.userId + ":" + input.idempotencyKey},
+            0
+          )
+        )
+      `);
+
+      const replay = await this.findEvent(
+        transaction as Transaction,
+        input.userId,
+        input.idempotencyKey,
+      );
+      if (replay) {
+        if (!matchesReplay(replay, input)) {
+          return {
+            outcome: "rejected" as const,
+            code: "IDEMPOTENCY_CONFLICT" as const,
+          };
+        }
+        return {
+          outcome: "idempotent" as const,
+          curiosityStateId: replay.curiosityStateId,
+          resolvedAt: replay.resolvedAt,
+          resolutionSourceId: replay.resultResolutionSourceId,
+          updatedStates: 0,
+        };
+      }
+
       const [requested] = await transaction
         .select({
           id: runtimeSubjectStates.id,
@@ -79,13 +121,15 @@ implements CuriosityResolutionRuntimePort {
         };
       }
       if (anchor.phase === "resolved") {
-        return {
+        const result = {
           outcome: "idempotent" as const,
           curiosityStateId: requested.id,
           resolvedAt: anchor.resolvedAt!,
           resolutionSourceId: anchor.resolutionSourceId!,
           updatedStates: 0,
         };
+        await this.recordEvent(transaction as Transaction, input, result);
+        return result;
       }
       if (anchor.phase !== "active") {
         return {
@@ -121,7 +165,7 @@ implements CuriosityResolutionRuntimePort {
         const current = readCuriosityEvolution(row.payload);
         if (!current || current.anchorStateId !== requested.id) continue;
         const next = resolveCuriosityEvolution(current, {
-          now: input.now,
+          now,
           resolutionSourceId: input.resolutionSourceId,
         });
         resolvedAt = next.resolvedAt;
@@ -153,13 +197,109 @@ implements CuriosityResolutionRuntimePort {
         throw new Error("Curiosity resolution lost its evolved thread.");
       }
 
-      return {
+      const result = {
         outcome: "applied" as const,
         curiosityStateId: requested.id,
         resolvedAt,
         resolutionSourceId,
         updatedStates,
       };
+      await this.recordEvent(transaction as Transaction, input, result);
+      return result;
     });
   }
+
+  private async findEvent(
+    transaction: Transaction,
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<{
+    subjectId: string;
+    curiosityStateId: string;
+    conversationId: string;
+    requestedResolutionSourceId: string;
+    resultResolutionSourceId: string;
+    resolvedAt: string;
+  } | null> {
+    const [row] = await transaction
+      .select({
+        subjectId: runtimeCuriosityResolutionEvents.subjectId,
+        curiosityStateId: runtimeCuriosityResolutionEvents.curiosityStateId,
+        conversationId: runtimeCuriosityResolutionEvents.conversationId,
+        requestedResolutionSourceId:
+          runtimeCuriosityResolutionEvents.requestedResolutionSourceId,
+        resultResolutionSourceId:
+          runtimeCuriosityResolutionEvents.resultResolutionSourceId,
+        resolvedAt: runtimeCuriosityResolutionEvents.resolvedAt,
+      })
+      .from(runtimeCuriosityResolutionEvents)
+      .where(
+        and(
+          eq(runtimeCuriosityResolutionEvents.userId, userId),
+          eq(runtimeCuriosityResolutionEvents.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return row
+      ? {
+          ...row,
+          resolvedAt: row.resolvedAt.toISOString(),
+        }
+      : null;
+  }
+
+  private async recordEvent(
+    transaction: Transaction,
+    input: {
+      userId: string;
+      subjectId: string;
+      curiosityStateId: string;
+      conversationId: string;
+      resolutionSourceId: string;
+      idempotencyKey: string;
+    },
+    result: {
+      resolvedAt: string;
+      resolutionSourceId: string;
+    },
+  ): Promise<void> {
+    await transaction.insert(runtimeCuriosityResolutionEvents).values({
+      userId: input.userId,
+      subjectId: input.subjectId,
+      curiosityStateId: input.curiosityStateId,
+      conversationId: input.conversationId,
+      requestedResolutionSourceId: input.resolutionSourceId,
+      resultResolutionSourceId: result.resolutionSourceId,
+      resolvedAt: new Date(result.resolvedAt),
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+}
+
+function matchesReplay(
+  event: {
+    subjectId: string;
+    curiosityStateId: string;
+    conversationId: string;
+    requestedResolutionSourceId: string;
+  },
+  input: {
+    subjectId: string;
+    curiosityStateId: string;
+    conversationId: string;
+    resolutionSourceId: string;
+  },
+): boolean {
+  return event.subjectId === input.subjectId
+    && event.curiosityStateId === input.curiosityStateId
+    && event.conversationId === input.conversationId
+    && event.requestedResolutionSourceId === input.resolutionSourceId;
+}
+
+function normalizeIso(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("Curiosity resolution timestamp must be ISO.");
+  }
+  return new Date(parsed).toISOString();
 }

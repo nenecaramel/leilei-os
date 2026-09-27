@@ -52,7 +52,9 @@ test("Curiosity resolution first settles current lifecycle state, then applies e
     userId: "u1",
     subjectId: "G",
     curiosityStateId: "curiosity-1",
+    conversationId: "conversation-1",
     resolutionSourceId: "answer-message-1",
+    idempotencyKey: "curiosity-resolution-test-1",
     now: "2026-09-27T12:00:00.000Z",
   });
 

@@ -2655,6 +2655,65 @@ export const runtimeDriveSatisfactionEvents = pgTable(
     ),
   ],
 );
+export const runtimeCuriosityResolutionEvents = pgTable(
+  "runtime_curiosity_resolution_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    curiosityStateId: uuid("curiosity_state_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    requestedResolutionSourceId: uuid("requested_resolution_source_id").notNull(),
+    resultResolutionSourceId: text("result_resolution_source_id").notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.curiosityStateId, table.userId],
+      foreignColumns: [runtimeSubjectStates.id, runtimeSubjectStates.userId],
+      name: "runtime_curiosity_resolution_events_state_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_curiosity_resolution_events_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [
+        table.requestedResolutionSourceId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_curiosity_resolution_events_requested_message_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("runtime_curiosity_resolution_events_user_idempotency_uidx").on(
+      table.userId,
+      table.idempotencyKey,
+    ),
+    index("runtime_curiosity_resolution_events_state_created_idx").on(
+      table.curiosityStateId,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "runtime_curiosity_resolution_events_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_curiosity_resolution_events_idempotency_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9._:-]{16,128}$'`,
+    ),
+  ],
+);
 export const runtimeSubjectStateTransitions = pgTable(
   "runtime_subject_state_transitions",
   {
