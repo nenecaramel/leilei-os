@@ -110,6 +110,63 @@ test("protected lifecycle freezes salience while advancing the decay anchor", ()
   assert.equal(update.lifecycle.lastDecayedAt, "2026-09-22T00:00:00.000Z");
 });
 
+test("decay-only policy keeps archived/forgotten retention fail-closed", () => {
+  const decayOnly: MemoryLifecyclePolicy = {
+    halfLifeHours: { memory: 1440, feel: 168 },
+    fadingThreshold: 0.35,
+    archiveThreshold: 0.12,
+  };
+  const archivedPayload = {
+    lifecycle_v1: {
+      status: "archived",
+      salience: 0.1,
+      protected: false,
+      lastDecayedAt: "2026-01-01T00:00:00.000Z",
+      lastRecalledAt: null,
+      archivedAt: "2026-01-01T00:00:00.000Z",
+      forgottenAt: null,
+    },
+  };
+  const forgottenPayload = {
+    lifecycle_v1: {
+      status: "forgotten",
+      salience: 0,
+      protected: false,
+      lastDecayedAt: "2026-01-01T00:00:00.000Z",
+      lastRecalledAt: null,
+      archivedAt: "2025-12-01T00:00:00.000Z",
+      forgottenAt: "2026-01-01T00:00:00.000Z",
+    },
+  };
+
+  assert.equal(
+    evaluateForgetting(
+      {
+        stateId: "m-archive-retained",
+        kind: "memory",
+        payload: archivedPayload,
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      },
+      "2026-09-27T00:00:00.000Z",
+      decayOnly,
+    ),
+    null,
+  );
+  assert.equal(
+    evaluatePurge(
+      {
+        stateId: "m-forgotten-retained",
+        kind: "memory",
+        payload: forgottenPayload,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      "2026-09-27T00:00:00.000Z",
+      decayOnly,
+    ),
+    null,
+  );
+});
+
 test("archived state becomes a content-free forgotten tombstone after the forgetting window", () => {
   const archived = {
     lifecycle_v1: {
