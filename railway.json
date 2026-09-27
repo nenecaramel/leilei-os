@@ -5,6 +5,8 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "node dist/database/migrate.js"
+    "preDeployCommand": "node dist/database/migrate.js",
+    "healthcheckPath": "/ready",
+    "healthcheckTimeout": 30
   }
 }

@@ -152,15 +152,15 @@ export async function collectMigrationNetworkDiagnostics(
 }
 
 export function logMigrationNetworkDiagnostics(diagnostics: MigrationNetworkDiagnostics): void {
-  console.error(`DATABASE_URL_HOST_CLASS=${diagnostics.hostClass}`);
-  console.error(`DATABASE_URL_PORT_SET=${diagnostics.portSet ? "YES" : "NO"}`);
-  console.error(`RAILWAY_ENVIRONMENT_ID_SET=${diagnostics.environmentIdSet ? "YES" : "NO"}`);
-  console.error(`MIGRATION_URL_REWRITE_APPLIED=${diagnostics.rewriteApplied ? "YES" : "NO"}`);
-  console.error(`PRIVATE_DNS=${diagnostics.privateDns}`);
-  console.error(`PRIVATE_DNS_FAMILIES=${diagnostics.privateDnsFamilies}`);
-  console.error(`PRIVATE_DNS_ERROR_CODE=${diagnostics.privateDnsErrorCode}`);
-  console.error(`PRIVATE_TCP=${diagnostics.privateTcp}`);
-  console.error(`PRIVATE_TCP_ERROR_CODE=${diagnostics.privateTcpErrorCode}`);
-  console.error(`ORIGINAL_TCP=${diagnostics.originalTcp}`);
-  console.error(`ORIGINAL_TCP_ERROR_CODE=${diagnostics.originalTcpErrorCode}`);
+  console.log(`DATABASE_URL_HOST_CLASS=${diagnostics.hostClass}`);
+  console.log(`DATABASE_URL_PORT_SET=${diagnostics.portSet ? "YES" : "NO"}`);
+  console.log(`RAILWAY_ENVIRONMENT_ID_SET=${diagnostics.environmentIdSet ? "YES" : "NO"}`);
+  console.log(`MIGRATION_URL_REWRITE_APPLIED=${diagnostics.rewriteApplied ? "YES" : "NO"}`);
+  console.log(`PRIVATE_DNS=${diagnostics.privateDns}`);
+  console.log(`PRIVATE_DNS_FAMILIES=${diagnostics.privateDnsFamilies}`);
+  console.log(`PRIVATE_DNS_ERROR_CODE=${diagnostics.privateDnsErrorCode}`);
+  console.log(`PRIVATE_TCP=${diagnostics.privateTcp}`);
+  console.log(`PRIVATE_TCP_ERROR_CODE=${diagnostics.privateTcpErrorCode}`);
+  console.log(`ORIGINAL_TCP=${diagnostics.originalTcp}`);
+  console.log(`ORIGINAL_TCP_ERROR_CODE=${diagnostics.originalTcpErrorCode}`);
 }
