@@ -2405,6 +2405,57 @@ export const runtimeSubjectStates = pgTable(
   ],
 );
 
+export const runtimeMindRetirementReceipts = pgTable(
+  "runtime_mind_retirement_receipts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    subjectId: text("subject_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<"drive" | "thought" | "curiosity" | "topic">()
+      .notNull(),
+    anchorStateId: uuid("anchor_state_id").notNull(),
+    threadKey: text("thread_key").notNull(),
+    stateCount: integer("state_count").notNull(),
+    terminalAt: timestamp("terminal_at", { withTimezone: true }).notNull(),
+    retentionHours: doublePrecision("retention_hours").notNull(),
+    retiredAt: timestamp("retired_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("runtime_mind_retirement_receipts_user_subject_retired_idx").on(
+      table.userId,
+      table.subjectId,
+      table.retiredAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "runtime_mind_retirement_receipts_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_mind_retirement_receipts_kind_allowed",
+      sql`${table.kind} IN ('drive', 'thought', 'curiosity', 'topic')`,
+    ),
+    check(
+      "runtime_mind_retirement_receipts_thread_not_blank",
+      sql`char_length(btrim(${table.threadKey})) > 0`,
+    ),
+    check(
+      "runtime_mind_retirement_receipts_state_count_positive",
+      sql`${table.stateCount} > 0`,
+    ),
+    check(
+      "runtime_mind_retirement_receipts_retention_positive",
+      sql`${table.retentionHours} > 0`,
+    ),
+  ],
+);
+
 export const runtimeMindSemanticGroupingRequests = pgTable(
   "runtime_mind_semantic_grouping_requests",
   {

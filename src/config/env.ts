@@ -101,6 +101,15 @@ const baseEnvSchema = z.object({
     z.coerce.number().positive().optional(),
   NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS:
     z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MIND_RETIREMENT_ENABLED: booleanEnv.optional(),
+  NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS:
+    z.coerce.number().positive().optional(),
+  NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS:
+    z.coerce.number().positive().optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
     z.coerce.number().int().positive().max(25).optional(),
@@ -320,6 +329,11 @@ export type MindLifecycleTuningConfig = {
   };
 };
 
+export type MindRetirementConfig = Partial<Record<
+  "drive" | "thought" | "curiosity" | "topic",
+  { retentionHours: number }
+>>;
+
 export type MemoryDecayConfig = {
   halfLifeHours: {
     memory: number;
@@ -410,6 +424,59 @@ export function getMindLifecycleTuningConfig(
         environment.NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS ?? 168,
     },
   };
+}
+
+export function getMindRetirementConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_MIND_RETIREMENT_ENABLED"
+    | "NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS"
+    | "NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS"
+    | "NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS"
+    | "NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS"
+  >,
+): MindRetirementConfig | undefined {
+  const values = {
+    drive:
+      environment.NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS,
+    thought:
+      environment.NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS,
+    curiosity:
+      environment.NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS,
+    topic:
+      environment.NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS,
+  };
+  const configured = Object.entries(values).filter(
+    (entry): entry is [
+      keyof MindRetirementConfig,
+      number,
+    ] => entry[1] !== undefined,
+  );
+
+  if (environment.NATIVE_LIVE_MIND_RETIREMENT_ENABLED !== true) {
+    if (configured.length > 0) {
+      throw new Error(
+        "NATIVE_LIVE_MIND_RETIREMENT_ENABLED=true is required when retirement retention is configured.",
+      );
+    }
+    return undefined;
+  }
+  if (configured.length === 0) {
+    throw new Error(
+      "Mind retirement requires at least one positive per-kind retention.",
+    );
+  }
+
+  const policy: MindRetirementConfig = {};
+  for (const [kind, retentionHours] of configured) {
+    if (!Number.isFinite(retentionHours) || retentionHours <= 0) {
+      throw new Error(
+        "Mind retirement " + kind + " retentionHours must be positive.",
+      );
+    }
+    policy[kind] = { retentionHours };
+  }
+  return policy;
 }
 
 export function getMindSemanticGroupingConfig(
