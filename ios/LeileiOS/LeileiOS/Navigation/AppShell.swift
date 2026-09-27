@@ -6,6 +6,7 @@ struct AppShell: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var selectedPage: AppPage = .chat
+    @State private var universeTargetNodeID: String?
     @State private var menuOpen = false
     @State private var settingsPresented = false
     @State private var isDraftConversation = false
@@ -139,6 +140,7 @@ struct AppShell: View {
 
                 MainPageLayer(
                     selectedPage: selectedPage,
+                    universeTargetNodeID: universeTargetNodeID,
                     isDraftConversation: isDraftConversation,
                     draftConversationID: draftConversationID,
                     onDraftCommitted: {
@@ -151,6 +153,13 @@ struct AppShell: View {
                     },
                     onOpenConversation: {
                         selectedPage = .chat
+                    },
+                    onOpenUniverseNode: { nodeID in
+                        universeTargetNodeID = nodeID
+                        selectedPage = .universe
+                    },
+                    onUniverseTargetConsumed: {
+                        universeTargetNodeID = nil
                     }
                 )
                 .frame(width: proxy.size.width, height: proxy.size.height)
@@ -291,6 +300,7 @@ struct AppShell: View {
 
             PageContainer(
                 selectedPage: selectedPage,
+                universeTargetNodeID: universeTargetNodeID,
                 isDraftConversation: isDraftConversation,
                 draftConversationID: draftConversationID,
                 onDraftCommitted: {
@@ -299,6 +309,13 @@ struct AppShell: View {
                 onMenu: nil,
                 onOpenConversation: {
                     selectedPage = .chat
+                },
+                onOpenUniverseNode: { nodeID in
+                    universeTargetNodeID = nodeID
+                    selectedPage = .universe
+                },
+                onUniverseTargetConsumed: {
+                    universeTargetNodeID = nil
                 }
             )
         }
@@ -307,11 +324,14 @@ struct AppShell: View {
 
 private struct MainPageLayer: View {
     let selectedPage: AppPage
+    let universeTargetNodeID: String?
     let isDraftConversation: Bool
     let draftConversationID: UUID
     let onDraftCommitted: () -> Void
     let onMenu: () -> Void
     let onOpenConversation: () -> Void
+    let onOpenUniverseNode: (String) -> Void
+    let onUniverseTargetConsumed: () -> Void
 
     private var pageBackground: Color {
         if selectedPage == .universe {
@@ -332,11 +352,14 @@ private struct MainPageLayer: View {
 
             PageContainer(
                 selectedPage: selectedPage,
+                universeTargetNodeID: universeTargetNodeID,
                 isDraftConversation: isDraftConversation,
                 draftConversationID: draftConversationID,
                 onDraftCommitted: onDraftCommitted,
                 onMenu: onMenu,
-                onOpenConversation: onOpenConversation
+                onOpenConversation: onOpenConversation,
+                onOpenUniverseNode: onOpenUniverseNode,
+                onUniverseTargetConsumed: onUniverseTargetConsumed
             )
         }
     }
