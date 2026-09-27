@@ -5,6 +5,7 @@ import type {
   ExportConversationAttachmentRecord,
   ExportConversationContentBlockRecord,
   ExportConversationMessageRecord,
+  ExportConversationProviderCheckpointRecord,
   ExportConversationRecord,
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
@@ -229,6 +230,19 @@ const conversationBundle: ExportConversationsBundle = {
     mime_type: "text/plain",
     size_bytes: 4,
     payload: { logical_ref: "attachment:test" },
+  }],
+  provider_checkpoints: [{
+    id: "00000000-0000-4000-8000-000000000046",
+    conversation_id: CONVERSATION_ID,
+    canonical_message_id:
+      "00000000-0000-4000-8000-000000000043",
+    provider: "claude_code",
+    provider_session_id: "session-roundtrip-1",
+    runtime_metadata: {
+      context_window: 200000,
+    },
+    provider_checkpoint_id: "checkpoint-roundtrip-1",
+    created_at: NOW,
   }],
 };
 
@@ -508,6 +522,7 @@ class FakeImportRepository implements ImportRepository {
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     };
     conversations.conversations.push(structuredClone(record));
     this.state.native_live_conversation_ids ??= new Set();
@@ -524,6 +539,7 @@ class FakeImportRepository implements ImportRepository {
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     };
     conversations.messages.push(structuredClone(record));
     this.writes += 1;
@@ -538,6 +554,7 @@ class FakeImportRepository implements ImportRepository {
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     };
     conversations.content_blocks.push(structuredClone(record));
     this.writes += 1;
@@ -552,8 +569,26 @@ class FakeImportRepository implements ImportRepository {
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     };
     conversations.attachments.push(structuredClone(record));
+    this.writes += 1;
+  }
+
+  async insertConversationProviderCheckpoint(
+    _userId: string,
+    record: ExportConversationProviderCheckpointRecord,
+  ) {
+    const conversations = this.state.conversations ??= {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+      provider_checkpoints: [],
+    };
+    conversations.provider_checkpoints.push(
+      structuredClone(record),
+    );
     this.writes += 1;
   }
 
@@ -700,6 +735,7 @@ class FakeImportRepository implements ImportRepository {
             messages: [],
             content_blocks: [],
             attachments: [],
+            provider_checkpoints: [],
           })
         : undefined,
       projects: modules.has("projects")
@@ -1027,6 +1063,7 @@ test("v3 all-state restore creates canonical conversations before Project member
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     },
     native_live_conversation_ids: new Set(),
   });
@@ -1041,7 +1078,7 @@ test("v3 all-state restore creates canonical conversations before Project member
 
   const preview = await service.preview(raw, USER_ID);
   assert.deepEqual(preview.summary.conversations, {
-    create: 5,
+    create: 6,
     duplicate: 0,
     conflict: 0,
     invalid: 0,
@@ -1070,7 +1107,7 @@ test("v3 all-state restore creates canonical conversations before Project member
   );
   assert.deepEqual(repository.state.mind, [mindState]);
   assert.deepEqual(repository.state.universe, universeBundle);
-  assert.equal(repository.writes, 12);
+  assert.equal(repository.writes, 13);
 });
 
 test("v3 conversation preview rejects a parent cycle before execute", async () => {
@@ -1092,6 +1129,7 @@ test("v3 conversation preview rejects a parent cycle before execute", async () =
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     },
   });
   const service = new ImportService(repository);
@@ -1178,6 +1216,7 @@ test("v3 scoped Mind restore preserves historical scope even after source deleti
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     },
   });
   const service = new ImportService(repository);
@@ -1296,6 +1335,7 @@ test("v3 Mind continuity restores semantic ledgers and watermark after canonical
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     },
   });
   const service = new ImportService(repository);
@@ -1324,7 +1364,7 @@ test("v3 Mind continuity restores semantic ledgers and watermark after canonical
     repository.state.mind_continuity,
     mindContinuity,
   );
-  assert.equal(repository.writes, 10);
+  assert.equal(repository.writes, 11);
 });
 
 test("v3 Mind continuity rejects semantic events without canonical evidence", async () => {
@@ -1342,6 +1382,7 @@ test("v3 Mind continuity rejects semantic events without canonical evidence", as
       messages: [],
       content_blocks: [],
       attachments: [],
+      provider_checkpoints: [],
     },
   });
   const service = new ImportService(repository);
