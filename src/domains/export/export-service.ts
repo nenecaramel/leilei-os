@@ -32,6 +32,7 @@ export interface ExportRepository {
   listMindContinuity(userId: string): Promise<ExportMindContinuityBundle>;
   hasIncompleteMindFollowUps(userId: string): Promise<boolean>;
   hasIncompleteTurnPreparations(userId: string): Promise<boolean>;
+  hasIncompleteBackgroundModelJobs(userId: string): Promise<boolean>;
   listConversations(userId: string): Promise<ExportConversationsBundle>;
   listUniverse(userId: string): Promise<ExportUniverseBundle | null>;
   listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
@@ -110,11 +111,17 @@ export class ExportService {
       const [
         incompleteTurns,
         incompleteMind,
+        incompleteBackgroundModel,
       ] = await Promise.all([
         repository.hasIncompleteTurnPreparations(userId),
         repository.hasIncompleteMindFollowUps(userId),
+        repository.hasIncompleteBackgroundModelJobs(userId),
       ]);
-      if (incompleteTurns || incompleteMind) {
+      if (
+        incompleteTurns
+        || incompleteMind
+        || incompleteBackgroundModel
+      ) {
         throw new ExportServiceError("EXPORT_IN_PROGRESS");
       }
 
