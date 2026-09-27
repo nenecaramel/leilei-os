@@ -163,7 +163,6 @@ export class MindSemanticGroupingService {
     let staged = 0;
     for (let index = 0; index < groups.length; index += 1) {
       const group = groups[index]!;
-      if (!group.newThread) continue;
       if (
         canonicalThreadKeyByThread.get(group.threadKey) !== group.threadKey
       ) {
