@@ -10,6 +10,7 @@ struct GlobalSearchView: View {
     @State private var modules = GlobalSearchModule.defaultModules
     @State private var timePreset: GlobalSearchTimePreset = .anyTime
     @State private var scope: GlobalSearchScope = .active
+    @State private var mode: GlobalSearchMode = .normal
     @State private var state: SearchState = .idle
     @State private var searchTask: Task<Void, Never>?
     @State private var loadMoreTask: Task<Void, Never>?
@@ -75,12 +76,14 @@ struct GlobalSearchView: View {
         .onChange(of: modules) { _, _ in scheduleSearch() }
         .onChange(of: timePreset) { _, _ in scheduleSearch() }
         .onChange(of: scope) { _, _ in scheduleSearch() }
+        .onChange(of: mode) { _, _ in scheduleSearch() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 GlobalSearchFiltersMenu(
                     modules: $modules,
                     timePreset: $timePreset,
-                    scope: $scope
+                    scope: $scope,
+                    mode: $mode
                 )
             }
 
@@ -185,6 +188,7 @@ struct GlobalSearchView: View {
             query: trimmedQuery,
             modules: modules,
             scope: scope,
+            mode: mode,
             dateFrom: dateRange.dateFrom,
             dateTo: dateRange.dateTo
         )
