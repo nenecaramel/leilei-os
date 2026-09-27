@@ -6,6 +6,7 @@ enum AppPage: String, Identifiable {
     case diary = "Diary"
     case daySpace = "Day Space"
     case conversations = "Conversations"
+    case mind = "Mind"
     case universe = "Universe"
 
     case globalSearch = "Global Search"
