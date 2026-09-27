@@ -114,7 +114,7 @@ test("Mind semantic grouping retention removes only terminal scoring requests", 
 });
 
 
-test("cloud runtime owns recurring bounded operational retention cadence", () => {
+test("cloud runtime owns bounded retention while awake and catches up on start", () => {
   const start = processRuntimeSource.indexOf("startBackgroundWork: () => {");
   const stop = processRuntimeSource.indexOf(
     "stopBackgroundWork: () => {",
@@ -125,6 +125,10 @@ test("cloud runtime owns recurring bounded operational retention cadence", () =>
   const startupBlock = processRuntimeSource.slice(start, stop);
 
   assert.match(startupBlock, /retentionCoordinator\.start\(\)/u);
+  assert.match(
+    startupBlock,
+    /operationalRetention:\s*"startup_then_while_process_awake"/u,
+  );
   assert.doesNotMatch(
     startupBlock,
     /retentionCoordinator\.runNow\(\)/u,
