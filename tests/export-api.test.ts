@@ -43,6 +43,7 @@ function documentFor(
               messages: [],
               content_blocks: [],
               attachments: [],
+              provider_checkpoints: [],
             },
             universe: null,
           }
