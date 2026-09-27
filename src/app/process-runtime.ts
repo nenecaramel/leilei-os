@@ -860,10 +860,11 @@ export function createProcessRuntime(
         state: "startup_recovery_only",
       });
 
-      // Cloud runtime does not own periodic background cadence. Recover
-      // durable work once at process start; Mac Companion/event-driven paths
-      // own subsequent opportunities.
-      void retentionCoordinator.runNow().catch(() => undefined);
+      // Semantic/model background cadence remains Mac Companion-owned.
+      // Infrastructure retention is deterministic database housekeeping, so
+      // the cloud runtime owns its bounded cadence directly. start() also
+      // runs once immediately, which catches up after sleep/restart.
+      retentionCoordinator.start();
       const mindFollowUpStartupRecovery =
         nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
       void mindFollowUpStartupRecovery;
