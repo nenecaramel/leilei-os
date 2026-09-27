@@ -2024,13 +2024,13 @@ private struct UniverseDiarySourcePicker: View {
                             status: $0.status
                         )
                     }
-
-                completeResults = all
             }
 
             guard currentQuery == query else {
                 return
             }
+
+            completeResults = all
 
             let nextCount = min(
                 results.count + 100,
