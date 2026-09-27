@@ -163,9 +163,7 @@ struct UniverseMapView: View {
             node: node,
             memberships: memberships,
             galaxies: galaxies,
-            primaryColor: UniversePalette.color(
-                hex: primary?.color
-            ),
+            primaryHex: primary?.color,
             radius: radius,
             showTitle: showTitle,
             isSelected: isSelected
@@ -671,8 +669,11 @@ private struct UniverseMapCanvas: View {
                 context.fill(
                     Path(ellipseIn: rect),
                     with: .color(
-                        Color.white.opacity(
-                            variation == 0 ? 0.12 : 0.07
+                        UniversePalette.color(
+                            hex:
+                                variation == 0
+                                    ? "#31323b"
+                                    : "#292a32"
                         )
                     )
                 )
@@ -839,10 +840,30 @@ private struct UniversePlanet: View {
     let node: UniverseNode
     let memberships: [UniverseGalaxyMembership]
     let galaxies: [UniverseGalaxy]
-    let primaryColor: Color
+    let primaryHex: String?
     let radius: CGFloat
     let showTitle: Bool
     let isSelected: Bool
+
+    private var sourceColor: Color {
+        UniversePalette.color(
+            hex: primaryHex
+        )
+    }
+
+    private var coreColor: Color {
+        UniversePalette.blendedColor(
+            hex: primaryHex,
+            toward:
+                isSelected
+                    ? "#dedde4"
+                    : "#c6c5cd",
+            fraction:
+                isSelected
+                    ? 0.24
+                    : 0.32
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -882,11 +903,7 @@ private struct UniversePlanet: View {
             }
 
             Circle()
-                .fill(
-                    primaryColor.opacity(
-                        isSelected ? 0.95 : 0.82
-                    )
-                )
+                .fill(coreColor)
                 .overlay {
                     Circle()
                         .stroke(
@@ -898,7 +915,7 @@ private struct UniversePlanet: View {
                 }
                 .shadow(
                     color:
-                        primaryColor.opacity(
+                        sourceColor.opacity(
                             isSelected ? 0.32 : 0.13
                         ),
                     radius: isSelected ? 10 : 4
@@ -957,6 +974,68 @@ enum UniversePalette {
         green: 54.0 / 255.0,
         blue: 64.0 / 255.0
     )
+
+    static func blendedColor(
+        hex: String?,
+        toward targetHex: String,
+        fraction: Double
+    ) -> Color {
+        let source =
+            rgb(hex: hex)
+                ?? (154, 154, 154)
+        let target =
+            rgb(hex: targetHex)
+                ?? (198, 197, 205)
+        let amount = min(
+            1,
+            max(0, fraction)
+        )
+
+        return Color(
+            red:
+                (source.0
+                    + (target.0 - source.0) * amount)
+                    / 255,
+            green:
+                (source.1
+                    + (target.1 - source.1) * amount)
+                    / 255,
+            blue:
+                (source.2
+                    + (target.2 - source.2) * amount)
+                    / 255
+        )
+    }
+
+    private static func rgb(
+        hex: String?
+    ) -> (Double, Double, Double)? {
+        guard let hex else {
+            return nil
+        }
+
+        let normalized = hex
+            .trimmingCharacters(
+                in: CharacterSet(
+                    charactersIn: "#"
+                )
+            )
+
+        guard normalized.count == 6,
+              let value = Int(
+                normalized,
+                radix: 16
+              )
+        else {
+            return nil
+        }
+
+        return (
+            Double((value >> 16) & 0xff),
+            Double((value >> 8) & 0xff),
+            Double(value & 0xff)
+        )
+    }
 
     static func color(
         hex: String?
