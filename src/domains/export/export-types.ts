@@ -160,11 +160,23 @@ export type ExportConversationAttachmentRecord = {
   payload: Record<string, unknown>;
 };
 
+export type ExportConversationProviderCheckpointRecord = {
+  id: string;
+  conversation_id: string;
+  canonical_message_id: string;
+  provider: "claude_code";
+  provider_session_id: string;
+  runtime_metadata: Record<string, unknown> | null;
+  provider_checkpoint_id: string | null;
+  created_at: string;
+};
+
 export type ExportConversationsBundle = {
   conversations: ExportConversationRecord[];
   messages: ExportConversationMessageRecord[];
   content_blocks: ExportConversationContentBlockRecord[];
   attachments: ExportConversationAttachmentRecord[];
+  provider_checkpoints: ExportConversationProviderCheckpointRecord[];
 };
 
 export type ExportMindDriveSatisfactionEventRecord = {
