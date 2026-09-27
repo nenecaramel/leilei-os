@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import type {
   SubjectStateEvolutionRunMode,
 } from "./subject-state-evolution-contract.js";
+import type {
+  MindSemanticGroupingService,
+  MindSemanticThreadGroup,
+} from "./mind-semantic-grouping.js";
 
 export type TopicPhase = "active" | "dormant";
 export type TopicRole = "anchor" | "reinforcement";
@@ -74,6 +78,8 @@ export class TopicEvolutionService {
   constructor(
     private readonly port: TopicEvolutionRuntimePort,
     private readonly policy: TopicEvolutionPolicy,
+    private readonly semanticGrouping:
+      Pick<MindSemanticGroupingService, "reconcile"> | null = null,
   ) {
     if (
       !Number.isInteger(policy.maxReinforcementSources)
@@ -106,13 +112,23 @@ export class TopicEvolutionService {
       subjectId: input.subjectId,
       limit: input.limit ?? 500,
     });
-    const groups = groupCandidates(candidates);
+    const exactGroups = groupCandidates(candidates);
+    const groups = await this.reconcileSemanticGroups(
+      input.userId,
+      input.subjectId,
+      exactGroups,
+    );
     const updates: TopicEvolutionUpdate[] = [];
     let active = 0;
     let dormant = 0;
 
-    for (const group of groups.values()) {
-      const evaluated = evaluateThread(group, now, this.policy);
+    for (const [threadKey, group] of groups) {
+      const evaluated = evaluateThread(
+        group,
+        now,
+        this.policy,
+        threadKey,
+      );
       updates.push(...evaluated.updates);
       if (evaluated.phase === "active") active += 1;
       else dormant += 1;
@@ -145,6 +161,59 @@ export class TopicEvolutionService {
       active,
       dormant,
     };
+  }
+
+  private async reconcileSemanticGroups(
+    userId: string,
+    subjectId: string,
+    exactGroups: Map<string, TopicEvolutionCandidate[]>,
+  ): Promise<Map<string, TopicEvolutionCandidate[]>> {
+    if (!this.semanticGrouping || exactGroups.size <= 1) {
+      return exactGroups;
+    }
+
+    const semanticGroups: MindSemanticThreadGroup[] = [];
+    for (const [threadKey, group] of exactGroups) {
+      const anchor = group[0];
+      if (!anchor) continue;
+      semanticGroups.push({
+        threadKey,
+        anchorStateId: anchor.stateId,
+        anchorText: anchor.text,
+        createdAt: normalizeIso(anchor.createdAt, "createdAt"),
+        newThread: !group.some((candidate) =>
+          Boolean(safeReadTopicEvolution(candidate.payload))
+        ),
+      });
+    }
+
+    let canonical: ReadonlyMap<string, string>;
+    try {
+      canonical = (
+        await this.semanticGrouping.reconcile({
+          userId,
+          subjectId,
+          kind: "topic",
+          groups: semanticGroups,
+        })
+      ).canonicalThreadKeyByThread;
+    } catch {
+      return exactGroups;
+    }
+
+    const merged = new Map<string, TopicEvolutionCandidate[]>();
+    for (const [threadKey, group] of exactGroups) {
+      const target = canonical.get(threadKey) ?? threadKey;
+      const current = merged.get(target) ?? [];
+      current.push(...group);
+      current.sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt)
+          || left.stateId.localeCompare(right.stateId),
+      );
+      merged.set(target, current);
+    }
+    return merged;
   }
 }
 
@@ -238,7 +307,8 @@ function groupCandidates(
   const groups = new Map<string, TopicEvolutionCandidate[]>();
   for (const candidate of candidates) {
     if (!candidate.text.trim()) continue;
-    const key = topicThreadKey(candidate.text);
+    const current = safeReadTopicEvolution(candidate.payload);
+    const key = current?.threadKey ?? topicThreadKey(candidate.text);
     const group = groups.get(key) ?? [];
     group.push(candidate);
     groups.set(key, group);
@@ -258,6 +328,7 @@ function evaluateThread(
   candidates: readonly TopicEvolutionCandidate[],
   now: string,
   policy: TopicEvolutionPolicy,
+  threadKey: string,
 ): {
   phase: TopicPhase;
   updates: TopicEvolutionUpdate[];
@@ -325,7 +396,7 @@ function evaluateThread(
     const evolution: TopicEvolutionState = {
       phase,
       role,
-      threadKey: topicThreadKey(anchor.text),
+      threadKey,
       anchorStateId: anchor.stateId,
       reinforcementCount,
       reinforcementSources,

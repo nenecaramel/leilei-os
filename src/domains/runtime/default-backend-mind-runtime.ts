@@ -243,6 +243,7 @@ export function createDefaultSubjectStateBackgroundMaintenance(
       curiosityEvolution: new CuriosityEvolutionService(
         new DrizzleCuriosityEvolutionRuntimePort(db),
         DEFAULT_CURIOSITY_EVOLUTION_POLICY,
+        semanticGrouping,
       ),
       curiosityTopicProjection: new CuriosityTopicProjectionService(
         new DrizzleCuriosityTopicProjectionRuntimePort(db),
@@ -250,6 +251,7 @@ export function createDefaultSubjectStateBackgroundMaintenance(
       topicEvolution: new TopicEvolutionService(
         new DrizzleTopicEvolutionRuntimePort(db),
         DEFAULT_TOPIC_EVOLUTION_POLICY,
+        semanticGrouping,
       ),
     },
     {
