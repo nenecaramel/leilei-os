@@ -15,8 +15,25 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
     let id: String
     let title: String?
     let currentHeadMessageId: String?
+    let lastMessageAt: String?
     let createdAt: String
     let updatedAt: String
+
+    init(
+        id: String,
+        title: String?,
+        currentHeadMessageId: String?,
+        lastMessageAt: String? = nil,
+        createdAt: String,
+        updatedAt: String
+    ) {
+        self.id = id
+        self.title = title
+        self.currentHeadMessageId = currentHeadMessageId
+        self.lastMessageAt = lastMessageAt
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 }
 
 struct NativeLiveConversationPage: Sendable, Equatable {
