@@ -395,7 +395,10 @@ test(
     assert.equal(malformed?.status, "quarantined");
     assert.equal(malformed?.lockedBy, null);
     assert.equal(malformed?.lockedUntil, null);
-    assert.equal(typeof malformed?.lastErrorName, "string");
+    assert.equal(
+      malformed?.lastErrorName,
+      "NativeLiveMindFollowUpPayloadInvalid",
+    );
 
     const [valid] = await database.db
       .select({
