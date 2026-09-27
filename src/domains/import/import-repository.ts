@@ -710,6 +710,104 @@ implements ImportRepository {
     }
   }
 
+  async insertConversation(
+    userId: string,
+    record: ExportConversationRecord,
+  ): Promise<void> {
+    await this.db.insert(conversations).values({
+      id: record.id,
+      userId,
+      origin: "native_live",
+      provider: null,
+      sourceConversationId: null,
+      title: record.title,
+      lifecycleStatus: record.lifecycle_status,
+      currentHeadMessageId: record.current_head_message_id,
+      sourceCreatedAt: null,
+      sourceUpdatedAt: null,
+      currentLeafSourceNodeId: null,
+      defaultModel: record.default_model,
+      providerMetadata: record.provider_metadata,
+      sourceFingerprint: null,
+      firstSeenImportId: null,
+      lastSeenImportId: null,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+      archivedAt: record.archived_at
+        ? new Date(record.archived_at)
+        : null,
+      deletedAt: null,
+    });
+  }
+
+  async insertConversationMessage(
+    userId: string,
+    record: ExportConversationMessageRecord,
+  ): Promise<void> {
+    await this.db.insert(conversationMessages).values({
+      id: record.id,
+      userId,
+      conversationId: record.conversation_id,
+      sourceNodeId: null,
+      sourceMessageId: null,
+      parentSourceNodeId: null,
+      parentMessageId: record.parent_message_id,
+      role: record.role,
+      status: record.status,
+      rawRole: record.raw_role,
+      model: record.model,
+      sourceCreatedAt: null,
+      sourceUpdatedAt: null,
+      isCurrentPath: record.is_current_path,
+      currentPathIndex: record.current_path_index,
+      turnIndex: record.turn_index,
+      isPrimary: record.is_primary,
+      displayText: record.display_text,
+      sourceFingerprint: null,
+      firstSeenImportId: null,
+      lastSeenImportId: null,
+      createdAt: new Date(record.created_at),
+      completedAt: record.completed_at
+        ? new Date(record.completed_at)
+        : null,
+      updatedAt: new Date(record.updated_at),
+    });
+  }
+
+  async insertConversationContentBlock(
+    userId: string,
+    record: ExportConversationContentBlockRecord,
+  ): Promise<void> {
+    await this.db.insert(conversationContentBlocks).values({
+      id: record.id,
+      userId,
+      messageId: record.message_id,
+      ordinal: record.ordinal,
+      kind: record.kind,
+      rawType: record.raw_type,
+      text: record.text,
+      payload: record.payload,
+      createdAt: new Date(record.created_at),
+    });
+  }
+
+  async insertConversationAttachment(
+    userId: string,
+    record: ExportConversationAttachmentRecord,
+  ): Promise<void> {
+    await this.db.insert(conversationAttachments).values({
+      id: record.id,
+      userId,
+      messageId: record.message_id,
+      ordinal: record.ordinal,
+      sourceAttachmentId: record.source_attachment_id,
+      name: record.name,
+      mimeType: record.mime_type,
+      sizeBytes: record.size_bytes,
+      payload: record.payload,
+    });
+  }
+
   async insertMind(
     userId: string,
     record: ExportMindStateRecord,
@@ -810,6 +908,9 @@ implements ImportRepository {
       mind: modules.has("mind")
         ? state.mind
         : undefined,
+      conversations: modules.has("conversations")
+        ? state.conversations
+        : emptyConversations(),
       projects: modules.has("projects")
         ? state.projects
         : emptyProjects(),
