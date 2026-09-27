@@ -741,6 +741,8 @@ implements NativeLiveBackendTurnPort {
             checkpoint: {
               provider: "claude_code",
               providerSessionId: input.providerSessionId,
+              runtimeMetadata:
+                input.runtimeMetadata as Record<string, unknown> | null,
             },
           });
 
