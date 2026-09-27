@@ -185,7 +185,7 @@ struct UniverseMapView: View {
                 onSelectNode(node.id)
             }
         }
-        .highPriorityGesture(
+        .simultaneousGesture(
             moveGesture(for: node, size: size)
         )
         .accessibilityLabel(node.title)
@@ -316,27 +316,33 @@ struct UniverseMapView: View {
                 )
             )
             .onChanged { value in
-                switch value {
-                case .first(true):
-                    guard mode == .browse else { return }
+                guard case .second(true, let drag?) = value else {
+                    return
+                }
+
+                let distance = hypot(
+                    drag.translation.width,
+                    drag.translation.height
+                )
+                guard distance > 8 else {
+                    return
+                }
+
+                if case .browse = mode {
                     onSelectNode(node.id)
                     onModeChange(.movingNode(node.id))
-
-                case .second(true, let drag?):
-                    guard case .movingNode(let nodeID) = mode,
-                          nodeID == node.id
-                    else {
-                        return
-                    }
-
-                    draftPositions[node.id] = canonicalPosition(
-                        fromScreen: drag.location,
-                        viewport: viewport
-                    )
-
-                default:
-                    break
                 }
+
+                guard case .movingNode(let nodeID) = mode,
+                      nodeID == node.id
+                else {
+                    return
+                }
+
+                draftPositions[node.id] = canonicalPosition(
+                    fromScreen: drag.location,
+                    viewport: viewport
+                )
             }
             .onEnded { value in
                 guard case .second(true, let drag?) = value else {
