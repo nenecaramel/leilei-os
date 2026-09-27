@@ -458,6 +458,18 @@ async function executeCreates(
     await repository.insertConversationMessage(userId, record);
   }
 
+  for (const record of conversationRecords(creates, "conversation")) {
+    const conversation =
+      record.value as ExportConversationRecord;
+    if (conversation.current_head_message_id) {
+      await repository.setConversationCurrentHead(
+        userId,
+        conversation.id,
+        conversation.current_head_message_id,
+      );
+    }
+  }
+
   for (const record of conversationRecords(creates, "content_block")) {
     await repository.insertConversationContentBlock(
       userId,
