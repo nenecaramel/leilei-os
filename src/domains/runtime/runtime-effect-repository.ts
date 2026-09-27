@@ -345,6 +345,16 @@ implements RuntimeEffectPort {
           WHERE user_id = ${input.userId}::uuid
             AND status = 'pending'
             AND retryable = true
+            AND EXISTS (
+              SELECT 1
+              FROM conversations AS target_conversation
+              WHERE target_conversation.user_id =
+                  runtime_effects.user_id
+                AND target_conversation.origin = 'native_live'
+                AND target_conversation.lifecycle_status = 'active'
+                AND runtime_effects.target =
+                  'conversation:' || target_conversation.id::text
+            )
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
