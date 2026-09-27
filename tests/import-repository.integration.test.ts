@@ -153,7 +153,7 @@ test(
         origin: "native_live",
         title: "Round trip conversation",
         lifecycleStatus: "active",
-        currentHeadMessageId: assistantMessageId,
+        currentHeadMessageId: null,
         defaultModel: "claude-sonnet",
         providerMetadata: { portable: true },
         createdAt: now,
@@ -194,6 +194,14 @@ test(
           updatedAt: now,
         },
       ]);
+      await db
+        .update(schema.conversations)
+        .set({ currentHeadMessageId: assistantMessageId })
+        .where(and(
+          eq(schema.conversations.userId, userId),
+          eq(schema.conversations.id, conversationId),
+        ));
+
       await db.insert(schema.conversationContentBlocks).values({
         id: contentBlockId,
         userId,
