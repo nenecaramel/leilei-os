@@ -145,6 +145,23 @@ test(
       title: "Other tenant",
     });
 
+    const newerUserMessage = await service.appendUserMessage({
+      userId: userA,
+      conversationId: newer.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "canonical date source" }],
+    });
+    const newerAssistantTurn = await service.completeAssistantTurn({
+      userId: userA,
+      conversationId: newer.id,
+      parentMessageId: newerUserMessage.id,
+      blocks: [{ kind: "text", text: "dated reply" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: "bootstrap-date-session",
+      },
+    });
+
     await database.db
       .update(conversations)
       .set({ updatedAt: new Date("2026-09-23T10:00:00.000Z") })
@@ -178,6 +195,16 @@ test(
       listedA.some((conversation) => conversation.id === otherTenant.id),
       false,
     );
+    assert.equal(
+      listedA.find((conversation) => conversation.id === newer.id)
+        ?.lastMessageAt,
+      newerAssistantTurn.message.createdAt,
+    );
+    assert.equal(
+      listedA.find((conversation) => conversation.id === older.id)
+        ?.lastMessageAt,
+      null,
+    );
 
     const limitedA = await service.listConversations({
       userId: userA,
@@ -203,6 +230,11 @@ test(
       title: "Renamed newer",
     });
     assert.equal(renamed?.title, "Renamed newer");
+    assert.equal(
+      renamed?.lastMessageAt,
+      newerAssistantTurn.message.createdAt,
+      "rename must not masquerade as the last message timestamp",
+    );
 
     const listedAfterRename = await service.listConversations({
       userId: userA,
