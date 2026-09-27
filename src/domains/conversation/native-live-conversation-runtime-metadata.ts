@@ -61,7 +61,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
     const rows = await this.db.execute<{
       source_message_id: string;
       runtime_metadata: Record<string, unknown> | null;
-      observed_at: Date;
+      observed_at: string;
     }>(sql`
       WITH RECURSIVE current_path AS (
         SELECT
@@ -91,7 +91,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
       SELECT
         checkpoint.canonical_message_id AS source_message_id,
         checkpoint.runtime_metadata,
-        checkpoint.created_at AS observed_at
+        checkpoint.created_at::text AS observed_at
       FROM current_path AS path
       INNER JOIN conversation_provider_session_checkpoints AS checkpoint
         ON checkpoint.canonical_message_id = path.id
@@ -120,7 +120,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
       sourceMessageId: latest.source_message_id,
       runtimeMetadata:
         latest.runtime_metadata as NativeLiveRuntimeMetadata | null,
-      observedAt: latest.observed_at.toISOString(),
+      observedAt: new Date(latest.observed_at).toISOString(),
     };
   }
 }
