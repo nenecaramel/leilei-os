@@ -66,28 +66,34 @@ function hasExactProjectValue(
   record: ProjectRestoreRecord,
   state: ImportCurrentState,
 ): boolean {
+  const projects = state.projects ?? {
+    workspaces: [],
+    projects: [],
+    resources: [],
+    conversations: [],
+  };
   if (record.entity === "workspace") {
-    return state.projects.workspaces.some(
+    return projects.workspaces.some(
       (candidate) =>
         candidate.id === record.value.id
         && hashCanonical(candidate) === hashCanonical(record.value),
     );
   }
   if (record.entity === "project") {
-    return state.projects.projects.some(
+    return projects.projects.some(
       (candidate) =>
         candidate.id === record.value.id
         && hashCanonical(candidate) === hashCanonical(record.value),
     );
   }
   if (record.entity === "resource") {
-    return state.projects.resources.some(
+    return projects.resources.some(
       (candidate) =>
         candidate.id === record.value.id
         && hashCanonical(candidate) === hashCanonical(record.value),
     );
   }
-  return state.projects.conversations.some(
+  return projects.conversations.some(
     (candidate) =>
       candidate.project_id === record.value.project_id
       && candidate.conversation_id === record.value.conversation_id
