@@ -8,7 +8,7 @@
       "destination": "/index.html"
     }
   ],
-  "ignoreCommand": "git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" \"$VERCEL_GIT_COMMIT_SHA\" -- ':(top)web/'",
+  "ignoreCommand": "if git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" 2>/dev/null; then git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" \"$VERCEL_GIT_COMMIT_SHA\" -- ':(top)web/' || exit 1; else exit 1; fi",
   "git": {
     "deploymentEnabled": {
       "**": false,
