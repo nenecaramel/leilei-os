@@ -526,6 +526,13 @@
       "when": 1790473200000,
       "tag": "0074_runtime_mind_semantic_grouping",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1790476800000,
+      "tag": "0075_runtime_mind_retirement_receipts",
+      "breakpoints": true
     }
   ]
 }
