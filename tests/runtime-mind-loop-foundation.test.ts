@@ -873,6 +873,27 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
     dormantAt: now,
   });
 
+  const authoredLegacy = state(
+    "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "topic",
+    "旧 authored Topic 不应该再进 Context",
+  );
+  authoredLegacy.envelope = {
+    ...authoredLegacy.envelope,
+    authority: "subject_authorized",
+  };
+  authoredLegacy.payload = writeTopicEvolution(authoredLegacy.payload, {
+    phase: "active",
+    role: "anchor",
+    threadKey: "topic-thread-authored-legacy",
+    anchorStateId: authoredLegacy.id,
+    reinforcementCount: 1,
+    reinforcementSources: ["m4"],
+    lastEvolvedAt: now,
+    lastReinforcedAt: now,
+    dormantAt: null,
+  });
+
   const assembled = assembleTurnContext({
     manifestId: "manifest-topic",
     userId: "u1",
@@ -880,7 +901,7 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
     conversation: conversation([], null),
     userMessageId: "u-topic",
     userText: "继续",
-    subjectStates: [anchor, reinforcement, dormant],
+    subjectStates: [anchor, reinforcement, dormant, authoredLegacy],
     snapshotSequence: 1,
     assembledAt: now,
     assemblyVersion: "assembly-v1",
@@ -899,6 +920,10 @@ test("Context Assembly injects only active Topic anchors and drops reinforcement
   assert.equal(assembled.prompt.includes("下次继续研究 Topic Pool"), true);
   assert.equal(
     assembled.prompt.includes("已经暂退的话题不应该进 Context"),
+    false,
+  );
+  assert.equal(
+    assembled.prompt.includes("旧 authored Topic 不应该再进 Context"),
     false,
   );
 });
