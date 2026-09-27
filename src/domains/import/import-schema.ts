@@ -295,6 +295,30 @@ const mindDistillationWatermarkRecord = z.object({
   updated_at: isoDateTime,
 }).strict();
 
+const mindSemanticGroupingCandidate = z.object({
+  stateId: uuid,
+  kind: z.enum(["drive", "thought", "curiosity", "topic"]),
+  text: nonBlankString(),
+}).strict();
+
+const mindSemanticGroupingResultRecord = z.object({
+  id: uuid,
+  subject_id: nonBlankString(),
+  kind: z.enum(["drive", "thought", "curiosity", "topic"]),
+  query_state_id: uuid,
+  query: nonBlankString(),
+  candidates: z.array(mindSemanticGroupingCandidate)
+    .min(1)
+    .max(64),
+  scores: z.record(
+    z.string().uuid(),
+    z.number().min(0).max(1),
+  ),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+  completed_at: isoDateTime,
+}).strict();
+
 const mindContinuityBundle = z.object({
   drive_satisfaction_events:
     z.array(mindDriveSatisfactionEventRecord)
@@ -304,6 +328,9 @@ const mindContinuityBundle = z.object({
       .max(MAX_IMPORT_RECORDS_PER_MODULE),
   distillation_watermarks:
     z.array(mindDistillationWatermarkRecord)
+      .max(MAX_IMPORT_RECORDS_PER_MODULE),
+  semantic_grouping_results:
+    z.array(mindSemanticGroupingResultRecord)
       .max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
@@ -543,6 +570,32 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
     document.schema_version === 3
     && document.data.mind_continuity
   ) {
+    for (
+      const result of
+        document.data.mind_continuity.semantic_grouping_results
+    ) {
+      const candidateIds = result.candidates.map(
+        (candidate) => candidate.stateId,
+      );
+      const candidateIdSet = new Set(candidateIds);
+      if (
+        candidateIdSet.size !== candidateIds.length
+        || result.candidates.some(
+          (candidate) => candidate.kind !== result.kind,
+        )
+        || Object.keys(result.scores).length
+          !== candidateIdSet.size
+        || Object.keys(result.scores).some(
+          (stateId) => !candidateIdSet.has(stateId),
+        )
+      ) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "Mind semantic grouping result is inconsistent",
+        );
+      }
+    }
+
     for (
       const event of
         document.data.mind_continuity.drive_satisfaction_events
