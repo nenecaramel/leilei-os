@@ -1,4 +1,12 @@
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+} from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationAttachments,
@@ -8,6 +16,7 @@ import {
   conversations,
   diaryComments,
   diaryEntries,
+  nativeLiveBackgroundModelJobs,
   nativeLiveMindFollowUps,
   nativeLiveTurnPreparations,
   projectConversations,
@@ -448,6 +457,32 @@ export class DrizzleExportRepository implements ExportRepository {
         added_at: toIso(row.addedAt),
       })),
     };
+  }
+
+  async hasIncompleteBackgroundModelJobs(
+    userId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(and(
+        eq(nativeLiveBackgroundModelJobs.userId, userId),
+        or(
+          inArray(nativeLiveBackgroundModelJobs.status, [
+            "pending",
+            "reserved",
+          ]),
+          and(
+            inArray(nativeLiveBackgroundModelJobs.status, [
+              "completed",
+              "failed",
+            ]),
+            isNull(nativeLiveBackgroundModelJobs.consumedAt),
+          ),
+        ),
+      ))
+      .limit(1);
+    return rows.length > 0;
   }
 
   async hasIncompleteTurnPreparations(
