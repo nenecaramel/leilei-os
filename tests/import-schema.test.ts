@@ -296,6 +296,7 @@ test("parseImportPackage enforces Mind continuity database string constraints", 
       process_version: "distill-v1",
       updated_at: "2026-08-14T00:00:00.000Z",
     }],
+    semantic_grouping_results: [],
   };
 
   assert.doesNotThrow(() =>
