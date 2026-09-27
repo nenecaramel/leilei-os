@@ -50,6 +50,7 @@ import type { TodoApiDependencies } from "../web-api/todo-router.js";
 import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
+import type { MindApiDependencies } from "../web-api/mind-router.js";
 import type { NativeLiveApiDependencies } from "../web-api/native-live-router.js";
 import {
   createNativeLiveRelayInternalRouter,
@@ -94,6 +95,7 @@ export type AppDependencies = {
   webExportService?: ExportApiDependencies["exportService"];
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
+  webMindService?: MindApiDependencies["mindService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
   mcpSessionRegistry?: McpSessionRegistry;
@@ -321,6 +323,7 @@ export function createApp(
     const webExportService = dependencies.webExportService;
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
+    const webMindService = dependencies.webMindService;
 
     if (
       !webDiaryService ||
@@ -377,6 +380,9 @@ export function createApp(
         export: { exportService: webExportService },
         import: { importService: webImportService },
         universe: { universeService: webUniverseService },
+        ...(webMindService
+          ? { mind: { mindService: webMindService } }
+          : {}),
         ...(dependencies.nativeLiveProduction
           ? {
               nativeLive:
