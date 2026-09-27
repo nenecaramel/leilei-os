@@ -6,6 +6,7 @@ import {
 } from "../src/domains/export/export-service.js";
 import type {
   ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportLifecycleEvent,
   ExportMindStateRecord,
@@ -28,6 +29,16 @@ const diary: ExportDiaryRecord[] = [{
   source: "web",
   author: "G",
   status: "archived",
+  created_at: EXPORTED_AT,
+  updated_at: EXPORTED_AT,
+}];
+
+const diaryComments: ExportDiaryCommentRecord[] = [{
+  id: "00000000-0000-4000-8000-000000000071",
+  diary_id: "diary-1",
+  author: "G",
+  content: "Comment",
+  revision: 2,
   created_at: EXPORTED_AT,
   updated_at: EXPORTED_AT,
 }];
@@ -91,6 +102,10 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`diary:${userId}`);
       return diary;
     },
+    async listDiaryComments(userId) {
+      calls.push(`diary_comments:${userId}`);
+      return diaryComments;
+    },
     async listTodo(userId) {
       calls.push(`todo:${userId}`);
       return todo;
@@ -132,7 +147,10 @@ test("ExportService emits the owner-bound v3 contract", async () => {
   assert.equal(document.schema_version, 3);
   assert.equal(document.owner_fingerprint, createOwnerFingerprint(USER_ID));
   assert.equal(document.exported_at, EXPORTED_AT);
-  assert.deepEqual(document.data, { diary });
+  assert.deepEqual(document.data, {
+    diary,
+    diary_comments: diaryComments,
+  });
   assert.equal("audit" in document, false);
 });
 
@@ -157,11 +175,25 @@ test("ExportService reads only the selected active-module scope", async () => {
       () => new Date(EXPORTED_AT),
     ).createExport(USER_ID, scope, false);
 
-    assert.deepEqual(Object.keys(document.data), [key]);
-    assert.deepEqual(calls, [
-      "snapshot",
-      `${key}:${USER_ID}`,
-    ]);
+    assert.deepEqual(
+      Object.keys(document.data),
+      scope === "diary"
+        ? ["diary", "diary_comments"]
+        : [key],
+    );
+    assert.deepEqual(
+      calls,
+      scope === "diary"
+        ? [
+            "snapshot",
+            `diary:${USER_ID}`,
+            `diary_comments:${USER_ID}`,
+          ]
+        : [
+            "snapshot",
+            `${key}:${USER_ID}`,
+          ],
+    );
   }
 });
 
@@ -174,11 +206,19 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
 
   assert.deepEqual(
     Object.keys(document.data),
-    ["diary", "todo", "projects", "mind", "conversations"],
+    [
+      "diary",
+      "diary_comments",
+      "todo",
+      "projects",
+      "mind",
+      "conversations",
+    ],
   );
   assert.deepEqual(calls, [
     "snapshot",
     `diary:${USER_ID}`,
+    `diary_comments:${USER_ID}`,
     `todo:${USER_ID}`,
     `projects:${USER_ID}`,
     `mind:${USER_ID}`,
