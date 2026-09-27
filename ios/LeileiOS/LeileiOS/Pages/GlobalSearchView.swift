@@ -2,6 +2,8 @@ import SwiftUI
 
 struct GlobalSearchView: View {
     private let service: any GlobalSearchService
+    private let onOpenDiary: (DiaryNavigationTarget) -> Void
+    private let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
     private let onOpenUniverseNode: (String) -> Void
 
     @State private var query = ""
@@ -16,9 +18,16 @@ struct GlobalSearchView: View {
 
     init(
         service: any GlobalSearchService = UnavailableGlobalSearchService(),
-        onOpenUniverseNode: @escaping (String) -> Void = { _ in }
+        onOpenDiary:
+            @escaping (DiaryNavigationTarget) -> Void = { _ in },
+        onOpenDaySpace:
+            @escaping (DaySpaceNavigationTarget) -> Void = { _ in },
+        onOpenUniverseNode:
+            @escaping (String) -> Void = { _ in }
     ) {
         self.service = service
+        self.onOpenDiary = onOpenDiary
+        self.onOpenDaySpace = onOpenDaySpace
         self.onOpenUniverseNode = onOpenUniverseNode
     }
 
@@ -40,6 +49,8 @@ struct GlobalSearchView: View {
                     onLoadMore: {
                         loadMore(response)
                     },
+                    onOpenDiary: onOpenDiary,
+                    onOpenDaySpace: onOpenDaySpace,
                     onOpenUniverseNode: onOpenUniverseNode
                 )
 
@@ -204,6 +215,8 @@ private struct GlobalSearchResultsList: View {
     let isLoadingMore: Bool
     let loadMoreFailed: Bool
     let onLoadMore: () -> Void
+    let onOpenDiary: (DiaryNavigationTarget) -> Void
+    let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
     let onOpenUniverseNode: (String) -> Void
 
     private var groups: [GlobalSearchResultGroup] {
@@ -227,6 +240,8 @@ private struct GlobalSearchResultsList: View {
                     ForEach(group.items) { result in
                         GlobalSearchResultRow(
                             result: result,
+                            onOpenDiary: onOpenDiary,
+                            onOpenDaySpace: onOpenDaySpace,
                             onOpenUniverseNode: onOpenUniverseNode
                         )
                     }
@@ -271,14 +286,52 @@ private struct GlobalSearchResultGroup: Identifiable {
 
 private struct GlobalSearchResultRow: View {
     let result: GlobalSearchResultItem
+    let onOpenDiary: (DiaryNavigationTarget) -> Void
+    let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
     let onOpenUniverseNode: (String) -> Void
 
     var body: some View {
         switch result.entityType {
         case .diary:
-            GlobalSearchDiaryRow(result: result)
+            Button {
+                onOpenDiary(
+                    DiaryNavigationTarget(
+                        diaryID:
+                            result.detailArguments?["id"]
+                                ?? result.entityID,
+                        scope:
+                            result.detailArguments?["scope"]
+                                ?? result.lifecycleStatus
+                    )
+                )
+            } label: {
+                GlobalSearchDiaryRow(
+                    result: result
+                )
+            }
+            .buttonStyle(.plain)
+
         case .todo:
-            GlobalSearchTodoRow(result: result)
+            Button {
+                guard let date =
+                    result.detailArguments?["date"]
+                else {
+                    return
+                }
+
+                onOpenDaySpace(
+                    DaySpaceNavigationTarget(
+                        date: date,
+                        author: result.author
+                    )
+                )
+            } label: {
+                GlobalSearchTodoRow(
+                    result: result
+                )
+            }
+            .buttonStyle(.plain)
+
         case .universe:
             Button {
                 onOpenUniverseNode(
