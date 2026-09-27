@@ -18,6 +18,21 @@ function currentMigrationHead(): string {
   return migration.slice(0, -".sql".length);
 }
 
+function currentMigrationWhen(): string {
+  const journal = JSON.parse(
+    readFileSync(
+      join(repoRoot, "drizzle/meta/_journal.json"),
+      "utf8",
+    ),
+  ) as {
+    entries?: Array<{ when?: number; tag?: string }>;
+  };
+  const latest = journal.entries?.at(-1);
+  assert.equal(latest?.tag, currentMigrationHead());
+  assert.equal(typeof latest?.when, "number");
+  return String(latest!.when);
+}
+
 function run(script: string, env: NodeJS.ProcessEnv) {
   return spawnSync("bash", [script], {
     cwd: repoRoot,
@@ -56,12 +71,26 @@ done
 if [[ -z "$query" && ! -t 0 ]]; then
   query="$(cat)"
 fi
-if [[ "$query" == *"to_regclass"* ]]; then
-  printf 't|t|t|t|t\\n'
-elif [[ "$query" == *"server_version_num"* ]]; then
+if [[ "$query" == *"server_version_num"* ]]; then
   printf '180001\\n'
+elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
+  printf '1790506500000|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'
+elif [[ "$query" == *"pg_catalog.pg_tables"* ]]; then
+  printf '%s\\n' \\
+    conversations \\
+    diary_entries \\
+    health_daily_summaries \\
+    project_workspaces \\
+    runtime_subject_states \\
+    todo_papers \\
+    universe_meta \\
+    users
+elif [[ "$query" == *'SELECT count(*) FROM public."'* ]]; then
+  printf '1\\n'
 elif [[ "$query" == *"WHERE id"* ]]; then
   printf '1\\n'
+elif [[ "$query" == *"to_regclass"* ]]; then
+  printf 't|t|t|t|t\\n'
 else
   printf '1|7|7|7|1\\n'
 fi
@@ -170,6 +199,20 @@ test("encrypted backup and local temporary restore verification work with fake P
   assert.match(backupFile, /_\d{8}T\d{6}Z_/);
   assert.ok(backupFile.endsWith(`_${currentMigrationHead()}.backup.enc`));
   assert.equal(readFileSync(`${backupFile}.sha256`, "utf8").split(/\s+/)[0].length, 64);
+  assert.equal(currentMigrationWhen(), "1790506500000");
+
+  const backupSource = readFileSync(backupScript, "utf8");
+  assert.match(backupSource, /leilei-os-postgres-backup-v2/);
+  assert.match(backupSource, /pg_catalog\.pg_tables/);
+  assert.match(backupSource, /leilei_schema_migrations/);
+  assert.doesNotMatch(
+    backupSource,
+    /SELECT\s+\(SELECT count\(\*\) FROM core_memories\)/,
+  );
+  assert.doesNotMatch(
+    backupSource,
+    /SELECT\s+\(SELECT count\(\*\) FROM tasks\)/,
+  );
 
   const restore = run(restoreScript, {
     ...shared,
@@ -181,6 +224,8 @@ test("encrypted backup and local temporary restore verification work with fake P
   assert.equal(restore.status, 0, restore.stderr);
   assert.match(restore.stdout, /Temporary restore verification succeeded/);
   assert.match(restore.stdout, /Auth0 mapped-user count verified/);
+  assert.match(restore.stdout, /Leilei migration ledger verified/);
+  assert.match(restore.stdout, /runtime_subject_states count verified: 1/);
 });
 
 test("gitignore covers common database backup artifacts", () => {
