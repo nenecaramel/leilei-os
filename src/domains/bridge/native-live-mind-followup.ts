@@ -439,12 +439,14 @@ function parseJob(row: RawFollowUpRow): NativeLiveMindFollowUpJob {
     conversationId: row.conversation_id,
     assistantMessageId: row.assistant_message_id,
     operation: row.operation,
-    intents: parseIntents(row.intents),
+    intents: parseNativeLiveMindFollowUpIntents(row.intents),
     actions: parseActions(row.actions),
   };
 }
 
-function parseIntents(value: unknown): MindWriteIntent[] {
+export function parseNativeLiveMindFollowUpIntents(
+  value: unknown,
+): MindWriteIntent[] {
   if (!Array.isArray(value)) {
     throw new Error("Native live Mind follow-up intents must be an array.");
   }
