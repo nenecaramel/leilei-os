@@ -13,6 +13,7 @@ import {
 import { isConsolidationEligible } from "../src/domains/runtime/runtime-status-axes.js";
 import {
   SubjectStateContractError,
+  validateCurrentSubjectStateAppend,
   validateSubjectStateWrite,
   type SubjectStateWrite,
 } from "../src/domains/runtime/subject-state-contract.js";
@@ -63,6 +64,44 @@ function baseState(): SubjectStateWrite {
     },
   };
 }
+
+test("current Subject State append rejects retired Dream and authored Topic while legacy reads remain valid", () => {
+  const dream = {
+    ...baseState(),
+    kind: "dream" as const,
+  };
+  assert.equal(validateSubjectStateWrite(dream).kind, "dream");
+  assert.throws(
+    () => validateCurrentSubjectStateAppend(dream),
+    (error: unknown) =>
+      error instanceof SubjectStateContractError
+      && error.code === "RETIRED_KIND_WRITE",
+  );
+
+  const authoredTopic = {
+    ...baseState(),
+    kind: "topic" as const,
+  };
+  assert.equal(validateSubjectStateWrite(authoredTopic).kind, "topic");
+  assert.throws(
+    () => validateCurrentSubjectStateAppend(authoredTopic),
+    (error: unknown) =>
+      error instanceof SubjectStateContractError
+      && error.code === "TOPIC_MUST_BE_DERIVED",
+  );
+
+  const derivedTopic = {
+    ...authoredTopic,
+    envelope: {
+      ...authoredTopic.envelope,
+      authority: "derived" as const,
+    },
+  };
+  assert.equal(
+    validateCurrentSubjectStateAppend(derivedTopic).kind,
+    "topic",
+  );
+});
 
 test("canonical event contract keeps explicit ordering, time and causality", () => {
   const event = validateCanonicalEvent({
