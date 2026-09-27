@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   runtimeMindSemanticGroupingRequests,
+  runtimeSubjectStates,
 } from "../../database/schema.js";
 import type {
   BreathSemanticCandidate,
@@ -82,32 +83,70 @@ implements MindSemanticGroupingPort {
       );
     }
 
-    const inserted = await this.db
-      .insert(runtimeMindSemanticGroupingRequests)
-      .values({
-        id: randomUUID(),
-        userId: input.userId,
-        subjectId: input.subjectId,
-        kind: input.kind,
-        queryStateId: input.queryStateId,
-        query,
-        candidates: input.candidates.map(candidateRecord),
-        status: "pending",
-      })
-      .onConflictDoNothing({
-        target: [
-          runtimeMindSemanticGroupingRequests.userId,
-          runtimeMindSemanticGroupingRequests.subjectId,
-          runtimeMindSemanticGroupingRequests.kind,
-          runtimeMindSemanticGroupingRequests.queryStateId,
-        ],
-      })
-      .returning({ id: runtimeMindSemanticGroupingRequests.id });
+    const stateIds = [
+      ...new Set([
+        input.queryStateId,
+        ...input.candidates.map((candidate) => candidate.stateId),
+      ]),
+    ];
 
-    let staged = inserted.length === 1;
-    if (!staged) {
+    const staged = await this.db.transaction(async (transaction) => {
+      const lockedStates = await transaction
+        .select({
+          id: runtimeSubjectStates.id,
+          kind: runtimeSubjectStates.kind,
+        })
+        .from(runtimeSubjectStates)
+        .where(and(
+          eq(runtimeSubjectStates.userId, input.userId),
+          eq(runtimeSubjectStates.subjectId, input.subjectId),
+          eq(runtimeSubjectStates.validityStatus, "valid"),
+          inArray(runtimeSubjectStates.id, stateIds),
+        ))
+        .for("share");
+
+      if (lockedStates.length !== stateIds.length) {
+        return false;
+      }
+      const byId = new Map(
+        lockedStates.map((state) => [state.id, state.kind]),
+      );
+      if (
+        byId.get(input.queryStateId) !== input.kind
+        || input.candidates.some(
+          (candidate) =>
+            byId.get(candidate.stateId) !== candidate.kind,
+        )
+      ) {
+        return false;
+      }
+
+      const inserted = await transaction
+        .insert(runtimeMindSemanticGroupingRequests)
+        .values({
+          id: randomUUID(),
+          userId: input.userId,
+          subjectId: input.subjectId,
+          kind: input.kind,
+          queryStateId: input.queryStateId,
+          query,
+          candidates: input.candidates.map(candidateRecord),
+          status: "pending",
+        })
+        .onConflictDoNothing({
+          target: [
+            runtimeMindSemanticGroupingRequests.userId,
+            runtimeMindSemanticGroupingRequests.subjectId,
+            runtimeMindSemanticGroupingRequests.kind,
+            runtimeMindSemanticGroupingRequests.queryStateId,
+          ],
+        })
+        .returning({ id: runtimeMindSemanticGroupingRequests.id });
+
+      if (inserted.length === 1) return true;
+
       const resetAt = new Date();
-      const reset = await this.db
+      const reset = await transaction
         .update(runtimeMindSemanticGroupingRequests)
         .set({
           query,
@@ -134,10 +173,10 @@ implements MindSemanticGroupingPort {
           ),
         )
         .returning({ id: runtimeMindSemanticGroupingRequests.id });
-      staged = reset.length === 1;
-    }
-    if (!staged) return false;
+      return reset.length === 1;
+    });
 
+    if (!staged) return false;
     try {
       await this.workWake?.notify({
         userId: input.userId,
