@@ -7,6 +7,10 @@ import type {
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
+  ExportMindContinuityBundle,
+  ExportMindCuriosityResolutionEventRecord,
+  ExportMindDistillationWatermarkRecord,
+  ExportMindDriveSatisfactionEventRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
@@ -50,6 +54,7 @@ export type ImportCurrentState = {
   todo: ExportTodoPaper[];
   projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
+  mind_continuity?: ExportMindContinuityBundle;
   conversations?: ExportConversationsBundle;
   universe?: ExportUniverseBundle | null;
   foreign_diary_ids?: Set<string>;
@@ -58,6 +63,8 @@ export type ImportCurrentState = {
   foreign_project_ids?: Set<string>;
   foreign_project_resource_ids?: Set<string>;
   foreign_mind_ids?: Set<string>;
+  foreign_drive_satisfaction_event_ids?: Set<string>;
+  foreign_curiosity_resolution_event_ids?: Set<string>;
   foreign_conversation_ids?: Set<string>;
   foreign_conversation_message_ids?: Set<string>;
   foreign_conversation_content_block_ids?: Set<string>;
@@ -111,6 +118,20 @@ export type ConversationRestoreRecord =
       value: ExportConversationAttachmentRecord;
     };
 
+export type MindContinuityRestoreRecord =
+  | {
+      entity: "drive_satisfaction";
+      value: ExportMindDriveSatisfactionEventRecord;
+    }
+  | {
+      entity: "curiosity_resolution";
+      value: ExportMindCuriosityResolutionEventRecord;
+    }
+  | {
+      entity: "distillation_watermark";
+      value: ExportMindDistillationWatermarkRecord;
+    };
+
 export type UniverseRestoreRecord = {
   entity: "universe";
   value: ExportUniverseBundle;
@@ -125,6 +146,7 @@ export type ImportPlanItem = {
     | ExportDiaryCommentRecord
     | ExportTodoPaper
     | ExportMindStateRecord
+    | MindContinuityRestoreRecord
     | ProjectRestoreRecord
     | ConversationRestoreRecord
     | UniverseRestoreRecord;
@@ -206,6 +228,197 @@ function classify<
       current_hash: existing ? hashCanonical(existing) : null,
     };
   });
+}
+
+function classifyMindContinuityEntity<T>(
+  entity: MindContinuityRestoreRecord["entity"],
+  imported: T[],
+  current: T[],
+  key: (record: T) => string,
+): ImportPlanItem[] {
+  const occurrences = new Map<string, number>();
+  for (const record of imported) {
+    const logicalKey = `${entity}:${key(record)}`;
+    occurrences.set(
+      logicalKey,
+      (occurrences.get(logicalKey) ?? 0) + 1,
+    );
+  }
+
+  return imported.map((record) => {
+    const logicalKey = `${entity}:${key(record)}`;
+    const existing = current.find(
+      (candidate) => key(candidate) === key(record),
+    );
+    let classification: ImportClassification;
+    if ((occurrences.get(logicalKey) ?? 0) > 1) {
+      classification = "invalid";
+    } else if (!existing) {
+      classification = "create";
+    } else if (
+      hashCanonical(existing) === hashCanonical(record)
+    ) {
+      classification = "duplicate";
+    } else {
+      classification = "conflict";
+    }
+    return {
+      module: "mind" as const,
+      logical_key: logicalKey,
+      classification,
+      record: {
+        entity,
+        value: record,
+      } as MindContinuityRestoreRecord,
+      current_hash: existing
+        ? hashCanonical(existing)
+        : null,
+    };
+  });
+}
+
+function mindContinuityItems(
+  imported: ExportMindContinuityBundle,
+  current: ImportCurrentState,
+  importedMind: ExportMindStateRecord[],
+  importedConversations: ExportConversationsBundle | undefined,
+): ImportPlanItem[] {
+  const currentContinuity = current.mind_continuity ?? {
+    drive_satisfaction_events: [],
+    curiosity_resolution_events: [],
+    distillation_watermarks: [],
+  };
+  const driveItems = classifyMindContinuityEntity(
+    "drive_satisfaction",
+    imported.drive_satisfaction_events,
+    currentContinuity.drive_satisfaction_events,
+    (record) => record.idempotency_key,
+  );
+  const curiosityItems = classifyMindContinuityEntity(
+    "curiosity_resolution",
+    imported.curiosity_resolution_events,
+    currentContinuity.curiosity_resolution_events,
+    (record) => record.idempotency_key,
+  );
+  const watermarkItems = classifyMindContinuityEntity(
+    "distillation_watermark",
+    imported.distillation_watermarks,
+    currentContinuity.distillation_watermarks,
+    (record) =>
+      `${record.subject_id}:${record.conversation_id}`,
+  );
+
+  const states = new Map(
+    [
+      ...(current.mind ?? []),
+      ...importedMind,
+    ].map((record) => [record.id, record] as const),
+  );
+  const conversations = new Set([
+    ...(current.conversations?.conversations ?? [])
+      .map((record) => record.id),
+    ...(importedConversations?.conversations ?? [])
+      .map((record) => record.id),
+  ]);
+  const messages = new Map(
+    [
+      ...(current.conversations?.messages ?? []),
+      ...(importedConversations?.messages ?? []),
+    ].map((record) => [record.id, record] as const),
+  );
+  const blocks = new Map(
+    [
+      ...(current.conversations?.content_blocks ?? []),
+      ...(importedConversations?.content_blocks ?? []),
+    ].map((record) => [record.id, record] as const),
+  );
+
+  for (const item of driveItems) {
+    if (item.classification !== "create") continue;
+    const record =
+      (item.record as MindContinuityRestoreRecord).value
+        as ExportMindDriveSatisfactionEventRecord;
+    const state = states.get(record.drive_state_id);
+    const message = messages.get(record.evidence_message_id);
+    const block = record.evidence_block_id
+      ? blocks.get(record.evidence_block_id)
+      : undefined;
+
+    if (
+      current.foreign_drive_satisfaction_event_ids?.has(record.id)
+    ) {
+      item.classification = "conflict";
+    } else if (
+      state?.kind !== "drive"
+      || !conversations.has(record.conversation_id)
+      || !message
+      || message.conversation_id !== record.conversation_id
+      || message.status !== "completed"
+      || (
+        record.evidence_kind === "user_message"
+        && message.role !== "user"
+      )
+      || (
+        record.evidence_kind === "assistant_message"
+        && message.role !== "assistant"
+      )
+      || (
+        record.evidence_kind === "tool_result"
+        && (
+          !block
+          || block.message_id !== record.evidence_message_id
+          || block.kind !== "tool_result"
+        )
+      )
+    ) {
+      item.classification = "invalid";
+    }
+  }
+
+  for (const item of curiosityItems) {
+    if (item.classification !== "create") continue;
+    const record =
+      (item.record as MindContinuityRestoreRecord).value
+        as ExportMindCuriosityResolutionEventRecord;
+    const state = states.get(record.curiosity_state_id);
+    const message = messages.get(
+      record.requested_resolution_source_id,
+    );
+
+    if (
+      current.foreign_curiosity_resolution_event_ids?.has(record.id)
+    ) {
+      item.classification = "conflict";
+    } else if (
+      state?.kind !== "curiosity"
+      || !conversations.has(record.conversation_id)
+      || !message
+      || message.conversation_id !== record.conversation_id
+    ) {
+      item.classification = "invalid";
+    }
+  }
+
+  for (const item of watermarkItems) {
+    if (item.classification !== "create") continue;
+    const record =
+      (item.record as MindContinuityRestoreRecord).value
+        as ExportMindDistillationWatermarkRecord;
+    const message = messages.get(record.last_source_message_id);
+    if (
+      !conversations.has(record.conversation_id)
+      || !message
+      || message.conversation_id !== record.conversation_id
+    ) {
+      item.classification = "invalid";
+    }
+  }
+
+  return [
+    ...driveItems,
+    ...curiosityItems,
+    ...watermarkItems,
+  ];
 }
 
 function classifyProjectEntity<T>(
@@ -875,11 +1088,26 @@ export function buildImportPlan(
     items.push(...mindItems);
   }
 
+  const importedMindContinuity =
+    parsed.document.schema_version === 3
+      ? parsed.document.data.mind_continuity
+      : undefined;
+  if (importedMindContinuity) {
+    items.push(
+      ...mindContinuityItems(
+        importedMindContinuity,
+        current,
+        importedMind ?? [],
+        importedConversations,
+      ),
+    );
+  }
+
   const summary = summarize(
     items,
     Boolean(importedDiaryComments),
     Boolean(importedProjects),
-    Boolean(importedMind),
+    Boolean(importedMind || importedMindContinuity),
     Boolean(importedConversations),
     Boolean(importedUniverse),
   );
