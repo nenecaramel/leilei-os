@@ -477,7 +477,7 @@ private struct DiaryArchiveList: View {
     }
 }
 
-private struct DiaryArchivedDetailView: View {
+struct DiaryArchivedDetailView: View {
     let diaryID: String
     let onChanged: () -> Void
 
@@ -822,7 +822,7 @@ private struct DiaryRow: View {
     }
 }
 
-private struct DiaryDetailView: View {
+struct DiaryDetailView: View {
     let diaryID: String
     let onChanged: () -> Void
 
