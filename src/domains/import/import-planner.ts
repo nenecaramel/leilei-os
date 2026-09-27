@@ -803,14 +803,50 @@ export function buildImportPlan(
       current.mind ?? [],
       (record) => `id:${record.id}`,
     );
+    const availableConversations = new Set([
+      ...(current.conversations?.conversations ?? [])
+        .map((record) => record.id),
+      ...(importedConversations?.conversations ?? [])
+        .map((record) => record.id),
+    ]);
+    const availableMessages = new Map(
+      [
+        ...(current.conversations?.messages ?? []),
+        ...(importedConversations?.messages ?? []),
+      ].map((record) => [record.id, record] as const),
+    );
+
     for (const item of mindItems) {
-      if (
-        item.classification === "create"
-        && current.foreign_mind_ids?.has(
-          (item.record as ExportMindStateRecord).id,
-        )
-      ) {
+      if (item.classification !== "create") continue;
+      const record = item.record as ExportMindStateRecord;
+
+      if (current.foreign_mind_ids?.has(record.id)) {
         item.classification = "conflict";
+        continue;
+      }
+
+      if (record.scope_applicability === "global") {
+        continue;
+      }
+
+      const conversationId = record.scope_conversation_id;
+      if (
+        conversationId === null
+        || !availableConversations.has(conversationId)
+      ) {
+        item.classification = "invalid";
+        continue;
+      }
+
+      if (record.scope_applicability === "path") {
+        const headId = record.scope_path_head_message_id;
+        const head = headId ? availableMessages.get(headId) : undefined;
+        if (
+          !head
+          || head.conversation_id !== conversationId
+        ) {
+          item.classification = "invalid";
+        }
       }
     }
     items.push(...mindItems);
