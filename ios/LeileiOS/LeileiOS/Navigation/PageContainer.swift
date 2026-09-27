@@ -242,7 +242,7 @@ struct PageContainer: View {
         }
         .appConfirmationAlert(
             title: "Delete conversation?",
-            message: "This conversation will be removed from Recents.",
+            message: "This conversation will be permanently deleted. This can’t be undone.",
             actionTitle: "Delete",
             actionRole: .destructive,
             isPresented: $showingDeleteConfirmation
