@@ -5,7 +5,7 @@ struct MindView: View {
 
     var body: some View {
         List {
-            Section("Kinds") {
+            Section {
                 ForEach(MindKind.allCases) { kind in
                     NavigationLink {
                         MindKindDetailPlaceholder(
@@ -136,12 +136,6 @@ private struct MindManualEntryPlaceholder: View {
                     }
                 }
 
-                Section {
-                    LabeledContent(
-                        "Source",
-                        value: "Manual"
-                    )
-                }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
