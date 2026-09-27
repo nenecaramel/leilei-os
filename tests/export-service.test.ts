@@ -76,6 +76,7 @@ const conversations: ExportConversationsBundle = {
   messages: [],
   content_blocks: [],
   attachments: [],
+  provider_checkpoints: [],
 };
 
 const lifecycle: ExportLifecycleEvent[] = [{
@@ -294,6 +295,7 @@ test("ExportService rejects an all export while a canonical turn is in progress"
     }],
     content_blocks: [],
     attachments: [],
+    provider_checkpoints: [],
   });
 
   await assert.rejects(
