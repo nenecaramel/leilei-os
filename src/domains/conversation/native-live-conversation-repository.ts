@@ -727,7 +727,8 @@ implements NativeLiveConversationRepository {
               runtimeSubjectStates.scopePathHeadMessageId,
           })
           .from(runtimeSubjectStates)
-          .where(eq(runtimeSubjectStates.userId, input.userId));
+          .where(eq(runtimeSubjectStates.userId, input.userId))
+          .for("update");
 
         const subjectStateChanges =
           planConversationDeletionSubjectStateChanges({
@@ -762,7 +763,8 @@ implements NativeLiveConversationRepository {
             decision: runtimeProactivityWakes.decision,
           })
           .from(runtimeProactivityWakes)
-          .where(eq(runtimeProactivityWakes.userId, input.userId));
+          .where(eq(runtimeProactivityWakes.userId, input.userId))
+          .for("update");
         const target = "conversation:" + input.conversationId;
         const purgeWakeIds = wakes
           .filter((wake) =>
