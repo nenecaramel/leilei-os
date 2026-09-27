@@ -38,6 +38,10 @@ struct AppShell: View {
                 appModel: appModel,
                 dataService: LeileiSettingsDataService(api: appModel.api)
             )
+            .environment(
+                \.colorScheme,
+                inheritedColorScheme
+            )
         }
     }
 
