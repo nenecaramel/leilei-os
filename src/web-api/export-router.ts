@@ -101,7 +101,26 @@ function sendInvalidExportRequest(response: Response): void {
 }
 
 function sendExportError(response: Response, error: unknown): void {
-  const forbidden = error instanceof ExportServiceError && (error.code === "USER_NOT_FOUND" || error.code === "USER_DISABLED");
+  if (
+    error instanceof ExportServiceError
+    && error.code === "EXPORT_IN_PROGRESS"
+  ) {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: "EXPORT_IN_PROGRESS",
+        message:
+          "Finish the current conversation turn before exporting all data.",
+      },
+    });
+    return;
+  }
+  const forbidden =
+    error instanceof ExportServiceError
+    && (
+      error.code === "USER_NOT_FOUND"
+      || error.code === "USER_DISABLED"
+    );
   response.status(forbidden ? 403 : 503).json({
     success: false,
     error: {
