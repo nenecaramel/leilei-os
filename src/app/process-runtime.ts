@@ -4,6 +4,7 @@ import {
   getBreathRankingConfig,
   getMcpGovernanceConfig,
   getMemoryDecayConfig,
+  getMindLifecycleTuningConfig,
   getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
   getTopicResurfaceOpportunityConfig,
@@ -314,6 +315,8 @@ export function createProcessRuntime(
   const breathRankingConfig = getBreathRankingConfig(runtimeEnv);
   const mindSemanticGroupingConfig =
     getMindSemanticGroupingConfig(runtimeEnv);
+  const mindLifecycleTuningConfig =
+    getMindLifecycleTuningConfig(runtimeEnv);
   const mindSemanticGroupingRepository =
     new DrizzleMindSemanticGroupingRepository(
       db,
@@ -330,11 +333,18 @@ export function createProcessRuntime(
     db,
     memoryDecayConfig,
     breathRankingConfig,
+    mindLifecycleTuningConfig,
   );
   const driveSatisfactionService =
-    createDefaultDriveSatisfactionService(db);
+    createDefaultDriveSatisfactionService(
+      db,
+      mindLifecycleTuningConfig,
+    );
   const curiosityResolutionService =
-    createDefaultCuriosityResolutionService(db);
+    createDefaultCuriosityResolutionService(
+      db,
+      mindLifecycleTuningConfig,
+    );
   const semanticMindActions =
     new NativeLiveMindSemanticActionExecutor(
       driveSatisfactionService,
@@ -439,6 +449,7 @@ export function createProcessRuntime(
       backgroundLoopOrchestrator,
       memoryDecayConfig,
       mindSemanticGrouping,
+      mindLifecycleTuningConfig,
     );
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
