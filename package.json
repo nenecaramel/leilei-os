@@ -30,6 +30,7 @@
     "test:runtime-distillation-db": "RUN_RUNTIME_DISTILLATION_DATABASE_TEST=1 tsx --test tests/runtime-distillation-repository.integration.test.ts",
     "test:runtime-lifecycle-db": "RUN_RUNTIME_LIFECYCLE_DATABASE_TEST=1 tsx --test tests/runtime-memory-lifecycle-repository.integration.test.ts",
     "test:runtime-breath-db": "RUN_RUNTIME_BREATH_DATABASE_TEST=1 tsx --test tests/runtime-breath-recall-repository.integration.test.ts",
+    "test:isolated-postgres-regressions": "node scripts/run-isolated-postgres-regressions.mjs",
     "setup:runtime-breath-e5": "tsx scripts/setup-runtime-breath-e5.ts",
     "test:native-live-turn-db": "RUN_NATIVE_LIVE_TURN_DATABASE_TEST=1 tsx --test tests/native-live-backend-turn-repository.integration.test.ts",
     "test:native-live-relay-db": "RUN_NATIVE_LIVE_RELAY_DATABASE_TEST=1 tsx --test tests/native-live-backend-relay.integration.test.ts tests/native-live-background-model-queue.integration.test.ts",
