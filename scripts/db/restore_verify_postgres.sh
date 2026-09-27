@@ -117,6 +117,30 @@ manifest_value() {
   awk -F= -v key="$1" '$1 == key {print $2}' "${TEMP_DIR}/manifest.txt"
 }
 
+BACKUP_FORMAT="$(manifest_value format)"
+case "${BACKUP_FORMAT}" in
+  leilei-os-postgres-backup-v1|leilei-os-postgres-backup-v2) ;;
+  *) fail "the backup manifest format is unsupported" ;;
+esac
+
+SOURCE_SERVER_MAJOR="$(manifest_value postgres_server_major)"
+[[ "${SOURCE_SERVER_MAJOR}" =~ ^[0-9]+$ ]] ||
+  fail "the source PostgreSQL major version is missing from the manifest"
+
+if ! TARGET_SERVER_VERSION_NUM="$(
+  "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+    -X -A -t -v ON_ERROR_STOP=1 \
+    -c "SHOW server_version_num;" \
+    2>"${TEMP_DIR}/target_version.error"
+)"; then
+  fail "the temporary PostgreSQL server version could not be verified"
+fi
+[[ "${TARGET_SERVER_VERSION_NUM}" =~ ^[0-9]+$ ]] ||
+  fail "the temporary PostgreSQL server version is invalid"
+TARGET_SERVER_MAJOR="$((TARGET_SERVER_VERSION_NUM / 10000))"
+[[ "${TARGET_SERVER_MAJOR}" -eq "${SOURCE_SERVER_MAJOR}" ]] ||
+  fail "the temporary PostgreSQL major version must match the backup source"
+
 SOURCE_PG_DUMP_MAJOR="$(manifest_value pg_dump_major)"
 PG_RESTORE_MAJOR="$(
   "${PG_RESTORE_BIN}" --version |
@@ -141,42 +165,12 @@ if ! PGDATABASE="${TEMP_DATABASE_URL}" "${PG_RESTORE_BIN}" \
   fail "pg_restore failed; the temporary database may be incomplete"
 fi
 
-TABLE_CHECK="$(
-  PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" \
-    -X -A -t -v ON_ERROR_STOP=1 \
-    --dbname="${TEMP_DATABASE_URL}" \
-    -c "SELECT
-      to_regclass('public.users') IS NOT NULL,
-      to_regclass('public.core_memories') IS NOT NULL,
-      to_regclass('public.diary_entries') IS NOT NULL,
-      to_regclass('public.tasks') IS NOT NULL,
-      to_regclass('public.user_settings') IS NOT NULL;" \
-    2>"${TEMP_DIR}/table_check.error"
-)"
-[[ "${TABLE_CHECK}" == "t|t|t|t|t" ]] ||
-  fail "one or more critical tables are missing after restore"
-
-RESTORED_COUNTS="$(
-  PGDATABASE="${TEMP_DATABASE_URL}" "${PSQL_BIN}" \
-    -X -A -t -v ON_ERROR_STOP=1 \
-    --dbname="${TEMP_DATABASE_URL}" \
-    -c "SELECT
-      (SELECT count(*) FROM users),
-      (SELECT count(*) FROM core_memories),
-      (SELECT count(*) FROM diary_entries),
-      (SELECT count(*) FROM tasks),
-      (SELECT count(*) FROM user_settings);" \
-    2>"${TEMP_DIR}/count_check.error"
-)"
-IFS='|' read -r USERS_COUNT MEMORY_COUNT DIARY_COUNT TASK_COUNT SETTINGS_COUNT \
-  <<<"${RESTORED_COUNTS}"
-
 MISMATCHES=0
+
 compare_count() {
   local key="$1"
   local actual="$2"
-  local expected
-  expected="$(manifest_value "${key}")"
+  local expected="$3"
   if [[ "${actual}" != "${expected}" ]]; then
     printf 'Count mismatch: %s expected=%s actual=%s\n' \
       "${key}" "${expected}" "${actual}" >&2
@@ -186,11 +180,125 @@ compare_count() {
   fi
 }
 
-compare_count users "${USERS_COUNT}"
-compare_count core_memories "${MEMORY_COUNT}"
-compare_count diary_entries "${DIARY_COUNT}"
-compare_count tasks "${TASK_COUNT}"
-compare_count user_settings "${SETTINGS_COUNT}"
+if [[ "${BACKUP_FORMAT}" == "leilei-os-postgres-backup-v1" ]]; then
+  TABLE_CHECK="$(
+    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+      -X -A -t -v ON_ERROR_STOP=1 \
+      --dbname="${TEMP_DATABASE_URL}" \
+      -c "SELECT
+        to_regclass('public.users') IS NOT NULL,
+        to_regclass('public.core_memories') IS NOT NULL,
+        to_regclass('public.diary_entries') IS NOT NULL,
+        to_regclass('public.tasks') IS NOT NULL,
+        to_regclass('public.user_settings') IS NOT NULL;" \
+      2>"${TEMP_DIR}/table_check.error"
+  )"
+  [[ "${TABLE_CHECK}" == "t|t|t|t|t" ]] ||
+    fail "one or more v1 critical tables are missing after restore"
+
+  RESTORED_COUNTS="$(
+    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+      -X -A -t -v ON_ERROR_STOP=1 \
+      --dbname="${TEMP_DATABASE_URL}" \
+      -c "SELECT
+        (SELECT count(*) FROM users),
+        (SELECT count(*) FROM core_memories),
+        (SELECT count(*) FROM diary_entries),
+        (SELECT count(*) FROM tasks),
+        (SELECT count(*) FROM user_settings);" \
+      2>"${TEMP_DIR}/count_check.error"
+  )"
+  IFS='|' read -r USERS_COUNT MEMORY_COUNT DIARY_COUNT TASK_COUNT SETTINGS_COUNT \
+    <<<"${RESTORED_COUNTS}"
+
+  compare_count users "${USERS_COUNT}" "$(manifest_value users)"
+  compare_count core_memories "${MEMORY_COUNT}" "$(manifest_value core_memories)"
+  compare_count diary_entries "${DIARY_COUNT}" "$(manifest_value diary_entries)"
+  compare_count tasks "${TASK_COUNT}" "$(manifest_value tasks)"
+  compare_count user_settings "${SETTINGS_COUNT}" "$(manifest_value user_settings)"
+else
+  EXPECTED_TABLE_TOTAL="$(manifest_value table_count_total)"
+  [[ "${EXPECTED_TABLE_TOTAL}" =~ ^[1-9][0-9]*$ ]] ||
+    fail "the v2 manifest table count is invalid"
+
+  EXPECTED_PUBLIC_TABLES="$(
+    awk -F= '
+      /^table_count\.[a-z][a-z0-9_]*=/ {
+        key = $1
+        sub(/^table_count\./, "", key)
+        print key
+      }
+    ' "${TEMP_DIR}/manifest.txt" | LC_ALL=C sort
+  )"
+  ACTUAL_PUBLIC_TABLES="$(
+    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+      -X -A -t -v ON_ERROR_STOP=1 \
+      --dbname="${TEMP_DATABASE_URL}" \
+      -c "SELECT tablename
+          FROM pg_catalog.pg_tables
+          WHERE schemaname = 'public'
+            AND tablename <> 'leilei_schema_migrations'
+          ORDER BY tablename;" \
+      2>"${TEMP_DIR}/table_inventory.error"
+  )"
+  [[ "${ACTUAL_PUBLIC_TABLES}" == "${EXPECTED_PUBLIC_TABLES}" ]] ||
+    fail "restored public table inventory does not match the backup manifest"
+
+  VERIFIED_TABLES=0
+  while IFS='=' read -r key expected; do
+    case "${key}" in
+      table_count.*) ;;
+      *) continue ;;
+    esac
+    table="${key#table_count.}"
+    [[ "${table}" =~ ^[a-z][a-z0-9_]{0,62}$ ]] ||
+      fail "the v2 manifest contains an unsafe table identifier"
+    [[ "${expected}" =~ ^[0-9]+$ ]] ||
+      fail "the v2 manifest contains an invalid table count"
+    if ! actual="$(
+      "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+        -X -A -t -v ON_ERROR_STOP=1 \
+        --dbname="${TEMP_DATABASE_URL}" \
+        -c "SELECT count(*) FROM public.\"${table}\";" \
+        2>"${TEMP_DIR}/count_check.error"
+    )"; then
+      fail "a v2 manifest table is missing or unreadable after restore"
+    fi
+    [[ "${actual}" =~ ^[0-9]+$ ]] ||
+      fail "restored table count is invalid"
+    compare_count "${table}" "${actual}" "${expected}"
+    VERIFIED_TABLES=$((VERIFIED_TABLES + 1))
+  done <"${TEMP_DIR}/manifest.txt"
+
+  [[ "${VERIFIED_TABLES}" -eq "${EXPECTED_TABLE_TOTAL}" ]] ||
+    fail "the v2 manifest table-count inventory is incomplete"
+
+  EXPECTED_MIGRATION_CREATED_AT="$(manifest_value migration_created_at)"
+  EXPECTED_MIGRATION_HASH="$(manifest_value migration_hash)"
+  [[ "${EXPECTED_MIGRATION_CREATED_AT}" =~ ^[0-9]+$ ]] ||
+    fail "the v2 manifest migration timestamp is invalid"
+  [[ "${EXPECTED_MIGRATION_HASH}" =~ ^[0-9a-f]{64}$ ]] ||
+    fail "the v2 manifest migration hash is invalid"
+
+  if ! RESTORED_MIGRATION_LEDGER="$(
+    "${PSQL_BIN}" "${TEMP_DATABASE_URL}" \
+      -X -A -t -v ON_ERROR_STOP=1 \
+      --dbname="${TEMP_DATABASE_URL}" \
+      -c "SELECT created_at::text || '|' || hash
+          FROM public.leilei_schema_migrations
+          ORDER BY created_at DESC
+          LIMIT 1;" \
+      2>"${TEMP_DIR}/migration_ledger.error"
+  )"; then
+    fail "the restored Leilei migration ledger could not be read"
+  fi
+  [[
+    "${RESTORED_MIGRATION_LEDGER}"
+      == "${EXPECTED_MIGRATION_CREATED_AT}|${EXPECTED_MIGRATION_HASH}"
+  ]] || fail "the restored Leilei migration ledger does not match the backup"
+  printf 'Leilei migration ledger verified: %s\n' \
+    "${EXPECTED_MIGRATION_CREATED_AT}"
+fi
 
 EXPECTED_MAPPED_USERS="$(manifest_value mapped_user_count)"
 if [[ "${EXPECTED_MAPPED_USERS}" != "-1" ]]; then
