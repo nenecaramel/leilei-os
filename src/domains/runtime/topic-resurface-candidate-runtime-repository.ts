@@ -35,6 +35,7 @@ implements TopicResurfaceCandidatePort {
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
           eq(runtimeSubjectStates.kind, "topic"),
+          sql`${runtimeSubjectStates.envelope} ->> 'authority' = 'derived'`,
           eq(runtimeSubjectStates.scopeApplicability, "global"),
           eq(runtimeSubjectStates.settlementStatus, "settled"),
           eq(runtimeSubjectStates.pathStatus, "current"),
