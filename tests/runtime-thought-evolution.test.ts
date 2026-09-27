@@ -7,7 +7,11 @@ import {
   type ThoughtEvolutionCandidate,
   type ThoughtEvolutionPolicy,
   type ThoughtEvolutionUpdate,
+  writeThoughtEvolution,
 } from "../src/domains/runtime/thought-evolution.js";
+import type {
+  MindSemanticGroupingService,
+} from "../src/domains/runtime/mind-semantic-grouping.js";
 
 const policy: ThoughtEvolutionPolicy = {
   halfLifeHours: 168,
@@ -411,4 +415,59 @@ test("Thought dormancy threshold rejects values outside (0, 1]", () => {
       /dormant-below strength must be in \(0, 1\]/,
     );
   }
+});
+
+
+test("Thought semantic grouping merges a paraphrase into an older persisted thread", async () => {
+  const anchorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const anchorText = "I want to understand how memory changes identity";
+  const anchorPayload = writeThoughtEvolution(null, {
+    phase: "active",
+    role: "anchor",
+    threadKey: thoughtThreadKey(anchorText),
+    anchorStateId: anchorId,
+    strength: 0.35,
+    reinforcementCount: 1,
+    reinforcementSources: ["source-1"],
+    lastEvolvedAt: "2026-09-27T00:00:00.000Z",
+    lastReinforcedAt: "2026-09-27T00:00:00.000Z",
+    dormantAt: null,
+  });
+  const paraphraseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const paraphraseText = "I keep thinking about the way memories reshape who we are";
+  const port = new Port([
+    candidate(anchorId, anchorText, "source-1", "2026-09-27T00:00:00.000Z", anchorPayload),
+    candidate(paraphraseId, paraphraseText, "source-2", "2026-09-27T01:00:00.000Z"),
+  ]);
+  const semanticGrouping = {
+    async reconcile(input: Parameters<MindSemanticGroupingService["reconcile"]>[0]) {
+      assert.equal(input.kind, "thought");
+      return {
+        canonicalThreadKeyByThread: new Map([
+          [thoughtThreadKey(anchorText), thoughtThreadKey(anchorText)],
+          [thoughtThreadKey(paraphraseText), thoughtThreadKey(anchorText)],
+        ]),
+        staged: 0,
+      };
+    },
+  };
+  const service = new ThoughtEvolutionService(
+    port,
+    policy,
+    semanticGrouping,
+  );
+
+  const result = await service.runOnce({
+    userId: "u1",
+    subjectId: "G",
+    now: "2026-09-27T01:00:00.000Z",
+  });
+
+  assert.equal(result.threads, 1);
+  const anchor = port.updates.find((update) => update.stateId === anchorId);
+  const reinforcement = port.updates.find((update) => update.stateId === paraphraseId);
+  assert.equal(anchor?.evolution.reinforcementCount, 2);
+  assert.equal(reinforcement?.evolution.role, "reinforcement");
+  assert.equal(reinforcement?.evolution.anchorStateId, anchorId);
+  assert.equal(reinforcement?.evolution.threadKey, thoughtThreadKey(anchorText));
 });
