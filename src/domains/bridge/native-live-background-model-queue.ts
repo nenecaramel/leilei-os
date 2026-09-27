@@ -651,7 +651,41 @@ async function assertWorkflowSourceActive(
   }
 
   if (workflow.kind === "proactivity_wake") {
-    const rows = await transaction
+    const [snapshot] = await transaction
+      .select({
+        id: runtimeProactivityWakes.id,
+        contextSnapshot: runtimeProactivityWakes.contextSnapshot,
+      })
+      .from(runtimeProactivityWakes)
+      .where(and(
+        eq(runtimeProactivityWakes.id, workflow.runId),
+        eq(runtimeProactivityWakes.userId, userId),
+      ))
+      .limit(1);
+    if (!snapshot) {
+      throw new Error("BackgroundWorkflowSourceInactive");
+    }
+
+    const sourceConversationId =
+      typeof snapshot.contextSnapshot.sourceConversationId === "string"
+        ? snapshot.contextSnapshot.sourceConversationId.trim()
+        : "";
+    if (sourceConversationId) {
+      const active = await transaction.execute<{ id: string }>(sql`
+        SELECT id
+        FROM conversations
+        WHERE id = ${sourceConversationId}::uuid
+          AND user_id = ${userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR SHARE
+      `);
+      if (active.length !== 1) {
+        throw new Error("BackgroundWorkflowSourceInactive");
+      }
+    }
+
+    const locked = await transaction
       .select({ id: runtimeProactivityWakes.id })
       .from(runtimeProactivityWakes)
       .where(and(
@@ -660,7 +694,7 @@ async function assertWorkflowSourceActive(
       ))
       .for("share")
       .limit(1);
-    if (rows.length !== 1) {
+    if (locked.length !== 1) {
       throw new Error("BackgroundWorkflowSourceInactive");
     }
     return;
