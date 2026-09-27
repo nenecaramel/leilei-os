@@ -94,21 +94,44 @@ private struct ConversationList: View {
                     await onOpen(conversation)
                 }
             } label: {
-                HStack(spacing: 12) {
-                    Text(displayTitle(for: conversation))
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 4
+                    ) {
+                        Text(displayTitle(for: conversation))
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
 
-                    Spacer(minLength: 12)
+                        if let subtitle =
+                                lastMessageDateText(
+                                    for: conversation
+                                ) {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
 
                     if isActive(conversation) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(
+                                size: 13,
+                                weight: .semibold
+                            ))
                             .foregroundStyle(.secondary)
-                            .accessibilityLabel("Current conversation")
+                            .accessibilityLabel(
+                                "Current conversation"
+                            )
                     }
                 }
+                .padding(.vertical, 4)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -135,6 +158,14 @@ private struct ConversationList: View {
         return title?.isEmpty == false ? title! : "New Conversation"
     }
 
+    private func lastMessageDateText(
+        for conversation: NativeLiveConversationSummary
+    ) -> String? {
+        // Deliberately empty until main exposes an authoritative
+        // last-message timestamp on conversation summaries.
+        nil
+    }
+
     private func isActive(
         _ conversation: NativeLiveConversationSummary
     ) -> Bool {
@@ -151,15 +182,30 @@ private struct ConversationList: View {
 private struct ConversationListSkeleton: View {
     var body: some View {
         List(0..<6, id: \.self) { index in
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(
+                    cornerRadius: 6,
+                    style: .continuous
+                )
                 .fill(Color.secondary.opacity(0.12))
                 .frame(
-                    width: index.isMultiple(of: 2) ? 190 : 240,
+                    width:
+                        index.isMultiple(of: 2)
+                            ? 190
+                            : 240,
                     height: 17
                 )
-                .padding(.vertical, 8)
-                .listRowBackground(Color(.systemBackground))
-                .accessibilityHidden(true)
+
+                RoundedRectangle(
+                    cornerRadius: 5,
+                    style: .continuous
+                )
+                .fill(Color.secondary.opacity(0.08))
+                .frame(width: 76, height: 11)
+            }
+            .padding(.vertical, 6)
+            .listRowBackground(Color(.systemBackground))
+            .accessibilityHidden(true)
         }
         .listStyle(.plain)
         .scrollDisabled(true)
