@@ -130,13 +130,13 @@ test("MCP Universe writes are atomic, idempotent, CAS-safe, and concurrent-safe 
   }
 });
 
-test("MCP Universe ledger accepts UUID history and prefixed text resource ids after migration", { skip: !run }, async () => {
+test("MCP ledger accepts surviving UUID resource ids and prefixed Universe ids after migration", { skip: !run }, async () => {
   const { client, db } = connection();
   const userId = randomUUID();
   try {
     await db.insert(schema.users).values({ id: userId, email: `universe-mcp-ledger-${userId}@example.invalid`, displayName: "Ledger", status: "active" });
     const uuidResource = randomUUID();
-    await db.insert(schema.mcpWriteIdempotency).values({ userId, toolName: "create_task", idempotencyKey: "universe-ledger-uuid-0001", requestHash: "a".repeat(64), resourceType: "task", resourceId: uuidResource });
+    await db.insert(schema.mcpWriteIdempotency).values({ userId, toolName: "write_diary", idempotencyKey: "universe-ledger-uuid-0001", requestHash: "a".repeat(64), resourceType: "diary_entry", resourceId: uuidResource });
     await db.insert(schema.mcpWriteIdempotency).values({ userId, toolName: "create_universe_node", idempotencyKey: "universe-ledger-node-0001", requestHash: "b".repeat(64), resourceType: "universe_node", resourceId: "node-abc" });
     const rows = await db.select({ resourceId: schema.mcpWriteIdempotency.resourceId }).from(schema.mcpWriteIdempotency).where(eq(schema.mcpWriteIdempotency.userId, userId));
     assert.deepEqual(new Set(rows.map((row) => row.resourceId)), new Set([uuidResource, "node-abc"]));
