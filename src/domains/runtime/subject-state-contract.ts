@@ -21,9 +21,10 @@ export type LegacySubjectStateKind =
   (typeof LEGACY_SUBJECT_STATE_KINDS)[number];
 
 /**
- * Storage compatibility includes retired kinds so existing persisted rows and
- * legacy replay remain readable. Product/runtime logic that targets current
- * Mind concepts should use CURRENT_SUBJECT_STATE_KINDS instead.
+ * Storage compatibility includes retired kinds so existing persisted rows stay
+ * readable until an explicit data migration proves they can be removed.
+ * Product/runtime logic that targets current Mind concepts should use
+ * CURRENT_SUBJECT_STATE_KINDS instead.
  */
 export const SUBJECT_STATE_KINDS = [
   "feel",
