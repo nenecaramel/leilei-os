@@ -516,6 +516,8 @@ private struct NativeLiveMessageRow: View {
 
             messageStatus
 
+            MindWriteIndicator(items: [])
+
             HStack(spacing: 12) {
                 if let copyText {
                     Button {
