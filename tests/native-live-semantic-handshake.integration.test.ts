@@ -397,7 +397,7 @@ test(
     const a1 = await prepareSend(conversationA.id, null, "A1");
     const a2 = await prepareSend(
       conversationA.id,
-      a1.canonicalUserMessageId,
+      null,
       "A2",
     );
     const b1 = await prepareSend(conversationB.id, null, "B1");
