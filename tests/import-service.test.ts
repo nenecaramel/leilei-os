@@ -1526,6 +1526,40 @@ test("v3 conversation checkpoint preview rejects a foreign checkpoint id", async
 });
 
 
+test("v3 semantic grouping restore rejects a missing candidate state", async () => {
+  const grouping =
+    mindContinuity.semantic_grouping_results[0]!;
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [],
+    mind_continuity: {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+      semantic_grouping_results: [],
+    },
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({
+      mind: [driveState],
+      mind_continuity: {
+        drive_satisfaction_events: [],
+        curiosity_resolution_events: [],
+        distillation_watermarks: [],
+        semantic_grouping_results: [grouping],
+      },
+    }),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.mind?.invalid, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
 test("v3 semantic grouping restore conflicts with an occupied nonterminal grouping key", async () => {
   const grouping =
     mindContinuity.semantic_grouping_results[0]!;
