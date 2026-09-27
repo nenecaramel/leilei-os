@@ -22,12 +22,12 @@ export type MemoryLifecyclePolicy = {
   archiveThreshold: number;
   /**
    * Time an archived state remains recoverable before its semantic payload is
-   * scrubbed. Defaults to 30 days.
+   * scrubbed. Omitted means forgetting is disabled.
    */
   forgetAfterHours?: number;
   /**
    * Time a forgotten tombstone remains before the row is physically removed.
-   * Defaults to 30 days.
+   * Omitted means physical purge is disabled.
    */
   purgeAfterHours?: number;
 };
@@ -131,9 +131,6 @@ export type MemoryLifecycleRunResult = {
 
 const LIFECYCLE_KEY = "lifecycle_v1";
 const RECALL_REINFORCEMENT_KEY = "recall_reinforcement_v1";
-export const DEFAULT_MEMORY_FORGET_AFTER_HOURS = 30 * 24;
-export const DEFAULT_MEMORY_PURGE_AFTER_HOURS = 30 * 24;
-
 export class MemoryLifecycleService {
   constructor(
     private readonly port: MemoryLifecycleRuntimePort,
@@ -534,9 +531,11 @@ export function evaluateForgetting(
     return null;
   }
 
+  const retentionHours = policy.forgetAfterHours;
+  if (retentionHours === undefined) return null;
   const elapsedHours =
     (Date.parse(now) - Date.parse(current.archivedAt)) / 3_600_000;
-  if (elapsedHours < forgetAfterHours(policy)) return null;
+  if (elapsedHours < retentionHours) return null;
 
   return {
     stateId: candidate.stateId,
@@ -566,9 +565,11 @@ export function evaluatePurge(
   ) {
     return null;
   }
+  const retentionHours = policy.purgeAfterHours;
+  if (retentionHours === undefined) return null;
   const elapsedHours =
     (Date.parse(now) - Date.parse(current.forgottenAt)) / 3_600_000;
-  if (elapsedHours < purgeAfterHours(policy)) return null;
+  if (elapsedHours < retentionHours) return null;
   return {
     stateId: candidate.stateId,
     expectedUpdatedAt: candidate.updatedAt,
@@ -758,14 +759,6 @@ function validatePolicy(policy: MemoryLifecyclePolicy): void {
       throw new Error(`${label} must be a non-negative finite number.`);
     }
   }
-}
-
-function forgetAfterHours(policy: MemoryLifecyclePolicy): number {
-  return policy.forgetAfterHours ?? DEFAULT_MEMORY_FORGET_AFTER_HOURS;
-}
-
-function purgeAfterHours(policy: MemoryLifecyclePolicy): number {
-  return policy.purgeAfterHours ?? DEFAULT_MEMORY_PURGE_AFTER_HOURS;
 }
 
 function normalizeIso(value: unknown, label: string): string {
