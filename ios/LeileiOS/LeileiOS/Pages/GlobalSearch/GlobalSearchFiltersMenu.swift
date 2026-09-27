@@ -4,6 +4,7 @@ struct GlobalSearchFiltersMenu: View {
     @Binding var modules: Set<GlobalSearchModule>
     @Binding var timePreset: GlobalSearchTimePreset
     @Binding var scope: GlobalSearchScope
+    @Binding var mode: GlobalSearchMode
 
     var body: some View {
         Menu {
@@ -32,6 +33,15 @@ struct GlobalSearchFiltersMenu: View {
 
             Picker("Scope", selection: $scope) {
                 ForEach(GlobalSearchScope.allCases) { option in
+                    Text(option.title)
+                        .tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .menuActionDismissBehavior(.disabled)
+
+            Picker("Match", selection: $mode) {
+                ForEach(GlobalSearchMode.allCases) { option in
                     Text(option.title)
                         .tag(option)
                 }
@@ -69,11 +79,13 @@ struct GlobalSearchFiltersMenu: View {
         modules == GlobalSearchModule.defaultModules
             && timePreset == .anyTime
             && scope == .active
+            && mode == .normal
     }
 
     private func clearFilters() {
         modules = GlobalSearchModule.defaultModules
         timePreset = .anyTime
         scope = .active
+        mode = .normal
     }
 }
