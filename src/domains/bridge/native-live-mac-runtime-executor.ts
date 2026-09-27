@@ -256,7 +256,8 @@ export class NativeLiveMacRuntimeExecutor {
       }
 
       return {
-        context_usage: contextUsage,
+        context_usage:
+          compacted.contextUsage ?? contextUsage,
         compaction_advisory: advisory,
         compaction: {
           source: "runtime_threshold",
