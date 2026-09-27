@@ -142,6 +142,10 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`turn_quiescence:${userId}`);
       return false;
     },
+    async hasIncompleteMindSemanticGrouping(userId) {
+      calls.push(`semantic_grouping_quiescence:${userId}`);
+      return false;
+    },
     async hasIncompleteBackgroundModelJobs(userId) {
       calls.push(`background_model_quiescence:${userId}`);
       return false;
@@ -256,6 +260,7 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
     `todo:${USER_ID}`,
     `turn_quiescence:${USER_ID}`,
     `mind_quiescence:${USER_ID}`,
+    `semantic_grouping_quiescence:${USER_ID}`,
     `background_model_quiescence:${USER_ID}`,
     `projects:${USER_ID}`,
     `mind:${USER_ID}`,
@@ -263,6 +268,24 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
     `conversations:${USER_ID}`,
     `universe:${USER_ID}`,
   ]);
+});
+
+test("ExportService rejects all export while semantic grouping is unfinished", async () => {
+  const repository = createRepository();
+  repository.hasIncompleteMindSemanticGrouping =
+    async () => true;
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
 });
 
 test("ExportService rejects all export while background model work is unfinished", async () => {
