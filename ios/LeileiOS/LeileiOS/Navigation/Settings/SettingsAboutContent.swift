@@ -14,7 +14,6 @@ struct SettingsAboutContent: View {
     var body: some View {
         Form {
             Section("About") {
-                LabeledContent("Leilei OS", value: "Leilei OS")
                 LabeledContent("Version", value: version)
                 LabeledContent("Build", value: build)
             }
