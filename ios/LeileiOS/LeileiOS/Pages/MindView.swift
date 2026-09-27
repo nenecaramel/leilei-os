@@ -5,23 +5,6 @@ struct MindView: View {
 
     var body: some View {
         List {
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Persistent Subject State")
-                        .font(.system(
-                            size: 18,
-                            weight: .medium
-                        ))
-
-                    Text(
-                        "Authoritative Mind data is not connected yet."
-                    )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-
             Section("Kinds") {
                 ForEach(MindKind.allCases) { kind in
                     NavigationLink {
@@ -246,6 +229,9 @@ private struct MindManualEntryPlaceholder: View {
                     )
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
             .navigationTitle("Add Mind")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
