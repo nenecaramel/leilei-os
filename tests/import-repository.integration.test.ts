@@ -40,7 +40,9 @@ test(
     const checkpointId = randomUUID();
     const mindId = randomUUID();
     const driveId = randomUUID();
+    const driveCandidateId = randomUUID();
     const driveEventId = randomUUID();
+    const groupingResultId = randomUUID();
     const curiosityId = randomUUID();
     const curiosityEventId = randomUUID();
     const workspaceId = randomUUID();
@@ -269,6 +271,56 @@ test(
         createdAt: now,
         updatedAt: now,
       });
+      await db.insert(schema.runtimeSubjectStates).values({
+        id: driveCandidateId,
+        userId,
+        subjectId: "claude",
+        kind: "drive",
+        text: "Earlier durable drive",
+        payload: {
+          drive_v1: {
+            role: "anchor",
+            anchorStateId: driveCandidateId,
+            pressure: 0.8,
+            phase: "active",
+            satisfactionTotal: 0,
+            lastEvolvedAt: now.toISOString(),
+            lastSatisfiedAt: null,
+            dormantAt: null,
+          },
+        },
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "subject_authorized",
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.runtimeMindSemanticGroupingRequests).values({
+        id: groupingResultId,
+        userId,
+        subjectId: "claude",
+        kind: "drive",
+        queryStateId: driveId,
+        query: "Durable drive",
+        candidates: [{
+          stateId: driveCandidateId,
+          kind: "drive",
+          text: "Earlier durable drive",
+        }],
+        status: "completed",
+        scores: {
+          [driveCandidateId]: 0.91,
+        },
+        completedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
       await db.insert(schema.runtimeDriveSatisfactionEvents).values({
         id: driveEventId,
         userId,
@@ -406,6 +458,9 @@ test(
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId));
       await db
+        .delete(schema.runtimeMindSemanticGroupingRequests)
+        .where(eq(schema.runtimeMindSemanticGroupingRequests.userId, userId));
+      await db
         .delete(schema.runtimeCuriosityResolutionEvents)
         .where(eq(schema.runtimeCuriosityResolutionEvents.userId, userId));
       await db
@@ -480,7 +535,7 @@ test(
       );
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
-      assert.equal(preview.summary.mind?.create, 6);
+      assert.equal(preview.summary.mind?.create, 8);
       assert.equal(preview.summary.projects?.create, 4);
       assert.equal(
         preview.summary.conversations?.create,
@@ -505,6 +560,7 @@ test(
         mindCount,
         driveEventCount,
         curiosityEventCount,
+        groupingResultCount,
         watermarkCount,
         universeMetaCount,
         universeSourceCount,
@@ -549,6 +605,9 @@ test(
           .from(schema.runtimeCuriosityResolutionEvents)
           .where(eq(schema.runtimeCuriosityResolutionEvents.userId, userId)),
         db.select({ count: count() })
+          .from(schema.runtimeMindSemanticGroupingRequests)
+          .where(eq(schema.runtimeMindSemanticGroupingRequests.userId, userId)),
+        db.select({ count: count() })
           .from(schema.runtimeDistillationWatermarks)
           .where(eq(schema.runtimeDistillationWatermarks.userId, userId)),
         db.select({ count: count() })
@@ -578,9 +637,10 @@ test(
       assert.equal(messageCount[0]?.count, 2);
       assert.equal(blockCount[0]?.count, 1);
       assert.equal(checkpointCount[0]?.count, 1);
-      assert.equal(mindCount[0]?.count, 3);
+      assert.equal(mindCount[0]?.count, 4);
       assert.equal(driveEventCount[0]?.count, 1);
       assert.equal(curiosityEventCount[0]?.count, 1);
+      assert.equal(groupingResultCount[0]?.count, 1);
       assert.equal(watermarkCount[0]?.count, 1);
       assert.equal(universeMetaCount[0]?.count, 1);
       assert.equal(universeSourceCount[0]?.count, 1);
@@ -676,6 +736,30 @@ test(
         resultResolutionSourceId: assistantMessageId,
       });
 
+      const [restoredGrouping] = await db
+        .select({
+          queryStateId:
+            schema.runtimeMindSemanticGroupingRequests.queryStateId,
+          scores:
+            schema.runtimeMindSemanticGroupingRequests.scores,
+          status:
+            schema.runtimeMindSemanticGroupingRequests.status,
+        })
+        .from(schema.runtimeMindSemanticGroupingRequests)
+        .where(
+          eq(
+            schema.runtimeMindSemanticGroupingRequests.id,
+            groupingResultId,
+          ),
+        );
+      assert.deepEqual(restoredGrouping, {
+        queryStateId: driveId,
+        scores: {
+          [driveCandidateId]: 0.91,
+        },
+        status: "completed",
+      });
+
       const [restoredWatermark] = await db
         .select({
           lastSourceMessageId:
@@ -747,6 +831,10 @@ test(
       await db
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.runtimeMindSemanticGroupingRequests)
+        .where(eq(schema.runtimeMindSemanticGroupingRequests.userId, userId))
         .catch(() => undefined);
       await db
         .delete(schema.runtimeCuriosityResolutionEvents)
