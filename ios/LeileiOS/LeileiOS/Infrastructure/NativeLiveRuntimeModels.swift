@@ -223,12 +223,38 @@ struct NativeLiveRuntimeSurfaceState:
             let payload = event.event.payload ?? [:]
 
             switch event.event.type {
+            case "partial_text", "text", "result", "error":
+                return nil
+
             case "task":
                 let phase = payload["phase"]?.stringValue
                 let summary =
                     payload["summary"]?.stringValue
                     ?? payload["description"]?.stringValue
                 let tool = payload["last_tool_name"]?.stringValue
+
+                if phase == "updated",
+                   let patch = payload["patch"]?.objectValue,
+                   let status = patch["status"]?.stringValue,
+                   ["completed", "failed", "cancelled"].contains(status) {
+                    return nil
+                }
+
+                if phase == "notification",
+                   let status = payload["status"]?.stringValue,
+                   ["completed", "failed", "cancelled"].contains(status) {
+                    return nil
+                }
+
+                if phase == "active_set",
+                   let tasks = payload["tasks"]?.arrayValue {
+                    if tasks.isEmpty {
+                        return nil
+                    }
+                    return tasks.count == 1
+                        ? "1 task active"
+                        : "\(tasks.count) tasks active"
+                }
 
                 if let summary, !summary.isEmpty {
                     return summary
@@ -242,6 +268,7 @@ struct NativeLiveRuntimeSurfaceState:
                 if phase == "progress" {
                     return "Task in progress"
                 }
+                return "Task updated"
 
             case "tool_use":
                 if let tool = payload["tool_name"]?.stringValue,
