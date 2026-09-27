@@ -906,7 +906,7 @@ test("execute rejects a stale preview and rolls back", async () => {
   );
   repository.state.diary.push({
     ...diary,
-    id: "00000000-0000-4000-8000-000000000032",
+    content: "Concurrent replacement",
   });
 
   await assert.rejects(
