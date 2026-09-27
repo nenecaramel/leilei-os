@@ -23,6 +23,7 @@ function documentFor(
       scope === "all"
         ? {
             diary: [],
+            diary_comments: [],
             todo: [],
             projects: {
               workspaces: [],
@@ -38,7 +39,9 @@ function documentFor(
               attachments: [],
             },
           }
-        : { [scope]: [] },
+        : scope === "diary"
+          ? { diary: [], diary_comments: [] }
+          : { [scope]: [] },
     ...(includeAudit
       ? { audit: { lifecycle: [], tool_activity: [] } }
       : {}),
