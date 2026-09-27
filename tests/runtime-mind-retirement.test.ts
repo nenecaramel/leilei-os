@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MindRetirementService,
+  hasExternalMindRetirementReferences,
   planMindRetirement,
   selectRetirableThreadMembers,
   type MindRetirementCandidate,
@@ -297,5 +298,57 @@ test("Thought Topic terminal timestamps are respected", () => {
       "2026-09-21T00:00:00.000Z",
       { topic: { retentionHours: 24 } },
     ),
+  );
+});
+
+
+test("retirement refuses to orphan a surviving Subject State that references the retiring thread", () => {
+  const members = new Set([
+    driveAnchorId,
+    "88888888-8888-4888-8888-888888888888",
+  ]);
+  assert.equal(
+    hasExternalMindRetirementReferences(
+      [
+        {
+          id: driveAnchorId,
+          payload: dormantDrive,
+          envelope: { provenance: { causedBy: "message-1" } },
+          scopePathHeadMessageId: null,
+        },
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          payload: writeDriveEvolution(null, {
+            ...(dormantDrive.drive_v1 as any),
+            role: "reinforcement",
+          }),
+          envelope: { provenance: { causedBy: "message-2" } },
+          scopePathHeadMessageId: null,
+        },
+        {
+          id: "99999999-9999-4999-8999-999999999999",
+          payload: { topic_v1: { sourceStateId: driveAnchorId } },
+          envelope: { provenance: { causedBy: driveAnchorId } },
+          scopePathHeadMessageId: null,
+        },
+      ],
+      members,
+    ),
+    true,
+  );
+
+  assert.equal(
+    hasExternalMindRetirementReferences(
+      [
+        {
+          id: driveAnchorId,
+          payload: dormantDrive,
+          envelope: { provenance: { causedBy: "message-1" } },
+          scopePathHeadMessageId: null,
+        },
+      ],
+      new Set([driveAnchorId]),
+    ),
+    false,
   );
 });
