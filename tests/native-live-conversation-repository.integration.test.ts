@@ -16,6 +16,8 @@ import {
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
+import { DrizzleMindSemanticGroupingRepository } from "../src/domains/runtime/mind-semantic-grouping-runtime-repository.js";
+import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity-wake-repository.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST === "1";
@@ -464,7 +466,7 @@ test(
         id: exclusiveMindStateId,
         userId,
         subjectId: "G",
-        kind: "memory",
+        kind: "drive",
         text: "must disappear with deleted conversation",
         payload: { source: "runtime" },
         scopeApplicability: "global",
@@ -840,6 +842,56 @@ test(
       .where(eq(runtimeSubjectStates.id, survivingDriveStateId));
     assert.ok(survivingDrive);
     assert.equal(survivingDrive.payload, null);
+
+    const proactivity = new DrizzleProactivityWakeRepository(
+      database.db,
+    );
+    const postDeleteWakeId = crypto.randomUUID();
+    await assert.rejects(
+      proactivity.createOrGet({
+        gate: {
+          wakeId: postDeleteWakeId,
+          userId,
+          subjectId: "G",
+          offeredAt: "2026-09-27T08:00:00.000Z",
+          mode: "live",
+          enabled: true,
+          foregroundActive: false,
+          outstandingEffectStatus: null,
+          quietUntil: null,
+          nextEligibleAt: null,
+        },
+        contactTarget: null,
+        context: {
+          version: 1,
+          contextManifestId: null,
+          capsule: "must not recreate deleted conversation work",
+          sourceConversationId: deletedConversation.id,
+          sourceHeadMessageId: secondAssistant.message.id,
+          sourceActivityAt: "2026-09-27T07:00:00.000Z",
+        },
+      }),
+      /SourceConversationInactive/,
+    );
+
+    const grouping = new DrizzleMindSemanticGroupingRepository(
+      database.db,
+    );
+    assert.equal(
+      await grouping.stage({
+        userId,
+        subjectId: "G",
+        kind: "drive",
+        queryStateId: exclusiveMindStateId,
+        query: "deleted state",
+        candidates: [{
+          stateId: survivingDriveStateId,
+          kind: "drive",
+          text: "surviving state",
+        }],
+      }),
+      false,
+    );
 
     assert.equal(
       (await service.deleteConversation({
