@@ -34,6 +34,7 @@ struct SidebarView: View {
                                     .projects,
                                     .diary,
                                     .daySpace,
+                                    .mind,
                                     .universe
                                 ],
                                 selectedPage: $selectedPage,
