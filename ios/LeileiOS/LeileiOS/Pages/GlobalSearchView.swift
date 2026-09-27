@@ -416,50 +416,32 @@ private struct GlobalSearchDiaryRow: View {
     let result: GlobalSearchResultItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(result.stableName)
-                .font(.body.weight(.semibold))
-                .lineLimit(1)
-
-            GlobalSearchMetadataLine(
-                left: GlobalSearchDate.row(result.businessTime),
-                right: [
-                    result.author,
-                    result.lifecycleStatus == "archived"
-                        ? "Archived"
-                        : nil,
-                ]
-                .compactMap { $0 }
-                .joined(separator: "  ")
-            )
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
+        GlobalSearchResultContent(
+            title: result.stableName,
+            snippet: result.snippet,
+            date: result.businessTime,
+            metadata: [
+                result.author,
+                result.lifecycleStatus == "archived"
+                    ? "Archived"
+                    : nil,
+            ]
+            .compactMap { $0 }
+            .joined(separator: "  ")
+        )
     }
 }
 
 private struct GlobalSearchTodoRow: View {
     let result: GlobalSearchResultItem
 
-    private var primaryText: String {
-        result.snippet.isEmpty
-            ? result.stableName
-            : result.snippet
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(primaryText)
-                .font(.body.weight(.semibold))
-                .lineLimit(1)
-
-            GlobalSearchMetadataLine(
-                left: GlobalSearchDate.row(result.businessTime),
-                right: result.author ?? ""
-            )
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
+        GlobalSearchResultContent(
+            title: result.stableName,
+            snippet: result.snippet,
+            date: result.businessTime,
+            metadata: result.author ?? ""
+        )
     }
 }
 
@@ -467,17 +449,40 @@ private struct GlobalSearchUniverseRow: View {
     let result: GlobalSearchResultItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(result.stableName)
+        GlobalSearchResultContent(
+            title: result.stableName,
+            snippet: result.snippet,
+            date: result.businessTime,
+            metadata: result.matchedField.capitalized
+        )
+    }
+}
+
+private struct GlobalSearchResultContent: View {
+    let title: String
+    let snippet: String
+    let date: String
+    let metadata: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
                 .font(.body.weight(.semibold))
                 .lineLimit(1)
 
+            if !snippet.isEmpty {
+                Text(snippet)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
             GlobalSearchMetadataLine(
-                left: GlobalSearchDate.row(result.businessTime),
-                right: result.matchedField.capitalized
+                left: GlobalSearchDate.row(date),
+                right: metadata
             )
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
         .contentShape(Rectangle())
     }
 }
