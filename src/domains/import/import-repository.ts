@@ -13,6 +13,12 @@ import {
   projects,
   projectWorkspaces,
   runtimeSubjectStates,
+  universeDiarySources,
+  universeGalaxies,
+  universeMeta,
+  universeNodes,
+  universeRelations,
+  universeRevisions,
   todoEntries,
   todoPapers,
   users,
@@ -32,7 +38,9 @@ import type {
   ExportProjectsBundle,
   ExportProjectWorkspaceRecord,
   ExportTodoPaper,
+  ExportUniverseBundle,
 } from "../export/export-types.js";
+import { DrizzleUniverseRepository } from "../universe/universe-repository-drizzle.js";
 import { hashCanonical } from "./import-canonical.js";
 import type { ImportCurrentState, ImportModule } from "./import-planner.js";
 
@@ -77,6 +85,11 @@ export interface ImportRepository {
   insertTodo(
     userId: string,
     record: ExportTodoPaper,
+  ): Promise<void>;
+
+  insertUniverse(
+    userId: string,
+    record: ExportUniverseBundle,
   ): Promise<void>;
 
   insertConversation(
@@ -504,6 +517,21 @@ implements ImportRepository {
       nativeAttachmentRows.map((row) => row.id),
     );
 
+    const universeRead =
+      await new DrizzleUniverseRepository(
+        this.db as never,
+      ).loadUniverseWeb(userId);
+    const universe = universeRead
+      ? {
+          version: universeRead.version,
+          snapshot: universeRead.snapshot,
+          diary_sources: universeRead.sources.map((source) => ({
+            node_id: source.nodeId,
+            diary_id: source.diaryId,
+          })),
+        }
+      : null;
+
     return {
       diary: diary.map((row) => ({
         id: row.id,
@@ -606,6 +634,7 @@ implements ImportRepository {
           payload: row.payload,
         })),
       },
+      universe,
       projects: {
         workspaces: workspaceRows.map((row) => ({
           id: row.id,
@@ -771,6 +800,93 @@ implements ImportRepository {
           kind: entry.kind,
           text: entry.text,
           position,
+        })),
+      );
+    }
+  }
+
+  async insertUniverse(
+    userId: string,
+    record: ExportUniverseBundle,
+  ): Promise<void> {
+    const snapshot = record.snapshot;
+
+    await this.db.insert(universeMeta).values({
+      userId,
+      name: snapshot.meta.name,
+      schemaVersion: snapshot.schemaVersion,
+      createdAt: new Date(snapshot.meta.createdAt),
+      updatedAt: new Date(snapshot.meta.updatedAt),
+      version: record.version,
+    });
+
+    if (snapshot.galaxies.length > 0) {
+      await this.db.insert(universeGalaxies).values(
+        snapshot.galaxies.map((galaxy) => ({
+          userId,
+          id: galaxy.id,
+          title: galaxy.title,
+          description: galaxy.description,
+          color: galaxy.color,
+          order: galaxy.order,
+        })),
+      );
+    }
+
+    if (snapshot.nodes.length > 0) {
+      await this.db.insert(universeNodes).values(
+        snapshot.nodes.map((node) => ({
+          userId,
+          id: node.id,
+          title: node.title,
+          summary: node.summary,
+          content: node.content,
+          type: node.type,
+          tags: node.tags,
+          galaxies: [],
+          galaxyMemberships: node.galaxies,
+          position: node.position,
+          createdAt: new Date(node.createdAt),
+          updatedAt: new Date(node.updatedAt),
+          importance: node.importance ?? null,
+          migration: node.migration ?? null,
+        })),
+      );
+    }
+
+    if (snapshot.relations.length > 0) {
+      await this.db.insert(universeRelations).values(
+        snapshot.relations.map((relation) => ({
+          userId,
+          id: relation.id,
+          source: relation.source,
+          target: relation.target,
+          relationType: relation.relationType,
+          strength: relation.strength,
+          createdAt: new Date(relation.createdAt),
+        })),
+      );
+    }
+
+    if (snapshot.revisions.length > 0) {
+      await this.db.insert(universeRevisions).values(
+        snapshot.revisions.map((revision) => ({
+          userId,
+          id: revision.id,
+          nodeId: revision.nodeId,
+          createdAt: new Date(revision.createdAt),
+          reason: revision.reason,
+          snapshot: revision.snapshot,
+        })),
+      );
+    }
+
+    if (record.diary_sources.length > 0) {
+      await this.db.insert(universeDiarySources).values(
+        record.diary_sources.map((source) => ({
+          userId,
+          nodeId: source.node_id,
+          diaryId: source.diary_id,
         })),
       );
     }
@@ -974,6 +1090,9 @@ implements ImportRepository {
       todo: modules.has("todo")
         ? state.todo
         : [],
+      universe: modules.has("universe")
+        ? state.universe
+        : undefined,
       mind: modules.has("mind")
         ? state.mind
         : undefined,
