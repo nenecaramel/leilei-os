@@ -68,7 +68,7 @@ private extension AppPage {
         case .daySpace:
             return "calendar"
         case .mind:
-            return "atom"
+            return "circle.dotted.circle"
         case .universe:
             return "sparkles"
         default:
