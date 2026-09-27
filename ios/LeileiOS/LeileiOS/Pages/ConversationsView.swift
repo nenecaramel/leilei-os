@@ -426,9 +426,42 @@ private struct ConversationList: View {
     private func lastMessageDateText(
         for conversation: NativeLiveConversationSummary
     ) -> String? {
-        // Deliberately empty until main exposes an authoritative
-        // last-message timestamp on conversation summaries.
-        nil
+        guard let value = conversation.lastMessageAt else {
+            return nil
+        }
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+
+        guard let date = fractional.date(from: value)
+            ?? standard.date(from: value) else {
+            return nil
+        }
+
+        if Calendar.current.isDate(
+            date,
+            equalTo: .now,
+            toGranularity: .year
+        ) {
+            return date.formatted(
+                .dateTime
+                    .month(.abbreviated)
+                    .day()
+            )
+        }
+
+        return date.formatted(
+            .dateTime
+                .month(.abbreviated)
+                .day()
+                .year()
+        )
     }
 
     private func isActive(
