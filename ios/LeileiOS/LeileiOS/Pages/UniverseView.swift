@@ -347,6 +347,8 @@ struct UniverseView: View {
             )
 
             Button {
+                notice = nil
+
                 if case .placingNode = mapMode {
                     mapMode = .browse
                 } else {
@@ -397,6 +399,7 @@ struct UniverseView: View {
     private func cancelPlacementForToolbarMenu() {
         if case .placingNode = mapMode {
             mapMode = .browse
+            notice = nil
         }
     }
 
