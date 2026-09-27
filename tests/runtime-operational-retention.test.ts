@@ -22,6 +22,14 @@ const schemaSource = readFileSync(
   "utf8",
 );
 
+const processRuntimeSource = readFileSync(
+  new URL(
+    "../src/app/process-runtime.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
 test("runtime operational retention declares a bounded TTL", () => {
   assert.equal(RUNTIME_OPERATIONAL_RETENTION_DAYS, 30);
   assert.deepEqual(RUNTIME_OPERATIONAL_RETENTION_SPEC, {
@@ -102,5 +110,31 @@ test("Mind semantic grouping retention removes only terminal scoring requests", 
   assert.doesNotMatch(
     source,
     /runtime_mind_semantic_grouping_requests[\s\S]{0,300}status IN \('pending', 'reserved'\)[\s\S]{0,300}DELETE FROM runtime_mind_semantic_grouping_requests/,
+  );
+});
+
+
+test("cloud runtime owns recurring bounded operational retention cadence", () => {
+  const start = processRuntimeSource.indexOf("startBackgroundWork: () => {");
+  const stop = processRuntimeSource.indexOf(
+    "stopBackgroundWork: () => {",
+    start,
+  );
+  assert.notEqual(start, -1);
+  assert.notEqual(stop, -1);
+  const startupBlock = processRuntimeSource.slice(start, stop);
+
+  assert.match(startupBlock, /retentionCoordinator\.start\(\)/u);
+  assert.doesNotMatch(
+    startupBlock,
+    /retentionCoordinator\.runNow\(\)/u,
+  );
+  assert.match(
+    processRuntimeSource,
+    /intervalMs:\s*governance\.idempotencyCleanupIntervalHours\s*\*\s*60\s*\*\s*60\s*\*\s*1_000/u,
+  );
+  assert.match(
+    processRuntimeSource,
+    /stopBackgroundWork:[\s\S]*retentionCoordinator\.stopScheduling\(\)/u,
   );
 });
