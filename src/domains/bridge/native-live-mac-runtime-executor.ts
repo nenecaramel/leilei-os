@@ -43,6 +43,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
     sessionId: string,
     execution?: NativeLiveExecutionSelection | null,
   ) => Promise<NativeLiveRuntimeResult & {
+    contextUsage?: NativeLiveRuntimeContextUsage | null;
     compaction?: {
       boundary?: Record<string, unknown> | null;
       postCompact?: Array<{
