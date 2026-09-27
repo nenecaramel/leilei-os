@@ -443,6 +443,10 @@ function cloneState(
       state.foreign_semantic_grouping_result_ids
         ? new Set(state.foreign_semantic_grouping_result_ids)
         : undefined,
+    occupied_semantic_grouping_keys:
+      state.occupied_semantic_grouping_keys
+        ? new Set(state.occupied_semantic_grouping_keys)
+        : undefined,
     foreign_conversation_ids:
       state.foreign_conversation_ids
         ? new Set(state.foreign_conversation_ids)
@@ -1517,6 +1521,43 @@ test("v3 conversation checkpoint preview rejects a foreign checkpoint id", async
   );
 
   assert.equal(preview.summary.conversations?.conflict, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
+
+test("v3 semantic grouping restore conflicts with an occupied nonterminal grouping key", async () => {
+  const grouping =
+    mindContinuity.semantic_grouping_results[0]!;
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [driveCandidateState, driveState],
+    mind_continuity: {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+      semantic_grouping_results: [],
+    },
+    occupied_semantic_grouping_keys: new Set([
+      `${grouping.subject_id}:${grouping.kind}:${grouping.query_state_id}`,
+    ]),
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({
+      mind_continuity: {
+        drive_satisfaction_events: [],
+        curiosity_resolution_events: [],
+        distillation_watermarks: [],
+        semantic_grouping_results: [grouping],
+      },
+    }),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.mind?.conflict, 1);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
