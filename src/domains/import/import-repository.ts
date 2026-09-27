@@ -8,12 +8,14 @@ import {
   projectResources,
   projects,
   projectWorkspaces,
+  runtimeSubjectStates,
   todoEntries,
   todoPapers,
   users,
 } from "../../database/schema.js";
 import type {
   ExportDiaryRecord,
+  ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
   ExportProjectResourceRecord,
@@ -60,6 +62,11 @@ export interface ImportRepository {
   insertTodo(
     userId: string,
     record: ExportTodoPaper,
+  ): Promise<void>;
+
+  insertMind(
+    userId: string,
+    record: ExportMindStateRecord,
   ): Promise<void>;
 
   insertProjectWorkspace(
@@ -143,9 +150,11 @@ implements ImportRepository {
       projectRows,
       resourceRows,
       conversationRows,
+      mindRows,
       allWorkspaceIds,
       allProjectIds,
       allResourceIds,
+      allMindIds,
       nativeLiveConversations,
     ] = await Promise.all([
       this.db
@@ -218,6 +227,26 @@ implements ImportRepository {
           asc(projectConversations.conversationId),
         ),
       this.db
+        .select({
+          id: runtimeSubjectStates.id,
+          subjectId: runtimeSubjectStates.subjectId,
+          kind: runtimeSubjectStates.kind,
+          text: runtimeSubjectStates.text,
+          payload: runtimeSubjectStates.payload,
+          scopeApplicability: runtimeSubjectStates.scopeApplicability,
+          scopeConversationId: runtimeSubjectStates.scopeConversationId,
+          scopePathHeadMessageId: runtimeSubjectStates.scopePathHeadMessageId,
+          settlementStatus: runtimeSubjectStates.settlementStatus,
+          pathStatus: runtimeSubjectStates.pathStatus,
+          validityStatus: runtimeSubjectStates.validityStatus,
+          envelope: runtimeSubjectStates.envelope,
+          createdAt: runtimeSubjectStates.createdAt,
+          updatedAt: runtimeSubjectStates.updatedAt,
+        })
+        .from(runtimeSubjectStates)
+        .where(eq(runtimeSubjectStates.userId, userId))
+        .orderBy(asc(runtimeSubjectStates.id)),
+      this.db
         .select({ id: projectWorkspaces.id })
         .from(projectWorkspaces),
       this.db
@@ -226,6 +255,9 @@ implements ImportRepository {
       this.db
         .select({ id: projectResources.id })
         .from(projectResources),
+      this.db
+        .select({ id: runtimeSubjectStates.id })
+        .from(runtimeSubjectStates),
       this.db
         .select({ id: conversations.id })
         .from(conversations)
@@ -298,6 +330,22 @@ implements ImportRepository {
         updated_at: toIso(row.updatedAt),
         entries: grouped.get(row.id) ?? [],
       })),
+      mind: mindRows.map((row) => ({
+        id: row.id,
+        subject_id: row.subjectId,
+        kind: row.kind,
+        text: row.text,
+        payload: row.payload,
+        scope_applicability: row.scopeApplicability,
+        scope_conversation_id: row.scopeConversationId,
+        scope_path_head_message_id: row.scopePathHeadMessageId,
+        settlement_status: row.settlementStatus,
+        path_status: row.pathStatus,
+        validity_status: row.validityStatus,
+        envelope: row.envelope,
+        created_at: toIso(row.createdAt),
+        updated_at: toIso(row.updatedAt),
+      })),
       projects: {
         workspaces: workspaceRows.map((row) => ({
           id: row.id,
@@ -352,6 +400,11 @@ implements ImportRepository {
       foreign_project_resource_ids: new Set(
         allResourceIds
           .filter((row) => !resourceRows.some((owned) => owned.id === row.id))
+          .map((row) => row.id),
+      ),
+      foreign_mind_ids: new Set(
+        allMindIds
+          .filter((row) => !mindRows.some((owned) => owned.id === row.id))
           .map((row) => row.id),
       ),
       native_live_conversation_ids: new Set(
@@ -415,6 +468,29 @@ implements ImportRepository {
         })),
       );
     }
+  }
+
+  async insertMind(
+    userId: string,
+    record: ExportMindStateRecord,
+  ): Promise<void> {
+    await this.db.insert(runtimeSubjectStates).values({
+      id: record.id,
+      userId,
+      subjectId: record.subject_id,
+      kind: record.kind,
+      text: record.text,
+      payload: record.payload,
+      scopeApplicability: record.scope_applicability,
+      scopeConversationId: record.scope_conversation_id,
+      scopePathHeadMessageId: record.scope_path_head_message_id,
+      settlementStatus: record.settlement_status,
+      pathStatus: record.path_status,
+      validityStatus: record.validity_status,
+      envelope: record.envelope,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+    });
   }
 
   async insertProjectWorkspace(
@@ -491,6 +567,9 @@ implements ImportRepository {
       todo: modules.has("todo")
         ? state.todo
         : [],
+      mind: modules.has("mind")
+        ? state.mind
+        : undefined,
       projects: modules.has("projects")
         ? state.projects
         : emptyProjects(),
