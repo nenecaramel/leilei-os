@@ -42,6 +42,7 @@ export type NativeLiveConversationSummary = {
   id: string;
   title: string | null;
   currentHeadMessageId: string | null;
+  lastMessageAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

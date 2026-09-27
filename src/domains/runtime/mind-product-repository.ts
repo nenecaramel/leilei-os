@@ -1,0 +1,599 @@
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
+import type { createDatabase } from "../../database/client.js";
+import {
+  conversationMessages,
+  nativeLiveBackgroundModelJobs,
+  runtimeEffects,
+  runtimeMindSemanticGroupingRequests,
+  runtimeProactivityWakes,
+  runtimeSubjectStates,
+} from "../../database/schema.js";
+import {
+  structuredValueReferencesAnyId,
+} from "./persistent-reference-scan.js";
+import type {
+  PersistentWriteEnvelope,
+} from "./persistent-write-envelope.js";
+import type {
+  CurrentSubjectStateKind,
+  SubjectStateWrite,
+} from "./subject-state-contract.js";
+import type {
+  MindProductCursor,
+  MindProductRepository,
+  MindProductRow,
+} from "./mind-product-service.js";
+
+type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
+
+type Row = {
+  id: string;
+  kind: CurrentSubjectStateKind;
+  text: string | null;
+  payload: Record<string, unknown> | null;
+  envelope: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const PRODUCT_VISIBLE = sql<boolean>`
+  COALESCE(
+    ${runtimeSubjectStates.payload} -> 'drive_v1' ->> 'role',
+    ${runtimeSubjectStates.payload} -> 'thought_v1' ->> 'role',
+    ${runtimeSubjectStates.payload} -> 'curiosity_v1' ->> 'role',
+    ${runtimeSubjectStates.payload} -> 'topic_v1' ->> 'role',
+    'anchor'
+  ) <> 'reinforcement'
+`;
+
+export class DrizzleMindProductRepository
+implements MindProductRepository {
+  constructor(private readonly db: Database) {}
+
+  async list(input: {
+    userId: string;
+    subjectId: string;
+    kind?: CurrentSubjectStateKind;
+    limit: number;
+    cursor?: MindProductCursor | null;
+  }): Promise<{
+    rows: MindProductRow[];
+    nextCursor: MindProductCursor | null;
+  }> {
+    const conditions = [
+      eq(runtimeSubjectStates.userId, input.userId),
+      eq(runtimeSubjectStates.subjectId, input.subjectId),
+      eq(runtimeSubjectStates.settlementStatus, "settled"),
+      eq(runtimeSubjectStates.pathStatus, "current"),
+      eq(runtimeSubjectStates.validityStatus, "valid"),
+      PRODUCT_VISIBLE,
+    ];
+    if (input.kind) {
+      conditions.push(eq(runtimeSubjectStates.kind, input.kind));
+    }
+    if (input.cursor) {
+      const updatedAt = new Date(input.cursor.updatedAt);
+      const cursorCondition = or(
+        lt(runtimeSubjectStates.updatedAt, updatedAt),
+        and(
+          eq(runtimeSubjectStates.updatedAt, updatedAt),
+          lt(runtimeSubjectStates.id, input.cursor.id),
+        ),
+      );
+      if (cursorCondition) conditions.push(cursorCondition);
+    }
+
+    const rows = await this.db
+      .select(rowSelection())
+      .from(runtimeSubjectStates)
+      .where(and(...conditions))
+      .orderBy(
+        desc(runtimeSubjectStates.updatedAt),
+        desc(runtimeSubjectStates.id),
+      )
+      .limit(input.limit + 1);
+
+    const hasMore = rows.length > input.limit;
+    const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+    const last = pageRows[pageRows.length - 1];
+    return {
+      rows: pageRows.map(toProductRow),
+      nextCursor:
+        hasMore && last
+          ? {
+              updatedAt: last.updatedAt.toISOString(),
+              id: last.id,
+            }
+          : null,
+    };
+  }
+
+  async get(input: {
+    userId: string;
+    subjectId: string;
+    stateId: string;
+  }): Promise<MindProductRow | null> {
+    const [row] = await this.db
+      .select(rowSelection())
+      .from(runtimeSubjectStates)
+      .where(and(
+        eq(runtimeSubjectStates.id, input.stateId),
+        eq(runtimeSubjectStates.userId, input.userId),
+        eq(runtimeSubjectStates.subjectId, input.subjectId),
+        eq(runtimeSubjectStates.settlementStatus, "settled"),
+        eq(runtimeSubjectStates.pathStatus, "current"),
+        eq(runtimeSubjectStates.validityStatus, "valid"),
+        PRODUCT_VISIBLE,
+      ))
+      .limit(1);
+    return row ? toProductRow(row) : null;
+  }
+
+  async insert(input: {
+    userId: string;
+    subjectId: string;
+    state: SubjectStateWrite;
+  }): Promise<MindProductRow> {
+    const state = input.state;
+    const [row] = await this.db
+      .insert(runtimeSubjectStates)
+      .values({
+        id: state.id,
+        userId: input.userId,
+        subjectId: input.subjectId,
+        kind: state.kind,
+        text: state.text ?? null,
+        payload: state.payload ?? null,
+        scopeApplicability: state.envelope.scope.applicability,
+        scopeConversationId:
+          state.envelope.scope.conversationId ?? null,
+        scopePathHeadMessageId:
+          state.envelope.scope.pathHeadMessageId ?? null,
+        settlementStatus: state.envelope.status.settlementStatus,
+        pathStatus: state.envelope.status.pathStatus,
+        validityStatus: state.envelope.status.validityStatus,
+        envelope:
+          state.envelope as unknown as Record<string, unknown>,
+      })
+      .returning(rowSelection());
+
+    if (!row) {
+      throw new Error("Manual Mind insert failed.");
+    }
+    return toProductRow(row);
+  }
+
+  async delete(input: {
+    userId: string;
+    subjectId: string;
+    stateId: string;
+  }): Promise<
+    { outcome: "deleted"; deletedStateCount: number }
+    | { outcome: "not_found" }
+  > {
+    return this.db.transaction(
+      async (transaction) => {
+        const rows = await transaction
+          .select({
+            id: runtimeSubjectStates.id,
+            payload: runtimeSubjectStates.payload,
+            envelope: runtimeSubjectStates.envelope,
+          })
+          .from(runtimeSubjectStates)
+          .where(and(
+            eq(runtimeSubjectStates.userId, input.userId),
+            eq(runtimeSubjectStates.subjectId, input.subjectId),
+          ))
+          .for("update");
+
+        if (!rows.some((row) => row.id === input.stateId)) {
+          return { outcome: "not_found" as const };
+        }
+
+        const deleteIds = new Set<string>([input.stateId]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const row of rows) {
+            if (deleteIds.has(row.id)) continue;
+            const repairedEnvelope =
+              repairEnvelopeReferences(row.envelope, deleteIds);
+            const repairedPayload =
+              repairPayloadReferences(row.payload, deleteIds);
+            if (
+              repairedEnvelope.outcome === "delete"
+              || repairedPayload.outcome === "delete"
+            ) {
+              deleteIds.add(row.id);
+              changed = true;
+            }
+          }
+        }
+
+        const evolutionEvidenceIds = new Set<string>([
+          ...deleteIds,
+          ...sourceEvidenceIdsForDeletedRows(rows, deleteIds),
+        ]);
+
+        for (const row of rows) {
+          if (deleteIds.has(row.id)) continue;
+          const envelopeRepair =
+            repairEnvelopeReferences(row.envelope, deleteIds);
+          const payloadRepair =
+            repairPayloadReferences(
+              row.payload,
+              evolutionEvidenceIds,
+            );
+          if (
+            envelopeRepair.outcome === "repair"
+            || payloadRepair.outcome === "repair"
+          ) {
+            await transaction
+              .update(runtimeSubjectStates)
+              .set({
+                envelope:
+                  envelopeRepair.outcome === "repair"
+                    ? envelopeRepair.value
+                    : row.envelope,
+                payload:
+                  payloadRepair.outcome === "repair"
+                    ? payloadRepair.value
+                    : row.payload,
+                updatedAt: new Date(),
+              })
+              .where(and(
+                eq(runtimeSubjectStates.userId, input.userId),
+                eq(runtimeSubjectStates.subjectId, input.subjectId),
+                eq(runtimeSubjectStates.id, row.id),
+              ));
+          }
+        }
+
+        await deleteOperationalReferences(
+          transaction as Transaction,
+          input.userId,
+          input.subjectId,
+          deleteIds,
+        );
+
+        const deleted = await transaction
+          .delete(runtimeSubjectStates)
+          .where(and(
+            eq(runtimeSubjectStates.userId, input.userId),
+            eq(runtimeSubjectStates.subjectId, input.subjectId),
+            inArray(runtimeSubjectStates.id, [...deleteIds]),
+          ))
+          .returning({ id: runtimeSubjectStates.id });
+
+        return {
+          outcome: "deleted" as const,
+          deletedStateCount: deleted.length,
+        };
+      },
+      { isolationLevel: "serializable" },
+    );
+  }
+
+  async readMessageWrites(input: {
+    userId: string;
+    subjectId: string;
+    messageId: string;
+  }): Promise<
+    Array<{ kind: CurrentSubjectStateKind; count: number }> | null
+  > {
+    const [message] = await this.db
+      .select({ id: conversationMessages.id })
+      .from(conversationMessages)
+      .where(and(
+        eq(conversationMessages.id, input.messageId),
+        eq(conversationMessages.userId, input.userId),
+        eq(conversationMessages.role, "assistant"),
+      ))
+      .limit(1);
+    if (!message) return null;
+
+    const rows = await this.db.execute<{
+      kind: CurrentSubjectStateKind;
+      count: number;
+    }>(sql`
+      SELECT
+        state.kind,
+        count(*)::int AS count
+      FROM runtime_subject_states AS state
+      WHERE state.user_id = ${input.userId}::uuid
+        AND state.subject_id = ${input.subjectId}
+        AND state.envelope ->> 'authority' = 'subject_authorized'
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            COALESCE(
+              state.envelope -> 'provenance' -> 'sources',
+              '[]'::jsonb
+            )
+          ) AS source
+          WHERE source ->> 'kind' = 'message'
+            AND source ->> 'id' = ${input.messageId}
+        )
+      GROUP BY state.kind
+    `);
+    return rows.map((row) => ({
+      kind: row.kind,
+      count: Number(row.count),
+    }));
+  }
+}
+
+async function deleteOperationalReferences(
+  transaction: Transaction,
+  userId: string,
+  subjectId: string,
+  deleteIds: ReadonlySet<string>,
+): Promise<void> {
+  const wakes = await transaction
+    .select({
+      id: runtimeProactivityWakes.id,
+      gate: runtimeProactivityWakes.gate,
+      contextSnapshot: runtimeProactivityWakes.contextSnapshot,
+      decision: runtimeProactivityWakes.decision,
+    })
+    .from(runtimeProactivityWakes)
+    .where(and(
+      eq(runtimeProactivityWakes.userId, userId),
+      eq(runtimeProactivityWakes.subjectId, subjectId),
+    ));
+  const wakeIds = wakes
+    .filter((wake) =>
+      structuredValueReferencesAnyId(wake.gate, deleteIds)
+      || structuredValueReferencesAnyId(
+        wake.contextSnapshot,
+        deleteIds,
+      )
+      || structuredValueReferencesAnyId(wake.decision, deleteIds)
+    )
+    .map((wake) => wake.id);
+
+  const effects = await transaction
+    .select({
+      id: runtimeEffects.id,
+      sourceWakeId: runtimeEffects.sourceWakeId,
+      payload: runtimeEffects.payload,
+    })
+    .from(runtimeEffects)
+    .where(and(
+      eq(runtimeEffects.userId, userId),
+      eq(runtimeEffects.subjectId, subjectId),
+    ));
+  const effectIds = effects
+    .filter((effect) =>
+      wakeIds.includes(effect.sourceWakeId)
+      || structuredValueReferencesAnyId(effect.payload, deleteIds)
+    )
+    .map((effect) => effect.id);
+  if (effectIds.length > 0) {
+    await transaction
+      .delete(runtimeEffects)
+      .where(and(
+        eq(runtimeEffects.userId, userId),
+        inArray(runtimeEffects.id, effectIds),
+      ));
+  }
+  if (wakeIds.length > 0) {
+    await transaction
+      .delete(runtimeProactivityWakes)
+      .where(and(
+        eq(runtimeProactivityWakes.userId, userId),
+        inArray(runtimeProactivityWakes.id, wakeIds),
+      ));
+  }
+
+  const groupingRows = await transaction
+    .select({
+      id: runtimeMindSemanticGroupingRequests.id,
+      queryStateId: runtimeMindSemanticGroupingRequests.queryStateId,
+      candidates: runtimeMindSemanticGroupingRequests.candidates,
+      scores: runtimeMindSemanticGroupingRequests.scores,
+    })
+    .from(runtimeMindSemanticGroupingRequests)
+    .where(and(
+      eq(runtimeMindSemanticGroupingRequests.userId, userId),
+      eq(runtimeMindSemanticGroupingRequests.subjectId, subjectId),
+    ));
+
+  const groupingIds = groupingRows
+    .filter((row) =>
+      deleteIds.has(row.queryStateId)
+      || structuredValueReferencesAnyId(row.candidates, deleteIds)
+      || structuredValueReferencesAnyId(row.scores, deleteIds)
+    )
+    .map((row) => row.id);
+  if (groupingIds.length > 0) {
+    await transaction
+      .delete(runtimeMindSemanticGroupingRequests)
+      .where(and(
+        eq(runtimeMindSemanticGroupingRequests.userId, userId),
+        inArray(runtimeMindSemanticGroupingRequests.id, groupingIds),
+      ));
+  }
+
+  const jobs = await transaction
+    .select({
+      id: nativeLiveBackgroundModelJobs.id,
+      workflowRunId: nativeLiveBackgroundModelJobs.workflowRunId,
+      payload: nativeLiveBackgroundModelJobs.workflowPayload,
+    })
+    .from(nativeLiveBackgroundModelJobs)
+    .where(eq(nativeLiveBackgroundModelJobs.userId, userId));
+  const jobIds = jobs
+    .filter((job) =>
+      (
+        job.workflowRunId !== null
+        && wakeIds.includes(job.workflowRunId)
+      )
+      || structuredValueReferencesAnyId(job.payload, deleteIds)
+    )
+    .map((job) => job.id);
+  if (jobIds.length > 0) {
+    await transaction
+      .delete(nativeLiveBackgroundModelJobs)
+      .where(and(
+        eq(nativeLiveBackgroundModelJobs.userId, userId),
+        inArray(nativeLiveBackgroundModelJobs.id, jobIds),
+      ));
+  }
+}
+
+function sourceEvidenceIdsForDeletedRows(
+  rows: readonly {
+    id: string;
+    envelope: Record<string, unknown>;
+  }[],
+  deletedIds: ReadonlySet<string>,
+): string[] {
+  const result = new Set<string>();
+  for (const row of rows) {
+    if (!deletedIds.has(row.id)) continue;
+    const provenance = isRecord(row.envelope.provenance)
+      ? row.envelope.provenance
+      : null;
+    const causedBy = provenance?.causedBy;
+    if (typeof causedBy === "string" && causedBy.trim()) {
+      result.add(causedBy);
+    }
+  }
+  return [...result];
+}
+
+function repairEnvelopeReferences(
+  envelope: Record<string, unknown>,
+  deletedIds: ReadonlySet<string>,
+):
+  | { outcome: "unchanged" }
+  | { outcome: "repair"; value: Record<string, unknown> }
+  | { outcome: "delete" } {
+  if (!structuredValueReferencesAnyId(envelope, deletedIds)) {
+    return { outcome: "unchanged" };
+  }
+
+  const provenanceValue = envelope.provenance;
+  if (!isRecord(provenanceValue)) return { outcome: "delete" };
+  const provenance = { ...provenanceValue };
+  const sources = Array.isArray(provenance.sources)
+    ? provenance.sources
+    : null;
+  if (!sources) return { outcome: "delete" };
+
+  const survivingSources = sources.filter((source) =>
+    !(
+      isRecord(source)
+      && typeof source.id === "string"
+      && deletedIds.has(source.id)
+    )
+  );
+  if (survivingSources.length === 0) return { outcome: "delete" };
+  provenance.sources = survivingSources;
+
+  if (Array.isArray(provenance.derivedFrom)) {
+    provenance.derivedFrom = provenance.derivedFrom.filter((value) =>
+      !(typeof value === "string" && deletedIds.has(value))
+    );
+  }
+  for (const key of [
+    "parentId",
+    "causedBy",
+    "decisionId",
+    "processRunId",
+  ] as const) {
+    if (
+      typeof provenance[key] === "string"
+      && deletedIds.has(provenance[key] as string)
+    ) {
+      provenance[key] = null;
+    }
+  }
+
+  const next = { ...envelope, provenance };
+  return structuredValueReferencesAnyId(next, deletedIds)
+    ? { outcome: "delete" }
+    : { outcome: "repair", value: next };
+}
+
+function repairPayloadReferences(
+  payload: Record<string, unknown> | null,
+  deletedIds: ReadonlySet<string>,
+):
+  | { outcome: "unchanged" }
+  | { outcome: "repair"; value: Record<string, unknown> | null }
+  | { outcome: "delete" } {
+  if (
+    !payload
+    || !structuredValueReferencesAnyId(payload, deletedIds)
+  ) {
+    return { outcome: "unchanged" };
+  }
+
+  const next = { ...payload };
+  for (const key of [
+    "drive_v1",
+    "thought_v1",
+    "curiosity_v1",
+    "topic_v1",
+  ]) {
+    if (
+      key in next
+      && structuredValueReferencesAnyId(next[key], deletedIds)
+    ) {
+      delete next[key];
+    }
+  }
+  if (structuredValueReferencesAnyId(next, deletedIds)) {
+    return { outcome: "delete" };
+  }
+  return {
+    outcome: "repair",
+    value: Object.keys(next).length > 0 ? next : null,
+  };
+}
+
+function rowSelection() {
+  return {
+    id: runtimeSubjectStates.id,
+    kind: runtimeSubjectStates.kind,
+    text: runtimeSubjectStates.text,
+    payload: runtimeSubjectStates.payload,
+    envelope: runtimeSubjectStates.envelope,
+    createdAt: runtimeSubjectStates.createdAt,
+    updatedAt: runtimeSubjectStates.updatedAt,
+  };
+}
+
+function toProductRow(row: Row): MindProductRow {
+  return {
+    id: row.id,
+    kind: row.kind,
+    text: row.text,
+    payload: row.payload,
+    envelope:
+      row.envelope as unknown as PersistentWriteEnvelope,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value)
+    && typeof value === "object"
+    && !Array.isArray(value);
+}
