@@ -3,6 +3,7 @@ import type {
   ExportConversationContentBlockRecord,
   ExportConversationMessageRecord,
   ExportConversationRecord,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportTodoPaper,
@@ -61,6 +62,12 @@ function toPreview(plan: ImportPlan): ImportPreview {
 function includedModules(document: RestorableExportDocument): Set<ImportModule> {
   const modules: ImportModule[] = [];
   if (document.data.diary) modules.push("diary");
+  if (
+    document.schema_version === 3
+    && document.data.diary_comments
+  ) {
+    modules.push("diary_comments");
+  }
   if (document.data.todo) modules.push("todo");
   if (document.schema_version === 3 && document.data.mind) {
     modules.push("mind");
@@ -158,6 +165,15 @@ function hasExactCreatedValue(
   if (item.module === "diary") {
     const record = item.record as ExportDiaryRecord;
     return state.diary.some(
+      (candidate) =>
+        candidate.id === record.id
+        && hashCanonical(candidate) === hashCanonical(record),
+    );
+  }
+
+  if (item.module === "diary_comments") {
+    const record = item.record as ExportDiaryCommentRecord;
+    return (state.diary_comments ?? []).some(
       (candidate) =>
         candidate.id === record.id
         && hashCanonical(candidate) === hashCanonical(record),
@@ -285,6 +301,15 @@ async function executeCreates(
       await repository.insertDiary(
         userId,
         item.record as ExportDiaryRecord,
+      );
+    }
+  }
+
+  for (const item of creates) {
+    if (item.module === "diary_comments") {
+      await repository.insertDiaryComment(
+        userId,
+        item.record as ExportDiaryCommentRecord,
       );
     }
   }
