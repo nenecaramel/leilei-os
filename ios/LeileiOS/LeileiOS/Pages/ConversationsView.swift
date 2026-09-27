@@ -121,21 +121,7 @@ private enum ConversationListScope:
 
 private struct ConversationArchivePlaceholder: View {
     var body: some View {
-        VStack(spacing: 12) {
-            AppStateSurface(title: "Unavailable")
-
-            Text(
-                "Archived conversations, Restore, and true Delete will appear here after the lifecycle contract is connected."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 28)
-        }
-        .frame(
-            maxWidth: .infinity,
-            maxHeight: .infinity
-        )
+        AppStateSurface(title: "Unavailable")
     }
 }
 
@@ -144,9 +130,6 @@ private struct ConversationList: View {
     let activeConversationID: UUID?
     let onOpen: (NativeLiveConversationSummary) async -> Void
     let onLoadMore: () async -> Void
-
-    @State private var lifecycleNotice:
-        ConversationLifecycleNotice?
 
     var body: some View {
         List(conversations) { conversation in
@@ -207,15 +190,15 @@ private struct ConversationList: View {
 
                 Menu {
                     Button("Archive") {
-                        lifecycleNotice = .archive
                     }
+                    .disabled(true)
 
                     Button(
                         "Delete",
                         role: .destructive
                     ) {
-                        lifecycleNotice = .delete
                     }
+                    .disabled(true)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(
@@ -244,25 +227,6 @@ private struct ConversationList: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
-        .alert(
-            "Unavailable",
-            isPresented: Binding(
-                get: { lifecycleNotice != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        lifecycleNotice = nil
-                    }
-                }
-            )
-        ) {
-            Button("OK", role: .cancel) {
-                lifecycleNotice = nil
-            }
-        } message: {
-            Text(
-                lifecycleNotice?.message ?? ""
-            )
-        }
     }
 
     private func displayTitle(
@@ -291,20 +255,6 @@ private struct ConversationList: View {
             return false
         }
         return activeConversationID == conversationID
-    }
-}
-
-private enum ConversationLifecycleNotice {
-    case archive
-    case delete
-
-    var message: String {
-        switch self {
-        case .archive:
-            return "Archive will become available after the authoritative conversation lifecycle contract is connected."
-        case .delete:
-            return "True Delete will become available after the authoritative conversation lifecycle contract is connected."
-        }
     }
 }
 
