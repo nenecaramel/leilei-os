@@ -25,15 +25,25 @@ class FakeConversationService {
     createdAt: "2026-09-24T00:00:00.000Z",
     updatedAt: "2026-09-24T01:30:00.000Z",
   };
-  deleteCalls: unknown[] = [];
-  deleteOutcome:
-    | { outcome: "deleted"; deletedAt: string }
-    | { outcome: "already_deleted"; deletedAt: string }
+  archiveCalls: unknown[] = [];
+  archiveOutcome:
+    | { outcome: "archived"; archivedAt: string }
+    | { outcome: "already_archived"; archivedAt: string }
     | { outcome: "busy" }
     | { outcome: "not_found" } = {
-      outcome: "deleted",
-      deletedAt: "2026-09-24T02:00:00.000Z",
+      outcome: "archived",
+      archivedAt: "2026-09-24T02:00:00.000Z",
     };
+  restoreCalls: unknown[] = [];
+  restoreOutcome:
+    | { outcome: "restored" }
+    | { outcome: "already_active" }
+    | { outcome: "not_found" } = { outcome: "restored" };
+  deleteCalls: unknown[] = [];
+  deleteOutcome:
+    | { outcome: "deleted" }
+    | { outcome: "busy" }
+    | { outcome: "not_found" } = { outcome: "deleted" };
 
   async listConversations(input: unknown) {
     return (await this.listConversationPage(input)).conversations;
@@ -77,6 +87,22 @@ class FakeConversationService {
   }) {
     this.renameCalls.push(input);
     return this.renameOutcome;
+  }
+
+  async archiveConversation(input: {
+    userId: string;
+    conversationId: string;
+  }) {
+    this.archiveCalls.push(input);
+    return this.archiveOutcome;
+  }
+
+  async restoreConversation(input: {
+    userId: string;
+    conversationId: string;
+  }) {
+    this.restoreCalls.push(input);
+    return this.restoreOutcome;
   }
 
   async deleteConversation(input: {
@@ -313,51 +339,102 @@ test("native live bootstrap rejects blank titles and unauthenticated access", as
 });
 
 
-test("native live bootstrap deletes an owner conversation and is idempotent", async () => {
+test("native live bootstrap lists archived conversations through explicit scope", async () => {
   const service = new FakeConversationService();
   await withServer(service, async (baseUrl) => {
-    const first = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
-      { method: "DELETE" },
+    const response = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations?scope=archived&limit=2`,
     );
-    assert.equal(first.status, 204);
-    assert.deepEqual(service.deleteCalls, [{
+    assert.equal(response.status, 200);
+    assert.deepEqual(service.listCalls, [{
       userId,
-      conversationId,
+      limit: 2,
+      scope: "archived",
     }]);
 
-    service.deleteOutcome = {
-      outcome: "already_deleted",
-      deletedAt: "2026-09-24T02:00:00.000Z",
-    };
-    const second = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
-      { method: "DELETE" },
+    const invalid = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations?scope=deleted`,
     );
-    assert.equal(second.status, 204);
-    assert.equal(service.deleteCalls.length, 2);
+    assert.equal(invalid.status, 400);
   });
 });
 
-test("native live bootstrap delete rejects busy, missing, and invalid ids", async () => {
+test("native live bootstrap archives and restores an owner conversation", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const archived = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/archive`,
+      { method: "POST" },
+    );
+    assert.equal(archived.status, 204);
+    assert.deepEqual(service.archiveCalls, [{ userId, conversationId }]);
+
+    const restored = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/restore`,
+      { method: "POST" },
+    );
+    assert.equal(restored.status, 204);
+    assert.deepEqual(service.restoreCalls, [{ userId, conversationId }]);
+  });
+});
+
+test("native live archive rejects busy and restore rejects missing", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    service.archiveOutcome = { outcome: "busy" };
+    const busy = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/archive`,
+      { method: "POST" },
+    );
+    assert.equal(busy.status, 409);
+
+    service.restoreOutcome = { outcome: "not_found" };
+    const missing = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}/restore`,
+      { method: "POST" },
+    );
+    assert.equal(missing.status, 404);
+  });
+});
+
+test("native live true delete requires explicit confirmation", async () => {
+  const service = new FakeConversationService();
+  await withServer(service, async (baseUrl) => {
+    const unconfirmed = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      { method: "DELETE" },
+    );
+    assert.equal(unconfirmed.status, 400);
+    assert.equal(service.deleteCalls.length, 0);
+
+    const confirmed = await fetch(
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}?confirm=true`,
+      { method: "DELETE" },
+    );
+    assert.equal(confirmed.status, 204);
+    assert.deepEqual(service.deleteCalls, [{ userId, conversationId }]);
+  });
+});
+
+test("native live true delete rejects busy, missing, and invalid ids", async () => {
   const service = new FakeConversationService();
   await withServer(service, async (baseUrl) => {
     service.deleteOutcome = { outcome: "busy" };
     const busy = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}?confirm=true`,
       { method: "DELETE" },
     );
     assert.equal(busy.status, 409);
 
     service.deleteOutcome = { outcome: "not_found" };
     const missing = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/${conversationId}`,
+      `${baseUrl}/api/v1/native-live/conversations/${conversationId}?confirm=true`,
       { method: "DELETE" },
     );
     assert.equal(missing.status, 404);
 
     const invalid = await fetch(
-      `${baseUrl}/api/v1/native-live/conversations/not-a-uuid`,
+      `${baseUrl}/api/v1/native-live/conversations/not-a-uuid?confirm=true`,
       { method: "DELETE" },
     );
     assert.equal(invalid.status, 400);
