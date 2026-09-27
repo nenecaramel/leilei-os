@@ -137,7 +137,9 @@ test("semantic action executor maps meaning to Runtime-owned numbers and returns
     userId,
     subjectId: "G",
     curiosityStateId,
+    conversationId,
     resolutionSourceId: assistantMessageId,
+    idempotencyKey: nativeLiveMindSemanticActionIdempotencyKey(prepareId, 1),
     now: "2026-09-27T00:30:00.000Z",
   }]);
 });
