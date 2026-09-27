@@ -653,6 +653,30 @@ final class LeileiAPIClient {
         return envelope.data.controls
     }
 
+
+    func resolveNativeLiveRuntimeInteraction(
+        prepareID: String,
+        interactionID: String,
+        response: [String: NativeLiveJSONValue]
+    ) async throws -> NativeLiveRuntimeInteractionSnapshot {
+        let body = try JSONEncoder().encode(
+            NativeLiveRuntimeInteractionResponseBody(
+                response: response
+            )
+        )
+
+        let envelope: NativeLiveRuntimeInteractionResolveEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/turns/\(prepareID)"
+                    + "/interactions/\(interactionID)/respond",
+                method: "POST",
+                body: body,
+                authenticated: true
+            )
+        return envelope.data.interaction
+    }
+
     func nativeLiveCurrentPath(
         conversationID: UUID,
         limit: Int = 100,
@@ -1005,6 +1029,24 @@ private struct NativeLiveTurnWaitEnvelope: Decodable, Sendable {
         let outcome: String
         let turn: NativeLiveTurnSnapshot?
     }
+}
+
+private struct NativeLiveRuntimeInteractionResponseBody:
+    Encodable,
+    Sendable {
+    let response: [String: NativeLiveJSONValue]
+}
+
+private struct NativeLiveRuntimeInteractionResolveEnvelope:
+    Decodable,
+    Sendable {
+    struct ResolveData: Decodable, Sendable {
+        let outcome: String
+        let interaction: NativeLiveRuntimeInteractionSnapshot
+    }
+
+    let success: Bool
+    let data: ResolveData
 }
 
 private struct NativeLiveRuntimeEventsEnvelope:
