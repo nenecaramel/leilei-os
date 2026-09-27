@@ -218,39 +218,92 @@ test(
     });
     assert.equal(crossTenantRename, null);
 
+    const archivedNewer = await service.archiveConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(archivedNewer.outcome, "archived");
+
+    const repeatedArchive = await service.archiveConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(repeatedArchive.outcome, "already_archived");
+
+    const renameAfterArchive = await service.renameConversation({
+      userId: userA,
+      conversationId: newer.id,
+      title: "Must stay archived",
+    });
+    assert.equal(renameAfterArchive, null);
+
+    const listedAfterArchive = await service.listConversations({
+      userId: userA,
+      limit: 10,
+    });
+    assert.deepEqual(
+      listedAfterArchive.map((conversation) => conversation.id),
+      [older.id],
+    );
+
+    const archivedPage = await service.listConversations({
+      userId: userA,
+      limit: 10,
+      scope: "archived",
+    });
+    assert.deepEqual(
+      archivedPage.map((conversation) => conversation.id),
+      [newer.id, archived.id],
+    );
+
+    const storedArchived = await service.getConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(storedArchived?.lifecycleStatus, "archived");
+
+    await assert.rejects(
+      service.appendUserMessage({
+        userId: userA,
+        conversationId: newer.id,
+        parentMessageId: null,
+        blocks: [{ kind: "text", text: "must not write archived chat" }],
+      }),
+      /not found/i,
+    );
+
+    const restored = await service.restoreConversation({
+      userId: userA,
+      conversationId: newer.id,
+    });
+    assert.equal(restored.outcome, "restored");
+    assert.equal(
+      (await service.restoreConversation({
+        userId: userA,
+        conversationId: newer.id,
+      })).outcome,
+      "already_active",
+    );
+
     const deleted = await service.deleteConversation({
       userId: userA,
       conversationId: newer.id,
     });
     assert.equal(deleted.outcome, "deleted");
 
-    const repeated = await service.deleteConversation({
+    const repeatedDelete = await service.deleteConversation({
       userId: userA,
       conversationId: newer.id,
     });
-    assert.equal(repeated.outcome, "already_deleted");
+    assert.equal(repeatedDelete.outcome, "not_found");
 
-    const renameAfterDelete = await service.renameConversation({
-      userId: userA,
-      conversationId: newer.id,
-      title: "Must stay deleted",
-    });
-    assert.equal(renameAfterDelete, null);
-
-    const listedAfterDelete = await service.listConversations({
-      userId: userA,
-      limit: 10,
-    });
-    assert.deepEqual(
-      listedAfterDelete.map((conversation) => conversation.id),
-      [older.id],
+    assert.equal(
+      await service.getConversation({
+        userId: userA,
+        conversationId: newer.id,
+      }),
+      null,
     );
-
-    const storedDeleted = await service.getConversation({
-      userId: userA,
-      conversationId: newer.id,
-    });
-    assert.equal(storedDeleted?.lifecycleStatus, "deleted");
 
     assert.equal(
       await currentPathReader.readCurrentPath({
@@ -259,16 +312,6 @@ test(
         limit: 100,
       }),
       null,
-    );
-
-    await assert.rejects(
-      service.appendUserMessage({
-        userId: userA,
-        conversationId: newer.id,
-        parentMessageId: null,
-        blocks: [{ kind: "text", text: "must not revive deleted chat" }],
-      }),
-      /not found/i,
     );
 
     const busyConversation = await service.createConversation({
