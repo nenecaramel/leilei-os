@@ -381,11 +381,16 @@ export class NativeLiveMacDaemonLoop {
           && this.relay.submitMindSemanticGroupingScores
           && this.relay.submitMindSemanticGroupingFallback
         ) {
-          const grouping =
-            await this.relay.reserveMindSemanticGrouping({
+          let grouping: MindSemanticGroupingReservation | null = null;
+          try {
+            grouping = await this.relay.reserveMindSemanticGrouping({
               listenerInstanceId: this.listenerInstanceId,
               dispatchTarget: "claude_code",
             });
+          } catch {
+            // Semantic grouping is optional background work. A rollout skew
+            // or temporary endpoint failure must not suppress other idle work.
+          }
           if (grouping) {
             let groupingScored = false;
             try {
