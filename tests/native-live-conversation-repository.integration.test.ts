@@ -9,6 +9,7 @@ import {
   conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
+  runtimeProactivityWakes,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -341,6 +342,9 @@ test(
             .delete(nativeLiveProviderSessionCleanups)
             .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
           await database.db
+            .delete(runtimeProactivityWakes)
+            .where(eq(runtimeProactivityWakes.userId, userId));
+          await database.db
             .delete(runtimeSubjectStates)
             .where(eq(runtimeSubjectStates.userId, userId));
           await database.db
@@ -393,7 +397,7 @@ test(
       parentMessageId: firstAssistant.message.id,
       blocks: [{ kind: "text", text: "second" }],
     });
-    await service.completeAssistantTurn({
+    const secondAssistant = await service.completeAssistantTurn({
       userId,
       conversationId: deletedConversation.id,
       parentMessageId: secondUser.id,
@@ -449,6 +453,182 @@ test(
           pathHeadMessageId: null,
         },
       },
+    });
+
+    const exclusiveMindStateId = crypto.randomUUID();
+    const scopedMindStateId = crypto.randomUUID();
+    const sharedMindStateId = crypto.randomUUID();
+    const survivingDriveStateId = crypto.randomUUID();
+    await database.db.insert(runtimeSubjectStates).values([
+      {
+        id: exclusiveMindStateId,
+        userId,
+        subjectId: "G",
+        kind: "memory",
+        text: "must disappear with deleted conversation",
+        payload: { source: "runtime" },
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "derived",
+          scope: {
+            userId,
+            subjectId: "G",
+            applicability: "global",
+          },
+          provenance: {
+            sources: [{ kind: "message", id: firstUser.id }],
+          },
+        },
+      },
+      {
+        id: scopedMindStateId,
+        userId,
+        subjectId: "G",
+        kind: "thought",
+        text: "conversation scoped state",
+        payload: { source: "runtime" },
+        scopeApplicability: "conversation",
+        scopeConversationId: deletedConversation.id,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "derived",
+          scope: {
+            userId,
+            subjectId: "G",
+            applicability: "conversation",
+            conversationId: deletedConversation.id,
+          },
+          provenance: {
+            sources: [{ kind: "message", id: survivingUser.id }],
+          },
+        },
+      },
+      {
+        id: sharedMindStateId,
+        userId,
+        subjectId: "G",
+        kind: "memory",
+        text: "shared memory survives with repaired provenance",
+        payload: {
+          lifecycle_v1: {
+            status: "active",
+            salience: 0.66,
+            protected: false,
+            lastDecayedAt: "2026-09-27T06:00:00.000Z",
+            lastRecalledAt: "2026-09-27T07:00:00.000Z",
+            archivedAt: null,
+            forgottenAt: null,
+          },
+          recall_reinforcement_v1: {
+            contributions: [
+              {
+                sourceMessageId: firstUser.id,
+                recalledAt: "2026-09-27T06:30:00.000Z",
+                currentValue: 0.08,
+              },
+              {
+                sourceMessageId: survivingUser.id,
+                recalledAt: "2026-09-27T07:00:00.000Z",
+                currentValue: 0.08,
+              },
+            ],
+          },
+        },
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "derived",
+          scope: {
+            userId,
+            subjectId: "G",
+            applicability: "global",
+          },
+          provenance: {
+            sources: [
+              { kind: "message", id: firstUser.id },
+              { kind: "message", id: survivingUser.id },
+            ],
+            causedBy: firstUser.id,
+          },
+        },
+      },
+      {
+        id: survivingDriveStateId,
+        userId,
+        subjectId: "G",
+        kind: "drive",
+        text: "drive survives while deleted evolution is stripped",
+        payload: {
+          drive_v1: {
+            reinforcementSources: [
+              survivingUser.id,
+              secondAssistant.message.id,
+            ],
+          },
+        },
+        scopeApplicability: "global",
+        scopeConversationId: null,
+        scopePathHeadMessageId: null,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "derived",
+          scope: {
+            userId,
+            subjectId: "G",
+            applicability: "global",
+          },
+          provenance: {
+            sources: [{ kind: "message", id: survivingUser.id }],
+          },
+        },
+      },
+    ]);
+
+    const wakeId = crypto.randomUUID();
+    await database.db.insert(runtimeProactivityWakes).values({
+      id: wakeId,
+      userId,
+      subjectId: "G",
+      gate: { wakeId, userId, subjectId: "G" },
+      contactTarget: null,
+      contextSnapshot: {
+        version: 1,
+        capsule: "deleted conversation context",
+        sourceConversationId: deletedConversation.id,
+        sourceHeadMessageId: secondAssistant.message.id,
+      },
+      status: "created",
+    });
+
+    const proactivityJobId = crypto.randomUUID();
+    await database.db.insert(nativeLiveBackgroundModelJobs).values({
+      id: proactivityJobId,
+      userId,
+      subjectId: "G",
+      workflowKind: "proactivity_wake",
+      workflowRunId: wakeId,
+      workflowPayload: {
+        version: 1,
+        wake_id: wakeId,
+      },
+      taskKind: "proactivity_deliberate",
+      promptContractVersion: "delete-test-v1",
+      prompt: "proactivity snapshot that must disappear",
+      status: "pending",
     });
 
     const backgroundJobId = crypto.randomUUID();
@@ -568,6 +748,18 @@ test(
       .where(eq(nativeLiveBackgroundModelJobs.id, backgroundJobId));
     assert.equal(background.length, 0);
 
+    const deletedWake = await database.db
+      .select({ id: runtimeProactivityWakes.id })
+      .from(runtimeProactivityWakes)
+      .where(eq(runtimeProactivityWakes.id, wakeId));
+    assert.equal(deletedWake.length, 0);
+
+    const deletedProactivityJob = await database.db
+      .select({ id: nativeLiveBackgroundModelJobs.id })
+      .from(nativeLiveBackgroundModelJobs)
+      .where(eq(nativeLiveBackgroundModelJobs.id, proactivityJobId));
+    assert.equal(deletedProactivityJob.length, 0);
+
     const cleanups = await database.db
       .select({
         providerSessionId:
@@ -591,6 +783,63 @@ test(
       id: mindStateId,
       text: "Mind survives conversation deletion",
     }]);
+
+    const purgedMind = await database.db
+      .select({ id: runtimeSubjectStates.id })
+      .from(runtimeSubjectStates)
+      .where(inArray(runtimeSubjectStates.id, [
+        exclusiveMindStateId,
+        scopedMindStateId,
+      ]));
+    assert.equal(purgedMind.length, 0);
+
+    const [sharedMind] = await database.db
+      .select({
+        payload: runtimeSubjectStates.payload,
+        envelope: runtimeSubjectStates.envelope,
+      })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, sharedMindStateId));
+    assert.ok(sharedMind);
+    assert.deepEqual(
+      (
+        sharedMind.envelope.provenance as {
+          sources: Array<{ kind: string; id: string }>;
+          causedBy: string | null;
+        }
+      ),
+      {
+        sources: [{ kind: "message", id: survivingUser.id }],
+        causedBy: null,
+      },
+    );
+    assert.equal(
+      Math.abs(
+        (
+          sharedMind.payload?.lifecycle_v1 as { salience: number }
+        ).salience - 0.58,
+      ) < 1e-12,
+      true,
+    );
+    assert.deepEqual(
+      (
+        sharedMind.payload?.recall_reinforcement_v1 as {
+          contributions: unknown[];
+        }
+      ).contributions,
+      [{
+        sourceMessageId: survivingUser.id,
+        recalledAt: "2026-09-27T07:00:00.000Z",
+        currentValue: 0.08,
+      }],
+    );
+
+    const [survivingDrive] = await database.db
+      .select({ payload: runtimeSubjectStates.payload })
+      .from(runtimeSubjectStates)
+      .where(eq(runtimeSubjectStates.id, survivingDriveStateId));
+    assert.ok(survivingDrive);
+    assert.equal(survivingDrive.payload, null);
 
     assert.equal(
       (await service.deleteConversation({
