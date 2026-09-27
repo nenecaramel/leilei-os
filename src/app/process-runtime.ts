@@ -315,15 +315,12 @@ export function createProcessRuntime(
   const mindSemanticGroupingConfig =
     getMindSemanticGroupingConfig(runtimeEnv);
   const mindSemanticGroupingRepository =
-    mindSemanticGroupingConfig
-      ? new DrizzleMindSemanticGroupingRepository(
-          db,
-          nativeLiveWorkWakePublisher,
-        )
-      : null;
+    new DrizzleMindSemanticGroupingRepository(
+      db,
+      nativeLiveWorkWakePublisher,
+    );
   const mindSemanticGrouping =
     mindSemanticGroupingConfig
-      && mindSemanticGroupingRepository
       ? new MindSemanticGroupingService(
           mindSemanticGroupingRepository,
           mindSemanticGroupingConfig,
@@ -751,12 +748,8 @@ export function createProcessRuntime(
           providerSessionCleanupService:
             nativeLiveProviderSessionCleanupService,
           semanticService: nativeLiveSemanticService,
-          ...(mindSemanticGroupingRepository
-            ? {
-                mindSemanticGrouping:
-                  mindSemanticGroupingRepository,
-              }
-            : {}),
+          mindSemanticGrouping:
+            mindSemanticGroupingRepository,
           backgroundModelService:
             nativeLiveBackgroundModelService,
           backgroundModelCoordinator:
