@@ -170,6 +170,55 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
           FROM native_live_background_model_jobs
           WHERE user_id = ${input.userId}::uuid
             AND status = 'pending'
+            AND (
+              workflow_kind IS NULL
+              OR workflow_kind = 'topic_resurface'
+              OR (
+                workflow_kind = 'distillation'
+                AND EXISTS (
+                  SELECT 1
+                  FROM conversations AS source_conversation
+                  WHERE source_conversation.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND source_conversation.origin = 'native_live'
+                    AND source_conversation.lifecycle_status = 'active'
+                    AND source_conversation.id::text =
+                      native_live_background_model_jobs.workflow_payload
+                        ->> 'conversation_id'
+                )
+              )
+              OR (
+                workflow_kind = 'proactivity_wake'
+                AND EXISTS (
+                  SELECT 1
+                  FROM runtime_proactivity_wakes AS source_wake
+                  WHERE source_wake.id =
+                      native_live_background_model_jobs.workflow_run_id
+                    AND source_wake.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND (
+                      NULLIF(
+                        btrim(
+                          source_wake.context_snapshot
+                            ->> 'sourceConversationId'
+                        ),
+                        ''
+                      ) IS NULL
+                      OR EXISTS (
+                        SELECT 1
+                        FROM conversations AS source_conversation
+                        WHERE source_conversation.user_id =
+                            source_wake.user_id
+                          AND source_conversation.origin = 'native_live'
+                          AND source_conversation.lifecycle_status = 'active'
+                          AND source_conversation.id::text =
+                            source_wake.context_snapshot
+                              ->> 'sourceConversationId'
+                      )
+                    )
+                )
+              )
+            )
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
@@ -497,6 +546,55 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
             eq(nativeLiveBackgroundModelJobs.status, "completed"),
             eq(nativeLiveBackgroundModelJobs.status, "failed"),
           ),
+          sql`(
+              workflow_kind IS NULL
+              OR workflow_kind = 'topic_resurface'
+              OR (
+                workflow_kind = 'distillation'
+                AND EXISTS (
+                  SELECT 1
+                  FROM conversations AS source_conversation
+                  WHERE source_conversation.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND source_conversation.origin = 'native_live'
+                    AND source_conversation.lifecycle_status = 'active'
+                    AND source_conversation.id::text =
+                      native_live_background_model_jobs.workflow_payload
+                        ->> 'conversation_id'
+                )
+              )
+              OR (
+                workflow_kind = 'proactivity_wake'
+                AND EXISTS (
+                  SELECT 1
+                  FROM runtime_proactivity_wakes AS source_wake
+                  WHERE source_wake.id =
+                      native_live_background_model_jobs.workflow_run_id
+                    AND source_wake.user_id =
+                      native_live_background_model_jobs.user_id
+                    AND (
+                      NULLIF(
+                        btrim(
+                          source_wake.context_snapshot
+                            ->> 'sourceConversationId'
+                        ),
+                        ''
+                      ) IS NULL
+                      OR EXISTS (
+                        SELECT 1
+                        FROM conversations AS source_conversation
+                        WHERE source_conversation.user_id =
+                            source_wake.user_id
+                          AND source_conversation.origin = 'native_live'
+                          AND source_conversation.lifecycle_status = 'active'
+                          AND source_conversation.id::text =
+                            source_wake.context_snapshot
+                              ->> 'sourceConversationId'
+                      )
+                    )
+                )
+              )
+            )`,
         ),
       )
       .orderBy(
