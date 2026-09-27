@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { runtimeSubjectStates, users } from "../src/database/schema.js";
+import {
+  conversations,
+  runtimeSubjectStates,
+  users,
+} from "../src/database/schema.js";
+import {
+  DrizzleNativeLiveConversationRepository,
+} from "../src/domains/conversation/native-live-conversation-repository.js";
+import {
+  NativeLiveConversationService,
+} from "../src/domains/conversation/native-live-conversation-service.js";
 import { recallBreath } from "../src/domains/runtime/breath-recall.js";
 import { readSubjectStateLifecycle } from "../src/domains/runtime/memory-lifecycle.js";
 import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
@@ -25,6 +35,9 @@ test(
           await database.db
             .delete(runtimeSubjectStates)
             .where(eq(runtimeSubjectStates.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
           await database.db.delete(users).where(eq(users.id, userId));
         }
       } finally {
@@ -42,6 +55,20 @@ test(
       .returning({ id: users.id });
     assert.ok(user);
     userId = user.id;
+
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Breath recall source",
+    });
+    const canonicalUserTurn = await conversationService.appendUserMessage({
+      userId,
+      conversationId: conversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "canonical recall source" }],
+    });
 
     const stateId = crypto.randomUUID();
     const state: SubjectStateWrite = {
@@ -104,7 +131,7 @@ test(
       stateIds: [stateId],
       recalledAt,
       salienceBoost: 0.08,
-      sourceMessageId: "canonical-user-turn",
+      sourceMessageId: canonicalUserTurn.id,
     });
     await port.recordBreathRecall({
       userId,
@@ -112,7 +139,7 @@ test(
       stateIds: [stateId],
       recalledAt,
       salienceBoost: 0.08,
-      sourceMessageId: "canonical-user-turn",
+      sourceMessageId: canonicalUserTurn.id,
     });
 
     const [stored] = await port.list({
@@ -125,6 +152,97 @@ test(
     assert.ok(lifecycle);
     assert.equal(lifecycle.lastRecalledAt, recalledAt);
     assert.equal(lifecycle.salience, 0.58);
+
+    const legacyStateId = crypto.randomUUID();
+    const legacyState: SubjectStateWrite = {
+      ...state,
+      id: legacyStateId,
+      text: "legacy memory without recall ledger",
+      payload: {
+        lifecycle_v1: {
+          status: "fading",
+          salience: 0.5,
+          protected: false,
+          lastDecayedAt: "2026-09-22T09:00:00.000Z",
+          lastRecalledAt: "2026-09-22T09:00:00.000Z",
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
+    };
+    await port.append({
+      userId,
+      subjectId: "G",
+      states: [legacyState],
+    });
+
+    for (const legacyReplayAt of [
+      "2026-09-22T09:00:00.000Z",
+      "2026-09-22T08:00:00.000Z",
+    ]) {
+      await port.recordBreathRecall({
+        userId,
+        subjectId: "G",
+        stateIds: [legacyStateId],
+        recalledAt: legacyReplayAt,
+        salienceBoost: 0.08,
+        sourceMessageId: canonicalUserTurn.id,
+      });
+    }
+
+    let storedLegacy = (
+      await port.list({
+        userId,
+        subjectId: "G",
+        conversationId: conversation.id,
+      })
+    ).find((candidate) => candidate.id === legacyStateId);
+    assert.ok(storedLegacy);
+    assert.equal(
+      "recall_reinforcement_v1" in (storedLegacy.payload ?? {}),
+      false,
+    );
+    assert.equal(
+      readSubjectStateLifecycle(storedLegacy.payload)?.salience,
+      0.5,
+    );
+
+    const newRecallAt = "2026-09-22T10:00:00.000Z";
+    await port.recordBreathRecall({
+      userId,
+      subjectId: "G",
+      stateIds: [legacyStateId],
+      recalledAt: newRecallAt,
+      salienceBoost: 0.08,
+      sourceMessageId: canonicalUserTurn.id,
+    });
+
+    storedLegacy = (
+      await port.list({
+        userId,
+        subjectId: "G",
+        conversationId: conversation.id,
+      })
+    ).find((candidate) => candidate.id === legacyStateId);
+    assert.ok(storedLegacy);
+    const healedLifecycle = readSubjectStateLifecycle(
+      storedLegacy.payload,
+    );
+    assert.ok(healedLifecycle);
+    assert.equal(healedLifecycle.salience, 0.58);
+    assert.equal(healedLifecycle.lastRecalledAt, newRecallAt);
+    assert.deepEqual(
+      (
+        storedLegacy.payload?.recall_reinforcement_v1 as {
+          contributions: unknown[];
+        }
+      ).contributions,
+      [{
+        sourceMessageId: canonicalUserTurn.id,
+        recalledAt: newRecallAt,
+        currentValue: 0.08,
+      }],
+    );
 
     const hits = recallBreath(
       "柠檬黄",
