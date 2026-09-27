@@ -86,6 +86,7 @@ class Repository implements ProjectWorkspaceRepository {
   }
   async deleteProject() { return { outcome: "deleted" as const }; }
   async listResources() { return [resource]; }
+  async getResource() { return resource; }
   async createResource(input: Parameters<ProjectWorkspaceRepository["createResource"]>[0]) {
     this.last = { name: "createResource", input };
     return {
@@ -248,4 +249,25 @@ test("workspace filter and resource kind are validated before persistence", asyn
     }),
     /kind is invalid/,
   );
+});
+
+
+test("resource list can stay lightweight while detail returns canonical content", async () => {
+  const repository = new Repository();
+  const service = new ProjectWorkspaceService(repository);
+
+  const listed = await service.listResources({
+    userId,
+    projectId,
+    kind: "file",
+  });
+  assert.equal(listed.length, 1);
+
+  const detail = await service.getResource({
+    userId,
+    projectId,
+    resourceId,
+  });
+  assert.equal(detail.id, resourceId);
+  assert.equal(detail.content, "# hi");
 });
