@@ -757,12 +757,16 @@ final class AppModel: ObservableObject {
         nativeLiveRuntimeObservationTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
+            var cycle = 0
+
             while !Task.isCancelled,
                   self.nativeLiveRuntimeSurface?.prepareID == prepareID {
                 await self.refreshNativeLiveRuntimeSurface(
                     prepareID: prepareID,
-                    conversationID: conversationID
+                    conversationID: conversationID,
+                    includeInteractions: cycle.isMultiple(of: 2)
                 )
+                cycle += 1
 
                 try? await Task.sleep(
                     for: .milliseconds(500)
@@ -785,7 +789,8 @@ final class AppModel: ObservableObject {
 
     private func refreshNativeLiveRuntimeSurface(
         prepareID: String,
-        conversationID: UUID
+        conversationID: UUID,
+        includeInteractions: Bool
     ) async {
         guard var surface = nativeLiveRuntimeSurface,
               surface.prepareID == prepareID,
@@ -816,10 +821,66 @@ final class AppModel: ObservableObject {
             // remains authoritative.
         }
 
+        if includeInteractions {
+            do {
+                surface.interactions =
+                    try await api.nativeLiveRuntimeInteractions(
+                        prepareID: prepareID
+                    )
+            } catch {
+                // Fail-soft; the next observation can recover.
+            }
+        }
+
         guard nativeLiveRuntimeSurface?.prepareID == prepareID else {
             return
         }
         nativeLiveRuntimeSurface = surface
+    }
+
+    func resolveNativeLiveRuntimeInteraction(
+        _ interaction: NativeLiveRuntimeInteractionSnapshot,
+        response: [String: NativeLiveJSONValue]
+    ) async throws {
+        guard let surface = nativeLiveRuntimeSurface,
+              surface.prepareID == interaction.prepareID,
+              surface.interactions.contains(where: {
+                  $0.interactionID == interaction.interactionID
+                      && $0.status == "pending"
+              }) else {
+            throw NativeLiveSendError.notReady
+        }
+
+        do {
+            let updated =
+                try await api.resolveNativeLiveRuntimeInteraction(
+                    prepareID: interaction.prepareID,
+                    interactionID: interaction.interactionID,
+                    response: response
+                )
+
+            guard var latest = nativeLiveRuntimeSurface,
+                  latest.prepareID == interaction.prepareID else {
+                return
+            }
+
+            if let index = latest.interactions.firstIndex(where: {
+                $0.interactionID == updated.interactionID
+            }) {
+                latest.interactions[index] = updated
+            } else {
+                latest.interactions.append(updated)
+            }
+            nativeLiveRuntimeSurface = latest
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            throw error
+        }
     }
 
     private func waitForNativeLiveTurn(
