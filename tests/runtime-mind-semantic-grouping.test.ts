@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   MindSemanticGroupingService,
@@ -112,4 +113,16 @@ test("an existing unmerged thread can stage a semantic comparison on a later mai
 
   assert.equal(result.staged, 1);
   assert.equal(port.staged.length, 1);
+});
+
+
+test("process runtime exposes grouping repository to the internal relay only when configured", () => {
+  const source = readFileSync(
+    new URL("../src/app/process-runtime.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /\.\.\.\(mindSemanticGroupingRepository[\s\S]*mindSemanticGrouping:[\s\S]*mindSemanticGroupingRepository/,
+  );
 });
