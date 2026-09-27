@@ -1,0 +1,31 @@
+name: CI Startup Probe
+
+on:
+  pull_request:
+
+jobs:
+  runner-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Runner started
+        run: echo "runner-started"
+
+  postgres-service:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: leileios_probe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d leileios_probe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Postgres service started
+        run: echo "postgres-service-started"
