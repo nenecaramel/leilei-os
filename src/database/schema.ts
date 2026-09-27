@@ -599,6 +599,15 @@ export type ConversationOrigin = "legacy_import" | "native_live";
 export type ConversationLifecycleStatus = "active" | "archived" | "deleted";
 export type ConversationMessageStatus = "pending" | "streaming" | "completed" | "error";
 export type ConversationRuntimeProvider = "claude_code";
+export type ProjectResourceKind =
+  | "file"
+  | "instructions"
+  | "settings"
+  | "skill"
+  | "agent"
+  | "mcp"
+  | "hook"
+  | "plugin";
 export type NativeLiveTurnOperation = "send" | "retry" | "edit";
 export type NativeLiveTurnRuntimeMode = "new" | "fork";
 export type NativeLiveTurnPreparationStatus =
@@ -895,6 +904,207 @@ export const conversations = pgTable(
     check("conversations_fingerprint_format", sql`${table.sourceFingerprint} ~ '^[0-9a-f]{64}$'`),
     check("conversations_provider_metadata_object", sql`jsonb_typeof(${table.providerMetadata}) = 'object'`),
     check("conversations_lifecycle_exclusive", sql`NOT (${table.archivedAt} IS NOT NULL AND ${table.deletedAt} IS NOT NULL)`),
+  ],
+);
+
+export const projectWorkspaces = pgTable(
+  "project_workspaces",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    name: text("name").notNull(),
+    description: text("description"),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("project_workspaces_id_user_unique").on(
+      table.id,
+      table.userId,
+    ),
+    index("project_workspaces_user_updated_idx").on(
+      table.userId,
+      table.updatedAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "project_workspaces_name_not_blank",
+      sql`char_length(btrim(${table.name})) > 0`,
+    ),
+    check(
+      "project_workspaces_name_length",
+      sql`char_length(${table.name}) <= 200`,
+    ),
+    check(
+      "project_workspaces_description_length",
+      sql`${table.description} IS NULL OR char_length(${table.description}) <= 4000`,
+    ),
+    check(
+      "project_workspaces_version_positive",
+      sql`${table.version} >= 1`,
+    ),
+  ],
+);
+
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    workspaceId: uuid("workspace_id").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("projects_id_user_unique").on(table.id, table.userId),
+    foreignKey({
+      columns: [table.workspaceId, table.userId],
+      foreignColumns: [projectWorkspaces.id, projectWorkspaces.userId],
+      name: "projects_workspace_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("projects_user_workspace_updated_idx").on(
+      table.userId,
+      table.workspaceId,
+      table.updatedAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "projects_name_not_blank",
+      sql`char_length(btrim(${table.name})) > 0`,
+    ),
+    check(
+      "projects_name_length",
+      sql`char_length(${table.name}) <= 200`,
+    ),
+    check(
+      "projects_description_length",
+      sql`${table.description} IS NULL OR char_length(${table.description}) <= 4000`,
+    ),
+    check("projects_version_positive", sql`${table.version} >= 1`),
+  ],
+);
+
+export const projectResources = pgTable(
+  "project_resources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<ProjectResourceKind>()
+      .notNull(),
+    resourceKey: text("resource_key").notNull(),
+    title: text("title"),
+    content: text("content"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.projectId, table.userId],
+      foreignColumns: [projects.id, projects.userId],
+      name: "project_resources_project_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("project_resources_project_kind_key_uidx").on(
+      table.projectId,
+      table.kind,
+      table.resourceKey,
+    ),
+    index("project_resources_user_project_kind_idx").on(
+      table.userId,
+      table.projectId,
+      table.kind,
+      table.updatedAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "project_resources_kind_allowed",
+      sql`${table.kind} IN ('file','instructions','settings','skill','agent','mcp','hook','plugin')`,
+    ),
+    check(
+      "project_resources_key_not_blank",
+      sql`char_length(btrim(${table.resourceKey})) > 0`,
+    ),
+    check(
+      "project_resources_key_length",
+      sql`char_length(${table.resourceKey}) <= 1000`,
+    ),
+    check(
+      "project_resources_title_length",
+      sql`${table.title} IS NULL OR char_length(${table.title}) <= 500`,
+    ),
+    check(
+      "project_resources_content_length",
+      sql`${table.content} IS NULL OR char_length(${table.content}) <= 1000000`,
+    ),
+    check(
+      "project_resources_metadata_object",
+      sql`jsonb_typeof(${table.metadata}) = 'object'`,
+    ),
+    check(
+      "project_resources_version_positive",
+      sql`${table.version} >= 1`,
+    ),
+  ],
+);
+
+export const projectConversations = pgTable(
+  "project_conversations",
+  {
+    userId: uuid("user_id").notNull(),
+    projectId: uuid("project_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    addedAt: timestamp("added_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.projectId, table.conversationId],
+      name: "project_conversations_pk",
+    }),
+    foreignKey({
+      columns: [table.projectId, table.userId],
+      foreignColumns: [projects.id, projects.userId],
+      name: "project_conversations_project_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "project_conversations_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("project_conversations_user_project_added_idx").on(
+      table.userId,
+      table.projectId,
+      table.addedAt.desc(),
+      table.conversationId.desc(),
+    ),
   ],
 );
 
