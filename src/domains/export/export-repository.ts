@@ -2,6 +2,10 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   diaryEntries,
+  projectConversations,
+  projectResources,
+  projects,
+  projectWorkspaces,
   resourceLifecycleEvents,
   todoEntries,
   todoPapers,
@@ -13,6 +17,7 @@ import type { ExportRepository } from "./export-service.js";
 import type {
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportProjectsBundle,
   ExportToolActivity,
   ExportTodoPaper,
 } from "./export-types.js";
@@ -68,6 +73,99 @@ export class DrizzleExportRepository implements ExportRepository {
       date: paper.date, author: paper.author, revision: paper.revision,
       created_at: toIso(paper.createdAt), updated_at: toIso(paper.updatedAt), entries: grouped.get(paper.id) ?? [],
     }));
+  }
+
+  async listProjects(userId: string): Promise<ExportProjectsBundle> {
+    const [workspaceRows, projectRows, resourceRows, conversationRows] = await Promise.all([
+      this.db.select({
+        id: projectWorkspaces.id,
+        name: projectWorkspaces.name,
+        description: projectWorkspaces.description,
+        version: projectWorkspaces.version,
+        createdAt: projectWorkspaces.createdAt,
+        updatedAt: projectWorkspaces.updatedAt,
+      }).from(projectWorkspaces)
+        .where(eq(projectWorkspaces.userId, userId))
+        .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id)),
+      this.db.select({
+        id: projects.id,
+        workspaceId: projects.workspaceId,
+        name: projects.name,
+        description: projects.description,
+        version: projects.version,
+        createdAt: projects.createdAt,
+        updatedAt: projects.updatedAt,
+      }).from(projects)
+        .where(eq(projects.userId, userId))
+        .orderBy(asc(projects.createdAt), asc(projects.id)),
+      this.db.select({
+        id: projectResources.id,
+        projectId: projectResources.projectId,
+        kind: projectResources.kind,
+        key: projectResources.resourceKey,
+        title: projectResources.title,
+        content: projectResources.content,
+        metadata: projectResources.metadata,
+        version: projectResources.version,
+        createdAt: projectResources.createdAt,
+        updatedAt: projectResources.updatedAt,
+      }).from(projectResources)
+        .where(eq(projectResources.userId, userId))
+        .orderBy(
+          asc(projectResources.projectId),
+          asc(projectResources.kind),
+          asc(projectResources.resourceKey),
+          asc(projectResources.id),
+        ),
+      this.db.select({
+        projectId: projectConversations.projectId,
+        conversationId: projectConversations.conversationId,
+        addedAt: projectConversations.addedAt,
+      }).from(projectConversations)
+        .where(eq(projectConversations.userId, userId))
+        .orderBy(
+          asc(projectConversations.projectId),
+          asc(projectConversations.addedAt),
+          asc(projectConversations.conversationId),
+        ),
+    ]);
+
+    return {
+      workspaces: workspaceRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        version: row.version,
+        created_at: toIso(row.createdAt),
+        updated_at: toIso(row.updatedAt),
+      })),
+      projects: projectRows.map((row) => ({
+        id: row.id,
+        workspace_id: row.workspaceId,
+        name: row.name,
+        description: row.description,
+        version: row.version,
+        created_at: toIso(row.createdAt),
+        updated_at: toIso(row.updatedAt),
+      })),
+      resources: resourceRows.map((row) => ({
+        id: row.id,
+        project_id: row.projectId,
+        kind: row.kind,
+        key: row.key,
+        title: row.title,
+        content: row.content,
+        metadata: row.metadata,
+        version: row.version,
+        created_at: toIso(row.createdAt),
+        updated_at: toIso(row.updatedAt),
+      })),
+      conversations: conversationRows.map((row) => ({
+        project_id: row.projectId,
+        conversation_id: row.conversationId,
+        added_at: toIso(row.addedAt),
+      })),
+    };
   }
 
   async listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]> {
