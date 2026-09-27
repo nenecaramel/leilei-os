@@ -25,12 +25,7 @@ import type {
   NativeLiveProviderCheckpoint,
   NativeLiveProviderCheckpointInput,
 } from "./native-live-conversation-types.js";
-import type {
-  MemoryLifecyclePolicy,
-} from "../runtime/memory-lifecycle.js";
 import {
-  planConversationDeletionSubjectStateChanges,
-  planSubjectStateEvolutionRepairs,
   workflowReferencesAnyId,
 } from "../bridge/native-live-replacement-purge.js";
 import {
@@ -170,10 +165,7 @@ export interface NativeLiveConversationRepository {
 
 export class DrizzleNativeLiveConversationRepository
 implements NativeLiveConversationRepository {
-  constructor(
-    private readonly db: DbExecutor,
-    private readonly memoryLifecyclePolicy?: MemoryLifecyclePolicy,
-  ) {}
+  constructor(private readonly db: DbExecutor) {}
 
   async withTransaction<T>(
     work: (repository: NativeLiveConversationRepository) => Promise<T>,
@@ -183,7 +175,6 @@ implements NativeLiveConversationRepository {
         work(
           new DrizzleNativeLiveConversationRepository(
             transaction as Transaction,
-            this.memoryLifecyclePolicy,
           ),
         ),
       { isolationLevel: "serializable" },
@@ -699,170 +690,6 @@ implements NativeLiveConversationRepository {
           DO NOTHING
         `);
 
-        const affectedDriveSatisfaction =
-          purgeMessageIds.size === 0
-            ? []
-            : await transaction
-                .select({
-                  driveStateId:
-                    runtimeDriveSatisfactionEvents.driveStateId,
-                })
-                .from(runtimeDriveSatisfactionEvents)
-                .where(and(
-                  eq(runtimeDriveSatisfactionEvents.userId, input.userId),
-                  inArray(
-                    runtimeDriveSatisfactionEvents.evidenceMessageId,
-                    [...purgeMessageIds],
-                  ),
-                ));
-        const actionProjectionCausalIds = new Set(
-          affectedDriveSatisfaction.map((event) => event.driveStateId),
-        );
-
-        const states = await transaction
-          .select({
-            id: runtimeSubjectStates.id,
-            kind: runtimeSubjectStates.kind,
-            payload: runtimeSubjectStates.payload,
-            envelope: runtimeSubjectStates.envelope,
-            scopeConversationId: runtimeSubjectStates.scopeConversationId,
-            scopePathHeadMessageId:
-              runtimeSubjectStates.scopePathHeadMessageId,
-          })
-          .from(runtimeSubjectStates)
-          .where(eq(runtimeSubjectStates.userId, input.userId))
-          .for("update");
-
-        const subjectStateChanges =
-          planConversationDeletionSubjectStateChanges({
-            conversationId: input.conversationId,
-            purgeMessageIds,
-            states,
-          });
-        const purgeStateIds = new Set(
-          subjectStateChanges.purgeStateIds,
-        );
-        const evolutionRepairs = planSubjectStateEvolutionRepairs({
-          states,
-          purgeMessageIds,
-          purgeStateIds,
-          additionalEvolutionCausalIds: actionProjectionCausalIds,
-          memoryLifecyclePolicy: this.memoryLifecyclePolicy,
-          repairedAt: new Date().toISOString(),
-        });
-
-        const causalIds = new Set<string>([
-          input.conversationId,
-          ...purgeMessageIds,
-          ...purgeStateIds,
-        ]);
-
-        const envelopeRepairByState = new Map(
-          subjectStateChanges.envelopeRepairs.map((repair) => [
-            repair.stateId,
-            repair.nextEnvelope,
-          ]),
-        );
-        const payloadRepairByState = new Map(
-          evolutionRepairs.map((repair) => [
-            repair.stateId,
-            repair.nextPayload,
-          ]),
-        );
-        for (const state of states) {
-          if (purgeStateIds.has(state.id)) continue;
-          const nextEnvelope =
-            envelopeRepairByState.get(state.id) ?? state.envelope;
-          const nextPayload =
-            payloadRepairByState.has(state.id)
-              ? payloadRepairByState.get(state.id) ?? null
-              : state.payload;
-          if (
-            structuredValueReferencesAnyId(nextEnvelope, causalIds)
-            || structuredValueReferencesAnyId(nextPayload, causalIds)
-          ) {
-            throw new Error(
-              "NativeLiveConversationDeleteCausalReferenceConflict",
-            );
-          }
-        }
-
-        const transitions = await transaction
-          .select({
-            id: runtimeSubjectStateTransitions.id,
-            beforeEnvelope:
-              runtimeSubjectStateTransitions.beforeEnvelope,
-            afterEnvelope:
-              runtimeSubjectStateTransitions.afterEnvelope,
-          })
-          .from(runtimeSubjectStateTransitions)
-          .where(eq(runtimeSubjectStateTransitions.userId, input.userId));
-        const purgeTransitionIds = transitions
-          .filter((transition) =>
-            structuredValueReferencesAnyId(
-              transition.beforeEnvelope,
-              causalIds,
-            )
-            || structuredValueReferencesAnyId(
-              transition.afterEnvelope,
-              causalIds,
-            )
-          )
-          .map((transition) => transition.id);
-        if (purgeTransitionIds.length > 0) {
-          await transaction
-            .delete(runtimeSubjectStateTransitions)
-            .where(and(
-              eq(runtimeSubjectStateTransitions.userId, input.userId),
-              inArray(
-                runtimeSubjectStateTransitions.id,
-                purgeTransitionIds,
-              ),
-            ));
-        }
-
-        const groupingRequests = await transaction
-          .select({
-            id: runtimeMindSemanticGroupingRequests.id,
-            queryStateId:
-              runtimeMindSemanticGroupingRequests.queryStateId,
-            candidates:
-              runtimeMindSemanticGroupingRequests.candidates,
-            scores: runtimeMindSemanticGroupingRequests.scores,
-          })
-          .from(runtimeMindSemanticGroupingRequests)
-          .where(eq(
-            runtimeMindSemanticGroupingRequests.userId,
-            input.userId,
-          ));
-        const purgeGroupingRequestIds = groupingRequests
-          .filter((request) =>
-            purgeStateIds.has(request.queryStateId)
-            || structuredValueReferencesAnyId(
-              request.candidates,
-              causalIds,
-            )
-            || structuredValueReferencesAnyId(
-              request.scores,
-              causalIds,
-            )
-          )
-          .map((request) => request.id);
-        if (purgeGroupingRequestIds.length > 0) {
-          await transaction
-            .delete(runtimeMindSemanticGroupingRequests)
-            .where(and(
-              eq(
-                runtimeMindSemanticGroupingRequests.userId,
-                input.userId,
-              ),
-              inArray(
-                runtimeMindSemanticGroupingRequests.id,
-                purgeGroupingRequestIds,
-              ),
-            ));
-        }
-
         const wakes = await transaction
           .select({
             id: runtimeProactivityWakes.id,
@@ -875,22 +702,27 @@ implements NativeLiveConversationRepository {
           .where(eq(runtimeProactivityWakes.userId, input.userId))
           .for("update");
         const target = "conversation:" + input.conversationId;
+        const workflowRootIds = new Set<string>([
+          input.conversationId,
+          ...purgeMessageIds,
+        ]);
         const purgeWakeIds = wakes
           .filter((wake) =>
             wake.contactTarget === target
-            || structuredValueReferencesAnyId(wake.gate, causalIds)
+            || structuredValueReferencesAnyId(wake.gate, workflowRootIds)
             || structuredValueReferencesAnyId(
               wake.contextSnapshot,
-              causalIds,
+              workflowRootIds,
             )
             || structuredValueReferencesAnyId(
               wake.decision,
-              causalIds,
+              workflowRootIds,
             )
           )
           .map((wake) => wake.id);
         const workflowCausalIds = new Set<string>([
-          ...causalIds,
+          input.conversationId,
+          ...purgeMessageIds,
           ...purgeWakeIds,
         ]);
 
@@ -965,42 +797,6 @@ implements NativeLiveConversationRepository {
               input.conversationId,
             ),
           ));
-
-        if (purgeStateIds.size > 0) {
-          await transaction
-            .delete(runtimeSubjectStates)
-            .where(and(
-              eq(runtimeSubjectStates.userId, input.userId),
-              inArray(runtimeSubjectStates.id, [...purgeStateIds]),
-            ));
-        }
-
-        for (const repair of subjectStateChanges.envelopeRepairs) {
-          await transaction
-            .update(runtimeSubjectStates)
-            .set({
-              envelope: repair.nextEnvelope,
-              updatedAt: new Date(),
-            })
-            .where(and(
-              eq(runtimeSubjectStates.userId, input.userId),
-              eq(runtimeSubjectStates.id, repair.stateId),
-            ));
-        }
-
-        for (const repair of evolutionRepairs) {
-          if (purgeStateIds.has(repair.stateId)) continue;
-          await transaction
-            .update(runtimeSubjectStates)
-            .set({
-              payload: repair.nextPayload,
-              updatedAt: new Date(),
-            })
-            .where(and(
-              eq(runtimeSubjectStates.userId, input.userId),
-              eq(runtimeSubjectStates.id, repair.stateId),
-            ));
-        }
 
         await transaction
           .delete(conversationFavorites)
