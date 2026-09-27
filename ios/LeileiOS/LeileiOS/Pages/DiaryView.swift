@@ -3,7 +3,11 @@ import SwiftUI
 struct DiaryView: View {
     @EnvironmentObject private var appModel: AppModel
 
+    let target: DiaryNavigationTarget?
+    let onTargetConsumed: () -> Void
+
     @State private var query = ""
+    @State private var navigationTarget: DiaryNavigationTarget?
     @State private var timeFilter: DiaryTimeFilter = .anyTime
     @State private var authorFilter: DiaryAuthorFilter = .any
     @State private var archivePresented = false
@@ -166,8 +170,39 @@ struct DiaryView: View {
                 }
             }
         }
+        .navigationDestination(
+            item: $navigationTarget
+        ) { target in
+            if target.scope == "archived" {
+                DiaryArchivedDetailView(
+                    diaryID: target.diaryID,
+                    onChanged: {
+                        Task {
+                            await loadDiary()
+                        }
+                    }
+                )
+            } else {
+                DiaryDetailView(
+                    diaryID: target.diaryID,
+                    onChanged: {
+                        Task {
+                            await loadDiary()
+                        }
+                    }
+                )
+            }
+        }
         .task {
             await loadDiary()
+        }
+        .task(id: target) {
+            guard let target else {
+                return
+            }
+
+            navigationTarget = target
+            onTargetConsumed()
         }
         .refreshable {
             await loadDiary()
