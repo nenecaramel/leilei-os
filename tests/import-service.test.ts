@@ -7,6 +7,7 @@ import type {
   ExportConversationMessageRecord,
   ExportConversationRecord,
   ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
@@ -44,6 +45,16 @@ const diary: ExportDiaryRecord = {
   source: "web",
   author: "C",
   status: "active",
+  created_at: NOW,
+  updated_at: NOW,
+};
+
+const diaryComment: ExportDiaryCommentRecord = {
+  id: "00000000-0000-4000-8000-000000000072",
+  diary_id: diary.id,
+  author: "G",
+  content: "Comment",
+  revision: 2,
   created_at: NOW,
   updated_at: NOW,
 };
@@ -241,6 +252,9 @@ function cloneState(
 ): ImportCurrentState {
   return {
     diary: structuredClone(state.diary),
+    diary_comments: state.diary_comments
+      ? structuredClone(state.diary_comments)
+      : undefined,
     todo: structuredClone(state.todo),
     projects: state.projects
       ? structuredClone(state.projects)
@@ -254,6 +268,10 @@ function cloneState(
     foreign_diary_ids:
       state.foreign_diary_ids
         ? new Set(state.foreign_diary_ids)
+        : undefined,
+    foreign_diary_comment_ids:
+      state.foreign_diary_comment_ids
+        ? new Set(state.foreign_diary_comment_ids)
         : undefined,
     foreign_workspace_ids:
       state.foreign_workspace_ids
@@ -342,6 +360,15 @@ class FakeImportRepository implements ImportRepository {
     this.state.diary.push(
       structuredClone(record),
     );
+    this.writes += 1;
+  }
+
+  async insertDiaryComment(
+    _userId: string,
+    record: ExportDiaryCommentRecord,
+  ) {
+    const comments = this.state.diary_comments ??= [];
+    comments.push(structuredClone(record));
     this.writes += 1;
   }
 
@@ -486,6 +513,9 @@ class FakeImportRepository implements ImportRepository {
       diary: modules.has("diary")
         ? structuredClone(this.state.diary)
         : [],
+      diary_comments: modules.has("diary_comments")
+        ? structuredClone(this.state.diary_comments ?? [])
+        : undefined,
       todo: modules.has("todo")
         ? structuredClone(this.state.todo)
         : [],
@@ -897,6 +927,58 @@ test("v3 conversation preview rejects a parent cycle before execute", async () =
   );
 
   assert.ok((preview.summary.conversations?.invalid ?? 0) > 0);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
+
+test("v3 Diary scope restores comments after their parent Diary", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    diary_comments: [],
+    todo: [],
+  });
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({
+    diary: [diary],
+    diary_comments: [diaryComment],
+  });
+
+  const preview = await service.preview(raw, USER_ID);
+  assert.equal(preview.summary.diary.create, 1);
+  assert.equal(preview.summary.diary_comments?.create, 1);
+  assert.equal(preview.can_execute, true);
+
+  await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.deepEqual(repository.state.diary, [diary]);
+  assert.deepEqual(
+    repository.state.diary_comments,
+    [diaryComment],
+  );
+  assert.equal(repository.writes, 2);
+});
+
+test("v3 Diary comment without an available parent is invalid", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    diary_comments: [],
+    todo: [],
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({
+      diary_comments: [diaryComment],
+    }),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.diary_comments?.invalid, 1);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
