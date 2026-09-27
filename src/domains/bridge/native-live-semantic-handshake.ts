@@ -426,18 +426,34 @@ implements NativeLiveSemanticPreparationStager {
   async findCompletionPending(): Promise<SemanticRequest | null> {
     const rows = await this.db.execute<{ prepare_id: string; user_id: string }>(
       sql`
-        SELECT semantic.prepare_id, semantic.user_id
-        FROM native_live_semantic_scoring_requests AS semantic
-        INNER JOIN native_live_turn_preparations AS preparation
-          ON preparation.id = semantic.prepare_id
-         AND preparation.user_id = semantic.user_id
-        WHERE semantic.status IN ('completed', 'fallback')
-          AND semantic.resume_available_at <= now()
-          AND preparation.status = 'prepared'
-          AND preparation.dispatch_status = 'staged'
-        ORDER BY semantic.resume_available_at ASC,
-          semantic.completed_at ASC,
-          semantic.prepare_id ASC
+        WITH conversation_heads AS (
+          SELECT DISTINCT ON (
+            semantic.user_id,
+            semantic.conversation_id
+          )
+            semantic.prepare_id,
+            semantic.user_id,
+            semantic.resume_available_at,
+            semantic.completed_at
+          FROM native_live_semantic_scoring_requests AS semantic
+          INNER JOIN native_live_turn_preparations AS preparation
+            ON preparation.id = semantic.prepare_id
+           AND preparation.user_id = semantic.user_id
+          WHERE semantic.status IN ('completed', 'fallback')
+            AND preparation.status = 'prepared'
+            AND preparation.dispatch_status = 'staged'
+          ORDER BY
+            semantic.user_id ASC,
+            semantic.conversation_id ASC,
+            semantic.completed_at ASC,
+            semantic.prepare_id ASC
+        )
+        SELECT prepare_id, user_id
+        FROM conversation_heads
+        WHERE resume_available_at <= now()
+        ORDER BY resume_available_at ASC,
+          completed_at ASC,
+          prepare_id ASC
         LIMIT 1
       `,
     );

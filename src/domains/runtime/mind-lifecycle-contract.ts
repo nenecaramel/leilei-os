@@ -43,14 +43,10 @@ export type MindLifecycleProfile = ManagedMindLifecycleProfile;
  * - E5 may inform semantic grouping/relevance but never lifecycle.
  * - Numeric thresholds/half-lives remain runtime policy and are not frozen here.
  *
- * Topic is derived-only. Live authored <topic> parsing is retired; historical
- * persisted Topic rows and durable queued Topic intents remain readable for
- * compatibility, while new Topic state is produced by deterministic runtime
- * projection.
+ * Topic is derived-only. Live authored <topic> parsing is retired and new
+ * Topic state is produced only by deterministic runtime projection.
  *
- * Dream is retired. Legacy persisted Dream rows remain a storage/replay
- * compatibility concern and are intentionally outside this current lifecycle
- * authority.
+ * Dream is fully retired from the Subject State storage/write contract.
  */
 export const MIND_LIFECYCLE_PROFILES = {
   memory: {
