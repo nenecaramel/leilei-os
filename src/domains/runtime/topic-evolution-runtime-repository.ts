@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import { runtimeSubjectStates } from "../../database/schema.js";
 import type {
@@ -38,6 +38,7 @@ implements TopicEvolutionRuntimePort {
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
           eq(runtimeSubjectStates.kind, "topic"),
+          sql`${runtimeSubjectStates.envelope} ->> 'authority' = 'derived'`,
           eq(runtimeSubjectStates.settlementStatus, "settled"),
           eq(runtimeSubjectStates.pathStatus, "current"),
           eq(runtimeSubjectStates.validityStatus, "valid"),
