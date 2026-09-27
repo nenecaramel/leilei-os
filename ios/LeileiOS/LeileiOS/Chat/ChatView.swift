@@ -43,6 +43,14 @@ struct ChatView: View {
                             || pendingOperation != nil,
                     pendingOperation: pendingOperation,
                     runtimeSurface: visibleRuntimeSurface,
+                    onResolveRuntimeInteraction: {
+                        interaction,
+                        response in
+                        try await appModel.resolveNativeLiveRuntimeInteraction(
+                            interaction,
+                            response: response
+                        )
+                    },
                     onRefresh: {
                         await appModel.refreshNativeLiveCurrentPath(force: true)
                     },
