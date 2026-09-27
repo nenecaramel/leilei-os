@@ -39,6 +39,8 @@ struct PageContainer: View {
                     DiaryView()
                 } else if selectedPage == .daySpace {
                     DaySpaceView()
+                } else if selectedPage == .universe {
+                    UniverseView()
                 } else if selectedPage == .conversations {
                     ConversationsView(
                         onOpenConversation: onOpenConversation
@@ -64,6 +66,7 @@ struct PageContainer: View {
                 if selectedPage != .globalSearch
                     && selectedPage != .diary
                     && selectedPage != .daySpace
+                    && selectedPage != .universe
                     && selectedPage != .conversations
                     && selectedPage != .projects {
                     ToolbarItem(placement: .topBarTrailing) {
