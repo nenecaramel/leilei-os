@@ -1065,3 +1065,58 @@ test("provider session deletion failure is receipted for bounded retry", async (
     },
   }]);
 });
+
+
+test("idle daemon scores durable Mind semantic grouping before offering background maintenance", async () => {
+  class GroupingRelay extends FakeRelay {
+    groupingReservation = {
+      reservationId: "99999999-9999-4999-8999-999999999999",
+      query: "complete the backend cleanup",
+      candidates: [{
+        stateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        kind: "drive" as const,
+        text: "finish the runtime cleanup",
+      }],
+    };
+
+    async reserveMindSemanticGrouping(input: unknown) {
+      this.calls.push({ name: "reserveMindSemanticGrouping", input });
+      return this.groupingReservation;
+    }
+
+    async submitMindSemanticGroupingScores(input: unknown) {
+      this.calls.push({ name: "submitMindSemanticGroupingScores", input });
+    }
+
+    async submitMindSemanticGroupingFallback(input: unknown) {
+      this.calls.push({ name: "submitMindSemanticGroupingFallback", input });
+    }
+  }
+
+  const relay = new GroupingRelay();
+  relay.reservation = null;
+  const scorer = new FakeSemanticScorer();
+  let offers = 0;
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    relay,
+    new FakeExecutor(),
+    scorer,
+    {
+      async offer() {
+        offers += 1;
+      },
+    },
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "mind_semantic_grouping_completed",
+    reservationId: "99999999-9999-4999-8999-999999999999",
+  });
+  assert.equal(scorer.calls.length, 1);
+  assert.equal(offers, 1);
+  assert.equal(
+    relay.calls.some((entry) => entry.name === "submitMindSemanticGroupingScores"),
+    true,
+  );
+});
