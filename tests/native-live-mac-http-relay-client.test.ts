@@ -688,3 +688,77 @@ test("Mac HTTP relay client reserves and receipts provider session cleanup", asy
     },
   ]);
 });
+
+
+test("Mac HTTP relay client transports independent Mind semantic grouping reservations", async () => {
+  const groupingId = "99999999-9999-4999-8999-999999999999";
+  const stateId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const responses = [
+    {
+      success: true,
+      data: {
+        reservationId: groupingId,
+        query: "complete the backend cleanup",
+        candidates: [{
+          stateId,
+          kind: "drive",
+          text: "finish the runtime cleanup",
+        }],
+      },
+    },
+    { success: true, data: { accepted: true } },
+    { success: true, data: { accepted: true } },
+  ];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  assert.deepEqual(
+    await client.reserveMindSemanticGrouping({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    }),
+    {
+      reservationId: groupingId,
+      query: "complete the backend cleanup",
+      candidates: [{
+        stateId,
+        kind: "drive",
+        text: "finish the runtime cleanup",
+      }],
+    },
+  );
+  await client.submitMindSemanticGroupingScores({
+    listenerInstanceId: listenerId,
+    reservationId: groupingId,
+    scores: { [stateId]: 0.93 },
+  });
+  await client.submitMindSemanticGroupingFallback({
+    listenerInstanceId: listenerId,
+    reservationId: groupingId,
+    code: "E5_SCORING_FAILED",
+  });
+
+  assert.deepEqual(calls.map((call) => call.url), [
+    "https://relay.example/internal/native-live-relay/mind-semantic-grouping/reserve",
+    `https://relay.example/internal/native-live-relay/mind-semantic-grouping/reservations/${groupingId}/scores`,
+    `https://relay.example/internal/native-live-relay/mind-semantic-grouping/reservations/${groupingId}/fallback`,
+  ]);
+  assert.deepEqual(calls[0]?.body, {
+    listener_instance_id: listenerId,
+    dispatch_target: "claude_code",
+  });
+});
