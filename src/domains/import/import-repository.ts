@@ -4,6 +4,7 @@ import {
   conversationAttachments,
   conversationContentBlocks,
   conversationMessages,
+  conversationProviderSessionCheckpoints,
   conversations,
   dataImportRuns,
   diaryComments,
@@ -30,6 +31,7 @@ import type {
   ExportConversationAttachmentRecord,
   ExportConversationContentBlockRecord,
   ExportConversationMessageRecord,
+  ExportConversationProviderCheckpointRecord,
   ExportConversationRecord,
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
@@ -118,6 +120,11 @@ export interface ImportRepository {
     record: ExportConversationAttachmentRecord,
   ): Promise<void>;
 
+  insertConversationProviderCheckpoint(
+    userId: string,
+    record: ExportConversationProviderCheckpointRecord,
+  ): Promise<void>;
+
   insertMind(
     userId: string,
     record: ExportMindStateRecord,
@@ -184,6 +191,7 @@ const emptyConversations = (): ExportConversationsBundle => ({
   messages: [],
   content_blocks: [],
   attachments: [],
+  provider_checkpoints: [],
 });
 
 export class DrizzleImportRepository
@@ -484,6 +492,54 @@ implements ImportRepository {
       this.db.select({ id: conversationAttachments.id }).from(conversationAttachments),
     ]);
 
+    const ownedConversationIds = new Set(
+      nativeConversationRows.map((row) => row.id),
+    );
+    const [nativeCheckpointRows, allCheckpointIds] =
+      await Promise.all([
+        ownedConversationIds.size === 0
+          ? Promise.resolve([])
+          : this.db.select({
+              id: conversationProviderSessionCheckpoints.id,
+              conversationId:
+                conversationProviderSessionCheckpoints.conversationId,
+              canonicalMessageId:
+                conversationProviderSessionCheckpoints.canonicalMessageId,
+              provider:
+                conversationProviderSessionCheckpoints.provider,
+              providerSessionId:
+                conversationProviderSessionCheckpoints.providerSessionId,
+              runtimeMetadata:
+                conversationProviderSessionCheckpoints.runtimeMetadata,
+              providerCheckpointId:
+                conversationProviderSessionCheckpoints.providerCheckpointId,
+              createdAt:
+                conversationProviderSessionCheckpoints.createdAt,
+            }).from(conversationProviderSessionCheckpoints)
+              .where(and(
+                eq(
+                  conversationProviderSessionCheckpoints.userId,
+                  userId,
+                ),
+                inArray(
+                  conversationProviderSessionCheckpoints.conversationId,
+                  [...ownedConversationIds],
+                ),
+              ))
+              .orderBy(
+                asc(
+                  conversationProviderSessionCheckpoints.conversationId,
+                ),
+                asc(
+                  conversationProviderSessionCheckpoints.canonicalMessageId,
+                ),
+                asc(conversationProviderSessionCheckpoints.provider),
+              ),
+        this.db
+          .select({ id: conversationProviderSessionCheckpoints.id })
+          .from(conversationProviderSessionCheckpoints),
+      ]);
+
     const [
       driveSatisfactionRows,
       curiosityResolutionRows,
@@ -586,9 +642,6 @@ implements ImportRepository {
       grouped.set(entry.paperId, list);
     }
 
-    const ownedConversationIds = new Set(
-      nativeConversationRows.map((row) => row.id),
-    );
     const ownedMessageIds = new Set(
       nativeMessageRows.map((row) => row.id),
     );
@@ -752,6 +805,16 @@ implements ImportRepository {
           size_bytes: row.sizeBytes,
           payload: row.payload,
         })),
+        provider_checkpoints: nativeCheckpointRows.map((row) => ({
+          id: row.id,
+          conversation_id: row.conversationId,
+          canonical_message_id: row.canonicalMessageId,
+          provider: row.provider,
+          provider_session_id: row.providerSessionId,
+          runtime_metadata: row.runtimeMetadata,
+          provider_checkpoint_id: row.providerCheckpointId,
+          created_at: toIso(row.createdAt),
+        })),
       },
       universe,
       projects: {
@@ -863,6 +926,16 @@ implements ImportRepository {
       foreign_conversation_attachment_ids: new Set(
         allAttachmentIds
           .filter((row) => !ownedAttachmentIds.has(row.id))
+          .map((row) => row.id),
+      ),
+      foreign_conversation_checkpoint_ids: new Set(
+        allCheckpointIds
+          .filter(
+            (row) =>
+              !nativeCheckpointRows.some(
+                (owned) => owned.id === row.id,
+              ),
+          )
           .map((row) => row.id),
       ),
       native_live_conversation_ids: ownedConversationIds,
@@ -1127,6 +1200,25 @@ implements ImportRepository {
       sizeBytes: record.size_bytes,
       payload: record.payload,
     });
+  }
+
+  async insertConversationProviderCheckpoint(
+    userId: string,
+    record: ExportConversationProviderCheckpointRecord,
+  ): Promise<void> {
+    await this.db
+      .insert(conversationProviderSessionCheckpoints)
+      .values({
+        id: record.id,
+        userId,
+        conversationId: record.conversation_id,
+        canonicalMessageId: record.canonical_message_id,
+        provider: record.provider,
+        providerSessionId: record.provider_session_id,
+        runtimeMetadata: record.runtime_metadata,
+        providerCheckpointId: record.provider_checkpoint_id,
+        createdAt: new Date(record.created_at),
+      });
   }
 
   async insertMind(
