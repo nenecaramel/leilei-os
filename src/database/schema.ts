@@ -1751,126 +1751,6 @@ export const nativeLiveSemanticScoringRequests = pgTable(
   ],
 );
 
-export const runtimeMindSemanticGroupingRequests = pgTable(
-  "runtime_mind_semantic_grouping_requests",
-  {
-    id: uuid("id").primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    subjectId: text("subject_id").notNull(),
-    kind: varchar("kind", { length: 32 })
-      .$type<RuntimeSubjectStateKind>()
-      .notNull(),
-    queryStateId: uuid("query_state_id").notNull(),
-    query: text("query").notNull(),
-    candidates: jsonb("candidates")
-      .$type<Record<string, unknown>[]>()
-      .notNull(),
-    status: varchar("status", { length: 32 })
-      .$type<NativeLiveSemanticScoringStatus>()
-      .default("pending")
-      .notNull(),
-    reservedBy: uuid("reserved_by"),
-    reservedAt: timestamp("reserved_at", { withTimezone: true }),
-    reservationExpiresAt: timestamp("reservation_expires_at", {
-      withTimezone: true,
-    }),
-    scores: jsonb("scores").$type<Record<string, number> | null>(),
-    fallbackCode: varchar("fallback_code", { length: 64 }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.queryStateId, table.userId],
-      foreignColumns: [runtimeSubjectStates.id, runtimeSubjectStates.userId],
-      name: "runtime_mind_semantic_grouping_query_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("runtime_mind_semantic_grouping_query_uidx").on(
-      table.userId,
-      table.subjectId,
-      table.kind,
-      table.queryStateId,
-    ),
-    index("runtime_mind_semantic_grouping_queue_idx").on(
-      table.status,
-      table.createdAt,
-      table.id,
-    ),
-    index("runtime_mind_semantic_grouping_user_kind_idx").on(
-      table.userId,
-      table.subjectId,
-      table.kind,
-      table.completedAt,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_subject_not_blank",
-      sql`char_length(btrim(${table.subjectId})) > 0`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_kind_allowed",
-      sql`${table.kind} IN ('drive', 'thought', 'curiosity', 'topic')`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_query_not_blank",
-      sql`char_length(btrim(${table.query})) > 0`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_candidates_array",
-      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) BETWEEN 1 AND 64`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_scores_object",
-      sql`${table.scores} IS NULL OR jsonb_typeof(${table.scores}) = 'object'`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_status_allowed",
-      sql`${table.status} IN ('pending', 'reserved', 'completed', 'fallback')`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_fallback_code_allowed",
-      sql`${table.fallbackCode} IS NULL OR ${table.fallbackCode} IN ('E5_PROVIDER_UNAVAILABLE', 'E5_SCORING_FAILED')`,
-    ),
-    check(
-      "runtime_mind_semantic_grouping_state_consistency",
-      sql`(${table.status} = 'pending'
-          AND ${table.reservedBy} IS NULL
-          AND ${table.reservedAt} IS NULL
-          AND ${table.reservationExpiresAt} IS NULL
-          AND ${table.scores} IS NULL
-          AND ${table.fallbackCode} IS NULL
-          AND ${table.completedAt} IS NULL)
-        OR (${table.status} = 'reserved'
-          AND ${table.reservedBy} IS NOT NULL
-          AND ${table.reservedAt} IS NOT NULL
-          AND ${table.reservationExpiresAt} IS NOT NULL
-          AND ${table.scores} IS NULL
-          AND ${table.fallbackCode} IS NULL
-          AND ${table.completedAt} IS NULL)
-        OR (${table.status} = 'completed'
-          AND ${table.reservedBy} IS NULL
-          AND ${table.reservedAt} IS NULL
-          AND ${table.reservationExpiresAt} IS NULL
-          AND ${table.scores} IS NOT NULL
-          AND ${table.fallbackCode} IS NULL
-          AND ${table.completedAt} IS NOT NULL)
-        OR (${table.status} = 'fallback'
-          AND ${table.reservedBy} IS NULL
-          AND ${table.reservedAt} IS NULL
-          AND ${table.reservationExpiresAt} IS NULL
-          AND ${table.scores} IS NULL
-          AND ${table.fallbackCode} IS NOT NULL
-          AND ${table.completedAt} IS NOT NULL)`,
-    ),
-  ],
-);
-
 export const nativeLiveBackgroundModelJobs = pgTable(
   "native_live_background_model_jobs",
   {
@@ -2524,6 +2404,127 @@ export const runtimeSubjectStates = pgTable(
     check("runtime_subject_states_envelope_object", sql`jsonb_typeof(${table.envelope}) = 'object'`),
   ],
 );
+
+export const runtimeMindSemanticGroupingRequests = pgTable(
+  "runtime_mind_semantic_grouping_requests",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    subjectId: text("subject_id").notNull(),
+    kind: varchar("kind", { length: 32 })
+      .$type<RuntimeSubjectStateKind>()
+      .notNull(),
+    queryStateId: uuid("query_state_id").notNull(),
+    query: text("query").notNull(),
+    candidates: jsonb("candidates")
+      .$type<Record<string, unknown>[]>()
+      .notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<NativeLiveSemanticScoringStatus>()
+      .default("pending")
+      .notNull(),
+    reservedBy: uuid("reserved_by"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }),
+    reservationExpiresAt: timestamp("reservation_expires_at", {
+      withTimezone: true,
+    }),
+    scores: jsonb("scores").$type<Record<string, number> | null>(),
+    fallbackCode: varchar("fallback_code", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.queryStateId, table.userId],
+      foreignColumns: [runtimeSubjectStates.id, runtimeSubjectStates.userId],
+      name: "runtime_mind_semantic_grouping_query_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("runtime_mind_semantic_grouping_query_uidx").on(
+      table.userId,
+      table.subjectId,
+      table.kind,
+      table.queryStateId,
+    ),
+    index("runtime_mind_semantic_grouping_queue_idx").on(
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("runtime_mind_semantic_grouping_user_kind_idx").on(
+      table.userId,
+      table.subjectId,
+      table.kind,
+      table.completedAt,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_kind_allowed",
+      sql`${table.kind} IN ('drive', 'thought', 'curiosity', 'topic')`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_query_not_blank",
+      sql`char_length(btrim(${table.query})) > 0`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_candidates_array",
+      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) BETWEEN 1 AND 64`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_scores_object",
+      sql`${table.scores} IS NULL OR jsonb_typeof(${table.scores}) = 'object'`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_status_allowed",
+      sql`${table.status} IN ('pending', 'reserved', 'completed', 'fallback')`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_fallback_code_allowed",
+      sql`${table.fallbackCode} IS NULL OR ${table.fallbackCode} IN ('E5_PROVIDER_UNAVAILABLE', 'E5_SCORING_FAILED')`,
+    ),
+    check(
+      "runtime_mind_semantic_grouping_state_consistency",
+      sql`(${table.status} = 'pending'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.scores} IS NULL
+          AND ${table.fallbackCode} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'reserved'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NOT NULL
+          AND ${table.scores} IS NULL
+          AND ${table.fallbackCode} IS NULL
+          AND ${table.completedAt} IS NULL)
+        OR (${table.status} = 'completed'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.scores} IS NOT NULL
+          AND ${table.fallbackCode} IS NULL
+          AND ${table.completedAt} IS NOT NULL)
+        OR (${table.status} = 'fallback'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.scores} IS NULL
+          AND ${table.fallbackCode} IS NOT NULL
+          AND ${table.completedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
 
 export const runtimeDriveSatisfactionEvents = pgTable(
   "runtime_drive_satisfaction_events",
