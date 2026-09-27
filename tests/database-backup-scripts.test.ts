@@ -42,6 +42,8 @@ function run(script: string, env: NodeJS.ProcessEnv) {
 }
 
 function createFakePostgresTools(root: string) {
+  const migrationWhen = currentMigrationWhen();
+  const migrationHash = "a".repeat(64);
   const bin = join(root, "bin");
   mkdirSync(bin);
   writeFileSync(
@@ -74,7 +76,7 @@ fi
 if [[ "$query" == *"server_version_num"* ]]; then
   printf '180001\\n'
 elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
-  printf '1790506500000|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'
+  printf '${migrationWhen}|${migrationHash}\\n'
 elif [[ "$query" == *"pg_catalog.pg_tables"* ]]; then
   printf '%s\\n' \\
     conversations \\
@@ -209,7 +211,7 @@ test("encrypted backup and local temporary restore verification work with fake P
   assert.match(backupFile, /_\d{8}T\d{6}Z_/);
   assert.ok(backupFile.endsWith(`_${currentMigrationHead()}.backup.enc`));
   assert.equal(readFileSync(`${backupFile}.sha256`, "utf8").split(/\s+/)[0].length, 64);
-  assert.equal(currentMigrationWhen(), "1790506500000");
+  assert.match(currentMigrationWhen(), /^[0-9]+$/);
 
   const backupSource = readFileSync(backupScript, "utf8");
   assert.match(backupSource, /leilei-os-postgres-backup-v2/);
