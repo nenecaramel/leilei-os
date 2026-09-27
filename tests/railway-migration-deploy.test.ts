@@ -101,6 +101,18 @@ test("migration readiness does not wrap or retry the existing transactions", () 
   assert.doesNotMatch(source.slice(firstTransaction), /waitForMigrationDatabaseReady/);
 });
 
+test("migration success exposes a safe exact checked-in-head verification marker", () => {
+  const source = readRepoFile("src/database/migrate.ts");
+  assert.match(
+    source,
+    /MIGRATION_LEDGER_HEAD_MATCH=YES created_at=/,
+  );
+  assert.doesNotMatch(
+    source,
+    /MIGRATION_LEDGER_HEAD_MATCH=YES[^\n]*hash=/,
+  );
+});
+
 test("migration failure logs expose only a controlled stage and safe error fingerprint", () => {
   const source = readRepoFile("src/database/migrate.ts");
 
