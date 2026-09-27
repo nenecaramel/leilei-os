@@ -343,6 +343,38 @@ struct UniverseNodeSheet: View {
 
         ToolbarItemGroup(placement: .topBarTrailing) {
             if isEditing {
+                if let node, !isCreate {
+                    Menu {
+                        if revisionsAvailable {
+                            Button {
+                                Task {
+                                    await restore(node)
+                                }
+                            } label: {
+                                Label(
+                                    "恢复上一版本",
+                                    systemImage: "clock.arrow.circlepath"
+                                )
+                            }
+                        }
+
+                        Button(
+                            role: .destructive
+                        ) {
+                            deletePresented = true
+                        } label: {
+                            Label(
+                                "让它离开宇宙",
+                                systemImage: "trash"
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("更多星球操作")
+                    .disabled(isSaving)
+                }
+
                 Button {
                     Task {
                         await save()
@@ -424,7 +456,16 @@ struct UniverseNodeSheet: View {
                 ) {
                     TextField(
                         "一个概念、问题或经历",
-                        text: $draft.title
+                        text: Binding(
+                            get: {
+                                draft.title
+                            },
+                            set: { value in
+                                draft.title = String(
+                                    value.prefix(60)
+                                )
+                            }
+                        )
                     )
                     .textInputAutocapitalization(.sentences)
                 }
@@ -1138,7 +1179,7 @@ struct UniverseNodeSheet: View {
                                         .init(
                                             id: galaxy.id,
                                             weightText:
-                                                "0.5"
+                                                ""
                                         )
                                     )
                             }
