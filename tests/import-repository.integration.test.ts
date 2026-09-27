@@ -21,7 +21,7 @@ const runIntegration =
   );
 
 test(
-  "real import repository round-trips Diary and Todo only",
+  "real v3 product backup round-trips linked durable state",
   { skip: !runIntegration },
   async () => {
     const client = postgres(
@@ -31,7 +31,16 @@ test(
     const db = drizzle(client, { schema });
     const userId = randomUUID();
     const diaryId = randomUUID();
+    const commentId = randomUUID();
     const paperId = randomUUID();
+    const conversationId = randomUUID();
+    const userMessageId = randomUUID();
+    const assistantMessageId = randomUUID();
+    const contentBlockId = randomUUID();
+    const mindId = randomUUID();
+    const workspaceId = randomUUID();
+    const projectId = randomUUID();
+    const resourceId = randomUUID();
     const now =
       new Date("2026-08-14T00:00:00.000Z");
 
@@ -39,8 +48,8 @@ test(
       await db.insert(schema.users).values({
         id: userId,
         email:
-          `import-active-${userId}@example.invalid`,
-        displayName: "Import active modules",
+          `import-v3-${userId}@example.invalid`,
+        displayName: "Import v3 product backup",
         status: "active",
       });
 
@@ -58,6 +67,19 @@ test(
         idempotencyKey:
           `roundtrip-diary-${userId}`,
         requestHash: "a".repeat(64),
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.diaryComments).values({
+        id: commentId,
+        userId,
+        diaryId,
+        author: "G",
+        content: "Diary comment",
+        revision: 2,
+        idempotencyKey:
+          `roundtrip-comment-${userId}`,
+        requestHash: "b".repeat(64),
         createdAt: now,
         updatedAt: now,
       });
@@ -79,6 +101,124 @@ test(
         position: 0,
       });
 
+      await db.insert(schema.conversations).values({
+        id: conversationId,
+        userId,
+        origin: "native_live",
+        title: "Round trip conversation",
+        lifecycleStatus: "active",
+        currentHeadMessageId: assistantMessageId,
+        defaultModel: "claude-sonnet",
+        providerMetadata: { portable: true },
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.conversationMessages).values([
+        {
+          id: userMessageId,
+          userId,
+          conversationId,
+          parentMessageId: null,
+          role: "user",
+          status: "completed",
+          isCurrentPath: true,
+          currentPathIndex: 0,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "hello",
+          createdAt: now,
+          completedAt: now,
+          updatedAt: now,
+        },
+        {
+          id: assistantMessageId,
+          userId,
+          conversationId,
+          parentMessageId: userMessageId,
+          role: "assistant",
+          status: "completed",
+          model: "claude-sonnet",
+          isCurrentPath: true,
+          currentPathIndex: 1,
+          turnIndex: 0,
+          isPrimary: true,
+          displayText: "hi",
+          createdAt: now,
+          completedAt: now,
+          updatedAt: now,
+        },
+      ]);
+      await db.insert(schema.conversationContentBlocks).values({
+        id: contentBlockId,
+        userId,
+        messageId: assistantMessageId,
+        ordinal: 0,
+        kind: "text",
+        rawType: "text",
+        text: "hi",
+        payload: null,
+        createdAt: now,
+      });
+
+      await db.insert(schema.runtimeSubjectStates).values({
+        id: mindId,
+        userId,
+        subjectId: "claude",
+        kind: "memory",
+        text: "Durable memory",
+        payload: null,
+        scopeApplicability: "path",
+        scopeConversationId: conversationId,
+        scopePathHeadMessageId: assistantMessageId,
+        settlementStatus: "settled",
+        pathStatus: "current",
+        validityStatus: "valid",
+        envelope: {
+          authority: "subject_authorized",
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await db.insert(schema.projectWorkspaces).values({
+        id: workspaceId,
+        userId,
+        name: "Workspace",
+        description: "Portable workspace",
+        version: 2,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.projects).values({
+        id: projectId,
+        userId,
+        workspaceId,
+        name: "Project",
+        description: null,
+        version: 3,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.projectResources).values({
+        id: resourceId,
+        userId,
+        projectId,
+        kind: "file",
+        resourceKey: "context.md",
+        title: "Context",
+        content: "Project context",
+        metadata: { portable: true },
+        version: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.projectConversations).values({
+        userId,
+        projectId,
+        conversationId,
+        addedAt: now,
+      });
+
       const exported = await new ExportService(
         new DrizzleExportRepository(
           db as never,
@@ -88,12 +228,46 @@ test(
 
       assert.deepEqual(
         Object.keys(exported.data),
-        ["diary", "todo"],
+        [
+          "diary",
+          "diary_comments",
+          "todo",
+          "projects",
+          "mind",
+          "conversations",
+        ],
       );
 
       await db
+        .delete(schema.projectConversations)
+        .where(eq(schema.projectConversations.userId, userId));
+      await db
+        .delete(schema.projectResources)
+        .where(eq(schema.projectResources.userId, userId));
+      await db
+        .delete(schema.projects)
+        .where(eq(schema.projects.userId, userId));
+      await db
+        .delete(schema.projectWorkspaces)
+        .where(eq(schema.projectWorkspaces.userId, userId));
+      await db
+        .delete(schema.runtimeSubjectStates)
+        .where(eq(schema.runtimeSubjectStates.userId, userId));
+      await db
+        .delete(schema.conversationContentBlocks)
+        .where(eq(schema.conversationContentBlocks.userId, userId));
+      await db
+        .delete(schema.conversationMessages)
+        .where(eq(schema.conversationMessages.userId, userId));
+      await db
+        .delete(schema.conversations)
+        .where(eq(schema.conversations.userId, userId));
+      await db
         .delete(schema.todoPapers)
         .where(eq(schema.todoPapers.userId, userId));
+      await db
+        .delete(schema.diaryComments)
+        .where(eq(schema.diaryComments.userId, userId));
       await db
         .delete(schema.diaryEntries)
         .where(eq(schema.diaryEntries.userId, userId));
@@ -111,14 +285,19 @@ test(
         userId,
       );
 
+      assert.equal(preview.summary.diary.create, 1);
       assert.equal(
-        preview.summary.diary.create,
+        preview.summary.diary_comments?.create,
         1,
       );
+      assert.equal(preview.summary.todo.create, 1);
+      assert.equal(preview.summary.mind?.create, 1);
+      assert.equal(preview.summary.projects?.create, 4);
       assert.equal(
-        preview.summary.todo.create,
-        1,
+        preview.summary.conversations?.create,
+        4,
       );
+      assert.equal(preview.can_execute, true);
 
       await service.execute(
         raw,
@@ -126,53 +305,150 @@ test(
         preview.preview_fingerprint,
       );
 
-      const [diaryCount] = await db
-        .select({ count: count() })
-        .from(schema.diaryEntries)
-        .where(
-          eq(schema.diaryEntries.userId, userId),
-        );
-      const [todoCount] = await db
-        .select({ count: count() })
-        .from(schema.todoPapers)
-        .where(
-          eq(schema.todoPapers.userId, userId),
-        );
+      const [
+        diaryCount,
+        commentCount,
+        todoCount,
+        conversationCount,
+        messageCount,
+        blockCount,
+        mindCount,
+        workspaceCount,
+        projectCount,
+        resourceCount,
+        membershipCount,
+      ] = await Promise.all([
+        db.select({ count: count() })
+          .from(schema.diaryEntries)
+          .where(eq(schema.diaryEntries.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.diaryComments)
+          .where(eq(schema.diaryComments.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.todoPapers)
+          .where(eq(schema.todoPapers.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.conversations)
+          .where(eq(schema.conversations.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.conversationMessages)
+          .where(eq(schema.conversationMessages.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.conversationContentBlocks)
+          .where(eq(schema.conversationContentBlocks.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.runtimeSubjectStates)
+          .where(eq(schema.runtimeSubjectStates.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.projectWorkspaces)
+          .where(eq(schema.projectWorkspaces.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.projects)
+          .where(eq(schema.projects.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.projectResources)
+          .where(eq(schema.projectResources.userId, userId)),
+        db.select({ count: count() })
+          .from(schema.projectConversations)
+          .where(eq(schema.projectConversations.userId, userId)),
+      ]);
 
-      assert.equal(diaryCount?.count, 1);
-      assert.equal(todoCount?.count, 1);
+      assert.equal(diaryCount[0]?.count, 1);
+      assert.equal(commentCount[0]?.count, 1);
+      assert.equal(todoCount[0]?.count, 1);
+      assert.equal(conversationCount[0]?.count, 1);
+      assert.equal(messageCount[0]?.count, 2);
+      assert.equal(blockCount[0]?.count, 1);
+      assert.equal(mindCount[0]?.count, 1);
+      assert.equal(workspaceCount[0]?.count, 1);
+      assert.equal(projectCount[0]?.count, 1);
+      assert.equal(resourceCount[0]?.count, 1);
+      assert.equal(membershipCount[0]?.count, 1);
 
-      const [restoredDiary] = await db
+      const [restoredConversation] = await db
         .select({
-          author: schema.diaryEntries.author,
-          content: schema.diaryEntries.content,
+          currentHeadMessageId:
+            schema.conversations.currentHeadMessageId,
         })
-        .from(schema.diaryEntries)
-        .where(
-          eq(schema.diaryEntries.id, diaryId),
-        );
-      assert.deepEqual(restoredDiary, {
-        author: "C",
-        content: "Diary content",
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, conversationId));
+      assert.equal(
+        restoredConversation?.currentHeadMessageId,
+        assistantMessageId,
+      );
+
+      const [restoredMind] = await db
+        .select({
+          conversationId:
+            schema.runtimeSubjectStates.scopeConversationId,
+          headMessageId:
+            schema.runtimeSubjectStates.scopePathHeadMessageId,
+        })
+        .from(schema.runtimeSubjectStates)
+        .where(eq(schema.runtimeSubjectStates.id, mindId));
+      assert.deepEqual(restoredMind, {
+        conversationId,
+        headMessageId: assistantMessageId,
       });
 
-      const [restoredPaper] = await db
+      const [restoredMembership] = await db
         .select({
-          author: schema.todoPapers.author,
-          revision: schema.todoPapers.revision,
+          projectId:
+            schema.projectConversations.projectId,
+          conversationId:
+            schema.projectConversations.conversationId,
         })
-        .from(schema.todoPapers)
+        .from(schema.projectConversations)
         .where(
-          eq(schema.todoPapers.userId, userId),
+          eq(
+            schema.projectConversations.userId,
+            userId,
+          ),
         );
-      assert.deepEqual(restoredPaper, {
-        author: "C",
-        revision: 2,
+      assert.deepEqual(restoredMembership, {
+        projectId,
+        conversationId,
       });
     } finally {
       await db
+        .delete(schema.projectConversations)
+        .where(eq(schema.projectConversations.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.projectResources)
+        .where(eq(schema.projectResources.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.projects)
+        .where(eq(schema.projects.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.projectWorkspaces)
+        .where(eq(schema.projectWorkspaces.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.runtimeSubjectStates)
+        .where(eq(schema.runtimeSubjectStates.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.conversationContentBlocks)
+        .where(eq(schema.conversationContentBlocks.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.conversationMessages)
+        .where(eq(schema.conversationMessages.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.conversations)
+        .where(eq(schema.conversations.userId, userId))
+        .catch(() => undefined);
+      await db
         .delete(schema.todoPapers)
         .where(eq(schema.todoPapers.userId, userId))
+        .catch(() => undefined);
+      await db
+        .delete(schema.diaryComments)
+        .where(eq(schema.diaryComments.userId, userId))
         .catch(() => undefined);
       await db
         .delete(schema.diaryEntries)
