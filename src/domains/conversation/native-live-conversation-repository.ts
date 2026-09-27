@@ -757,6 +757,36 @@ implements NativeLiveConversationRepository {
           ...purgeStateIds,
         ]);
 
+        const envelopeRepairByState = new Map(
+          subjectStateChanges.envelopeRepairs.map((repair) => [
+            repair.stateId,
+            repair.nextEnvelope,
+          ]),
+        );
+        const payloadRepairByState = new Map(
+          evolutionRepairs.map((repair) => [
+            repair.stateId,
+            repair.nextPayload,
+          ]),
+        );
+        for (const state of states) {
+          if (purgeStateIds.has(state.id)) continue;
+          const nextEnvelope =
+            envelopeRepairByState.get(state.id) ?? state.envelope;
+          const nextPayload =
+            payloadRepairByState.has(state.id)
+              ? payloadRepairByState.get(state.id) ?? null
+              : state.payload;
+          if (
+            structuredValueReferencesAnyId(nextEnvelope, causalIds)
+            || structuredValueReferencesAnyId(nextPayload, causalIds)
+          ) {
+            throw new Error(
+              "NativeLiveConversationDeleteCausalReferenceConflict",
+            );
+          }
+        }
+
         const transitions = await transaction
           .select({
             id: runtimeSubjectStateTransitions.id,
