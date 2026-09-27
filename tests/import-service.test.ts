@@ -142,6 +142,22 @@ const mindState: ExportMindStateRecord = {
 };
 
 
+const driveState: ExportMindStateRecord = {
+  ...mindState,
+  id: "00000000-0000-4000-8000-000000000064",
+  kind: "drive",
+  text: "Durable drive",
+  payload: { drive_v1: { phase: "active" } },
+};
+
+const curiosityState: ExportMindStateRecord = {
+  ...mindState,
+  id: "00000000-0000-4000-8000-000000000065",
+  kind: "curiosity",
+  text: "Durable curiosity",
+  payload: { curiosity_v1: { phase: "resolved" } },
+};
+
 const conversationBundle: ExportConversationsBundle = {
   conversations: [{
     id: CONVERSATION_ID,
@@ -213,6 +229,42 @@ const conversationBundle: ExportConversationsBundle = {
     mime_type: "text/plain",
     size_bytes: 4,
     payload: { logical_ref: "attachment:test" },
+  }],
+};
+
+const mindContinuity: ExportMindContinuityBundle = {
+  drive_satisfaction_events: [{
+    id: "00000000-0000-4000-8000-000000000066",
+    subject_id: "claude",
+    drive_state_id: driveState.id,
+    conversation_id: CONVERSATION_ID,
+    evidence_message_id:
+      "00000000-0000-4000-8000-000000000043",
+    evidence_block_id: null,
+    evidence_kind: "assistant_message",
+    amount: 0.5,
+    idempotency_key: "drive-satisfy-000001",
+    created_at: NOW,
+  }],
+  curiosity_resolution_events: [{
+    id: "00000000-0000-4000-8000-000000000067",
+    subject_id: "claude",
+    curiosity_state_id: curiosityState.id,
+    conversation_id: CONVERSATION_ID,
+    requested_resolution_source_id:
+      "00000000-0000-4000-8000-000000000043",
+    result_resolution_source_id: "resolution-source",
+    resolved_at: NOW,
+    idempotency_key: "curiosity-resolve-01",
+    created_at: NOW,
+  }],
+  distillation_watermarks: [{
+    subject_id: "claude",
+    conversation_id: CONVERSATION_ID,
+    last_source_message_id:
+      "00000000-0000-4000-8000-000000000043",
+    process_version: "distill-v1",
+    updated_at: NOW,
   }],
 };
 
@@ -1224,6 +1276,85 @@ test("v3 Universe provenance rejects a missing Diary parent", async () => {
   );
 
   assert.equal(preview.summary.universe?.invalid, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
+
+test("v3 Mind continuity restores semantic ledgers and watermark after canonical state", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [],
+    mind_continuity: {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+    },
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    },
+  });
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({
+    conversations: conversationBundle,
+    mind: [driveState, curiosityState],
+    mind_continuity: mindContinuity,
+  });
+
+  const preview = await service.preview(raw, USER_ID);
+  assert.equal(preview.summary.mind?.create, 5);
+  assert.equal(preview.summary.mind?.invalid, 0);
+  assert.equal(preview.can_execute, true);
+
+  await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.deepEqual(
+    repository.state.mind,
+    [driveState, curiosityState],
+  );
+  assert.deepEqual(
+    repository.state.mind_continuity,
+    mindContinuity,
+  );
+  assert.equal(repository.writes, 10);
+});
+
+test("v3 Mind continuity rejects semantic events without canonical evidence", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [],
+    mind_continuity: {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+    },
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    },
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({
+      mind: [driveState, curiosityState],
+      mind_continuity: mindContinuity,
+    }),
+    USER_ID,
+  );
+
+  assert.ok((preview.summary.mind?.invalid ?? 0) >= 3);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
