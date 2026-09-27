@@ -14,6 +14,7 @@ struct UniverseView: View {
     @State private var mapMode: UniverseMapMode = .browse
     @State private var sheetSelection: UniverseSheetSelection?
     @State private var notice: String?
+    @State private var noticeTask: Task<Void, Never>?
     @State private var loadGeneration = 0
 
     @State private var importPresented = false
@@ -96,6 +97,18 @@ struct UniverseView: View {
         }
         .task(id: targetNodeID) {
             await openTargetIfPossible()
+        }
+        .onChange(of: sheetSelection) { _, selection in
+            if selection == nil {
+                scheduleNoticeDismissal()
+            } else {
+                noticeTask?.cancel()
+                noticeTask = nil
+            }
+        }
+        .onDisappear {
+            noticeTask?.cancel()
+            noticeTask = nil
         }
     }
 
@@ -1082,23 +1095,44 @@ struct UniverseView: View {
     private func showNotice(
         _ message: String
     ) {
+        noticeTask?.cancel()
+        noticeTask = nil
+
         withAnimation(.snappy) {
             notice = message
         }
 
-        Task { @MainActor in
+        scheduleNoticeDismissal()
+    }
+
+    private func scheduleNoticeDismissal() {
+        noticeTask?.cancel()
+        noticeTask = nil
+
+        guard let message = notice,
+              sheetSelection == nil
+        else {
+            return
+        }
+
+        noticeTask = Task { @MainActor in
             try? await Task.sleep(
                 for: .seconds(3)
             )
-            guard notice == message else {
+            guard !Task.isCancelled,
+                  notice == message,
+                  sheetSelection == nil
+            else {
                 return
             }
 
             withAnimation(.snappy) {
                 notice = nil
             }
+            noticeTask = nil
         }
     }
+
 }
 
 private enum UniversePageState {
