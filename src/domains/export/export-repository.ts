@@ -5,6 +5,7 @@ import {
   conversationContentBlocks,
   conversationMessages,
   conversations,
+  diaryComments,
   diaryEntries,
   projectConversations,
   projectResources,
@@ -21,6 +22,7 @@ import { MCP_WRITE_TOOL_NAMES } from "../../mcp/tools/write-context.js";
 import type { ExportRepository } from "./export-service.js";
 import type {
   ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportLifecycleEvent,
   ExportMindStateRecord,
@@ -77,6 +79,36 @@ export class DrizzleExportRepository implements ExportRepository {
       id: row.id, title: row.title, content: row.content, date: row.date, tags: row.tags,
       mood: row.mood, source: row.source, author: row.author, status: row.status,
       created_at: toIso(row.createdAt), updated_at: toIso(row.updatedAt),
+    }));
+  }
+
+  async listDiaryComments(
+    userId: string,
+  ): Promise<ExportDiaryCommentRecord[]> {
+    const rows = await this.db.select({
+      id: diaryComments.id,
+      diaryId: diaryComments.diaryId,
+      author: diaryComments.author,
+      content: diaryComments.content,
+      revision: diaryComments.revision,
+      createdAt: diaryComments.createdAt,
+      updatedAt: diaryComments.updatedAt,
+    }).from(diaryComments)
+      .where(eq(diaryComments.userId, userId))
+      .orderBy(
+        asc(diaryComments.diaryId),
+        asc(diaryComments.createdAt),
+        asc(diaryComments.id),
+      );
+
+    return rows.map((row) => ({
+      id: row.id,
+      diary_id: row.diaryId,
+      author: row.author,
+      content: row.content,
+      revision: row.revision,
+      created_at: toIso(row.createdAt),
+      updated_at: toIso(row.updatedAt),
     }));
   }
 
