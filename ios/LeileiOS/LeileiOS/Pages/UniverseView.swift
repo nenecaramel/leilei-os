@@ -601,16 +601,23 @@ struct UniverseView: View {
                 try await service.initialize(
                     preview.snapshot
                 )
-            try UniverseImportParser.verify(
-                expected: preview.snapshot,
-                actual: fresh.snapshot
-            )
 
             state = .ready(fresh)
             importPreview = nil
             importFileName = nil
             importUncertain = false
-            showNotice("Universe 已迁移")
+
+            do {
+                try UniverseImportParser.verify(
+                    expected: preview.snapshot,
+                    actual: fresh.snapshot
+                )
+                showNotice("Universe 已迁移")
+            } catch {
+                showNotice(
+                    "Universe 已存在或状态已变化，未覆盖现有内容"
+                )
+            }
         } catch let error as
             UniverseAPIService.InitializationError {
             switch error {
