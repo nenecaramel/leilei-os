@@ -35,8 +35,10 @@ while [[ "$#" -gt 0 ]]; do
 done
 if [[ "$query" == *"server_version_num"* ]]; then
   printf '180001\\n'
+elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
+  printf '1790506500000|bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\n'
 else
-  printf '1|7|7|7|1\\n'
+  printf '1\\n'
 fi
 `,
     { mode: 0o700 },
