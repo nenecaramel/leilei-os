@@ -1,5 +1,6 @@
 import type {
   ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportDocument,
   ExportLifecycleEvent,
@@ -21,6 +22,7 @@ export interface ExportRepository {
   ): Promise<T>;
   findUserById(userId: string): Promise<{ status: "active" | "disabled" } | null>;
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
+  listDiaryComments(userId: string): Promise<ExportDiaryCommentRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
   listProjects(userId: string): Promise<ExportProjectsBundle>;
   listMind(userId: string): Promise<ExportMindStateRecord[]>;
@@ -84,7 +86,12 @@ export class ExportService {
 
     const data: ExportDocument["data"] = {};
     if (scope === "all" || scope === "diary") {
-      data.diary = await repository.listDiary(userId);
+      const [diary, diaryComments] = await Promise.all([
+        repository.listDiary(userId),
+        repository.listDiaryComments(userId),
+      ]);
+      data.diary = diary;
+      data.diary_comments = diaryComments;
     }
     if (scope === "all" || scope === "todo") {
       data.todo = await repository.listTodo(userId);
