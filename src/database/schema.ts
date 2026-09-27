@@ -3587,7 +3587,6 @@ export const userSettings = pgTable(
     ),
   ],
 );
-
 export const runtimeSubjectStateTransitions = pgTable(
   "runtime_subject_state_transitions",
   {
