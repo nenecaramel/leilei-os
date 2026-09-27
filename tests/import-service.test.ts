@@ -89,6 +89,80 @@ const mindState: ExportMindStateRecord = {
 };
 
 
+const conversationBundle: ExportConversationsBundle = {
+  conversations: [{
+    id: CONVERSATION_ID,
+    title: "Native conversation",
+    lifecycle_status: "active",
+    current_head_message_id:
+      "00000000-0000-4000-8000-000000000043",
+    default_model: "claude-sonnet",
+    provider_metadata: {},
+    created_at: NOW,
+    updated_at: NOW,
+    archived_at: null,
+  }],
+  messages: [
+    {
+      id: "00000000-0000-4000-8000-000000000042",
+      conversation_id: CONVERSATION_ID,
+      parent_message_id: null,
+      role: "user",
+      status: "completed",
+      raw_role: null,
+      model: null,
+      is_current_path: true,
+      current_path_index: 0,
+      turn_index: 0,
+      is_primary: true,
+      display_text: "hello",
+      created_at: NOW,
+      completed_at: NOW,
+      updated_at: NOW,
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000043",
+      conversation_id: CONVERSATION_ID,
+      parent_message_id:
+        "00000000-0000-4000-8000-000000000042",
+      role: "assistant",
+      status: "completed",
+      raw_role: null,
+      model: "claude-sonnet",
+      is_current_path: true,
+      current_path_index: 1,
+      turn_index: 0,
+      is_primary: true,
+      display_text: "hi",
+      created_at: NOW,
+      completed_at: NOW,
+      updated_at: NOW,
+    },
+  ],
+  content_blocks: [{
+    id: "00000000-0000-4000-8000-000000000044",
+    message_id:
+      "00000000-0000-4000-8000-000000000043",
+    ordinal: 0,
+    kind: "text",
+    raw_type: "text",
+    text: "hi",
+    payload: null,
+    created_at: NOW,
+  }],
+  attachments: [{
+    id: "00000000-0000-4000-8000-000000000045",
+    message_id:
+      "00000000-0000-4000-8000-000000000042",
+    ordinal: 0,
+    source_attachment_id: null,
+    name: "note.txt",
+    mime_type: "text/plain",
+    size_bytes: 4,
+    payload: { logical_ref: "attachment:test" },
+  }],
+};
+
 const projectBundle: ExportProjectsBundle = {
   workspaces: [{
     id: "00000000-0000-4000-8000-000000000051",
@@ -730,6 +804,99 @@ test("v3 Mind restore rejects a state id owned by another user", async () => {
   );
 
   assert.equal(preview.summary.mind?.conflict, 1);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
+
+test("v3 all-state restore creates canonical conversations before Project membership", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    projects: {
+      workspaces: [],
+      projects: [],
+      resources: [],
+      conversations: [],
+    },
+    mind: [],
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    },
+    native_live_conversation_ids: new Set(),
+  });
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({
+    conversations: conversationBundle,
+    projects: projectBundle,
+    mind: [mindState],
+  });
+
+  const preview = await service.preview(raw, USER_ID);
+  assert.deepEqual(preview.summary.conversations, {
+    create: 5,
+    duplicate: 0,
+    conflict: 0,
+    invalid: 0,
+  });
+  assert.deepEqual(preview.summary.projects, {
+    create: 4,
+    duplicate: 0,
+    conflict: 0,
+    invalid: 0,
+  });
+  assert.equal(preview.can_execute, true);
+
+  await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.deepEqual(
+    repository.state.conversations,
+    conversationBundle,
+  );
+  assert.deepEqual(
+    repository.state.projects,
+    projectBundle,
+  );
+  assert.deepEqual(repository.state.mind, [mindState]);
+  assert.equal(repository.writes, 10);
+});
+
+test("v3 conversation preview rejects a parent cycle before execute", async () => {
+  const cyclic: ExportConversationsBundle = {
+    ...conversationBundle,
+    messages: conversationBundle.messages.map((message, index) => ({
+      ...message,
+      parent_message_id:
+        index === 0
+          ? conversationBundle.messages[1]!.id
+          : conversationBundle.messages[0]!.id,
+    })),
+  };
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    },
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({ conversations: cyclic }),
+    USER_ID,
+  );
+
+  assert.ok((preview.summary.conversations?.invalid ?? 0) > 0);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
