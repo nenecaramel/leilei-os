@@ -95,7 +95,7 @@ function createRepository(calls: string[] = []): ExportRepository {
   };
 }
 
-test("ExportService emits the owner-bound v2 contract", async () => {
+test("ExportService emits the owner-bound v3 contract", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
