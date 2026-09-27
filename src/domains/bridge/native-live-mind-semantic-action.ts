@@ -75,7 +75,13 @@ export class NativeLiveMindSemanticActionExecutor {
       userId: input.userId,
       subjectId: this.subjectId,
       curiosityStateId: input.action.stateId,
+      conversationId: input.conversationId,
       resolutionSourceId: input.assistantMessageId,
+      idempotencyKey:
+        nativeLiveMindSemanticActionIdempotencyKey(
+          input.prepareId,
+          input.actionIndex,
+        ),
       now,
     });
     return receiptFromCuriosity(
