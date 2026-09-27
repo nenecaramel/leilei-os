@@ -7,6 +7,7 @@ import type {
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportTodoPaper,
+  ExportUniverseBundle,
   RestorableExportDocument,
 } from "../export/export-types.js";
 import {
@@ -18,6 +19,7 @@ import {
   type ImportPlanItem,
   type ImportSummary,
   type ProjectRestoreRecord,
+  type UniverseRestoreRecord,
 } from "./import-planner.js";
 import { hashCanonical } from "./import-canonical.js";
 import {
@@ -69,6 +71,12 @@ function includedModules(document: RestorableExportDocument): Set<ImportModule> 
     modules.push("diary_comments");
   }
   if (document.data.todo) modules.push("todo");
+  if (
+    document.schema_version === 3
+    && document.data.universe
+  ) {
+    modules.push("universe");
+  }
   if (document.schema_version === 3 && document.data.mind) {
     modules.push("mind");
   }
@@ -187,6 +195,17 @@ function hasExactCreatedValue(
         paper.date === record.date
         && paper.author === record.author
         && hashCanonical(paper) === hashCanonical(record),
+    );
+  }
+
+  if (item.module === "universe") {
+    const record =
+      (item.record as UniverseRestoreRecord).value;
+    return (
+      state.universe !== null
+      && state.universe !== undefined
+      && hashCanonical(state.universe)
+        === hashCanonical(record)
     );
   }
 
@@ -319,6 +338,16 @@ async function executeCreates(
       await repository.insertTodo(
         userId,
         item.record as ExportTodoPaper,
+      );
+    }
+  }
+
+  for (const item of creates) {
+    if (item.module === "universe") {
+      await repository.insertUniverse(
+        userId,
+        (item.record as UniverseRestoreRecord)
+          .value as ExportUniverseBundle,
       );
     }
   }
