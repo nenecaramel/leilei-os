@@ -11,7 +11,10 @@ import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
   nativeLiveBackgroundModelJobs,
+  runtimeContextManifests,
+  runtimeEffects,
   runtimeMindSemanticGroupingRequests,
+  runtimeProactivityWakes,
   runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
@@ -221,12 +224,20 @@ implements MindProductRepository {
           }
         }
 
+        const evolutionEvidenceIds = new Set<string>([
+          ...deleteIds,
+          ...sourceEvidenceIdsForDeletedRows(rows, deleteIds),
+        ]);
+
         for (const row of rows) {
           if (deleteIds.has(row.id)) continue;
           const envelopeRepair =
             repairEnvelopeReferences(row.envelope, deleteIds);
           const payloadRepair =
-            repairPayloadReferences(row.payload, deleteIds);
+            repairPayloadReferences(
+              row.payload,
+              evolutionEvidenceIds,
+            );
           if (
             envelopeRepair.outcome === "repair"
             || payloadRepair.outcome === "repair"
@@ -332,6 +343,89 @@ async function deleteOperationalReferences(
   subjectId: string,
   deleteIds: ReadonlySet<string>,
 ): Promise<void> {
+  const contextRows = await transaction
+    .select({
+      id: runtimeContextManifests.id,
+      budget: runtimeContextManifests.budget,
+      items: runtimeContextManifests.items,
+    })
+    .from(runtimeContextManifests)
+    .where(and(
+      eq(runtimeContextManifests.userId, userId),
+      eq(runtimeContextManifests.subjectId, subjectId),
+    ));
+  const contextIds = contextRows
+    .filter((row) =>
+      structuredValueReferencesAnyId(row.budget, deleteIds)
+      || structuredValueReferencesAnyId(row.items, deleteIds)
+    )
+    .map((row) => row.id);
+  if (contextIds.length > 0) {
+    await transaction
+      .delete(runtimeContextManifests)
+      .where(and(
+        eq(runtimeContextManifests.userId, userId),
+        inArray(runtimeContextManifests.id, contextIds),
+      ));
+  }
+
+  const wakes = await transaction
+    .select({
+      id: runtimeProactivityWakes.id,
+      gate: runtimeProactivityWakes.gate,
+      contextSnapshot: runtimeProactivityWakes.contextSnapshot,
+      decision: runtimeProactivityWakes.decision,
+    })
+    .from(runtimeProactivityWakes)
+    .where(and(
+      eq(runtimeProactivityWakes.userId, userId),
+      eq(runtimeProactivityWakes.subjectId, subjectId),
+    ));
+  const wakeIds = wakes
+    .filter((wake) =>
+      structuredValueReferencesAnyId(wake.gate, deleteIds)
+      || structuredValueReferencesAnyId(
+        wake.contextSnapshot,
+        deleteIds,
+      )
+      || structuredValueReferencesAnyId(wake.decision, deleteIds)
+    )
+    .map((wake) => wake.id);
+
+  const effects = await transaction
+    .select({
+      id: runtimeEffects.id,
+      sourceWakeId: runtimeEffects.sourceWakeId,
+      payload: runtimeEffects.payload,
+    })
+    .from(runtimeEffects)
+    .where(and(
+      eq(runtimeEffects.userId, userId),
+      eq(runtimeEffects.subjectId, subjectId),
+    ));
+  const effectIds = effects
+    .filter((effect) =>
+      wakeIds.includes(effect.sourceWakeId)
+      || structuredValueReferencesAnyId(effect.payload, deleteIds)
+    )
+    .map((effect) => effect.id);
+  if (effectIds.length > 0) {
+    await transaction
+      .delete(runtimeEffects)
+      .where(and(
+        eq(runtimeEffects.userId, userId),
+        inArray(runtimeEffects.id, effectIds),
+      ));
+  }
+  if (wakeIds.length > 0) {
+    await transaction
+      .delete(runtimeProactivityWakes)
+      .where(and(
+        eq(runtimeProactivityWakes.userId, userId),
+        inArray(runtimeProactivityWakes.id, wakeIds),
+      ));
+  }
+
   const groupingRows = await transaction
     .select({
       id: runtimeMindSemanticGroupingRequests.id,
@@ -381,6 +475,27 @@ async function deleteOperationalReferences(
         inArray(nativeLiveBackgroundModelJobs.id, jobIds),
       ));
   }
+}
+
+function sourceEvidenceIdsForDeletedRows(
+  rows: readonly {
+    id: string;
+    envelope: Record<string, unknown>;
+  }[],
+  deletedIds: ReadonlySet<string>,
+): string[] {
+  const result = new Set<string>();
+  for (const row of rows) {
+    if (!deletedIds.has(row.id)) continue;
+    const provenance = isRecord(row.envelope.provenance)
+      ? row.envelope.provenance
+      : null;
+    const causedBy = provenance?.causedBy;
+    if (typeof causedBy === "string" && causedBy.trim()) {
+      result.add(causedBy);
+    }
+  }
+  return [...result];
 }
 
 function repairEnvelopeReferences(
