@@ -305,5 +305,36 @@ test(
     });
     assert.ok(resumed);
     assert.equal(resumed.reservationId, firstTaskId);
+
+    assert.equal(
+      (await conversationService.archiveConversation({
+        userId,
+        conversationId: conversation.id,
+      })).outcome,
+      "archived",
+    );
+
+    await assert.rejects(
+      queue.submitResult({
+        userId,
+        listenerInstanceId,
+        taskId: firstTaskId,
+        result: {
+          protocol_version: 1,
+          task_id: firstTaskId,
+          task_kind: "distillation",
+          status: "success",
+          final_text: '{"memories":[]}',
+        },
+      }),
+      /BackgroundWorkflowSourceInactive/,
+      "a result that finishes after Archive must not become terminal/consumable",
+    );
+
+    const stillReserved = await new DrizzleNativeLiveBackgroundModelQueueRepository(
+      database.db,
+    ).get({ userId, taskId: firstTaskId });
+    assert.equal(stillReserved?.status, "reserved");
+    assert.equal(stillReserved?.resultText, null);
   },
 );
