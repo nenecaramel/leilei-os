@@ -408,6 +408,17 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
         (node) => node.id,
       ),
     );
+    if (
+      document.data.universe.snapshot.revisions.some(
+        (revision) => !nodeIds.has(revision.nodeId),
+      )
+    ) {
+      throw new ImportValidationError(
+        "INVALID_IMPORT_FILE",
+        "Universe revision references an unknown node",
+      );
+    }
+
     const provenanceKeys = new Set<string>();
     for (const source of document.data.universe.diary_sources) {
       const key = `${source.node_id}:\u0000:${source.diary_id}`;
