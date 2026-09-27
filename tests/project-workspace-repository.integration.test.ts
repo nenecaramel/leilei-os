@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
+  nativeLiveProviderSessionCleanups,
   projectConversations,
   projectResources,
   projects,
@@ -51,6 +52,9 @@ test(
           await database.db
             .delete(projectWorkspaces)
             .where(eq(projectWorkspaces.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
           await database.db
             .delete(conversations)
             .where(eq(conversations.userId, userId));
