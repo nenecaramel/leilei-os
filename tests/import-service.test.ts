@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 import type {
+  ExportConversationAttachmentRecord,
+  ExportConversationContentBlockRecord,
+  ExportConversationMessageRecord,
+  ExportConversationRecord,
+  ExportConversationsBundle,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
@@ -169,6 +174,9 @@ function cloneState(
     mind: state.mind
       ? structuredClone(state.mind)
       : undefined,
+    conversations: state.conversations
+      ? structuredClone(state.conversations)
+      : undefined,
     foreign_diary_ids:
       state.foreign_diary_ids
         ? new Set(state.foreign_diary_ids)
@@ -188,6 +196,22 @@ function cloneState(
     foreign_mind_ids:
       state.foreign_mind_ids
         ? new Set(state.foreign_mind_ids)
+        : undefined,
+    foreign_conversation_ids:
+      state.foreign_conversation_ids
+        ? new Set(state.foreign_conversation_ids)
+        : undefined,
+    foreign_conversation_message_ids:
+      state.foreign_conversation_message_ids
+        ? new Set(state.foreign_conversation_message_ids)
+        : undefined,
+    foreign_conversation_content_block_ids:
+      state.foreign_conversation_content_block_ids
+        ? new Set(state.foreign_conversation_content_block_ids)
+        : undefined,
+    foreign_conversation_attachment_ids:
+      state.foreign_conversation_attachment_ids
+        ? new Set(state.foreign_conversation_attachment_ids)
         : undefined,
     native_live_conversation_ids:
       state.native_live_conversation_ids
@@ -254,6 +278,64 @@ class FakeImportRepository implements ImportRepository {
     this.state.todo.push(
       structuredClone(record),
     );
+    this.writes += 1;
+  }
+
+  async insertConversation(
+    _userId: string,
+    record: ExportConversationRecord,
+  ) {
+    const conversations = this.state.conversations ??= {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    };
+    conversations.conversations.push(structuredClone(record));
+    this.state.native_live_conversation_ids ??= new Set();
+    this.state.native_live_conversation_ids.add(record.id);
+    this.writes += 1;
+  }
+
+  async insertConversationMessage(
+    _userId: string,
+    record: ExportConversationMessageRecord,
+  ) {
+    const conversations = this.state.conversations ??= {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    };
+    conversations.messages.push(structuredClone(record));
+    this.writes += 1;
+  }
+
+  async insertConversationContentBlock(
+    _userId: string,
+    record: ExportConversationContentBlockRecord,
+  ) {
+    const conversations = this.state.conversations ??= {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    };
+    conversations.content_blocks.push(structuredClone(record));
+    this.writes += 1;
+  }
+
+  async insertConversationAttachment(
+    _userId: string,
+    record: ExportConversationAttachmentRecord,
+  ) {
+    const conversations = this.state.conversations ??= {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+    };
+    conversations.attachments.push(structuredClone(record));
     this.writes += 1;
   }
 
@@ -335,6 +417,14 @@ class FakeImportRepository implements ImportRepository {
         : [],
       mind: modules.has("mind")
         ? structuredClone(this.state.mind ?? [])
+        : undefined,
+      conversations: modules.has("conversations")
+        ? structuredClone(this.state.conversations ?? {
+            conversations: [],
+            messages: [],
+            content_blocks: [],
+            attachments: [],
+          })
         : undefined,
       projects: modules.has("projects")
         ? structuredClone(this.state.projects ?? {
