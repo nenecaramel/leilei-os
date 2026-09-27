@@ -102,7 +102,7 @@ implements NativeLiveMindFollowUpPort {
       const quarantined = await this.quarantineClaim({
         prepareId: row.prepare_id,
         workerId: input.workerId,
-        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorName: "NativeLiveMindFollowUpPayloadInvalid",
       });
       if (!quarantined) throw error;
       return null;
@@ -150,12 +150,12 @@ implements NativeLiveMindFollowUpPort {
         const quarantined = await this.quarantineClaim({
           prepareId: row.prepare_id,
           workerId: input.workerId,
-          errorName: error instanceof Error ? error.name : "UnknownError",
+          errorName: "NativeLiveMindFollowUpPayloadInvalid",
         });
         if (!quarantined) throw error;
       }
     }
-    return null;
+    throw new Error("NativeLiveMindFollowUpQuarantineScanLimit");
   }
 
   private async quarantineClaim(input: {
