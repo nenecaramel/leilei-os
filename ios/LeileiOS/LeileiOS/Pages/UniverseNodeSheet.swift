@@ -319,6 +319,22 @@ struct UniverseNodeSheet: View {
                 sourceDiaryIDs: sources.map(\.diaryId)
             )
         }
+        .onChange(of: sources) { _, updatedSources in
+            for source in updatedSources {
+                sourceMetadata[source.diaryId] =
+                    UniverseDiarySourceOption(
+                        id: source.diaryId,
+                        title: source.title,
+                        date: source.date,
+                        status: source.status
+                    )
+            }
+
+            if !isEditing {
+                draft.sourceDiaryIDs =
+                    updatedSources.map(\.diaryId)
+            }
+        }
     }
 
     @ToolbarContentBuilder
