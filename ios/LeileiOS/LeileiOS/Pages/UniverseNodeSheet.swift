@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct UniverseNodeDraft: Equatable {
@@ -107,8 +108,7 @@ struct UniverseNodeSheet: View {
     let node: UniverseNode?
     let galaxies: [UniverseGalaxy]
     let allNodes: [UniverseNode]
-    let connections:
-        [(relation: UniverseRelation, node: UniverseNode)]
+    let connections: [UniverseNodeConnection]
     let sources: [UniverseDiarySourceSummary]
     let revisionsAvailable: Bool
 
@@ -142,8 +142,7 @@ struct UniverseNodeSheet: View {
         node: UniverseNode?,
         galaxies: [UniverseGalaxy],
         allNodes: [UniverseNode],
-        connections:
-            [(relation: UniverseRelation, node: UniverseNode)],
+        connections: [UniverseNodeConnection],
         sources: [UniverseDiarySourceSummary],
         revisionsAvailable: Bool,
         onSearchDiarySources:
@@ -837,10 +836,7 @@ struct UniverseNodeSheet: View {
             Text("Connections")
                 .font(.headline)
 
-            ForEach(
-                connections,
-                id: \.relation.id
-            ) { connection in
+            ForEach(connections) { connection in
                 HStack(spacing: 8) {
                     Button {
                         onOpenRelatedNode(
