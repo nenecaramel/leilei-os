@@ -428,6 +428,10 @@ function cloneState(
       state.foreign_conversation_attachment_ids
         ? new Set(state.foreign_conversation_attachment_ids)
         : undefined,
+    foreign_conversation_checkpoint_ids:
+      state.foreign_conversation_checkpoint_ids
+        ? new Set(state.foreign_conversation_checkpoint_ids)
+        : undefined,
     native_live_conversation_ids:
       state.native_live_conversation_ids
         ? new Set(state.native_live_conversation_ids)
@@ -1396,6 +1400,70 @@ test("v3 Mind continuity rejects semantic events without canonical evidence", as
   );
 
   assert.ok((preview.summary.mind?.invalid ?? 0) >= 3);
+  assert.equal(preview.can_execute, false);
+  assert.equal(repository.writes, 0);
+});
+
+
+test("v3 conversation checkpoint restore preserves continuation handle", async () => {
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+      provider_checkpoints: [],
+    },
+  });
+  const service = new ImportService(repository);
+
+  const raw = v3PackageBytes({
+    conversations: conversationBundle,
+  });
+  const preview = await service.preview(raw, USER_ID);
+
+  assert.equal(preview.summary.conversations?.create, 6);
+  assert.equal(preview.can_execute, true);
+
+  await service.execute(
+    raw,
+    USER_ID,
+    preview.preview_fingerprint,
+  );
+
+  assert.deepEqual(
+    repository.state.conversations?.provider_checkpoints,
+    conversationBundle.provider_checkpoints,
+  );
+});
+
+test("v3 conversation checkpoint preview rejects a foreign checkpoint id", async () => {
+  const checkpoint = conversationBundle.provider_checkpoints[0]!;
+  const repository = new FakeImportRepository({
+    diary: [],
+    todo: [],
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+      provider_checkpoints: [],
+    },
+    foreign_conversation_checkpoint_ids:
+      new Set([checkpoint.id]),
+  });
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({
+      conversations: conversationBundle,
+    }),
+    USER_ID,
+  );
+
+  assert.equal(preview.summary.conversations?.conflict, 1);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
