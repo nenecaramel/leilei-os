@@ -242,6 +242,8 @@ function handler(
   return async (request, response) => {
     if (!requireUser(response, request.webUserId)) return;
     try {
+      rejectIdentity(request.query);
+      rejectIdentity(request.body);
       const data = await operation(request);
       response.json({ success: true, data });
     } catch (error) {
@@ -258,6 +260,8 @@ function createHandler(
   return async (request, response) => {
     if (!requireUser(response, request.webUserId)) return;
     try {
+      rejectIdentity(request.query);
+      rejectIdentity(request.body);
       const data = await operation(request);
       response.status(201).json({ success: true, data });
     } catch (error) {
@@ -274,6 +278,8 @@ function emptyHandler(
   return async (request, response) => {
     if (!requireUser(response, request.webUserId)) return;
     try {
+      rejectIdentity(request.query);
+      rejectIdentity(request.body);
       await operation(request);
       response.status(204).end();
     } catch (error) {
