@@ -342,3 +342,82 @@ test("parseImportPackage enforces Mind continuity database string constraints", 
     );
   }
 });
+
+
+test("parseImportPackage validates conversation continuation checkpoints", () => {
+  const checkpoint = {
+    id: "00000000-0000-4000-8000-000000000091",
+    conversation_id:
+      "00000000-0000-4000-8000-000000000092",
+    canonical_message_id:
+      "00000000-0000-4000-8000-000000000093",
+    provider: "claude_code",
+    provider_session_id: "session-restore-1",
+    runtime_metadata: { compacted: false },
+    provider_checkpoint_id: "checkpoint-restore-1",
+    created_at: "2026-08-14T00:00:00.000Z",
+  };
+  const conversation = {
+    conversations: [{
+      id: checkpoint.conversation_id,
+      title: "Conversation",
+      lifecycle_status: "active",
+      current_head_message_id:
+        checkpoint.canonical_message_id,
+      default_model: "claude-sonnet",
+      provider_metadata: {},
+      created_at: "2026-08-14T00:00:00.000Z",
+      updated_at: "2026-08-14T00:00:00.000Z",
+      archived_at: null,
+    }],
+    messages: [{
+      id: checkpoint.canonical_message_id,
+      conversation_id: checkpoint.conversation_id,
+      parent_message_id: null,
+      role: "assistant",
+      status: "completed",
+      raw_role: null,
+      model: "claude-sonnet",
+      is_current_path: true,
+      current_path_index: 0,
+      turn_index: 0,
+      is_primary: true,
+      display_text: "hi",
+      created_at: "2026-08-14T00:00:00.000Z",
+      completed_at: "2026-08-14T00:00:00.000Z",
+      updated_at: "2026-08-14T00:00:00.000Z",
+    }],
+    content_blocks: [],
+    attachments: [],
+    provider_checkpoints: [checkpoint],
+  };
+
+  assert.doesNotThrow(() =>
+    parseImportPackage(
+      bytes(validV3Document({
+        conversations: conversation,
+      })),
+    ),
+  );
+
+  for (const invalid of [
+    { ...checkpoint, provider: "other" },
+    { ...checkpoint, provider_session_id: "   " },
+    { ...checkpoint, provider_checkpoint_id: "   " },
+  ]) {
+    assert.throws(
+      () =>
+        parseImportPackage(
+          bytes(validV3Document({
+            conversations: {
+              ...conversation,
+              provider_checkpoints: [invalid],
+            },
+          })),
+        ),
+      (error: unknown) =>
+        error instanceof ImportValidationError
+        && error.code === "INVALID_IMPORT_FILE",
+    );
+  }
+});
