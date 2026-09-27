@@ -1,7 +1,7 @@
 import type {
   ExportDiaryRecord,
-  ExportDocumentV2,
   ExportTodoPaper,
+  RestorableExportDocument,
 } from "../export/export-types.js";
 import {
   buildImportPlan,
@@ -10,6 +10,7 @@ import {
   type ImportPlan,
   type ImportPlanItem,
   type ImportSummary,
+  type ProjectRestoreRecord,
 } from "./import-planner.js";
 import { hashCanonical } from "./import-canonical.js";
 import {
@@ -51,11 +52,47 @@ function toPreview(plan: ImportPlan): ImportPreview {
   };
 }
 
-function includedModules(document: ExportDocumentV2): Set<ImportModule> {
+function includedModules(document: RestorableExportDocument): Set<ImportModule> {
   const modules: ImportModule[] = [];
   if (document.data.diary) modules.push("diary");
   if (document.data.todo) modules.push("todo");
+  if (document.schema_version === 3 && document.data.projects) {
+    modules.push("projects");
+  }
   return new Set(modules);
+}
+
+function hasExactProjectValue(
+  record: ProjectRestoreRecord,
+  state: ImportCurrentState,
+): boolean {
+  if (record.entity === "workspace") {
+    return state.projects.workspaces.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  if (record.entity === "project") {
+    return state.projects.projects.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  if (record.entity === "resource") {
+    return state.projects.resources.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  return state.projects.conversations.some(
+    (candidate) =>
+      candidate.project_id === record.value.project_id
+      && candidate.conversation_id === record.value.conversation_id
+      && hashCanonical(candidate) === hashCanonical(record.value),
+  );
 }
 
 function hasExactCreatedValue(
@@ -71,12 +108,19 @@ function hasExactCreatedValue(
     );
   }
 
-  const record = item.record as ExportTodoPaper;
-  return state.todo.some(
-    (paper) =>
-      paper.date === record.date
-      && paper.author === record.author
-      && hashCanonical(paper) === hashCanonical(record),
+  if (item.module === "todo") {
+    const record = item.record as ExportTodoPaper;
+    return state.todo.some(
+      (paper) =>
+        paper.date === record.date
+        && paper.author === record.author
+        && hashCanonical(paper) === hashCanonical(record),
+    );
+  }
+
+  return hasExactProjectValue(
+    item.record as ProjectRestoreRecord,
+    state,
   );
 }
 
@@ -89,6 +133,26 @@ function hasDatabaseErrorCode(error: unknown, code: string): boolean {
     current = "cause" in current ? (current as { cause?: unknown }).cause : undefined;
   }
   return false;
+}
+
+async function insertProjectRecord(
+  repository: ImportRepository,
+  userId: string,
+  record: ProjectRestoreRecord,
+): Promise<void> {
+  if (record.entity === "workspace") {
+    await repository.insertProjectWorkspace(userId, record.value);
+    return;
+  }
+  if (record.entity === "project") {
+    await repository.insertProject(userId, record.value);
+    return;
+  }
+  if (record.entity === "resource") {
+    await repository.insertProjectResource(userId, record.value);
+    return;
+  }
+  await repository.insertProjectConversation(userId, record.value);
 }
 
 export class ImportService {
@@ -122,21 +186,33 @@ export class ImportService {
         if (creates.length === 0) {
           throw new ImportValidationError("IMPORT_NOTHING_TO_RESTORE", "IMPORT_NOTHING_TO_RESTORE");
         }
+
         for (const item of creates) {
           if (item.module === "diary") {
             await transaction.insertDiary(
               userId,
               item.record as ExportDiaryRecord,
             );
+            continue;
           }
           if (item.module === "todo") {
             await transaction.insertTodo(
               userId,
               item.record as ExportTodoPaper,
             );
+            continue;
           }
+          await insertProjectRecord(
+            transaction,
+            userId,
+            item.record as ProjectRestoreRecord,
+          );
         }
-        const reread = await transaction.rereadCreatedState(userId, includedModules(parsed.document));
+
+        const reread = await transaction.rereadCreatedState(
+          userId,
+          includedModules(parsed.document),
+        );
         if (creates.some((item) => !hasExactCreatedValue(item, reread))) {
           throw new Error("IMPORT_VERIFY_FAILED");
         }
@@ -157,7 +233,7 @@ export class ImportService {
       if (error instanceof Error && error.message === "IMPORT_VERIFY_FAILED") {
         throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
       }
-      if (hasDatabaseErrorCode(error, "23505")) {
+      if (hasDatabaseErrorCode(error, "23503") || hasDatabaseErrorCode(error, "23505")) {
         throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
       }
       if (hasDatabaseErrorCode(error, "40001")) {
