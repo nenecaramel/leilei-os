@@ -243,6 +243,8 @@ final class UniverseAPIService {
         }
 
         switch code {
+        case "UNIVERSE_NOT_INITIALIZED":
+            return "Universe 尚未初始化。"
         case "RELATION_CONFLICT":
             return "这条思想连接已经存在。"
         case "NODE_CONFLICT":
