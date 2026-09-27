@@ -264,7 +264,9 @@ struct UniverseNodeSheet: View {
             .navigationTitle(
                 isCreate
                     ? "点亮一颗新星"
-                    : "Universe"
+                    : isEditing
+                        ? "调整这颗星球"
+                        : "Universe"
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -495,7 +497,7 @@ struct UniverseNodeSheet: View {
                 }
 
                 editorField(
-                    title: "名称"
+                    title: "它叫什么？"
                 ) {
                     TextField(
                         "一个概念、问题或经历",
@@ -514,10 +516,10 @@ struct UniverseNodeSheet: View {
                 }
 
                 editorField(
-                    title: "为什么它值得留在你的宇宙？"
+                    title: "一句话描述 · 可选"
                 ) {
                     TextField(
-                        "摘要",
+                        "为什么它值得留在你的宇宙？",
                         text: $draft.summary,
                         axis: .vertical
                     )
@@ -726,7 +728,7 @@ struct UniverseNodeSheet: View {
                 alignment: .leading,
                 spacing: 12
             ) {
-                Text("星系")
+                Text("它同时闪耀在哪些星系？")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
 
@@ -747,7 +749,7 @@ struct UniverseNodeSheet: View {
             spacing: 10
         ) {
             HStack {
-                Text("来源日记")
+                Text("来源日记 · 可选")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
 
