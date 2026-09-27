@@ -16,6 +16,7 @@ struct ChatView: View {
     @State private var editDraft: NativeLiveEditDraft?
     @State private var pendingOperation: NativeLivePendingOperation?
     @State private var isDraftCommitInFlight = false
+    @State private var isRuntimeControlInFlight = false
     @State private var isSystemKeyboardVisible = false
     @State private var showingProjectFilePicker = false
     @FocusState private var isComposerFocused: Bool
@@ -110,12 +111,25 @@ struct ChatView: View {
                     appModel.chatSendState == .sending
                         || isDraftCommitInFlight
                         || pendingOperation != nil,
+                isRuntimeTurnActive:
+                    visibleRuntimeSurface != nil
+                        && pendingOperation != nil,
+                isRuntimeControlInFlight:
+                    isRuntimeControlInFlight,
+                interruptRequested:
+                    runtimeInterruptRequested,
                 isEditing: editDraft != nil,
                 onProjectFile: {
                     isComposerFocused = false
                     showingProjectFilePicker = true
                 },
-                onCancelEdit: cancelEditing
+                onCancelEdit: cancelEditing,
+                onInterrupt: {
+                    interruptCurrentTurn()
+                },
+                onMidTurnInput: { text in
+                    sendMidTurnInput(text)
+                }
             ) {
                 sendMessage()
             }
@@ -177,6 +191,72 @@ struct ChatView: View {
             return nil
         }
         return surface
+    }
+
+    private var runtimeInterruptRequested: Bool {
+        visibleRuntimeSurface?.controls.contains {
+            $0.kind == "interrupt"
+                && $0.status != "failed"
+        } == true
+    }
+
+    private func sendMidTurnInput(
+        _ text: String
+    ) {
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty,
+              !isRuntimeControlInFlight,
+              visibleRuntimeSurface != nil else {
+            return
+        }
+
+        isRuntimeControlInFlight = true
+
+        Task { @MainActor in
+            defer {
+                isRuntimeControlInFlight = false
+            }
+
+            do {
+                try await appModel.sendNativeLiveMidTurnInput(
+                    normalized
+                )
+
+                if messageText.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ) == normalized {
+                    messageText = ""
+                }
+                isComposerFocused = true
+            } catch {
+                // Preserve the typed text. The control may be retried
+                // explicitly by the user; never blind-retry an ambiguous send.
+            }
+        }
+    }
+
+    private func interruptCurrentTurn() {
+        guard !isRuntimeControlInFlight,
+              !runtimeInterruptRequested,
+              visibleRuntimeSurface != nil else {
+            return
+        }
+
+        isRuntimeControlInFlight = true
+
+        Task { @MainActor in
+            defer {
+                isRuntimeControlInFlight = false
+            }
+
+            do {
+                try await appModel.interruptNativeLiveTurn()
+            } catch {
+                // Never blind-retry an interrupt with unknown delivery.
+            }
+        }
     }
 
     private var isConversationLoading: Bool {
