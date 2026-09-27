@@ -12,6 +12,7 @@ import type {
   ExportMindCuriosityResolutionEventRecord,
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
+  ExportMindSemanticGroupingResultRecord,
   ExportMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
@@ -66,6 +67,7 @@ export type ImportCurrentState = {
   foreign_mind_ids?: Set<string>;
   foreign_drive_satisfaction_event_ids?: Set<string>;
   foreign_curiosity_resolution_event_ids?: Set<string>;
+  foreign_semantic_grouping_result_ids?: Set<string>;
   foreign_conversation_ids?: Set<string>;
   foreign_conversation_message_ids?: Set<string>;
   foreign_conversation_content_block_ids?: Set<string>;
@@ -136,6 +138,10 @@ export type MindContinuityRestoreRecord =
   | {
       entity: "distillation_watermark";
       value: ExportMindDistillationWatermarkRecord;
+    }
+  | {
+      entity: "semantic_grouping";
+      value: ExportMindSemanticGroupingResultRecord;
     };
 
 export type UniverseRestoreRecord = {
@@ -294,6 +300,7 @@ function mindContinuityItems(
     drive_satisfaction_events: [],
     curiosity_resolution_events: [],
     distillation_watermarks: [],
+    semantic_grouping_results: [],
   };
   const driveItems = classifyMindContinuityEntity(
     "drive_satisfaction",
@@ -314,6 +321,13 @@ function mindContinuityItems(
     (record) =>
       `${record.subject_id}:${record.conversation_id}`,
   );
+  const groupingItems = classifyMindContinuityEntity(
+    "semantic_grouping",
+    imported.semantic_grouping_results,
+    currentContinuity.semantic_grouping_results,
+    (record) =>
+      `${record.subject_id}:${record.kind}:${record.query_state_id}`,
+  );
 
   const states = new Map(
     [
@@ -329,6 +343,10 @@ function mindContinuityItems(
     currentContinuity.curiosity_resolution_events
       .map((record) => record.id),
   );
+  const currentGroupingIds = new Set(
+    currentContinuity.semantic_grouping_results
+      .map((record) => record.id),
+  );
   const importedDriveIdCounts = new Map<string, number>();
   for (const record of imported.drive_satisfaction_events) {
     importedDriveIdCounts.set(
@@ -341,6 +359,13 @@ function mindContinuityItems(
     importedCuriosityIdCounts.set(
       record.id,
       (importedCuriosityIdCounts.get(record.id) ?? 0) + 1,
+    );
+  }
+  const importedGroupingIdCounts = new Map<string, number>();
+  for (const record of imported.semantic_grouping_results) {
+    importedGroupingIdCounts.set(
+      record.id,
+      (importedGroupingIdCounts.get(record.id) ?? 0) + 1,
     );
   }
   const conversations = new Set([
@@ -455,10 +480,44 @@ function mindContinuityItems(
     }
   }
 
+  for (const item of groupingItems) {
+    if (item.classification !== "create") continue;
+    const record =
+      (item.record as MindContinuityRestoreRecord).value
+        as ExportMindSemanticGroupingResultRecord;
+    const queryState = states.get(record.query_state_id);
+    const candidateStates = record.candidates.map(
+      (candidate) => states.get(String(candidate.stateId)),
+    );
+
+    if (
+      (importedGroupingIdCounts.get(record.id) ?? 0) > 1
+    ) {
+      item.classification = "invalid";
+    } else if (
+      current.foreign_semantic_grouping_result_ids?.has(record.id)
+      || currentGroupingIds.has(record.id)
+    ) {
+      item.classification = "conflict";
+    } else if (
+      queryState?.kind !== record.kind
+      || queryState.subject_id !== record.subject_id
+      || candidateStates.some(
+        (candidate) =>
+          !candidate
+          || candidate.kind !== record.kind
+          || candidate.subject_id !== record.subject_id,
+      )
+    ) {
+      item.classification = "invalid";
+    }
+  }
+
   return [
     ...driveItems,
     ...curiosityItems,
     ...watermarkItems,
+    ...groupingItems,
   ];
 }
 
