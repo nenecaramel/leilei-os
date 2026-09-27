@@ -21,6 +21,7 @@ export type ProjectWorkspaceApiDependencies = {
     | "updateProject"
     | "deleteProject"
     | "listResources"
+    | "getResource"
     | "createResource"
     | "updateResource"
     | "deleteResource"
@@ -139,6 +140,16 @@ export function createProjectWorkspaceApiRouter(
         : { kind: scalarQuery(request.query.kind) }),
     });
   }));
+
+  router.get(
+    "/projects/:projectId/resources/:resourceId",
+    handler(async (request) =>
+      dependencies.projectWorkspaceService.getResource({
+        userId: request.webUserId!,
+        projectId: routeParam(request.params.projectId),
+        resourceId: routeParam(request.params.resourceId),
+      })),
+  );
 
   router.post("/projects/:projectId/resources", createHandler(async (request) => {
     const body = bodyRecord(request.body);
