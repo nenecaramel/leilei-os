@@ -29,7 +29,8 @@ export type PersistentSourceRef = {
     | "tool_result"
     | "artifact"
     | "decision"
-    | "persistent_state";
+    | "persistent_state"
+    | "manual_entry";
   id: string;
 };
 
