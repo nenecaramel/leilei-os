@@ -41,6 +41,16 @@ test("process runtime owns one injectable database resource", async () => {
   assert.equal(closeCalls, 1);
 });
 
+test("cloud background work continuously owns retention scheduling", () => {
+  const start = processRuntimeSource.indexOf("startBackgroundWork: () => {");
+  const stop = processRuntimeSource.indexOf("stopBackgroundWork:", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(stop, -1);
+  const block = processRuntimeSource.slice(start, stop);
+  assert.match(block, /retentionCoordinator\.start\(\)/);
+  assert.doesNotMatch(block, /retentionCoordinator\.runNow\(\)/);
+});
+
 test("process runtime owns retention scheduling and drains it before the database is closed", async () => {
   const { createProcessRuntime } = await import("../src/app/process-runtime.js");
   const events: string[] = [];
