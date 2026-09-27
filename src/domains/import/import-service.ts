@@ -1,4 +1,8 @@
 import type {
+  ExportConversationAttachmentRecord,
+  ExportConversationContentBlockRecord,
+  ExportConversationMessageRecord,
+  ExportConversationRecord,
   ExportDiaryRecord,
   ExportMindStateRecord,
   ExportTodoPaper,
@@ -6,6 +10,7 @@ import type {
 } from "../export/export-types.js";
 import {
   buildImportPlan,
+  type ConversationRestoreRecord,
   type ImportCurrentState,
   type ImportModule,
   type ImportPlan,
@@ -63,6 +68,9 @@ function includedModules(document: RestorableExportDocument): Set<ImportModule> 
   if (document.schema_version === 3 && document.data.projects) {
     modules.push("projects");
   }
+  if (document.schema_version === 3 && document.data.conversations) {
+    modules.push("conversations");
+  }
   return new Set(modules);
 }
 
@@ -105,6 +113,44 @@ function hasExactProjectValue(
   );
 }
 
+function hasExactConversationValue(
+  record: ConversationRestoreRecord,
+  state: ImportCurrentState,
+): boolean {
+  const conversations = state.conversations ?? {
+    conversations: [],
+    messages: [],
+    content_blocks: [],
+    attachments: [],
+  };
+  if (record.entity === "conversation") {
+    return conversations.conversations.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  if (record.entity === "message") {
+    return conversations.messages.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  if (record.entity === "content_block") {
+    return conversations.content_blocks.some(
+      (candidate) =>
+        candidate.id === record.value.id
+        && hashCanonical(candidate) === hashCanonical(record.value),
+    );
+  }
+  return conversations.attachments.some(
+    (candidate) =>
+      candidate.id === record.value.id
+      && hashCanonical(candidate) === hashCanonical(record.value),
+  );
+}
+
 function hasExactCreatedValue(
   item: ImportPlanItem,
   state: ImportCurrentState,
@@ -137,6 +183,13 @@ function hasExactCreatedValue(
     );
   }
 
+  if (item.module === "conversations") {
+    return hasExactConversationValue(
+      item.record as ConversationRestoreRecord,
+      state,
+    );
+  }
+
   return hasExactProjectValue(
     item.record as ProjectRestoreRecord,
     state,
@@ -148,30 +201,154 @@ function hasDatabaseErrorCode(error: unknown, code: string): boolean {
   let current: unknown = error;
   while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    if ("code" in current && (current as { code?: unknown }).code === code) return true;
-    current = "cause" in current ? (current as { cause?: unknown }).cause : undefined;
+    if (
+      "code" in current
+      && (current as { code?: unknown }).code === code
+    ) return true;
+    current = "cause" in current
+      ? (current as { cause?: unknown }).cause
+      : undefined;
   }
   return false;
 }
 
-async function insertProjectRecord(
+function projectRecords(
+  creates: ImportPlanItem[],
+  entity: ProjectRestoreRecord["entity"],
+): ProjectRestoreRecord[] {
+  return creates.flatMap((item) => {
+    if (item.module !== "projects") return [];
+    const record = item.record as ProjectRestoreRecord;
+    return record.entity === entity ? [record] : [];
+  });
+}
+
+function conversationRecords(
+  creates: ImportPlanItem[],
+  entity: ConversationRestoreRecord["entity"],
+): ConversationRestoreRecord[] {
+  return creates.flatMap((item) => {
+    if (item.module !== "conversations") return [];
+    const record = item.record as ConversationRestoreRecord;
+    return record.entity === entity ? [record] : [];
+  });
+}
+
+function orderMessageCreates(
+  records: ConversationRestoreRecord[],
+  current: ImportCurrentState,
+): ExportConversationMessageRecord[] {
+  const pending = new Map<string, ExportConversationMessageRecord>();
+  for (const record of records) {
+    if (record.entity === "message") {
+      pending.set(record.value.id, record.value);
+    }
+  }
+
+  const available = new Set(
+    (current.conversations?.messages ?? [])
+      .map((record) => record.id),
+  );
+  const ordered: ExportConversationMessageRecord[] = [];
+
+  while (pending.size > 0) {
+    let progressed = false;
+    for (const [id, record] of pending) {
+      if (
+        record.parent_message_id !== null
+        && !available.has(record.parent_message_id)
+      ) continue;
+      ordered.push(record);
+      available.add(id);
+      pending.delete(id);
+      progressed = true;
+    }
+    if (!progressed) {
+      throw new ImportValidationError(
+        "IMPORT_CONFLICT",
+        "conversation graph cannot be restored",
+      );
+    }
+  }
+
+  return ordered;
+}
+
+async function executeCreates(
   repository: ImportRepository,
   userId: string,
-  record: ProjectRestoreRecord,
+  creates: ImportPlanItem[],
+  current: ImportCurrentState,
 ): Promise<void> {
-  if (record.entity === "workspace") {
+  for (const item of creates) {
+    if (item.module === "diary") {
+      await repository.insertDiary(
+        userId,
+        item.record as ExportDiaryRecord,
+      );
+    }
+  }
+
+  for (const item of creates) {
+    if (item.module === "todo") {
+      await repository.insertTodo(
+        userId,
+        item.record as ExportTodoPaper,
+      );
+    }
+  }
+
+  for (const record of conversationRecords(creates, "conversation")) {
+    await repository.insertConversation(
+      userId,
+      record.value as ExportConversationRecord,
+    );
+  }
+
+  for (
+    const record of orderMessageCreates(
+      conversationRecords(creates, "message"),
+      current,
+    )
+  ) {
+    await repository.insertConversationMessage(userId, record);
+  }
+
+  for (const record of conversationRecords(creates, "content_block")) {
+    await repository.insertConversationContentBlock(
+      userId,
+      record.value as ExportConversationContentBlockRecord,
+    );
+  }
+
+  for (const record of conversationRecords(creates, "attachment")) {
+    await repository.insertConversationAttachment(
+      userId,
+      record.value as ExportConversationAttachmentRecord,
+    );
+  }
+
+  for (const item of creates) {
+    if (item.module === "mind") {
+      await repository.insertMind(
+        userId,
+        item.record as ExportMindStateRecord,
+      );
+    }
+  }
+
+  for (const record of projectRecords(creates, "workspace")) {
     await repository.insertProjectWorkspace(userId, record.value);
-    return;
   }
-  if (record.entity === "project") {
+  for (const record of projectRecords(creates, "project")) {
     await repository.insertProject(userId, record.value);
-    return;
   }
-  if (record.entity === "resource") {
+  for (const record of projectRecords(creates, "resource")) {
     await repository.insertProjectResource(userId, record.value);
-    return;
   }
-  await repository.insertProjectConversation(userId, record.value);
+  for (const record of projectRecords(creates, "conversation")) {
+    await repository.insertProjectConversation(userId, record.value);
+  }
 }
 
 export class ImportService {
@@ -184,11 +361,18 @@ export class ImportService {
     return toPreview(buildImportPlan(parsed, userId, current));
   }
 
-  async execute(raw: Uint8Array, userId: string, expectedPreviewFingerprint: string): Promise<ImportExecution> {
+  async execute(
+    raw: Uint8Array,
+    userId: string,
+    expectedPreviewFingerprint: string,
+  ): Promise<ImportExecution> {
     await this.requireActiveUser(this.repository, userId);
     const parsed = parseImportPackage(raw);
     if (!/^[0-9a-f]{64}$/u.test(expectedPreviewFingerprint)) {
-      throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
+      throw new ImportValidationError(
+        "IMPORT_PREVIEW_STALE",
+        "IMPORT_PREVIEW_STALE",
+      );
     }
     try {
       return await this.repository.withTransaction(async (transaction) => {
@@ -196,52 +380,53 @@ export class ImportService {
         const current = await transaction.readCurrentState(userId);
         const plan = buildImportPlan(parsed, userId, current);
         if (plan.preview_fingerprint !== expectedPreviewFingerprint) {
-          throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
-        }
-        if (plan.items.some((item) => item.classification === "conflict" || item.classification === "invalid")) {
-          throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
-        }
-        const creates = plan.items.filter((item) => item.classification === "create");
-        if (creates.length === 0) {
-          throw new ImportValidationError("IMPORT_NOTHING_TO_RESTORE", "IMPORT_NOTHING_TO_RESTORE");
-        }
-
-        for (const item of creates) {
-          if (item.module === "diary") {
-            await transaction.insertDiary(
-              userId,
-              item.record as ExportDiaryRecord,
-            );
-            continue;
-          }
-          if (item.module === "todo") {
-            await transaction.insertTodo(
-              userId,
-              item.record as ExportTodoPaper,
-            );
-            continue;
-          }
-          if (item.module === "mind") {
-            await transaction.insertMind(
-              userId,
-              item.record as ExportMindStateRecord,
-            );
-            continue;
-          }
-          await insertProjectRecord(
-            transaction,
-            userId,
-            item.record as ProjectRestoreRecord,
+          throw new ImportValidationError(
+            "IMPORT_PREVIEW_STALE",
+            "IMPORT_PREVIEW_STALE",
           );
         }
+        if (
+          plan.items.some(
+            (item) =>
+              item.classification === "conflict"
+              || item.classification === "invalid",
+          )
+        ) {
+          throw new ImportValidationError(
+            "IMPORT_CONFLICT",
+            "IMPORT_CONFLICT",
+          );
+        }
+
+        const creates = plan.items.filter(
+          (item) => item.classification === "create",
+        );
+        if (creates.length === 0) {
+          throw new ImportValidationError(
+            "IMPORT_NOTHING_TO_RESTORE",
+            "IMPORT_NOTHING_TO_RESTORE",
+          );
+        }
+
+        await executeCreates(
+          transaction,
+          userId,
+          creates,
+          current,
+        );
 
         const reread = await transaction.rereadCreatedState(
           userId,
           includedModules(parsed.document),
         );
-        if (creates.some((item) => !hasExactCreatedValue(item, reread))) {
+        if (
+          creates.some(
+            (item) => !hasExactCreatedValue(item, reread),
+          )
+        ) {
           throw new Error("IMPORT_VERIFY_FAILED");
         }
+
         await transaction.recordAuditRun(userId, {
           package_sha256: plan.package_sha256,
           preview_fingerprint: plan.preview_fingerprint,
@@ -256,14 +441,29 @@ export class ImportService {
       });
     } catch (error) {
       if (error instanceof ImportValidationError) throw error;
-      if (error instanceof Error && error.message === "IMPORT_VERIFY_FAILED") {
-        throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
+      if (
+        error instanceof Error
+        && error.message === "IMPORT_VERIFY_FAILED"
+      ) {
+        throw new ImportValidationError(
+          "IMPORT_CONFLICT",
+          "IMPORT_CONFLICT",
+        );
       }
-      if (hasDatabaseErrorCode(error, "23503") || hasDatabaseErrorCode(error, "23505")) {
-        throw new ImportValidationError("IMPORT_CONFLICT", "IMPORT_CONFLICT");
+      if (
+        hasDatabaseErrorCode(error, "23503")
+        || hasDatabaseErrorCode(error, "23505")
+      ) {
+        throw new ImportValidationError(
+          "IMPORT_CONFLICT",
+          "IMPORT_CONFLICT",
+        );
       }
       if (hasDatabaseErrorCode(error, "40001")) {
-        throw new ImportValidationError("IMPORT_PREVIEW_STALE", "IMPORT_PREVIEW_STALE");
+        throw new ImportValidationError(
+          "IMPORT_PREVIEW_STALE",
+          "IMPORT_PREVIEW_STALE",
+        );
       }
       throw error;
     }
