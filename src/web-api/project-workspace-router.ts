@@ -69,6 +69,7 @@ export function createProjectWorkspaceApiRouter(
       userId: request.webUserId!,
       name: body.name,
       description: body.description,
+      idempotencyKey: request.get("Idempotency-Key"),
     });
   }));
 
@@ -138,6 +139,7 @@ export function createProjectWorkspaceApiRouter(
         title: body.title,
         content: body.content,
         metadata: body.metadata,
+        idempotencyKey: request.get("Idempotency-Key"),
       });
     }),
   );
@@ -632,6 +634,30 @@ function mapError(
           surface === "workspace"
             ? "Workspace request is invalid."
             : "Project request is invalid.",
+      },
+    });
+    return;
+  }
+
+  if (error.code === "INVALID_IDEMPOTENCY_KEY") {
+    response.status(400).json({
+      success: false,
+      error: {
+        code: "INVALID_IDEMPOTENCY_KEY",
+        message:
+          "Idempotency-Key is required for durable create requests.",
+      },
+    });
+    return;
+  }
+
+  if (error.code === "IDEMPOTENCY_CONFLICT") {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: "IDEMPOTENCY_CONFLICT",
+        message:
+          "Idempotency-Key was already used for a different request.",
       },
     });
     return;
