@@ -34,6 +34,7 @@ const {
   relayToken,
   listenerInstanceId,
   companionBackgroundIntervalMs,
+  baseWorkspaceRoot,
 } = resolveNativeLiveMacDaemonConfig(process.env);
 
 if (process.env.ANTHROPIC_API_KEY) {
@@ -70,7 +71,20 @@ const companionScheduler = new NativeLiveMacCompanionScheduler(
 const {
   kind: claudeTransportKind,
   runtime,
-} = await createNativeLiveMacClaudeTransport(process.env);
+} = await createNativeLiveMacClaudeTransport(
+  process.env,
+  baseWorkspaceRoot,
+);
+
+process.stdout.write(
+  JSON.stringify({
+    at: new Date().toISOString(),
+    outcome: "daemon_config",
+    claudeTransport: claudeTransportKind,
+    baseWorkspaceRoot,
+  }) + "\n",
+);
+
 const executor = new NativeLiveMacRuntimeExecutor(runtime);
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
@@ -197,9 +211,6 @@ while (!stopping) {
           break;
         }
 
-        // A long-poll timeout is not a queue scan. It only gives the
-        // timer-free Companion scheduler a chance to run if its cadence is due,
-        // then immediately re-enters the event-driven wait.
         await companionScheduler.offer();
       }
       continue;
