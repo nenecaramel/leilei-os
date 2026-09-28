@@ -20,7 +20,7 @@ struct ChatView: View {
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
     @State private var isSystemKeyboardVisible = false
-    @State private var showingProjectFilePicker = false
+    @State private var showingWorkspaceFilePicker = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -119,9 +119,6 @@ struct ChatView: View {
                 model: $model,
                 thinking: $thinking,
                 effort: $effort,
-                workspaceID: $selectedWorkspaceID,
-                workspaces: workspaces,
-                workspaceSelectionEnabled: workspaceSelectionEnabled,
                 isFocused: $isComposerFocused,
                 isSending:
                     appModel.chatSendState == .sending
@@ -135,9 +132,9 @@ struct ChatView: View {
                 interruptRequested:
                     runtimeInterruptRequested,
                 isEditing: editDraft != nil,
-                onProjectFile: {
+                onWorkspaceFile: {
                     isComposerFocused = false
-                    showingProjectFilePicker = true
+                    showingWorkspaceFilePicker = true
                 },
                 onCancelEdit: cancelEditing,
                 onInterrupt: {
@@ -169,8 +166,13 @@ struct ChatView: View {
                     : 10
             )
         }
-        .sheet(isPresented: $showingProjectFilePicker) {
-            ProjectFilePickerSheet()
+        .sheet(isPresented: $showingWorkspaceFilePicker) {
+            WorkspaceFilePickerSheet()
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                workspaceMenu
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -245,6 +247,40 @@ struct ChatView: View {
                 surfaceTransientFailure: false
             )
         }
+    }
+
+    private var selectedWorkspaceName: String {
+        guard let selectedWorkspaceID,
+              let workspace = workspaces.first(where: {
+                  $0.id == selectedWorkspaceID
+              }) else {
+            return "Workspace"
+        }
+        return workspace.name
+    }
+
+    private var workspaceMenu: some View {
+        Menu {
+            Picker(
+                "Workspace",
+                selection: $selectedWorkspaceID
+            ) {
+                Text("No Workspace")
+                    .tag(String?.none)
+
+                ForEach(workspaces) { workspace in
+                    Text(workspace.name)
+                        .tag(Optional(workspace.id))
+                }
+            }
+            .disabled(!workspaceSelectionEnabled)
+        } label: {
+            Image(systemName: "folder")
+                .font(.system(size: 17, weight: .regular))
+        }
+        .accessibilityLabel(
+            selectedWorkspaceName
+        )
     }
 
     private var workspaceSelectionEnabled: Bool {
