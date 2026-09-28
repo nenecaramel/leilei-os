@@ -28,6 +28,17 @@ async function loadDefaultSessionMessages() {
   return sdk.getSessionMessages;
 }
 
+async function loadDefaultImportSessionToStore() {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  if (typeof sdk.importSessionToStore !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK did not expose importSessionToStore().",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+  return sdk.importSessionToStore;
+}
+
 async function loadDefaultDeleteSession() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
   if (
@@ -131,6 +142,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadDeleteSession = loadDefaultDeleteSession,
     sessionMessagesImpl = null,
     loadSessionMessages = loadDefaultSessionMessages,
+    importSessionToStoreImpl = null,
+    loadImportSessionToStore = loadDefaultImportSessionToStore,
     sessionStore = null,
     environment = process.env,
     cwd = process.cwd(),
@@ -148,6 +161,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.loadDeleteSession = loadDeleteSession;
     this.sessionMessagesImpl = sessionMessagesImpl;
     this.loadSessionMessages = loadSessionMessages;
+    this.importSessionToStoreImpl = importSessionToStoreImpl;
+    this.loadImportSessionToStore = loadImportSessionToStore;
     this.sessionStore = sessionStore;
     this.environment = environment;
     this.cwd = cwd;
@@ -630,7 +645,16 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   async #prepareSessionForTurn(sessionId, mode) {
     const id = nonblankString(sessionId);
     const preflight = await this.#requireSession(id);
-    const canComplete = preflight.status === "complete";
+    let status = preflight.status;
+
+    if (
+      preflight.localAvailable
+      && status === null
+    ) {
+      status = await this.#tryBackfillLocalSession(id);
+    }
+
+    const canComplete = status === "complete";
 
     if (mode === "resume" && canComplete) {
       if (
@@ -653,6 +677,50 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     }
 
     return { canComplete };
+  }
+
+  async #tryBackfillLocalSession(sessionId) {
+    if (
+      !this.sessionStore
+      || typeof this.sessionStore.load !== "function"
+      || typeof this.sessionStore.markComplete !== "function"
+    ) {
+      return null;
+    }
+
+    let importSessionToStore;
+    try {
+      importSessionToStore =
+        this.importSessionToStoreImpl
+        ?? await this.loadImportSessionToStore();
+    } catch (cause) {
+      this.events.emit("session-store-backfill-error", cause);
+      return null;
+    }
+
+    try {
+      await importSessionToStore(
+        sessionId,
+        this.sessionStore,
+        {
+          dir: this.cwd,
+          includeSubagents: true,
+          batchSize: 500,
+        },
+      );
+      const entries = await this.sessionStore.load({
+        projectKey: this.cwd,
+        sessionId,
+      });
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return null;
+      }
+      await this.sessionStore.markComplete(sessionId);
+      return "complete";
+    } catch (cause) {
+      this.events.emit("session-store-backfill-error", cause);
+      return null;
+    }
   }
 
   async #readPortabilityStatus(sessionId) {
