@@ -1,17 +1,146 @@
 import SwiftUI
 import Foundation
 
-struct WorkspacesView: View {
+struct ProjectsView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let onOpenConversation: (UUID) -> Void
+
+    init(
+        onOpenConversation: @escaping (UUID) -> Void = { _ in }
+    ) {
+        self.onOpenConversation = onOpenConversation
+    }
+
+    @State private var workspaces: [ProjectWorkspaceSummary] = []
+    @State private var projects: [ProjectSummary] = []
+    @State private var loading = false
+    @State private var failed = false
+    @State private var showingWorkspacePicker = false
+    @State private var showingNewWorkspace = false
+    @State private var showingNewProject = false
+    @State private var reloadToken = UUID()
+
     var body: some View {
-        // Do not adapt the legacy Workspace -> Project domain into the
-        // final single-layer Workspace product model. The authoritative
-        // execution Workspace contract will be wired here when main lands.
-        AppStateSurface(title: "Unavailable")
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity
-            )
-            .background(Color(.systemBackground))
+        Group {
+            if loading && workspaces.isEmpty && projects.isEmpty {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+            } else if failed && workspaces.isEmpty && projects.isEmpty {
+                AppStateSurface(
+                    title: "Unavailable",
+                    actionTitle: "Retry"
+                ) {
+                    reloadToken = UUID()
+                }
+            } else {
+                List {
+                    Section("Workspace") {
+                        Button {
+                            showingWorkspacePicker = true
+                        } label: {
+                            Label(
+                                "Workspace",
+                                systemImage: "externaldrive"
+                            )
+                        }
+                        .foregroundStyle(.primary)
+                    }
+
+                    Section("Projects") {
+                        if projects.isEmpty {
+                            AppStateSurface(title: "Nothing here")
+                                .frame(maxWidth: .infinity)
+                                .listRowBackground(
+                                    Color(.systemBackground)
+                                )
+                        } else {
+                            ForEach(projects) { project in
+                                NavigationLink {
+                                    ProjectDetailView(
+                                        project: project,
+                                        onOpenConversation:
+                                            onOpenConversation
+                                    ) {
+                                        reloadToken = UUID()
+                                    }
+                                } label: {
+                                    ProjectSummaryRow(project: project)
+                                }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .background(Color(.systemBackground))
+                .refreshable {
+                    await reload()
+                }
+            }
+        }
+        .background(Color(.systemBackground))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("New Project") {
+                        showingNewProject = true
+                    }
+                    .disabled(workspaces.isEmpty)
+
+                    Button("New Workspace") {
+                        showingNewWorkspace = true
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add")
+            }
+        }
+        .sheet(isPresented: $showingWorkspacePicker) {
+            WorkspacePickerSheet {
+                reloadToken = UUID()
+            }
+            .environmentObject(appModel)
+        }
+        .sheet(isPresented: $showingNewWorkspace) {
+            WorkspaceCreateSheet {
+                reloadToken = UUID()
+            }
+            .environmentObject(appModel)
+        }
+        .sheet(isPresented: $showingNewProject) {
+            ProjectCreateSheet(
+                workspaces: workspaces
+            ) {
+                reloadToken = UUID()
+            }
+            .environmentObject(appModel)
+        }
+        .task(id: reloadToken) {
+            await reload()
+        }
+    }
+
+    @MainActor
+    private func reload() async {
+        guard !loading else { return }
+        loading = true
+        failed = false
+        defer { loading = false }
+
+        do {
+            workspaces =
+                try await appModel.api.projectWorkspaces()
+            projects =
+                try await appModel.api.projects()
+        } catch {
+            failed = true
+        }
     }
 }
 

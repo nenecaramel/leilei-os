@@ -11,6 +11,7 @@ struct ChatComposer: View {
     var isRuntimeControlInFlight = false
     var interruptRequested = false
     var isEditing = false
+    var onProjectFile: (() -> Void)? = nil
     var onCancelEdit: (() -> Void)? = nil
     var onInterrupt: (() -> Void)? = nil
     var onMidTurnInput: ((String) -> Void)? = nil
@@ -64,6 +65,36 @@ struct ChatComposer: View {
 
             HStack(spacing: 8) {
                 Menu {
+                    Button {
+                    } label: {
+                        Label("Photo", systemImage: "photo")
+                    }
+
+                    Button {
+                    } label: {
+                        Label("Camera", systemImage: "camera")
+                    }
+
+                    Button {
+                    } label: {
+                        Label("File", systemImage: "doc")
+                    }
+
+                    Divider()
+
+                    Button {
+                        onProjectFile?()
+                    } label: {
+                        Label("Project File", systemImage: "folder")
+                    }
+                } label: {
+                    ComposerCircleButton(
+                        systemName: "plus",
+                        weight: .light
+                    )
+                }
+
+                Menu {
                     Section("Model") {
                         Picker("", selection: modelSelection) {
                             ForEach(
@@ -108,6 +139,14 @@ struct ChatComposer: View {
                 }
 
                 Spacer(minLength: 0)
+
+                Button {
+                } label: {
+                    ComposerCircleButton(
+                        systemName: "mic.fill"
+                    )
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     let normalized = text.trimmingCharacters(
