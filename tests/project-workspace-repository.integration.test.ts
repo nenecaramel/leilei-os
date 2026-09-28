@@ -525,3 +525,130 @@ test(
     );
   },
 );
+
+
+test(
+  "single-layer Workspace deletion fails closed while canonical provider checkpoints still depend on it",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let userId: string | null = null;
+
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(projectConversations)
+            .where(eq(projectConversations.userId, userId));
+          await database.db
+            .delete(projectResources)
+            .where(eq(projectResources.userId, userId));
+          await database.db
+            .delete(projects)
+            .where(eq(projects.userId, userId));
+          await database.db
+            .delete(projectWorkspaces)
+            .where(eq(projectWorkspaces.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `workspace-in-use-${crypto.randomUUID()}@example.com`,
+        displayName: "Workspace In Use Test",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const service = new ProjectWorkspaceService(
+      new DrizzleProjectWorkspaceRepository(database.db),
+    );
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const workspace = await service.createProductWorkspace({
+      userId,
+      name: "Bound Workspace",
+    });
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Bound conversation",
+    });
+    const userMessage = await conversationService.appendUserMessage({
+      userId,
+      conversationId: conversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "hello" }],
+    });
+    await conversationService.completeAssistantTurn({
+      userId,
+      conversationId: conversation.id,
+      parentMessageId: userMessage.id,
+      blocks: [{ kind: "text", text: "reply" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: "workspace-bound-session",
+        workspaceId: workspace.id,
+        effectiveWorkspaceRoot: "/Users/leilei/Bound",
+      },
+    });
+
+    await assert.rejects(
+      service.deleteProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+        expectedVersion: workspace.version,
+      }),
+      (error: unknown) =>
+        error instanceof ProjectWorkspaceServiceError
+        && error.code === "WORKSPACE_IN_USE",
+    );
+
+    assert.ok(
+      await service.getProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+      }),
+      "failed delete must leave Workspace intact",
+    );
+
+    assert.equal(
+      (
+        await conversationService.deleteConversation({
+          userId,
+          conversationId: conversation.id,
+        })
+      ).outcome,
+      "deleted",
+    );
+
+    await service.deleteProductWorkspace({
+      userId,
+      workspaceId: workspace.id,
+      expectedVersion: workspace.version,
+    });
+    await assert.rejects(
+      service.getProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+      }),
+      (error: unknown) =>
+        error instanceof ProjectWorkspaceServiceError
+        && error.code === "WORKSPACE_NOT_FOUND",
+    );
+  },
+);
