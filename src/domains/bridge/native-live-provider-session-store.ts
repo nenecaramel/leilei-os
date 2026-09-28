@@ -18,6 +18,10 @@ export type NativeLiveProviderSessionStoreListEntry = {
   mtime: number;
 };
 
+export type NativeLiveProviderSessionStoreState =
+  | "complete"
+  | "incomplete";
+
 export class NativeLiveProviderSessionStoreError extends Error {
   constructor(
     readonly code:
@@ -37,18 +41,24 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
   async append(input: {
     userId: string;
     key: NativeLiveProviderSessionStoreKey;
+    appendBatchId: string;
     entries: NativeLiveProviderSessionStoreEntry[];
   }): Promise<void> {
     if (input.entries.length === 0) return;
-    await this.db.insert(nativeLiveProviderSessionEntries).values(
-      input.entries.map((entry) => ({
-        userId: input.userId,
-        workspaceId: input.key.workspaceId,
-        providerSessionId: input.key.sessionId,
-        subpath: input.key.subpath ?? null,
-        entry,
-      })),
-    );
+    await this.db
+      .insert(nativeLiveProviderSessionEntries)
+      .values(
+        input.entries.map((entry, appendOrdinal) => ({
+          userId: input.userId,
+          workspaceId: input.key.workspaceId,
+          providerSessionId: input.key.sessionId,
+          subpath: input.key.subpath ?? "",
+          appendBatchId: input.appendBatchId,
+          appendOrdinal,
+          entry,
+        })),
+      )
+      .onConflictDoNothing();
   }
 
   async load(input: {
@@ -63,7 +73,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       WHERE user_id = ${input.userId}::uuid
         AND workspace_id = ${input.key.workspaceId}::uuid
         AND provider_session_id = ${input.key.sessionId}
-        AND subpath IS NOT DISTINCT FROM ${input.key.subpath ?? null}
+        AND subpath = ${input.key.subpath ?? ""}
       ORDER BY id ASC
     `);
     return rows.length > 0
@@ -85,7 +95,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       FROM native_live_provider_session_entries
       WHERE user_id = ${input.userId}::uuid
         AND workspace_id = ${input.workspaceId}::uuid
-        AND subpath IS NULL
+        AND subpath = ''
       GROUP BY provider_session_id
       ORDER BY max(created_at) DESC, provider_session_id ASC
     `);
@@ -109,11 +119,63 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       `);
       return;
     }
-    await this.db.execute(sql`
-      DELETE FROM native_live_provider_session_entries
+    await this.db.transaction(async (transaction) => {
+      await transaction.execute(sql`
+        DELETE FROM native_live_provider_session_entries
+        WHERE user_id = ${input.userId}::uuid
+          AND workspace_id = ${input.key.workspaceId}::uuid
+          AND provider_session_id = ${input.key.sessionId}
+      `);
+      await transaction.execute(sql`
+        DELETE FROM native_live_provider_session_store_status
+        WHERE user_id = ${input.userId}::uuid
+          AND workspace_id = ${input.key.workspaceId}::uuid
+          AND provider_session_id = ${input.key.sessionId}
+      `);
+    });
+  }
+
+  async getStatus(input: {
+    userId: string;
+    workspaceId: string;
+    sessionId: string;
+  }): Promise<NativeLiveProviderSessionStoreState | null> {
+    const rows = await this.db.execute<{ state: NativeLiveProviderSessionStoreState }>(sql`
+      SELECT state
+      FROM native_live_provider_session_store_status
       WHERE user_id = ${input.userId}::uuid
-        AND workspace_id = ${input.key.workspaceId}::uuid
-        AND provider_session_id = ${input.key.sessionId}
+        AND workspace_id = ${input.workspaceId}::uuid
+        AND provider_session_id = ${input.sessionId}
+      LIMIT 1
+    `);
+    return rows[0]?.state ?? null;
+  }
+
+  async setStatus(input: {
+    userId: string;
+    workspaceId: string;
+    sessionId: string;
+    state: NativeLiveProviderSessionStoreState;
+  }): Promise<void> {
+    await this.db.execute(sql`
+      INSERT INTO native_live_provider_session_store_status (
+        user_id,
+        workspace_id,
+        provider_session_id,
+        state,
+        updated_at
+      )
+      VALUES (
+        ${input.userId}::uuid,
+        ${input.workspaceId}::uuid,
+        ${input.sessionId},
+        ${input.state},
+        now()
+      )
+      ON CONFLICT (user_id, workspace_id, provider_session_id)
+      DO UPDATE SET
+        state = EXCLUDED.state,
+        updated_at = now()
     `);
   }
 
@@ -128,7 +190,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       WHERE user_id = ${input.userId}::uuid
         AND workspace_id = ${input.workspaceId}::uuid
         AND provider_session_id = ${input.sessionId}
-        AND subpath IS NOT NULL
+        AND subpath <> ''
       ORDER BY subpath ASC
     `);
     return rows.map((row) => row.subpath);
@@ -144,9 +206,14 @@ export class NativeLiveProviderSessionStoreService {
   async append(input: {
     userId: string;
     key: NativeLiveProviderSessionStoreKey;
+    appendBatchId: string;
     entries: NativeLiveProviderSessionStoreEntry[];
   }): Promise<void> {
     const key = normalizeKey(input.key);
+    const appendBatchId = normalizeUuid(
+      input.appendBatchId,
+      "SessionStore append batch id is invalid.",
+    );
     if (!Array.isArray(input.entries)) {
       throw new NativeLiveProviderSessionStoreError(
         "INVALID_ENTRY",
@@ -183,6 +250,7 @@ export class NativeLiveProviderSessionStoreService {
     await this.repository.append({
       userId: input.userId,
       key,
+      appendBatchId,
       entries,
     });
   }
@@ -228,9 +296,54 @@ export class NativeLiveProviderSessionStoreService {
       sessionId: normalizeSessionId(input.sessionId),
     });
   }
+
+  getStatus(input: {
+    userId: string;
+    workspaceId: string;
+    sessionId: string;
+  }): Promise<NativeLiveProviderSessionStoreState | null> {
+    return this.repository.getStatus({
+      userId: input.userId,
+      workspaceId: normalizeWorkspaceId(input.workspaceId),
+      sessionId: normalizeSessionId(input.sessionId),
+    });
+  }
+
+  markIncomplete(input: {
+    userId: string;
+    workspaceId: string;
+    sessionId: string;
+  }): Promise<void> {
+    return this.repository.setStatus({
+      userId: input.userId,
+      workspaceId: normalizeWorkspaceId(input.workspaceId),
+      sessionId: normalizeSessionId(input.sessionId),
+      state: "incomplete",
+    });
+  }
+
+  markComplete(input: {
+    userId: string;
+    workspaceId: string;
+    sessionId: string;
+  }): Promise<void> {
+    return this.repository.setStatus({
+      userId: input.userId,
+      workspaceId: normalizeWorkspaceId(input.workspaceId),
+      sessionId: normalizeSessionId(input.sessionId),
+      state: "complete",
+    });
+  }
 }
 
 function normalizeWorkspaceId(value: string): string {
+  return normalizeUuid(
+    value,
+    "SessionStore workspace id is invalid.",
+  );
+}
+
+function normalizeUuid(value: string, message: string): string {
   const normalized =
     typeof value === "string" ? value.trim() : "";
   if (
@@ -240,7 +353,7 @@ function normalizeWorkspaceId(value: string): string {
   ) {
     throw new NativeLiveProviderSessionStoreError(
       "INVALID_KEY",
-      "SessionStore workspace id is invalid.",
+      message,
     );
   }
   return normalized;
