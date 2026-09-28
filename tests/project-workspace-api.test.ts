@@ -25,6 +25,70 @@ class FakeService {
     if (this.failure) throw this.failure;
   }
 
+  async listProductWorkspaces(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "listProductWorkspaces", input });
+    return [];
+  }
+  async getProductWorkspace(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "getProductWorkspace", input });
+    return { id: projectId, name: "LeileiOS", version: 1 };
+  }
+  async createProductWorkspace(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "createProductWorkspace", input });
+    return { id: projectId, name: "LeileiOS", version: 1 };
+  }
+  async updateProductWorkspace(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "updateProductWorkspace", input });
+    return { id: projectId, name: "Changed", version: 2 };
+  }
+  async deleteProductWorkspace(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "deleteProductWorkspace", input });
+  }
+  async listWorkspaceResources(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "listWorkspaceResources", input });
+    return [];
+  }
+  async getWorkspaceResource(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "getWorkspaceResource", input });
+    return { id: resourceId, workspaceId: projectId, content: "detail" };
+  }
+  async createWorkspaceResource(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "createWorkspaceResource", input });
+    return { id: resourceId, workspaceId: projectId };
+  }
+  async updateWorkspaceResource(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "updateWorkspaceResource", input });
+    return { id: resourceId, workspaceId: projectId, version: 2 };
+  }
+  async deleteWorkspaceResource(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "deleteWorkspaceResource", input });
+  }
+  async listWorkspaceConversations(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "listWorkspaceConversations", input });
+    return [];
+  }
+  async attachWorkspaceConversation(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "attachWorkspaceConversation", input });
+    return { applied: true };
+  }
+  async detachWorkspaceConversation(input: unknown) {
+    this.maybeFail();
+    this.calls.push({ name: "detachWorkspaceConversation", input });
+    return { applied: true };
+  }
+
   async listWorkspaces(user: string) {
     this.maybeFail();
     this.calls.push({ name: "listWorkspaces", input: user });
@@ -139,7 +203,7 @@ async function withServer(
   }
 }
 
-test("Projects API exposes Workspace Project Resource and Conversation contracts", async () => {
+test("Workspaces API exposes one execution Workspace surface and keeps legacy aliases", async () => {
   const service = new FakeService();
   await withServer(service, async (baseUrl) => {
     assert.equal((await fetch(`${baseUrl}/workspaces`)).status, 200);
@@ -147,147 +211,181 @@ test("Projects API exposes Workspace Project Resource and Conversation contracts
     const workspaceCreate = await fetch(`${baseUrl}/workspaces`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Personal" }),
+      body: JSON.stringify({ name: "LeileiOS" }),
     });
     assert.equal(workspaceCreate.status, 201);
-
-    const projectCreate = await fetch(`${baseUrl}/projects`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        workspace_id: workspaceId,
-        name: "LeileiOS",
-      }),
-    });
-    assert.equal(projectCreate.status, 201);
-
     assert.equal(
-      (await fetch(
-        `${baseUrl}/projects?workspace_id=${workspaceId}`,
-      )).status,
-      200,
+      (await workspaceCreate.json()).data.id,
+      projectId,
+      "product Workspace id must be the execution id",
     );
 
     assert.equal(
       (await fetch(
-        `${baseUrl}/projects?conversation_id=${conversationId}`,
+        `${baseUrl}/workspaces?conversation_id=${conversationId}`,
       )).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(`${baseUrl}/workspaces/${projectId}`)).status,
       200,
     );
 
     const resourceCreate = await fetch(
-      `${baseUrl}/projects/${projectId}/resources`,
+      `${baseUrl}/workspaces/${projectId}/resources`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           kind: "instructions",
           key: "default",
-          content: "Use the project context.",
+          content: "Use the Workspace context.",
         }),
       },
     );
     assert.equal(resourceCreate.status, 201);
+    const resourceBody = await resourceCreate.json();
+    assert.equal(resourceBody.data.workspaceId, projectId);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        resourceBody.data,
+        "projectId",
+      ),
+      false,
+    );
 
     assert.equal(
       (await fetch(
-        `${baseUrl}/projects/${projectId}/resources?kind=instructions`,
+        `${baseUrl}/workspaces/${projectId}/resources?kind=instructions`,
+      )).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(
+        `${baseUrl}/workspaces/${projectId}/resources/${resourceId}`,
       )).status,
       200,
     );
 
     assert.equal(
       (await fetch(
-        `${baseUrl}/projects/${projectId}/resources/${resourceId}`,
+        `${baseUrl}/workspaces/${projectId}/conversations/${conversationId}`,
+        { method: "PUT" },
       )).status,
       200,
     );
-
-    const attach = await fetch(
-      `${baseUrl}/projects/${projectId}/conversations/${conversationId}`,
-      { method: "PUT" },
-    );
-    assert.equal(attach.status, 200);
-
     assert.equal(
       (await fetch(
-        `${baseUrl}/projects/${projectId}/conversations`,
+        `${baseUrl}/workspaces/${projectId}/conversations`,
+      )).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(
+        `${baseUrl}/workspaces/${projectId}/conversations/${conversationId}`,
+        { method: "DELETE" },
       )).status,
       200,
     );
 
-    const detach = await fetch(
-      `${baseUrl}/projects/${projectId}/conversations/${conversationId}`,
-      { method: "DELETE" },
+    // Transition compatibility: old backing containers moved under an
+    // explicit legacy path and the existing /projects alias remains.
+    assert.equal(
+      (await fetch(`${baseUrl}/legacy/project-workspaces`)).status,
+      200,
     );
-    assert.equal(detach.status, 200);
+    assert.equal(
+      (await fetch(
+        `${baseUrl}/projects?workspace_id=${workspaceId}`,
+      )).status,
+      200,
+    );
   });
 
   assert.deepEqual(service.calls, [
-    { name: "listWorkspaces", input: userId },
     {
-      name: "createWorkspace",
-      input: { userId, name: "Personal", description: undefined },
+      name: "listProductWorkspaces",
+      input: { userId },
     },
     {
-      name: "createProject",
+      name: "createProductWorkspace",
       input: {
         userId,
-        workspaceId,
         name: "LeileiOS",
         description: undefined,
       },
     },
     {
-      name: "listProjects",
-      input: { userId, workspaceId },
-    },
-    {
-      name: "listProjects",
+      name: "listProductWorkspaces",
       input: { userId, conversationId },
     },
     {
-      name: "createResource",
+      name: "getProductWorkspace",
+      input: { userId, workspaceId: projectId },
+    },
+    {
+      name: "createWorkspaceResource",
       input: {
         userId,
-        projectId,
+        workspaceId: projectId,
         kind: "instructions",
         key: "default",
         title: undefined,
-        content: "Use the project context.",
+        content: "Use the Workspace context.",
         metadata: undefined,
       },
     },
     {
-      name: "listResources",
-      input: { userId, projectId, kind: "instructions" },
+      name: "listWorkspaceResources",
+      input: {
+        userId,
+        workspaceId: projectId,
+        kind: "instructions",
+      },
     },
     {
-      name: "getResource",
-      input: { userId, projectId, resourceId },
+      name: "getWorkspaceResource",
+      input: {
+        userId,
+        workspaceId: projectId,
+        resourceId,
+      },
     },
     {
-      name: "attachConversation",
-      input: { userId, projectId, conversationId },
+      name: "attachWorkspaceConversation",
+      input: {
+        userId,
+        workspaceId: projectId,
+        conversationId,
+      },
     },
     {
-      name: "listProjectConversations",
-      input: { userId, projectId },
+      name: "listWorkspaceConversations",
+      input: { userId, workspaceId: projectId },
     },
     {
-      name: "detachConversation",
-      input: { userId, projectId, conversationId },
+      name: "detachWorkspaceConversation",
+      input: {
+        userId,
+        workspaceId: projectId,
+        conversationId,
+      },
+    },
+    { name: "listWorkspaces", input: userId },
+    {
+      name: "listProjects",
+      input: { userId, workspaceId },
     },
   ]);
 });
 
-test("Projects API maps version conflicts, not found, invalid identity, and auth", async () => {
+test("Workspaces API maps version conflicts, not found, invalid identity, and auth", async () => {
   const service = new FakeService();
   await withServer(service, async (baseUrl) => {
     service.failure =
       new ProjectWorkspaceServiceError("VERSION_CONFLICT");
     const conflict = await fetch(
-      `${baseUrl}/projects/${projectId}`,
+      `${baseUrl}/workspaces/${projectId}`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -300,7 +398,7 @@ test("Projects API maps version conflicts, not found, invalid identity, and auth
     assert.equal(conflict.status, 409);
 
     service.failure =
-      new ProjectWorkspaceServiceError("PROJECT_NOT_FOUND");
+      new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");
     assert.equal(
       (await fetch(`${baseUrl}/projects/${projectId}`)).status,
       404,
