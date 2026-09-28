@@ -10,6 +10,8 @@ struct PageContainer: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
     @State private var showingContext = false
+    @State private var workspaces: [WorkspaceSummary] = []
+    @State private var selectedWorkspaceID: String?
 
     let selectedPage: AppPage
     let diaryTarget: DiaryNavigationTarget?
@@ -62,6 +64,27 @@ struct PageContainer: View {
                                         systemImage: "chart.bar"
                                     )
                                 }
+
+                                Menu {
+                                    Picker(
+                                        "Workspace",
+                                        selection: $selectedWorkspaceID
+                                    ) {
+                                        Text("No Workspace")
+                                            .tag(String?.none)
+
+                                        ForEach(workspaces) { workspace in
+                                            Text(workspace.name)
+                                                .tag(Optional(workspace.id))
+                                        }
+                                    }
+                                } label: {
+                                    Label(
+                                        selectedWorkspaceName,
+                                        systemImage: "folder"
+                                    )
+                                }
+                                .disabled(!workspaceSelectionEnabled)
 
                                 Button {
                                     guard appModel.activeNativeLiveConversationID != nil else {
@@ -125,6 +148,32 @@ struct PageContainer: View {
         .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
+        }
+        .task(id: appModel.isAuthenticated) {
+            guard appModel.isAuthenticated else {
+                workspaces = []
+                selectedWorkspaceID = nil
+                return
+            }
+            await refreshWorkspaces()
+        }
+        .onChange(of: draftConversationID) { _, _ in
+            guard isDraftConversation else { return }
+            normalizeSelectedWorkspace()
+        }
+        .onChange(of: appModel.activeNativeLiveWorkspaceID) {
+            _,
+            workspaceID in
+            guard !isDraftConversation else { return }
+            selectedWorkspaceID = workspaceID
+        }
+        .onChange(of: isDraftConversation) { _, isDraft in
+            if isDraft {
+                normalizeSelectedWorkspace()
+            } else {
+                selectedWorkspaceID =
+                    appModel.activeNativeLiveWorkspaceID
+            }
         }
         .alert(
             "Rename",
@@ -205,12 +254,64 @@ struct PageContainer: View {
     }
 
 
+    private var selectedWorkspaceName: String {
+        guard let selectedWorkspaceID,
+              let workspace = workspaces.first(where: {
+                  $0.id == selectedWorkspaceID
+              }) else {
+            return "Workspace"
+        }
+        return workspace.name
+    }
+
+    private var workspaceSelectionEnabled: Bool {
+        if isDraftConversation {
+            return true
+        }
+        guard appModel.activeNativeLiveWorkspaceID == nil else {
+            return false
+        }
+        return appModel.nativeLiveCurrentPath?.currentHeadMessageId == nil
+    }
+
+    @MainActor
+    private func refreshWorkspaces() async {
+        do {
+            workspaces = try await appModel.api.workspaces()
+            if isDraftConversation {
+                normalizeSelectedWorkspace()
+            } else if let bound =
+                appModel.activeNativeLiveWorkspaceID {
+                selectedWorkspaceID = bound
+            } else if appModel.nativeLiveCurrentPath?
+                .currentHeadMessageId == nil {
+                normalizeSelectedWorkspace()
+            }
+        } catch {
+            workspaces = []
+            if isDraftConversation {
+                selectedWorkspaceID = nil
+            }
+        }
+    }
+
+    private func normalizeSelectedWorkspace() {
+        if let selectedWorkspaceID,
+           workspaces.contains(where: {
+               $0.id == selectedWorkspaceID
+           }) {
+            return
+        }
+        selectedWorkspaceID = workspaces.first?.id
+    }
+
     @ViewBuilder
     private var pageContent: some View {
         if selectedPage == .chat {
             ChatView(
                 isDraftConversation: isDraftConversation,
                 draftConversationID: draftConversationID,
+                selectedWorkspaceID: $selectedWorkspaceID,
                 onDraftCommitted: onDraftCommitted
             )
         } else if selectedPage == .workspaces {
