@@ -229,7 +229,7 @@ test("resume and fork reject an absent local parent transcript before query", as
       (error) =>
         error.runtimeCode === "NO_PROVIDER_SESSION"
         && error.parentSessionId === "missing-parent"
-        && /parent session was not found/i.test(error.message),
+        && /complete durable transcript/i.test(error.message),
     );
   }
   assert.equal(queryCalls, 0);
@@ -237,11 +237,27 @@ test("resume and fork reject an absent local parent transcript before query", as
 
 test("durable SessionStore resumes when the local transcript is absent", async () => {
   let call;
+  const statusCalls = [];
+  let state = "complete";
   const durableStore = {
     async append() {},
     async load(key) {
       assert.equal(key.sessionId, "provider-remote");
       return [{ type: "user", message: { role: "user", content: "hello" } }];
+    },
+    async getStatus(sessionId) {
+      assert.equal(sessionId, "provider-remote");
+      return state;
+    },
+    async markIncomplete(sessionId) {
+      assert.equal(sessionId, "provider-remote");
+      statusCalls.push("incomplete");
+      state = "incomplete";
+    },
+    async markComplete(sessionId) {
+      assert.equal(sessionId, "provider-remote");
+      statusCalls.push("complete");
+      state = "complete";
     },
     async delete() {},
   };
@@ -264,6 +280,8 @@ test("durable SessionStore resumes when the local transcript is absent", async (
   assert.equal(result.providerSessionId, "provider-remote");
   assert.equal(call.options.resume, "provider-remote");
   assert.equal(call.options.sessionStore, durableStore);
+  assert.deepEqual(statusCalls, ["incomplete", "complete"]);
+  assert.equal(state, "complete");
 });
 
 test("durable SessionStore failures remain fail-closed", async () => {
@@ -273,6 +291,7 @@ test("durable SessionStore failures remain fail-closed", async () => {
     sessionMessagesImpl: async () => [],
     sessionStore: {
       async append() {},
+      async getStatus() { return "complete"; },
       async load() {
         throw cause;
       },
@@ -287,6 +306,126 @@ test("durable SessionStore failures remain fail-closed", async () => {
       && error.cause === cause
       && /durable Claude Agent SDK parent session/i.test(error.message),
   );
+});
+
+test("remote-only resume rejects incomplete transcript before query", async () => {
+  let queryCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => [],
+    sessionStore: {
+      async append() {},
+      async getStatus() { return "incomplete"; },
+      async load() {
+        throw new Error("incomplete transcript must not be loaded");
+      },
+    },
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("unexpected"));
+    },
+  });
+
+  await assert.rejects(
+    () => transport.resume("provider-incomplete", "continue"),
+    (error) =>
+      error.runtimeCode === "NO_PROVIDER_SESSION"
+      && /complete durable transcript/i.test(error.message),
+  );
+  assert.equal(queryCalls, 0);
+});
+
+test("complete local resume fails before query if completeness cannot be invalidated", async () => {
+  let queryCalls = 0;
+  const cause = new Error("status write unavailable");
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    sessionStore: {
+      async append() {},
+      async getStatus() { return "complete"; },
+      async markIncomplete() { throw cause; },
+      async load() { return [{ type: "assistant" }]; },
+    },
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("unexpected"));
+    },
+  });
+
+  await assert.rejects(
+    () => transport.resume("provider-root", "continue"),
+    (error) =>
+      error.runtimeCode === "RUNTIME_UNAVAILABLE"
+      && error.cause === cause
+      && /mark durable Claude Agent SDK session incomplete/i.test(error.message),
+  );
+  assert.equal(queryCalls, 0);
+});
+
+test("mirror_error leaves a previously complete session incomplete", async () => {
+  let state = "complete";
+  const statusCalls = [];
+  const durableStore = {
+    async append() {},
+    async getStatus() { return state; },
+    async markIncomplete() {
+      state = "incomplete";
+      statusCalls.push("incomplete");
+    },
+    async markComplete() {
+      state = "complete";
+      statusCalls.push("complete");
+    },
+    async load() { return [{ type: "assistant" }]; },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    sessionStore: durableStore,
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-root",
+      },
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "provider-root",
+        error: "remote append failed",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "provider-root",
+        result: "READY",
+      },
+    ]),
+  });
+
+  const result = await transport.resume("provider-root", "continue");
+  assert.equal(result.providerSessionId, "provider-root");
+  assert.deepEqual(statusCalls, ["incomplete"]);
+  assert.equal(state, "incomplete");
+});
+
+test("legacy local session without completeness receipt is never promoted implicitly", async () => {
+  let completeCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    sessionStore: {
+      async append() {},
+      async getStatus() { return null; },
+      async markComplete() { completeCalls += 1; },
+      async load() { return [{ type: "assistant" }]; },
+    },
+    queryImpl: () => fakeQuery(successFixture("legacy-local")),
+  });
+
+  await transport.resume("legacy-local", "continue");
+  assert.equal(completeCalls, 0);
 });
 
 test("Agent SDK deletion receives the durable SessionStore", async () => {
