@@ -153,6 +153,9 @@ struct NativeLiveMessageSurface: View {
                     ForEach(messages) { message in
                         NativeLiveMessageRow(
                             message: message,
+                            isCurrentHead:
+                                message.id
+                                    == snapshot?.currentHeadMessageId,
                             displayTextOverride:
                                 editedTextOverride(
                                     for: message,
@@ -442,6 +445,7 @@ private struct NativeLiveMessageRow: View {
     @EnvironmentObject private var appModel: AppModel
 
     let message: NativeLiveCurrentPathMessage
+    let isCurrentHead: Bool
     let displayTextOverride: String?
     let showPendingReplacement: Bool
     let isTurnInFlight: Bool
@@ -635,18 +639,38 @@ private struct NativeLiveMessageRow: View {
             return
         }
 
-        do {
-            let projection = try await appModel.api.mindWrites(
-                messageID: message.id
-            )
-            mindWriteItems = projection.kinds.map {
-                MindWriteIndicatorItem(
-                    kind: $0.kind.displayName,
-                    count: $0.count
+        let attempts = isCurrentHead ? 6 : 1
+
+        for attempt in 0..<attempts {
+            do {
+                let projection = try await appModel.api.mindWrites(
+                    messageID: message.id
                 )
+                mindWriteItems = projection.kinds.map {
+                    MindWriteIndicatorItem(
+                        kind: $0.kind.displayName,
+                        count: $0.count
+                    )
+                }
+
+                if projection.total > 0 || !isCurrentHead {
+                    return
+                }
+            } catch {
+                if !isCurrentHead {
+                    mindWriteItems = []
+                    return
+                }
             }
-        } catch {
-            mindWriteItems = []
+
+            guard attempt + 1 < attempts else {
+                return
+            }
+
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else {
+                return
+            }
         }
     }
 
