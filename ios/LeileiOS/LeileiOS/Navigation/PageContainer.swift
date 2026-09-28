@@ -50,7 +50,7 @@ struct PageContainer: View {
                     && selectedPage != .universe
                     && selectedPage != .mind
                     && selectedPage != .conversations
-                    && selectedPage != .projects {
+                    && selectedPage != .workspaces {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
                             Menu {
@@ -213,8 +213,8 @@ struct PageContainer: View {
                 draftConversationID: draftConversationID,
                 onDraftCommitted: onDraftCommitted
             )
-        } else if selectedPage == .projects {
-            ProjectsView { conversationID in
+        } else if selectedPage == .workspaces {
+            WorkspacesView { conversationID in
                 Task { @MainActor in
                     await appModel.openNativeLiveConversation(
                         conversationID
