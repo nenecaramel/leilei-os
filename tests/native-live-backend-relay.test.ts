@@ -154,6 +154,8 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
       canonical_user_message_id: userMessageId,
       runtime_mode: "new",
       parent_provider_session_id: null,
+      workspace_id: null,
+      expected_workspace_root: null,
       execution_selection: null,
       prompt: "hello",
     },
