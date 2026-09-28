@@ -699,6 +699,41 @@ final class AppModel: ObservableObject {
             forKey: Self.activeNativeLiveConversationDefaultsKey
         )
         await refreshNativeLiveCurrentPath(force: true)
+        await refreshActiveNativeLiveRuntimeMetadata()
+    }
+
+    func refreshActiveNativeLiveRuntimeMetadata() async {
+        guard isAuthenticated,
+              let conversationID = activeNativeLiveConversationID else {
+            return
+        }
+
+        do {
+            let snapshot =
+                try await api.nativeLiveConversationRuntimeMetadata(
+                    conversationID: conversationID
+                )
+
+            guard activeNativeLiveConversationID == conversationID else {
+                return
+            }
+
+            nativeLiveRuntimeMetadata = snapshot.runtimeMetadata
+            if let metadata = snapshot.runtimeMetadata {
+                nativeLiveRuntimeMetadataByConversationID[
+                    conversationID
+                ] = metadata
+            } else {
+                nativeLiveRuntimeMetadataByConversationID
+                    .removeValue(forKey: conversationID)
+            }
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            // Durable metadata is auxiliary to canonical chat loading.
+        }
     }
 
     func refreshNativeLiveCurrentPath(
@@ -1211,10 +1246,20 @@ final class AppModel: ObservableObject {
         }
 
         let previous = nativeLiveConversations[index]
+        let currentHeadCreatedAt =
+            snapshot.currentHeadMessageId.flatMap { headID in
+                snapshot.messages.first(where: {
+                    $0.id == headID
+                })?.createdAt
+            }
+
         let updated = NativeLiveConversationSummary(
             id: previous.id,
             title: snapshot.title,
             currentHeadMessageId: snapshot.currentHeadMessageId,
+            lastMessageAt:
+                currentHeadCreatedAt
+                    ?? previous.lastMessageAt,
             createdAt: previous.createdAt,
             updatedAt: snapshot.updatedAt
         )
