@@ -454,13 +454,18 @@ private struct NativeLiveMessageRow: View {
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
-    @State private var mindWriteItems:
-        [MindWriteIndicatorItem] = []
-
     var body: some View {
         rowContent
             .task(id: "\(message.id):\(message.status)") {
-                await loadMindWrites()
+                guard message.role == "assistant",
+                      message.status != "pending",
+                      message.status != "streaming" else {
+                    return
+                }
+
+                await appModel.refreshMindWrites(
+                    messageID: message.id
+                )
             }
     }
 
@@ -528,7 +533,9 @@ private struct NativeLiveMessageRow: View {
 
             messageStatus
 
-            MindWriteIndicator(items: mindWriteItems)
+            MindWriteIndicator(
+                items: mindWriteItems
+            )
 
             HStack(spacing: 12) {
                 if let copyText {
@@ -630,47 +637,17 @@ private struct NativeLiveMessageRow: View {
         return text.isEmpty ? nil : text
     }
 
-    @MainActor
-    private func loadMindWrites() async {
-        guard message.role == "assistant",
-              message.status != "pending",
-              message.status != "streaming" else {
-            mindWriteItems = []
-            return
+    private var mindWriteItems: [MindWriteIndicatorItem] {
+        guard let projection =
+                appModel.mindWritesByMessageID[message.id] else {
+            return []
         }
 
-        let attempts = isCurrentHead ? 6 : 1
-
-        for attempt in 0..<attempts {
-            do {
-                let projection = try await appModel.api.mindWrites(
-                    messageID: message.id
-                )
-                mindWriteItems = projection.kinds.map {
-                    MindWriteIndicatorItem(
-                        kind: $0.kind.displayName,
-                        count: $0.count
-                    )
-                }
-
-                if projection.total > 0 || !isCurrentHead {
-                    return
-                }
-            } catch {
-                if !isCurrentHead {
-                    mindWriteItems = []
-                    return
-                }
-            }
-
-            guard attempt + 1 < attempts else {
-                return
-            }
-
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else {
-                return
-            }
+        return projection.kinds.map {
+            MindWriteIndicatorItem(
+                kind: $0.kind.displayName,
+                count: $0.count
+            )
         }
     }
 
