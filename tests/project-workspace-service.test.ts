@@ -9,6 +9,7 @@ import type {
   ProjectWorkspace,
   ProjectSummary,
   ProjectResource,
+  ProductWorkspace,
 } from "../src/domains/project-workspace/project-workspace-types.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -29,6 +30,15 @@ const workspace: ProjectWorkspace = {
 const project: ProjectSummary = {
   id: projectId,
   workspaceId,
+  name: "LeileiOS",
+  description: null,
+  version: 1,
+  createdAt: "2026-09-27T00:00:00.000Z",
+  updatedAt: "2026-09-27T00:00:00.000Z",
+};
+
+const productWorkspace: ProductWorkspace = {
+  id: projectId,
   name: "LeileiOS",
   description: null,
   version: 1,
@@ -62,6 +72,22 @@ class Repository implements ProjectWorkspaceRepository {
   async findUserById() {
     return { status: "active" as const };
   }
+  async listProductWorkspaces(input: Parameters<ProjectWorkspaceRepository["listProductWorkspaces"]>[0]) {
+    this.last = { name: "listProductWorkspaces", input };
+    return [productWorkspace];
+  }
+  async getProductWorkspace() { return productWorkspace; }
+  async createProductWorkspace(input: Parameters<ProjectWorkspaceRepository["createProductWorkspace"]>[0]) {
+    this.last = { name: "createProductWorkspace", input };
+    return productWorkspace;
+  }
+  async updateProductWorkspace() {
+    return {
+      outcome: "committed" as const,
+      value: { ...productWorkspace, version: 2 },
+    };
+  }
+  async deleteProductWorkspace() { return { outcome: "deleted" as const }; }
   async listWorkspaces() { return [workspace]; }
   async createWorkspace(input: Parameters<ProjectWorkspaceRepository["createWorkspace"]>[0]) {
     this.last = { name: "createWorkspace", input };
@@ -105,6 +131,43 @@ class Repository implements ProjectWorkspaceRepository {
   }
   async detachConversation() { return { outcome: "already_applied" as const }; }
 }
+
+test("single-layer Workspace service normalizes product identity without exposing backing ids", async () => {
+  const repository = new Repository();
+  const service = new ProjectWorkspaceService(repository);
+
+  const created = await service.createProductWorkspace({
+    userId,
+    name: "  LeileiOS  ",
+    description: "  execution workspace  ",
+  });
+  assert.equal(created.id, projectId);
+  assert.deepEqual(repository.last, {
+    name: "createProductWorkspace",
+    input: {
+      userId,
+      name: "LeileiOS",
+      description: "execution workspace",
+    },
+  });
+
+  await service.listProductWorkspaces({ userId, conversationId });
+  assert.deepEqual(repository.last, {
+    name: "listProductWorkspaces",
+    input: { userId, conversationId },
+  });
+
+  const workspaceResource = await service.getWorkspaceResource({
+    userId,
+    workspaceId: projectId,
+    resourceId,
+  });
+  assert.equal(workspaceResource.workspaceId, projectId);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(workspaceResource, "projectId"),
+    false,
+  );
+});
 
 test("Workspace and Project service normalizes durable product inputs", async () => {
   const repository = new Repository();
