@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 type FetchLike = typeof fetch;
 
 export type NativeLiveMacSessionStoreKey = {
@@ -11,6 +12,7 @@ export type NativeLiveMacSessionStoreEntry =
 
 export class NativeLiveMacProviderSessionStore {
   private readonly baseUrl: string;
+  private readonly retryAppendBatchIds = new Map<string, string>();
 
   constructor(
     baseUrl: string,
@@ -39,10 +41,23 @@ export class NativeLiveMacProviderSessionStore {
     entries: NativeLiveMacSessionStoreEntry[],
   ): Promise<void> {
     if (entries.length === 0) return;
-    await this.post("/append", {
-      key: this.remoteKey(key),
-      entries,
-    });
+    const remoteKey = this.remoteKey(key);
+    const signature = appendSignature(remoteKey, entries);
+    const appendBatchId =
+      this.retryAppendBatchIds.get(signature) ?? randomUUID();
+    try {
+      await this.post("/append", {
+        key: remoteKey,
+        append_batch_id: appendBatchId,
+        entries,
+      });
+      if (this.retryAppendBatchIds.get(signature) === appendBatchId) {
+        this.retryAppendBatchIds.delete(signature);
+      }
+    } catch (error) {
+      this.retryAppendBatchIds.set(signature, appendBatchId);
+      throw error;
+    }
   }
 
   async load(
@@ -96,6 +111,30 @@ export class NativeLiveMacProviderSessionStore {
     await this.post("/delete", { key: this.remoteKey(key) });
   }
 
+  async getStatus(
+    sessionId: string,
+  ): Promise<"complete" | "incomplete" | null> {
+    const data = readRecord(
+      await this.post("/status", {
+        workspace_id: this.workspaceId,
+        session_id: normalizeSessionId(sessionId),
+      }),
+    );
+    if (data.state === null) return null;
+    if (data.state !== "complete" && data.state !== "incomplete") {
+      throw new Error("Native Live session store status is invalid.");
+    }
+    return data.state;
+  }
+
+  async markIncomplete(sessionId: string): Promise<void> {
+    await this.markStatus(sessionId, "incomplete");
+  }
+
+  async markComplete(sessionId: string): Promise<void> {
+    await this.markStatus(sessionId, "complete");
+  }
+
   async listSubkeys(input: {
     projectKey: string;
     sessionId: string;
@@ -113,6 +152,24 @@ export class NativeLiveMacProviderSessionStore {
       throw new Error("Native Live session store subkeys response is invalid.");
     }
     return data.subkeys as string[];
+  }
+
+  private async markStatus(
+    sessionId: string,
+    state: "complete" | "incomplete",
+  ): Promise<void> {
+    const data = readRecord(
+      await this.post(
+        state === "complete" ? "/mark-complete" : "/mark-incomplete",
+        {
+          workspace_id: this.workspaceId,
+          session_id: normalizeSessionId(sessionId),
+        },
+      ),
+    );
+    if (data.state !== state) {
+      throw new Error("Native Live session store status response is invalid.");
+    }
   }
 
   private remoteKey(key: NativeLiveMacSessionStoreKey) {
@@ -185,4 +242,13 @@ function readRecord(value: unknown): Record<string, unknown> {
     throw new Error("Native Live session store response is invalid.");
   }
   return value as Record<string, unknown>;
+}
+
+function appendSignature(
+  key: { workspace_id: string; session_id: string; subpath?: string },
+  entries: NativeLiveMacSessionStoreEntry[],
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ key, entries }))
+    .digest("hex");
 }
