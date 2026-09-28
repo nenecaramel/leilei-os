@@ -158,7 +158,7 @@ test("Mac SessionStore reuses one append batch id after ambiguous delivery", asy
   );
 });
 
-test("Mac SessionStore releases a failed receipt after the SDK retry budget", async () => {
+test("Mac SessionStore keeps one receipt until mirror_error discards it", async () => {
   const ids: string[] = [];
   const fakeFetch: typeof fetch = async (_input, init) => {
     const body = JSON.parse(String(init?.body)) as {
@@ -176,22 +176,23 @@ test("Mac SessionStore releases a failed receipt after the SDK retry budget", as
   const key = { projectKey: "/local/path", sessionId: "s1" };
   const entries = [{ type: "assistant", text: "retry chain" }];
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     await assert.rejects(
       () => store.append(key, entries),
       /store unavailable/u,
     );
   }
+  assert.equal(new Set(ids).size, 1);
+
+  store.discardPendingAppends("s1");
   await assert.rejects(
     () => store.append(key, entries),
     /store unavailable/u,
   );
-
-  assert.equal(new Set(ids.slice(0, 4)).size, 1);
   assert.notEqual(
-    ids[4],
+    ids.at(-1),
     ids[0],
-    "a later logical append must not inherit a dropped mirror receipt",
+    "mirror_error must terminate the prior retry receipt",
   );
 });
 
