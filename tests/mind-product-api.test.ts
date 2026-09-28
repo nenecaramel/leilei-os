@@ -80,7 +80,10 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
 
     const create = await fetch(baseUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "mind-manual-api-0001",
+      },
       body: JSON.stringify({
         kind: "thought",
         text: "old record",
@@ -116,6 +119,7 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
           text: "old record",
           occurredAt: "2025-01-01T00:00:00Z",
           note: "manual",
+          idempotencyKey: "mind-manual-api-0001",
         },
       },
       {
