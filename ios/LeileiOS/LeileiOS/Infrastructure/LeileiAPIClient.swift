@@ -686,8 +686,7 @@ final class LeileiAPIClient {
             path: "/api/v1/native-live/conversations",
             method: "POST",
             body: body,
-            authenticated: true,
-            idempotencyKey: requestID.uuidString.lowercased()
+            authenticated: true
         )
         return envelope.data
     }
@@ -1147,7 +1146,8 @@ final class LeileiAPIClient {
             path: "/api/v1/mind",
             method: "POST",
             body: body,
-            authenticated: true
+            authenticated: true,
+            idempotencyKey: requestID.uuidString.lowercased()
         )
         return envelope.data
     }
