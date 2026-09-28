@@ -69,6 +69,7 @@ test(
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
     const database = createDatabase(databaseUrl, {
+      ssl: false,
       createClient: (url, maxConnections, ssl) =>
         postgres(url, {
           max: maxConnections,
@@ -360,6 +361,7 @@ test(
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
     const database = createDatabase(databaseUrl, {
+      ssl: false,
       createClient: (url, maxConnections, ssl) =>
         postgres(url, {
           max: maxConnections,
@@ -1054,6 +1056,7 @@ test(
     assert.ok(databaseUrl, "DATABASE_URL is required");
 
     const database = createDatabase(databaseUrl, {
+      ssl: false,
       createClient: (url, maxConnections, ssl) =>
         postgres(url, {
           max: maxConnections,
