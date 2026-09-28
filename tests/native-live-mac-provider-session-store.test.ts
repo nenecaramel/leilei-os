@@ -158,6 +158,43 @@ test("Mac SessionStore reuses one append batch id after ambiguous delivery", asy
   );
 });
 
+test("Mac SessionStore releases a failed receipt after the SDK retry budget", async () => {
+  const ids: string[] = [];
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      append_batch_id: string;
+    };
+    ids.push(body.append_batch_id);
+    throw new Error("store unavailable");
+  };
+  const store = new NativeLiveMacProviderSessionStore(
+    "https://relay.example",
+    "secret-token",
+    workspaceId,
+    fakeFetch,
+  );
+  const key = { projectKey: "/local/path", sessionId: "s1" };
+  const entries = [{ type: "assistant", text: "retry chain" }];
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await assert.rejects(
+      () => store.append(key, entries),
+      /store unavailable/u,
+    );
+  }
+  await assert.rejects(
+    () => store.append(key, entries),
+    /store unavailable/u,
+  );
+
+  assert.equal(new Set(ids.slice(0, 4)).size, 1);
+  assert.notEqual(
+    ids[4],
+    ids[0],
+    "a later logical append must not inherit a dropped mirror receipt",
+  );
+});
+
 test("Mac SessionStore exposes fail-closed completeness state", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const responses = [
