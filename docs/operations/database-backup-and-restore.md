@@ -87,15 +87,26 @@ The backup script must:
 
 1. refuse repository-internal output;
 2. keep unencrypted temporary material private and short-lived;
-3. record verification metadata without reading or printing private content;
-4. encrypt the dump and manifest;
-5. remove temporary plaintext material on exit;
-6. refuse accidental overwrite;
-7. write a separate SHA-256 checksum.
+3. read the actual production head from `public.leilei_schema_migrations`
+   and map that timestamp to the checked-in Drizzle journal instead of naming
+   the backup from the repository head alone;
+4. inventory every current `public` application table (excluding the
+   migration ledger, which is verified separately) and record only its row
+   count — never row contents — in the encrypted manifest;
+5. create a PostgreSQL custom-format dump;
+6. encrypt the dump and manifest;
+7. remove temporary plaintext material on exit;
+8. refuse accidental overwrite;
+9. write a separate SHA-256 checksum.
 
-If source counts and dump contents can drift because writes occur between
-queries, repeat the backup during a quiet/controlled window. Never waive a
-count mismatch silently.
+New backups use manifest format `leilei-os-postgres-backup-v2`. The restore
+tool intentionally retains read compatibility with historical v1 manifests so
+older verified recovery artifacts are not invalidated by this tooling change.
+
+The logical dump itself is transactionally consistent, while manifest counts
+are separate verification metadata. If source counts and dump contents can
+drift because writes occur between queries, repeat the backup during a
+quiet/controlled window. Never waive a count mismatch silently.
 
 ## Verify the checksum
 
@@ -130,12 +141,18 @@ unset LEILEI_BACKUP_PASSPHRASE TEMP_DATABASE_URL MCP_USER_ID
 A successful verification should establish, without printing private content:
 
 - checksum validity;
+- source/target PostgreSQL major-version compatibility;
 - schema restoration;
-- expected critical tables and indexes;
-- representative table-count agreement;
-- expected migration-ledger state;
-- mapped database user availability;
-- representative repository read paths;
+- for v2 backups, exact equality of the restored `public` table inventory;
+- for v2 backups, row-count agreement for every manifest-listed `public`
+  table;
+- for v2 backups, exact restored `leilei_schema_migrations` head timestamp
+  and hash;
+- for historical v1 backups, the legacy critical-table/count checks encoded
+  by that format;
+- mapped database user availability when the source manifest recorded it;
+- representative repository read paths when performing an actual release or
+  incident drill;
 - cleanup of the disposable database/container after verification.
 
 Retain only the encrypted artifact, checksum, and non-secret verification
@@ -154,11 +171,13 @@ Required order:
    migration;
 3. create a new external production logical backup;
 4. verify its SHA-256 and archive readability;
-5. capture non-secret pre-change readback such as relevant table existence,
-   representative counts, migration ledger, and dependency checks;
-6. restore the fresh backup to disposable PostgreSQL of the supported major
+5. capture non-secret pre-change readback; manifest v2 already records the
+   complete `public` table inventory/counts and exact migration-ledger head,
+   while change-specific dependency checks may still be added;
+6. restore the fresh backup to disposable PostgreSQL of the same major
    version;
-7. confirm restored counts/ledger match the pre-change readback;
+7. require restored public-table inventory/counts and migration-ledger head to
+   match the encrypted v2 manifest;
 8. build the exact PR head;
 9. run the real compiled Leilei OS migration runner only against the disposable
    restored database;
@@ -303,8 +322,9 @@ Archive/list verification: yes / no
 Pre-change counts/ledger captured: yes / no
 Disposable restore tested at (UTC):
 Disposable PostgreSQL version:
-Critical table structures verified: yes / no
-Critical counts matched: yes / no
+Public table inventory matched manifest: yes / no / v1
+Manifest table counts matched: yes / no / v1
+Migration ledger exact head matched: yes / no / v1
 Mapped database user verified: yes / no / unavailable
 Exact migration runner tested: yes / no / not applicable
 Second migration runner no-op: yes / no / not applicable

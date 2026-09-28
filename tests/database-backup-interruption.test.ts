@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   writeFileSync,
 } from "node:fs";
@@ -15,7 +16,22 @@ import test from "node:test";
 const repoRoot = resolve(import.meta.dirname, "..");
 const backupScript = join(repoRoot, "scripts/db/backup_postgres.sh");
 
+function currentMigrationWhen(): string {
+  const journal = JSON.parse(
+    readFileSync(
+      join(repoRoot, "drizzle/meta/_journal.json"),
+      "utf8",
+    ),
+  ) as {
+    entries?: Array<{ when?: number }>;
+  };
+  const latest = journal.entries?.at(-1);
+  assert.equal(typeof latest?.when, "number");
+  return String(latest!.when);
+}
+
 test("SIGTERM cleans temporary plaintext backup material", async () => {
+  const migrationWhen = currentMigrationWhen();
   const temp = mkdtempSync(join(tmpdir(), "leilei-backup-interrupt-"));
   const bin = join(temp, "bin");
   const scratch = join(temp, "scratch");
@@ -35,8 +51,10 @@ while [[ "$#" -gt 0 ]]; do
 done
 if [[ "$query" == *"server_version_num"* ]]; then
   printf '180001\\n'
+elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
+  printf '${migrationWhen}|bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\n'
 else
-  printf '1|7|7|7|1\\n'
+  printf '1\\n'
 fi
 `,
     { mode: 0o700 },
