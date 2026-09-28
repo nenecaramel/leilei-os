@@ -91,6 +91,10 @@ export type DeleteMutationOutcome =
   | { outcome: "not_found" }
   | { outcome: "version_conflict" };
 
+export type DeleteProductWorkspaceOutcome =
+  | DeleteMutationOutcome
+  | { outcome: "workspace_in_use" };
+
 export type CreateResourceOutcome =
   | { outcome: "committed"; value: ProjectResource }
   | { outcome: "project_not_found" }
@@ -134,7 +138,7 @@ export interface ProjectWorkspaceRepository {
     userId: string;
     workspaceId: string;
     expectedVersion: number;
-  }): Promise<DeleteMutationOutcome>;
+  }): Promise<DeleteProductWorkspaceOutcome>;
 
   listWorkspaces(userId: string): Promise<ProjectWorkspace[]>;
 
