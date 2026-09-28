@@ -9,7 +9,10 @@ import {
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
+  conversationProviderSessionCheckpoints,
   conversations,
+  nativeLiveProviderSessionEntries,
+  nativeLiveProviderSessionStoreStatus,
   projectConversations,
   projectResources,
   projects,
@@ -20,11 +23,13 @@ import {
 import type {
   CreateResourceOutcome,
   DeleteMutationOutcome,
+  DeleteProductWorkspaceOutcome,
   ProjectConversation,
   ProjectConversationMutationOutcome,
   ProjectResource,
   ProjectResourceSummary,
   ProjectSummary,
+  ProductWorkspace,
   ProjectWorkspace,
   ProjectWorkspaceRepository,
   VersionedMutationOutcome,
@@ -50,6 +55,224 @@ implements ProjectWorkspaceRepository {
       .where(eq(users.id, userId))
       .limit(1);
     return row ?? null;
+  }
+
+  async listProductWorkspaces(input: {
+    userId: string;
+    conversationId?: string;
+  }): Promise<ProductWorkspace[]> {
+    if (input.conversationId) {
+      const rows = await this.db
+        .select(projectSelection())
+        .from(projectConversations)
+        .innerJoin(
+          projects,
+          and(
+            eq(projectConversations.projectId, projects.id),
+            eq(projectConversations.userId, projects.userId),
+          ),
+        )
+        .where(and(
+          eq(projectConversations.userId, input.userId),
+          eq(
+            projectConversations.conversationId,
+            input.conversationId,
+          ),
+        ))
+        .orderBy(desc(projects.updatedAt), desc(projects.id));
+      return rows.map(mapProductWorkspace);
+    }
+
+    const rows = await this.db
+      .select(projectSelection())
+      .from(projects)
+      .where(eq(projects.userId, input.userId))
+      .orderBy(desc(projects.updatedAt), desc(projects.id));
+    return rows.map(mapProductWorkspace);
+  }
+
+  async getProductWorkspace(input: {
+    userId: string;
+    workspaceId: string;
+  }): Promise<ProductWorkspace | null> {
+    const [row] = await this.db
+      .select(projectSelection())
+      .from(projects)
+      .where(and(
+        eq(projects.userId, input.userId),
+        eq(projects.id, input.workspaceId),
+      ))
+      .limit(1);
+    return row ? mapProductWorkspace(row) : null;
+  }
+
+  async createProductWorkspace(input: {
+    userId: string;
+    name: string;
+    description: string | null;
+  }): Promise<ProductWorkspace> {
+    return this.db.transaction(
+      async (transaction) => {
+        const [backing] = await transaction
+          .insert(projectWorkspaces)
+          .values({
+            userId: input.userId,
+            name: input.name,
+            description: input.description,
+          })
+          .returning({ id: projectWorkspaces.id });
+        if (!backing) {
+          throw new Error("Workspace backing insert failed.");
+        }
+
+        const [row] = await transaction
+          .insert(projects)
+          .values({
+            userId: input.userId,
+            workspaceId: backing.id,
+            name: input.name,
+            description: input.description,
+          })
+          .returning(projectSelection());
+        if (!row) throw new Error("Workspace insert failed.");
+        return mapProductWorkspace(row);
+      },
+      { isolationLevel: "serializable" },
+    );
+  }
+
+  async updateProductWorkspace(input: {
+    userId: string;
+    workspaceId: string;
+    expectedVersion: number;
+    name?: string;
+    description?: string | null;
+  }): Promise<VersionedMutationOutcome<ProductWorkspace>> {
+    const [row] = await this.db
+      .update(projects)
+      .set({
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined
+          ? { description: input.description }
+          : {}),
+        version: sql`${projects.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(projects.userId, input.userId),
+        eq(projects.id, input.workspaceId),
+        eq(projects.version, input.expectedVersion),
+      ))
+      .returning(projectSelection());
+    if (row) {
+      return {
+        outcome: "committed",
+        value: mapProductWorkspace(row),
+      };
+    }
+
+    const [existing] = await this.db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(
+        eq(projects.userId, input.userId),
+        eq(projects.id, input.workspaceId),
+      ))
+      .limit(1);
+    return existing
+      ? { outcome: "version_conflict" }
+      : { outcome: "not_found" };
+  }
+
+  async deleteProductWorkspace(input: {
+    userId: string;
+    workspaceId: string;
+    expectedVersion: number;
+  }): Promise<DeleteProductWorkspaceOutcome> {
+    return this.db.transaction(
+      async (transaction) => {
+        const [existing] = await transaction
+          .select({
+            id: projects.id,
+            backingWorkspaceId: projects.workspaceId,
+            version: projects.version,
+          })
+          .from(projects)
+          .where(and(
+            eq(projects.userId, input.userId),
+            eq(projects.id, input.workspaceId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!existing) return { outcome: "not_found" as const };
+        if (existing.version !== input.expectedVersion) {
+          return { outcome: "version_conflict" as const };
+        }
+
+        const [checkpoint] = await transaction
+          .select({ id: conversationProviderSessionCheckpoints.id })
+          .from(conversationProviderSessionCheckpoints)
+          .where(and(
+            eq(
+              conversationProviderSessionCheckpoints.userId,
+              input.userId,
+            ),
+            eq(
+              conversationProviderSessionCheckpoints.workspaceId,
+              input.workspaceId,
+            ),
+          ))
+          .limit(1);
+        if (checkpoint) {
+          return { outcome: "workspace_in_use" as const };
+        }
+
+        await transaction
+          .delete(nativeLiveProviderSessionEntries)
+          .where(and(
+            eq(nativeLiveProviderSessionEntries.userId, input.userId),
+            eq(
+              nativeLiveProviderSessionEntries.workspaceId,
+              input.workspaceId,
+            ),
+          ));
+        await transaction
+          .delete(nativeLiveProviderSessionStoreStatus)
+          .where(and(
+            eq(nativeLiveProviderSessionStoreStatus.userId, input.userId),
+            eq(
+              nativeLiveProviderSessionStoreStatus.workspaceId,
+              input.workspaceId,
+            ),
+          ));
+
+        await transaction
+          .delete(projects)
+          .where(and(
+            eq(projects.userId, input.userId),
+            eq(projects.id, input.workspaceId),
+          ));
+
+        const [sibling] = await transaction
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(
+            eq(projects.userId, input.userId),
+            eq(projects.workspaceId, existing.backingWorkspaceId),
+          ))
+          .limit(1);
+        if (!sibling) {
+          await transaction
+            .delete(projectWorkspaces)
+            .where(and(
+              eq(projectWorkspaces.userId, input.userId),
+              eq(projectWorkspaces.id, existing.backingWorkspaceId),
+            ));
+        }
+        return { outcome: "deleted" as const };
+      },
+      { isolationLevel: "serializable" },
+    );
   }
 
   async listWorkspaces(userId: string): Promise<ProjectWorkspace[]> {
@@ -673,6 +896,19 @@ function resourceSelection() {
 }
 
 function mapWorkspace(row: ReturnType<typeof workspaceRowShape>): ProjectWorkspace {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    version: row.version,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function mapProductWorkspace(
+  row: ReturnType<typeof projectRowShape>,
+): ProductWorkspace {
   return {
     id: row.id,
     name: row.name,

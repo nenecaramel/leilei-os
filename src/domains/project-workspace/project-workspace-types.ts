@@ -33,6 +33,29 @@ export type ProjectSummary = {
   updatedAt: string;
 };
 
+export type ProductWorkspace = {
+  id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceResourceSummary = Omit<
+  ProjectResourceSummary,
+  "projectId"
+> & {
+  workspaceId: string;
+};
+
+export type WorkspaceResource = Omit<
+  ProjectResource,
+  "projectId"
+> & {
+  workspaceId: string;
+};
+
 export type ProjectResourceSummary = {
   id: string;
   projectId: string;
@@ -68,6 +91,10 @@ export type DeleteMutationOutcome =
   | { outcome: "not_found" }
   | { outcome: "version_conflict" };
 
+export type DeleteProductWorkspaceOutcome =
+  | DeleteMutationOutcome
+  | { outcome: "workspace_in_use" };
+
 export type CreateResourceOutcome =
   | { outcome: "committed"; value: ProjectResource }
   | { outcome: "project_not_found" }
@@ -82,6 +109,36 @@ export interface ProjectWorkspaceRepository {
   findUserById(
     userId: string,
   ): Promise<{ status: "active" | "disabled" } | null>;
+
+  listProductWorkspaces(input: {
+    userId: string;
+    conversationId?: string;
+  }): Promise<ProductWorkspace[]>;
+
+  getProductWorkspace(input: {
+    userId: string;
+    workspaceId: string;
+  }): Promise<ProductWorkspace | null>;
+
+  createProductWorkspace(input: {
+    userId: string;
+    name: string;
+    description: string | null;
+  }): Promise<ProductWorkspace>;
+
+  updateProductWorkspace(input: {
+    userId: string;
+    workspaceId: string;
+    expectedVersion: number;
+    name?: string;
+    description?: string | null;
+  }): Promise<VersionedMutationOutcome<ProductWorkspace>>;
+
+  deleteProductWorkspace(input: {
+    userId: string;
+    workspaceId: string;
+    expectedVersion: number;
+  }): Promise<DeleteProductWorkspaceOutcome>;
 
   listWorkspaces(userId: string): Promise<ProjectWorkspace[]>;
 

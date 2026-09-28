@@ -325,3 +325,330 @@ test(
     );
   },
 );
+
+
+test(
+  "single-layer Workspace product maps one public id to execution authority and hides backing containers",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let userId: string | null = null;
+
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(projectConversations)
+            .where(eq(projectConversations.userId, userId));
+          await database.db
+            .delete(projectResources)
+            .where(eq(projectResources.userId, userId));
+          await database.db
+            .delete(projects)
+            .where(eq(projects.userId, userId));
+          await database.db
+            .delete(projectWorkspaces)
+            .where(eq(projectWorkspaces.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `workspaces-${crypto.randomUUID()}@example.com`,
+        displayName: "Workspace Product Test",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const service = new ProjectWorkspaceService(
+      new DrizzleProjectWorkspaceRepository(database.db),
+    );
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+
+    const workspace = await service.createProductWorkspace({
+      userId,
+      name: "LeileiOS",
+      description: "single public layer",
+    });
+    assert.equal(workspace.version, 1);
+
+    const [executionRow] = await database.db
+      .select({
+        id: projects.id,
+        backingId: projects.workspaceId,
+        name: projects.name,
+      })
+      .from(projects)
+      .where(and(
+        eq(projects.userId, userId),
+        eq(projects.id, workspace.id),
+      ));
+    assert.ok(executionRow);
+    assert.equal(executionRow.id, workspace.id);
+    assert.equal(executionRow.name, "LeileiOS");
+
+    const backingRows = await database.db
+      .select({
+        id: projectWorkspaces.id,
+        name: projectWorkspaces.name,
+      })
+      .from(projectWorkspaces)
+      .where(and(
+        eq(projectWorkspaces.userId, userId),
+        eq(projectWorkspaces.id, executionRow.backingId),
+      ));
+    assert.deepEqual(backingRows, [{
+      id: executionRow.backingId,
+      name: "LeileiOS",
+    }]);
+
+    assert.deepEqual(
+      await service.listProductWorkspaces({ userId }),
+      [workspace],
+    );
+    assert.equal(
+      (await service.getProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+      })).id,
+      workspace.id,
+    );
+
+    const resource = await service.createWorkspaceResource({
+      userId,
+      workspaceId: workspace.id,
+      kind: "instructions",
+      key: "default",
+      content: "Use the real Workspace.",
+    });
+    assert.equal(resource.workspaceId, workspace.id);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(resource, "projectId"),
+      false,
+    );
+
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Workspace conversation",
+    });
+    await service.attachWorkspaceConversation({
+      userId,
+      workspaceId: workspace.id,
+      conversationId: conversation.id,
+    });
+    assert.deepEqual(
+      (await service.listProductWorkspaces({
+        userId,
+        conversationId: conversation.id,
+      })).map((row) => row.id),
+      [workspace.id],
+    );
+
+    await service.deleteProductWorkspace({
+      userId,
+      workspaceId: workspace.id,
+      expectedVersion: workspace.version,
+    });
+
+    assert.equal(
+      (await database.db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.id, workspace.id))).length,
+      0,
+    );
+    assert.equal(
+      (await database.db
+        .select({ id: projectWorkspaces.id })
+        .from(projectWorkspaces)
+        .where(eq(projectWorkspaces.id, executionRow.backingId))).length,
+      0,
+      "product-created backing container must disappear with its last execution Workspace",
+    );
+    assert.ok(
+      await conversationService.getConversation({
+        userId,
+        conversationId: conversation.id,
+      }),
+      "Workspace deletion must preserve canonical Conversation history",
+    );
+
+    const legacyBacking = await service.createWorkspace({
+      userId,
+      name: "Legacy backing",
+    });
+    const first = await service.createProject({
+      userId,
+      workspaceId: legacyBacking.id,
+      name: "First",
+    });
+    const sibling = await service.createProject({
+      userId,
+      workspaceId: legacyBacking.id,
+      name: "Sibling",
+    });
+
+    await service.deleteProductWorkspace({
+      userId,
+      workspaceId: first.id,
+      expectedVersion: first.version,
+    });
+
+    assert.ok(
+      (await database.db
+        .select({ id: projectWorkspaces.id })
+        .from(projectWorkspaces)
+        .where(eq(projectWorkspaces.id, legacyBacking.id)))[0],
+      "legacy backing container must survive while another execution Workspace uses it",
+    );
+    assert.ok(
+      (await database.db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.id, sibling.id)))[0],
+    );
+  },
+);
+
+
+test(
+  "single-layer Workspace deletion fails closed while canonical provider checkpoints still depend on it",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+    let userId: string | null = null;
+
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(projectConversations)
+            .where(eq(projectConversations.userId, userId));
+          await database.db
+            .delete(projectResources)
+            .where(eq(projectResources.userId, userId));
+          await database.db
+            .delete(projects)
+            .where(eq(projects.userId, userId));
+          await database.db
+            .delete(projectWorkspaces)
+            .where(eq(projectWorkspaces.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `workspace-in-use-${crypto.randomUUID()}@example.com`,
+        displayName: "Workspace In Use Test",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const service = new ProjectWorkspaceService(
+      new DrizzleProjectWorkspaceRepository(database.db),
+    );
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const workspace = await service.createProductWorkspace({
+      userId,
+      name: "Bound Workspace",
+    });
+    const conversation = await conversationService.createConversation({
+      userId,
+      title: "Bound conversation",
+    });
+    const userMessage = await conversationService.appendUserMessage({
+      userId,
+      conversationId: conversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "hello" }],
+    });
+    await conversationService.completeAssistantTurn({
+      userId,
+      conversationId: conversation.id,
+      parentMessageId: userMessage.id,
+      blocks: [{ kind: "text", text: "reply" }],
+      checkpoint: {
+        provider: "claude_code",
+        providerSessionId: "workspace-bound-session",
+        workspaceId: workspace.id,
+        effectiveWorkspaceRoot: "/Users/leilei/Bound",
+      },
+    });
+
+    await assert.rejects(
+      service.deleteProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+        expectedVersion: workspace.version,
+      }),
+      (error: unknown) =>
+        error instanceof ProjectWorkspaceServiceError
+        && error.code === "WORKSPACE_IN_USE",
+    );
+
+    assert.ok(
+      await service.getProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+      }),
+      "failed delete must leave Workspace intact",
+    );
+
+    assert.equal(
+      (
+        await conversationService.deleteConversation({
+          userId,
+          conversationId: conversation.id,
+        })
+      ).outcome,
+      "deleted",
+    );
+
+    await service.deleteProductWorkspace({
+      userId,
+      workspaceId: workspace.id,
+      expectedVersion: workspace.version,
+    });
+    await assert.rejects(
+      service.getProductWorkspace({
+        userId,
+        workspaceId: workspace.id,
+      }),
+      (error: unknown) =>
+        error instanceof ProjectWorkspaceServiceError
+        && error.code === "WORKSPACE_NOT_FOUND",
+    );
+  },
+);
