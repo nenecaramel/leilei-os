@@ -102,6 +102,7 @@ export class ProjectWorkspaceService {
   async listProjects(input: {
     userId: string;
     workspaceId?: unknown;
+    conversationId?: unknown;
   }): Promise<ProjectSummary[]> {
     await this.requireUser(input.userId);
     return this.repository.listProjects({
@@ -109,6 +110,14 @@ export class ProjectWorkspaceService {
       ...(input.workspaceId === undefined
         ? {}
         : { workspaceId: uuid(input.workspaceId, "workspaceId") }),
+      ...(input.conversationId === undefined
+        ? {}
+        : {
+            conversationId: uuid(
+              input.conversationId,
+              "conversationId",
+            ),
+          }),
     });
   }
 
