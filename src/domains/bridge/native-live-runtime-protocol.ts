@@ -116,7 +116,7 @@ export type NativeLiveRuntimeExecutionResult =
       status: "success";
       provider_session_id: string;
       workspace_id: string | null;
-      effective_workspace_root: string;
+      effective_workspace_root: string | null;
       normalized_events: NativeLiveNormalizedEvent[];
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
@@ -156,10 +156,12 @@ export function parseNativeLiveRuntimeCommand(
     "canonical_user_message_id",
     "runtime_mode",
     "parent_provider_session_id",
+    "prompt",
+  ], [
+    "execution_selection",
     "workspace_id",
     "expected_workspace_root",
-    "prompt",
-  ], ["execution_selection"]);
+  ]);
 
   if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
     throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
@@ -181,11 +183,12 @@ export function parseNativeLiveRuntimeCommand(
       ? null
       : requireNonblank(body.parent_provider_session_id, "parent_provider_session_id");
   const workspaceId =
-    body.workspace_id === null
+    body.workspace_id === undefined || body.workspace_id === null
       ? null
       : requireUuid(body.workspace_id, "workspace_id");
   const expectedWorkspaceRoot =
-    body.expected_workspace_root === null
+    body.expected_workspace_root === undefined
+      || body.expected_workspace_root === null
       ? null
       : requireNonblank(
           body.expected_workspace_root,
@@ -245,11 +248,13 @@ export function parseNativeLiveRuntimeExecutionResult(
         "conversation_id",
         "status",
         "provider_session_id",
-        "workspace_id",
-        "effective_workspace_root",
         "normalized_events",
       ],
-      ["runtime_metadata"],
+      [
+        "runtime_metadata",
+        "workspace_id",
+        "effective_workspace_root",
+      ],
     );
 
     if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
@@ -270,13 +275,17 @@ export function parseNativeLiveRuntimeExecutionResult(
         "provider_session_id",
       ),
       workspace_id:
-        body.workspace_id === null
+        body.workspace_id === undefined || body.workspace_id === null
           ? null
           : requireUuid(body.workspace_id, "workspace_id"),
-      effective_workspace_root: requireNonblank(
-        body.effective_workspace_root,
-        "effective_workspace_root",
-      ),
+      effective_workspace_root:
+        body.effective_workspace_root === undefined
+          || body.effective_workspace_root === null
+          ? null
+          : requireNonblank(
+              body.effective_workspace_root,
+              "effective_workspace_root",
+            ),
       normalized_events:
         body.normalized_events as NativeLiveNormalizedEvent[],
       ...(
@@ -338,7 +347,11 @@ export function assertRuntimeResultMatchesCommand(
 
   if (
     result.status === "success"
-    && result.workspace_id !== command.workspace_id
+    && command.workspace_id !== null
+    && (
+      result.workspace_id !== command.workspace_id
+      || result.effective_workspace_root === null
+    )
   ) {
     throw new NativeLiveRuntimeProtocolError(
       "Runtime result workspace does not match the prepared command.",
