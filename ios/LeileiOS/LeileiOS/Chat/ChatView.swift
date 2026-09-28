@@ -20,7 +20,6 @@ struct ChatView: View {
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
     @State private var isSystemKeyboardVisible = false
-    @State private var showingWorkspaceFilePicker = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -132,10 +131,6 @@ struct ChatView: View {
                 interruptRequested:
                     runtimeInterruptRequested,
                 isEditing: editDraft != nil,
-                onWorkspaceFile: {
-                    isComposerFocused = false
-                    showingWorkspaceFilePicker = true
-                },
                 onCancelEdit: cancelEditing,
                 onInterrupt: {
                     interruptCurrentTurn()
@@ -165,9 +160,6 @@ struct ChatView: View {
                     ? 0
                     : 10
             )
-        }
-        .sheet(isPresented: $showingWorkspaceFilePicker) {
-            WorkspaceFilePickerSheet()
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
