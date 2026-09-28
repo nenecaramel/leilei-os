@@ -75,8 +75,6 @@ if [[ -z "$query" && ! -t 0 ]]; then
 fi
 if [[ "$query" == *"server_version_num"* ]]; then
   printf '180001\\n'
-elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
-  printf '${migrationWhen}|${migrationHash}\\n'
 elif [[ "$query" == *"pg_catalog.pg_tables"* ]]; then
   printf '%s\\n' \\
     conversations \\
@@ -87,6 +85,8 @@ elif [[ "$query" == *"pg_catalog.pg_tables"* ]]; then
     todo_papers \\
     universe_meta \\
     users
+elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
+  printf '${migrationWhen}|${migrationHash}\\n'
 elif [[ "$query" == *'SELECT count(*) FROM public."'* ]]; then
   printf '1\\n'
 elif [[ "$query" == *"WHERE id"* ]]; then
@@ -189,10 +189,10 @@ if [[ "$query" == *"server_version_num"* ]]; then
   printf '%s' "$count" > "$FAKE_READINESS_FILE"
   if [[ "$count" -lt 3 ]]; then exit 1; fi
   printf '180001\\n'
-elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
-  printf '${migrationWhen}|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'
 elif [[ "$query" == *"pg_catalog.pg_tables"* ]]; then
   printf 'users\\n'
+elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
+  printf '${migrationWhen}|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'
 elif [[ "$query" == *'SELECT count(*) FROM public."'* ]]; then
   printf '1\\n'
 else
