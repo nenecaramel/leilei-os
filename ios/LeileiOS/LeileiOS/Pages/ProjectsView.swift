@@ -1133,6 +1133,7 @@ struct ProjectPickerSheet: View {
     @State private var loading = false
     @State private var failed = false
     @State private var attachingProjectID: String?
+    @State private var memberProjectIDs: Set<String> = []
 
     init(
         title: String,
@@ -1169,7 +1170,14 @@ struct ProjectPickerSheet: View {
                                 Text(project.name)
                                     .foregroundStyle(.primary)
                                 Spacer()
-                                if attachingProjectID == project.id {
+                                if memberProjectIDs.contains(project.id) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(
+                                            size: 13,
+                                            weight: .semibold
+                                        ))
+                                        .foregroundStyle(.secondary)
+                                } else if attachingProjectID == project.id {
                                     ProgressView()
                                         .controlSize(.small)
                                 }
@@ -1177,7 +1185,12 @@ struct ProjectPickerSheet: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(attachingProjectID != nil)
+                        .disabled(
+                            attachingProjectID != nil
+                                || memberProjectIDs.contains(
+                                    project.id
+                                )
+                        )
                     }
                     .listStyle(.plain)
                 }
@@ -1210,6 +1223,18 @@ struct ProjectPickerSheet: View {
 
         do {
             projects = try await appModel.api.projects()
+
+            if let conversationID {
+                let memberships =
+                    try await appModel.api.projects(
+                        conversationID: conversationID
+                    )
+                memberProjectIDs = Set(
+                    memberships.map(\.id)
+                )
+            } else {
+                memberProjectIDs = []
+            }
         } catch {
             failed = true
         }
@@ -1230,6 +1255,7 @@ struct ProjectPickerSheet: View {
                 projectID: project.id,
                 conversationID: conversationID
             )
+            memberProjectIDs.insert(project.id)
             dismiss()
         } catch {
             failed = true
