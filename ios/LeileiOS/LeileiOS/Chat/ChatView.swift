@@ -7,14 +7,13 @@ struct ChatView: View {
 
     let isDraftConversation: Bool
     let draftConversationID: UUID
+    @Binding var selectedWorkspaceID: String?
     let onDraftCommitted: () -> Void
 
     @State private var messageText = ""
     @State private var model: NativeLiveClaudeModel = .opus55
     @State private var thinking: NativeLiveThinkingMode = .adaptive
     @State private var effort: NativeLiveEffortLevel = .high
-    @State private var workspaces: [WorkspaceSummary] = []
-    @State private var selectedWorkspaceID: String?
     @State private var editDraft: NativeLiveEditDraft?
     @State private var pendingOperation: NativeLivePendingOperation?
     @State private var isDraftCommitInFlight = false
@@ -78,7 +77,6 @@ struct ChatView: View {
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
-            await refreshWorkspaces()
             await appModel.refreshNativeLiveConversations()
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveCurrentPath()
@@ -98,14 +96,7 @@ struct ChatView: View {
             messageText = ""
             editDraft = nil
             pendingOperation = nil
-            if isDraftConversation {
-                normalizeSelectedWorkspace()
-            }
             isComposerFocused = false
-        }
-        .onChange(of: appModel.activeNativeLiveWorkspaceID) { _, workspaceID in
-            guard !isDraftConversation else { return }
-            selectedWorkspaceID = workspaceID
         }
         .onChange(of: isDraftConversation) { wasDraft, isDraft in
             if wasDraft && !isDraft && !isDraftCommitInFlight {
@@ -160,11 +151,6 @@ struct ChatView: View {
                     ? 0
                     : 10
             )
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                workspaceMenu
-            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -241,46 +227,6 @@ struct ChatView: View {
         }
     }
 
-    private var selectedWorkspaceName: String {
-        guard let selectedWorkspaceID,
-              let workspace = workspaces.first(where: {
-                  $0.id == selectedWorkspaceID
-              }) else {
-            return "Workspace"
-        }
-        return workspace.name
-    }
-
-    private var workspaceMenu: some View {
-        Menu {
-            Picker(
-                "Workspace",
-                selection: $selectedWorkspaceID
-            ) {
-                Text("No Workspace")
-                    .tag(String?.none)
-
-                ForEach(workspaces) { workspace in
-                    Text(workspace.name)
-                        .tag(Optional(workspace.id))
-                }
-            }
-            .disabled(!workspaceSelectionEnabled)
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "folder")
-                    .font(.system(size: 14, weight: .regular))
-
-                Text(selectedWorkspaceName)
-                    .font(.system(size: 13, weight: .regular))
-                    .lineLimit(1)
-            }
-        }
-        .accessibilityLabel(
-            "Workspace, \(selectedWorkspaceName)"
-        )
-    }
-
     private var workspaceSelectionEnabled: Bool {
         if isDraftConversation {
             return true
@@ -289,33 +235,6 @@ struct ChatView: View {
             return false
         }
         return appModel.nativeLiveCurrentPath?.currentHeadMessageId == nil
-    }
-
-    @MainActor
-    private func refreshWorkspaces() async {
-        do {
-            workspaces = try await appModel.api.workspaces()
-            if isDraftConversation {
-                normalizeSelectedWorkspace()
-            } else if let bound = appModel.activeNativeLiveWorkspaceID {
-                selectedWorkspaceID = bound
-            } else if appModel.nativeLiveCurrentPath?.currentHeadMessageId == nil {
-                normalizeSelectedWorkspace()
-            }
-        } catch {
-            workspaces = []
-            if isDraftConversation {
-                selectedWorkspaceID = nil
-            }
-        }
-    }
-
-    private func normalizeSelectedWorkspace() {
-        if let selectedWorkspaceID,
-           workspaces.contains(where: { $0.id == selectedWorkspaceID }) {
-            return
-        }
-        selectedWorkspaceID = workspaces.first?.id
     }
 
     private var visibleRuntimeSurface:
