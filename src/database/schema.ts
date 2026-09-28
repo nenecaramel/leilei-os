@@ -1332,7 +1332,9 @@ export const nativeLiveProviderSessionEntries = pgTable(
       }),
     workspaceId: uuid("workspace_id").notNull(),
     providerSessionId: text("provider_session_id").notNull(),
-    subpath: text("subpath"),
+    subpath: text("subpath").default("").notNull(),
+    appendBatchId: uuid("append_batch_id").notNull(),
+    appendOrdinal: integer("append_ordinal").notNull(),
     entry: jsonb("entry").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -1353,6 +1355,14 @@ export const nativeLiveProviderSessionEntries = pgTable(
       table.createdAt.desc(),
       table.providerSessionId,
     ),
+    uniqueIndex("native_live_provider_session_entries_batch_ordinal_uidx").on(
+      table.userId,
+      table.workspaceId,
+      table.providerSessionId,
+      table.subpath,
+      table.appendBatchId,
+      table.appendOrdinal,
+    ),
     check(
       "native_live_provider_session_entries_session_not_blank",
       sql`char_length(btrim(${table.providerSessionId})) > 0`,
@@ -1362,16 +1372,63 @@ export const nativeLiveProviderSessionEntries = pgTable(
       sql`char_length(${table.providerSessionId}) <= 256`,
     ),
     check(
-      "native_live_provider_session_entries_subpath_not_blank",
-      sql`${table.subpath} IS NULL OR char_length(${table.subpath}) > 0`,
+      "native_live_provider_session_entries_subpath_length",
+      sql`char_length(${table.subpath}) <= 2000`,
     ),
     check(
-      "native_live_provider_session_entries_subpath_length",
-      sql`${table.subpath} IS NULL OR char_length(${table.subpath}) <= 2000`,
+      "native_live_provider_session_entries_append_ordinal_nonnegative",
+      sql`${table.appendOrdinal} >= 0`,
     ),
     check(
       "native_live_provider_session_entries_entry_object",
       sql`jsonb_typeof(${table.entry}) = 'object'`,
+    ),
+  ],
+);
+
+export const nativeLiveProviderSessionStoreStatus = pgTable(
+  "native_live_provider_session_store_status",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    workspaceId: uuid("workspace_id").notNull(),
+    providerSessionId: text("provider_session_id").notNull(),
+    state: varchar("state", { length: 16 })
+      .$type<"complete" | "incomplete">()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.userId,
+        table.workspaceId,
+        table.providerSessionId,
+      ],
+      name: "native_live_provider_session_store_status_pk",
+    }),
+    index("native_live_provider_session_store_status_state_idx").on(
+      table.userId,
+      table.state,
+      table.updatedAt,
+    ),
+    check(
+      "native_live_provider_session_store_status_session_not_blank",
+      sql`char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "native_live_provider_session_store_status_session_length",
+      sql`char_length(${table.providerSessionId}) <= 256`,
+    ),
+    check(
+      "native_live_provider_session_store_status_state_allowed",
+      sql`${table.state} IN ('complete', 'incomplete')`,
     ),
   ],
 );
