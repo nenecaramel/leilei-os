@@ -10,6 +10,7 @@ struct ConversationsView: View {
     @State private var pendingDelete:
         NativeLiveConversationSummary?
     @State private var lifecycleErrorMessage: String?
+    @State private var lifecycleMutationIDs: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -150,6 +151,10 @@ struct ConversationsView: View {
                     scope == .active
                         ? appModel.activeNativeLiveConversationID
                         : nil,
+                activeTurnInFlight:
+                    appModel.chatSendState == .sending,
+                lifecycleMutationIDs:
+                    lifecycleMutationIDs,
                 onOpen: { conversation in
                     await open(conversation)
                 },
@@ -160,6 +165,9 @@ struct ConversationsView: View {
                     await restore(conversation)
                 },
                 onDelete: { conversation in
+                    guard canMutate(conversation) else {
+                        return
+                    }
                     pendingDelete = conversation
                 },
                 onLoadMore: {
@@ -186,8 +194,14 @@ struct ConversationsView: View {
     private func archive(
         _ conversation: NativeLiveConversationSummary
     ) async {
-        guard let conversationID = UUID(uuidString: conversation.id) else {
+        guard let conversationID = UUID(uuidString: conversation.id),
+              canMutate(conversation) else {
             return
+        }
+
+        lifecycleMutationIDs.insert(conversation.id)
+        defer {
+            lifecycleMutationIDs.remove(conversation.id)
         }
 
         do {
@@ -203,8 +217,14 @@ struct ConversationsView: View {
     private func restore(
         _ conversation: NativeLiveConversationSummary
     ) async {
-        guard let conversationID = UUID(uuidString: conversation.id) else {
+        guard let conversationID = UUID(uuidString: conversation.id),
+              canMutate(conversation) else {
             return
+        }
+
+        lifecycleMutationIDs.insert(conversation.id)
+        defer {
+            lifecycleMutationIDs.remove(conversation.id)
         }
 
         do {
@@ -220,8 +240,14 @@ struct ConversationsView: View {
     private func delete(
         _ conversation: NativeLiveConversationSummary
     ) async {
-        guard let conversationID = UUID(uuidString: conversation.id) else {
+        guard let conversationID = UUID(uuidString: conversation.id),
+              canMutate(conversation) else {
             return
+        }
+
+        lifecycleMutationIDs.insert(conversation.id)
+        defer {
+            lifecycleMutationIDs.remove(conversation.id)
         }
 
         do {
@@ -231,6 +257,23 @@ struct ConversationsView: View {
         } catch {
             lifecycleErrorMessage = error.localizedDescription
         }
+    }
+
+    private func canMutate(
+        _ conversation: NativeLiveConversationSummary
+    ) -> Bool {
+        guard !lifecycleMutationIDs.contains(conversation.id) else {
+            return false
+        }
+
+        guard scope == .active,
+              appModel.chatSendState == .sending,
+              let activeID = appModel.activeNativeLiveConversationID,
+              let conversationID = UUID(uuidString: conversation.id) else {
+            return true
+        }
+
+        return activeID != conversationID
     }
 
     @MainActor
@@ -289,6 +332,8 @@ private struct ConversationList: View {
     let scope: ConversationListScope
     let conversations: [NativeLiveConversationSummary]
     let activeConversationID: UUID?
+    let activeTurnInFlight: Bool
+    let lifecycleMutationIDs: Set<String>
     let onOpen: (NativeLiveConversationSummary) async -> Void
     let onArchive: (NativeLiveConversationSummary) async -> Void
     let onRestore: (NativeLiveConversationSummary) async -> Void
@@ -319,6 +364,7 @@ private struct ConversationList: View {
                                 await onArchive(conversation)
                             }
                         }
+                        .disabled(isMutationDisabled(conversation))
 
                     case .archived:
                         Button("Restore") {
@@ -326,6 +372,7 @@ private struct ConversationList: View {
                                 await onRestore(conversation)
                             }
                         }
+                        .disabled(isMutationDisabled(conversation))
                     }
 
                     Button(
@@ -334,16 +381,26 @@ private struct ConversationList: View {
                     ) {
                         onDelete(conversation)
                     }
+                    .disabled(isMutationDisabled(conversation))
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(
-                            size: 16,
-                            weight: .medium
-                        ))
-                        .frame(
-                            width: 28,
-                            height: 28
-                        )
+                    if lifecycleMutationIDs.contains(conversation.id) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(
+                                width: 28,
+                                height: 28
+                            )
+                    } else {
+                        Image(systemName: "ellipsis")
+                            .font(.system(
+                                size: 16,
+                                weight: .medium
+                            ))
+                            .frame(
+                                width: 28,
+                                height: 28
+                            )
+                    }
                 }
                 .accessibilityLabel(
                     "Conversation actions"
@@ -362,6 +419,23 @@ private struct ConversationList: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
+    }
+
+    private func isMutationDisabled(
+        _ conversation: NativeLiveConversationSummary
+    ) -> Bool {
+        if lifecycleMutationIDs.contains(conversation.id) {
+            return true
+        }
+
+        guard scope == .active,
+              activeTurnInFlight,
+              let activeConversationID,
+              let conversationID = UUID(uuidString: conversation.id) else {
+            return false
+        }
+
+        return activeConversationID == conversationID
     }
 
     private func rowContent(
