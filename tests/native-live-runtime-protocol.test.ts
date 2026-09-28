@@ -81,6 +81,95 @@ test("runtime command carries optional validated execution selection", () => {
   });
 });
 
+
+test("runtime protocol preserves Workspace identity and enforces the bound root", () => {
+  const workspaceId = "55555555-5555-4555-8555-555555555555";
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 1,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    workspace_id: workspaceId,
+    expected_workspace_root: "/Users/leilei/Projects/demo",
+    prompt: "hello",
+  });
+  assert.equal(command.workspace_id, workspaceId);
+  assert.equal(
+    command.expected_workspace_root,
+    "/Users/leilei/Projects/demo",
+  );
+
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    workspace_id: workspaceId,
+    effective_workspace_root: "/Users/leilei/Projects/demo",
+    normalized_events: [],
+  });
+  assert.doesNotThrow(() =>
+    assertRuntimeResultMatchesCommand(command, result)
+  );
+
+  const moved = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    workspace_id: workspaceId,
+    effective_workspace_root: "/Users/leilei/Projects/moved",
+    normalized_events: [],
+  });
+  assert.throws(
+    () => assertRuntimeResultMatchesCommand(command, moved),
+    /workspace root does not match/u,
+  );
+});
+
+test("runtime protocol accepts legacy envelopes only for unbound turns", () => {
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 1,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    prompt: "legacy",
+  });
+  assert.equal(command.workspace_id, null);
+  assert.equal(command.expected_workspace_root, null);
+
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-legacy",
+    normalized_events: [],
+  });
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(result.workspace_id, null);
+  assert.equal(result.effective_workspace_root, null);
+  assert.doesNotThrow(() =>
+    assertRuntimeResultMatchesCommand(command, result)
+  );
+});
+
 test("success result carries provider session and normalized events only", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
     protocol_version: 1,
