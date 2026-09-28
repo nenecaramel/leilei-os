@@ -1,0 +1,82 @@
+import SwiftUI
+
+struct SettingsExportContent: View {
+    let dataService: any SettingsDataService
+
+    @State private var selectedScope: SettingsExportScope = .all
+    @State private var includesAuditAndLifecycleEvents = false
+    @State private var isExporting = false
+    @State private var errorMessage: String?
+    @State private var exportedDocument: SettingsExportDocument?
+
+    var body: some View {
+        Form {
+            Section("Export") {
+                Picker("Scope", selection: $selectedScope) {
+                    ForEach(SettingsExportScope.allCases) { scope in
+                        Text(scope.title)
+                            .tag(scope)
+                    }
+                }
+
+                Toggle(
+                    "Include audit & lifecycle events",
+                    isOn: $includesAuditAndLifecycleEvents
+                )
+            }
+
+            Section {
+                Button {
+                    Task {
+                        await exportData()
+                    }
+                } label: {
+                    HStack {
+                        Text(isExporting ? "Exporting…" : "Create Export")
+                        Spacer()
+                        if isExporting {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isExporting)
+
+                if let exportedDocument {
+                    ShareLink(item: exportedDocument.fileURL) {
+                        Label("Share Export", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+
+            if errorMessage != nil {
+                Section {
+                    SettingsSectionState(
+                        title: "Failed"
+                    )
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
+    }
+
+    @MainActor
+    private func exportData() async {
+        isExporting = true
+        errorMessage = nil
+        exportedDocument = nil
+        defer { isExporting = false }
+
+        do {
+            exportedDocument = try await dataService.exportData(
+                SettingsExportRequest(
+                    scope: selectedScope,
+                    includeAuditAndLifecycleEvents: includesAuditAndLifecycleEvents
+                )
+            )
+        } catch {
+            errorMessage = "Failed"
+        }
+    }
+}
