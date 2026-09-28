@@ -54,7 +54,9 @@ export type NativeLivePrepareFailureCode =
   | "STALE_HEAD"
   | "BRANCH_POINT_INVALID"
   | "CHECKPOINT_NOT_FOUND"
+  | "WORKSPACE_NOT_FOUND"
   | "WORKSPACE_BINDING_AMBIGUOUS"
+  | "WORKSPACE_BINDING_CONFLICT"
   | "REQUEST_CONFLICT"
   | "INTERNAL_ERROR";
 
@@ -168,6 +170,7 @@ export interface NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
 
@@ -265,6 +268,7 @@ export class NativeLiveBackendTurnCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
         });
       } else if (request.operation === "retry") {
