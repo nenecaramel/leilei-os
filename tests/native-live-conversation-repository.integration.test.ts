@@ -27,40 +27,6 @@ import { DrizzleRuntimeEffectRepository } from "../src/domains/runtime/runtime-e
 const enabled =
   process.env.RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST === "1";
 
-async function retryConnectionEnded(
-  operation: () => Promise<void>,
-): Promise<void> {
-  try {
-    await operation();
-  } catch (error) {
-    if (!hasConnectionEndedCode(error)) throw error;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await operation();
-  }
-}
-
-function hasConnectionEndedCode(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; depth < 4 && current; depth += 1) {
-    if (
-      typeof current === "object"
-      && current !== null
-      && "code" in current
-      && current.code === "CONNECTION_ENDED"
-    ) {
-      return true;
-    }
-    current = (
-      typeof current === "object"
-      && current !== null
-      && "cause" in current
-    )
-      ? current.cause
-      : null;
-  }
-  return false;
-}
-
 test(
   "native live conversation persistence keeps immutable branches, exact checkpoints, tenant isolation, and assistant atomicity",
   { skip: !enabled },
@@ -79,8 +45,6 @@ test(
           idle_timeout: 60,
         }),
     });
-    t.after(async () => database.close());
-
     const suffix = crypto.randomUUID();
     const createdUsers = await database.db
       .insert(users)
@@ -100,13 +64,15 @@ test(
     const userB = createdUsers[1]!.id;
 
     t.after(async () => {
-      await retryConnectionEnded(async () => {
+      try {
         await database.db
           .delete(conversations)
           .where(eq(conversations.userId, userA));
         await database.db.delete(users).where(eq(users.id, userA));
         await database.db.delete(users).where(eq(users.id, userB));
-      });
+      } finally {
+        await database.close();
+      }
     });
 
     const repository = new DrizzleNativeLiveConversationRepository(database.db);
