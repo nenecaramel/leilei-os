@@ -89,6 +89,39 @@ test("fork command invokes fork with the exact prepared parent session and never
   assert.equal(result.provider_session_id, "provider-child");
 });
 
+test("fork propagates missing local parent session as NO_PROVIDER_SESSION", async () => {
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() {
+      throw Object.assign(
+        new Error("local parent transcript missing"),
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
+    command({
+      runtime_mode: "fork",
+      parent_provider_session_id: "provider-parent",
+    }),
+  );
+
+  assert.deepEqual(result, {
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure",
+    error_code: "NO_PROVIDER_SESSION",
+  });
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /local parent transcript missing/,
+  );
+});
+
 test("missing provider session returns a safe NO_PROVIDER_SESSION failure", async () => {
   const runtime: NativeLiveClaudeRuntime = {
     async sendNew() {
