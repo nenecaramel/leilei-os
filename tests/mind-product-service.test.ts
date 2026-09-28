@@ -189,6 +189,22 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
   });
 });
 
+test("manual Mind create requires a durable idempotency key", async () => {
+  const repository = new Repository();
+  const service = new MindProductService(repository, "G");
+
+  await assert.rejects(
+    service.createManual({
+      userId,
+      kind: "memory",
+      text: "remember this",
+    }),
+    (error: unknown) =>
+      error instanceof MindProductServiceError
+      && error.code === "INVALID_IDEMPOTENCY_KEY",
+  );
+});
+
 test("Mind delete delegates authoritative cleanup and not-found stays observable", async () => {
   const repository = new Repository();
   const service = new MindProductService(repository, "G");
