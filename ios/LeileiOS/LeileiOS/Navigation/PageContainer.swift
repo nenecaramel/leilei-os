@@ -191,7 +191,11 @@ struct PageContainer: View {
             ContextOverviewSheet()
         }
         .sheet(isPresented: $showingProjectPicker) {
-            ProjectPickerSheet(title: "Move to Project")
+            ProjectPickerSheet(
+                title: "Move to Project",
+                conversationID:
+                    appModel.activeNativeLiveConversationID
+            )
         }
         .sheet(isPresented: $showingWorkspacePicker) {
             WorkspacePickerSheet()
