@@ -30,6 +30,8 @@ implements NativeLiveWorkspaceRuntimeResolver {
     private readonly baseWorkspaceRoot: string,
     private readonly workspaceRoots: Readonly<Record<string, string>>,
     private readonly createTransport = createNativeLiveMacClaudeTransport,
+    private readonly createSessionStore:
+      (workspaceId: string) => unknown = () => null,
   ) {}
 
   async resolveWorkspaceRuntime(input: {
@@ -57,16 +59,23 @@ implements NativeLiveWorkspaceRuntimeResolver {
       );
     }
 
-    let pending = this.pending.get(workspaceRoot);
+    const runtimeKey =
+      (input.workspaceId ?? "__base__") + "\0" + workspaceRoot;
+    let pending = this.pending.get(runtimeKey);
     if (!pending) {
+      const sessionStore =
+        input.workspaceId === null
+          ? null
+          : this.createSessionStore(input.workspaceId);
       pending = this.createTransport(
         this.environment,
         workspaceRoot,
+        sessionStore,
       ).then(({ runtime }) => {
         this.resolved.add(runtime);
         return runtime;
       });
-      this.pending.set(workspaceRoot, pending);
+      this.pending.set(runtimeKey, pending);
     }
 
     return {
