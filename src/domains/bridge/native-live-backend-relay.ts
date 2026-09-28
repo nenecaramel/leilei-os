@@ -97,6 +97,9 @@ const preparationSelection = {
   runtimeMode: nativeLiveTurnPreparations.runtimeMode,
   parentProviderSessionId:
     nativeLiveTurnPreparations.parentProviderSessionId,
+  workspaceId: nativeLiveTurnPreparations.workspaceId,
+  expectedWorkspaceRoot:
+    nativeLiveTurnPreparations.expectedWorkspaceRoot,
   executionSelection: nativeLiveTurnPreparations.executionSelection,
   prompt: nativeLiveTurnPreparations.prompt,
   mindPrepared: nativeLiveTurnPreparations.mindPrepared,
@@ -113,6 +116,8 @@ type SelectedRelayPreparationRow = {
   canonicalUserMessageId: string;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
+  workspaceId: string | null;
+  expectedWorkspaceRoot: string | null;
   executionSelection: Record<string, unknown> | null;
   prompt: string;
   mindPrepared: boolean;
@@ -639,6 +644,8 @@ function isAcceptedTerminalFinalize(
     || result.code === "INTERRUPTED"
     || result.code === "NO_PROVIDER_SESSION"
     || result.code === "PROVIDER_SESSION_CONFLICT"
+    || result.code === "WORKSPACE_UNAVAILABLE"
+    || result.code === "WORKSPACE_ROOT_MISMATCH"
     || result.code === "RUNTIME_UNAVAILABLE"
     || result.code === "RUNTIME_PROTOCOL_ERROR"
   );
