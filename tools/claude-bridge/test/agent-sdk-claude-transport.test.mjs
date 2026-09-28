@@ -151,6 +151,7 @@ test("resume passes provider session identity without forking", async () => {
   let call;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: (input) => {
       call = input;
       return fakeQuery(successFixture("provider-root"));
@@ -171,6 +172,7 @@ test("fork uses resume plus forkSession and requires a new provider session id",
   let call;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: (input) => {
       call = input;
       return fakeQuery(successFixture("provider-fork"));
@@ -188,6 +190,7 @@ test("fork uses resume plus forkSession and requires a new provider session id",
 
   const conflicting = new AgentSdkClaudeTransport({
     environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: () => fakeQuery(successFixture("provider-root")),
   });
   await assert.rejects(
@@ -195,6 +198,59 @@ test("fork uses resume plus forkSession and requires a new provider session id",
     (error) =>
       error.runtimeCode === "PROVIDER_SESSION_CONFLICT"
       && /same provider session id/i.test(error.message),
+  );
+});
+
+test("resume and fork reject an absent local parent transcript before query", async () => {
+  let queryCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async (sessionId, options) => {
+      assert.equal(sessionId, "missing-parent");
+      assert.deepEqual(options, {
+        dir: "/workspace/leilei-os",
+        limit: 1,
+      });
+      return [];
+    },
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("unexpected"));
+    },
+  });
+
+  for (const run of [
+    () => transport.resume("missing-parent", "resume"),
+    () => transport.fork("missing-parent", "fork"),
+  ]) {
+    await assert.rejects(
+      run,
+      (error) =>
+        error.runtimeCode === "NO_PROVIDER_SESSION"
+        && error.parentSessionId === "missing-parent"
+        && /parent session was not found/i.test(error.message),
+    );
+  }
+  assert.equal(queryCalls, 0);
+});
+
+test("session preflight read failures stay RUNTIME_UNAVAILABLE", async () => {
+  const cause = new Error("session store unreadable");
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => {
+      throw cause;
+    },
+    queryImpl: () => fakeQuery(successFixture("unexpected")),
+  });
+
+  await assert.rejects(
+    () => transport.fork("provider-root", "branch prompt"),
+    (error) =>
+      error.runtimeCode === "RUNTIME_UNAVAILABLE"
+      && error.cause === cause
+      && /failed to inspect/i.test(error.message),
   );
 });
 
