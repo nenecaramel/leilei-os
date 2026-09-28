@@ -206,7 +206,7 @@ export interface NativeLiveBackendTurnPort {
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
     workspaceId: string | null;
-    effectiveWorkspaceRoot: string;
+    effectiveWorkspaceRoot: string | null;
     blocks: NativeLiveContentBlockInput[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
