@@ -522,6 +522,10 @@ implements ImportRepository {
                 conversationProviderSessionCheckpoints.provider,
               providerSessionId:
                 conversationProviderSessionCheckpoints.providerSessionId,
+              workspaceId:
+                conversationProviderSessionCheckpoints.workspaceId,
+              effectiveWorkspaceRoot:
+                conversationProviderSessionCheckpoints.effectiveWorkspaceRoot,
               runtimeMetadata:
                 conversationProviderSessionCheckpoints.runtimeMetadata,
               providerCheckpointId:
@@ -873,6 +877,8 @@ implements ImportRepository {
           canonical_message_id: row.canonicalMessageId,
           provider: row.provider,
           provider_session_id: row.providerSessionId,
+          workspace_id: row.workspaceId,
+          effective_workspace_root: row.effectiveWorkspaceRoot,
           runtime_metadata: row.runtimeMetadata,
           provider_checkpoint_id: row.providerCheckpointId,
           created_at: toIso(row.createdAt),
@@ -1306,6 +1312,8 @@ implements ImportRepository {
         canonicalMessageId: record.canonical_message_id,
         provider: record.provider,
         providerSessionId: record.provider_session_id,
+        workspaceId: record.workspace_id,
+        effectiveWorkspaceRoot: record.effective_workspace_root,
         runtimeMetadata: record.runtime_metadata,
         providerCheckpointId: record.provider_checkpoint_id,
         createdAt: new Date(record.created_at),
