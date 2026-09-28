@@ -9,7 +9,10 @@ import {
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
+  conversationProviderSessionCheckpoints,
   conversations,
+  nativeLiveProviderSessionEntries,
+  nativeLiveProviderSessionStoreStatus,
   projectConversations,
   projectResources,
   projects,
@@ -20,6 +23,7 @@ import {
 import type {
   CreateResourceOutcome,
   DeleteMutationOutcome,
+  DeleteProductWorkspaceOutcome,
   ProjectConversation,
   ProjectConversationMutationOutcome,
   ProjectResource,
@@ -184,7 +188,7 @@ implements ProjectWorkspaceRepository {
     userId: string;
     workspaceId: string;
     expectedVersion: number;
-  }): Promise<DeleteMutationOutcome> {
+  }): Promise<DeleteProductWorkspaceOutcome> {
     return this.db.transaction(
       async (transaction) => {
         const [existing] = await transaction
@@ -204,6 +208,43 @@ implements ProjectWorkspaceRepository {
         if (existing.version !== input.expectedVersion) {
           return { outcome: "version_conflict" as const };
         }
+
+        const [checkpoint] = await transaction
+          .select({ id: conversationProviderSessionCheckpoints.id })
+          .from(conversationProviderSessionCheckpoints)
+          .where(and(
+            eq(
+              conversationProviderSessionCheckpoints.userId,
+              input.userId,
+            ),
+            eq(
+              conversationProviderSessionCheckpoints.workspaceId,
+              input.workspaceId,
+            ),
+          ))
+          .limit(1);
+        if (checkpoint) {
+          return { outcome: "workspace_in_use" as const };
+        }
+
+        await transaction
+          .delete(nativeLiveProviderSessionEntries)
+          .where(and(
+            eq(nativeLiveProviderSessionEntries.userId, input.userId),
+            eq(
+              nativeLiveProviderSessionEntries.workspaceId,
+              input.workspaceId,
+            ),
+          ));
+        await transaction
+          .delete(nativeLiveProviderSessionStoreStatus)
+          .where(and(
+            eq(nativeLiveProviderSessionStoreStatus.userId, input.userId),
+            eq(
+              nativeLiveProviderSessionStoreStatus.workspaceId,
+              input.workspaceId,
+            ),
+          ));
 
         await transaction
           .delete(projects)
