@@ -95,6 +95,16 @@ export type DeleteProductWorkspaceOutcome =
   | DeleteMutationOutcome
   | { outcome: "workspace_in_use" };
 
+export type CreateProductWorkspaceOutcome =
+  | { outcome: "committed"; value: ProductWorkspace }
+  | { outcome: "idempotency_conflict" };
+
+export type CreateWorkspaceResourceOutcome =
+  | { outcome: "committed"; value: ProjectResource }
+  | { outcome: "workspace_not_found" }
+  | { outcome: "resource_conflict" }
+  | { outcome: "idempotency_conflict" };
+
 export type CreateResourceOutcome =
   | { outcome: "committed"; value: ProjectResource }
   | { outcome: "project_not_found" }
@@ -124,7 +134,21 @@ export interface ProjectWorkspaceRepository {
     userId: string;
     name: string;
     description: string | null;
-  }): Promise<ProductWorkspace>;
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<CreateProductWorkspaceOutcome>;
+
+  createWorkspaceResource(input: {
+    userId: string;
+    workspaceId: string;
+    kind: ProjectResourceKind;
+    key: string;
+    title: string | null;
+    content: string | null;
+    metadata: Record<string, unknown>;
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<CreateWorkspaceResourceOutcome>;
 
   updateProductWorkspace(input: {
     userId: string;
