@@ -84,15 +84,8 @@ struct PageContainer: View {
                     }
                 }
 
-                if selectedPage != .globalSearch
-                    && selectedPage != .diary
-                    && selectedPage != .daySpace
-                    && selectedPage != .universe
-                    && selectedPage != .mind
-                    && selectedPage != .conversations
-                    && selectedPage != .projects {
+                if selectedPage == .chat {
                     ToolbarItem(placement: .topBarTrailing) {
-                        if selectedPage == .chat {
                             Menu {
                                 Button {
                                     showingContext = true
@@ -150,16 +143,8 @@ struct PageContainer: View {
                                     .font(.system(size: 18, weight: .medium))
                             }
                             .accessibilityLabel("Conversation menu")
-                        } else {
-                            Button {
-                            } label: {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 18, weight: .medium))
-                            }
-                        }
                     }
                 }
-            }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(pageBackground.ignoresSafeArea())
