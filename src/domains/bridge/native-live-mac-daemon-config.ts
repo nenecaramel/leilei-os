@@ -1,15 +1,28 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
 import { homedir, hostname } from "node:os";
+import { isAbsolute } from "node:path";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+type NativeLiveMacFilesystem = {
+  realpath(path: string): string;
+  isDirectory(path: string): boolean;
+};
+
+const nativeFilesystem: NativeLiveMacFilesystem = {
+  realpath: (path) => realpathSync(path),
+  isDirectory: (path) => statSync(path).isDirectory(),
+};
 
 export type NativeLiveMacDaemonConfig = {
   relayBaseUrl: string;
   relayToken: string;
   listenerInstanceId: string;
   companionBackgroundIntervalMs: number;
+  baseWorkspaceRoot: string;
 };
 
 export function resolveNativeLiveMacDaemonConfig(
@@ -20,6 +33,7 @@ export function resolveNativeLiveMacDaemonConfig(
   } = { hostname, homedir },
   railwayVariablesLoader: () => Record<string, string> =
     loadRailwayProductionVariables,
+  filesystem: NativeLiveMacFilesystem = nativeFilesystem,
 ): NativeLiveMacDaemonConfig {
   let railwayVariables: Record<string, string> | null = null;
   const readRailwayVariables = () => {
@@ -77,13 +91,60 @@ export function resolveNativeLiveMacDaemonConfig(
       "LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS",
     );
 
+  const baseWorkspaceRoot = resolveNativeLiveMacBaseWorkspaceRoot(
+    environment,
+    machine,
+    filesystem,
+  );
+
   return {
     relayBaseUrl: relayBaseUrl.replace(/\/+$/u, ""),
     relayToken,
     listenerInstanceId,
     companionBackgroundIntervalMs:
       companionBackgroundIntervalSeconds * 1_000,
+    baseWorkspaceRoot,
   };
+}
+
+export function resolveNativeLiveMacBaseWorkspaceRoot(
+  environment: NodeJS.ProcessEnv,
+  machine: { homedir: () => string } = { homedir },
+  filesystem: NativeLiveMacFilesystem = nativeFilesystem,
+): string {
+  const configured = firstNonBlank(
+    environment.LEILEI_NATIVE_LIVE_WORKSPACE_ROOT,
+  );
+  const candidate = configured ?? machine.homedir();
+
+  if (!isAbsolute(candidate)) {
+    throw new Error(
+      "LEILEI_NATIVE_LIVE_WORKSPACE_ROOT must be an absolute path.",
+    );
+  }
+
+  let canonical: string;
+  try {
+    canonical = filesystem.realpath(candidate);
+  } catch {
+    throw new Error(
+      "Native Live base workspace root must resolve to an existing directory.",
+    );
+  }
+
+  let directory = false;
+  try {
+    directory = filesystem.isDirectory(canonical);
+  } catch {
+    directory = false;
+  }
+  if (!directory) {
+    throw new Error(
+      "Native Live base workspace root must resolve to an existing directory.",
+    );
+  }
+
+  return canonical;
 }
 
 export function stableListenerInstanceId(
@@ -192,7 +253,6 @@ function firstNonBlank(...values: Array<string | undefined>): string | null {
   }
   return null;
 }
-
 
 function parsePositiveIntegerEnv(
   value: string | undefined,

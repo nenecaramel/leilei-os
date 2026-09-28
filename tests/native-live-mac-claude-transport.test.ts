@@ -31,10 +31,22 @@ test("Mac daemon Claude transport rejects retired selectors", () => {
   );
 });
 
-test("Mac daemon transport factory creates the Agent SDK adapter", async () => {
+test("Mac daemon transport requires an explicit absolute workspace root", async () => {
+  await assert.rejects(
+    createNativeLiveMacClaudeTransport({}),
+    /explicit absolute workspace root/u,
+  );
+  await assert.rejects(
+    createNativeLiveMacClaudeTransport({}, "./relative"),
+    /explicit absolute workspace root/u,
+  );
+});
+
+test("Mac daemon transport factory creates the Agent SDK adapter at the configured workspace root", async () => {
+  const workspaceRoot = process.cwd();
   const agent = await createNativeLiveMacClaudeTransport(
     {},
-    process.cwd(),
+    workspaceRoot,
   );
   assert.equal(agent.kind, "agent_sdk");
   assert.equal(typeof agent.runtime.sendNew, "function");
@@ -42,4 +54,8 @@ test("Mac daemon transport factory creates the Agent SDK adapter", async () => {
   assert.equal(typeof agent.runtime.fork, "function");
   assert.equal(typeof agent.runtime.abort, "function");
   assert.equal(typeof agent.runtime.executeTurn, "function");
+  assert.equal(
+    (agent.runtime as unknown as { cwd: string }).cwd,
+    workspaceRoot,
+  );
 });

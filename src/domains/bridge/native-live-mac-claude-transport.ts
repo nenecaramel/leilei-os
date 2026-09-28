@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import type {
   NativeLiveClaudeRuntime,
   NativeLiveNormalizedEvent,
@@ -86,11 +87,21 @@ export function resolveNativeLiveMacClaudeTransportKind(
 
 export async function createNativeLiveMacClaudeTransport(
   environment: NodeJS.ProcessEnv = process.env,
-  cwd: string = process.cwd(),
+  workspaceRoot?: string,
 ): Promise<{
   kind: NativeLiveMacClaudeTransportKind;
   runtime: NativeLiveMacClaudeTransport;
 }> {
+  const normalizedWorkspaceRoot = workspaceRoot?.trim();
+  if (
+    !normalizedWorkspaceRoot
+    || !isAbsolute(normalizedWorkspaceRoot)
+  ) {
+    throw new Error(
+      "Native Live Mac Claude transport requires an explicit absolute workspace root.",
+    );
+  }
+
   const kind =
     resolveNativeLiveMacClaudeTransportKind(environment);
   const agentSdkModulePath =
@@ -108,7 +119,7 @@ export async function createNativeLiveMacClaudeTransport(
     kind,
     runtime: new AgentSdkClaudeTransport({
       environment,
-      cwd,
+      cwd: normalizedWorkspaceRoot,
     }),
   };
 }

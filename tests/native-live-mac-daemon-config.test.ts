@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  resolveNativeLiveMacBaseWorkspaceRoot,
   resolveNativeLiveMacDaemonConfig,
   stableListenerInstanceId,
 } from "../src/domains/bridge/native-live-mac-daemon-config.js";
 
+const fakeFilesystem = {
+  realpath: (path: string) => path,
+  isDirectory: (_path: string) => true,
+};
+
 test("Mac daemon config prefers dedicated Native Live variables", () => {
+  const root = process.cwd();
   const config = resolveNativeLiveMacDaemonConfig({
     LEILEI_NATIVE_LIVE_RELAY_URL: " https://relay.example/ ",
     LEILEI_NATIVE_LIVE_RELAY_TOKEN: " dedicated-token ",
     LEILEI_NATIVE_LIVE_LISTENER_ID:
       "11111111-1111-4111-8111-111111111111",
+    LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: root,
     MCP_SERVER_URL: "https://fallback.example",
     MCP_AUTH_TOKEN: "fallback-token",
   });
@@ -21,6 +29,7 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
     listenerInstanceId:
       "11111111-1111-4111-8111-111111111111",
     companionBackgroundIntervalMs: 3_600_000,
+    baseWorkspaceRoot: root,
   });
 });
 
@@ -38,6 +47,7 @@ test("Mac daemon config uses a dedicated relay token and derives a stable listen
       NATIVE_LIVE_RELAY_AUTH_TOKEN:
         "relay-token-that-is-long-enough-for-production",
     }),
+    fakeFilesystem,
   );
   const second = resolveNativeLiveMacDaemonConfig(
     {
@@ -48,6 +58,7 @@ test("Mac daemon config uses a dedicated relay token and derives a stable listen
       NATIVE_LIVE_RELAY_AUTH_TOKEN:
         "relay-token-that-is-long-enough-for-production",
     }),
+    fakeFilesystem,
   );
 
   assert.equal(first.relayBaseUrl, "https://leilei-os.example");
@@ -56,9 +67,77 @@ test("Mac daemon config uses a dedicated relay token and derives a stable listen
     "relay-token-that-is-long-enough-for-production",
   );
   assert.equal(first.listenerInstanceId, second.listenerInstanceId);
+  assert.equal(first.baseWorkspaceRoot, "/Users/leilei");
   assert.match(
     first.listenerInstanceId,
     /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+  );
+});
+
+test("Mac daemon base workspace root defaults to canonical home and ignores process cwd", () => {
+  const root = resolveNativeLiveMacBaseWorkspaceRoot(
+    {},
+    { homedir: () => "/Users/leilei" },
+    {
+      realpath: (path) =>
+        path === "/Users/leilei"
+          ? "/System/Volumes/Data/Users/leilei"
+          : path,
+      isDirectory: () => true,
+    },
+  );
+  assert.equal(root, "/System/Volumes/Data/Users/leilei");
+});
+
+test("Mac daemon base workspace root prefers an explicit canonical directory", () => {
+  const root = resolveNativeLiveMacBaseWorkspaceRoot(
+    {
+      LEILEI_NATIVE_LIVE_WORKSPACE_ROOT:
+        " /Users/leilei/Projects/leileios ",
+    },
+    { homedir: () => "/Users/leilei" },
+    {
+      realpath: () => "/Volumes/work/leileios",
+      isDirectory: () => true,
+    },
+  );
+  assert.equal(root, "/Volumes/work/leileios");
+});
+
+test("Mac daemon base workspace root rejects relative, missing, and non-directory targets", () => {
+  assert.throws(
+    () => resolveNativeLiveMacBaseWorkspaceRoot(
+      { LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: "./leileios" },
+      { homedir: () => "/Users/leilei" },
+      fakeFilesystem,
+    ),
+    /absolute path/u,
+  );
+
+  assert.throws(
+    () => resolveNativeLiveMacBaseWorkspaceRoot(
+      { LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: "/missing" },
+      { homedir: () => "/Users/leilei" },
+      {
+        realpath: () => {
+          throw new Error("ENOENT");
+        },
+        isDirectory: () => true,
+      },
+    ),
+    /existing directory/u,
+  );
+
+  assert.throws(
+    () => resolveNativeLiveMacBaseWorkspaceRoot(
+      { LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: "/tmp/file" },
+      { homedir: () => "/Users/leilei" },
+      {
+        realpath: (path) => path,
+        isDirectory: () => false,
+      },
+    ),
+    /existing directory/u,
   );
 });
 
@@ -71,7 +150,7 @@ test("Mac daemon config accepts an explicit companion background cadence", () =>
   }, {
     hostname: () => "Leilei-Mac",
     homedir: () => "/Users/leilei",
-  });
+  }, () => ({}), fakeFilesystem);
 
   assert.equal(config.companionBackgroundIntervalMs, 90_000);
 
@@ -79,12 +158,12 @@ test("Mac daemon config accepts an explicit companion background cadence", () =>
     () => resolveNativeLiveMacDaemonConfig({
       MCP_SERVER_URL: "https://leilei-os.example/",
       LEILEI_NATIVE_LIVE_RELAY_TOKEN:
-      "relay-token-that-is-long-enough-for-production",
+        "relay-token-that-is-long-enough-for-production",
       LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS: "0",
     }, {
       hostname: () => "Leilei-Mac",
       homedir: () => "/Users/leilei",
-    }),
+    }, () => ({}), fakeFilesystem),
     /positive integer/u,
   );
 });
@@ -108,6 +187,7 @@ test("Mac daemon config bootstraps production relay from Railway variables when 
       NATIVE_LIVE_RELAY_AUTH_TOKEN:
         "railway-relay-token-that-is-long-enough",
     }),
+    fakeFilesystem,
   );
 
   assert.equal(
@@ -136,6 +216,7 @@ test("Mac daemon config does not invoke Railway loader when local env is complet
       calls += 1;
       return {};
     },
+    fakeFilesystem,
   );
   assert.equal(
     config.relayToken,
@@ -153,11 +234,11 @@ test("Mac daemon config uses the known production URL but fails closed without a
         homedir: () => "/Users/leilei",
       },
       () => ({}),
+      fakeFilesystem,
     ),
     /relay token is required/,
   );
 });
-
 
 test("Mac daemon never falls back to the broad internal MCP credential", () => {
   assert.throws(
@@ -171,6 +252,7 @@ test("Mac daemon never falls back to the broad internal MCP credential", () => {
         homedir: () => "/Users/leilei",
       },
       () => ({}),
+      fakeFilesystem,
     ),
     /relay token is required/,
   );
