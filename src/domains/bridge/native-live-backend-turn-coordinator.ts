@@ -509,8 +509,9 @@ export function nativeLiveRuntimeCommandFromPreparation(
     canonical_user_message_id: preparation.canonicalUserMessageId,
     runtime_mode: preparation.runtimeMode,
     parent_provider_session_id: preparation.parentProviderSessionId,
-    workspace_id: preparation.workspaceId,
-    expected_workspace_root: preparation.expectedWorkspaceRoot,
+    workspace_id: preparation.workspaceId ?? null,
+    expected_workspace_root:
+      preparation.expectedWorkspaceRoot ?? null,
     execution_selection: preparation.executionSelection ?? null,
     prompt: preparation.prompt,
   };
