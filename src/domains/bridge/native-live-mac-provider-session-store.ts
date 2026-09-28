@@ -14,7 +14,7 @@ export class NativeLiveMacProviderSessionStore {
   private readonly baseUrl: string;
   private readonly retryAppendBatches = new Map<
     string,
-    { batchId: string; failures: number }
+    { batchId: string; sessionId: string }
   >();
 
   constructor(
@@ -61,19 +61,20 @@ export class NativeLiveMacProviderSessionStore {
         this.retryAppendBatches.delete(signature);
       }
     } catch (error) {
-      const failures = (pending?.failures ?? 0) + 1;
-      // Agent SDK retries append failures up to three times after the
-      // initial attempt. Retain one receipt for that exact retry chain,
-      // then release it once the SDK will emit mirror_error and drop it.
-      if (failures >= 4) {
-        this.retryAppendBatches.delete(signature);
-      } else {
-        this.retryAppendBatches.set(signature, {
-          batchId: appendBatchId,
-          failures,
-        });
-      }
+      this.retryAppendBatches.set(signature, {
+        batchId: appendBatchId,
+        sessionId: remoteKey.session_id,
+      });
       throw error;
+    }
+  }
+
+  discardPendingAppends(sessionId: string): void {
+    const normalized = normalizeSessionId(sessionId);
+    for (const [signature, pending] of this.retryAppendBatches) {
+      if (pending.sessionId === normalized) {
+        this.retryAppendBatches.delete(signature);
+      }
     }
   }
 
