@@ -62,6 +62,8 @@ class FakeTurnReader {
       conversationId,
       operation: "send" as const,
       canonicalUserMessageId: userMessageId,
+      workspaceId: null,
+      expectedWorkspaceRoot: null,
       executionSelection: {
         model: "claude-opus-5-5" as const,
         thinking: "adaptive" as const,
@@ -466,6 +468,8 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         requestId,
         conversationId,
         userMessageId,
+        workspaceId: null,
+        expectedWorkspaceRoot: null,
       });
       assert.equal(JSON.stringify(payload).includes("private prompt"), false);
       assert.deepEqual(relayService.calls, [{
@@ -513,6 +517,70 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
       );
       assert.equal(readPayload.data.assistantMessage?.blocks[0]?.text, "VISIBLE");
       assert.deepEqual(turnReader.calls, [{ userId, prepareId }]);
+    },
+  );
+});
+
+test("web prepare maps Workspace selection failures without hiding them as infrastructure errors", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({ coordinator, relayService, turnReader }),
+      );
+    },
+    async (baseUrl) => {
+      const requestBody = {
+        dispatch_target: "claude_code",
+        request_id: requestId,
+        operation: "send",
+        conversation_id: conversationId,
+        expected_head_message_id: null,
+        workspace_id: "88888888-8888-4888-8888-888888888888",
+        text: "hello",
+      };
+
+      for (const [code, expectedStatus] of [
+        ["WORKSPACE_NOT_FOUND", 404],
+        ["WORKSPACE_BINDING_AMBIGUOUS", 409],
+        ["WORKSPACE_BINDING_CONFLICT", 409],
+      ] as const) {
+        coordinator.result = {
+          ok: false,
+          requestId,
+          operation: "send",
+          conversationId,
+          code,
+        };
+        const response = await fetch(
+          `${baseUrl}/api/v1/native-live/prepare`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-test-user": "owner",
+            },
+            body: JSON.stringify(requestBody),
+          },
+        );
+        assert.equal(response.status, expectedStatus);
+        const payload = await response.json() as {
+          error: { code: string };
+        };
+        assert.equal(payload.error.code, code);
+      }
+
+      assert.deepEqual(relayService.calls, []);
     },
   );
 });

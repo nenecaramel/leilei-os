@@ -959,6 +959,115 @@ test(
     assert.equal(second.command.workspace_id, workspace.id);
     assert.equal(second.command.expected_workspace_root, root);
 
+    const explicitConversation =
+      await conversationService.createConversation({
+        userId: user.id,
+        title: "Explicit Workspace selection",
+      });
+    const explicitRequestId = crypto.randomUUID();
+    const explicit = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: explicitRequestId,
+      operation: "send",
+      conversation_id: explicitConversation.id,
+      expected_head_message_id: null,
+      workspace_id: workspace.id,
+      text: "explicit workspace hello",
+    });
+    assert.equal(explicit.ok, true);
+    if (!explicit.ok) throw new Error("expected explicit Workspace prepare");
+    assert.equal(explicit.command.workspace_id, workspace.id);
+    assert.equal(explicit.command.runtime_mode, "new");
+
+    const explicitMemberships = await database.db
+      .select({ projectId: projectConversations.projectId })
+      .from(projectConversations)
+      .where(eq(projectConversations.conversationId, explicitConversation.id));
+    assert.deepEqual(explicitMemberships, [{ projectId: workspace.id }]);
+
+    const missingWorkspace = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: crypto.randomUUID(),
+      operation: "send",
+      conversation_id: (
+        await conversationService.createConversation({
+          userId: user.id,
+          title: "Missing Workspace selection",
+        })
+      ).id,
+      expected_head_message_id: null,
+      workspace_id: "77777777-7777-4777-8777-777777777777",
+      text: "must fail closed",
+    });
+    assert.equal(missingWorkspace.ok, false);
+    if (missingWorkspace.ok) throw new Error("expected missing Workspace failure");
+    assert.equal(missingWorkspace.code, "WORKSPACE_NOT_FOUND");
+
+    const explicitFinalized = await coordinator.finalize(user.id, {
+      protocol_version: 1,
+      prepare_id: explicit.command.prepare_id,
+      request_id: explicitRequestId,
+      conversation_id: explicitConversation.id,
+      status: "success",
+      provider_session_id: "provider-explicit-workspace",
+      workspace_id: workspace.id,
+      effective_workspace_root: root,
+      normalized_events: [
+        { type: "text", payload: { text: "explicit answer" } },
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text: "explicit answer",
+          },
+        },
+      ],
+    });
+    assert.equal(explicitFinalized.ok, true);
+    if (!explicitFinalized.ok) {
+      throw new Error("expected explicit Workspace finalize");
+    }
+
+    const explicitMetadata =
+      await new DrizzleNativeLiveConversationRuntimeMetadataReader(
+        database.db,
+      ).readLatest({
+        userId: user.id,
+        conversationId: explicitConversation.id,
+      });
+    assert.ok(explicitMetadata);
+    assert.equal(explicitMetadata.workspaceId, workspace.id);
+    assert.equal(explicitMetadata.effectiveWorkspaceRoot, root);
+    assert.equal(
+      explicitMetadata.sourceMessageId,
+      explicitFinalized.assistantMessageId,
+    );
+
+    const [otherWorkspaceForConflict] = await database.db
+      .insert(projects)
+      .values({
+        userId: user.id,
+        workspaceId: container.id,
+        name: "Conflicting Execution Workspace",
+      })
+      .returning({ id: projects.id });
+    assert.ok(otherWorkspaceForConflict);
+
+    const workspaceSwitch = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: crypto.randomUUID(),
+      operation: "send",
+      conversation_id: explicitConversation.id,
+      expected_head_message_id: explicitFinalized.assistantMessageId,
+      workspace_id: otherWorkspaceForConflict.id,
+      text: "do not move cwd",
+    });
+    assert.equal(workspaceSwitch.ok, false);
+    if (workspaceSwitch.ok) {
+      throw new Error("expected Workspace binding conflict");
+    }
+    assert.equal(workspaceSwitch.code, "WORKSPACE_BINDING_CONFLICT");
+
     const ambiguousConversation =
       await conversationService.createConversation({
         userId: user.id,

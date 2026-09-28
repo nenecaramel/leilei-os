@@ -14,6 +14,8 @@ export type NativeLiveConversationRuntimeMetadataSnapshot = {
   conversationId: string;
   currentHeadMessageId: string | null;
   sourceMessageId: string | null;
+  workspaceId: string | null;
+  effectiveWorkspaceRoot: string | null;
   runtimeMetadata: NativeLiveRuntimeMetadata | null;
   observedAt: string | null;
 };
@@ -53,6 +55,8 @@ implements NativeLiveConversationRuntimeMetadataReader {
         conversationId: conversation.id,
         currentHeadMessageId: null,
         sourceMessageId: null,
+        workspaceId: null,
+        effectiveWorkspaceRoot: null,
         runtimeMetadata: null,
         observedAt: null,
       };
@@ -60,6 +64,8 @@ implements NativeLiveConversationRuntimeMetadataReader {
 
     const rows = await this.db.execute<{
       source_message_id: string;
+      workspace_id: string | null;
+      effective_workspace_root: string | null;
       runtime_metadata: Record<string, unknown> | null;
       observed_at: string;
     }>(sql`
@@ -90,6 +96,8 @@ implements NativeLiveConversationRuntimeMetadataReader {
       )
       SELECT
         checkpoint.canonical_message_id AS source_message_id,
+        checkpoint.workspace_id,
+        checkpoint.effective_workspace_root,
         checkpoint.runtime_metadata,
         checkpoint.created_at::text AS observed_at
       FROM current_path AS path
@@ -109,6 +117,8 @@ implements NativeLiveConversationRuntimeMetadataReader {
         conversationId: conversation.id,
         currentHeadMessageId: conversation.currentHeadMessageId,
         sourceMessageId: null,
+        workspaceId: null,
+        effectiveWorkspaceRoot: null,
         runtimeMetadata: null,
         observedAt: null,
       };
@@ -118,6 +128,8 @@ implements NativeLiveConversationRuntimeMetadataReader {
       conversationId: conversation.id,
       currentHeadMessageId: conversation.currentHeadMessageId,
       sourceMessageId: latest.source_message_id,
+      workspaceId: latest.workspace_id,
+      effectiveWorkspaceRoot: latest.effective_workspace_root,
       runtimeMetadata:
         latest.runtime_metadata as NativeLiveRuntimeMetadata | null,
       observedAt: new Date(latest.observed_at).toISOString(),

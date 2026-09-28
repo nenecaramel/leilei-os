@@ -81,6 +81,7 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
         });
       } else if (request.operation === "retry") {
