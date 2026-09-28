@@ -63,7 +63,7 @@ struct SettingsRestoreContent: View {
                 .disabled(!canRestore)
             }
 
-            if let errorMessage {
+            if errorMessage != nil {
                 Section {
                     SettingsSectionState(
                         title: "Failed"
