@@ -99,6 +99,22 @@ struct MindProductPage: Decodable, Sendable, Equatable {
     let nextCursor: String?
 }
 
+struct MindProductMessageWriteProjection:
+    Decodable,
+    Sendable,
+    Equatable {
+    struct KindCount: Decodable, Sendable, Equatable, Identifiable {
+        let kind: MindProductKind
+        let count: Int
+
+        var id: String { kind.rawValue }
+    }
+
+    let messageId: String
+    let total: Int
+    let kinds: [KindCount]
+}
+
 struct ProjectWorkspaceSummary: Decodable, Sendable, Equatable, Identifiable {
     let id: String
     let name: String
@@ -1089,6 +1105,19 @@ final class LeileiAPIClient {
         )
     }
 
+    func mindWrites(
+        messageID: String
+    ) async throws -> MindProductMessageWriteProjection {
+        let envelope: MindProductMessageWriteEnvelope =
+            try await request(
+                path:
+                    "/api/v1/mind/writes/messages/"
+                    + messageID,
+                authenticated: true
+            )
+        return envelope.data
+    }
+
     func projectWorkspaces() async throws -> [ProjectWorkspaceSummary] {
         let envelope: ProjectWorkspaceListEnvelope = try await request(
             path: "/api/v1/workspaces",
@@ -1114,6 +1143,45 @@ final class LeileiAPIClient {
             authenticated: true
         )
         return envelope.data
+    }
+
+    func updateProjectWorkspace(
+        workspaceID: String,
+        expectedVersion: Int,
+        name: String,
+        description: String?
+    ) async throws -> ProjectWorkspaceSummary {
+        let body = try JSONEncoder().encode(
+            ProjectWorkspaceUpdateBody(
+                expectedVersion: expectedVersion,
+                name: name,
+                description: description
+            )
+        )
+        let envelope: ProjectWorkspaceEnvelope = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)",
+            method: "PATCH",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteProjectWorkspace(
+        workspaceID: String,
+        expectedVersion: Int
+    ) async throws {
+        let body = try JSONEncoder().encode(
+            VersionMutationBody(
+                expectedVersion: expectedVersion
+            )
+        )
+        let _: NoContentResponse = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)",
+            method: "DELETE",
+            body: body,
+            authenticated: true
+        )
     }
 
     func projects(
@@ -1171,6 +1239,45 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func updateProject(
+        projectID: String,
+        expectedVersion: Int,
+        name: String,
+        description: String?
+    ) async throws -> ProjectSummary {
+        let body = try JSONEncoder().encode(
+            ProjectUpdateBody(
+                expectedVersion: expectedVersion,
+                name: name,
+                description: description
+            )
+        )
+        let envelope: ProjectEnvelope = try await request(
+            path: "/api/v1/projects/\(projectID)",
+            method: "PATCH",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteProject(
+        projectID: String,
+        expectedVersion: Int
+    ) async throws {
+        let body = try JSONEncoder().encode(
+            VersionMutationBody(
+                expectedVersion: expectedVersion
+            )
+        )
+        let _: NoContentResponse = try await request(
+            path: "/api/v1/projects/\(projectID)",
+            method: "DELETE",
+            body: body,
+            authenticated: true
+        )
+    }
+
     func projectResources(
         projectID: String,
         kind: ProjectResourceKind? = nil
@@ -1204,6 +1311,79 @@ final class LeileiAPIClient {
             authenticated: true
         )
         return envelope.data
+    }
+
+    func createProjectResource(
+        projectID: String,
+        kind: ProjectResourceKind,
+        key: String,
+        title: String?,
+        content: String?,
+        metadata: [String: NativeLiveJSONValue] = [:]
+    ) async throws -> ProjectResource {
+        let body = try JSONEncoder().encode(
+            ProjectResourceCreateBody(
+                kind: kind,
+                key: key,
+                title: title,
+                content: content,
+                metadata: metadata
+            )
+        )
+        let envelope: ProjectResourceEnvelope = try await request(
+            path: "/api/v1/projects/\(projectID)/resources",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func updateProjectResource(
+        projectID: String,
+        resourceID: String,
+        expectedVersion: Int,
+        title: String?,
+        content: String?,
+        metadata: [String: NativeLiveJSONValue]
+    ) async throws -> ProjectResource {
+        let body = try JSONEncoder().encode(
+            ProjectResourceUpdateBody(
+                expectedVersion: expectedVersion,
+                title: title,
+                content: content,
+                metadata: metadata
+            )
+        )
+        let envelope: ProjectResourceEnvelope = try await request(
+            path:
+                "/api/v1/projects/\(projectID)"
+                + "/resources/\(resourceID)",
+            method: "PATCH",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteProjectResource(
+        projectID: String,
+        resourceID: String,
+        expectedVersion: Int
+    ) async throws {
+        let body = try JSONEncoder().encode(
+            VersionMutationBody(
+                expectedVersion: expectedVersion
+            )
+        )
+        let _: NoContentResponse = try await request(
+            path:
+                "/api/v1/projects/\(projectID)"
+                + "/resources/\(resourceID)",
+            method: "DELETE",
+            body: body,
+            authenticated: true
+        )
     }
 
     func projectConversations(
@@ -1447,6 +1627,13 @@ private struct MindProductItemEnvelope: Decodable, Sendable {
     let data: MindProductItem
 }
 
+private struct MindProductMessageWriteEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: MindProductMessageWriteProjection
+}
+
 private struct MindDeleteEnvelope: Decodable, Sendable {
     struct DeleteData: Decodable, Sendable {
         let deletedStateCount: Int
@@ -1485,6 +1672,37 @@ private struct ProjectWorkspaceCreateBody: Encodable, Sendable {
     let description: String?
 }
 
+private struct ProjectWorkspaceUpdateBody: Encodable, Sendable {
+    let expectedVersion: Int
+    let name: String
+    let description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case expectedVersion = "expected_version"
+        case name
+        case description
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(expectedVersion, forKey: .expectedVersion)
+        try container.encode(name, forKey: .name)
+        if let description {
+            try container.encode(description, forKey: .description)
+        } else {
+            try container.encodeNil(forKey: .description)
+        }
+    }
+}
+
+private struct VersionMutationBody: Encodable, Sendable {
+    let expectedVersion: Int
+
+    enum CodingKeys: String, CodingKey {
+        case expectedVersion = "expected_version"
+    }
+}
+
 private struct ProjectListEnvelope: Decodable, Sendable {
     let success: Bool
     let data: [ProjectSummary]
@@ -1504,6 +1722,67 @@ private struct ProjectCreateBody: Encodable, Sendable {
         case workspaceID = "workspace_id"
         case name
         case description
+    }
+}
+
+private struct ProjectUpdateBody: Encodable, Sendable {
+    let expectedVersion: Int
+    let name: String
+    let description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case expectedVersion = "expected_version"
+        case name
+        case description
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(expectedVersion, forKey: .expectedVersion)
+        try container.encode(name, forKey: .name)
+        if let description {
+            try container.encode(description, forKey: .description)
+        } else {
+            try container.encodeNil(forKey: .description)
+        }
+    }
+}
+
+private struct ProjectResourceCreateBody: Encodable, Sendable {
+    let kind: ProjectResourceKind
+    let key: String
+    let title: String?
+    let content: String?
+    let metadata: [String: NativeLiveJSONValue]
+}
+
+private struct ProjectResourceUpdateBody: Encodable, Sendable {
+    let expectedVersion: Int
+    let title: String?
+    let content: String?
+    let metadata: [String: NativeLiveJSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case expectedVersion = "expected_version"
+        case title
+        case content
+        case metadata
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(expectedVersion, forKey: .expectedVersion)
+        if let title {
+            try container.encode(title, forKey: .title)
+        } else {
+            try container.encodeNil(forKey: .title)
+        }
+        if let content {
+            try container.encode(content, forKey: .content)
+        } else {
+            try container.encodeNil(forKey: .content)
+        }
+        try container.encode(metadata, forKey: .metadata)
     }
 }
 
