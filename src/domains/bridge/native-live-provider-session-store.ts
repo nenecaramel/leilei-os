@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
+import { nativeLiveProviderSessionEntries } from "../../database/schema.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -39,27 +40,15 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     entries: NativeLiveProviderSessionStoreEntry[];
   }): Promise<void> {
     if (input.entries.length === 0) return;
-    await this.db.transaction(async (transaction) => {
-      for (const entry of input.entries) {
-        const entryJson = JSON.stringify(entry);
-        await transaction.execute(sql`
-          INSERT INTO native_live_provider_session_entries (
-            user_id,
-            workspace_id,
-            provider_session_id,
-            subpath,
-            entry
-          )
-          VALUES (
-            ${input.userId}::uuid,
-            ${input.key.workspaceId}::uuid,
-            ${input.key.sessionId},
-            ${input.key.subpath ?? null},
-            ${entryJson}::jsonb
-          )
-        `);
-      }
-    });
+    await this.db.insert(nativeLiveProviderSessionEntries).values(
+      input.entries.map((entry) => ({
+        userId: input.userId,
+        workspaceId: input.key.workspaceId,
+        providerSessionId: input.key.sessionId,
+        subpath: input.key.subpath ?? null,
+        entry,
+      })),
+    );
   }
 
   async load(input: {
@@ -74,7 +63,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       WHERE user_id = ${input.userId}::uuid
         AND workspace_id = ${input.key.workspaceId}::uuid
         AND provider_session_id = ${input.key.sessionId}
-        AND subpath = ${input.key.subpath ?? null}
+        AND subpath IS NOT DISTINCT FROM ${input.key.subpath ?? null}
       ORDER BY id ASC
     `);
     return rows.length > 0
