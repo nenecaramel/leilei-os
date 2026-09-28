@@ -145,6 +145,7 @@ struct PageContainer: View {
                             .accessibilityLabel("Conversation menu")
                     }
                 }
+            }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .background(pageBackground.ignoresSafeArea())
