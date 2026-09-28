@@ -31,6 +31,7 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
       "11111111-1111-4111-8111-111111111111",
     companionBackgroundIntervalMs: 3_600_000,
     baseWorkspaceRoot: root,
+    workspaceRegistryPath: config.workspaceRegistryPath,
     workspaceRoots: {},
   });
 });

@@ -3,6 +3,10 @@ import { execFileSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { isAbsolute } from "node:path";
+import {
+  loadNativeLiveMacWorkspaceRegistry,
+  nativeLiveMacWorkspaceRegistryPath,
+} from "./native-live-mac-workspace-registry.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -23,6 +27,7 @@ export type NativeLiveMacDaemonConfig = {
   listenerInstanceId: string;
   companionBackgroundIntervalMs: number;
   baseWorkspaceRoot: string;
+  workspaceRegistryPath: string;
   workspaceRoots: Readonly<Record<string, string>>;
 };
 
@@ -35,6 +40,10 @@ export function resolveNativeLiveMacDaemonConfig(
   railwayVariablesLoader: () => Record<string, string> =
     loadRailwayProductionVariables,
   filesystem: NativeLiveMacFilesystem = nativeFilesystem,
+  workspaceRegistryLoader: (
+    registryPath: string,
+  ) => Readonly<Record<string, string>> =
+    loadNativeLiveMacWorkspaceRegistry,
 ): NativeLiveMacDaemonConfig {
   let railwayVariables: Record<string, string> | null = null;
   const readRailwayVariables = () => {
@@ -97,9 +106,15 @@ export function resolveNativeLiveMacDaemonConfig(
     machine,
     filesystem,
   );
+  const workspaceRegistryPath =
+    resolveNativeLiveMacWorkspaceRegistryPath(
+      environment,
+      machine,
+    );
   const workspaceRoots = resolveNativeLiveMacWorkspaceRoots(
     environment,
     filesystem,
+    workspaceRegistryLoader(workspaceRegistryPath),
   );
 
   return {
@@ -109,6 +124,7 @@ export function resolveNativeLiveMacDaemonConfig(
     companionBackgroundIntervalMs:
       companionBackgroundIntervalSeconds * 1_000,
     baseWorkspaceRoot,
+    workspaceRegistryPath,
     workspaceRoots,
   };
 }
@@ -116,42 +132,50 @@ export function resolveNativeLiveMacDaemonConfig(
 export function resolveNativeLiveMacWorkspaceRoots(
   environment: NodeJS.ProcessEnv,
   filesystem: NativeLiveMacFilesystem = nativeFilesystem,
+  registryRoots: Readonly<Record<string, string>> = {},
 ): Readonly<Record<string, string>> {
   const raw = firstNonBlank(
     environment.LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON,
   );
-  if (!raw) return Object.freeze({});
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error(
-      "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be valid JSON.",
-    );
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(
-      "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be a JSON object.",
-    );
+  let environmentRoots: Record<string, unknown> = {};
+  if (raw) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(
+        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be valid JSON.",
+      );
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(
+        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be a JSON object.",
+      );
+    }
+    environmentRoots = parsed as Record<string, unknown>;
   }
 
+  const merged: Record<string, unknown> = {
+    ...registryRoots,
+    ...environmentRoots,
+  };
   const result: Record<string, string> = {};
-  for (const [workspaceId, value] of Object.entries(parsed)) {
+  for (const [workspaceId, value] of Object.entries(merged)) {
     if (!UUID_PATTERN.test(workspaceId)) {
       throw new Error(
-        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON keys must be Workspace UUIDs.",
+        "Workspace mapping keys must be Workspace UUIDs.",
       );
     }
     if (typeof value !== "string" || !value.trim()) {
       throw new Error(
-        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON values must be nonblank paths.",
+        "Workspace mapping values must be nonblank paths.",
       );
     }
     const candidate = value.trim();
     if (!isAbsolute(candidate)) {
       throw new Error(
-        "Workspace roots in LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be absolute paths.",
+        "Workspace roots must be absolute paths.",
       );
     }
 
@@ -160,7 +184,7 @@ export function resolveNativeLiveMacWorkspaceRoots(
       canonical = filesystem.realpath(candidate);
     } catch {
       throw new Error(
-        "Workspace roots in LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must resolve to existing directories.",
+        "Workspace roots must resolve to existing directories.",
       );
     }
     let directory = false;
@@ -171,12 +195,30 @@ export function resolveNativeLiveMacWorkspaceRoots(
     }
     if (!directory) {
       throw new Error(
-        "Workspace roots in LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must resolve to existing directories.",
+        "Workspace roots must resolve to existing directories.",
       );
     }
     result[workspaceId] = canonical;
   }
   return Object.freeze(result);
+}
+
+export function resolveNativeLiveMacWorkspaceRegistryPath(
+  environment: NodeJS.ProcessEnv,
+  machine: { homedir: () => string } = { homedir },
+): string {
+  const configured = firstNonBlank(
+    environment.LEILEI_NATIVE_LIVE_WORKSPACE_REGISTRY_PATH,
+  );
+  const registryPath =
+    configured
+    ?? nativeLiveMacWorkspaceRegistryPath(machine.homedir());
+  if (!isAbsolute(registryPath)) {
+    throw new Error(
+      "LEILEI_NATIVE_LIVE_WORKSPACE_REGISTRY_PATH must be an absolute path.",
+    );
+  }
+  return registryPath;
 }
 
 export function resolveNativeLiveMacBaseWorkspaceRoot(
