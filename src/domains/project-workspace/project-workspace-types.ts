@@ -108,6 +108,7 @@ export interface ProjectWorkspaceRepository {
   listProjects(input: {
     userId: string;
     workspaceId?: string;
+    conversationId?: string;
   }): Promise<ProjectSummary[]>;
 
   getProject(input: {

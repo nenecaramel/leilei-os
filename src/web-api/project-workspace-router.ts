@@ -84,6 +84,12 @@ export function createProjectWorkspaceApiRouter(
       ...(request.query.workspace_id === undefined
         ? {}
         : { workspaceId: scalarQuery(request.query.workspace_id) }),
+      ...(request.query.conversation_id === undefined
+        ? {}
+        : {
+            conversationId:
+              scalarQuery(request.query.conversation_id),
+          }),
     });
   }));
 

@@ -168,6 +168,13 @@ test("Projects API exposes Workspace Project Resource and Conversation contracts
       200,
     );
 
+    assert.equal(
+      (await fetch(
+        `${baseUrl}/projects?conversation_id=${conversationId}`,
+      )).status,
+      200,
+    );
+
     const resourceCreate = await fetch(
       `${baseUrl}/projects/${projectId}/resources`,
       {
@@ -234,6 +241,10 @@ test("Projects API exposes Workspace Project Resource and Conversation contracts
     {
       name: "listProjects",
       input: { userId, workspaceId },
+    },
+    {
+      name: "listProjects",
+      input: { userId, conversationId },
     },
     {
       name: "createResource",
