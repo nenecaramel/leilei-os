@@ -165,6 +165,56 @@ test("restore refuses remote and ambiguously named targets", () => {
   assert.match(result.stderr, /only an explicitly named local/);
 });
 
+test("backup tolerates bounded source readiness failures before succeeding", () => {
+  const temp = mkdtempSync(join(tmpdir(), "leilei-backup-readiness-"));
+  const fakeBin = createFakePostgresTools(temp);
+  const attempts = join(temp, "readiness-attempts");
+  const migrationWhen = currentMigrationWhen();
+  writeFileSync(
+    join(fakeBin, "psql"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+query=""
+while [[ "$#" -gt 0 ]]; do
+  if [[ "$1" == "-c" ]]; then shift; query="$1"; fi
+  shift || true
+done
+if [[ -z "$query" && ! -t 0 ]]; then
+  query="$(cat)"
+fi
+if [[ "$query" == *"server_version_num"* ]]; then
+  count=0
+  [[ ! -f "$FAKE_READINESS_FILE" ]] || count="$(cat "$FAKE_READINESS_FILE")"
+  count=$((count + 1))
+  printf '%s' "$count" > "$FAKE_READINESS_FILE"
+  if [[ "$count" -lt 3 ]]; then exit 1; fi
+  printf '180001\\n'
+elif [[ "$query" == *"leilei_schema_migrations"* ]]; then
+  printf '${migrationWhen}|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'
+elif [[ "$query" == *"pg_catalog.pg_tables"* ]]; then
+  printf 'users\\n'
+elif [[ "$query" == *'SELECT count(*) FROM public."'* ]]; then
+  printf '1\\n'
+else
+  printf '1\\n'
+fi
+`,
+    { mode: 0o700 },
+  );
+
+  const result = run(backupScript, {
+    PATH: fakeBin + ":" + process.env.PATH,
+    DATABASE_URL: "postgresql://placeholder.invalid/source",
+    LEILEI_BACKUP_DIR: join(temp, "external"),
+    LEILEI_BACKUP_PASSPHRASE: "test-passphrase-long-enough",
+    LEILEI_BACKUP_READINESS_MAX_ATTEMPTS: "3",
+    LEILEI_BACKUP_READINESS_DELAY_SECONDS: "0",
+    FAKE_READINESS_FILE: attempts,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(attempts, "utf8"), "3");
+});
+
 test("backup refuses pg_dump older than the production server", () => {
   const temp = mkdtempSync(join(tmpdir(), "leilei-backup-version-"));
   const fakeBin = createFakePostgresTools(temp);
