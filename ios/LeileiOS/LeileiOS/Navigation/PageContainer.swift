@@ -10,8 +10,6 @@ struct PageContainer: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
     @State private var showingContext = false
-    @State private var showingProjectPicker = false
-    @State private var showingWorkspacePicker = false
 
     let selectedPage: AppPage
     let diaryTarget: DiaryNavigationTarget?
@@ -39,14 +37,7 @@ struct PageContainer: View {
                         onDraftCommitted: onDraftCommitted
                     )
                 } else if selectedPage == .projects {
-                    ProjectsView { conversationID in
-                        Task { @MainActor in
-                            await appModel.openNativeLiveConversation(
-                                conversationID
-                            )
-                            onOpenConversation()
-                        }
-                    }
+                    WorkspacesView()
                 } else if selectedPage == .globalSearch {
                     GlobalSearchView(
                         service: LeileiGlobalSearchService(api: appModel.api),
@@ -113,28 +104,6 @@ struct PageContainer: View {
                                 }
 
                                 Button {
-                                    showingProjectPicker = true
-                                } label: {
-                                    Label(
-                                        "Add to Project",
-                                        systemImage: "folder"
-                                    )
-                                }
-                                .disabled(
-                                    isDraftConversation
-                                        || appModel.activeNativeLiveConversationID == nil
-                                )
-
-                                Button {
-                                    showingWorkspacePicker = true
-                                } label: {
-                                    Label(
-                                        "Workspace",
-                                        systemImage: "externaldrive"
-                                    )
-                                }
-
-                                Button {
                                     guard appModel.activeNativeLiveConversationID != nil else {
                                         return
                                     }
@@ -196,16 +165,6 @@ struct PageContainer: View {
         .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
-        }
-        .sheet(isPresented: $showingProjectPicker) {
-            ProjectPickerSheet(
-                title: "Add to Project",
-                conversationID:
-                    appModel.activeNativeLiveConversationID
-            )
-        }
-        .sheet(isPresented: $showingWorkspacePicker) {
-            WorkspacePickerSheet()
         }
         .alert(
             "Rename",
