@@ -5,7 +5,7 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   nativeLiveMindFollowUps,
-  nativeLiveTurnPreparations,
+  nativeLiveRuntimeListenerLeases,
   runtimeContextManifests,
   runtimeSubjectStates,
   users,
@@ -16,6 +16,9 @@ import {
 import {
   DrizzleNativeLiveBackendTurnPort,
 } from "../src/domains/bridge/native-live-backend-turn-repository.js";
+import {
+  DrizzleNativeLiveBackendRelayRepository,
+} from "../src/domains/bridge/native-live-backend-relay.js";
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
@@ -53,6 +56,9 @@ test(
           await database.db
             .delete(runtimeContextManifests)
             .where(eq(runtimeContextManifests.userId, userId));
+          await database.db
+            .delete(nativeLiveRuntimeListenerLeases)
+            .where(eq(nativeLiveRuntimeListenerLeases.userId, userId));
           await database.db
             .delete(conversations)
             .where(eq(conversations.userId, userId));
@@ -110,6 +116,40 @@ test(
     assert.equal(prepared.ok, true);
     if (!prepared.ok) throw new Error("expected prepare success");
 
+    const relay =
+      new DrizzleNativeLiveBackendRelayRepository(database.db);
+    const listenerInstanceId = crypto.randomUUID();
+    assert.equal(
+      await relay.enqueuePreparation({
+        userId,
+        prepareId: prepared.command.prepare_id,
+      }),
+      "applied",
+    );
+    assert.equal(
+      await relay.renewLease({
+        userId,
+        listenerInstanceId,
+      }),
+      "acquired",
+    );
+    const reservation = await relay.reserveNext({
+      userId,
+      listenerInstanceId,
+    });
+    assert.equal(
+      reservation?.prepareId,
+      prepared.command.prepare_id,
+    );
+    assert.equal(
+      await relay.markExecutionStarted({
+        userId,
+        listenerInstanceId,
+        reservationId: prepared.command.prepare_id,
+      }),
+      "applied",
+    );
+
     const finalized = await coordinator.finalize(userId, {
       protocol_version: 1,
       prepare_id: prepared.command.prepare_id,
@@ -137,12 +177,14 @@ test(
     assert.equal(finalized.ok, true);
     if (!finalized.ok) throw new Error("expected canonical success");
 
-    // This fixture drives the coordinator directly and therefore bypasses the
-    // relay that normally marks provider delivery terminal.
-    await database.db
-      .update(nativeLiveTurnPreparations)
-      .set({ dispatchStatus: "completed" })
-      .where(eq(nativeLiveTurnPreparations.id, prepared.command.prepare_id));
+    assert.equal(
+      await relay.markCompleted({
+        userId,
+        listenerInstanceId,
+        reservationId: prepared.command.prepare_id,
+      }),
+      "applied",
+    );
 
     const [pending] = await database.db
       .select({
