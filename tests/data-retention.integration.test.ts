@@ -88,32 +88,28 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
       idempotencyKey: "retention-canonical-diary-1",
       requestHash: "a".repeat(64),
     }).returning({ id: schema.diaryEntries.id });
-    const [memory] = await db.insert(schema.coreMemories).values({
+    const mindId = randomUUID();
+    await db.insert(schema.runtimeSubjectStates).values({
+      id: mindId,
       userId,
-      category: "project",
-      key: "retention-canonical-memory",
-      content: "Canonical memory must survive retention.",
-      tags: ["retention"],
-      visibility: "assistant",
-      source: "web",
-      author: "L",
-      status: "active",
-      sortOrder: 0,
-    }).returning({ id: schema.coreMemories.id });
-    const [task] = await db.insert(schema.tasks).values({
+      subjectId: "retention-canonical-subject",
+      kind: "memory",
+      text: "Canonical Mind state must survive operational retention.",
+      payload: { fixture: "retention" },
+      scopeApplicability: "global",
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+      settlementStatus: "settled",
+      pathStatus: "current",
+      validityStatus: "valid",
+      envelope: { fixture: "retention" },
+    });
+    const [workspace] = await db.insert(schema.projectWorkspaces).values({
       userId,
-      title: "Retention canonical task",
-      description: "Canonical task must survive retention.",
-      status: "pending",
-      resumeStatus: null,
-      lifecycleStatus: "active",
-      author: "L",
-      priority: "normal",
-      dueTime: null,
-      timezone: "Asia/Shanghai",
-      tags: ["retention"],
-      completedAt: null,
-    }).returning({ id: schema.tasks.id });
+      name: "Retention canonical workspace",
+      description: "Canonical Project workspace must survive operational retention.",
+      version: 1,
+    }).returning({ id: schema.projectWorkspaces.id });
     await db.insert(schema.toolCalls).values({
       userId,
       toolName: "write_diary",
@@ -208,9 +204,9 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
     const importRun = await runBoundedRetention((limit) => deleteExpiredDataImportRunsBatch(db as never, cutoff, limit));
     assert.deepEqual(importRun, { deletedRows: 1, batches: 1, capped: false });
     assert.equal(await countForUser(db, schema.dataImportRuns, userId), 2);
-    assert.equal((await db.select({ value: count() }).from(schema.coreMemories).where(eq(schema.coreMemories.id, memory!.id)))[0]?.value, 1);
+    assert.equal((await db.select({ value: count() }).from(schema.runtimeSubjectStates).where(eq(schema.runtimeSubjectStates.id, mindId)))[0]?.value, 1);
     assert.equal((await db.select({ value: count() }).from(schema.diaryEntries).where(eq(schema.diaryEntries.id, diary!.id)))[0]?.value, 1);
-    assert.equal((await db.select({ value: count() }).from(schema.tasks).where(eq(schema.tasks.id, task!.id)))[0]?.value, 1);
+    assert.equal((await db.select({ value: count() }).from(schema.projectWorkspaces).where(eq(schema.projectWorkspaces.id, workspace!.id)))[0]?.value, 1);
 
     const raceKeys = Array.from({ length: 750 }, (_, index) => `retention-race-${String(index).padStart(5, "0")}`);
     await insertInChunks(db, raceKeys, async (keys, start) => {
@@ -260,9 +256,9 @@ test("disposable PostgreSQL retention honors strict boundaries, batching, canoni
       await db.delete(schema.mcpWriteIdempotency).where(eq(schema.mcpWriteIdempotency.userId, userId));
       await db.delete(schema.resourceLifecycleEvents).where(eq(schema.resourceLifecycleEvents.userId, userId));
       await db.delete(schema.toolCalls).where(eq(schema.toolCalls.userId, userId));
-      await db.delete(schema.coreMemories).where(eq(schema.coreMemories.userId, userId));
+      await db.delete(schema.runtimeSubjectStates).where(eq(schema.runtimeSubjectStates.userId, userId));
       await db.delete(schema.diaryEntries).where(eq(schema.diaryEntries.userId, userId));
-      await db.delete(schema.tasks).where(eq(schema.tasks.userId, userId));
+      await db.delete(schema.projectWorkspaces).where(eq(schema.projectWorkspaces.userId, userId));
       await db.delete(schema.users).where(eq(schema.users.id, userId));
     } finally {
       await client.end();
