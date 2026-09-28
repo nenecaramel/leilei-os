@@ -574,7 +574,7 @@ private struct WorkspaceConversationsView: View {
     let onOpenConversation: (UUID) -> Void
 
     @State private var conversations:
-        [ProjectConversationSummary] = []
+        [WorkspaceConversationSummary] = []
     @State private var loading = false
     @State private var failed = false
 
@@ -647,7 +647,7 @@ private struct WorkspaceConversationsView: View {
     }
 
     private func conversationRow(
-        _ conversation: ProjectConversationSummary
+        _ conversation: WorkspaceConversationSummary
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(
