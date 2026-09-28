@@ -46,6 +46,138 @@ enum NativeLiveConversationListScope: String, Sendable {
     case archived
 }
 
+enum MindProductKind: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case feel
+    case memory
+    case drive
+    case thought
+    case curiosity
+    case topic
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        rawValue.capitalized
+    }
+}
+
+struct MindProductLifecycleSnapshot: Decodable, Sendable, Equatable {
+    let state: String?
+    let role: String?
+    let salience: Double?
+    let pressure: Double?
+    let strength: Double?
+    let reinforcementCount: Double?
+    let satisfactionTotal: Double?
+    let protected: Bool?
+    let lastRecalledAt: String?
+    let resolvedAt: String?
+    let dormantAt: String?
+}
+
+struct MindProductProvenanceSnapshot: Decodable, Sendable, Equatable {
+    let sourceCount: Int
+    let sourceKinds: [String]
+}
+
+struct MindProductItem: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let kind: MindProductKind
+    let text: String?
+    let source: String
+    let authority: String?
+    let occurredAt: String?
+    let note: String?
+    let lifecycle: MindProductLifecycleSnapshot
+    let provenance: MindProductProvenanceSnapshot
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct MindProductPage: Decodable, Sendable, Equatable {
+    let items: [MindProductItem]
+    let nextCursor: String?
+}
+
+struct ProjectWorkspaceSummary: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let name: String
+    let description: String?
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct ProjectSummary: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let workspaceId: String
+    let name: String
+    let description: String?
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
+enum ProjectResourceKind: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
+    case file
+    case instructions
+    case settings
+    case skill
+    case agent
+    case mcp
+    case hook
+    case plugin
+
+    var id: String { rawValue }
+}
+
+struct ProjectResourceSummary: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let projectId: String
+    let kind: ProjectResourceKind
+    let key: String
+    let title: String?
+    let metadata: [String: NativeLiveJSONValue]
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct ProjectResource: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let projectId: String
+    let kind: ProjectResourceKind
+    let key: String
+    let title: String?
+    let content: String?
+    let metadata: [String: NativeLiveJSONValue]
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct ProjectConversationSummary: Decodable, Sendable, Equatable, Identifiable {
+    let conversationId: String
+    let title: String?
+    let lifecycleStatus: String
+    let currentHeadMessageId: String?
+    let lastMessageAt: String?
+    let addedAt: String
+
+    var id: String { conversationId }
+}
+
+struct NativeLiveConversationRuntimeMetadataSnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let conversationId: String
+    let currentHeadMessageId: String?
+    let sourceMessageId: String?
+    let runtimeMetadata: NativeLiveRuntimeMetadata?
+    let observedAt: String?
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -855,6 +987,267 @@ final class LeileiAPIClient {
         }
     }
 
+    func nativeLiveConversationRuntimeMetadata(
+        conversationID: UUID
+    ) async throws -> NativeLiveConversationRuntimeMetadataSnapshot {
+        let envelope: NativeLiveConversationRuntimeMetadataEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/conversations/"
+                    + conversationID.uuidString.lowercased()
+                    + "/runtime-metadata",
+                authenticated: true
+            )
+        return envelope.data
+    }
+
+    func mindPage(
+        kind: MindProductKind? = nil,
+        limit: Int = 100,
+        cursor: String? = nil
+    ) async throws -> MindProductPage {
+        guard (1...200).contains(limit) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        var components = URLComponents()
+        components.path = "/api/v1/mind"
+        var queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let kind {
+            queryItems.append(
+                URLQueryItem(name: "kind", value: kind.rawValue)
+            )
+        }
+        if let cursor {
+            guard !cursor.isEmpty else {
+                throw LeileiAPIError.invalidResponse
+            }
+            queryItems.append(
+                URLQueryItem(name: "cursor", value: cursor)
+            )
+        }
+        components.queryItems = queryItems
+
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: MindProductPageEnvelope = try await request(
+            path: path,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func mindItem(
+        stateID: String
+    ) async throws -> MindProductItem {
+        let envelope: MindProductItemEnvelope = try await request(
+            path: "/api/v1/mind/\(stateID)",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func createManualMind(
+        kind: MindProductKind,
+        text: String,
+        occurredAt: Date? = nil,
+        note: String? = nil
+    ) async throws -> MindProductItem {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+        let body = try JSONEncoder().encode(
+            MindManualCreateBody(
+                kind: kind,
+                text: text,
+                occurredAt: occurredAt.map(formatter.string(from:)),
+                note: note
+            )
+        )
+        let envelope: MindProductItemEnvelope = try await request(
+            path: "/api/v1/mind",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteMind(
+        stateID: String
+    ) async throws {
+        let _: MindDeleteEnvelope = try await request(
+            path: "/api/v1/mind/\(stateID)",
+            method: "DELETE",
+            authenticated: true
+        )
+    }
+
+    func projectWorkspaces() async throws -> [ProjectWorkspaceSummary] {
+        let envelope: ProjectWorkspaceListEnvelope = try await request(
+            path: "/api/v1/workspaces",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func createProjectWorkspace(
+        name: String,
+        description: String? = nil
+    ) async throws -> ProjectWorkspaceSummary {
+        let body = try JSONEncoder().encode(
+            ProjectWorkspaceCreateBody(
+                name: name,
+                description: description
+            )
+        )
+        let envelope: ProjectWorkspaceEnvelope = try await request(
+            path: "/api/v1/workspaces",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func projects(
+        workspaceID: String? = nil
+    ) async throws -> [ProjectSummary] {
+        var components = URLComponents()
+        components.path = "/api/v1/projects"
+        if let workspaceID {
+            components.queryItems = [
+                URLQueryItem(
+                    name: "workspace_id",
+                    value: workspaceID
+                )
+            ]
+        }
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: ProjectListEnvelope = try await request(
+            path: path,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func createProject(
+        workspaceID: String,
+        name: String,
+        description: String? = nil
+    ) async throws -> ProjectSummary {
+        let body = try JSONEncoder().encode(
+            ProjectCreateBody(
+                workspaceID: workspaceID,
+                name: name,
+                description: description
+            )
+        )
+        let envelope: ProjectEnvelope = try await request(
+            path: "/api/v1/projects",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func project(
+        projectID: String
+    ) async throws -> ProjectSummary {
+        let envelope: ProjectEnvelope = try await request(
+            path: "/api/v1/projects/\(projectID)",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func projectResources(
+        projectID: String,
+        kind: ProjectResourceKind? = nil
+    ) async throws -> [ProjectResourceSummary] {
+        var components = URLComponents()
+        components.path = "/api/v1/projects/\(projectID)/resources"
+        if let kind {
+            components.queryItems = [
+                URLQueryItem(name: "kind", value: kind.rawValue)
+            ]
+        }
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        let envelope: ProjectResourceListEnvelope = try await request(
+            path: path,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func projectResource(
+        projectID: String,
+        resourceID: String
+    ) async throws -> ProjectResource {
+        let envelope: ProjectResourceEnvelope = try await request(
+            path:
+                "/api/v1/projects/\(projectID)"
+                + "/resources/\(resourceID)",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func projectConversations(
+        projectID: String
+    ) async throws -> [ProjectConversationSummary] {
+        let envelope: ProjectConversationListEnvelope = try await request(
+            path: "/api/v1/projects/\(projectID)/conversations",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func attachConversationToProject(
+        projectID: String,
+        conversationID: UUID
+    ) async throws -> Bool {
+        let envelope: ProjectConversationMutationEnvelope =
+            try await request(
+                path:
+                    "/api/v1/projects/\(projectID)"
+                    + "/conversations/"
+                    + conversationID.uuidString.lowercased(),
+                method: "PUT",
+                authenticated: true
+            )
+        return envelope.data.applied
+    }
+
+    func detachConversationFromProject(
+        projectID: String,
+        conversationID: UUID
+    ) async throws -> Bool {
+        let envelope: ProjectConversationMutationEnvelope =
+            try await request(
+                path:
+                    "/api/v1/projects/\(projectID)"
+                    + "/conversations/"
+                    + conversationID.uuidString.lowercased(),
+                method: "DELETE",
+                authenticated: true
+            )
+        return envelope.data.applied
+    }
+
     func systemConnections() async throws -> SystemConnectionsSnapshot {
         let envelope: SystemConnectionsEnvelope = try await request(
             path: "/api/v1/system/connections",
@@ -1035,6 +1428,107 @@ final class LeileiAPIClient {
             )
         }
     }
+}
+
+private struct NativeLiveConversationRuntimeMetadataEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveConversationRuntimeMetadataSnapshot
+}
+
+private struct MindProductPageEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: MindProductPage
+}
+
+private struct MindProductItemEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: MindProductItem
+}
+
+private struct MindDeleteEnvelope: Decodable, Sendable {
+    struct DeleteData: Decodable, Sendable {
+        let deletedStateCount: Int
+    }
+
+    let success: Bool
+    let data: DeleteData
+}
+
+private struct MindManualCreateBody: Encodable, Sendable {
+    let kind: MindProductKind
+    let text: String
+    let occurredAt: String?
+    let note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case text
+        case occurredAt = "occurred_at"
+        case note
+    }
+}
+
+private struct ProjectWorkspaceListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [ProjectWorkspaceSummary]
+}
+
+private struct ProjectWorkspaceEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ProjectWorkspaceSummary
+}
+
+private struct ProjectWorkspaceCreateBody: Encodable, Sendable {
+    let name: String
+    let description: String?
+}
+
+private struct ProjectListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [ProjectSummary]
+}
+
+private struct ProjectEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ProjectSummary
+}
+
+private struct ProjectCreateBody: Encodable, Sendable {
+    let workspaceID: String
+    let name: String
+    let description: String?
+
+    enum CodingKeys: String, CodingKey {
+        case workspaceID = "workspace_id"
+        case name
+        case description
+    }
+}
+
+private struct ProjectResourceListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [ProjectResourceSummary]
+}
+
+private struct ProjectResourceEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ProjectResource
+}
+
+private struct ProjectConversationListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [ProjectConversationSummary]
+}
+
+private struct ProjectConversationMutationEnvelope: Decodable, Sendable {
+    struct MutationData: Decodable, Sendable {
+        let applied: Bool
+    }
+
+    let success: Bool
+    let data: MutationData
 }
 
 private struct SystemConnectionsEnvelope: Decodable, Sendable {
