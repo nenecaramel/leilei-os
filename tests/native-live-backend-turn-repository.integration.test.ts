@@ -1028,6 +1028,21 @@ test(
       throw new Error("expected explicit Workspace finalize");
     }
 
+    const explicitMetadata =
+      await new DrizzleNativeLiveConversationRuntimeMetadataReader(
+        database.db,
+      ).readLatest({
+        userId: user.id,
+        conversationId: explicitConversation.id,
+      });
+    assert.ok(explicitMetadata);
+    assert.equal(explicitMetadata.workspaceId, workspace.id);
+    assert.equal(explicitMetadata.effectiveWorkspaceRoot, root);
+    assert.equal(
+      explicitMetadata.sourceMessageId,
+      explicitFinalized.assistantMessageId,
+    );
+
     const [otherWorkspaceForConflict] = await database.db
       .insert(projects)
       .values({
