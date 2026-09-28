@@ -276,6 +276,10 @@ export class DrizzleExportRepository implements ExportRepository {
               conversationProviderSessionCheckpoints.provider,
             providerSessionId:
               conversationProviderSessionCheckpoints.providerSessionId,
+            workspaceId:
+              conversationProviderSessionCheckpoints.workspaceId,
+            effectiveWorkspaceRoot:
+              conversationProviderSessionCheckpoints.effectiveWorkspaceRoot,
             runtimeMetadata:
               conversationProviderSessionCheckpoints.runtimeMetadata,
             providerCheckpointId:
@@ -359,6 +363,8 @@ export class DrizzleExportRepository implements ExportRepository {
         canonical_message_id: row.canonicalMessageId,
         provider: row.provider,
         provider_session_id: row.providerSessionId,
+        workspace_id: row.workspaceId,
+        effective_workspace_root: row.effectiveWorkspaceRoot,
         runtime_metadata: row.runtimeMetadata,
         provider_checkpoint_id: row.providerCheckpointId,
         created_at: toIso(row.createdAt),
