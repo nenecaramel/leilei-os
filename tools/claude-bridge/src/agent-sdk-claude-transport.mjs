@@ -51,7 +51,28 @@ async function loadDefaultDeleteSession() {
         ...(options?.dir ? { dir: options.dir } : {}),
         limit: 1,
       });
-      if (messages.length === 0) return;
+      let durableEntries = null;
+      if (
+        options?.sessionStore
+        && typeof options.sessionStore.load === "function"
+      ) {
+        durableEntries = await options.sessionStore.load({
+          projectKey: options?.dir ?? "leileios",
+          sessionId,
+        });
+      }
+      if (
+        messages.length === 0
+        && (
+          durableEntries === null
+          || (
+            Array.isArray(durableEntries)
+            && durableEntries.length === 0
+          )
+        )
+      ) {
+        return;
+      }
       throw cause;
     }
   };
