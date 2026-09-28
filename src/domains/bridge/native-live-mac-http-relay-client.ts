@@ -196,11 +196,13 @@ implements NativeLiveMacDaemonRelayClient {
       || typeof record.providerSessionId !== "string"
       || !record.providerSessionId.trim()
       || !(
-        record.workspaceId === null
+        record.workspaceId === undefined
+        || record.workspaceId === null
         || typeof record.workspaceId === "string"
       )
       || !(
-        record.effectiveWorkspaceRoot === null
+        record.effectiveWorkspaceRoot === undefined
+        || record.effectiveWorkspaceRoot === null
         || (
           typeof record.effectiveWorkspaceRoot === "string"
           && record.effectiveWorkspaceRoot.trim()
@@ -214,9 +216,14 @@ implements NativeLiveMacDaemonRelayClient {
     return {
       reservationId: record.reservationId,
       providerSessionId: record.providerSessionId,
-      workspaceId: record.workspaceId as string | null,
+      workspaceId:
+        typeof record.workspaceId === "string"
+          ? record.workspaceId
+          : null,
       effectiveWorkspaceRoot:
-        record.effectiveWorkspaceRoot as string | null,
+        typeof record.effectiveWorkspaceRoot === "string"
+          ? record.effectiveWorkspaceRoot
+          : null,
     };
   }
 
