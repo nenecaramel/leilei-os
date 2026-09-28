@@ -410,22 +410,89 @@ test("mirror_error leaves a previously complete session incomplete", async () =>
   assert.equal(state, "incomplete");
 });
 
-test("legacy local session without completeness receipt is never promoted implicitly", async () => {
+test("legacy local session is backfilled before it becomes portable", async () => {
+  let imported = false;
+  let state = null;
+  const statusCalls = [];
+  let importArgs;
+  const durableStore = {
+    async append() {},
+    async getStatus() { return state; },
+    async load() {
+      return imported ? [{ type: "assistant", old: true }] : null;
+    },
+    async markIncomplete() {
+      state = "incomplete";
+      statusCalls.push("incomplete");
+    },
+    async markComplete() {
+      state = "complete";
+      statusCalls.push("complete");
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    sessionStore: durableStore,
+    importSessionToStoreImpl: async (sessionId, store, options) => {
+      importArgs = { sessionId, store, options };
+      imported = true;
+    },
+    queryImpl: () => fakeQuery(successFixture("legacy-local")),
+  });
+
+  await transport.resume("legacy-local", "continue");
+
+  assert.deepEqual(importArgs, {
+    sessionId: "legacy-local",
+    store: durableStore,
+    options: {
+      dir: "/workspace/leilei-os",
+      includeSubagents: true,
+      batchSize: 500,
+    },
+  });
+  assert.deepEqual(
+    statusCalls,
+    ["complete", "incomplete", "complete"],
+  );
+  assert.equal(state, "complete");
+});
+
+test("legacy local session keeps working if durable backfill fails", async () => {
+  let queryCalls = 0;
   let completeCalls = 0;
+  const backfillError = new Error("remote store unavailable");
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     sessionMessagesImpl: async () => [{ type: "assistant" }],
     sessionStore: {
       async append() {},
       async getStatus() { return null; },
+      async load() { return null; },
       async markComplete() { completeCalls += 1; },
-      async load() { return [{ type: "assistant" }]; },
     },
-    queryImpl: () => fakeQuery(successFixture("legacy-local")),
+    importSessionToStoreImpl: async () => {
+      throw backfillError;
+    },
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("legacy-local"));
+    },
   });
 
-  await transport.resume("legacy-local", "continue");
+  const errors = [];
+  transport.on("session-store-backfill-error", (error) => {
+    errors.push(error);
+  });
+
+  const result = await transport.resume("legacy-local", "continue");
+
+  assert.equal(result.providerSessionId, "legacy-local");
+  assert.equal(queryCalls, 1);
   assert.equal(completeCalls, 0);
+  assert.deepEqual(errors, [backfillError]);
 });
 
 test("new session becomes portable only after a readable mirrored transcript exists", async () => {
