@@ -483,7 +483,7 @@ test("legacy local session keeps working if durable backfill fails", async () =>
   });
 
   const errors = [];
-  transport.on("session-store-backfill-error", (error) => {
+  transport.events.on("session-store-backfill-error", (error) => {
     errors.push(error);
   });
 
