@@ -4,6 +4,14 @@ import Foundation
 struct ProjectsView: View {
     @EnvironmentObject private var appModel: AppModel
 
+    let onOpenConversation: (UUID) -> Void
+
+    init(
+        onOpenConversation: @escaping (UUID) -> Void = { _ in }
+    ) {
+        self.onOpenConversation = onOpenConversation
+    }
+
     @State private var workspaces: [ProjectWorkspaceSummary] = []
     @State private var projects: [ProjectSummary] = []
     @State private var loading = false
@@ -54,7 +62,9 @@ struct ProjectsView: View {
                             ForEach(projects) { project in
                                 NavigationLink {
                                     ProjectDetailView(
-                                        project: project
+                                        project: project,
+                                        onOpenConversation:
+                                            onOpenConversation
                                     ) {
                                         reloadToken = UUID()
                                     }
@@ -163,6 +173,7 @@ struct ProjectDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     let initialProject: ProjectSummary
+    let onOpenConversation: (UUID) -> Void
     let onChanged: () -> Void
 
     @State private var project: ProjectSummary
@@ -173,9 +184,11 @@ struct ProjectDetailView: View {
 
     init(
         project: ProjectSummary,
+        onOpenConversation: @escaping (UUID) -> Void = { _ in },
         onChanged: @escaping () -> Void = {}
     ) {
         initialProject = project
+        self.onOpenConversation = onOpenConversation
         self.onChanged = onChanged
         _project = State(initialValue: project)
     }
@@ -195,7 +208,9 @@ struct ProjectDetailView: View {
 
                 NavigationLink {
                     ProjectConversationsView(
-                        project: project
+                        project: project,
+                        onOpenConversation:
+                            onOpenConversation
                     )
                 } label: {
                     Label(
@@ -258,7 +273,9 @@ struct ProjectDetailView: View {
         }
         .appConfirmationAlert(
             title: "Delete project?",
-            message: "This project will be deleted.",
+            message:
+                "This deletes the project, its resources, "
+                + "and project memberships. Conversations are not deleted.",
             actionTitle: "Delete",
             actionRole: .destructive,
             isPresented: $showingDelete
@@ -682,6 +699,7 @@ private struct ProjectConversationsView: View {
     @EnvironmentObject private var appModel: AppModel
 
     let project: ProjectSummary
+    let onOpenConversation: (UUID) -> Void
 
     @State private var conversations:
         [ProjectConversationSummary] = []
@@ -711,33 +729,29 @@ private struct ProjectConversationsView: View {
             } else {
                 List {
                     ForEach(conversations) { conversation in
-                        VStack(
-                            alignment: .leading,
-                            spacing: 4
-                        ) {
-                            Text(
-                                normalizedProjectText(
-                                    conversation.title
-                                )
-                                ?? "New Conversation"
-                            )
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                            HStack(spacing: 8) {
-                                Text(
-                                    conversation.lifecycleStatus
-                                        .capitalized
-                                )
-                                if let date =
-                                    projectDateText(
-                                        conversation.lastMessageAt
-                                    ) {
-                                    Text(date)
+                        Group {
+                            if conversation.lifecycleStatus
+                                .lowercased() == "active",
+                               let conversationID =
+                                UUID(
+                                    uuidString:
+                                        conversation.conversationId
+                                ) {
+                                Button {
+                                    onOpenConversation(
+                                        conversationID
+                                    )
+                                } label: {
+                                    projectConversationRow(
+                                        conversation
+                                    )
                                 }
+                                .buttonStyle(.plain)
+                            } else {
+                                projectConversationRow(
+                                    conversation
+                                )
                             }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                         }
                         .swipeActions {
                             Button(
@@ -764,6 +778,40 @@ private struct ProjectConversationsView: View {
         .refreshable {
             await reload()
         }
+    }
+
+    private func projectConversationRow(
+        _ conversation: ProjectConversationSummary
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: 4
+        ) {
+            Text(
+                normalizedProjectText(
+                    conversation.title
+                )
+                ?? "New Conversation"
+            )
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+
+            HStack(spacing: 8) {
+                Text(
+                    conversation.lifecycleStatus
+                        .capitalized
+                )
+                if let date =
+                    projectDateText(
+                        conversation.lastMessageAt
+                    ) {
+                    Text(date)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
     }
 
     @MainActor
@@ -1011,7 +1059,9 @@ private struct WorkspaceDetailView: View {
         }
         .appConfirmationAlert(
             title: "Delete workspace?",
-            message: "This workspace will be deleted.",
+            message:
+                "This deletes the workspace, its projects, resources, "
+                + "and project memberships. Conversations are not deleted.",
             actionTitle: "Delete",
             actionRole: .destructive,
             isPresented: $showingDelete
