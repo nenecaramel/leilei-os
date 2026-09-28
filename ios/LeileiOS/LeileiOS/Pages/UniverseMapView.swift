@@ -374,7 +374,7 @@ struct UniverseMapView: View {
                 Task {
                     await onMoveNode(node.id, position)
                     await MainActor.run {
-                        draftPositions.removeValue(forKey: node.id)
+                        _ = draftPositions.removeValue(forKey: node.id)
                     }
                 }
             }
