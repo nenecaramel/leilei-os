@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct ProjectsView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -135,13 +136,10 @@ struct ProjectsView: View {
         defer { loading = false }
 
         do {
-            async let loadedWorkspaces =
-                appModel.api.projectWorkspaces()
-            async let loadedProjects =
-                appModel.api.projects()
-
-            workspaces = try await loadedWorkspaces
-            projects = try await loadedProjects
+            workspaces =
+                try await appModel.api.projectWorkspaces()
+            projects =
+                try await appModel.api.projects()
         } catch {
             failed = true
         }
@@ -658,12 +656,10 @@ struct WorkspacePickerSheet: View {
         defer { loading = false }
 
         do {
-            async let loadedWorkspaces =
-                appModel.api.projectWorkspaces()
-            async let loadedProjects =
-                appModel.api.projects()
-            workspaces = try await loadedWorkspaces
-            projects = try await loadedProjects
+            workspaces =
+                try await appModel.api.projectWorkspaces()
+            projects =
+                try await appModel.api.projects()
         } catch {
             failed = true
         }
