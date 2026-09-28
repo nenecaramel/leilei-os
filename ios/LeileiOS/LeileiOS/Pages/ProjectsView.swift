@@ -55,25 +55,11 @@ struct ProjectsView: View {
                                 NavigationLink {
                                     ProjectDetailView(
                                         project: project
-                                    )
-                                } label: {
-                                    VStack(
-                                        alignment: .leading,
-                                        spacing: 4
                                     ) {
-                                        Text(project.name)
-                                            .foregroundStyle(.primary)
-
-                                        if let description =
-                                            normalizedProjectText(
-                                                project.description
-                                            ) {
-                                            Text(description)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                        }
+                                        reloadToken = UUID()
                                     }
+                                } label: {
+                                    ProjectSummaryRow(project: project)
                                 }
                             }
                         }
@@ -106,8 +92,10 @@ struct ProjectsView: View {
             }
         }
         .sheet(isPresented: $showingWorkspacePicker) {
-            WorkspacePickerSheet()
-                .environmentObject(appModel)
+            WorkspacePickerSheet {
+                reloadToken = UUID()
+            }
+            .environmentObject(appModel)
         }
         .sheet(isPresented: $showingNewWorkspace) {
             WorkspaceCreateSheet {
@@ -146,8 +134,51 @@ struct ProjectsView: View {
     }
 }
 
-struct ProjectDetailView: View {
+private struct ProjectSummaryRow: View {
     let project: ProjectSummary
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: 4
+        ) {
+            Text(project.name)
+                .foregroundStyle(.primary)
+
+            if let description =
+                normalizedProjectText(
+                    project.description
+                ) {
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+struct ProjectDetailView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let initialProject: ProjectSummary
+    let onChanged: () -> Void
+
+    @State private var project: ProjectSummary
+    @State private var showingEdit = false
+    @State private var showingDelete = false
+    @State private var deleting = false
+    @State private var failed = false
+
+    init(
+        project: ProjectSummary,
+        onChanged: @escaping () -> Void = {}
+    ) {
+        initialProject = project
+        self.onChanged = onChanged
+        _project = State(initialValue: project)
+    }
 
     var body: some View {
         List {
@@ -196,6 +227,95 @@ struct ProjectDetailView: View {
         .background(Color.settingsBackground)
         .navigationTitle(project.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Edit") {
+                        showingEdit = true
+                    }
+
+                    Button(
+                        "Delete",
+                        role: .destructive
+                    ) {
+                        showingDelete = true
+                    }
+                    .disabled(deleting)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("Project actions")
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            ProjectEditSheet(
+                project: project
+            ) { updated in
+                project = updated
+                onChanged()
+            }
+            .environmentObject(appModel)
+        }
+        .appConfirmationAlert(
+            title: "Delete project?",
+            message: "This project will be deleted.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
+            isPresented: $showingDelete
+        ) {
+            Task {
+                await delete()
+            }
+        }
+        .alert("Failed", isPresented: $failed) {
+            Button("OK", role: .cancel) {}
+        }
+        .task {
+            await refresh()
+        }
+    }
+
+    @MainActor
+    private func refresh() async {
+        do {
+            project = try await appModel.api.project(
+                projectID: project.id
+            )
+        } catch {
+            return
+        }
+    }
+
+    @MainActor
+    private func delete() async {
+        guard !deleting else { return }
+        deleting = true
+        defer { deleting = false }
+
+        do {
+            try await appModel.api.deleteProject(
+                projectID: project.id,
+                expectedVersion: project.version
+            )
+            onChanged()
+            dismiss()
+        } catch {
+            do {
+                project = try await appModel.api.project(
+                    projectID: project.id
+                )
+                failed = true
+            } catch LeileiAPIError.backend(
+                let status,
+                _,
+                _
+            ) where status == 404 {
+                onChanged()
+                dismiss()
+            } catch {
+                failed = true
+            }
+        }
     }
 }
 
@@ -281,6 +401,8 @@ private struct ProjectResourceListView: View {
     @State private var resources: [ProjectResourceSummary] = []
     @State private var loading = false
     @State private var failed = false
+    @State private var showingCreate = false
+    @State private var reloadToken = UUID()
 
     var body: some View {
         Group {
@@ -296,9 +418,7 @@ private struct ProjectResourceListView: View {
                     title: "Unavailable",
                     actionTitle: "Retry"
                 ) {
-                    Task {
-                        await reload()
-                    }
+                    reloadToken = UUID()
                 }
             } else if resources.isEmpty {
                 AppStateSurface(title: "Nothing here")
@@ -308,7 +428,9 @@ private struct ProjectResourceListView: View {
                         ProjectResourceDetailView(
                             project: project,
                             summary: resource
-                        )
+                        ) {
+                            reloadToken = UUID()
+                        }
                     } label: {
                         VStack(
                             alignment: .leading,
@@ -339,7 +461,26 @@ private struct ProjectResourceListView: View {
         .background(Color.settingsBackground)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingCreate = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add resource")
+            }
+        }
+        .sheet(isPresented: $showingCreate) {
+            ProjectResourceCreateSheet(
+                project: project,
+                kind: kind
+            ) {
+                reloadToken = UUID()
+            }
+            .environmentObject(appModel)
+        }
+        .task(id: reloadToken) {
             await reload()
         }
         .refreshable {
@@ -367,12 +508,17 @@ private struct ProjectResourceListView: View {
 
 private struct ProjectResourceDetailView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
 
     let project: ProjectSummary
     let summary: ProjectResourceSummary
+    let onChanged: () -> Void
 
     @State private var resource: ProjectResource?
     @State private var failed = false
+    @State private var showingEdit = false
+    @State private var showingDelete = false
+    @State private var deleting = false
 
     var body: some View {
         Form {
@@ -424,10 +570,56 @@ private struct ProjectResourceDetailView: View {
         .scrollContentBackground(.hidden)
         .background(Color.settingsBackground)
         .navigationTitle(
-            normalizedProjectText(summary.title)
+            normalizedProjectText(resource?.title)
+                ?? normalizedProjectText(summary.title)
                 ?? summary.key
         )
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if resource != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Edit") {
+                            showingEdit = true
+                        }
+
+                        Button(
+                            "Delete",
+                            role: .destructive
+                        ) {
+                            showingDelete = true
+                        }
+                        .disabled(deleting)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("Resource actions")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let resource {
+                ProjectResourceEditSheet(
+                    project: project,
+                    resource: resource
+                ) { updated in
+                    self.resource = updated
+                    onChanged()
+                }
+                .environmentObject(appModel)
+            }
+        }
+        .appConfirmationAlert(
+            title: "Delete resource?",
+            message: "This resource will be deleted.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
+            isPresented: $showingDelete
+        ) {
+            Task {
+                await delete()
+            }
+        }
         .task {
             await load()
         }
@@ -443,6 +635,45 @@ private struct ProjectResourceDetailView: View {
             )
         } catch {
             failed = true
+        }
+    }
+
+    @MainActor
+    private func delete() async {
+        guard !deleting,
+              let resource else {
+            return
+        }
+
+        deleting = true
+        defer { deleting = false }
+
+        do {
+            try await appModel.api.deleteProjectResource(
+                projectID: project.id,
+                resourceID: resource.id,
+                expectedVersion: resource.version
+            )
+            onChanged()
+            dismiss()
+        } catch {
+            do {
+                self.resource =
+                    try await appModel.api.projectResource(
+                        projectID: project.id,
+                        resourceID: resource.id
+                    )
+                failed = true
+            } catch LeileiAPIError.backend(
+                let status,
+                _,
+                _
+            ) where status == 404 {
+                onChanged()
+                dismiss()
+            } catch {
+                failed = true
+            }
         }
     }
 }
@@ -577,10 +808,19 @@ struct WorkspacePickerSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    let onChanged: () -> Void
+
     @State private var workspaces: [ProjectWorkspaceSummary] = []
-    @State private var projects: [ProjectSummary] = []
     @State private var loading = false
     @State private var failed = false
+    @State private var showingCreate = false
+    @State private var reloadToken = UUID()
+
+    init(
+        onChanged: @escaping () -> Void = {}
+    ) {
+        self.onChanged = onChanged
+    }
 
     var body: some View {
         NavigationStack {
@@ -592,40 +832,40 @@ struct WorkspacePickerSheet: View {
                         title: "Unavailable",
                         actionTitle: "Retry"
                     ) {
-                        Task {
-                            await reload()
-                        }
+                        reloadToken = UUID()
                     }
                 } else if workspaces.isEmpty {
                     AppStateSurface(title: "Nothing here")
                 } else {
-                    List {
-                        ForEach(workspaces) { workspace in
-                            Section(workspace.name) {
-                                let matches = projects.filter {
-                                    $0.workspaceId == workspace.id
-                                }
+                    List(workspaces) { workspace in
+                        NavigationLink {
+                            WorkspaceDetailView(
+                                workspace: workspace
+                            ) {
+                                reloadToken = UUID()
+                                onChanged()
+                            }
+                        } label: {
+                            VStack(
+                                alignment: .leading,
+                                spacing: 4
+                            ) {
+                                Text(workspace.name)
+                                    .foregroundStyle(.primary)
 
-                                if matches.isEmpty {
-                                    AppStateSurface(
-                                        title: "Nothing here"
-                                    )
-                                    .frame(maxWidth: .infinity)
-                                } else {
-                                    ForEach(matches) { project in
-                                        NavigationLink {
-                                            ProjectDetailView(
-                                                project: project
-                                            )
-                                        } label: {
-                                            Text(project.name)
-                                        }
-                                    }
+                                if let description =
+                                    normalizedProjectText(
+                                        workspace.description
+                                    ) {
+                                    Text(description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
+                    .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                 }
             }
@@ -633,6 +873,15 @@ struct WorkspacePickerSheet: View {
             .navigationTitle("Workspace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingCreate = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("New Workspace")
+                }
+
                 ToolbarItem(
                     placement: .confirmationAction
                 ) {
@@ -641,7 +890,14 @@ struct WorkspacePickerSheet: View {
                     }
                 }
             }
-            .task {
+            .sheet(isPresented: $showingCreate) {
+                WorkspaceCreateSheet {
+                    reloadToken = UUID()
+                    onChanged()
+                }
+                .environmentObject(appModel)
+            }
+            .task(id: reloadToken) {
                 await reload()
             }
         }
@@ -658,10 +914,160 @@ struct WorkspacePickerSheet: View {
         do {
             workspaces =
                 try await appModel.api.projectWorkspaces()
-            projects =
-                try await appModel.api.projects()
         } catch {
             failed = true
+        }
+    }
+}
+
+private struct WorkspaceDetailView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let initialWorkspace: ProjectWorkspaceSummary
+    let onChanged: () -> Void
+
+    @State private var workspace: ProjectWorkspaceSummary
+    @State private var projects: [ProjectSummary] = []
+    @State private var showingEdit = false
+    @State private var showingDelete = false
+    @State private var deleting = false
+    @State private var failed = false
+
+    init(
+        workspace: ProjectWorkspaceSummary,
+        onChanged: @escaping () -> Void
+    ) {
+        initialWorkspace = workspace
+        self.onChanged = onChanged
+        _workspace = State(initialValue: workspace)
+    }
+
+    var body: some View {
+        List {
+            if let description =
+                normalizedProjectText(workspace.description) {
+                Section {
+                    Text(description)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Projects") {
+                if projects.isEmpty {
+                    AppStateSurface(title: "Nothing here")
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ForEach(projects) { project in
+                        NavigationLink {
+                            ProjectDetailView(
+                                project: project
+                            ) {
+                                Task {
+                                    await reloadProjects()
+                                }
+                                onChanged()
+                            }
+                        } label: {
+                            ProjectSummaryRow(project: project)
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.settingsBackground)
+        .navigationTitle(workspace.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Edit") {
+                        showingEdit = true
+                    }
+
+                    Button(
+                        "Delete",
+                        role: .destructive
+                    ) {
+                        showingDelete = true
+                    }
+                    .disabled(deleting)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("Workspace actions")
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            WorkspaceEditSheet(
+                workspace: workspace
+            ) { updated in
+                workspace = updated
+                onChanged()
+            }
+            .environmentObject(appModel)
+        }
+        .appConfirmationAlert(
+            title: "Delete workspace?",
+            message: "This workspace will be deleted.",
+            actionTitle: "Delete",
+            actionRole: .destructive,
+            isPresented: $showingDelete
+        ) {
+            Task {
+                await delete()
+            }
+        }
+        .alert("Failed", isPresented: $failed) {
+            Button("OK", role: .cancel) {}
+        }
+        .task {
+            await reloadProjects()
+        }
+    }
+
+    @MainActor
+    private func reloadProjects() async {
+        do {
+            projects = try await appModel.api.projects(
+                workspaceID: workspace.id
+            )
+        } catch {
+            failed = true
+        }
+    }
+
+    @MainActor
+    private func delete() async {
+        guard !deleting else { return }
+        deleting = true
+        defer { deleting = false }
+
+        do {
+            try await appModel.api.deleteProjectWorkspace(
+                workspaceID: workspace.id,
+                expectedVersion: workspace.version
+            )
+            onChanged()
+            dismiss()
+        } catch {
+            do {
+                let latest =
+                    try await appModel.api.projectWorkspaces()
+                if let authoritative = latest.first(where: {
+                    $0.id == workspace.id
+                }) {
+                    workspace = authoritative
+                    failed = true
+                } else {
+                    onChanged()
+                    dismiss()
+                }
+            } catch {
+                failed = true
+            }
         }
     }
 }
@@ -946,6 +1352,141 @@ private struct WorkspaceCreateSheet: View {
     }
 }
 
+private struct WorkspaceEditSheet: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let initialWorkspace: ProjectWorkspaceSummary
+    let onSaved: (ProjectWorkspaceSummary) -> Void
+
+    @State private var workspace: ProjectWorkspaceSummary
+    @State private var name: String
+    @State private var description: String
+    @State private var saving = false
+    @State private var failed = false
+
+    init(
+        workspace: ProjectWorkspaceSummary,
+        onSaved: @escaping (ProjectWorkspaceSummary) -> Void
+    ) {
+        initialWorkspace = workspace
+        self.onSaved = onSaved
+        _workspace = State(initialValue: workspace)
+        _name = State(initialValue: workspace.name)
+        _description = State(
+            initialValue: workspace.description ?? ""
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+
+                TextField(
+                    "Description",
+                    text: $description,
+                    axis: .vertical
+                )
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
+            .navigationTitle("Edit Workspace")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(
+                    placement: .cancellationAction
+                ) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(saving)
+                }
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+                    Button(saving ? "Saving…" : "Save") {
+                        Task {
+                            await save()
+                        }
+                    }
+                    .disabled(!canSave || saving)
+                }
+            }
+            .alert("Failed", isPresented: $failed) {
+                Button("OK", role: .cancel) {}
+            }
+        }
+        .background(Color.settingsBackground)
+    }
+
+    private var canSave: Bool {
+        let value = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return !value.isEmpty && value.count <= 200
+    }
+
+    @MainActor
+    private func save() async {
+        guard canSave, !saving else { return }
+        saving = true
+        defer { saving = false }
+
+        let normalizedName = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedDescription =
+            description.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        let desiredDescription =
+            normalizedDescription.isEmpty
+                ? nil
+                : normalizedDescription
+
+        do {
+            let updated =
+                try await appModel.api.updateProjectWorkspace(
+                    workspaceID: workspace.id,
+                    expectedVersion: workspace.version,
+                    name: normalizedName,
+                    description: desiredDescription
+                )
+            onSaved(updated)
+            dismiss()
+        } catch {
+            do {
+                let latest =
+                    try await appModel.api.projectWorkspaces()
+                guard let authoritative = latest.first(where: {
+                    $0.id == workspace.id
+                }) else {
+                    failed = true
+                    return
+                }
+
+                workspace = authoritative
+                name = authoritative.name
+                description = authoritative.description ?? ""
+
+                if authoritative.name == normalizedName
+                    && authoritative.description
+                        == desiredDescription {
+                    onSaved(authoritative)
+                    dismiss()
+                } else {
+                    failed = true
+                }
+            } catch {
+                failed = true
+            }
+        }
+    }
+}
+
 private struct ProjectCreateSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -1057,6 +1598,383 @@ private struct ProjectCreateSheet: View {
             dismiss()
         } catch {
             failed = true
+        }
+    }
+}
+
+private struct ProjectEditSheet: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let onSaved: (ProjectSummary) -> Void
+
+    @State private var project: ProjectSummary
+    @State private var name: String
+    @State private var description: String
+    @State private var saving = false
+    @State private var failed = false
+
+    init(
+        project: ProjectSummary,
+        onSaved: @escaping (ProjectSummary) -> Void
+    ) {
+        self.onSaved = onSaved
+        _project = State(initialValue: project)
+        _name = State(initialValue: project.name)
+        _description = State(
+            initialValue: project.description ?? ""
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+
+                TextField(
+                    "Description",
+                    text: $description,
+                    axis: .vertical
+                )
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
+            .navigationTitle("Edit Project")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(
+                    placement: .cancellationAction
+                ) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(saving)
+                }
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+                    Button(saving ? "Saving…" : "Save") {
+                        Task {
+                            await save()
+                        }
+                    }
+                    .disabled(!canSave || saving)
+                }
+            }
+            .alert("Failed", isPresented: $failed) {
+                Button("OK", role: .cancel) {}
+            }
+        }
+        .background(Color.settingsBackground)
+    }
+
+    private var canSave: Bool {
+        let value = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return !value.isEmpty && value.count <= 200
+    }
+
+    @MainActor
+    private func save() async {
+        guard canSave, !saving else { return }
+        saving = true
+        defer { saving = false }
+
+        let normalizedName = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedDescription =
+            description.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        let desiredDescription =
+            normalizedDescription.isEmpty
+                ? nil
+                : normalizedDescription
+
+        do {
+            let updated = try await appModel.api.updateProject(
+                projectID: project.id,
+                expectedVersion: project.version,
+                name: normalizedName,
+                description: desiredDescription
+            )
+            onSaved(updated)
+            dismiss()
+        } catch {
+            do {
+                let authoritative =
+                    try await appModel.api.project(
+                        projectID: project.id
+                    )
+                project = authoritative
+                name = authoritative.name
+                description = authoritative.description ?? ""
+
+                if authoritative.name == normalizedName
+                    && authoritative.description
+                        == desiredDescription {
+                    onSaved(authoritative)
+                    dismiss()
+                } else {
+                    failed = true
+                }
+            } catch {
+                failed = true
+            }
+        }
+    }
+}
+
+private struct ProjectResourceCreateSheet: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let project: ProjectSummary
+    let kind: ProjectResourceKind
+    let onCreated: () -> Void
+
+    @State private var key = ""
+    @State private var title = ""
+    @State private var content = ""
+    @State private var saving = false
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent(
+                        "Type",
+                        value: kind.rawValue.capitalized
+                    )
+
+                    TextField("Key", text: $key)
+
+                    TextField("Title", text: $title)
+                }
+
+                Section("Content") {
+                    TextEditor(text: $content)
+                        .frame(minHeight: 180)
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
+            .navigationTitle("New Resource")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(
+                    placement: .cancellationAction
+                ) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(saving)
+                }
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+                    Button(saving ? "Creating…" : "Create") {
+                        Task {
+                            await create()
+                        }
+                    }
+                    .disabled(!canCreate || saving)
+                }
+            }
+            .alert("Failed", isPresented: $failed) {
+                Button("OK", role: .cancel) {}
+            }
+        }
+        .background(Color.settingsBackground)
+    }
+
+    private var canCreate: Bool {
+        let normalizedKey = key.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return !normalizedKey.isEmpty
+            && normalizedKey.count <= 1_000
+            && title.count <= 500
+            && content.count <= 1_000_000
+    }
+
+    @MainActor
+    private func create() async {
+        guard canCreate, !saving else { return }
+        saving = true
+        defer { saving = false }
+
+        let normalizedKey = key.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedTitle = title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        do {
+            _ = try await appModel.api.createProjectResource(
+                projectID: project.id,
+                kind: kind,
+                key: normalizedKey,
+                title:
+                    normalizedTitle.isEmpty
+                        ? nil
+                        : normalizedTitle,
+                content:
+                    content.isEmpty
+                        ? nil
+                        : content
+            )
+            onCreated()
+            dismiss()
+        } catch {
+            failed = true
+        }
+    }
+}
+
+private struct ProjectResourceEditSheet: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    let project: ProjectSummary
+    let onSaved: (ProjectResource) -> Void
+
+    @State private var resource: ProjectResource
+    @State private var title: String
+    @State private var content: String
+    @State private var saving = false
+    @State private var failed = false
+
+    init(
+        project: ProjectSummary,
+        resource: ProjectResource,
+        onSaved: @escaping (ProjectResource) -> Void
+    ) {
+        self.project = project
+        self.onSaved = onSaved
+        _resource = State(initialValue: resource)
+        _title = State(initialValue: resource.title ?? "")
+        _content = State(initialValue: resource.content ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent(
+                        "Type",
+                        value: resource.kind.rawValue.capitalized
+                    )
+                    LabeledContent(
+                        "Key",
+                        value: resource.key
+                    )
+                    TextField("Title", text: $title)
+                }
+
+                Section("Content") {
+                    TextEditor(text: $content)
+                        .frame(minHeight: 180)
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
+            .navigationTitle("Edit Resource")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(
+                    placement: .cancellationAction
+                ) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(saving)
+                }
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+                    Button(saving ? "Saving…" : "Save") {
+                        Task {
+                            await save()
+                        }
+                    }
+                    .disabled(!canSave || saving)
+                }
+            }
+            .alert("Failed", isPresented: $failed) {
+                Button("OK", role: .cancel) {}
+            }
+        }
+        .background(Color.settingsBackground)
+    }
+
+    private var canSave: Bool {
+        title.count <= 500
+            && content.count <= 1_000_000
+    }
+
+    @MainActor
+    private func save() async {
+        guard canSave, !saving else { return }
+        saving = true
+        defer { saving = false }
+
+        let normalizedTitle = title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let desiredTitle =
+            normalizedTitle.isEmpty
+                ? nil
+                : normalizedTitle
+        let desiredContent =
+            content.isEmpty
+                ? nil
+                : content
+
+        do {
+            let updated =
+                try await appModel.api.updateProjectResource(
+                    projectID: project.id,
+                    resourceID: resource.id,
+                    expectedVersion: resource.version,
+                    title: desiredTitle,
+                    content: desiredContent,
+                    metadata: resource.metadata
+                )
+            onSaved(updated)
+            dismiss()
+        } catch {
+            do {
+                let authoritative =
+                    try await appModel.api.projectResource(
+                        projectID: project.id,
+                        resourceID: resource.id
+                    )
+                resource = authoritative
+                title = authoritative.title ?? ""
+                content = authoritative.content ?? ""
+
+                if authoritative.title == desiredTitle
+                    && authoritative.content
+                        == desiredContent {
+                    onSaved(authoritative)
+                    dismiss()
+                } else {
+                    failed = true
+                }
+            } catch {
+                failed = true
+            }
         }
     }
 }
