@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  bigserial,
   boolean,
   check,
   customType,
@@ -1315,6 +1316,62 @@ export const conversationProviderSessionCheckpoints = pgTable(
     check(
       "conversation_provider_session_checkpoints_workspace_root_not_blank",
       sql`${table.effectiveWorkspaceRoot} IS NULL OR char_length(btrim(${table.effectiveWorkspaceRoot})) > 0`,
+    ),
+  ],
+);
+
+export const nativeLiveProviderSessionEntries = pgTable(
+  "native_live_provider_session_entries",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    workspaceId: uuid("workspace_id").notNull(),
+    providerSessionId: text("provider_session_id").notNull(),
+    subpath: text("subpath"),
+    entry: jsonb("entry").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("native_live_provider_session_entries_load_idx").on(
+      table.userId,
+      table.workspaceId,
+      table.providerSessionId,
+      table.subpath,
+      table.id,
+    ),
+    index("native_live_provider_session_entries_sessions_idx").on(
+      table.userId,
+      table.workspaceId,
+      table.subpath,
+      table.createdAt.desc(),
+      table.providerSessionId,
+    ),
+    check(
+      "native_live_provider_session_entries_session_not_blank",
+      sql`char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "native_live_provider_session_entries_session_length",
+      sql`char_length(${table.providerSessionId}) <= 256`,
+    ),
+    check(
+      "native_live_provider_session_entries_subpath_not_blank",
+      sql`${table.subpath} IS NULL OR char_length(${table.subpath}) > 0`,
+    ),
+    check(
+      "native_live_provider_session_entries_subpath_length",
+      sql`${table.subpath} IS NULL OR char_length(${table.subpath}) <= 2000`,
+    ),
+    check(
+      "native_live_provider_session_entries_entry_object",
+      sql`jsonb_typeof(${table.entry}) = 'object'`,
     ),
   ],
 );
