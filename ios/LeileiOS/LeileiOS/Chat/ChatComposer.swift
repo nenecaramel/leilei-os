@@ -11,7 +11,6 @@ struct ChatComposer: View {
     var isRuntimeControlInFlight = false
     var interruptRequested = false
     var isEditing = false
-    var onWorkspaceFile: (() -> Void)? = nil
     var onCancelEdit: (() -> Void)? = nil
     var onInterrupt: (() -> Void)? = nil
     var onMidTurnInput: ((String) -> Void)? = nil
@@ -80,13 +79,6 @@ struct ChatComposer: View {
                         Label("File", systemImage: "doc")
                     }
 
-                    Divider()
-
-                    Button {
-                        onWorkspaceFile?()
-                    } label: {
-                        Label("Workspace File", systemImage: "folder")
-                    }
                 } label: {
                     ComposerCircleButton(
                         systemName: "plus",
