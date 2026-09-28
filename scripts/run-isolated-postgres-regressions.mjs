@@ -53,6 +53,7 @@ const env = {
   RUN_NATIVE_LIVE_TURN_DATABASE_TEST: "1",
   RUN_RUNTIME_MIND_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_RELAY_DATABASE_TEST: "1",
+  RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST: "1",
 };
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -85,4 +86,5 @@ run([
   "tests/native-live-backend-turn-repository.integration.test.ts",
   "tests/runtime-subject-state-repository.integration.test.ts",
   "tests/native-live-background-model-queue.integration.test.ts",
+  "tests/native-live-provider-session-store.integration.test.ts",
 ]);

@@ -582,6 +582,13 @@
       "when": 1790584200000,
       "tag": "0082_workspace_execution_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1790592600000,
+      "tag": "0083_native_live_provider_session_store",
+      "breakpoints": true
     }
   ]
 }

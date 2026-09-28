@@ -24,6 +24,9 @@ import {
   NativeLiveMacWorkspaceRuntimePool,
 } from "../src/domains/bridge/native-live-mac-workspace-runtime.js";
 import {
+  NativeLiveMacProviderSessionStore,
+} from "../src/domains/bridge/native-live-mac-provider-session-store.js";
+import {
   NativeLiveMacCompanionScheduler,
 } from "../src/domains/bridge/native-live-mac-companion-scheduler.js";
 import {
@@ -79,6 +82,13 @@ const workspaceRuntimePool =
     process.env,
     baseWorkspaceRoot,
     workspaceRoots,
+    undefined,
+    (workspaceId) =>
+      new NativeLiveMacProviderSessionStore(
+        relayBaseUrl,
+        relayToken,
+        workspaceId,
+      ),
   );
 const { runtime } =
   await workspaceRuntimePool.resolveWorkspaceRuntime({
@@ -93,6 +103,7 @@ process.stdout.write(
     claudeTransport: claudeTransportKind,
     baseWorkspaceRoot,
     workspaceMappingCount: Object.keys(workspaceRoots).length,
+    providerSessionStore: "remote_workspace_scoped",
   }) + "\n",
 );
 

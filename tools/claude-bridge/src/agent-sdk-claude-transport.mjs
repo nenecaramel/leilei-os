@@ -28,6 +28,17 @@ async function loadDefaultSessionMessages() {
   return sdk.getSessionMessages;
 }
 
+async function loadDefaultImportSessionToStore() {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  if (typeof sdk.importSessionToStore !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK did not expose importSessionToStore().",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+  return sdk.importSessionToStore;
+}
+
 async function loadDefaultDeleteSession() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
   if (
@@ -51,7 +62,28 @@ async function loadDefaultDeleteSession() {
         ...(options?.dir ? { dir: options.dir } : {}),
         limit: 1,
       });
-      if (messages.length === 0) return;
+      let durableEntries = null;
+      if (
+        options?.sessionStore
+        && typeof options.sessionStore.load === "function"
+      ) {
+        durableEntries = await options.sessionStore.load({
+          projectKey: options?.dir ?? "leileios",
+          sessionId,
+        });
+      }
+      if (
+        messages.length === 0
+        && (
+          durableEntries === null
+          || (
+            Array.isArray(durableEntries)
+            && durableEntries.length === 0
+          )
+        )
+      ) {
+        return;
+      }
       throw cause;
     }
   };
@@ -76,6 +108,10 @@ function sdkResultFailed(message) {
   if (!message || message.type !== "result") return false;
   if (message.is_error === true) return true;
   return typeof message.subtype === "string" && message.subtype !== "success";
+}
+
+function sdkMirrorFailed(message) {
+  return message?.subtype === "mirror_error";
 }
 
 function sdkFailureMessage(message) {
@@ -106,6 +142,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadDeleteSession = loadDefaultDeleteSession,
     sessionMessagesImpl = null,
     loadSessionMessages = loadDefaultSessionMessages,
+    importSessionToStoreImpl = null,
+    loadImportSessionToStore = loadDefaultImportSessionToStore,
+    sessionStore = null,
     environment = process.env,
     cwd = process.cwd(),
     compactionThresholdPercent = 75,
@@ -122,6 +161,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.loadDeleteSession = loadDeleteSession;
     this.sessionMessagesImpl = sessionMessagesImpl;
     this.loadSessionMessages = loadSessionMessages;
+    this.importSessionToStoreImpl = importSessionToStoreImpl;
+    this.loadImportSessionToStore = loadImportSessionToStore;
+    this.sessionStore = sessionStore;
     this.environment = environment;
     this.cwd = cwd;
     this.compactionThresholdPercent = compactionThresholdPercent;
@@ -139,7 +181,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async resume(sessionId, prompt, execution = null) {
-    await this.#requireSession(sessionId);
     return this.#run(prompt, {
       mode: "resume",
       parentProviderSessionId: sessionId,
@@ -149,7 +190,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async fork(sessionId, prompt, execution = null) {
-    await this.#requireSession(sessionId);
     const result = await this.#run(prompt, {
       mode: "fork",
       parentProviderSessionId: sessionId,
@@ -215,6 +255,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
+    const portability =
+      mode === "new"
+        ? { canComplete: true }
+        : await this.#prepareSessionForTurn(
+            parentProviderSessionId,
+            mode,
+          );
 
     this.abortRequested = false;
     const queryImpl = await this.#resolveQuery();
@@ -243,6 +290,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       queryOptions: {
         verbatimPrompts: true,
         ...executionOptions,
+        ...(this.sessionStore
+          ? { sessionStore: this.sessionStore }
+          : {}),
       },
       streaming,
       permissionHandler,
@@ -341,6 +391,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           },
         );
       }
+      await this.#completePortability(
+        result.providerSessionId,
+        portability.canComplete,
+        Array.isArray(result.events)
+          && result.events.some(sdkMirrorFailed),
+      );
       this.events.emit("exit", {
         code: 0,
         signal: null,
@@ -490,7 +546,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     const deleteSessionImpl = await this.#resolveDeleteSession();
     try {
-      await deleteSessionImpl(id, { dir: this.cwd });
+      await deleteSessionImpl(id, {
+        dir: this.cwd,
+        ...(this.sessionStore
+          ? { sessionStore: this.sessionStore }
+          : {}),
+      });
     } catch (cause) {
       throw runtimeError(
         `Failed to delete Claude Agent SDK session: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -528,14 +589,199 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
-    if (!Array.isArray(messages) || messages.length === 0) {
+    const localAvailable =
+      Array.isArray(messages) && messages.length > 0;
+    const status = await this.#readPortabilityStatus(id);
+
+    if (localAvailable) {
+      return {
+        localAvailable: true,
+        status,
+      };
+    }
+
+    if (
+      status !== "complete"
+      || !this.sessionStore
+      || typeof this.sessionStore.load !== "function"
+    ) {
       throw runtimeError(
-        "Claude Agent SDK parent session was not found.",
+        "Claude Agent SDK parent session has no complete durable transcript.",
         {
           runtimeCode: "NO_PROVIDER_SESSION",
           parentSessionId: id,
         },
       );
+    }
+
+    let remote;
+    try {
+      remote = await this.sessionStore.load({
+        projectKey: this.cwd,
+        sessionId: id,
+      });
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to inspect durable Claude Agent SDK parent session: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
+    if (!Array.isArray(remote) || remote.length === 0) {
+      throw runtimeError(
+        "Claude Agent SDK parent session has no complete durable transcript.",
+        {
+          runtimeCode: "NO_PROVIDER_SESSION",
+          parentSessionId: id,
+        },
+      );
+    }
+
+    return {
+      localAvailable: false,
+      status,
+    };
+  }
+
+  async #prepareSessionForTurn(sessionId, mode) {
+    const id = nonblankString(sessionId);
+    const preflight = await this.#requireSession(id);
+    let status = preflight.status;
+
+    if (
+      preflight.localAvailable
+      && status === null
+    ) {
+      status = await this.#tryBackfillLocalSession(id);
+    }
+
+    const canComplete = status === "complete";
+
+    if (mode === "resume" && canComplete) {
+      if (
+        !this.sessionStore
+        || typeof this.sessionStore.markIncomplete !== "function"
+      ) {
+        throw runtimeError(
+          "Durable Claude Agent SDK session cannot be marked incomplete before mutation.",
+          { runtimeCode: "RUNTIME_UNAVAILABLE" },
+        );
+      }
+      try {
+        await this.sessionStore.markIncomplete(id);
+      } catch (cause) {
+        throw runtimeError(
+          `Failed to mark durable Claude Agent SDK session incomplete: ${cause instanceof Error ? cause.message : String(cause)}`,
+          { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+        );
+      }
+    }
+
+    return { canComplete };
+  }
+
+  async #tryBackfillLocalSession(sessionId) {
+    if (
+      !this.sessionStore
+      || typeof this.sessionStore.load !== "function"
+      || typeof this.sessionStore.markComplete !== "function"
+    ) {
+      return null;
+    }
+
+    let importSessionToStore;
+    try {
+      importSessionToStore =
+        this.importSessionToStoreImpl
+        ?? await this.loadImportSessionToStore();
+    } catch (cause) {
+      this.events.emit("session-store-backfill-error", cause);
+      return null;
+    }
+
+    try {
+      await importSessionToStore(
+        sessionId,
+        this.sessionStore,
+        {
+          dir: this.cwd,
+          includeSubagents: true,
+          batchSize: 500,
+        },
+      );
+      const entries = await this.sessionStore.load({
+        projectKey: this.cwd,
+        sessionId,
+      });
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return null;
+      }
+      await this.sessionStore.markComplete(sessionId);
+      return "complete";
+    } catch (cause) {
+      this.events.emit("session-store-backfill-error", cause);
+      return null;
+    }
+  }
+
+  async #readPortabilityStatus(sessionId) {
+    if (
+      !this.sessionStore
+      || typeof this.sessionStore.getStatus !== "function"
+    ) {
+      return null;
+    }
+    try {
+      const status = await this.sessionStore.getStatus(sessionId);
+      if (
+        status !== null
+        && status !== "complete"
+        && status !== "incomplete"
+      ) {
+        throw new Error("SessionStore returned an invalid portability status.");
+      }
+      return status;
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to inspect durable Claude Agent SDK session status: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
+  }
+
+  async #completePortability(
+    sessionId,
+    canComplete,
+    mirrorFailed,
+  ) {
+    const id = nonblankString(sessionId);
+    if (
+      mirrorFailed
+      && id
+      && this.sessionStore
+      && typeof this.sessionStore.discardPendingAppends === "function"
+    ) {
+      this.sessionStore.discardPendingAppends(id);
+    }
+    if (
+      !id
+      || !canComplete
+      || mirrorFailed
+      || !this.sessionStore
+      || typeof this.sessionStore.load !== "function"
+      || typeof this.sessionStore.markComplete !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      const entries = await this.sessionStore.load({
+        projectKey: this.cwd,
+        sessionId: id,
+      });
+      if (!Array.isArray(entries) || entries.length === 0) return;
+      await this.sessionStore.markComplete(id);
+    } catch (cause) {
+      this.events.emit("session-store-status-error", cause);
     }
   }
 
@@ -598,6 +844,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
+    const portability =
+      mode === "new"
+        ? { canComplete: true }
+        : await this.#prepareSessionForTurn(
+            parentProviderSessionId,
+            mode,
+          );
+
     this.abortRequested = false;
     const queryImpl = await this.#resolveQuery();
     if (this.abortRequested) {
@@ -622,6 +876,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ...executionOptions,
       ...(resume ? { resume } : {}),
       ...(forkSession ? { forkSession: true } : {}),
+      ...(this.sessionStore
+        ? { sessionStore: this.sessionStore }
+        : {}),
       ...(hooks ? { hooks } : {}),
     };
 
@@ -658,10 +915,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     let rawSupportedModels = null;
     let executionReadbackError = null;
     let executionReadbackSampled = false;
+    let mirrorFailed = false;
 
     try {
       for await (const message of activeQuery) {
         parsedEvents.push(message);
+        if (sdkMirrorFailed(message)) mirrorFailed = true;
         providerSessionId =
           providerSessionId
           ?? nonblankString(message?.session_id)
@@ -787,6 +1046,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         },
       );
     }
+
+    await this.#completePortability(
+      providerSessionId,
+      portability.canComplete,
+      mirrorFailed,
+    );
 
     this.events.emit("exit", {
       code: 0,

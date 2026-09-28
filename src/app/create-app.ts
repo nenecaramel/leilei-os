@@ -58,6 +58,12 @@ import {
   type NativeLiveRelayInternalDependencies,
 } from "../web-api/native-live-relay-internal-router.js";
 import {
+  createNativeLiveProviderSessionStoreInternalRouter,
+} from "../web-api/native-live-provider-session-store-internal-router.js";
+import type {
+  NativeLiveProviderSessionStoreService,
+} from "../domains/bridge/native-live-provider-session-store.js";
+import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
 } from "../web-api/health-sync-router.js";
@@ -79,7 +85,11 @@ export type NativeLiveProductionDependencies = {
       "backgroundModelOpportunity"
       | "mindSemanticGrouping"
       | "observeCompanionBackgroundOpportunity"
-    >;
+    >
+    & {
+      providerSessionStoreService:
+        NativeLiveProviderSessionStoreService;
+    };
 };
 
 export type AppDependencies = {
@@ -422,6 +432,26 @@ export function createApp(
       logger,
     }),
   );
+
+  if (
+    config.NATIVE_LIVE_RELAY_AUTH_TOKEN
+    && dependencies.nativeLiveProduction
+  ) {
+    app.use(
+      "/internal/native-live-session-store",
+      createInternalAuthMiddleware(
+        config.NATIVE_LIVE_RELAY_AUTH_TOKEN,
+        config.MCP_USER_ID,
+      ),
+      databaseReadinessMiddleware,
+      express.json({ limit: "8mb" }),
+      createNativeLiveProviderSessionStoreInternalRouter({
+        providerSessionStoreService:
+          dependencies.nativeLiveProduction.internal
+            .providerSessionStoreService,
+      }),
+    );
+  }
 
   if (config.NATIVE_LIVE_RELAY_AUTH_TOKEN) {
     if (dependencies.nativeLiveProduction) {
