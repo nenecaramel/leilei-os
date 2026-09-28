@@ -321,7 +321,10 @@ export class NativeLiveMacRuntimeExecutor {
 
   private async resolveRuntime(
     command: NativeLiveRuntimeCommand,
-  ): Promise<NativeLiveWorkspaceRuntimeBinding> {
+  ): Promise<{
+    runtime: NativeLiveForegroundRuntime;
+    workspaceRoot: string;
+  }> {
     if (this.resolver) {
       return this.resolver.resolveWorkspaceRuntime({
         workspaceId: command.workspace_id,
