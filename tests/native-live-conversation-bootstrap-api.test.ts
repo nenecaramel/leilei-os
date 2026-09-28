@@ -317,6 +317,10 @@ test("native live conversation runtime metadata is read authoritatively by curre
           "77777777-7777-4777-8777-777777777777",
         sourceMessageId:
           "77777777-7777-4777-8777-777777777777",
+        workspaceId:
+          "88888888-8888-4888-8888-888888888888",
+        effectiveWorkspaceRoot:
+          "/Users/leilei/Projects/runtime-metadata",
         runtimeMetadata: {
           context_usage: {
             percentage: 12,
@@ -343,6 +347,10 @@ test("native live conversation runtime metadata is read authoritatively by curre
             "77777777-7777-4777-8777-777777777777",
           sourceMessageId:
             "77777777-7777-4777-8777-777777777777",
+          workspaceId:
+            "88888888-8888-4888-8888-888888888888",
+          effectiveWorkspaceRoot:
+            "/Users/leilei/Projects/runtime-metadata",
           runtimeMetadata: {
             context_usage: {
               percentage: 12,
