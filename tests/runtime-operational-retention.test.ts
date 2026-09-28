@@ -74,13 +74,13 @@ test("turn preparation retention preserves unresolved follow-up and semantic wor
   );
 });
 
-test("context manifests and stale listener leases are bounded operational data", () => {
+test("context manifests and current runtime listener leases are bounded operational data", () => {
   assert.match(source, /DELETE FROM runtime_context_manifests/);
   assert.match(
     source,
     /DELETE FROM native_live_runtime_listener_leases/,
   );
-  assert.match(source, /DELETE FROM bridge_listener_leases/);
+  assert.doesNotMatch(source, /bridge_listener_leases/);
 });
 
 
