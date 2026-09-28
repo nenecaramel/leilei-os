@@ -366,9 +366,13 @@ test("complete local resume fails before query if completeness cannot be invalid
 test("mirror_error leaves a previously complete session incomplete", async () => {
   let state = "complete";
   const statusCalls = [];
+  const discarded = [];
   const durableStore = {
     async append() {},
     async getStatus() { return state; },
+    discardPendingAppends(sessionId) {
+      discarded.push(sessionId);
+    },
     async markIncomplete() {
       state = "incomplete";
       statusCalls.push("incomplete");
@@ -407,6 +411,7 @@ test("mirror_error leaves a previously complete session incomplete", async () =>
   const result = await transport.resume("provider-root", "continue");
   assert.equal(result.providerSessionId, "provider-root");
   assert.deepEqual(statusCalls, ["incomplete"]);
+  assert.deepEqual(discarded, ["provider-root"]);
   assert.equal(state, "incomplete");
 });
 
