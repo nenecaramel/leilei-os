@@ -67,6 +67,7 @@ export function createMindApiRouter(
         body.note === undefined
           ? undefined
           : readNullableString(body.note, "note"),
+      idempotencyKey: request.get("Idempotency-Key"),
     });
   }, 201));
 
@@ -275,6 +276,28 @@ function sendMindError(response: Response, error: unknown): void {
       error: {
         code: error.code,
         message: "Mind request is invalid.",
+      },
+    });
+    return;
+  }
+  if (error.code === "INVALID_IDEMPOTENCY_KEY") {
+    response.status(400).json({
+      success: false,
+      error: {
+        code: error.code,
+        message:
+          "Idempotency-Key is required for durable create requests.",
+      },
+    });
+    return;
+  }
+  if (error.code === "IDEMPOTENCY_CONFLICT") {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: error.code,
+        message:
+          "Idempotency-Key was already used for a different request.",
       },
     });
     return;
