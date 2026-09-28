@@ -428,6 +428,97 @@ test("legacy local session without completeness receipt is never promoted implic
   assert.equal(completeCalls, 0);
 });
 
+test("new session becomes portable only after a readable mirrored transcript exists", async () => {
+  let completeCalls = 0;
+  const durableStore = {
+    async append() {},
+    async load(key) {
+      assert.equal(key.sessionId, "provider-new-portable");
+      return [{ type: "user", text: "mirrored" }];
+    },
+    async markComplete(sessionId) {
+      assert.equal(sessionId, "provider-new-portable");
+      completeCalls += 1;
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionStore: durableStore,
+    queryImpl: () => fakeQuery(successFixture("provider-new-portable")),
+  });
+
+  await transport.sendNew("hello");
+  assert.equal(completeCalls, 1);
+});
+
+test("new session stays non-portable when mirror_error is emitted", async () => {
+  let completeCalls = 0;
+  const durableStore = {
+    async append() {},
+    async load() {
+      throw new Error("must not probe a failed mirror");
+    },
+    async markComplete() {
+      completeCalls += 1;
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionStore: durableStore,
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-new-incomplete",
+      },
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "provider-new-incomplete",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "provider-new-incomplete",
+        result: "READY",
+      },
+    ]),
+  });
+
+  await transport.sendNew("hello");
+  assert.equal(completeCalls, 0);
+});
+
+test("fork keeps a complete parent readable and marks only the mirrored child complete", async () => {
+  const statusCalls = [];
+  const durableStore = {
+    async append() {},
+    async getStatus(sessionId) {
+      assert.equal(sessionId, "provider-parent");
+      return "complete";
+    },
+    async load(key) {
+      return [{ type: "assistant", session: key.sessionId }];
+    },
+    async markIncomplete(sessionId) {
+      statusCalls.push(["incomplete", sessionId]);
+    },
+    async markComplete(sessionId) {
+      statusCalls.push(["complete", sessionId]);
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => [],
+    sessionStore: durableStore,
+    queryImpl: () => fakeQuery(successFixture("provider-child")),
+  });
+
+  const result = await transport.fork("provider-parent", "branch");
+  assert.equal(result.providerSessionId, "provider-child");
+  assert.deepEqual(statusCalls, [["complete", "provider-child"]]);
+});
+
 test("Agent SDK deletion receives the durable SessionStore", async () => {
   let deletion;
   const durableStore = {
