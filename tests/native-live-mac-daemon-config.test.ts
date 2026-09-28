@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   resolveNativeLiveMacBaseWorkspaceRoot,
   resolveNativeLiveMacDaemonConfig,
+  resolveNativeLiveMacWorkspaceRoots,
   stableListenerInstanceId,
 } from "../src/domains/bridge/native-live-mac-daemon-config.js";
 
@@ -30,6 +31,7 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
       "11111111-1111-4111-8111-111111111111",
     companionBackgroundIntervalMs: 3_600_000,
     baseWorkspaceRoot: root,
+    workspaceRoots: {},
   });
 });
 
@@ -102,6 +104,53 @@ test("Mac daemon base workspace root prefers an explicit canonical directory", (
     },
   );
   assert.equal(root, "/Volumes/work/leileios");
+});
+
+test("Mac daemon workspace map canonicalizes durable Workspace ids to local realpaths", () => {
+  const workspaceId = "55555555-5555-4555-8555-555555555555";
+  const roots = resolveNativeLiveMacWorkspaceRoots(
+    {
+      LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON: JSON.stringify({
+        [workspaceId]: "/Users/leilei/Projects/demo",
+      }),
+    },
+    {
+      realpath: (path) =>
+        path === "/Users/leilei/Projects/demo"
+          ? "/System/Volumes/Data/Users/leilei/Projects/demo"
+          : path,
+      isDirectory: () => true,
+    },
+  );
+
+  assert.deepEqual(roots, {
+    [workspaceId]:
+      "/System/Volumes/Data/Users/leilei/Projects/demo",
+  });
+});
+
+test("Mac daemon workspace map fails closed for invalid ids and roots", () => {
+  assert.throws(
+    () => resolveNativeLiveMacWorkspaceRoots(
+      {
+        LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON:
+          JSON.stringify({ "not-a-uuid": "/tmp/demo" }),
+      },
+      fakeFilesystem,
+    ),
+    /Workspace UUIDs/u,
+  );
+  assert.throws(
+    () => resolveNativeLiveMacWorkspaceRoots(
+      {
+        LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON: JSON.stringify({
+          "55555555-5555-4555-8555-555555555555": "./demo",
+        }),
+      },
+      fakeFilesystem,
+    ),
+    /absolute paths/u,
+  );
 });
 
 test("Mac daemon base workspace root rejects relative, missing, and non-directory targets", () => {

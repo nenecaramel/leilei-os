@@ -1261,6 +1261,8 @@ export const conversationProviderSessionCheckpoints = pgTable(
       .$type<ConversationRuntimeProvider>()
       .notNull(),
     providerSessionId: text("provider_session_id").notNull(),
+    workspaceId: uuid("workspace_id"),
+    effectiveWorkspaceRoot: text("effective_workspace_root"),
     runtimeMetadata: jsonb("runtime_metadata")
       .$type<Record<string, unknown> | null>(),
     providerCheckpointId: text("provider_checkpoint_id"),
@@ -1293,6 +1295,11 @@ export const conversationProviderSessionCheckpoints = pgTable(
       table.conversationId,
       table.canonicalMessageId,
     ),
+    index("conversation_provider_session_checkpoints_workspace_idx").on(
+      table.userId,
+      table.workspaceId,
+      table.createdAt,
+    ),
     check(
       "conversation_provider_session_checkpoints_provider_allowed",
       sql`${table.provider} = 'claude_code'`,
@@ -1304,6 +1311,10 @@ export const conversationProviderSessionCheckpoints = pgTable(
     check(
       "conversation_provider_session_checkpoints_checkpoint_not_blank",
       sql`${table.providerCheckpointId} IS NULL OR char_length(btrim(${table.providerCheckpointId})) > 0`,
+    ),
+    check(
+      "conversation_provider_session_checkpoints_workspace_root_not_blank",
+      sql`${table.effectiveWorkspaceRoot} IS NULL OR char_length(btrim(${table.effectiveWorkspaceRoot})) > 0`,
     ),
   ],
 );
@@ -1322,6 +1333,8 @@ export const nativeLiveProviderSessionCleanups = pgTable(
       .$type<ConversationRuntimeProvider>()
       .notNull(),
     providerSessionId: text("provider_session_id").notNull(),
+    workspaceId: uuid("workspace_id"),
+    effectiveWorkspaceRoot: text("effective_workspace_root"),
     status: varchar("status", { length: 32 })
       .$type<NativeLiveProviderSessionCleanupStatus>()
       .default("pending")
@@ -1357,6 +1370,14 @@ export const nativeLiveProviderSessionCleanups = pgTable(
       table.createdAt,
       table.id,
     ),
+    index(
+      "native_live_provider_session_cleanups_workspace_idx",
+    ).on(
+      table.userId,
+      table.workspaceId,
+      table.createdAt,
+      table.id,
+    ),
     check(
       "native_live_provider_session_cleanups_provider_allowed",
       sql`${table.provider} = 'claude_code'`,
@@ -1364,6 +1385,10 @@ export const nativeLiveProviderSessionCleanups = pgTable(
     check(
       "native_live_provider_session_cleanups_session_not_blank",
       sql`char_length(btrim(${table.providerSessionId})) > 0`,
+    ),
+    check(
+      "native_live_provider_session_cleanups_workspace_root_not_blank",
+      sql`${table.effectiveWorkspaceRoot} IS NULL OR char_length(btrim(${table.effectiveWorkspaceRoot})) > 0`,
     ),
     check(
       "native_live_provider_session_cleanups_attempt_bounds",
@@ -1423,6 +1448,8 @@ export const nativeLiveTurnPreparations = pgTable(
       .$type<NativeLiveTurnRuntimeMode>()
       .notNull(),
     parentProviderSessionId: text("parent_provider_session_id"),
+    workspaceId: uuid("workspace_id"),
+    expectedWorkspaceRoot: text("expected_workspace_root"),
     executionSelection: jsonb("execution_selection").$type<Record<string, unknown> | null>(),
     prompt: text("prompt").notNull(),
     mindPrepared: boolean("mind_prepared").default(false).notNull(),
@@ -1533,6 +1560,10 @@ export const nativeLiveTurnPreparations = pgTable(
     check(
       "native_live_turn_preparations_execution_selection_object",
       sql`${table.executionSelection} IS NULL OR jsonb_typeof(${table.executionSelection}) = \'object\'`,
+    ),
+    check(
+      "native_live_turn_preparations_workspace_root_not_blank",
+      sql`${table.expectedWorkspaceRoot} IS NULL OR char_length(btrim(${table.expectedWorkspaceRoot})) > 0`,
     ),
     check(
       "native_live_turn_preparations_request_hash_format",

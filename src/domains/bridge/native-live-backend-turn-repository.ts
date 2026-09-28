@@ -9,6 +9,7 @@ import {
   nativeLiveMindFollowUps,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
+  projectConversations,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
@@ -100,6 +101,8 @@ type PreparationRow = {
   replacementTargetUserMessageId: string | null;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
+  workspaceId: string | null;
+  expectedWorkspaceRoot: string | null;
   executionSelection: Record<string, unknown> | null;
   prompt: string;
   mindPrepared: boolean;
@@ -131,6 +134,8 @@ function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     replacementTargetUserMessageId: row.replacementTargetUserMessageId,
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
+    workspaceId: row.workspaceId,
+    expectedWorkspaceRoot: row.expectedWorkspaceRoot,
     executionSelection: row.executionSelection === null
       ? null
       : parseNativeLiveExecutionSelection(row.executionSelection),
@@ -226,6 +231,7 @@ implements NativeLiveBackendTurnPort {
         }
 
         const runtimeParent = await this.resolveRuntimeParent(
+          transaction as Transaction,
           conversations,
           input.userId,
           input.conversationId,
@@ -261,6 +267,8 @@ implements NativeLiveBackendTurnPort {
           replacementTargetUserMessageId: null,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          workspaceId: runtimeParent.workspaceId,
+          expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
           prompt: input.text,
         });
@@ -336,6 +344,7 @@ implements NativeLiveBackendTurnPort {
         }
 
         const runtimeParent = await this.resolveRuntimeParent(
+          transaction as Transaction,
           conversations,
           input.userId,
           input.conversationId,
@@ -354,6 +363,8 @@ implements NativeLiveBackendTurnPort {
           replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          workspaceId: runtimeParent.workspaceId,
+          expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
           prompt,
         });
@@ -430,6 +441,7 @@ implements NativeLiveBackendTurnPort {
         }
 
         const runtimeParent = await this.resolveRuntimeParent(
+          transaction as Transaction,
           conversations,
           input.userId,
           input.conversationId,
@@ -465,6 +477,8 @@ implements NativeLiveBackendTurnPort {
           replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
+          workspaceId: runtimeParent.workspaceId,
+          expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
           prompt: input.text,
         });
@@ -635,6 +649,8 @@ implements NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
+    workspaceId: string | null;
+    effectiveWorkspaceRoot: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
@@ -644,6 +660,8 @@ implements NativeLiveBackendTurnPort {
     const resultHash = hashJson(RESULT_HASH_VERSION, {
       status: "success",
       providerSessionId: input.providerSessionId,
+      workspaceId: input.workspaceId,
+      effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
       normalizedEvents: input.normalizedEvents,
       ...(input.runtimeMetadata
         ? { runtimeMetadata: input.runtimeMetadata }
@@ -741,6 +759,8 @@ implements NativeLiveBackendTurnPort {
             checkpoint: {
               provider: "claude_code",
               providerSessionId: input.providerSessionId,
+              workspaceId: input.workspaceId,
+              effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
               runtimeMetadata:
                 input.runtimeMetadata as Record<string, unknown> | null,
             },
@@ -913,6 +933,10 @@ implements NativeLiveBackendTurnPort {
           conversationProviderSessionCheckpoints.provider,
         providerSessionId:
           conversationProviderSessionCheckpoints.providerSessionId,
+        workspaceId:
+          conversationProviderSessionCheckpoints.workspaceId,
+        effectiveWorkspaceRoot:
+          conversationProviderSessionCheckpoints.effectiveWorkspaceRoot,
       })
       .from(conversationProviderSessionCheckpoints)
       .where(
@@ -937,12 +961,36 @@ implements NativeLiveBackendTurnPort {
       await transaction
         .insert(nativeLiveProviderSessionCleanups)
         .values(
-          providerSessionIds.map((providerSessionId) => ({
-            userId: row.userId,
-            provider: "claude_code" as const,
-            providerSessionId,
-            status: "pending" as const,
-          })),
+          providerSessionIds.map((providerSessionId) => {
+            const sessionCheckpoints = checkpoints.filter(
+              (checkpoint) =>
+                checkpoint.providerSessionId === providerSessionId,
+            );
+            const bindings = new Map(
+              sessionCheckpoints.map((checkpoint) => [
+                JSON.stringify([
+                  checkpoint.workspaceId,
+                  checkpoint.effectiveWorkspaceRoot,
+                ]),
+                checkpoint,
+              ]),
+            );
+            if (bindings.size > 1) {
+              throw new Error(
+                "Provider session is bound to multiple workspace roots.",
+              );
+            }
+            const binding = bindings.values().next().value;
+            return {
+              userId: row.userId,
+              provider: "claude_code" as const,
+              providerSessionId,
+              workspaceId: binding?.workspaceId ?? null,
+              effectiveWorkspaceRoot:
+                binding?.effectiveWorkspaceRoot ?? null,
+              status: "pending" as const,
+            };
+          }),
         )
         .onConflictDoNothing();
     }
@@ -1130,6 +1178,7 @@ implements NativeLiveBackendTurnPort {
   }
 
   private async resolveRuntimeParent(
+    executor: Executor,
     conversations: DrizzleNativeLiveConversationRepository,
     userId: string,
     conversationId: string,
@@ -1139,6 +1188,8 @@ implements NativeLiveBackendTurnPort {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
+        workspaceId: string | null;
+        expectedWorkspaceRoot: string | null;
       }
     | {
         ok: false;
@@ -1146,10 +1197,31 @@ implements NativeLiveBackendTurnPort {
       }
   > {
     if (!parentMessageId) {
+      const workspaceRows = await executor
+        .select({ projectId: projectConversations.projectId })
+        .from(projectConversations)
+        .where(
+          and(
+            eq(projectConversations.userId, userId),
+            eq(projectConversations.conversationId, conversationId),
+          ),
+        )
+        .limit(2);
+      if (workspaceRows.length > 1) {
+        return {
+          ok: false,
+          result: {
+            ok: false,
+            code: "WORKSPACE_BINDING_AMBIGUOUS",
+          },
+        };
+      }
       return {
         ok: true,
         runtimeMode: "new",
         parentProviderSessionId: null,
+        workspaceId: workspaceRows[0]?.projectId ?? null,
+        expectedWorkspaceRoot: null,
       };
     }
 
@@ -1169,6 +1241,8 @@ implements NativeLiveBackendTurnPort {
       ok: true,
       runtimeMode: "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
+      workspaceId: checkpoint.workspaceId,
+      expectedWorkspaceRoot: checkpoint.effectiveWorkspaceRoot,
     };
   }
 
@@ -1185,6 +1259,8 @@ implements NativeLiveBackendTurnPort {
       replacementTargetUserMessageId: string | null;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
+      workspaceId: string | null;
+      expectedWorkspaceRoot: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       prompt: string;
     },
@@ -1202,6 +1278,8 @@ implements NativeLiveBackendTurnPort {
         replacementTargetUserMessageId: input.replacementTargetUserMessageId,
         runtimeMode: input.runtimeMode,
         parentProviderSessionId: input.parentProviderSessionId,
+        workspaceId: input.workspaceId,
+        expectedWorkspaceRoot: input.expectedWorkspaceRoot,
         executionSelection: input.executionSelection,
         prompt: input.prompt,
         mindPrepared: false,
@@ -1306,6 +1384,9 @@ implements NativeLiveBackendTurnPort {
       runtimeMode: nativeLiveTurnPreparations.runtimeMode,
       parentProviderSessionId:
         nativeLiveTurnPreparations.parentProviderSessionId,
+      workspaceId: nativeLiveTurnPreparations.workspaceId,
+      expectedWorkspaceRoot:
+        nativeLiveTurnPreparations.expectedWorkspaceRoot,
       executionSelection: nativeLiveTurnPreparations.executionSelection,
       prompt: nativeLiveTurnPreparations.prompt,
       mindPrepared: nativeLiveTurnPreparations.mindPrepared,

@@ -18,8 +18,11 @@ import {
   resolveNativeLiveMacDaemonConfig,
 } from "../src/domains/bridge/native-live-mac-daemon-config.js";
 import {
-  createNativeLiveMacClaudeTransport,
+  resolveNativeLiveMacClaudeTransportKind,
 } from "../src/domains/bridge/native-live-mac-claude-transport.js";
+import {
+  NativeLiveMacWorkspaceRuntimePool,
+} from "../src/domains/bridge/native-live-mac-workspace-runtime.js";
 import {
   NativeLiveMacCompanionScheduler,
 } from "../src/domains/bridge/native-live-mac-companion-scheduler.js";
@@ -35,6 +38,7 @@ const {
   listenerInstanceId,
   companionBackgroundIntervalMs,
   baseWorkspaceRoot,
+  workspaceRoots,
 } = resolveNativeLiveMacDaemonConfig(process.env);
 
 if (process.env.ANTHROPIC_API_KEY) {
@@ -68,13 +72,19 @@ const companionScheduler = new NativeLiveMacCompanionScheduler(
     );
   },
 );
-const {
-  kind: claudeTransportKind,
-  runtime,
-} = await createNativeLiveMacClaudeTransport(
-  process.env,
-  baseWorkspaceRoot,
-);
+const claudeTransportKind =
+  resolveNativeLiveMacClaudeTransportKind(process.env);
+const workspaceRuntimePool =
+  new NativeLiveMacWorkspaceRuntimePool(
+    process.env,
+    baseWorkspaceRoot,
+    workspaceRoots,
+  );
+const { runtime } =
+  await workspaceRuntimePool.resolveWorkspaceRuntime({
+    workspaceId: null,
+    expectedWorkspaceRoot: null,
+  });
 
 process.stdout.write(
   JSON.stringify({
@@ -82,10 +92,13 @@ process.stdout.write(
     outcome: "daemon_config",
     claudeTransport: claudeTransportKind,
     baseWorkspaceRoot,
+    workspaceMappingCount: Object.keys(workspaceRoots).length,
   }) + "\n",
 );
 
-const executor = new NativeLiveMacRuntimeExecutor(runtime);
+const executor = new NativeLiveMacRuntimeExecutor(
+  workspaceRuntimePool,
+);
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
 const semanticScorer = new LocalE5BreathSemanticScorer();
@@ -96,7 +109,7 @@ const loop = new NativeLiveMacDaemonLoop(
   semanticScorer,
   companionScheduler,
   backgroundModelExecutor,
-  runtime,
+  workspaceRuntimePool,
 );
 
 let stopping = false;
@@ -104,7 +117,7 @@ let activeWorkWaitController: AbortController | null = null;
 const stop = () => {
   stopping = true;
   activeWorkWaitController?.abort();
-  runtime.abort();
+  workspaceRuntimePool.abortAll();
 };
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);

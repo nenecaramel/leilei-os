@@ -166,6 +166,8 @@ export type ExportConversationProviderCheckpointRecord = {
   canonical_message_id: string;
   provider: "claude_code";
   provider_session_id: string;
+  workspace_id: string | null;
+  effective_workspace_root: string | null;
   runtime_metadata: Record<string, unknown> | null;
   provider_checkpoint_id: string | null;
   created_at: string;

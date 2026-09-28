@@ -1078,6 +1078,9 @@ implements NativeLiveConversationRepository {
         canonicalMessageId: input.canonicalMessageId,
         provider: input.checkpoint.provider,
         providerSessionId: input.checkpoint.providerSessionId,
+        workspaceId: input.checkpoint.workspaceId ?? null,
+        effectiveWorkspaceRoot:
+          input.checkpoint.effectiveWorkspaceRoot ?? null,
         runtimeMetadata: input.checkpoint.runtimeMetadata ?? null,
         providerCheckpointId: input.checkpoint.providerCheckpointId ?? null,
       })
@@ -1091,6 +1094,8 @@ implements NativeLiveConversationRepository {
       canonicalMessageId: row.canonicalMessageId,
       provider: row.provider,
       providerSessionId: row.providerSessionId,
+      workspaceId: row.workspaceId,
+      effectiveWorkspaceRoot: row.effectiveWorkspaceRoot,
       providerCheckpointId: row.providerCheckpointId,
       createdAt: row.createdAt.toISOString(),
     };
@@ -1110,6 +1115,10 @@ implements NativeLiveConversationRepository {
         provider: conversationProviderSessionCheckpoints.provider,
         providerSessionId:
           conversationProviderSessionCheckpoints.providerSessionId,
+        workspaceId:
+          conversationProviderSessionCheckpoints.workspaceId,
+        effectiveWorkspaceRoot:
+          conversationProviderSessionCheckpoints.effectiveWorkspaceRoot,
         providerCheckpointId:
           conversationProviderSessionCheckpoints.providerCheckpointId,
         createdAt: conversationProviderSessionCheckpoints.createdAt,
@@ -1155,6 +1164,8 @@ implements NativeLiveConversationRepository {
           canonicalMessageId: row.canonicalMessageId,
           provider: row.provider,
           providerSessionId: row.providerSessionId,
+          workspaceId: row.workspaceId,
+          effectiveWorkspaceRoot: row.effectiveWorkspaceRoot,
           providerCheckpointId: row.providerCheckpointId,
           createdAt: row.createdAt.toISOString(),
         }

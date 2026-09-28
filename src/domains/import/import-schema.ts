@@ -239,6 +239,9 @@ const conversationProviderCheckpointRecord = z.object({
   canonical_message_id: uuid,
   provider: z.literal("claude_code"),
   provider_session_id: nonBlankString(),
+  workspace_id: uuid.nullable().optional().default(null),
+  effective_workspace_root:
+    nonBlankString().nullable().optional().default(null),
   runtime_metadata: z.record(z.string(), z.unknown()).nullable(),
   provider_checkpoint_id: nonBlankString().nullable(),
   created_at: isoDateTime,

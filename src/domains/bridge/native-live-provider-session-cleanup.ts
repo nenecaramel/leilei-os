@@ -13,6 +13,8 @@ const MAX_CLEANUP_ATTEMPTS = 5;
 export type NativeLiveProviderSessionCleanupReservation = {
   reservationId: string;
   providerSessionId: string;
+  workspaceId: string | null;
+  effectiveWorkspaceRoot: string | null;
 };
 
 export type NativeLiveProviderSessionCleanupCompletion =
@@ -82,6 +84,8 @@ export class DrizzleNativeLiveProviderSessionCleanupRepository {
       const rows = await transaction.execute<{
         id: string;
         provider_session_id: string;
+        workspace_id: string | null;
+        effective_workspace_root: string | null;
       }>(sql`
         WITH candidate AS (
           SELECT id
@@ -106,7 +110,11 @@ export class DrizzleNativeLiveProviderSessionCleanupRepository {
         WHERE cleanup.id = candidate.id
           AND cleanup.user_id = ${input.userId}::uuid
           AND cleanup.status = 'pending'
-        RETURNING cleanup.id, cleanup.provider_session_id
+        RETURNING
+          cleanup.id,
+          cleanup.provider_session_id,
+          cleanup.workspace_id,
+          cleanup.effective_workspace_root
       `);
 
       const row = rows[0];
@@ -114,6 +122,8 @@ export class DrizzleNativeLiveProviderSessionCleanupRepository {
         ? {
             reservationId: row.id,
             providerSessionId: row.provider_session_id,
+            workspaceId: row.workspace_id,
+            effectiveWorkspaceRoot: row.effective_workspace_root,
           }
         : null;
     });

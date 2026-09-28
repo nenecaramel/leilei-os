@@ -195,6 +195,19 @@ implements NativeLiveMacDaemonRelayClient {
       typeof record.reservationId !== "string"
       || typeof record.providerSessionId !== "string"
       || !record.providerSessionId.trim()
+      || !(
+        record.workspaceId === undefined
+        || record.workspaceId === null
+        || typeof record.workspaceId === "string"
+      )
+      || !(
+        record.effectiveWorkspaceRoot === undefined
+        || record.effectiveWorkspaceRoot === null
+        || (
+          typeof record.effectiveWorkspaceRoot === "string"
+          && record.effectiveWorkspaceRoot.trim()
+        )
+      )
     ) {
       throw new Error(
         "Native live provider session cleanup reservation is invalid.",
@@ -203,6 +216,14 @@ implements NativeLiveMacDaemonRelayClient {
     return {
       reservationId: record.reservationId,
       providerSessionId: record.providerSessionId,
+      workspaceId:
+        typeof record.workspaceId === "string"
+          ? record.workspaceId
+          : null,
+      effectiveWorkspaceRoot:
+        typeof record.effectiveWorkspaceRoot === "string"
+          ? record.effectiveWorkspaceRoot
+          : null,
     };
   }
 

@@ -34,6 +34,8 @@ export type NativeLiveDaemonReservation = {
 export type NativeLiveProviderSessionCleanupReservation = {
   reservationId: string;
   providerSessionId: string;
+  workspaceId: string | null;
+  effectiveWorkspaceRoot: string | null;
 };
 
 export type NativeLiveBackgroundModelReservation = {
@@ -270,7 +272,11 @@ export interface NativeLiveDaemonIdleOpportunity {
 }
 
 export interface NativeLiveProviderSessionCleanupExecutor {
-  deleteSession(sessionId: string): Promise<void>;
+  deleteSession(
+    sessionId: string,
+    workspaceId: string | null,
+    expectedWorkspaceRoot: string | null,
+  ): Promise<void>;
 }
 
 export interface NativeLiveBackgroundModelExecutor {
@@ -457,6 +463,8 @@ export class NativeLiveMacDaemonLoop {
             try {
               await this.providerSessionCleanupExecutor.deleteSession(
                 cleanup.providerSessionId,
+                cleanup.workspaceId,
+                cleanup.effectiveWorkspaceRoot,
               );
             } catch {
               try {

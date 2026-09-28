@@ -56,6 +56,9 @@ import type {
   NativeLiveMacActiveTurnController,
 } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
+import type {
+  NativeLiveWorkspaceRuntimeResolver,
+} from "./native-live-mac-workspace-runtime.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -69,7 +72,23 @@ import {
 } from "./native-live-runtime-protocol.js";
 
 export class NativeLiveMacRuntimeExecutor {
-  constructor(private readonly runtime: NativeLiveForegroundRuntime) {}
+  private readonly runtime: NativeLiveForegroundRuntime | null;
+  private readonly resolver: NativeLiveWorkspaceRuntimeResolver | null;
+
+  constructor(
+    runtimeOrResolver:
+      | NativeLiveForegroundRuntime
+      | NativeLiveWorkspaceRuntimeResolver,
+    private readonly fallbackWorkspaceRoot = "/",
+  ) {
+    if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
+      this.runtime = null;
+      this.resolver = runtimeOrResolver;
+    } else {
+      this.runtime = runtimeOrResolver;
+      this.resolver = null;
+    }
+  }
 
   async execute(
     rawCommand: unknown,
@@ -94,9 +113,15 @@ export class NativeLiveMacRuntimeExecutor {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
 
     let runtimeResult: NativeLiveForegroundRuntimeResult;
+    let binding: {
+      runtime: NativeLiveForegroundRuntime;
+      workspaceRoot: string;
+    };
     try {
-      runtimeResult = this.runtime.executeTurn
-        ? await this.runtime.executeTurn(
+      binding = await this.resolveRuntime(command);
+      const runtime = binding.runtime;
+      runtimeResult = runtime.executeTurn
+        ? await runtime.executeTurn(
             command.prompt,
             {
               mode: command.runtime_mode,
@@ -133,8 +158,8 @@ export class NativeLiveMacRuntimeExecutor {
             },
           )
         : command.runtime_mode === "new"
-          ? await this.runtime.sendNew(command.prompt)
-          : await this.runtime.fork(
+          ? await runtime.sendNew(command.prompt)
+          : await runtime.fork(
               command.parent_provider_session_id!,
               command.prompt,
             );
@@ -156,6 +181,7 @@ export class NativeLiveMacRuntimeExecutor {
     const runtimeMetadata = await this.buildRuntimeMetadata(
       command,
       runtimeResult,
+      binding.runtime,
     );
 
     return {
@@ -165,6 +191,8 @@ export class NativeLiveMacRuntimeExecutor {
       conversation_id: command.conversation_id,
       status: "success",
       provider_session_id: runtimeResult.providerSessionId,
+      workspace_id: command.workspace_id,
+      effective_workspace_root: binding.workspaceRoot,
       normalized_events: [...runtimeResult.normalizedEvents],
       ...(runtimeMetadata
         ? { runtime_metadata: runtimeMetadata }
@@ -175,6 +203,7 @@ export class NativeLiveMacRuntimeExecutor {
   private async buildRuntimeMetadata(
     command: NativeLiveRuntimeCommand,
     runtimeResult: NativeLiveForegroundRuntimeResult,
+    runtime: NativeLiveForegroundRuntime,
   ): Promise<NativeLiveRuntimeMetadata | null> {
     const advisory = runtimeResult.compactionAdvisory ?? null;
     const contextUsage = runtimeResult.contextUsage ?? null;
@@ -223,7 +252,7 @@ export class NativeLiveMacRuntimeExecutor {
       };
     }
 
-    if (!this.runtime.compact) {
+    if (!runtime.compact) {
       return {
         context_usage: contextUsage,
         compaction_advisory: advisory,
@@ -240,7 +269,7 @@ export class NativeLiveMacRuntimeExecutor {
     }
 
     try {
-      const compacted = await this.runtime.compact(
+      const compacted = await runtime.compact(
         runtimeResult.providerSessionId!,
         command.execution_selection ?? null,
       );
@@ -288,6 +317,39 @@ export class NativeLiveMacRuntimeExecutor {
         ...(execution ? { execution } : {}),
       };
     }
+  }
+
+  private async resolveRuntime(
+    command: NativeLiveRuntimeCommand,
+  ): Promise<{
+    runtime: NativeLiveForegroundRuntime;
+    workspaceRoot: string;
+  }> {
+    if (this.resolver) {
+      return this.resolver.resolveWorkspaceRuntime({
+        workspaceId: command.workspace_id,
+        expectedWorkspaceRoot: command.expected_workspace_root,
+      });
+    }
+    if (!this.runtime || command.workspace_id !== null) {
+      throw Object.assign(
+        new Error("Native Live Workspace runtime is unavailable."),
+        { runtimeCode: "WORKSPACE_UNAVAILABLE" },
+      );
+    }
+    if (
+      command.expected_workspace_root !== null
+      && command.expected_workspace_root !== this.fallbackWorkspaceRoot
+    ) {
+      throw Object.assign(
+        new Error("Native Live Workspace root does not match the runtime."),
+        { runtimeCode: "WORKSPACE_ROOT_MISMATCH" },
+      );
+    }
+    return {
+      runtime: this.runtime,
+      workspaceRoot: this.fallbackWorkspaceRoot,
+    };
   }
 }
 
@@ -342,6 +404,8 @@ function isRuntimeFailureCode(
     || value === "INTERRUPTED"
     || value === "NO_PROVIDER_SESSION"
     || value === "PROVIDER_SESSION_CONFLICT"
+    || value === "WORKSPACE_UNAVAILABLE"
+    || value === "WORKSPACE_ROOT_MISMATCH"
     || value === "RUNTIME_UNAVAILABLE"
   );
 }
