@@ -293,10 +293,8 @@ else
   )"; then
     fail "the restored Leilei migration ledger could not be read"
   fi
-  [[
-    "${RESTORED_MIGRATION_LEDGER}"
-      == "${EXPECTED_MIGRATION_CREATED_AT}|${EXPECTED_MIGRATION_HASH}"
-  ]] || fail "the restored Leilei migration ledger does not match the backup"
+  [[ "${RESTORED_MIGRATION_LEDGER}" == "${EXPECTED_MIGRATION_CREATED_AT}|${EXPECTED_MIGRATION_HASH}" ]] ||
+    fail "the restored Leilei migration ledger does not match the backup"
   printf 'Leilei migration ledger verified: %s\n' \
     "${EXPECTED_MIGRATION_CREATED_AT}"
 fi
