@@ -10,6 +10,7 @@ export type NativeLiveProviderSessionStoreInternalDependencies = {
   providerSessionStoreService: Pick<
     NativeLiveProviderSessionStoreService,
     "append" | "load" | "listSessions" | "delete" | "listSubkeys"
+    | "getStatus" | "markIncomplete" | "markComplete"
   >;
 };
 
@@ -26,6 +27,9 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   router.post("/list-sessions", listSessionsHandler(dependencies));
   router.post("/delete", deleteHandler(dependencies));
   router.post("/list-subkeys", listSubkeysHandler(dependencies));
+  router.post("/status", statusHandler(dependencies));
+  router.post("/mark-incomplete", markIncompleteHandler(dependencies));
+  router.post("/mark-complete", markCompleteHandler(dependencies));
   return router;
 }
 
@@ -41,7 +45,11 @@ function appendHandler(
       body && Array.isArray(body.entries)
         ? body.entries as NativeLiveProviderSessionStoreEntry[]
         : null;
-    if (!key || !entries) {
+    const appendBatchId =
+      body && typeof body.append_batch_id === "string"
+        ? body.append_batch_id
+        : null;
+    if (!key || !entries || !appendBatchId) {
       sendInvalid(response);
       return;
     }
@@ -49,6 +57,7 @@ function appendHandler(
       await dependencies.providerSessionStoreService.append({
         userId,
         key,
+        appendBatchId,
         entries,
       });
       response.json({ success: true, data: null });
@@ -157,6 +166,90 @@ function listSubkeysHandler(
     } catch (error) {
       sendStoreError(response, error);
     }
+  };
+}
+
+function statusHandler(
+  dependencies: NativeLiveProviderSessionStoreInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const identity = parseSessionIdentity(request.body);
+    if (!identity) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const state =
+        await dependencies.providerSessionStoreService.getStatus({
+          userId,
+          ...identity,
+        });
+      response.json({ success: true, data: { state } });
+    } catch (error) {
+      sendStoreError(response, error);
+    }
+  };
+}
+
+function markIncompleteHandler(
+  dependencies: NativeLiveProviderSessionStoreInternalDependencies,
+): RequestHandler {
+  return markStatusHandler(dependencies, "incomplete");
+}
+
+function markCompleteHandler(
+  dependencies: NativeLiveProviderSessionStoreInternalDependencies,
+): RequestHandler {
+  return markStatusHandler(dependencies, "complete");
+}
+
+function markStatusHandler(
+  dependencies: NativeLiveProviderSessionStoreInternalDependencies,
+  state: "complete" | "incomplete",
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const identity = parseSessionIdentity(request.body);
+    if (!identity) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      if (state === "complete") {
+        await dependencies.providerSessionStoreService.markComplete({
+          userId,
+          ...identity,
+        });
+      } else {
+        await dependencies.providerSessionStoreService.markIncomplete({
+          userId,
+          ...identity,
+        });
+      }
+      response.json({ success: true, data: { state } });
+    } catch (error) {
+      sendStoreError(response, error);
+    }
+  };
+}
+
+function parseSessionIdentity(
+  value: unknown,
+): { workspaceId: string; sessionId: string } | null {
+  const body = readRecord(value);
+  if (
+    !body
+    || typeof body.workspace_id !== "string"
+    || typeof body.session_id !== "string"
+  ) {
+    return null;
+  }
+  return {
+    workspaceId: body.workspace_id,
+    sessionId: body.session_id,
   };
 }
 
