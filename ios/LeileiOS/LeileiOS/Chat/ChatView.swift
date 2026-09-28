@@ -13,6 +13,8 @@ struct ChatView: View {
     @State private var model: NativeLiveClaudeModel = .opus55
     @State private var thinking: NativeLiveThinkingMode = .adaptive
     @State private var effort: NativeLiveEffortLevel = .high
+    @State private var workspaces: [WorkspaceSummary] = []
+    @State private var selectedWorkspaceID: String?
     @State private var editDraft: NativeLiveEditDraft?
     @State private var pendingOperation: NativeLivePendingOperation?
     @State private var isDraftCommitInFlight = false
@@ -77,6 +79,7 @@ struct ChatView: View {
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
+            await refreshWorkspaces()
             await appModel.refreshNativeLiveConversations()
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveCurrentPath()
@@ -96,7 +99,14 @@ struct ChatView: View {
             messageText = ""
             editDraft = nil
             pendingOperation = nil
+            if isDraftConversation {
+                normalizeSelectedWorkspace()
+            }
             isComposerFocused = false
+        }
+        .onChange(of: appModel.activeNativeLiveWorkspaceID) { _, workspaceID in
+            guard !isDraftConversation else { return }
+            selectedWorkspaceID = workspaceID
         }
         .onChange(of: isDraftConversation) { wasDraft, isDraft in
             if wasDraft && !isDraft && !isDraftCommitInFlight {
@@ -109,6 +119,9 @@ struct ChatView: View {
                 model: $model,
                 thinking: $thinking,
                 effort: $effort,
+                workspaceID: $selectedWorkspaceID,
+                workspaces: workspaces,
+                workspaceSelectionEnabled: workspaceSelectionEnabled,
                 isFocused: $isComposerFocused,
                 isSending:
                     appModel.chatSendState == .sending
@@ -232,6 +245,43 @@ struct ChatView: View {
                 surfaceTransientFailure: false
             )
         }
+    }
+
+    private var workspaceSelectionEnabled: Bool {
+        if isDraftConversation {
+            return true
+        }
+        guard appModel.activeNativeLiveWorkspaceID == nil else {
+            return false
+        }
+        return appModel.nativeLiveCurrentPath?.currentHeadMessageId == nil
+    }
+
+    @MainActor
+    private func refreshWorkspaces() async {
+        do {
+            workspaces = try await appModel.api.workspaces()
+            if isDraftConversation {
+                normalizeSelectedWorkspace()
+            } else if let bound = appModel.activeNativeLiveWorkspaceID {
+                selectedWorkspaceID = bound
+            } else if appModel.nativeLiveCurrentPath?.currentHeadMessageId == nil {
+                normalizeSelectedWorkspace()
+            }
+        } catch {
+            workspaces = []
+            if isDraftConversation {
+                selectedWorkspaceID = nil
+            }
+        }
+    }
+
+    private func normalizeSelectedWorkspace() {
+        if let selectedWorkspaceID,
+           workspaces.contains(where: { $0.id == selectedWorkspaceID }) {
+            return
+        }
+        selectedWorkspaceID = workspaces.first?.id
     }
 
     private var visibleRuntimeSurface:
@@ -466,8 +516,16 @@ struct ChatView: View {
                     onDraftCommitted()
                 }
 
+                let shouldBindWorkspace =
+                    shouldCreateConversation
+                    || appModel.nativeLiveCurrentPath?
+                        .currentHeadMessageId == nil
                 try await appModel.sendNativeLiveMessage(
                     pendingText,
+                    workspaceID:
+                        shouldBindWorkspace
+                            ? selectedWorkspaceID
+                            : nil,
                     execution: executionSelection
                 )
                 pendingOperation = nil
