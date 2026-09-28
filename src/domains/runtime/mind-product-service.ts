@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import {
+  hashProductCreateRequest,
+  normalizeProductCreateIdempotencyKey,
+  ProductCreateIdempotencyError,
+} from "../product-write/product-create-idempotency.js";
 import type {
   PersistentAuthority,
   PersistentWriteEnvelope,
@@ -92,11 +97,16 @@ export interface MindProductRepository {
     stateId: string;
   }): Promise<MindProductRow | null>;
 
-  insert(input: {
+  insertManualIdempotent(input: {
     userId: string;
     subjectId: string;
     state: SubjectStateWrite;
-  }): Promise<MindProductRow>;
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<
+    | { outcome: "committed"; row: MindProductRow }
+    | { outcome: "idempotency_conflict" }
+  >;
 
   delete(input: {
     userId: string;
@@ -113,7 +123,12 @@ export interface MindProductRepository {
 
 export class MindProductServiceError extends Error {
   constructor(
-    readonly code: "INVALID_MIND" | "MIND_NOT_FOUND" | "MIND_FAILED",
+    readonly code:
+      | "INVALID_MIND"
+      | "MIND_NOT_FOUND"
+      | "MIND_FAILED"
+      | "INVALID_IDEMPOTENCY_KEY"
+      | "IDEMPOTENCY_CONFLICT",
     message?: string,
   ) {
     super(message ?? code);
@@ -189,6 +204,7 @@ export class MindProductService {
     text: string;
     occurredAt?: string | null;
     note?: string | null;
+    idempotencyKey?: unknown;
   }): Promise<MindProductItem> {
     if (!isCurrentKind(input.kind)) {
       throw new MindProductServiceError("INVALID_MIND", "Mind kind is invalid.");
@@ -221,13 +237,27 @@ export class MindProductService {
       }),
     });
 
-    return projectRow(
-      await this.repository.insert({
-        userId: input.userId,
-        subjectId: this.subjectId,
-        state,
-      }),
+    const idempotencyKey = mindCreateIdempotencyKey(
+      input.idempotencyKey,
     );
+    const result = await this.repository.insertManualIdempotent({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      state,
+      idempotencyKey,
+      requestHash: hashProductCreateRequest({
+        operation: "mind_manual_create",
+        subjectId: this.subjectId,
+        kind: input.kind,
+        text,
+        occurredAt,
+        note,
+      }),
+    });
+    if (result.outcome === "idempotency_conflict") {
+      throw new MindProductServiceError("IDEMPOTENCY_CONFLICT");
+    }
+    return projectRow(result.row);
   }
 
   async delete(input: {
@@ -269,6 +299,20 @@ export class MindProductService {
       total: kinds.reduce((sum, item) => sum + item.count, 0),
       kinds,
     };
+  }
+}
+
+function mindCreateIdempotencyKey(value: unknown): string {
+  try {
+    return normalizeProductCreateIdempotencyKey(value);
+  } catch (error) {
+    if (error instanceof ProductCreateIdempotencyError) {
+      throw new MindProductServiceError(
+        "INVALID_IDEMPOTENCY_KEY",
+        "Idempotency-Key is required and must be 16-128 safe characters.",
+      );
+    }
+    throw error;
   }
 }
 
