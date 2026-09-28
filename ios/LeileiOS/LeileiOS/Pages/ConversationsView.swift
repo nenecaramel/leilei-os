@@ -352,6 +352,11 @@ private struct ConversationList: View {
                         rowContent(conversation)
                     }
                     .buttonStyle(.plain)
+                    .disabled(
+                        lifecycleMutationIDs.contains(
+                            conversation.id
+                        )
+                    )
                 } else {
                     rowContent(conversation)
                 }
