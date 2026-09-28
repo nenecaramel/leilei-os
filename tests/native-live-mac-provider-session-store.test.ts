@@ -62,13 +62,20 @@ test("Mac SessionStore maps the Agent SDK contract onto one durable Workspace", 
   for (const call of calls) {
     assert.equal(call.auth, "Bearer secret-token");
   }
-  assert.deepEqual(calls[0]?.body, {
-    key: {
-      workspace_id: workspaceId,
-      session_id: "s1",
-    },
-    entries: [{ type: "user", n: 1 }],
+  const appendBody = calls[0]?.body as {
+    key: unknown;
+    append_batch_id: string;
+    entries: unknown;
+  };
+  assert.deepEqual(appendBody.key, {
+    workspace_id: workspaceId,
+    session_id: "s1",
   });
+  assert.match(
+    appendBody.append_batch_id,
+    /^[0-9a-f-]{36}$/u,
+  );
+  assert.deepEqual(appendBody.entries, [{ type: "user", n: 1 }]);
   assert.equal(
     JSON.stringify(calls).includes("/Users/leilei/Projects/demo"),
     false,
@@ -108,4 +115,95 @@ test("Mac SessionStore preserves subpath identity and null load semantics", asyn
       subpath: "subagents/x",
     },
   }]);
+});
+
+
+test("Mac SessionStore reuses one append batch id after ambiguous delivery", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  let attempt = 0;
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    attempt += 1;
+    if (attempt === 1) {
+      throw new Error("response lost after commit");
+    }
+    return new Response(JSON.stringify({
+      success: true,
+      data: null,
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const store = new NativeLiveMacProviderSessionStore(
+    "https://relay.example",
+    "secret-token",
+    workspaceId,
+    fakeFetch,
+  );
+  const key = { projectKey: "/local/path", sessionId: "s1" };
+  const entries = [{ type: "assistant", text: "same batch" }];
+
+  await assert.rejects(
+    () => store.append(key, entries),
+    /response lost after commit/u,
+  );
+  await store.append(key, entries);
+
+  assert.equal(bodies.length, 2);
+  assert.equal(
+    bodies[0]?.append_batch_id,
+    bodies[1]?.append_batch_id,
+    "retry must reuse the exact append batch receipt",
+  );
+});
+
+test("Mac SessionStore exposes fail-closed completeness state", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const responses = [
+    { success: true, data: { state: null } },
+    { success: true, data: { state: "incomplete" } },
+    { success: true, data: { state: "incomplete" } },
+    { success: true, data: { state: "complete" } },
+    { success: true, data: { state: "complete" } },
+  ];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const store = new NativeLiveMacProviderSessionStore(
+    "https://relay.example",
+    "secret-token",
+    workspaceId,
+    fakeFetch,
+  );
+
+  assert.equal(await store.getStatus("s1"), null);
+  await store.markIncomplete("s1");
+  assert.equal(await store.getStatus("s1"), "incomplete");
+  await store.markComplete("s1");
+  assert.equal(await store.getStatus("s1"), "complete");
+
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    [
+      "https://relay.example/internal/native-live-session-store/status",
+      "https://relay.example/internal/native-live-session-store/mark-incomplete",
+      "https://relay.example/internal/native-live-session-store/status",
+      "https://relay.example/internal/native-live-session-store/mark-complete",
+      "https://relay.example/internal/native-live-session-store/status",
+    ],
+  );
+  for (const call of calls) {
+    assert.deepEqual(call.body, {
+      workspace_id: workspaceId,
+      session_id: "s1",
+    });
+  }
 });
