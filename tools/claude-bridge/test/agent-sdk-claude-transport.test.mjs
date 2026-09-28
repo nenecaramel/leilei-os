@@ -235,6 +235,87 @@ test("resume and fork reject an absent local parent transcript before query", as
   assert.equal(queryCalls, 0);
 });
 
+test("durable SessionStore resumes when the local transcript is absent", async () => {
+  let call;
+  const durableStore = {
+    async append() {},
+    async load(key) {
+      assert.equal(key.sessionId, "provider-remote");
+      return [{ type: "user", message: { role: "user", content: "hello" } }];
+    },
+    async delete() {},
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async () => [],
+    sessionStore: durableStore,
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-remote"));
+    },
+  });
+
+  const result = await transport.resume(
+    "provider-remote",
+    "continue",
+  );
+
+  assert.equal(result.providerSessionId, "provider-remote");
+  assert.equal(call.options.resume, "provider-remote");
+  assert.equal(call.options.sessionStore, durableStore);
+});
+
+test("durable SessionStore failures remain fail-closed", async () => {
+  const cause = new Error("remote transcript unavailable");
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionMessagesImpl: async () => [],
+    sessionStore: {
+      async append() {},
+      async load() {
+        throw cause;
+      },
+    },
+    queryImpl: () => fakeQuery(successFixture("unexpected")),
+  });
+
+  await assert.rejects(
+    () => transport.resume("provider-remote", "continue"),
+    (error) =>
+      error.runtimeCode === "RUNTIME_UNAVAILABLE"
+      && error.cause === cause
+      && /durable Claude Agent SDK parent session/i.test(error.message),
+  );
+});
+
+test("Agent SDK deletion receives the durable SessionStore", async () => {
+  let deletion;
+  const durableStore = {
+    async append() {},
+    async load() { return null; },
+    async delete() {},
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionStore: durableStore,
+    deleteSessionImpl: async (sessionId, options) => {
+      deletion = { sessionId, options };
+    },
+  });
+
+  await transport.deleteSession("provider-delete");
+
+  assert.deepEqual(deletion, {
+    sessionId: "provider-delete",
+    options: {
+      dir: "/workspace/leilei-os",
+      sessionStore: durableStore,
+    },
+  });
+});
+
 test("session preflight read failures stay RUNTIME_UNAVAILABLE", async () => {
   const cause = new Error("session store unreadable");
   const transport = new AgentSdkClaudeTransport({
@@ -340,6 +421,7 @@ test("compact uses a dedicated non-verbatim control path and returns lifecycle o
   let call;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: (input) => {
       call = input;
       return {
@@ -446,6 +528,7 @@ test("compact uses a dedicated non-verbatim control path and returns lifecycle o
 test("compact refuses to claim success if the SDK emits no compact boundary", async () => {
   const transport = new AgentSdkClaudeTransport({
     environment: {},
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: () => fakeQuery([
       {
         type: "system",
@@ -591,6 +674,7 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: (input) => {
       call = input;
       return {
