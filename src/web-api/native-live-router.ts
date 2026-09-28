@@ -976,9 +976,12 @@ function sendPrepareFailure(
       : result.code === "CONVERSATION_NOT_FOUND"
         || result.code === "BRANCH_POINT_INVALID"
         || result.code === "CHECKPOINT_NOT_FOUND"
+        || result.code === "WORKSPACE_NOT_FOUND"
         ? 404
         : result.code === "STALE_HEAD"
           || result.code === "REQUEST_CONFLICT"
+          || result.code === "WORKSPACE_BINDING_AMBIGUOUS"
+          || result.code === "WORKSPACE_BINDING_CONFLICT"
           ? 409
           : 503;
 
@@ -991,11 +994,17 @@ function sendPrepareFailure(
           ? "Conversation head changed before the turn was prepared."
           : result.code === "REQUEST_CONFLICT"
             ? "Request id conflicts with an existing prepared turn."
-            : result.code === "INVALID_REQUEST"
-              ? "Native live turn request is invalid."
-              : result.code === "INTERNAL_ERROR"
-                ? "Native live turn preparation is temporarily unavailable."
-                : "Native live turn could not be prepared.",
+            : result.code === "WORKSPACE_NOT_FOUND"
+              ? "Workspace was not found."
+              : result.code === "WORKSPACE_BINDING_AMBIGUOUS"
+                ? "Conversation has multiple Workspace references; select one explicitly."
+                : result.code === "WORKSPACE_BINDING_CONFLICT"
+                  ? "The current provider branch is already bound to another Workspace."
+                  : result.code === "INVALID_REQUEST"
+                    ? "Native live turn request is invalid."
+                    : result.code === "INTERNAL_ERROR"
+                      ? "Native live turn preparation is temporarily unavailable."
+                      : "Native live turn could not be prepared.",
       ...(result.currentHeadMessageId !== undefined
         ? { currentHeadMessageId: result.currentHeadMessageId }
         : {}),
