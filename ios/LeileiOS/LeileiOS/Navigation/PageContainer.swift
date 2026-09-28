@@ -10,8 +10,6 @@ struct PageContainer: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
     @State private var showingContext = false
-    @State private var showingProjectPicker = false
-    @State private var showingWorkspacePicker = false
 
     let selectedPage: AppPage
     let diaryTarget: DiaryNavigationTarget?
@@ -31,54 +29,7 @@ struct PageContainer: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if selectedPage == .chat {
-                    ChatView(
-                        isDraftConversation: isDraftConversation,
-                        draftConversationID: draftConversationID,
-                        onDraftCommitted: onDraftCommitted
-                    )
-                } else if selectedPage == .projects {
-                    ProjectsView { conversationID in
-                        Task { @MainActor in
-                            await appModel.openNativeLiveConversation(
-                                conversationID
-                            )
-                            onOpenConversation()
-                        }
-                    }
-                } else if selectedPage == .globalSearch {
-                    GlobalSearchView(
-                        service: LeileiGlobalSearchService(api: appModel.api),
-                        onOpenDiary: onOpenDiary,
-                        onOpenDaySpace: onOpenDaySpace,
-                        onOpenUniverseNode: onOpenUniverseNode
-                    )
-                } else if selectedPage == .diary {
-                    DiaryView(
-                        target: diaryTarget,
-                        onTargetConsumed: onDiaryTargetConsumed
-                    )
-                } else if selectedPage == .daySpace {
-                    DaySpaceView(
-                        target: daySpaceTarget,
-                        onTargetConsumed: onDaySpaceTargetConsumed
-                    )
-                } else if selectedPage == .mind {
-                    MindView()
-                } else if selectedPage == .universe {
-                    UniverseView(
-                        targetNodeID: universeTargetNodeID,
-                        onTargetConsumed: onUniverseTargetConsumed
-                    )
-                } else if selectedPage == .conversations {
-                    ConversationsView(
-                        onOpenConversation: onOpenConversation
-                    )
-                } else {
-                    PlaceholderPage(page: selectedPage)
-                }
-            }
+            pageContent
             .navigationTitle(selectedPage == .chat ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -109,28 +60,6 @@ struct PageContainer: View {
                                     Label(
                                         "Context",
                                         systemImage: "chart.bar"
-                                    )
-                                }
-
-                                Button {
-                                    showingProjectPicker = true
-                                } label: {
-                                    Label(
-                                        "Add to Project",
-                                        systemImage: "folder"
-                                    )
-                                }
-                                .disabled(
-                                    isDraftConversation
-                                        || appModel.activeNativeLiveConversationID == nil
-                                )
-
-                                Button {
-                                    showingWorkspacePicker = true
-                                } label: {
-                                    Label(
-                                        "Workspace",
-                                        systemImage: "externaldrive"
                                     )
                                 }
 
@@ -196,16 +125,6 @@ struct PageContainer: View {
         .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
-        }
-        .sheet(isPresented: $showingProjectPicker) {
-            ProjectPickerSheet(
-                title: "Add to Project",
-                conversationID:
-                    appModel.activeNativeLiveConversationID
-            )
-        }
-        .sheet(isPresented: $showingWorkspacePicker) {
-            WorkspacePickerSheet()
         }
         .alert(
             "Rename",
@@ -282,6 +201,57 @@ struct PageContainer: View {
             }
         } message: {
             Text(deleteErrorMessage ?? "")
+        }
+    }
+
+
+    @ViewBuilder
+    private var pageContent: some View {
+        if selectedPage == .chat {
+            ChatView(
+                isDraftConversation: isDraftConversation,
+                draftConversationID: draftConversationID,
+                onDraftCommitted: onDraftCommitted
+            )
+        } else if selectedPage == .projects {
+            ProjectsView { conversationID in
+                Task { @MainActor in
+                    await appModel.openNativeLiveConversation(
+                        conversationID
+                    )
+                    onOpenConversation()
+                }
+            }
+        } else if selectedPage == .globalSearch {
+            GlobalSearchView(
+                service: LeileiGlobalSearchService(api: appModel.api),
+                onOpenDiary: onOpenDiary,
+                onOpenDaySpace: onOpenDaySpace,
+                onOpenUniverseNode: onOpenUniverseNode
+            )
+        } else if selectedPage == .diary {
+            DiaryView(
+                target: diaryTarget,
+                onTargetConsumed: onDiaryTargetConsumed
+            )
+        } else if selectedPage == .daySpace {
+            DaySpaceView(
+                target: daySpaceTarget,
+                onTargetConsumed: onDaySpaceTargetConsumed
+            )
+        } else if selectedPage == .mind {
+            MindView()
+        } else if selectedPage == .universe {
+            UniverseView(
+                targetNodeID: universeTargetNodeID,
+                onTargetConsumed: onUniverseTargetConsumed
+            )
+        } else if selectedPage == .conversations {
+            ConversationsView(
+                onOpenConversation: onOpenConversation
+            )
+        } else {
+            PlaceholderPage(page: selectedPage)
         }
     }
 
