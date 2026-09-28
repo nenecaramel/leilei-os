@@ -130,7 +130,33 @@ implements ProjectWorkspaceRepository {
   async listProjects(input: {
     userId: string;
     workspaceId?: string;
+    conversationId?: string;
   }): Promise<ProjectSummary[]> {
+    if (input.conversationId) {
+      const rows = await this.db
+        .select(projectSelection())
+        .from(projectConversations)
+        .innerJoin(
+          projects,
+          and(
+            eq(projectConversations.projectId, projects.id),
+            eq(projectConversations.userId, projects.userId),
+          ),
+        )
+        .where(and(
+          eq(projectConversations.userId, input.userId),
+          eq(
+            projectConversations.conversationId,
+            input.conversationId,
+          ),
+          ...(input.workspaceId
+            ? [eq(projects.workspaceId, input.workspaceId)]
+            : []),
+        ))
+        .orderBy(desc(projects.updatedAt), desc(projects.id));
+      return rows.map(mapProject);
+    }
+
     const rows = await this.db
       .select(projectSelection())
       .from(projects)
