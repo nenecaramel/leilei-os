@@ -637,6 +637,18 @@ function mapError(
     return;
   }
 
+  if (error.code === "WORKSPACE_IN_USE") {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: "WORKSPACE_IN_USE",
+        message:
+          "Workspace still owns canonical provider-session execution state.",
+      },
+    });
+    return;
+  }
+
   if (
     error.code === "VERSION_CONFLICT"
     || error.code === "RESOURCE_CONFLICT"
