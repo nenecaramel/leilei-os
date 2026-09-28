@@ -13,6 +13,7 @@ export type NativeLiveRelaySendRequest = {
   conversation_id: string;
   expected_head_message_id: string | null;
   text: string;
+  workspace_id?: string;
   execution?: NativeLiveExecutionSelection;
 };
 
@@ -74,7 +75,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "conversation_id",
       "expected_head_message_id",
       "text",
-    ], ["execution"]);
+    ], ["execution", "workspace_id"]);
     return {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -85,6 +86,9 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
           ? null
           : requireUuid(body.expected_head_message_id, "expected_head_message_id"),
       text: normalizeText(body.text),
+      ...(body.workspace_id === undefined
+        ? {}
+        : { workspace_id: requireUuid(body.workspace_id, "workspace_id") }),
       ...(body.execution === undefined
         ? {}
         : { execution: parseExecution(body.execution) }),
