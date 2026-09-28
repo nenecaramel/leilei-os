@@ -208,6 +208,17 @@ struct ProjectResource: Decodable, Sendable, Equatable, Identifiable {
     let updatedAt: String
 }
 
+struct WorkspaceConversationSummary: Decodable, Sendable, Equatable, Identifiable {
+    let conversationId: String
+    let title: String?
+    let lifecycleStatus: String
+    let currentHeadMessageId: String?
+    let lastMessageAt: String?
+    let addedAt: String
+
+    var id: String { conversationId }
+}
+
 struct ProjectConversationSummary: Decodable, Sendable, Equatable, Identifiable {
     let conversationId: String
     let title: String?
@@ -1358,8 +1369,8 @@ final class LeileiAPIClient {
 
     func workspaceConversations(
         workspaceID: String
-    ) async throws -> [ProjectConversationSummary] {
-        let envelope: ProjectConversationListEnvelope = try await request(
+    ) async throws -> [WorkspaceConversationSummary] {
+        let envelope: WorkspaceConversationListEnvelope = try await request(
             path: "/api/v1/workspaces/\(workspaceID)/conversations",
             authenticated: true
         )
@@ -2110,6 +2121,11 @@ private struct ProjectResourceListEnvelope: Decodable, Sendable {
 private struct ProjectResourceEnvelope: Decodable, Sendable {
     let success: Bool
     let data: ProjectResource
+}
+
+private struct WorkspaceConversationListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [WorkspaceConversationSummary]
 }
 
 private struct ProjectConversationListEnvelope: Decodable, Sendable {
