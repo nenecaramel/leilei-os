@@ -247,6 +247,8 @@ const conversationBundle: ExportConversationsBundle = {
       "00000000-0000-4000-8000-000000000043",
     provider: "claude_code",
     provider_session_id: "session-roundtrip-1",
+    workspace_id: null,
+    effective_workspace_root: null,
     runtime_metadata: {
       context_window: 200000,
     },
