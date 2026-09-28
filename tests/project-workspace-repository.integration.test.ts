@@ -381,11 +381,31 @@ test(
       new DrizzleNativeLiveConversationRepository(database.db),
     );
 
+    const workspaceCreateKey = "workspace-db-create-0001";
     const workspace = await service.createProductWorkspace({
       userId,
       name: "LeileiOS",
       description: "single public layer",
+      idempotencyKey: workspaceCreateKey,
     });
+    const workspaceReplay = await service.createProductWorkspace({
+      userId,
+      name: "LeileiOS",
+      description: "single public layer",
+      idempotencyKey: workspaceCreateKey,
+    });
+    assert.deepEqual(workspaceReplay, workspace);
+    await assert.rejects(
+      service.createProductWorkspace({
+        userId,
+        name: "Different",
+        description: "single public layer",
+        idempotencyKey: workspaceCreateKey,
+      }),
+      (error: unknown) =>
+        error instanceof ProjectWorkspaceServiceError
+        && error.code === "IDEMPOTENCY_CONFLICT",
+    );
     assert.equal(workspace.version, 1);
 
     const [executionRow] = await database.db
@@ -430,13 +450,37 @@ test(
       workspace.id,
     );
 
+    const resourceCreateKey = "workspace-resource-db-0001";
     const resource = await service.createWorkspaceResource({
       userId,
       workspaceId: workspace.id,
       kind: "instructions",
       key: "default",
       content: "Use the real Workspace.",
+      idempotencyKey: resourceCreateKey,
     });
+    const resourceReplay = await service.createWorkspaceResource({
+      userId,
+      workspaceId: workspace.id,
+      kind: "instructions",
+      key: "default",
+      content: "Use the real Workspace.",
+      idempotencyKey: resourceCreateKey,
+    });
+    assert.deepEqual(resourceReplay, resource);
+    await assert.rejects(
+      service.createWorkspaceResource({
+        userId,
+        workspaceId: workspace.id,
+        kind: "instructions",
+        key: "default",
+        content: "Different content",
+        idempotencyKey: resourceCreateKey,
+      }),
+      (error: unknown) =>
+        error instanceof ProjectWorkspaceServiceError
+        && error.code === "IDEMPOTENCY_CONFLICT",
+    );
     assert.equal(resource.workspaceId, workspace.id);
     assert.equal(
       Object.prototype.hasOwnProperty.call(resource, "projectId"),
@@ -583,6 +627,7 @@ test(
     const workspace = await service.createProductWorkspace({
       userId,
       name: "Bound Workspace",
+      idempotencyKey: "workspace-bound-db-0001",
     });
     const conversation = await conversationService.createConversation({
       userId,
