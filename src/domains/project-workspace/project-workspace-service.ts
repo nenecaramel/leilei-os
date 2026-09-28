@@ -134,12 +134,14 @@ export class ProjectWorkspaceService {
     workspaceId: unknown;
     kind?: unknown;
   }): Promise<WorkspaceResourceSummary[]> {
-    const rows = await this.listResources({
-      userId: input.userId,
-      projectId: input.workspaceId,
-      ...(input.kind === undefined ? {} : { kind: input.kind }),
+    return workspaceSurface(async () => {
+      const rows = await this.listResources({
+        userId: input.userId,
+        projectId: input.workspaceId,
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+      });
+      return rows.map(toWorkspaceResourceSummary);
     });
-    return rows.map(toWorkspaceResourceSummary);
   }
 
   async getWorkspaceResource(input: {
@@ -147,11 +149,12 @@ export class ProjectWorkspaceService {
     workspaceId: unknown;
     resourceId: unknown;
   }): Promise<WorkspaceResource> {
-    return toWorkspaceResource(await this.getResource({
-      userId: input.userId,
-      projectId: input.workspaceId,
-      resourceId: input.resourceId,
-    }));
+    return workspaceSurface(async () =>
+      toWorkspaceResource(await this.getResource({
+        userId: input.userId,
+        projectId: input.workspaceId,
+        resourceId: input.resourceId,
+      })));
   }
 
   async createWorkspaceResource(input: {
@@ -163,15 +166,16 @@ export class ProjectWorkspaceService {
     content?: unknown;
     metadata?: unknown;
   }): Promise<WorkspaceResource> {
-    return toWorkspaceResource(await this.createResource({
-      userId: input.userId,
-      projectId: input.workspaceId,
-      kind: input.kind,
-      key: input.key,
-      title: input.title,
-      content: input.content,
-      metadata: input.metadata,
-    }));
+    return workspaceSurface(async () =>
+      toWorkspaceResource(await this.createResource({
+        userId: input.userId,
+        projectId: input.workspaceId,
+        kind: input.kind,
+        key: input.key,
+        title: input.title,
+        content: input.content,
+        metadata: input.metadata,
+      })));
   }
 
   async updateWorkspaceResource(input: {
@@ -183,15 +187,16 @@ export class ProjectWorkspaceService {
     content?: unknown;
     metadata?: unknown;
   }): Promise<WorkspaceResource> {
-    return toWorkspaceResource(await this.updateResource({
-      userId: input.userId,
-      projectId: input.workspaceId,
-      resourceId: input.resourceId,
-      expectedVersion: input.expectedVersion,
-      ...(input.title === undefined ? {} : { title: input.title }),
-      ...(input.content === undefined ? {} : { content: input.content }),
-      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
-    }));
+    return workspaceSurface(async () =>
+      toWorkspaceResource(await this.updateResource({
+        userId: input.userId,
+        projectId: input.workspaceId,
+        resourceId: input.resourceId,
+        expectedVersion: input.expectedVersion,
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.content === undefined ? {} : { content: input.content }),
+        ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      })));
   }
 
   async deleteWorkspaceResource(input: {
@@ -200,22 +205,22 @@ export class ProjectWorkspaceService {
     resourceId: unknown;
     expectedVersion: unknown;
   }): Promise<void> {
-    await this.deleteResource({
+    await workspaceSurface(() => this.deleteResource({
       userId: input.userId,
       projectId: input.workspaceId,
       resourceId: input.resourceId,
       expectedVersion: input.expectedVersion,
-    });
+    }));
   }
 
   listWorkspaceConversations(input: {
     userId: string;
     workspaceId: unknown;
   }) {
-    return this.listProjectConversations({
+    return workspaceSurface(() => this.listProjectConversations({
       userId: input.userId,
       projectId: input.workspaceId,
-    });
+    }));
   }
 
   attachWorkspaceConversation(input: {
@@ -223,11 +228,11 @@ export class ProjectWorkspaceService {
     workspaceId: unknown;
     conversationId: unknown;
   }): Promise<{ applied: boolean }> {
-    return this.attachConversation({
+    return workspaceSurface(() => this.attachConversation({
       userId: input.userId,
       projectId: input.workspaceId,
       conversationId: input.conversationId,
-    });
+    }));
   }
 
   detachWorkspaceConversation(input: {
@@ -235,11 +240,11 @@ export class ProjectWorkspaceService {
     workspaceId: unknown;
     conversationId: unknown;
   }): Promise<{ applied: boolean }> {
-    return this.detachConversation({
+    return workspaceSurface(() => this.detachConversation({
       userId: input.userId,
       projectId: input.workspaceId,
       conversationId: input.conversationId,
-    });
+    }));
   }
 
   async listWorkspaces(userId: string): Promise<ProjectWorkspace[]> {
@@ -582,6 +587,22 @@ export class ProjectWorkspaceService {
       }
       throw error;
     }
+  }
+}
+
+async function workspaceSurface<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (
+      error instanceof ProjectWorkspaceServiceError
+      && error.code === "PROJECT_NOT_FOUND"
+    ) {
+      throw new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");
+    }
+    throw error;
   }
 }
 
