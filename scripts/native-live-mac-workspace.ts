@@ -13,6 +13,9 @@ import {
   removeNativeLiveMacWorkspaceRegistryEntry,
   setNativeLiveMacWorkspaceRegistryEntry,
 } from "../src/domains/bridge/native-live-mac-workspace-registry.js";
+import {
+  pickNativeLiveMacWorkspaceRoot,
+} from "../src/domains/bridge/native-live-mac-workspace-picker.js";
 
 const registryPath =
   resolveNativeLiveMacWorkspaceRegistryPath(
@@ -31,6 +34,30 @@ if (command === "list") {
     registryPath,
     workspaces: loadNativeLiveMacWorkspaceRegistry(registryPath),
   });
+} else if (command === "pick") {
+  if (!workspaceId || workspaceRoot !== undefined) usage();
+  const pickedRoot = pickNativeLiveMacWorkspaceRoot();
+  if (pickedRoot === null) {
+    print({
+      outcome: "cancelled",
+      registryPath,
+      workspaceId,
+    });
+  } else {
+    const canonicalRoot = canonicalWorkspaceRoot(pickedRoot);
+    const workspaces = setNativeLiveMacWorkspaceRegistryEntry(
+      registryPath,
+      workspaceId,
+      canonicalRoot,
+    );
+    print({
+      outcome: "set",
+      source: "macos_picker",
+      registryPath,
+      workspaceId,
+      workspaceRoot: workspaces[workspaceId],
+    });
+  }
 } else if (command === "set") {
   if (!workspaceId || !workspaceRoot) usage();
   const canonicalRoot = canonicalWorkspaceRoot(workspaceRoot);
@@ -92,6 +119,7 @@ function usage(): never {
     [
       "Usage:",
       "  pnpm runtime:native-live-workspace list",
+      "  pnpm runtime:native-live-workspace pick <workspace-uuid>",
       "  pnpm runtime:native-live-workspace set <workspace-uuid> <absolute-directory>",
       "  pnpm runtime:native-live-workspace remove <workspace-uuid>",
     ].join("\n"),
