@@ -41,6 +41,8 @@ export type NativeLivePreparedTurn = {
   replacementTargetUserMessageId?: string | null;
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
+  workspaceId: string | null;
+  expectedWorkspaceRoot: string | null;
   executionSelection?: NativeLiveExecutionSelection | null;
   prompt: string;
   mindPrepared: boolean;
@@ -52,6 +54,7 @@ export type NativeLivePrepareFailureCode =
   | "STALE_HEAD"
   | "BRANCH_POINT_INVALID"
   | "CHECKPOINT_NOT_FOUND"
+  | "WORKSPACE_BINDING_AMBIGUOUS"
   | "REQUEST_CONFLICT"
   | "INTERNAL_ERROR";
 
@@ -202,6 +205,8 @@ export interface NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
+    workspaceId: string | null;
+    effectiveWorkspaceRoot: string;
     blocks: NativeLiveContentBlockInput[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
@@ -431,6 +436,8 @@ export class NativeLiveBackendTurnCoordinator {
         userId,
         preparation,
         providerSessionId: result.provider_session_id,
+        workspaceId: result.workspace_id,
+        effectiveWorkspaceRoot: result.effective_workspace_root,
         blocks: parsedMind.visibleBlocks,
         normalizedEvents: result.normalized_events,
         runtimeMetadata: result.runtime_metadata ?? null,
@@ -502,6 +509,8 @@ export function nativeLiveRuntimeCommandFromPreparation(
     canonical_user_message_id: preparation.canonicalUserMessageId,
     runtime_mode: preparation.runtimeMode,
     parent_provider_session_id: preparation.parentProviderSessionId,
+    workspace_id: preparation.workspaceId,
+    expected_workspace_root: preparation.expectedWorkspaceRoot,
     execution_selection: preparation.executionSelection ?? null,
     prompt: preparation.prompt,
   };
