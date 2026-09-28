@@ -227,16 +227,6 @@ struct ChatView: View {
         }
     }
 
-    private var workspaceSelectionEnabled: Bool {
-        if isDraftConversation {
-            return true
-        }
-        guard appModel.activeNativeLiveWorkspaceID == nil else {
-            return false
-        }
-        return appModel.nativeLiveCurrentPath?.currentHeadMessageId == nil
-    }
-
     private var visibleRuntimeSurface:
         NativeLiveRuntimeSurfaceState? {
         guard let surface = appModel.nativeLiveRuntimeSurface,
