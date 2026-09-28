@@ -690,7 +690,7 @@ private struct WorkspaceConversationsView: View {
 
     @MainActor
     private func detach(
-        _ conversation: ProjectConversationSummary
+        _ conversation: WorkspaceConversationSummary
     ) async {
         guard let conversationID =
             UUID(uuidString: conversation.conversationId) else {
