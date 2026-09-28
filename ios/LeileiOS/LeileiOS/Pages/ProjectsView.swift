@@ -1,7 +1,7 @@
 import SwiftUI
 import Foundation
 
-struct ProjectsView: View {
+struct WorkspacesView: View {
     @EnvironmentObject private var appModel: AppModel
 
     let onOpenConversation: (UUID) -> Void
@@ -173,9 +173,9 @@ private struct WorkspaceDetailView: View {
                 }
             }
 
-            Section("Claude project environment") {
+            Section("Claude Workspace environment") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Uses the bound local project directory.")
+                    Text("Uses the bound local Workspace directory.")
                         .foregroundStyle(.primary)
 
                     Text(
@@ -1147,7 +1147,7 @@ private struct WorkspaceResourceEditSheet: View {
     }
 }
 
-struct ProjectFilePickerSheet: View {
+struct WorkspaceFilePickerSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
