@@ -607,6 +607,8 @@ export function prepareNativeLiveTurnHandler(
           requestId: result.command.request_id,
           conversationId: result.command.conversation_id,
           userMessageId: result.command.canonical_user_message_id,
+          workspaceId: result.command.workspace_id,
+          expectedWorkspaceRoot: result.command.expected_workspace_root,
         },
       });
   };
@@ -1155,6 +1157,8 @@ function nativeLiveTurnResponseData(
     conversationId: turn.conversationId,
     operation: turn.operation,
     userMessageId: turn.canonicalUserMessageId,
+    workspaceId: turn.workspaceId,
+    expectedWorkspaceRoot: turn.expectedWorkspaceRoot,
     executionSelection: turn.executionSelection,
     canonicalStatus: turn.canonicalStatus,
     dispatchStatus: turn.dispatchStatus,
