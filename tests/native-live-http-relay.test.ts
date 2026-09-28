@@ -62,6 +62,8 @@ class FakeTurnReader {
       conversationId,
       operation: "send" as const,
       canonicalUserMessageId: userMessageId,
+      workspaceId: null,
+      expectedWorkspaceRoot: null,
       executionSelection: {
         model: "claude-opus-5-5" as const,
         thinking: "adaptive" as const,
@@ -466,6 +468,8 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         requestId,
         conversationId,
         userMessageId,
+        workspaceId: null,
+        expectedWorkspaceRoot: null,
       });
       assert.equal(JSON.stringify(payload).includes("private prompt"), false);
       assert.deepEqual(relayService.calls, [{
