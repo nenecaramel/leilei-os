@@ -439,6 +439,8 @@ struct NativeLiveMessageSurface: View {
 
 
 private struct NativeLiveMessageRow: View {
+    @EnvironmentObject private var appModel: AppModel
+
     let message: NativeLiveCurrentPathMessage
     let displayTextOverride: String?
     let showPendingReplacement: Bool
@@ -448,8 +450,14 @@ private struct NativeLiveMessageRow: View {
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
+    @State private var mindWriteItems:
+        [MindWriteIndicatorItem] = []
+
     var body: some View {
         rowContent
+            .task(id: "\(message.id):\(message.status)") {
+                await loadMindWrites()
+            }
     }
 
     @ViewBuilder
@@ -516,7 +524,7 @@ private struct NativeLiveMessageRow: View {
 
             messageStatus
 
-            MindWriteIndicator(items: [])
+            MindWriteIndicator(items: mindWriteItems)
 
             HStack(spacing: 12) {
                 if let copyText {
@@ -616,6 +624,30 @@ private struct NativeLiveMessageRow: View {
             .joined(separator: "\n\n")
 
         return text.isEmpty ? nil : text
+    }
+
+    @MainActor
+    private func loadMindWrites() async {
+        guard message.role == "assistant",
+              message.status != "pending",
+              message.status != "streaming" else {
+            mindWriteItems = []
+            return
+        }
+
+        do {
+            let projection = try await appModel.api.mindWrites(
+                messageID: message.id
+            )
+            mindWriteItems = projection.kinds.map {
+                MindWriteIndicatorItem(
+                    kind: $0.kind.displayName,
+                    count: $0.count
+                )
+            }
+        } catch {
+            mindWriteItems = []
+        }
     }
 
     private func normalizedText(_ text: String?) -> String? {
