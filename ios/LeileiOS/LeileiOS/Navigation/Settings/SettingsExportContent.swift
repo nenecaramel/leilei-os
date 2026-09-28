@@ -48,7 +48,7 @@ struct SettingsExportContent: View {
                 }
             }
 
-            if let errorMessage {
+            if errorMessage != nil {
                 Section {
                     SettingsSectionState(
                         title: "Failed"
