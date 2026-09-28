@@ -25,6 +25,8 @@ function command(
     canonical_user_message_id: userMessageId,
     runtime_mode: "new",
     parent_provider_session_id: null,
+    workspace_id: null,
+    expected_workspace_root: null,
     prompt: "hello",
     ...input,
   };
@@ -56,6 +58,8 @@ test("new command invokes sendNew and returns a correlated success envelope", as
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-new",
+    workspace_id: null,
+    effective_workspace_root: "/",
     normalized_events: [
       { type: "result", payload: { status: "success", final_text: "READY" } },
     ],
