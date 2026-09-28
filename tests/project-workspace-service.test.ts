@@ -241,6 +241,12 @@ test("workspace filter and resource kind are validated before persistence", asyn
     input: { userId, workspaceId },
   });
 
+  await service.listProjects({ userId, conversationId });
+  assert.deepEqual(repository.last, {
+    name: "listProjects",
+    input: { userId, conversationId },
+  });
+
   await assert.rejects(
     service.listResources({
       userId,
