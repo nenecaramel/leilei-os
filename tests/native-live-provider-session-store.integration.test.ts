@@ -72,11 +72,13 @@ test(
     await service.append({
       userId: userA,
       key: main,
+      appendBatchId: crypto.randomUUID(),
       entries: [{ type: "user", n: 1 }],
     });
     await service.append({
       userId: userA,
       key: main,
+      appendBatchId: crypto.randomUUID(),
       entries: [
         { type: "assistant", n: 2 },
         { type: "result", n: 3 },
@@ -85,6 +87,7 @@ test(
     await service.append({
       userId: userA,
       key: sub,
+      appendBatchId: crypto.randomUUID(),
       entries: [{ type: "subagent", n: 4 }],
     });
     await service.append({
@@ -93,12 +96,28 @@ test(
         workspaceId: workspaceB,
         sessionId: "shared-session",
       },
+      appendBatchId: crypto.randomUUID(),
       entries: [{ type: "user", workspace: "b" }],
     });
     await service.append({
       userId: userB,
       key: main,
+      appendBatchId: crypto.randomUUID(),
       entries: [{ type: "user", user: "b" }],
+    });
+
+    const retryBatchId = crypto.randomUUID();
+    await service.append({
+      userId: userA,
+      key: main,
+      appendBatchId: retryBatchId,
+      entries: [{ type: "assistant", retry: true }],
+    });
+    await service.append({
+      userId: userA,
+      key: main,
+      appendBatchId: retryBatchId,
+      entries: [{ type: "assistant", retry: true }],
     });
 
     assert.deepEqual(
@@ -107,7 +126,44 @@ test(
         { type: "user", n: 1 },
         { type: "assistant", n: 2 },
         { type: "result", n: 3 },
+        { type: "assistant", retry: true },
       ],
+      "one append batch replay must be idempotent",
+    );
+
+    assert.equal(
+      await service.getStatus({
+        userId: userA,
+        workspaceId: workspaceA,
+        sessionId: "shared-session",
+      }),
+      null,
+    );
+    await service.markIncomplete({
+      userId: userA,
+      workspaceId: workspaceA,
+      sessionId: "shared-session",
+    });
+    assert.equal(
+      await service.getStatus({
+        userId: userA,
+        workspaceId: workspaceA,
+        sessionId: "shared-session",
+      }),
+      "incomplete",
+    );
+    await service.markComplete({
+      userId: userA,
+      workspaceId: workspaceA,
+      sessionId: "shared-session",
+    });
+    assert.equal(
+      await service.getStatus({
+        userId: userA,
+        workspaceId: workspaceA,
+        sessionId: "shared-session",
+      }),
+      "complete",
     );
     assert.deepEqual(
       await service.load({ userId: userA, key: sub }),
@@ -168,18 +224,29 @@ test(
         { type: "user", n: 1 },
         { type: "assistant", n: 2 },
         { type: "result", n: 3 },
+        { type: "assistant", retry: true },
       ],
     );
 
     await service.append({
       userId: userA,
       key: sub,
+      appendBatchId: crypto.randomUUID(),
       entries: [{ type: "subagent", n: 5 }],
     });
     await service.delete({ userId: userA, key: main });
     assert.equal(
       await service.load({ userId: userA, key: main }),
       null,
+    );
+    assert.equal(
+      await service.getStatus({
+        userId: userA,
+        workspaceId: workspaceA,
+        sessionId: "shared-session",
+      }),
+      null,
+      "main transcript deletion must remove portability status",
     );
     assert.equal(
       await service.load({ userId: userA, key: sub }),
