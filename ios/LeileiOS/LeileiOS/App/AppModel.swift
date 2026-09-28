@@ -66,10 +66,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
     @Published private(set) var nativeLiveRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
+    @Published private(set) var mindWritesByMessageID:
+        [String: MindProductMessageWriteProjection] = [:]
 
     private var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
     private var nativeLiveRuntimeObservationTask: Task<Void, Never>?
+    private var mindWriteRequestsInFlight: Set<String> = []
+    private var currentHeadMindWriteRefreshTask: Task<Void, Never>?
     private var conversationBootstrapInFlight = false
     private var conversationPaginationInFlight = false
     private var archivedConversationBootstrapInFlight = false
@@ -685,6 +689,86 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshMindWrites(
+        messageID: String,
+        force: Bool = false
+    ) async {
+        guard isAuthenticated,
+              !messageID.isEmpty else {
+            return
+        }
+
+        if !force,
+           mindWritesByMessageID[messageID] != nil {
+            return
+        }
+
+        guard !mindWriteRequestsInFlight.contains(messageID) else {
+            return
+        }
+
+        mindWriteRequestsInFlight.insert(messageID)
+        defer {
+            mindWriteRequestsInFlight.remove(messageID)
+        }
+
+        do {
+            let projection = try await api.mindWrites(
+                messageID: messageID
+            )
+            mindWritesByMessageID[messageID] = projection
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            // Message-level Mind projection is fail-soft.
+        }
+    }
+
+    private func scheduleCurrentHeadMindWriteRefresh() {
+        currentHeadMindWriteRefreshTask?.cancel()
+
+        guard let messageID =
+                nativeLiveCurrentPath?.currentHeadMessageId,
+              nativeLiveCurrentPath?.messages.contains(where: {
+                  $0.id == messageID
+                      && $0.role == "assistant"
+              }) == true else {
+            return
+        }
+
+        currentHeadMindWriteRefreshTask =
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+
+                for attempt in 0..<6 {
+                    guard !Task.isCancelled else {
+                        return
+                    }
+
+                    await self.refreshMindWrites(
+                        messageID: messageID,
+                        force: true
+                    )
+
+                    if let projection =
+                            self.mindWritesByMessageID[messageID],
+                       projection.total > 0 {
+                        return
+                    }
+
+                    guard attempt < 5 else {
+                        return
+                    }
+
+                    try? await Task.sleep(
+                        for: .seconds(2)
+                    )
+                }
+            }
+    }
+
     func openNativeLiveConversation(_ conversationID: UUID) async {
         if activeNativeLiveConversationID != conversationID {
             activeNativeLiveConversationID = conversationID
@@ -916,6 +1000,7 @@ final class AppModel: ObservableObject {
             conversationID: conversationID
         )
         await refreshNativeLiveCurrentPath(force: true)
+        scheduleCurrentHeadMindWriteRefresh()
     }
 
     private func beginNativeLiveRuntimeObservation(
@@ -1340,6 +1425,10 @@ final class AppModel: ObservableObject {
         nativeLiveCurrentPath = nil
         nativeLiveRuntimeMetadata = nil
         nativeLiveRuntimeMetadataByConversationID.removeAll()
+        mindWritesByMessageID.removeAll()
+        mindWriteRequestsInFlight.removeAll()
+        currentHeadMindWriteRefreshTask?.cancel()
+        currentHeadMindWriteRefreshTask = nil
         nativeLiveRuntimeObservationTask?.cancel()
         nativeLiveRuntimeObservationTask = nil
         nativeLiveRuntimeSurface = nil
