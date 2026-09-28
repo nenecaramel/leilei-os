@@ -66,7 +66,8 @@
     "hygiene:check": "node scripts/local-hygiene.mjs --check",
     "hygiene:clean": "node scripts/local-hygiene.mjs --clean",
     "hygiene:finish": "pnpm hygiene:clean && pnpm hygiene:check",
-    "runtime:native-live-workspace": "tsx scripts/native-live-mac-workspace.ts"
+    "runtime:native-live-workspace": "tsx scripts/native-live-mac-workspace.ts",
+    "test:native-live-workspace-config-real": "pnpm --dir tools/claude-bridge smoke:workspace-config"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
