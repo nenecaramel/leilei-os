@@ -755,6 +755,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   ) {
     const id = nonblankString(sessionId);
     if (
+      mirrorFailed
+      && id
+      && this.sessionStore
+      && typeof this.sessionStore.discardPendingAppends === "function"
+    ) {
+      this.sessionStore.discardPendingAppends(id);
+    }
+    if (
       !id
       || !canComplete
       || mirrorFailed
