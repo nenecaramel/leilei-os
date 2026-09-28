@@ -5,6 +5,7 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   nativeLiveBackgroundModelJobs,
+  productCreateIdempotency,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -46,6 +47,9 @@ test(
           await database.db
             .delete(conversations)
             .where(eq(conversations.userId, userId));
+          await database.db
+            .delete(productCreateIdempotency)
+            .where(eq(productCreateIdempotency.userId, userId));
           await database.db
             .delete(users)
             .where(eq(users.id, userId));
