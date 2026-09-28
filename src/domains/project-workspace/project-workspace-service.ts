@@ -1,5 +1,10 @@
 import type { ProjectResourceKind } from "../../database/schema.js";
 import {
+  hashProductCreateRequest,
+  normalizeProductCreateIdempotencyKey,
+  ProductCreateIdempotencyError,
+} from "../product-write/product-create-idempotency.js";
+import {
   ActiveUserAuthorizationError,
   requireActiveUser,
 } from "../require-active-user.js";
@@ -25,6 +30,8 @@ export type ProjectWorkspaceServiceErrorCode =
   | "RESOURCE_NOT_FOUND"
   | "VERSION_CONFLICT"
   | "RESOURCE_CONFLICT"
+  | "IDEMPOTENCY_CONFLICT"
+  | "INVALID_IDEMPOTENCY_KEY"
   | "CONVERSATION_NOT_FOUND";
 
 export class ProjectWorkspaceServiceError extends Error {
@@ -77,13 +84,33 @@ export class ProjectWorkspaceService {
     userId: string;
     name: unknown;
     description?: unknown;
+    idempotencyKey?: unknown;
   }): Promise<ProductWorkspace> {
     await this.requireUser(input.userId);
-    return this.repository.createProductWorkspace({
+    const name = requiredText(input.name, 200, "name");
+    const description = optionalText(
+      input.description,
+      4000,
+      "description",
+    );
+    const idempotencyKey = productCreateIdempotencyKey(
+      input.idempotencyKey,
+    );
+    const result = await this.repository.createProductWorkspace({
       userId: input.userId,
-      name: requiredText(input.name, 200, "name"),
-      description: optionalText(input.description, 4000, "description"),
+      name,
+      description,
+      idempotencyKey,
+      requestHash: hashProductCreateRequest({
+        operation: "workspace_create",
+        name,
+        description,
+      }),
     });
+    if (result.outcome === "idempotency_conflict") {
+      throw new ProjectWorkspaceServiceError("IDEMPOTENCY_CONFLICT");
+    }
+    return result.value;
   }
 
   async updateProductWorkspace(input: {
@@ -169,17 +196,47 @@ export class ProjectWorkspaceService {
     title?: unknown;
     content?: unknown;
     metadata?: unknown;
+    idempotencyKey?: unknown;
   }): Promise<WorkspaceResource> {
-    return workspaceSurface(async () =>
-      toWorkspaceResource(await this.createResource({
-        userId: input.userId,
-        projectId: input.workspaceId,
-        kind: input.kind,
-        key: input.key,
-        title: input.title,
-        content: input.content,
-        metadata: input.metadata,
-      })));
+    await this.requireUser(input.userId);
+    const workspaceId = uuid(input.workspaceId, "workspaceId");
+    const kind = resourceKind(input.kind);
+    const key = resourceKey(kind, input.key);
+    const title = optionalText(input.title, 500, "title");
+    const content = optionalContent(input.content);
+    const normalizedMetadata = metadata(input.metadata);
+    const idempotencyKey = productCreateIdempotencyKey(
+      input.idempotencyKey,
+    );
+    const result = await this.repository.createWorkspaceResource({
+      userId: input.userId,
+      workspaceId,
+      kind,
+      key,
+      title,
+      content,
+      metadata: normalizedMetadata,
+      idempotencyKey,
+      requestHash: hashProductCreateRequest({
+        operation: "workspace_resource_create",
+        workspaceId,
+        kind,
+        key,
+        title,
+        content,
+        metadata: normalizedMetadata,
+      }),
+    });
+    if (result.outcome === "workspace_not_found") {
+      throw new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");
+    }
+    if (result.outcome === "resource_conflict") {
+      throw new ProjectWorkspaceServiceError("RESOURCE_CONFLICT");
+    }
+    if (result.outcome === "idempotency_conflict") {
+      throw new ProjectWorkspaceServiceError("IDEMPOTENCY_CONFLICT");
+    }
+    return toWorkspaceResource(result.value);
   }
 
   async updateWorkspaceResource(input: {
@@ -746,6 +803,20 @@ function unwrapDelete(
     throw new ProjectWorkspaceServiceError("VERSION_CONFLICT");
   }
   throw new ProjectWorkspaceServiceError(notFoundCode);
+}
+
+function productCreateIdempotencyKey(value: unknown): string {
+  try {
+    return normalizeProductCreateIdempotencyKey(value);
+  } catch (error) {
+    if (error instanceof ProductCreateIdempotencyError) {
+      throw new ProjectWorkspaceServiceError(
+        "INVALID_IDEMPOTENCY_KEY",
+        "Idempotency-Key is required and must be 16-128 safe characters.",
+      );
+    }
+    throw error;
+  }
 }
 
 function invalid(message: string): never {

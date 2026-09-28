@@ -1126,7 +1126,8 @@ final class LeileiAPIClient {
         kind: MindProductKind,
         text: String,
         occurredAt: Date? = nil,
-        note: String? = nil
+        note: String? = nil,
+        requestID: UUID
     ) async throws -> MindProductItem {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [
@@ -1145,7 +1146,8 @@ final class LeileiAPIClient {
             path: "/api/v1/mind",
             method: "POST",
             body: body,
-            authenticated: true
+            authenticated: true,
+            idempotencyKey: requestID.uuidString.lowercased()
         )
         return envelope.data
     }
@@ -1208,7 +1210,8 @@ final class LeileiAPIClient {
 
     func createWorkspace(
         name: String,
-        description: String? = nil
+        description: String? = nil,
+        requestID: UUID
     ) async throws -> WorkspaceSummary {
         let body = try JSONEncoder().encode(
             ProjectWorkspaceCreateBody(
@@ -1220,7 +1223,8 @@ final class LeileiAPIClient {
             path: "/api/v1/workspaces",
             method: "POST",
             body: body,
-            authenticated: true
+            authenticated: true,
+            idempotencyKey: requestID.uuidString.lowercased()
         )
         return envelope.data
     }
@@ -1302,7 +1306,8 @@ final class LeileiAPIClient {
         key: String,
         title: String?,
         content: String?,
-        metadata: [String: NativeLiveJSONValue] = [:]
+        metadata: [String: NativeLiveJSONValue] = [:],
+        requestID: UUID
     ) async throws -> WorkspaceResource {
         let body = try JSONEncoder().encode(
             ProjectResourceCreateBody(
@@ -1317,7 +1322,8 @@ final class LeileiAPIClient {
             path: "/api/v1/workspaces/\(workspaceID)/resources",
             method: "POST",
             body: body,
-            authenticated: true
+            authenticated: true,
+            idempotencyKey: requestID.uuidString.lowercased()
         )
         return envelope.data
     }

@@ -455,6 +455,8 @@ private struct MindManualEntrySheet: View {
     @State private var occurredAt = Date.now
     @State private var saving = false
     @State private var failed = false
+    @State private var pendingRequestID: UUID?
+    @State private var pendingRequestSignature: String?
 
     var body: some View {
         NavigationStack {
@@ -547,23 +549,43 @@ private struct MindManualEntrySheet: View {
             in: .whitespacesAndNewlines
         )
 
+        let desiredOccurredAt =
+            hasOccurredAt ? occurredAt : nil
+        let desiredNote =
+            normalizedNote.isEmpty ? nil : normalizedNote
+        let signature = [
+            kind.rawValue,
+            normalizedText,
+            desiredOccurredAt.map {
+                String($0.timeIntervalSince1970)
+            } ?? "",
+            desiredNote ?? ""
+        ].joined(separator: "\u{0}")
+        let requestID = requestID(for: signature)
+
         do {
             _ = try await appModel.api.createManualMind(
                 kind: kind,
                 text: normalizedText,
-                occurredAt:
-                    hasOccurredAt
-                        ? occurredAt
-                        : nil,
-                note:
-                    normalizedNote.isEmpty
-                        ? nil
-                        : normalizedNote
+                occurredAt: desiredOccurredAt,
+                note: desiredNote,
+                requestID: requestID
             )
             dismiss()
         } catch {
             failed = true
         }
+    }
+
+    private func requestID(for signature: String) -> UUID {
+        if pendingRequestSignature == signature,
+           let pendingRequestID {
+            return pendingRequestID
+        }
+        let requestID = UUID()
+        pendingRequestSignature = signature
+        pendingRequestID = requestID
+        return requestID
     }
 }
 

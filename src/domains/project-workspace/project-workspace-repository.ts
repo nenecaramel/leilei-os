@@ -20,8 +20,14 @@ import {
   users,
   type ProjectResourceKind,
 } from "../../database/schema.js";
+import {
+  lockAndReadProductCreateIdempotency,
+  recordProductCreateIdempotency,
+} from "../product-write/product-create-idempotency.js";
 import type {
+  CreateProductWorkspaceOutcome,
   CreateResourceOutcome,
+  CreateWorkspaceResourceOutcome,
   DeleteMutationOutcome,
   DeleteProductWorkspaceOutcome,
   ProjectConversation,
@@ -110,9 +116,30 @@ implements ProjectWorkspaceRepository {
     userId: string;
     name: string;
     description: string | null;
-  }): Promise<ProductWorkspace> {
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<CreateProductWorkspaceOutcome> {
     return this.db.transaction(
       async (transaction) => {
+        const receipt = await lockAndReadProductCreateIdempotency(
+          transaction,
+          {
+            userId: input.userId,
+            operation: "workspace_create",
+            idempotencyKey: input.idempotencyKey,
+          },
+        );
+        if (receipt) {
+          if (receipt.requestHash !== input.requestHash) {
+            return { outcome: "idempotency_conflict" as const };
+          }
+          return {
+            outcome: "committed" as const,
+            value:
+              receipt.response as unknown as ProductWorkspace,
+          };
+        }
+
         const [backing] = await transaction
           .insert(projectWorkspaces)
           .values({
@@ -135,7 +162,18 @@ implements ProjectWorkspaceRepository {
           })
           .returning(projectSelection());
         if (!row) throw new Error("Workspace insert failed.");
-        return mapProductWorkspace(row);
+
+        const value = mapProductWorkspace(row);
+        await recordProductCreateIdempotency(transaction, {
+          userId: input.userId,
+          operation: "workspace_create",
+          idempotencyKey: input.idempotencyKey,
+          requestHash: input.requestHash,
+          resourceType: "workspace",
+          resourceId: value.id,
+          response: value as unknown as Record<string, unknown>,
+        });
+        return { outcome: "committed" as const, value };
       },
       { isolationLevel: "serializable" },
     );
@@ -532,6 +570,94 @@ implements ProjectWorkspaceRepository {
       ))
       .limit(1);
     return row ? mapResource(row) : null;
+  }
+
+  async createWorkspaceResource(input: {
+    userId: string;
+    workspaceId: string;
+    kind: ProjectResourceKind;
+    key: string;
+    title: string | null;
+    content: string | null;
+    metadata: Record<string, unknown>;
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<CreateWorkspaceResourceOutcome> {
+    return this.db.transaction(
+      async (transaction) => {
+        const receipt = await lockAndReadProductCreateIdempotency(
+          transaction,
+          {
+            userId: input.userId,
+            operation: "workspace_resource_create",
+            idempotencyKey: input.idempotencyKey,
+          },
+        );
+        if (receipt) {
+          if (receipt.requestHash !== input.requestHash) {
+            return { outcome: "idempotency_conflict" as const };
+          }
+          return {
+            outcome: "committed" as const,
+            value:
+              receipt.response as unknown as ProjectResource,
+          };
+        }
+
+        const [workspace] = await transaction
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(
+            eq(projects.userId, input.userId),
+            eq(projects.id, input.workspaceId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!workspace) {
+          return { outcome: "workspace_not_found" as const };
+        }
+
+        const [existing] = await transaction
+          .select({ id: projectResources.id })
+          .from(projectResources)
+          .where(and(
+            eq(projectResources.projectId, input.workspaceId),
+            eq(projectResources.kind, input.kind),
+            eq(projectResources.resourceKey, input.key),
+          ))
+          .limit(1);
+        if (existing) {
+          return { outcome: "resource_conflict" as const };
+        }
+
+        const [row] = await transaction
+          .insert(projectResources)
+          .values({
+            userId: input.userId,
+            projectId: input.workspaceId,
+            kind: input.kind,
+            resourceKey: input.key,
+            title: input.title,
+            content: input.content,
+            metadata: input.metadata,
+          })
+          .returning(resourceSelection());
+        if (!row) throw new Error("Workspace resource insert failed.");
+
+        const value = mapResource(row);
+        await recordProductCreateIdempotency(transaction, {
+          userId: input.userId,
+          operation: "workspace_resource_create",
+          idempotencyKey: input.idempotencyKey,
+          requestHash: input.requestHash,
+          resourceType: "workspace_resource",
+          resourceId: value.id,
+          response: value as unknown as Record<string, unknown>,
+        });
+        return { outcome: "committed" as const, value };
+      },
+      { isolationLevel: "serializable" },
+    );
   }
 
   async createResource(input: {

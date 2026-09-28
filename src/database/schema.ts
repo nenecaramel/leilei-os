@@ -510,6 +510,73 @@ export const mcpWriteIdempotency = pgTable(
   ],
 );
 
+export const productCreateIdempotency = pgTable(
+  "product_create_idempotency",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    operation: varchar("operation", { length: 64 })
+      .$type<
+        | "workspace_create"
+        | "workspace_resource_create"
+        | "mind_manual_create"
+      >()
+      .notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    resourceType: varchar("resource_type", { length: 32 })
+      .$type<"workspace" | "workspace_resource" | "mind_state">()
+      .notNull(),
+    resourceId: text("resource_id").notNull(),
+    response: jsonb("response")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("product_create_idempotency_user_operation_key_uidx").on(
+      table.userId,
+      table.operation,
+      table.idempotencyKey,
+    ),
+    index("product_create_idempotency_resource_idx").on(
+      table.resourceType,
+      table.resourceId,
+    ),
+    index("product_create_idempotency_created_id_idx").on(
+      table.createdAt.asc(),
+      table.id.asc(),
+    ),
+    check(
+      "product_create_idempotency_operation_allowed",
+      sql`${table.operation} IN ('workspace_create','workspace_resource_create','mind_manual_create')`,
+    ),
+    check(
+      "product_create_idempotency_key_format",
+      sql`${table.idempotencyKey} ~ '^[A-Za-z0-9._:-]{16,128}$'`,
+    ),
+    check(
+      "product_create_idempotency_hash_format",
+      sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "product_create_idempotency_resource_type_allowed",
+      sql`${table.resourceType} IN ('workspace','workspace_resource','mind_state')`,
+    ),
+    check(
+      "product_create_idempotency_response_object",
+      sql`jsonb_typeof(${table.response}) = 'object'`,
+    ),
+  ],
+);
+
 export const resourceLifecycleEvents = pgTable(
   "resource_lifecycle_events",
   {

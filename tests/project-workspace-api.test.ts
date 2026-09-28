@@ -210,7 +210,10 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
 
     const workspaceCreate = await fetch(`${baseUrl}/workspaces`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "workspace-create-api-0001",
+      },
       body: JSON.stringify({ name: "LeileiOS" }),
     });
     assert.equal(workspaceCreate.status, 201);
@@ -235,7 +238,10 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
       `${baseUrl}/workspaces/${projectId}/resources`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "workspace-resource-api-0001",
+        },
         body: JSON.stringify({
           kind: "instructions",
           key: "default",
@@ -313,6 +319,7 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
         userId,
         name: "LeileiOS",
         description: undefined,
+        idempotencyKey: "workspace-create-api-0001",
       },
     },
     {
@@ -333,6 +340,7 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
         title: undefined,
         content: "Use the Workspace context.",
         metadata: undefined,
+        idempotencyKey: "workspace-resource-api-0001",
       },
     },
     {
@@ -396,6 +404,41 @@ test("Workspaces API maps version conflicts, not found, invalid identity, and au
       },
     );
     assert.equal(conflict.status, 409);
+
+    service.failure =
+      new ProjectWorkspaceServiceError("IDEMPOTENCY_CONFLICT");
+    const idempotencyConflict = await fetch(
+      `${baseUrl}/workspaces`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "workspace-create-api-0001",
+        },
+        body: JSON.stringify({ name: "Different" }),
+      },
+    );
+    assert.equal(idempotencyConflict.status, 409);
+    assert.equal(
+      (await idempotencyConflict.json()).error.code,
+      "IDEMPOTENCY_CONFLICT",
+    );
+
+    service.failure =
+      new ProjectWorkspaceServiceError("INVALID_IDEMPOTENCY_KEY");
+    const invalidKey = await fetch(
+      `${baseUrl}/workspaces`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "LeileiOS" }),
+      },
+    );
+    assert.equal(invalidKey.status, 400);
+    assert.equal(
+      (await invalidKey.json()).error.code,
+      "INVALID_IDEMPOTENCY_KEY",
+    );
 
     service.failure =
       new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");

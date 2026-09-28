@@ -4,6 +4,9 @@ import {
   ProjectWorkspaceService,
   ProjectWorkspaceServiceError,
 } from "../src/domains/project-workspace/project-workspace-service.js";
+import {
+  hashProductCreateRequest,
+} from "../src/domains/product-write/product-create-idempotency.js";
 import type {
   ProjectWorkspaceRepository,
   ProjectWorkspace,
@@ -79,7 +82,19 @@ class Repository implements ProjectWorkspaceRepository {
   async getProductWorkspace() { return productWorkspace; }
   async createProductWorkspace(input: Parameters<ProjectWorkspaceRepository["createProductWorkspace"]>[0]) {
     this.last = { name: "createProductWorkspace", input };
-    return productWorkspace;
+    return { outcome: "committed" as const, value: productWorkspace };
+  }
+  async createWorkspaceResource(input: Parameters<ProjectWorkspaceRepository["createWorkspaceResource"]>[0]) {
+    this.last = { name: "createWorkspaceResource", input };
+    return {
+      outcome: "committed" as const,
+      value: {
+        ...resource,
+        projectId: input.workspaceId,
+        kind: input.kind,
+        key: input.key,
+      },
+    };
   }
   async updateProductWorkspace() {
     return {
@@ -136,10 +151,12 @@ test("single-layer Workspace service normalizes product identity without exposin
   const repository = new Repository();
   const service = new ProjectWorkspaceService(repository);
 
+  const idempotencyKey = "workspace-create-0001";
   const created = await service.createProductWorkspace({
     userId,
     name: "  LeileiOS  ",
     description: "  execution workspace  ",
+    idempotencyKey,
   });
   assert.equal(created.id, projectId);
   assert.deepEqual(repository.last, {
@@ -148,6 +165,12 @@ test("single-layer Workspace service normalizes product identity without exposin
       userId,
       name: "LeileiOS",
       description: "execution workspace",
+      idempotencyKey,
+      requestHash: hashProductCreateRequest({
+        operation: "workspace_create",
+        name: "LeileiOS",
+        description: "execution workspace",
+      }),
     },
   });
 
@@ -166,6 +189,34 @@ test("single-layer Workspace service normalizes product identity without exposin
   assert.equal(
     Object.prototype.hasOwnProperty.call(workspaceResource, "projectId"),
     false,
+  );
+});
+
+test("product create requests require durable idempotency keys", async () => {
+  const repository = new Repository();
+  const service = new ProjectWorkspaceService(repository);
+
+  await assert.rejects(
+    service.createProductWorkspace({
+      userId,
+      name: "LeileiOS",
+    }),
+    (error: unknown) =>
+      error instanceof ProjectWorkspaceServiceError
+      && error.code === "INVALID_IDEMPOTENCY_KEY",
+  );
+
+  await assert.rejects(
+    service.createWorkspaceResource({
+      userId,
+      workspaceId: projectId,
+      kind: "instructions",
+      key: "default",
+      content: "Use the Workspace.",
+    }),
+    (error: unknown) =>
+      error instanceof ProjectWorkspaceServiceError
+      && error.code === "INVALID_IDEMPOTENCY_KEY",
   );
 });
 

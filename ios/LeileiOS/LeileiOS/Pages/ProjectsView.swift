@@ -719,6 +719,8 @@ private struct WorkspaceCreateSheet: View {
     @State private var description = ""
     @State private var saving = false
     @State private var failed = false
+    @State private var pendingRequestID: UUID?
+    @State private var pendingRequestSignature: String?
 
     var body: some View {
         NavigationStack {
@@ -786,19 +788,36 @@ private struct WorkspaceCreateSheet: View {
                 in: .whitespacesAndNewlines
             )
 
+        let desiredDescription =
+            normalizedDescription.isEmpty
+                ? nil
+                : normalizedDescription
+        let signature =
+            normalizedName + "\u{0}" + (desiredDescription ?? "")
+        let requestID = requestID(for: signature)
+
         do {
             _ = try await appModel.api.createWorkspace(
                 name: normalizedName,
-                description:
-                    normalizedDescription.isEmpty
-                        ? nil
-                        : normalizedDescription
+                description: desiredDescription,
+                requestID: requestID
             )
             onCreated()
             dismiss()
         } catch {
             failed = true
         }
+    }
+
+    private func requestID(for signature: String) -> UUID {
+        if pendingRequestSignature == signature,
+           let pendingRequestID {
+            return pendingRequestID
+        }
+        let requestID = UUID()
+        pendingRequestSignature = signature
+        pendingRequestID = requestID
+        return requestID
     }
 }
 
@@ -941,6 +960,8 @@ private struct WorkspaceResourceCreateSheet: View {
     @State private var content = ""
     @State private var saving = false
     @State private var failed = false
+    @State private var pendingRequestID: UUID?
+    @State private var pendingRequestSignature: String?
 
     var body: some View {
         NavigationStack {
@@ -1011,25 +1032,44 @@ private struct WorkspaceResourceCreateSheet: View {
             in: .whitespacesAndNewlines
         )
 
+        let desiredTitle =
+            normalizedTitle.isEmpty ? nil : normalizedTitle
+        let desiredContent =
+            content.isEmpty ? nil : content
+        let signature = [
+            workspace.id,
+            kind.rawValue,
+            normalizedKey,
+            desiredTitle ?? "",
+            desiredContent ?? ""
+        ].joined(separator: "\u{0}")
+        let requestID = requestID(for: signature)
+
         do {
             _ = try await appModel.api.createWorkspaceResource(
                 workspaceID: workspace.id,
                 kind: kind,
                 key: normalizedKey,
-                title:
-                    normalizedTitle.isEmpty
-                        ? nil
-                        : normalizedTitle,
-                content:
-                    content.isEmpty
-                        ? nil
-                        : content
+                title: desiredTitle,
+                content: desiredContent,
+                requestID: requestID
             )
             onCreated()
             dismiss()
         } catch {
             failed = true
         }
+    }
+
+    private func requestID(for signature: String) -> UUID {
+        if pendingRequestSignature == signature,
+           let pendingRequestID {
+            return pendingRequestID
+        }
+        let requestID = UUID()
+        pendingRequestSignature = signature
+        pendingRequestID = requestID
+        return requestID
     }
 }
 

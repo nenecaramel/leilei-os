@@ -66,7 +66,7 @@ function row(
 }
 
 class Repository implements MindProductRepository {
-  inserted: Parameters<MindProductRepository["insert"]>[0] | null = null;
+  inserted: Parameters<MindProductRepository["insertManualIdempotent"]>[0] | null = null;
   deleted: Parameters<MindProductRepository["delete"]>[0] | null = null;
   row: MindProductRow | null = row();
 
@@ -84,15 +84,20 @@ class Repository implements MindProductRepository {
     return this.row;
   }
 
-  async insert(input: Parameters<MindProductRepository["insert"]>[0]) {
+  async insertManualIdempotent(
+    input: Parameters<MindProductRepository["insertManualIdempotent"]>[0],
+  ) {
     this.inserted = input;
-    return row({
-      id: input.state.id,
-      kind: input.state.kind,
-      text: input.state.text ?? null,
-      payload: input.state.payload ?? null,
-      envelope: input.state.envelope,
-    });
+    return {
+      outcome: "committed" as const,
+      row: row({
+        id: input.state.id,
+        kind: input.state.kind,
+        text: input.state.text ?? null,
+        payload: input.state.payload ?? null,
+        envelope: input.state.envelope,
+      }),
+    };
   }
 
   async delete(input: Parameters<MindProductRepository["delete"]>[0]) {
@@ -161,6 +166,7 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
     text: "  old note  ",
     occurredAt: "2025-01-02T03:04:05+08:00",
     note: "  copied by hand  ",
+    idempotencyKey: "mind-manual-create-0001",
   });
 
   assert.equal(created.source, "manual");
@@ -181,6 +187,22 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
       note: "copied by hand",
     },
   });
+});
+
+test("manual Mind create requires a durable idempotency key", async () => {
+  const repository = new Repository();
+  const service = new MindProductService(repository, "G");
+
+  await assert.rejects(
+    service.createManual({
+      userId,
+      kind: "memory",
+      text: "remember this",
+    }),
+    (error: unknown) =>
+      error instanceof MindProductServiceError
+      && error.code === "INVALID_IDEMPOTENCY_KEY",
+  );
 });
 
 test("Mind delete delegates authoritative cleanup and not-found stays observable", async () => {
@@ -232,6 +254,7 @@ test("Mind create rejects invalid text and list rejects malformed cursor", async
       userId,
       kind: "memory",
       text: "   ",
+      idempotencyKey: "mind-manual-create-0002",
     }),
     /Mind text/,
   );

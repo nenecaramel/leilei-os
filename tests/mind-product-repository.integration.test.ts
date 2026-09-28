@@ -5,6 +5,7 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   nativeLiveBackgroundModelJobs,
+  productCreateIdempotency,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -19,6 +20,7 @@ import {
 } from "../src/domains/runtime/mind-product-repository.js";
 import {
   MindProductService,
+  MindProductServiceError,
 } from "../src/domains/runtime/mind-product-service.js";
 
 const enabled =
@@ -46,6 +48,9 @@ test(
             .delete(conversations)
             .where(eq(conversations.userId, userId));
           await database.db
+            .delete(productCreateIdempotency)
+            .where(eq(productCreateIdempotency.userId, userId));
+          await database.db
             .delete(users)
             .where(eq(users.id, userId));
         }
@@ -67,13 +72,37 @@ test(
     const repository = new DrizzleMindProductRepository(database.db);
     const service = new MindProductService(repository, "G");
 
+    const manualCreateKey = "mind-manual-db-create-0001";
     const manual = await service.createManual({
       userId,
       kind: "memory",
       text: "historical manual memory",
       occurredAt: "2025-03-04T05:06:07.000Z",
       note: "typed by hand",
+      idempotencyKey: manualCreateKey,
     });
+    const manualReplay = await service.createManual({
+      userId,
+      kind: "memory",
+      text: "historical manual memory",
+      occurredAt: "2025-03-04T05:06:07.000Z",
+      note: "typed by hand",
+      idempotencyKey: manualCreateKey,
+    });
+    assert.deepEqual(manualReplay, manual);
+    await assert.rejects(
+      service.createManual({
+        userId,
+        kind: "memory",
+        text: "different manual memory",
+        occurredAt: "2025-03-04T05:06:07.000Z",
+        note: "typed by hand",
+        idempotencyKey: manualCreateKey,
+      }),
+      (error: unknown) =>
+        error instanceof MindProductServiceError
+        && error.code === "IDEMPOTENCY_CONFLICT",
+    );
     assert.equal(manual.source, "manual");
     assert.equal(manual.authority, "user_asserted");
 

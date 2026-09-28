@@ -7,6 +7,9 @@ import {
   createMindApiRouter,
   type MindApiDependencies,
 } from "../src/web-api/mind-router.js";
+import {
+  MindProductServiceError,
+} from "../src/domains/runtime/mind-product-service.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const stateId = "22222222-2222-4222-8222-222222222222";
@@ -14,28 +17,38 @@ const messageId = "33333333-3333-4333-8333-333333333333";
 
 class FakeMindService {
   calls: Array<{ name: string; input: unknown }> = [];
+  failure: MindProductServiceError | null = null;
+
+  private maybeFail() {
+    if (this.failure) throw this.failure;
+  }
 
   async list(input: unknown) {
+    this.maybeFail();
     this.calls.push({ name: "list", input });
     return { items: [], nextCursor: null };
   }
 
   async get(input: unknown) {
+    this.maybeFail();
     this.calls.push({ name: "get", input });
     return { id: stateId };
   }
 
   async createManual(input: unknown) {
+    this.maybeFail();
     this.calls.push({ name: "create", input });
     return { id: stateId };
   }
 
   async delete(input: unknown) {
+    this.maybeFail();
     this.calls.push({ name: "delete", input });
     return { deletedStateCount: 1 };
   }
 
   async readMessageWrites(input: unknown) {
+    this.maybeFail();
     this.calls.push({ name: "writes", input });
     return { messageId, total: 0, kinds: [] };
   }
@@ -80,7 +93,10 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
 
     const create = await fetch(baseUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "mind-manual-api-0001",
+      },
       body: JSON.stringify({
         kind: "thought",
         text: "old record",
@@ -116,6 +132,7 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
           text: "old record",
           occurredAt: "2025-01-01T00:00:00Z",
           note: "manual",
+          idempotencyKey: "mind-manual-api-0001",
         },
       },
       {
@@ -131,6 +148,46 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
         input: { userId, stateId },
       },
     ]);
+  });
+});
+
+test("Mind API maps durable create idempotency failures", async () => {
+  const service = new FakeMindService();
+  await withServer(service, async (baseUrl) => {
+    service.failure =
+      new MindProductServiceError("IDEMPOTENCY_CONFLICT");
+    const conflict = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "mind-manual-api-0001",
+      },
+      body: JSON.stringify({
+        kind: "memory",
+        text: "different",
+      }),
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal(
+      (await conflict.json()).error.code,
+      "IDEMPOTENCY_CONFLICT",
+    );
+
+    service.failure =
+      new MindProductServiceError("INVALID_IDEMPOTENCY_KEY");
+    const invalid = await fetch(baseUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "memory",
+        text: "remember",
+      }),
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(
+      (await invalid.json()).error.code,
+      "INVALID_IDEMPOTENCY_KEY",
+    );
   });
 });
 
