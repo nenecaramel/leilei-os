@@ -3688,7 +3688,7 @@ private enum DaySpaceDate {
         date(value) != nil
     }
 
-    static func date(_ value: String) -> Date? {
+    nonisolated static func date(_ value: String) -> Date? {
         let components = value.split(
             separator: "-",
             omittingEmptySubsequences: false
@@ -3773,7 +3773,7 @@ private enum DaySpaceDate {
         )
     }
 
-    static func fullLabel(_ value: String) -> String {
+    nonisolated static func fullLabel(_ value: String) -> String {
         guard let date = date(value) else {
             return value
         }
