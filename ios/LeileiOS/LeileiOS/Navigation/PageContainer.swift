@@ -39,7 +39,14 @@ struct PageContainer: View {
                         onDraftCommitted: onDraftCommitted
                     )
                 } else if selectedPage == .projects {
-                    ProjectsView()
+                    ProjectsView { conversationID in
+                        Task { @MainActor in
+                            await appModel.openNativeLiveConversation(
+                                conversationID
+                            )
+                            onOpenConversation()
+                        }
+                    }
                 } else if selectedPage == .globalSearch {
                     GlobalSearchView(
                         service: LeileiGlobalSearchService(api: appModel.api),
