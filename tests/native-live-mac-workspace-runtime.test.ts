@@ -83,3 +83,48 @@ test("workspace runtime pool fails closed for unmapped Workspace and moved sessi
         === "WORKSPACE_ROOT_MISMATCH",
   );
 });
+
+
+test("workspace runtime pool isolates SessionStore identity even when roots are equal", async () => {
+  const workspaceB = "66666666-6666-4666-8666-666666666666";
+  const stores: string[] = [];
+  const transports: Array<{ root: string; store: unknown }> = [];
+  const pool = new NativeLiveMacWorkspaceRuntimePool(
+    {},
+    "/Users/leilei",
+    {
+      [workspaceId]: workspaceRoot,
+      [workspaceB]: workspaceRoot,
+    },
+    async (_environment, root, store) => {
+      transports.push({ root: root!, store });
+      return { kind: "agent_sdk", runtime: fakeRuntime() };
+    },
+    (id) => {
+      stores.push(id);
+      return { workspaceId: id };
+    },
+  );
+
+  const first = await pool.resolveWorkspaceRuntime({
+    workspaceId,
+    expectedWorkspaceRoot: null,
+  });
+  const second = await pool.resolveWorkspaceRuntime({
+    workspaceId: workspaceB,
+    expectedWorkspaceRoot: null,
+  });
+
+  assert.notEqual(first.runtime, second.runtime);
+  assert.deepEqual(stores, [workspaceId, workspaceB]);
+  assert.deepEqual(transports, [
+    {
+      root: workspaceRoot,
+      store: { workspaceId },
+    },
+    {
+      root: workspaceRoot,
+      store: { workspaceId: workspaceB },
+    },
+  ]);
+});
