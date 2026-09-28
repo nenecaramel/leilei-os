@@ -400,9 +400,22 @@ test("Workspaces API maps version conflicts, not found, invalid identity, and au
     service.failure =
       new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");
     assert.equal(
-      (await fetch(`${baseUrl}/projects/${projectId}`)).status,
+      (await fetch(`${baseUrl}/workspaces/${projectId}`)).status,
       404,
     );
+
+    service.failure =
+      new ProjectWorkspaceServiceError("WORKSPACE_IN_USE");
+    const inUse = await fetch(
+      `${baseUrl}/workspaces/${projectId}`,
+      {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expected_version: 1 }),
+      },
+    );
+    assert.equal(inUse.status, 409);
+    assert.equal((await inUse.json()).error.code, "WORKSPACE_IN_USE");
 
     service.failure = null;
     const identity = await fetch(`${baseUrl}/workspaces`, {
