@@ -10,6 +10,7 @@ import {
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
   projectConversations,
+  projects,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
@@ -181,6 +182,7 @@ implements NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     const requestHash = hashJson(REQUEST_HASH_VERSION, {
@@ -188,6 +190,9 @@ implements NativeLiveBackendTurnPort {
       conversationId: input.conversationId,
       expectedHeadMessageId: input.expectedHeadMessageId,
       text: input.text,
+      ...(input.workspaceId
+        ? { workspaceId: input.workspaceId }
+        : {}),
       ...(input.executionSelection
         ? { executionSelection: input.executionSelection }
         : {}),
@@ -236,6 +241,7 @@ implements NativeLiveBackendTurnPort {
           input.userId,
           input.conversationId,
           conversation.currentHeadMessageId,
+          input.workspaceId,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -1183,6 +1189,7 @@ implements NativeLiveBackendTurnPort {
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
+    requestedWorkspaceId: string | null = null,
   ): Promise<
     | {
         ok: true;
@@ -1197,6 +1204,43 @@ implements NativeLiveBackendTurnPort {
       }
   > {
     if (!parentMessageId) {
+      if (requestedWorkspaceId) {
+        const [workspace] = await executor
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.userId, userId),
+              eq(projects.id, requestedWorkspaceId),
+            ),
+          )
+          .limit(1);
+        if (!workspace) {
+          return {
+            ok: false,
+            result: {
+              ok: false,
+              code: "WORKSPACE_NOT_FOUND",
+            },
+          };
+        }
+        await executor
+          .insert(projectConversations)
+          .values({
+            userId,
+            projectId: requestedWorkspaceId,
+            conversationId,
+          })
+          .onConflictDoNothing();
+        return {
+          ok: true,
+          runtimeMode: "new",
+          parentProviderSessionId: null,
+          workspaceId: requestedWorkspaceId,
+          expectedWorkspaceRoot: null,
+        };
+      }
+
       const workspaceRows = await executor
         .select({ projectId: projectConversations.projectId })
         .from(projectConversations)
@@ -1234,6 +1278,18 @@ implements NativeLiveBackendTurnPort {
       return {
         ok: false,
         result: { ok: false, code: "CHECKPOINT_NOT_FOUND" },
+      };
+    }
+    if (
+      requestedWorkspaceId !== null
+      && requestedWorkspaceId !== checkpoint.workspaceId
+    ) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          code: "WORKSPACE_BINDING_CONFLICT",
+        },
       };
     }
 
