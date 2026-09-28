@@ -1,12 +1,15 @@
 import express, { Router, type RequestHandler, type Response } from "express";
 import { ImportAuthorizationError, type ImportService } from "../domains/import/import-service.js";
-import { ImportValidationError } from "../domains/import/import-schema.js";
+import {
+  ImportValidationError,
+  MAX_IMPORT_PACKAGE_BYTES,
+} from "../domains/import/import-schema.js";
 
 export type ImportApiDependencies = {
   importService: Pick<ImportService, "preview" | "execute">;
 };
 
-const RAW_LIMIT = 10 * 1024 * 1024;
+const RAW_LIMIT = MAX_IMPORT_PACKAGE_BYTES;
 
 export function createImportApiRouter(dependencies: ImportApiDependencies): Router {
   const router = Router();

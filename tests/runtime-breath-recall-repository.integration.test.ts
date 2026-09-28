@@ -231,17 +231,23 @@ test(
     assert.ok(healedLifecycle);
     assert.equal(healedLifecycle.salience, 0.58);
     assert.equal(healedLifecycle.lastRecalledAt, newRecallAt);
-    assert.deepEqual(
-      (
-        storedLegacy.payload?.recall_reinforcement_v1 as {
-          contributions: unknown[];
-        }
-      ).contributions,
-      [{
-        sourceMessageId: canonicalUserTurn.id,
-        recalledAt: newRecallAt,
-        currentValue: 0.08,
-      }],
+    const contributions = (
+      storedLegacy.payload?.recall_reinforcement_v1 as {
+        contributions: Array<{
+          sourceMessageId: string;
+          recalledAt: string;
+          currentValue: number;
+        }>;
+      }
+    ).contributions;
+    assert.equal(contributions.length, 1);
+    assert.equal(
+      contributions[0]?.sourceMessageId,
+      canonicalUserTurn.id,
+    );
+    assert.equal(contributions[0]?.recalledAt, newRecallAt);
+    assert.ok(
+      Math.abs((contributions[0]?.currentValue ?? 0) - 0.08) < 1e-12,
     );
 
     const hits = recallBreath(

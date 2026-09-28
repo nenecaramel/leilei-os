@@ -78,14 +78,14 @@ test("Data restore keeps selection, preview, and execute inside the compact Syst
   assert.match(card.textContent ?? "", /Todo/);
   assert.match(card.textContent ?? "", /1 new/);
   assert.match(card.textContent ?? "", /2 new/);
-  assert.match(card.textContent ?? "", /1 new record/);
+  assert.match(card.textContent ?? "", /3 new records/);
   assert.doesNotMatch(card.textContent ?? "", /create 1|duplicate 0|conflict 0|invalid 0/);
 
   const restore = findButton(card, "Restore");
   assert.ok(restore);
   restore.click();
   await waitForPaint();
-  assert.match(card.textContent ?? "", /Restored 1 record/);
+  assert.match(card.textContent ?? "", /Restored 3 records/);
   assert.deepEqual(calls.map((call) => call.path), ["/system/data", "/system/import/preview", "/system/import/execute?expected_preview_fingerprint=" + "b".repeat(64), "/system/data"]);
   assert.equal(calls[1]?.init?.headers instanceof Object, true);
   assert.equal((calls[1]?.init?.headers as Record<string, string>)["Content-Type"], "application/octet-stream");

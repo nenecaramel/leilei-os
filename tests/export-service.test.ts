@@ -5,9 +5,15 @@ import {
   type ExportRepository,
 } from "../src/domains/export/export-service.js";
 import type {
+  ExportConversationsBundle,
+  ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportLifecycleEvent,
+  ExportMindContinuityBundle,
+  ExportMindStateRecord,
+  ExportProjectsBundle,
   ExportToolActivity,
+  ExportUniverseBundle,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
@@ -22,9 +28,19 @@ const diary: ExportDiaryRecord[] = [{
   date: "2026-08-13",
   tags: [],
   mood: null,
-  source: "web",
+  source: "chatgpt_mcp",
   author: "G",
   status: "archived",
+  created_at: EXPORTED_AT,
+  updated_at: EXPORTED_AT,
+}];
+
+const diaryComments: ExportDiaryCommentRecord[] = [{
+  id: "00000000-0000-4000-8000-000000000071",
+  diary_id: "diary-1",
+  author: "G",
+  content: "Comment",
+  revision: 2,
   created_at: EXPORTED_AT,
   updated_at: EXPORTED_AT,
 }];
@@ -37,6 +53,32 @@ const todo: ExportTodoPaper[] = [{
   updated_at: EXPORTED_AT,
   entries: [],
 }];
+
+const projects: ExportProjectsBundle = {
+  workspaces: [],
+  projects: [],
+  resources: [],
+  conversations: [],
+};
+
+const mind: ExportMindStateRecord[] = [];
+
+const mindContinuity: ExportMindContinuityBundle = {
+  drive_satisfaction_events: [],
+  curiosity_resolution_events: [],
+  distillation_watermarks: [],
+  semantic_grouping_results: [],
+};
+
+const universe: ExportUniverseBundle | null = null;
+
+const conversations: ExportConversationsBundle = {
+  conversations: [],
+  messages: [],
+  content_blocks: [],
+  attachments: [],
+  provider_checkpoints: [],
+};
 
 const lifecycle: ExportLifecycleEvent[] = [{
   id: "lifecycle-1",
@@ -60,7 +102,11 @@ const toolActivity: ExportToolActivity[] = [{
 }];
 
 function createRepository(calls: string[] = []): ExportRepository {
-  return {
+  const repository: ExportRepository = {
+    async withConsistentSnapshot(work) {
+      calls.push("snapshot");
+      return work(repository);
+    },
     async findUserById() {
       return { status: "active" };
     },
@@ -68,9 +114,49 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`diary:${userId}`);
       return diary;
     },
+    async listDiaryComments(userId) {
+      calls.push(`diary_comments:${userId}`);
+      return diaryComments;
+    },
     async listTodo(userId) {
       calls.push(`todo:${userId}`);
       return todo;
+    },
+    async listProjects(userId) {
+      calls.push(`projects:${userId}`);
+      return projects;
+    },
+    async listMind(userId) {
+      calls.push(`mind:${userId}`);
+      return mind;
+    },
+    async listMindContinuity(userId) {
+      calls.push(`mind_continuity:${userId}`);
+      return mindContinuity;
+    },
+    async hasIncompleteMindFollowUps(userId) {
+      calls.push(`mind_quiescence:${userId}`);
+      return false;
+    },
+    async hasIncompleteTurnPreparations(userId) {
+      calls.push(`turn_quiescence:${userId}`);
+      return false;
+    },
+    async hasIncompleteMindSemanticGrouping(userId) {
+      calls.push(`semantic_grouping_quiescence:${userId}`);
+      return false;
+    },
+    async hasIncompleteBackgroundModelJobs(userId) {
+      calls.push(`background_model_quiescence:${userId}`);
+      return false;
+    },
+    async listConversations(userId) {
+      calls.push(`conversations:${userId}`);
+      return conversations;
+    },
+    async listUniverse(userId) {
+      calls.push(`universe:${userId}`);
+      return universe;
     },
     async listLifecycleAudit(userId) {
       calls.push(`lifecycle:${userId}`);
@@ -81,9 +167,10 @@ function createRepository(calls: string[] = []): ExportRepository {
       return toolActivity;
     },
   };
+  return repository;
 }
 
-test("ExportService emits the owner-bound v2 contract", async () => {
+test("ExportService emits the owner-bound v3 contract", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
@@ -93,10 +180,13 @@ test("ExportService emits the owner-bound v2 contract", async () => {
     Object.keys(document),
     ["schema_version", "owner_fingerprint", "exported_at", "data"],
   );
-  assert.equal(document.schema_version, 2);
+  assert.equal(document.schema_version, 3);
   assert.equal(document.owner_fingerprint, createOwnerFingerprint(USER_ID));
   assert.equal(document.exported_at, EXPORTED_AT);
-  assert.deepEqual(document.data, { diary });
+  assert.deepEqual(document.data, {
+    diary,
+    diary_comments: diaryComments,
+  });
   assert.equal("audit" in document, false);
 });
 
@@ -121,12 +211,29 @@ test("ExportService reads only the selected active-module scope", async () => {
       () => new Date(EXPORTED_AT),
     ).createExport(USER_ID, scope, false);
 
-    assert.deepEqual(Object.keys(document.data), [key]);
-    assert.deepEqual(calls, [`${key}:${USER_ID}`]);
+    assert.deepEqual(
+      Object.keys(document.data),
+      scope === "diary"
+        ? ["diary", "diary_comments"]
+        : [key],
+    );
+    assert.deepEqual(
+      calls,
+      scope === "diary"
+        ? [
+            "snapshot",
+            `diary:${USER_ID}`,
+            `diary_comments:${USER_ID}`,
+          ]
+        : [
+            "snapshot",
+            `${key}:${USER_ID}`,
+          ],
+    );
   }
 });
 
-test("ExportService reads Diary and Todo for all scope", async () => {
+test("ExportService reads Diary, Todo, and Projects for all scope", async () => {
   const calls: string[] = [];
   const document = await new ExportService(
     createRepository(calls),
@@ -135,12 +242,143 @@ test("ExportService reads Diary and Todo for all scope", async () => {
 
   assert.deepEqual(
     Object.keys(document.data),
-    ["diary", "todo"],
+    [
+      "diary",
+      "diary_comments",
+      "todo",
+      "projects",
+      "mind",
+      "mind_continuity",
+      "conversations",
+      "universe",
+    ],
   );
   assert.deepEqual(calls, [
+    "snapshot",
     `diary:${USER_ID}`,
+    `diary_comments:${USER_ID}`,
     `todo:${USER_ID}`,
+    `turn_quiescence:${USER_ID}`,
+    `mind_quiescence:${USER_ID}`,
+    `semantic_grouping_quiescence:${USER_ID}`,
+    `background_model_quiescence:${USER_ID}`,
+    `projects:${USER_ID}`,
+    `mind:${USER_ID}`,
+    `mind_continuity:${USER_ID}`,
+    `conversations:${USER_ID}`,
+    `universe:${USER_ID}`,
   ]);
+});
+
+test("ExportService rejects all export while semantic grouping is unfinished", async () => {
+  const repository = createRepository();
+  repository.hasIncompleteMindSemanticGrouping =
+    async () => true;
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
+});
+
+test("ExportService rejects all export while background model work is unfinished", async () => {
+  const repository = createRepository();
+  repository.hasIncompleteBackgroundModelJobs =
+    async () => true;
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
+});
+
+test("ExportService rejects all export while a native turn is prepared", async () => {
+  const repository = createRepository();
+  repository.hasIncompleteTurnPreparations =
+    async () => true;
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
+});
+
+test("ExportService rejects all export while Mind follow-up is incomplete", async () => {
+  const repository = createRepository();
+  repository.hasIncompleteMindFollowUps = async () => true;
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
+});
+
+test("ExportService rejects an all export while a canonical turn is in progress", async () => {
+  const repository = createRepository();
+  repository.listConversations = async () => ({
+    conversations: [],
+    messages: [{
+      id: "00000000-0000-4000-8000-000000000001",
+      conversation_id:
+        "00000000-0000-4000-8000-000000000002",
+      parent_message_id: null,
+      role: "assistant",
+      status: "streaming",
+      raw_role: null,
+      model: null,
+      is_current_path: true,
+      current_path_index: 0,
+      turn_index: 0,
+      is_primary: true,
+      display_text: "",
+      created_at: EXPORTED_AT,
+      completed_at: null,
+      updated_at: EXPORTED_AT,
+    }],
+    content_blocks: [],
+    attachments: [],
+    provider_checkpoints: [],
+  });
+
+  await assert.rejects(
+    new ExportService(repository).createExport(
+      USER_ID,
+      "all",
+      false,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && error.code === "EXPORT_IN_PROGRESS",
+  );
 });
 
 test("ExportService includes audit only when requested", async () => {

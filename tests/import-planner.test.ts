@@ -24,7 +24,7 @@ const diary: ExportDiaryRecord = {
   date: "2026-08-13",
   tags: ["active"],
   mood: null,
-  source: "web",
+  source: "chatgpt_mcp",
   author: "C",
   status: "active",
   created_at: NOW,

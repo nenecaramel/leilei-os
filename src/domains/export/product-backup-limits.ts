@@ -1,0 +1,2 @@
+export const MAX_PRODUCT_BACKUP_BYTES =
+  50 * 1024 * 1024;
