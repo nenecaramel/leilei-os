@@ -8,7 +8,10 @@ import {
   type ProjectResource,
   type ProjectResourceSummary,
   type ProjectSummary,
+  type ProductWorkspace,
   type ProjectWorkspace,
+  type WorkspaceResource,
+  type WorkspaceResourceSummary,
   type ProjectWorkspaceRepository,
 } from "./project-workspace-types.js";
 
@@ -35,6 +38,209 @@ export class ProjectWorkspaceServiceError extends Error {
 
 export class ProjectWorkspaceService {
   constructor(private readonly repository: ProjectWorkspaceRepository) {}
+
+  async listProductWorkspaces(input: {
+    userId: string;
+    conversationId?: unknown;
+  }): Promise<ProductWorkspace[]> {
+    await this.requireUser(input.userId);
+    return this.repository.listProductWorkspaces({
+      userId: input.userId,
+      ...(input.conversationId === undefined
+        ? {}
+        : {
+            conversationId: uuid(
+              input.conversationId,
+              "conversationId",
+            ),
+          }),
+    });
+  }
+
+  async getProductWorkspace(input: {
+    userId: string;
+    workspaceId: unknown;
+  }): Promise<ProductWorkspace> {
+    await this.requireUser(input.userId);
+    const workspace = await this.repository.getProductWorkspace({
+      userId: input.userId,
+      workspaceId: uuid(input.workspaceId, "workspaceId"),
+    });
+    if (!workspace) {
+      throw new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");
+    }
+    return workspace;
+  }
+
+  async createProductWorkspace(input: {
+    userId: string;
+    name: unknown;
+    description?: unknown;
+  }): Promise<ProductWorkspace> {
+    await this.requireUser(input.userId);
+    return this.repository.createProductWorkspace({
+      userId: input.userId,
+      name: requiredText(input.name, 200, "name"),
+      description: optionalText(input.description, 4000, "description"),
+    });
+  }
+
+  async updateProductWorkspace(input: {
+    userId: string;
+    workspaceId: unknown;
+    expectedVersion: unknown;
+    name?: unknown;
+    description?: unknown;
+  }): Promise<ProductWorkspace> {
+    await this.requireUser(input.userId);
+    const hasName = input.name !== undefined;
+    const hasDescription = input.description !== undefined;
+    if (!hasName && !hasDescription) {
+      invalid("Workspace update is empty.");
+    }
+    const result = await this.repository.updateProductWorkspace({
+      userId: input.userId,
+      workspaceId: uuid(input.workspaceId, "workspaceId"),
+      expectedVersion: version(input.expectedVersion),
+      ...(hasName
+        ? { name: requiredText(input.name, 200, "name") }
+        : {}),
+      ...(hasDescription
+        ? {
+            description:
+              optionalText(input.description, 4000, "description"),
+          }
+        : {}),
+    });
+    return unwrapVersioned(result, "WORKSPACE_NOT_FOUND");
+  }
+
+  async deleteProductWorkspace(input: {
+    userId: string;
+    workspaceId: unknown;
+    expectedVersion: unknown;
+  }): Promise<void> {
+    await this.requireUser(input.userId);
+    const result = await this.repository.deleteProductWorkspace({
+      userId: input.userId,
+      workspaceId: uuid(input.workspaceId, "workspaceId"),
+      expectedVersion: version(input.expectedVersion),
+    });
+    unwrapDelete(result, "WORKSPACE_NOT_FOUND");
+  }
+
+  async listWorkspaceResources(input: {
+    userId: string;
+    workspaceId: unknown;
+    kind?: unknown;
+  }): Promise<WorkspaceResourceSummary[]> {
+    const rows = await this.listResources({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      ...(input.kind === undefined ? {} : { kind: input.kind }),
+    });
+    return rows.map(toWorkspaceResourceSummary);
+  }
+
+  async getWorkspaceResource(input: {
+    userId: string;
+    workspaceId: unknown;
+    resourceId: unknown;
+  }): Promise<WorkspaceResource> {
+    return toWorkspaceResource(await this.getResource({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      resourceId: input.resourceId,
+    }));
+  }
+
+  async createWorkspaceResource(input: {
+    userId: string;
+    workspaceId: unknown;
+    kind: unknown;
+    key: unknown;
+    title?: unknown;
+    content?: unknown;
+    metadata?: unknown;
+  }): Promise<WorkspaceResource> {
+    return toWorkspaceResource(await this.createResource({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      kind: input.kind,
+      key: input.key,
+      title: input.title,
+      content: input.content,
+      metadata: input.metadata,
+    }));
+  }
+
+  async updateWorkspaceResource(input: {
+    userId: string;
+    workspaceId: unknown;
+    resourceId: unknown;
+    expectedVersion: unknown;
+    title?: unknown;
+    content?: unknown;
+    metadata?: unknown;
+  }): Promise<WorkspaceResource> {
+    return toWorkspaceResource(await this.updateResource({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      resourceId: input.resourceId,
+      expectedVersion: input.expectedVersion,
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.content === undefined ? {} : { content: input.content }),
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+    }));
+  }
+
+  async deleteWorkspaceResource(input: {
+    userId: string;
+    workspaceId: unknown;
+    resourceId: unknown;
+    expectedVersion: unknown;
+  }): Promise<void> {
+    await this.deleteResource({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      resourceId: input.resourceId,
+      expectedVersion: input.expectedVersion,
+    });
+  }
+
+  listWorkspaceConversations(input: {
+    userId: string;
+    workspaceId: unknown;
+  }) {
+    return this.listProjectConversations({
+      userId: input.userId,
+      projectId: input.workspaceId,
+    });
+  }
+
+  attachWorkspaceConversation(input: {
+    userId: string;
+    workspaceId: unknown;
+    conversationId: unknown;
+  }): Promise<{ applied: boolean }> {
+    return this.attachConversation({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      conversationId: input.conversationId,
+    });
+  }
+
+  detachWorkspaceConversation(input: {
+    userId: string;
+    workspaceId: unknown;
+    conversationId: unknown;
+  }): Promise<{ applied: boolean }> {
+    return this.detachConversation({
+      userId: input.userId,
+      projectId: input.workspaceId,
+      conversationId: input.conversationId,
+    });
+  }
 
   async listWorkspaces(userId: string): Promise<ProjectWorkspace[]> {
     await this.requireUser(userId);
@@ -377,6 +583,26 @@ export class ProjectWorkspaceService {
       throw error;
     }
   }
+}
+
+function toWorkspaceResourceSummary(
+  value: ProjectResourceSummary,
+): WorkspaceResourceSummary {
+  const { projectId, ...rest } = value;
+  return {
+    ...rest,
+    workspaceId: projectId,
+  };
+}
+
+function toWorkspaceResource(
+  value: ProjectResource,
+): WorkspaceResource {
+  const { projectId, ...rest } = value;
+  return {
+    ...rest,
+    workspaceId: projectId,
+  };
 }
 
 function resourceKind(value: unknown): ProjectResourceKind {
