@@ -82,6 +82,13 @@ const workspaceRuntimePool =
     process.env,
     baseWorkspaceRoot,
     workspaceRoots,
+    undefined,
+    (workspaceId) =>
+      new NativeLiveMacProviderSessionStore(
+        relayBaseUrl,
+        relayToken,
+        workspaceId,
+      ),
   );
 const { runtime } =
   await workspaceRuntimePool.resolveWorkspaceRuntime({
