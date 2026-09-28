@@ -106,6 +106,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadDeleteSession = loadDefaultDeleteSession,
     sessionMessagesImpl = null,
     loadSessionMessages = loadDefaultSessionMessages,
+    sessionStore = null,
     environment = process.env,
     cwd = process.cwd(),
     compactionThresholdPercent = 75,
@@ -122,6 +123,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.loadDeleteSession = loadDeleteSession;
     this.sessionMessagesImpl = sessionMessagesImpl;
     this.loadSessionMessages = loadSessionMessages;
+    this.sessionStore = sessionStore;
     this.environment = environment;
     this.cwd = cwd;
     this.compactionThresholdPercent = compactionThresholdPercent;
@@ -215,6 +217,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
+    if (mode !== "new") {
+      await this.#requireSession(parentProviderSessionId);
+    }
 
     this.abortRequested = false;
     const queryImpl = await this.#resolveQuery();
@@ -243,6 +248,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       queryOptions: {
         verbatimPrompts: true,
         ...executionOptions,
+        ...(this.sessionStore
+          ? { sessionStore: this.sessionStore }
+          : {}),
       },
       streaming,
       permissionHandler,
@@ -385,6 +393,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async compact(sessionId, execution = null) {
+    await this.#requireSession(sessionId);
     const lifecycle = {
       preCompact: [],
       postCompact: [],
@@ -490,7 +499,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     const deleteSessionImpl = await this.#resolveDeleteSession();
     try {
-      await deleteSessionImpl(id, { dir: this.cwd });
+      await deleteSessionImpl(id, {
+        dir: this.cwd,
+        ...(this.sessionStore
+          ? { sessionStore: this.sessionStore }
+          : {}),
+      });
     } catch (cause) {
       throw runtimeError(
         `Failed to delete Claude Agent SDK session: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -528,15 +542,35 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      throw runtimeError(
-        "Claude Agent SDK parent session was not found.",
-        {
-          runtimeCode: "NO_PROVIDER_SESSION",
-          parentSessionId: id,
-        },
-      );
+    if (Array.isArray(messages) && messages.length > 0) {
+      return;
     }
+
+    if (this.sessionStore && typeof this.sessionStore.load === "function") {
+      let remote;
+      try {
+        remote = await this.sessionStore.load({
+          projectKey: this.cwd,
+          sessionId: id,
+        });
+      } catch (cause) {
+        throw runtimeError(
+          `Failed to inspect durable Claude Agent SDK parent session: ${cause instanceof Error ? cause.message : String(cause)}`,
+          { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+        );
+      }
+      if (Array.isArray(remote) && remote.length > 0) {
+        return;
+      }
+    }
+
+    throw runtimeError(
+      "Claude Agent SDK parent session was not found.",
+      {
+        runtimeCode: "NO_PROVIDER_SESSION",
+        parentSessionId: id,
+      },
+    );
   }
 
   async #resolveSessionMessages() {
@@ -622,6 +656,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ...executionOptions,
       ...(resume ? { resume } : {}),
       ...(forkSession ? { forkSession: true } : {}),
+      ...(this.sessionStore
+        ? { sessionStore: this.sessionStore }
+        : {}),
       ...(hooks ? { hooks } : {}),
     };
 
