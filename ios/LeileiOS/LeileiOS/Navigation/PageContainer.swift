@@ -109,7 +109,7 @@ struct PageContainer: View {
                                     showingProjectPicker = true
                                 } label: {
                                     Label(
-                                        "Move to Project",
+                                        "Add to Project",
                                         systemImage: "folder"
                                     )
                                 }
@@ -192,7 +192,7 @@ struct PageContainer: View {
         }
         .sheet(isPresented: $showingProjectPicker) {
             ProjectPickerSheet(
-                title: "Move to Project",
+                title: "Add to Project",
                 conversationID:
                     appModel.activeNativeLiveConversationID
             )
