@@ -1185,18 +1185,34 @@ final class LeileiAPIClient {
     }
 
     func projects(
-        workspaceID: String? = nil
+        workspaceID: String? = nil,
+        conversationID: UUID? = nil
     ) async throws -> [ProjectSummary] {
         var components = URLComponents()
         components.path = "/api/v1/projects"
+
+        var queryItems: [URLQueryItem] = []
         if let workspaceID {
-            components.queryItems = [
+            queryItems.append(
                 URLQueryItem(
                     name: "workspace_id",
                     value: workspaceID
                 )
-            ]
+            )
         }
+        if let conversationID {
+            queryItems.append(
+                URLQueryItem(
+                    name: "conversation_id",
+                    value:
+                        conversationID.uuidString.lowercased()
+                )
+            )
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+
         guard let path = components.string else {
             throw LeileiAPIError.invalidResponse
         }
