@@ -20,6 +20,7 @@ export type ProjectWorkspaceServiceErrorCode =
   | "USER_DISABLED"
   | "INVALID_PROJECT"
   | "WORKSPACE_NOT_FOUND"
+  | "WORKSPACE_IN_USE"
   | "PROJECT_NOT_FOUND"
   | "RESOURCE_NOT_FOUND"
   | "VERSION_CONFLICT"
@@ -126,6 +127,9 @@ export class ProjectWorkspaceService {
       workspaceId: uuid(input.workspaceId, "workspaceId"),
       expectedVersion: version(input.expectedVersion),
     });
+    if (result.outcome === "workspace_in_use") {
+      throw new ProjectWorkspaceServiceError("WORKSPACE_IN_USE");
+    }
     unwrapDelete(result, "WORKSPACE_NOT_FOUND");
   }
 
