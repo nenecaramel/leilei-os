@@ -71,16 +71,30 @@ PG_DUMP_MAJOR="$(
 [[ "${PG_DUMP_MAJOR}" =~ ^[0-9]+$ ]] ||
   fail "pg_dump version could not be determined"
 
-if ! SERVER_VERSION_NUM="$(
-  "${PSQL_BIN}" "${DATABASE_URL}" \
-    -X -A -t -v ON_ERROR_STOP=1 \
-    -c "SHOW server_version_num;" \
-    2>/dev/null
-)"; then
-  fail "PostgreSQL server version could not be verified"
-fi
+READINESS_MAX_ATTEMPTS="${LEILEI_BACKUP_READINESS_MAX_ATTEMPTS:-12}"
+READINESS_DELAY_SECONDS="${LEILEI_BACKUP_READINESS_DELAY_SECONDS:-2}"
+[[ "${READINESS_MAX_ATTEMPTS}" =~ ^[1-9][0-9]*$ ]] ||
+  fail "LEILEI_BACKUP_READINESS_MAX_ATTEMPTS must be a positive integer"
+[[ "${READINESS_DELAY_SECONDS}" =~ ^[0-9]+$ ]] ||
+  fail "LEILEI_BACKUP_READINESS_DELAY_SECONDS must be a non-negative integer"
+
+SERVER_VERSION_NUM=""
+for (( attempt = 1; attempt <= READINESS_MAX_ATTEMPTS; attempt += 1 )); do
+  if SERVER_VERSION_NUM="$(
+    "${PSQL_BIN}" "${DATABASE_URL}" \
+      -X -A -t -v ON_ERROR_STOP=1 \
+      -c "SHOW server_version_num;" \
+      2>/dev/null
+  )" && [[ "${SERVER_VERSION_NUM}" =~ ^[0-9]+$ ]]; then
+    break
+  fi
+  SERVER_VERSION_NUM=""
+  if (( attempt < READINESS_MAX_ATTEMPTS )); then
+    sleep "${READINESS_DELAY_SECONDS}"
+  fi
+done
 [[ "${SERVER_VERSION_NUM}" =~ ^[0-9]+$ ]] ||
-  fail "PostgreSQL server version is invalid"
+  fail "PostgreSQL server version could not be verified after bounded readiness retries"
 SERVER_MAJOR="$((SERVER_VERSION_NUM / 10000))"
 [[ "${PG_DUMP_MAJOR}" -ge "${SERVER_MAJOR}" ]] ||
   fail "pg_dump must not be older than the PostgreSQL server"
