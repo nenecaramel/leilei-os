@@ -719,6 +719,7 @@ private struct WorkspaceCreateSheet: View {
     @State private var description = ""
     @State private var saving = false
     @State private var failed = false
+    @State private var createRequestID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -792,7 +793,8 @@ private struct WorkspaceCreateSheet: View {
                 description:
                     normalizedDescription.isEmpty
                         ? nil
-                        : normalizedDescription
+                        : normalizedDescription,
+                requestID: createRequestID
             )
             onCreated()
             dismiss()
@@ -941,6 +943,7 @@ private struct WorkspaceResourceCreateSheet: View {
     @State private var content = ""
     @State private var saving = false
     @State private var failed = false
+    @State private var createRequestID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -1023,7 +1026,8 @@ private struct WorkspaceResourceCreateSheet: View {
                 content:
                     content.isEmpty
                         ? nil
-                        : content
+                        : content,
+                requestID: createRequestID
             )
             onCreated()
             dismiss()
