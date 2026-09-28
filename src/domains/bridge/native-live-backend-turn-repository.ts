@@ -66,6 +66,8 @@ export type NativeLiveBackendTurnReadModel = {
   conversationId: string;
   operation: "send" | "retry" | "edit";
   canonicalUserMessageId: string;
+  workspaceId: string | null;
+  expectedWorkspaceRoot: string | null;
   executionSelection: NativeLiveExecutionSelection | null;
   canonicalStatus:
     | "prepared"
@@ -518,6 +520,9 @@ implements NativeLiveBackendTurnPort {
         operation: nativeLiveTurnPreparations.operation,
         canonicalUserMessageId:
           nativeLiveTurnPreparations.canonicalUserMessageId,
+        workspaceId: nativeLiveTurnPreparations.workspaceId,
+        expectedWorkspaceRoot:
+          nativeLiveTurnPreparations.expectedWorkspaceRoot,
         executionSelection:
           nativeLiveTurnPreparations.executionSelection,
         canonicalStatus: nativeLiveTurnPreparations.status,
@@ -574,6 +579,8 @@ implements NativeLiveBackendTurnPort {
       conversationId: row.conversationId,
       operation: row.operation,
       canonicalUserMessageId: row.canonicalUserMessageId,
+      workspaceId: row.workspaceId,
+      expectedWorkspaceRoot: row.expectedWorkspaceRoot,
       executionSelection:
         row.executionSelection === null
           ? null
