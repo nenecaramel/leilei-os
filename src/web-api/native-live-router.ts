@@ -607,8 +607,9 @@ export function prepareNativeLiveTurnHandler(
           requestId: result.command.request_id,
           conversationId: result.command.conversation_id,
           userMessageId: result.command.canonical_user_message_id,
-          workspaceId: result.command.workspace_id,
-          expectedWorkspaceRoot: result.command.expected_workspace_root,
+          workspaceId: result.command.workspace_id ?? null,
+          expectedWorkspaceRoot:
+            result.command.expected_workspace_root ?? null,
         },
       });
   };
