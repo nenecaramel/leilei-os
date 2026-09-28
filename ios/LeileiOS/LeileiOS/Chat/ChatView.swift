@@ -18,7 +18,6 @@ struct ChatView: View {
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
     @State private var isSystemKeyboardVisible = false
-    @State private var showingProjectFilePicker = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -122,10 +121,6 @@ struct ChatView: View {
                 interruptRequested:
                     runtimeInterruptRequested,
                 isEditing: editDraft != nil,
-                onProjectFile: {
-                    isComposerFocused = false
-                    showingProjectFilePicker = true
-                },
                 onCancelEdit: cancelEditing,
                 onInterrupt: {
                     interruptCurrentTurn()
@@ -155,9 +150,6 @@ struct ChatView: View {
                     ? 0
                     : 10
             )
-        }
-        .sheet(isPresented: $showingProjectFilePicker) {
-            ProjectFilePickerSheet()
         }
         .onReceive(
             NotificationCenter.default.publisher(
