@@ -64,29 +64,6 @@ struct ChatComposer: View {
 
             HStack(spacing: 8) {
                 Menu {
-                    Button {
-                    } label: {
-                        Label("Photo", systemImage: "photo")
-                    }
-
-                    Button {
-                    } label: {
-                        Label("Camera", systemImage: "camera")
-                    }
-
-                    Button {
-                    } label: {
-                        Label("File", systemImage: "doc")
-                    }
-
-                } label: {
-                    ComposerCircleButton(
-                        systemName: "plus",
-                        weight: .light
-                    )
-                }
-
-                Menu {
                     Section("Model") {
                         Picker("", selection: modelSelection) {
                             ForEach(
@@ -131,14 +108,6 @@ struct ChatComposer: View {
                 }
 
                 Spacer(minLength: 0)
-
-                Button {
-                } label: {
-                    ComposerCircleButton(
-                        systemName: "mic.fill"
-                    )
-                }
-                .buttonStyle(.plain)
 
                 Button {
                     let normalized = text.trimmingCharacters(
