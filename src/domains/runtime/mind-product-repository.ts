@@ -19,6 +19,10 @@ import {
 import {
   structuredValueReferencesAnyId,
 } from "./persistent-reference-scan.js";
+import {
+  lockAndReadProductCreateIdempotency,
+  recordProductCreateIdempotency,
+} from "../product-write/product-create-idempotency.js";
 import type {
   PersistentWriteEnvelope,
 } from "./persistent-write-envelope.js";
@@ -142,38 +146,78 @@ implements MindProductRepository {
     return row ? toProductRow(row) : null;
   }
 
-  async insert(input: {
+  async insertManualIdempotent(input: {
     userId: string;
     subjectId: string;
     state: SubjectStateWrite;
-  }): Promise<MindProductRow> {
-    const state = input.state;
-    const [row] = await this.db
-      .insert(runtimeSubjectStates)
-      .values({
-        id: state.id,
-        userId: input.userId,
-        subjectId: input.subjectId,
-        kind: state.kind,
-        text: state.text ?? null,
-        payload: state.payload ?? null,
-        scopeApplicability: state.envelope.scope.applicability,
-        scopeConversationId:
-          state.envelope.scope.conversationId ?? null,
-        scopePathHeadMessageId:
-          state.envelope.scope.pathHeadMessageId ?? null,
-        settlementStatus: state.envelope.status.settlementStatus,
-        pathStatus: state.envelope.status.pathStatus,
-        validityStatus: state.envelope.status.validityStatus,
-        envelope:
-          state.envelope as unknown as Record<string, unknown>,
-      })
-      .returning(rowSelection());
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<
+    | { outcome: "committed"; row: MindProductRow }
+    | { outcome: "idempotency_conflict" }
+  > {
+    return this.db.transaction(
+      async (transaction) => {
+        const receipt = await lockAndReadProductCreateIdempotency(
+          transaction,
+          {
+            userId: input.userId,
+            operation: "mind_manual_create",
+            idempotencyKey: input.idempotencyKey,
+          },
+        );
+        if (receipt) {
+          if (receipt.requestHash !== input.requestHash) {
+            return { outcome: "idempotency_conflict" as const };
+          }
+          return {
+            outcome: "committed" as const,
+            row: receipt.response as unknown as MindProductRow,
+          };
+        }
 
-    if (!row) {
-      throw new Error("Manual Mind insert failed.");
-    }
-    return toProductRow(row);
+        const state = input.state;
+        const [row] = await transaction
+          .insert(runtimeSubjectStates)
+          .values({
+            id: state.id,
+            userId: input.userId,
+            subjectId: input.subjectId,
+            kind: state.kind,
+            text: state.text ?? null,
+            payload: state.payload ?? null,
+            scopeApplicability: state.envelope.scope.applicability,
+            scopeConversationId:
+              state.envelope.scope.conversationId ?? null,
+            scopePathHeadMessageId:
+              state.envelope.scope.pathHeadMessageId ?? null,
+            settlementStatus:
+              state.envelope.status.settlementStatus,
+            pathStatus: state.envelope.status.pathStatus,
+            validityStatus: state.envelope.status.validityStatus,
+            envelope:
+              state.envelope as unknown as Record<string, unknown>,
+          })
+          .returning(rowSelection());
+
+        if (!row) {
+          throw new Error("Manual Mind insert failed.");
+        }
+        const productRow = toProductRow(row);
+        await recordProductCreateIdempotency(transaction, {
+          userId: input.userId,
+          operation: "mind_manual_create",
+          idempotencyKey: input.idempotencyKey,
+          requestHash: input.requestHash,
+          resourceType: "mind_state",
+          resourceId: productRow.id,
+          response:
+            productRow as unknown as Record<string, unknown>,
+        });
+        return { outcome: "committed" as const, row: productRow };
+      },
+      { isolationLevel: "serializable" },
+    );
   }
 
   async delete(input: {
