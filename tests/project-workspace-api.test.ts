@@ -210,7 +210,10 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
 
     const workspaceCreate = await fetch(`${baseUrl}/workspaces`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "workspace-create-api-0001",
+      },
       body: JSON.stringify({ name: "LeileiOS" }),
     });
     assert.equal(workspaceCreate.status, 201);
@@ -235,7 +238,10 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
       `${baseUrl}/workspaces/${projectId}/resources`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "workspace-resource-api-0001",
+        },
         body: JSON.stringify({
           kind: "instructions",
           key: "default",
@@ -313,6 +319,7 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
         userId,
         name: "LeileiOS",
         description: undefined,
+        idempotencyKey: "workspace-create-api-0001",
       },
     },
     {
@@ -333,6 +340,7 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
         title: undefined,
         content: "Use the Workspace context.",
         metadata: undefined,
+        idempotencyKey: "workspace-resource-api-0001",
       },
     },
     {
