@@ -650,7 +650,7 @@ implements NativeLiveBackendTurnPort {
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
     workspaceId: string | null;
-    effectiveWorkspaceRoot: string;
+    effectiveWorkspaceRoot: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
