@@ -46,23 +46,9 @@ struct PageContainer: View {
                     }
                 }
 
-                if selectedPage != .globalSearch
-                    && selectedPage != .diary
-                    && selectedPage != .daySpace
-                    && selectedPage != .universe
-                    && selectedPage != .mind
-                    && selectedPage != .conversations
-                    && selectedPage != .workspaces {
+                if selectedPage == .chat {
                     ToolbarItem(placement: .topBarTrailing) {
-                        if selectedPage == .chat {
-                            conversationMenu
-                        } else {
-                            Button {
-                            } label: {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 18, weight: .medium))
-                            }
-                        }
+                        conversationMenu
                     }
                 }
             }
