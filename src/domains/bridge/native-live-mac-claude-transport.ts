@@ -88,6 +88,7 @@ export function resolveNativeLiveMacClaudeTransportKind(
 export async function createNativeLiveMacClaudeTransport(
   environment: NodeJS.ProcessEnv = process.env,
   workspaceRoot?: string,
+  sessionStore: unknown = null,
 ): Promise<{
   kind: NativeLiveMacClaudeTransportKind;
   runtime: NativeLiveMacClaudeTransport;
@@ -112,6 +113,7 @@ export async function createNativeLiveMacClaudeTransport(
     AgentSdkClaudeTransport: new (options: {
       environment: NodeJS.ProcessEnv;
       cwd: string;
+      sessionStore?: unknown;
     }) => NativeLiveMacClaudeTransport;
   };
 
@@ -120,6 +122,7 @@ export async function createNativeLiveMacClaudeTransport(
     runtime: new AgentSdkClaudeTransport({
       environment,
       cwd: normalizedWorkspaceRoot,
+      ...(sessionStore ? { sessionStore } : {}),
     }),
   };
 }
