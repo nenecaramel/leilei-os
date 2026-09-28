@@ -7,6 +7,9 @@ import {
   nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   conversations,
+  projectConversations,
+  projects,
+  projectWorkspaces,
   runtimeDistillationWatermarks,
   runtimeSubjectStates,
   users,
@@ -811,5 +814,189 @@ test(
       preparations.some((row) => row.status === "finalized_failure"),
       true,
     );
+  },
+);
+
+
+test(
+  "Workspace execution binding persists one durable cwd authority and rejects ambiguous legacy membership",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, { ssl: false });
+    const suffix = crypto.randomUUID();
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-workspace-${suffix}@example.com`,
+        displayName: "Native Live Workspace",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+
+    t.after(async () => {
+      try {
+        await database.db
+          .delete(projectWorkspaces)
+          .where(eq(projectWorkspaces.userId, user.id));
+        await database.db
+          .delete(nativeLiveProviderSessionCleanups)
+          .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db
+          .delete(conversations)
+          .where(eq(conversations.userId, user.id));
+        await database.db.delete(users).where(eq(users.id, user.id));
+      } finally {
+        await database.close();
+      }
+    });
+
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const boundConversation =
+      await conversationService.createConversation({
+        userId: user.id,
+        title: "Workspace-bound conversation",
+      });
+
+    const [container] = await database.db
+      .insert(projectWorkspaces)
+      .values({
+        userId: user.id,
+        name: "Legacy container",
+      })
+      .returning({ id: projectWorkspaces.id });
+    assert.ok(container);
+
+    const [workspace] = await database.db
+      .insert(projects)
+      .values({
+        userId: user.id,
+        workspaceId: container.id,
+        name: "Execution Workspace",
+      })
+      .returning({ id: projects.id });
+    assert.ok(workspace);
+
+    await database.db.insert(projectConversations).values({
+      userId: user.id,
+      projectId: workspace.id,
+      conversationId: boundConversation.id,
+    });
+
+    const coordinator = new NativeLiveBackendTurnCoordinator(
+      new DrizzleNativeLiveBackendTurnPort(database.db),
+      () => crypto.randomUUID(),
+    );
+
+    const firstRequestId = crypto.randomUUID();
+    const first = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: firstRequestId,
+      operation: "send",
+      conversation_id: boundConversation.id,
+      expected_head_message_id: null,
+      text: "workspace hello",
+    });
+    assert.equal(first.ok, true);
+    if (!first.ok) throw new Error("expected Workspace prepare");
+    assert.equal(first.command.runtime_mode, "new");
+    assert.equal(first.command.workspace_id, workspace.id);
+    assert.equal(first.command.expected_workspace_root, null);
+
+    const root = "/Users/leilei/Projects/workspace-demo";
+    const finalized = await coordinator.finalize(user.id, {
+      protocol_version: 1,
+      prepare_id: first.command.prepare_id,
+      request_id: firstRequestId,
+      conversation_id: boundConversation.id,
+      status: "success",
+      provider_session_id: "provider-workspace-first",
+      workspace_id: workspace.id,
+      effective_workspace_root: root,
+      normalized_events: [
+        { type: "text", payload: { text: "workspace answer" } },
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text: "workspace answer",
+          },
+        },
+      ],
+    });
+    assert.equal(finalized.ok, true);
+    if (!finalized.ok) throw new Error("expected Workspace finalize");
+
+    const checkpoint =
+      await conversationService.getProviderCheckpointForHead({
+        userId: user.id,
+        conversationId: boundConversation.id,
+        canonicalMessageId: finalized.assistantMessageId,
+      });
+    assert.ok(checkpoint);
+    assert.equal(checkpoint.workspaceId, workspace.id);
+    assert.equal(checkpoint.effectiveWorkspaceRoot, root);
+
+    const second = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: crypto.randomUUID(),
+      operation: "send",
+      conversation_id: boundConversation.id,
+      expected_head_message_id: finalized.assistantMessageId,
+      text: "continue in same workspace",
+    });
+    assert.equal(second.ok, true);
+    if (!second.ok) throw new Error("expected Workspace continuation");
+    assert.equal(second.command.runtime_mode, "fork");
+    assert.equal(
+      second.command.parent_provider_session_id,
+      "provider-workspace-first",
+    );
+    assert.equal(second.command.workspace_id, workspace.id);
+    assert.equal(second.command.expected_workspace_root, root);
+
+    const ambiguousConversation =
+      await conversationService.createConversation({
+        userId: user.id,
+        title: "Ambiguous legacy membership",
+      });
+    const [otherWorkspace] = await database.db
+      .insert(projects)
+      .values({
+        userId: user.id,
+        workspaceId: container.id,
+        name: "Other Execution Workspace",
+      })
+      .returning({ id: projects.id });
+    assert.ok(otherWorkspace);
+
+    await database.db.insert(projectConversations).values([
+      {
+        userId: user.id,
+        projectId: workspace.id,
+        conversationId: ambiguousConversation.id,
+      },
+      {
+        userId: user.id,
+        projectId: otherWorkspace.id,
+        conversationId: ambiguousConversation.id,
+      },
+    ]);
+
+    const ambiguous = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: crypto.randomUUID(),
+      operation: "send",
+      conversation_id: ambiguousConversation.id,
+      expected_head_message_id: null,
+      text: "do not guess",
+    });
+    assert.equal(ambiguous.ok, false);
+    if (ambiguous.ok) throw new Error("expected ambiguous Workspace failure");
+    assert.equal(ambiguous.code, "WORKSPACE_BINDING_AMBIGUOUS");
   },
 );
