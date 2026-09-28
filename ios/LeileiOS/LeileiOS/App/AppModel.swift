@@ -64,6 +64,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var chatSyncState: ChatSyncState = .idle
     @Published private(set) var chatSendState: ChatSendState = .idle
     @Published private(set) var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
+    @Published private(set) var activeNativeLiveWorkspaceID: String?
+    @Published private(set) var activeNativeLiveWorkspaceRoot: String?
     @Published private(set) var nativeLiveRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
     @Published private(set) var mindWritesByMessageID:
@@ -513,6 +515,7 @@ final class AppModel: ObservableObject {
 
     func sendNativeLiveMessage(
         _ text: String,
+        workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil
     ) async throws {
         guard isAuthenticated,
@@ -543,6 +546,7 @@ final class AppModel: ObservableObject {
                 conversationID: conversationID,
                 expectedHeadMessageID: snapshot.currentHeadMessageId,
                 text: normalized,
+                workspaceID: workspaceID,
                 execution: execution
             )
 
@@ -550,6 +554,12 @@ final class AppModel: ObservableObject {
                 conversationID.uuidString
             ) == .orderedSame else {
                 throw LeileiAPIError.invalidResponse
+            }
+            if let workspaceID = prepared.workspaceId {
+                activeNativeLiveWorkspaceID = workspaceID
+            }
+            if let root = prepared.expectedWorkspaceRoot {
+                activeNativeLiveWorkspaceRoot = root
             }
 
             try await completePreparedNativeLiveTurn(
@@ -775,6 +785,8 @@ final class AppModel: ObservableObject {
             nativeLiveCurrentPath = nil
             nativeLiveRuntimeMetadata =
                 nativeLiveRuntimeMetadataByConversationID[conversationID]
+            activeNativeLiveWorkspaceID = nil
+            activeNativeLiveWorkspaceRoot = nil
             chatSyncState = .idle
         }
 
@@ -803,6 +815,8 @@ final class AppModel: ObservableObject {
             }
 
             nativeLiveRuntimeMetadata = snapshot.runtimeMetadata
+            activeNativeLiveWorkspaceID = snapshot.workspaceId
+            activeNativeLiveWorkspaceRoot = snapshot.effectiveWorkspaceRoot
             if let metadata = snapshot.runtimeMetadata {
                 nativeLiveRuntimeMetadataByConversationID[
                     conversationID
@@ -1252,6 +1266,9 @@ final class AppModel: ObservableObject {
 
                     if turn.canonicalStatus == "finalized_success" {
                         nativeLiveRuntimeMetadata = turn.runtimeMetadata
+                        activeNativeLiveWorkspaceID = turn.workspaceId
+                        activeNativeLiveWorkspaceRoot =
+                            turn.expectedWorkspaceRoot
                         if let metadata = turn.runtimeMetadata {
                             nativeLiveRuntimeMetadataByConversationID[
                                 conversationID
@@ -1400,6 +1417,8 @@ final class AppModel: ObservableObject {
         activeNativeLiveConversationID = nil
         nativeLiveCurrentPath = nil
         nativeLiveRuntimeMetadata = nil
+        activeNativeLiveWorkspaceID = nil
+        activeNativeLiveWorkspaceRoot = nil
         chatSyncState = .idle
         UserDefaults.standard.removeObject(
             forKey: Self.activeNativeLiveConversationDefaultsKey
@@ -1424,6 +1443,8 @@ final class AppModel: ObservableObject {
         archivedConversationBootstrapState = .idle
         nativeLiveCurrentPath = nil
         nativeLiveRuntimeMetadata = nil
+        activeNativeLiveWorkspaceID = nil
+        activeNativeLiveWorkspaceRoot = nil
         nativeLiveRuntimeMetadataByConversationID.removeAll()
         mindWritesByMessageID.removeAll()
         mindWriteRequestsInFlight.removeAll()

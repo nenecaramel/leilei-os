@@ -115,6 +115,42 @@ struct MindProductMessageWriteProjection:
     let kinds: [KindCount]
 }
 
+struct WorkspaceSummary: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let name: String
+    let description: String?
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
+typealias WorkspaceResourceKind = ProjectResourceKind
+
+struct WorkspaceResourceSummary: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let workspaceId: String
+    let kind: WorkspaceResourceKind
+    let key: String
+    let title: String?
+    let metadata: [String: NativeLiveJSONValue]
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct WorkspaceResource: Decodable, Sendable, Equatable, Identifiable {
+    let id: String
+    let workspaceId: String
+    let kind: WorkspaceResourceKind
+    let key: String
+    let title: String?
+    let content: String?
+    let metadata: [String: NativeLiveJSONValue]
+    let version: Int
+    let createdAt: String
+    let updatedAt: String
+}
+
 struct ProjectWorkspaceSummary: Decodable, Sendable, Equatable, Identifiable {
     let id: String
     let name: String
@@ -190,6 +226,8 @@ struct NativeLiveConversationRuntimeMetadataSnapshot:
     let conversationId: String
     let currentHeadMessageId: String?
     let sourceMessageId: String?
+    let workspaceId: String?
+    let effectiveWorkspaceRoot: String?
     let runtimeMetadata: NativeLiveRuntimeMetadata?
     let observedAt: String?
 }
@@ -347,6 +385,8 @@ struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
     let requestId: String
     let conversationId: String
     let userMessageId: String
+    let workspaceId: String?
+    let expectedWorkspaceRoot: String?
 }
 
 struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
@@ -355,6 +395,8 @@ struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let operation: String
     let userMessageId: String
+    let workspaceId: String?
+    let expectedWorkspaceRoot: String?
     let canonicalStatus: String
     let dispatchStatus: String
     let semanticStatus: String?
@@ -691,6 +733,7 @@ final class LeileiAPIClient {
         conversationID: UUID,
         expectedHeadMessageID: String?,
         text: String,
+        workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
     ) async throws -> NativeLivePrepareResult {
@@ -701,6 +744,7 @@ final class LeileiAPIClient {
                 operation: "send",
                 conversationId: conversationID.uuidString.lowercased(),
                 expectedHeadMessageId: expectedHeadMessageID,
+                workspaceId: workspaceID,
                 text: text,
                 execution: execution
             )
@@ -1118,9 +1162,245 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func workspaces(
+        conversationID: UUID? = nil
+    ) async throws -> [WorkspaceSummary] {
+        var components = URLComponents()
+        components.path = "/api/v1/workspaces"
+        if let conversationID {
+            components.queryItems = [
+                URLQueryItem(
+                    name: "conversation_id",
+                    value: conversationID.uuidString.lowercased()
+                )
+            ]
+        }
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let envelope: WorkspaceListEnvelope = try await request(
+            path: path,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func workspace(
+        workspaceID: String
+    ) async throws -> WorkspaceSummary {
+        let envelope: WorkspaceEnvelope = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func createWorkspace(
+        name: String,
+        description: String? = nil
+    ) async throws -> WorkspaceSummary {
+        let body = try JSONEncoder().encode(
+            ProjectWorkspaceCreateBody(
+                name: name,
+                description: description
+            )
+        )
+        let envelope: WorkspaceEnvelope = try await request(
+            path: "/api/v1/workspaces",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func updateWorkspace(
+        workspaceID: String,
+        expectedVersion: Int,
+        name: String,
+        description: String?
+    ) async throws -> WorkspaceSummary {
+        let body = try JSONEncoder().encode(
+            ProjectWorkspaceUpdateBody(
+                expectedVersion: expectedVersion,
+                name: name,
+                description: description
+            )
+        )
+        let envelope: WorkspaceEnvelope = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)",
+            method: "PATCH",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteWorkspace(
+        workspaceID: String,
+        expectedVersion: Int
+    ) async throws {
+        let body = try JSONEncoder().encode(
+            VersionMutationBody(expectedVersion: expectedVersion)
+        )
+        let _: NoContentResponse = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)",
+            method: "DELETE",
+            body: body,
+            authenticated: true
+        )
+    }
+
+    func workspaceResources(
+        workspaceID: String,
+        kind: WorkspaceResourceKind? = nil
+    ) async throws -> [WorkspaceResourceSummary] {
+        var components = URLComponents()
+        components.path = "/api/v1/workspaces/\(workspaceID)/resources"
+        if let kind {
+            components.queryItems = [
+                URLQueryItem(name: "kind", value: kind.rawValue)
+            ]
+        }
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let envelope: WorkspaceResourceListEnvelope = try await request(
+            path: path,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func workspaceResource(
+        workspaceID: String,
+        resourceID: String
+    ) async throws -> WorkspaceResource {
+        let envelope: WorkspaceResourceEnvelope = try await request(
+            path:
+                "/api/v1/workspaces/\(workspaceID)"
+                + "/resources/\(resourceID)",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func createWorkspaceResource(
+        workspaceID: String,
+        kind: WorkspaceResourceKind,
+        key: String,
+        title: String?,
+        content: String?,
+        metadata: [String: NativeLiveJSONValue] = [:]
+    ) async throws -> WorkspaceResource {
+        let body = try JSONEncoder().encode(
+            ProjectResourceCreateBody(
+                kind: kind,
+                key: key,
+                title: title,
+                content: content,
+                metadata: metadata
+            )
+        )
+        let envelope: WorkspaceResourceEnvelope = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)/resources",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func updateWorkspaceResource(
+        workspaceID: String,
+        resourceID: String,
+        expectedVersion: Int,
+        title: String?,
+        content: String?,
+        metadata: [String: NativeLiveJSONValue]
+    ) async throws -> WorkspaceResource {
+        let body = try JSONEncoder().encode(
+            ProjectResourceUpdateBody(
+                expectedVersion: expectedVersion,
+                title: title,
+                content: content,
+                metadata: metadata
+            )
+        )
+        let envelope: WorkspaceResourceEnvelope = try await request(
+            path:
+                "/api/v1/workspaces/\(workspaceID)"
+                + "/resources/\(resourceID)",
+            method: "PATCH",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func deleteWorkspaceResource(
+        workspaceID: String,
+        resourceID: String,
+        expectedVersion: Int
+    ) async throws {
+        let body = try JSONEncoder().encode(
+            VersionMutationBody(expectedVersion: expectedVersion)
+        )
+        let _: NoContentResponse = try await request(
+            path:
+                "/api/v1/workspaces/\(workspaceID)"
+                + "/resources/\(resourceID)",
+            method: "DELETE",
+            body: body,
+            authenticated: true
+        )
+    }
+
+    func workspaceConversations(
+        workspaceID: String
+    ) async throws -> [ProjectConversationSummary] {
+        let envelope: ProjectConversationListEnvelope = try await request(
+            path: "/api/v1/workspaces/\(workspaceID)/conversations",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func attachConversationToWorkspace(
+        workspaceID: String,
+        conversationID: UUID
+    ) async throws -> Bool {
+        let envelope: ProjectConversationMutationEnvelope =
+            try await request(
+                path:
+                    "/api/v1/workspaces/\(workspaceID)"
+                    + "/conversations/"
+                    + conversationID.uuidString.lowercased(),
+                method: "PUT",
+                authenticated: true
+            )
+        return envelope.data.applied
+    }
+
+    func detachConversationFromWorkspace(
+        workspaceID: String,
+        conversationID: UUID
+    ) async throws -> Bool {
+        let envelope: ProjectConversationMutationEnvelope =
+            try await request(
+                path:
+                    "/api/v1/workspaces/\(workspaceID)"
+                    + "/conversations/"
+                    + conversationID.uuidString.lowercased(),
+                method: "DELETE",
+                authenticated: true
+            )
+        return envelope.data.applied
+    }
+
     func projectWorkspaces() async throws -> [ProjectWorkspaceSummary] {
         let envelope: ProjectWorkspaceListEnvelope = try await request(
-            path: "/api/v1/workspaces",
+            path: "/api/v1/legacy/project-workspaces",
             authenticated: true
         )
         return envelope.data
@@ -1137,7 +1417,7 @@ final class LeileiAPIClient {
             )
         )
         let envelope: ProjectWorkspaceEnvelope = try await request(
-            path: "/api/v1/workspaces",
+            path: "/api/v1/legacy/project-workspaces",
             method: "POST",
             body: body,
             authenticated: true
@@ -1159,7 +1439,7 @@ final class LeileiAPIClient {
             )
         )
         let envelope: ProjectWorkspaceEnvelope = try await request(
-            path: "/api/v1/workspaces/\(workspaceID)",
+            path: "/api/v1/legacy/project-workspaces/\(workspaceID)",
             method: "PATCH",
             body: body,
             authenticated: true
@@ -1177,7 +1457,7 @@ final class LeileiAPIClient {
             )
         )
         let _: NoContentResponse = try await request(
-            path: "/api/v1/workspaces/\(workspaceID)",
+            path: "/api/v1/legacy/project-workspaces/\(workspaceID)",
             method: "DELETE",
             body: body,
             authenticated: true
@@ -1673,6 +1953,26 @@ private struct MindManualCreateBody: Encodable, Sendable {
     }
 }
 
+private struct WorkspaceListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [WorkspaceSummary]
+}
+
+private struct WorkspaceEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: WorkspaceSummary
+}
+
+private struct WorkspaceResourceListEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: [WorkspaceResourceSummary]
+}
+
+private struct WorkspaceResourceEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: WorkspaceResource
+}
+
 private struct ProjectWorkspaceListEnvelope: Decodable, Sendable {
     let success: Bool
     let data: [ProjectWorkspaceSummary]
@@ -2006,6 +2306,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
     let operation: String
     let conversationId: String
     let expectedHeadMessageId: String?
+    let workspaceId: String?
     let text: String
     let execution: NativeLiveExecutionSelection?
 
@@ -2015,6 +2316,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         case operation
         case conversationId = "conversation_id"
         case expectedHeadMessageId = "expected_head_message_id"
+        case workspaceId = "workspace_id"
         case text
         case execution
     }
@@ -2033,6 +2335,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         } else {
             try container.encodeNil(forKey: .expectedHeadMessageId)
         }
+        try container.encodeIfPresent(workspaceId, forKey: .workspaceId)
         try container.encode(text, forKey: .text)
         try container.encodeIfPresent(execution, forKey: .execution)
     }

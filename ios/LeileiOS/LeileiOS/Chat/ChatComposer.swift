@@ -5,6 +5,9 @@ struct ChatComposer: View {
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
     @Binding var effort: NativeLiveEffortLevel
+    @Binding var workspaceID: String?
+    var workspaces: [WorkspaceSummary] = []
+    var workspaceSelectionEnabled = false
     var isFocused: FocusState<Bool>.Binding
     var isSending = false
     var isRuntimeTurnActive = false
@@ -85,7 +88,7 @@ struct ChatComposer: View {
                     Button {
                         onProjectFile?()
                     } label: {
-                        Label("Project File", systemImage: "folder")
+                        Label("Workspace File", systemImage: "folder")
                     }
                 } label: {
                     ComposerCircleButton(
@@ -93,6 +96,35 @@ struct ChatComposer: View {
                         weight: .light
                     )
                 }
+
+                Menu {
+                    Picker("Workspace", selection: $workspaceID) {
+                        Text("No Workspace")
+                            .tag(String?.none)
+
+                        ForEach(workspaces) { workspace in
+                            Text(workspace.name)
+                                .tag(Optional(workspace.id))
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 12, weight: .regular))
+                        Text(selectedWorkspaceName)
+                            .font(.system(size: 13, weight: .regular))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .background(
+                        Color.chatSoftFill,
+                        in: Capsule()
+                    )
+                }
+                .disabled(!workspaceSelectionEnabled)
+                .accessibilityLabel("Workspace")
 
                 Menu {
                     Section("Model") {
@@ -229,6 +261,18 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
+    }
+
+    private var selectedWorkspaceName: String {
+        guard let workspaceID,
+              let workspace = workspaces.first(where: {
+                  $0.id == workspaceID
+              }) else {
+            return workspaceSelectionEnabled
+                ? "Workspace"
+                : "Unbound"
+        }
+        return workspace.name
     }
 
     private var composerActionSymbol: String {
