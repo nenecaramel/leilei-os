@@ -275,11 +275,17 @@ struct ChatView: View {
             }
             .disabled(!workspaceSelectionEnabled)
         } label: {
-            Image(systemName: "folder")
-                .font(.system(size: 17, weight: .regular))
+            HStack(spacing: 5) {
+                Image(systemName: "folder")
+                    .font(.system(size: 14, weight: .regular))
+
+                Text(selectedWorkspaceName)
+                    .font(.system(size: 13, weight: .regular))
+                    .lineLimit(1)
+            }
         }
         .accessibilityLabel(
-            selectedWorkspaceName
+            "Workspace, \(selectedWorkspaceName)"
         )
     }
 
