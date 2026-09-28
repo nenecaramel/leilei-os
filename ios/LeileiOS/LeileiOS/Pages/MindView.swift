@@ -455,6 +455,7 @@ private struct MindManualEntrySheet: View {
     @State private var occurredAt = Date.now
     @State private var saving = false
     @State private var failed = false
+    @State private var createRequestID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -558,7 +559,8 @@ private struct MindManualEntrySheet: View {
                 note:
                     normalizedNote.isEmpty
                         ? nil
-                        : normalizedNote
+                        : normalizedNote,
+                requestID: createRequestID
             )
             dismiss()
         } catch {
