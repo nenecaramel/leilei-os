@@ -57,7 +57,6 @@ import type {
 } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import type {
-  NativeLiveWorkspaceRuntimeBinding,
   NativeLiveWorkspaceRuntimeResolver,
 } from "./native-live-mac-workspace-runtime.js";
 import {
@@ -114,7 +113,10 @@ export class NativeLiveMacRuntimeExecutor {
     const command = parseNativeLiveRuntimeCommand(rawCommand);
 
     let runtimeResult: NativeLiveForegroundRuntimeResult;
-    let binding: NativeLiveWorkspaceRuntimeBinding;
+    let binding: {
+      runtime: NativeLiveForegroundRuntime;
+      workspaceRoot: string;
+    };
     try {
       binding = await this.resolveRuntime(command);
       const runtime = binding.runtime;
