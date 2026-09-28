@@ -134,7 +134,7 @@ test("Mac daemon workspace map fails closed for invalid ids and roots", () => {
     () => resolveNativeLiveMacWorkspaceRoots(
       {
         LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON:
-          JSON.stringify({ not-a-uuid: "/tmp/demo" }),
+          JSON.stringify({ "not-a-uuid": "/tmp/demo" }),
       },
       fakeFilesystem,
     ),
