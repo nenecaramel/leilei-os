@@ -55,84 +55,7 @@ struct PageContainer: View {
                     && selectedPage != .workspaces {
                     ToolbarItem(placement: .topBarTrailing) {
                         if selectedPage == .chat {
-                            Menu {
-                                Button {
-                                    showingContext = true
-                                } label: {
-                                    Label(
-                                        "Context",
-                                        systemImage: "chart.bar"
-                                    )
-                                }
-
-                                Menu {
-                                    Picker(
-                                        "Workspace",
-                                        selection: $selectedWorkspaceID
-                                    ) {
-                                        Text("No Workspace")
-                                            .tag(String?.none)
-
-                                        ForEach(workspaces) { workspace in
-                                            Text(workspace.name)
-                                                .tag(Optional(workspace.id))
-                                        }
-                                    }
-                                } label: {
-                                    Label(
-                                        selectedWorkspaceName,
-                                        systemImage: "folder"
-                                    )
-                                }
-                                .disabled(!workspaceSelectionEnabled)
-
-                                Button {
-                                    guard appModel.activeNativeLiveConversationID != nil else {
-                                        return
-                                    }
-                                    renameTitle = activeConversationEditableTitle
-                                    showingRenameAlert = true
-                                } label: {
-                                    Label(
-                                        "Rename",
-                                        systemImage: "pencil"
-                                    )
-                                }
-                                .disabled(
-                                    appModel.activeNativeLiveConversationID == nil
-                                )
-
-                                Divider()
-
-                                Button(role: .destructive) {
-                                    showingDeleteConfirmation = true
-                                } label: {
-                                    Label {
-                                        Text("Delete")
-                                    } icon: {
-                                        Image(
-                                            uiImage:
-                                                UIImage(
-                                                    systemName: "trash"
-                                                )?
-                                                .withTintColor(
-                                                    .systemRed,
-                                                    renderingMode:
-                                                        .alwaysOriginal
-                                                )
-                                            ?? UIImage()
-                                        )
-                                    }
-                                }
-                                .disabled(
-                                    appModel.activeNativeLiveConversationID == nil
-                                        || appModel.chatSendState == .sending
-                                )
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 18, weight: .medium))
-                            }
-                            .accessibilityLabel("Conversation menu")
+                            conversationMenu
                         } else {
                             Button {
                             } label: {
@@ -253,6 +176,68 @@ struct PageContainer: View {
         }
     }
 
+
+    private var conversationMenu: some View {
+        Menu {
+            conversationMenuContent
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .medium))
+        }
+        .accessibilityLabel("Conversation menu")
+    }
+
+    @ViewBuilder
+    private var conversationMenuContent: some View {
+        Button {
+            showingContext = true
+        } label: {
+            Label("Context", systemImage: "chart.bar")
+        }
+
+        workspaceMenu
+
+        Button {
+            guard appModel.activeNativeLiveConversationID != nil else {
+                return
+            }
+            renameTitle = activeConversationEditableTitle
+            showingRenameAlert = true
+        } label: {
+            Label("Rename", systemImage: "pencil")
+        }
+        .disabled(appModel.activeNativeLiveConversationID == nil)
+
+        Divider()
+
+        Button("Delete", systemImage: "trash", role: .destructive) {
+            showingDeleteConfirmation = true
+        }
+        .disabled(
+            appModel.activeNativeLiveConversationID == nil
+                || appModel.chatSendState == .sending
+        )
+    }
+
+    private var workspaceMenu: some View {
+        Menu {
+            Picker(
+                "Workspace",
+                selection: $selectedWorkspaceID
+            ) {
+                Text("No Workspace")
+                    .tag(String?.none)
+
+                ForEach(workspaces) { workspace in
+                    Text(workspace.name)
+                        .tag(Optional(workspace.id))
+                }
+            }
+        } label: {
+            Label(selectedWorkspaceName, systemImage: "folder")
+        }
+        .disabled(!workspaceSelectionEnabled)
+    }
 
     private var selectedWorkspaceName: String {
         guard let selectedWorkspaceID,
