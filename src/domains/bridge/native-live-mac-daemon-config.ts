@@ -23,6 +23,7 @@ export type NativeLiveMacDaemonConfig = {
   listenerInstanceId: string;
   companionBackgroundIntervalMs: number;
   baseWorkspaceRoot: string;
+  workspaceRoots: Readonly<Record<string, string>>;
 };
 
 export function resolveNativeLiveMacDaemonConfig(
@@ -96,6 +97,10 @@ export function resolveNativeLiveMacDaemonConfig(
     machine,
     filesystem,
   );
+  const workspaceRoots = resolveNativeLiveMacWorkspaceRoots(
+    environment,
+    filesystem,
+  );
 
   return {
     relayBaseUrl: relayBaseUrl.replace(/\/+$/u, ""),
@@ -104,7 +109,74 @@ export function resolveNativeLiveMacDaemonConfig(
     companionBackgroundIntervalMs:
       companionBackgroundIntervalSeconds * 1_000,
     baseWorkspaceRoot,
+    workspaceRoots,
   };
+}
+
+export function resolveNativeLiveMacWorkspaceRoots(
+  environment: NodeJS.ProcessEnv,
+  filesystem: NativeLiveMacFilesystem = nativeFilesystem,
+): Readonly<Record<string, string>> {
+  const raw = firstNonBlank(
+    environment.LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON,
+  );
+  if (!raw) return Object.freeze({});
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be valid JSON.",
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be a JSON object.",
+    );
+  }
+
+  const result: Record<string, string> = {};
+  for (const [workspaceId, value] of Object.entries(parsed)) {
+    if (!UUID_PATTERN.test(workspaceId)) {
+      throw new Error(
+        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON keys must be Workspace UUIDs.",
+      );
+    }
+    if (typeof value !== "string" || !value.trim()) {
+      throw new Error(
+        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON values must be nonblank paths.",
+      );
+    }
+    const candidate = value.trim();
+    if (!isAbsolute(candidate)) {
+      throw new Error(
+        "Workspace roots in LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be absolute paths.",
+      );
+    }
+
+    let canonical: string;
+    try {
+      canonical = filesystem.realpath(candidate);
+    } catch {
+      throw new Error(
+        "Workspace roots in LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must resolve to existing directories.",
+      );
+    }
+    let directory = false;
+    try {
+      directory = filesystem.isDirectory(canonical);
+    } catch {
+      directory = false;
+    }
+    if (!directory) {
+      throw new Error(
+        "Workspace roots in LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must resolve to existing directories.",
+      );
+    }
+    result[workspaceId] = canonical;
+  }
+  return Object.freeze(result);
 }
 
 export function resolveNativeLiveMacBaseWorkspaceRoot(
