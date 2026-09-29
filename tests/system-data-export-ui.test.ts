@@ -95,7 +95,7 @@ test("Data renders truthful Backup actions and inactive diagnostic audit control
   assert.equal(card.querySelector(".system-export-label")?.textContent, "Backup");
   assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
-  assert.deepEqual(labels, ["Full Backup", "Diary", "Todo"]);
+  assert.deepEqual(labels, ["Full Backup"]);
 
   const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
   assert.ok(auditControl);
@@ -110,7 +110,7 @@ test("Data renders truthful Backup actions and inactive diagnostic audit control
   env.restore();
 });
 
-test("audit text control becomes active with a plain check and still sends include_audit", async () => {
+test("audit text control becomes active and full backup sends include_audit", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const blobs: Blob[] = [];
@@ -133,10 +133,6 @@ test("audit text control becomes active with a plain check and still sends inclu
   const { root, container } = render(api);
   await waitForPaint();
 
-  const buttons = container.querySelectorAll<HTMLButtonElement>(".system-export-action");
-  buttons[1].click();
-  await waitForPaint();
-
   const audit = container.querySelector<HTMLInputElement>(".system-export-audit-input")!;
   audit.click();
   await waitForPaint();
@@ -144,15 +140,14 @@ test("audit text control becomes active with a plain check and still sends inclu
   assert.equal(auditControl.dataset.active, "true");
   assert.equal(container.querySelector(".system-export-audit-check")?.textContent, "✓");
 
-  buttons[0].click();
+  container.querySelector<HTMLButtonElement>(".system-export-action")!.click();
   await waitForPaint();
 
-  assert.deepEqual(paths, ["/system/data", "/system/export?scope=diary", "/system/export?scope=all&include_audit=true"]);
-  assert.equal(blobs.length, 2);
-  assert.equal(clicked.length, 2);
-  assert.equal(clicked[0].download, "leileios-diary_20260813T054200Z.json");
-  assert.equal(clicked[1].download, "leileios-full-backup_20260813T054200Z.json");
-  assert.deepEqual(JSON.parse(await blobs[1].text()), exportDocument());
+  assert.deepEqual(paths, ["/system/data", "/system/export?include_audit=true"]);
+  assert.equal(blobs.length, 1);
+  assert.equal(clicked.length, 1);
+  assert.equal(clicked[0].download, "leileios-full-backup_20260813T054200Z.json");
+  assert.deepEqual(JSON.parse(await blobs[0].text()), exportDocument());
 
   env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
   URL.createObjectURL = originalCreate;
