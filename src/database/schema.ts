@@ -1026,9 +1026,7 @@ export const workspaceResources = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id").notNull(),
-    // Keep the internal property name projectId for Product Export/Restore v3
-    // compatibility. The durable database column is Workspace-native.
-    projectId: uuid("workspace_id").notNull(),
+    workspaceId: uuid("workspace_id").notNull(),
     kind: varchar("kind", { length: 32 })
       .$type<ProjectResourceKind>()
       .notNull(),
@@ -1049,18 +1047,18 @@ export const workspaceResources = pgTable(
   },
   (table) => [
     foreignKey({
-      columns: [table.projectId, table.userId],
+      columns: [table.workspaceId, table.userId],
       foreignColumns: [workspaces.id, workspaces.userId],
       name: "workspace_resources_workspace_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
     uniqueIndex("workspace_resources_workspace_kind_key_uidx").on(
-      table.projectId,
+      table.workspaceId,
       table.kind,
       table.resourceKey,
     ),
     index("workspace_resources_user_workspace_kind_idx").on(
       table.userId,
-      table.projectId,
+      table.workspaceId,
       table.kind,
       table.updatedAt.desc(),
       table.id.desc(),
@@ -1100,9 +1098,7 @@ export const workspaceConversations = pgTable(
   "workspace_conversations",
   {
     userId: uuid("user_id").notNull(),
-    // See workspaceResources.projectId: Product Export/Restore v3 keeps its
-    // historical JSON field while persistence is Workspace-native.
-    projectId: uuid("workspace_id").notNull(),
+    workspaceId: uuid("workspace_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
     addedAt: timestamp("added_at", { withTimezone: true })
       .defaultNow()
@@ -1110,11 +1106,11 @@ export const workspaceConversations = pgTable(
   },
   (table) => [
     primaryKey({
-      columns: [table.projectId, table.conversationId],
+      columns: [table.workspaceId, table.conversationId],
       name: "workspace_conversations_pk",
     }),
     foreignKey({
-      columns: [table.projectId, table.userId],
+      columns: [table.workspaceId, table.userId],
       foreignColumns: [workspaces.id, workspaces.userId],
       name: "workspace_conversations_workspace_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
@@ -1125,20 +1121,12 @@ export const workspaceConversations = pgTable(
     }).onDelete("cascade").onUpdate("cascade"),
     index("workspace_conversations_user_workspace_added_idx").on(
       table.userId,
-      table.projectId,
+      table.workspaceId,
       table.addedAt.desc(),
       table.conversationId.desc(),
     ),
   ],
 );
-
-// Product Export/Restore v3 and a small amount of historical code still use
-// Project-named symbols. They deliberately alias the single durable Workspace
-// tables; there is no longer a second Project persistence layer.
-export const projectWorkspaces = workspaces;
-export const projects = workspaces;
-export const projectResources = workspaceResources;
-export const projectConversations = workspaceConversations;
 
 export const conversationDeletedBranches = pgTable(
   "conversation_deleted_branches",
