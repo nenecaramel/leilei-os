@@ -11,7 +11,7 @@ import type {
   ExportLifecycleEvent,
   ExportMindContinuityBundle,
   ExportMindStateRecord,
-  ExportProjectsBundle,
+  ExportWorkspacesBundle,
   ExportToolActivity,
   ExportUniverseBundle,
   ExportTodoPaper,
@@ -54,9 +54,8 @@ const todo: ExportTodoPaper[] = [{
   entries: [],
 }];
 
-const projects: ExportProjectsBundle = {
-  workspaces: [],
-  projects: [],
+const workspaces: ExportWorkspacesBundle = {
+  items: [],
   resources: [],
   conversations: [],
 };
@@ -122,9 +121,9 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`todo:${userId}`);
       return todo;
     },
-    async listProjects(userId) {
-      calls.push(`projects:${userId}`);
-      return projects;
+    async listWorkspaces(userId) {
+      calls.push(`workspaces:${userId}`);
+      return workspaces;
     },
     async listMind(userId) {
       calls.push(`mind:${userId}`);
@@ -170,7 +169,7 @@ function createRepository(calls: string[] = []): ExportRepository {
   return repository;
 }
 
-test("ExportService emits the owner-bound v3 contract", async () => {
+test("ExportService emits the owner-bound v4 contract", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
@@ -180,7 +179,7 @@ test("ExportService emits the owner-bound v3 contract", async () => {
     Object.keys(document),
     ["schema_version", "owner_fingerprint", "exported_at", "data"],
   );
-  assert.equal(document.schema_version, 3);
+  assert.equal(document.schema_version, 4);
   assert.equal(document.owner_fingerprint, createOwnerFingerprint(USER_ID));
   assert.equal(document.exported_at, EXPORTED_AT);
   assert.deepEqual(document.data, {
@@ -233,7 +232,7 @@ test("ExportService reads only the selected active-module scope", async () => {
   }
 });
 
-test("ExportService reads Diary, Todo, and Projects for all scope", async () => {
+test("ExportService reads the full portable v4 scope", async () => {
   const calls: string[] = [];
   const document = await new ExportService(
     createRepository(calls),
@@ -246,7 +245,7 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
       "diary",
       "diary_comments",
       "todo",
-      "projects",
+      "workspaces",
       "mind",
       "mind_continuity",
       "conversations",
@@ -262,7 +261,7 @@ test("ExportService reads Diary, Todo, and Projects for all scope", async () => 
     `mind_quiescence:${USER_ID}`,
     `semantic_grouping_quiescence:${USER_ID}`,
     `background_model_quiescence:${USER_ID}`,
-    `projects:${USER_ID}`,
+    `workspaces:${USER_ID}`,
     `mind:${USER_ID}`,
     `mind_continuity:${USER_ID}`,
     `conversations:${USER_ID}`,
