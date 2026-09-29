@@ -34,6 +34,10 @@ struct ChatView: View {
                         isDraftConversation
                             ? nil
                             : appModel.nativeLiveCurrentPath,
+                    historySnapshot:
+                        isDraftConversation
+                            ? nil
+                            : appModel.nativeLiveHistorySnapshot,
                     syncState: appModel.chatSyncState,
                     isAuthenticated: appModel.isAuthenticated,
                     hasActiveConversation:
@@ -73,12 +77,14 @@ struct ChatView: View {
         }
         .task(id: appModel.activeNativeLiveConversationID) {
             guard !isDraftConversation else { return }
+            await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
             await appModel.refreshNativeLiveConversations()
             guard !isDraftConversation else { return }
+            await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
         }
         .task(id: foregroundSyncTaskID) {
@@ -89,6 +95,7 @@ struct ChatView: View {
             Task {
                 await appModel.refreshNativeLiveConversations()
                 guard !isDraftConversation else { return }
+                await appModel.refreshNativeLiveConversationHistorySnapshot()
                 await appModel.refreshNativeLiveCurrentPath()
             }
         }

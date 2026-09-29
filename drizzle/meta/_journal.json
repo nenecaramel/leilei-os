@@ -624,6 +624,13 @@
       "when": 1790699400000,
       "tag": "0088_external_claude_session_bootstrap",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1790702100000,
+      "tag": "0089_native_live_conversation_history_snapshot",
+      "breakpoints": true
     }
   ]
 }

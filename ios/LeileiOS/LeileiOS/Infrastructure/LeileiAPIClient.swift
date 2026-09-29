@@ -246,6 +246,59 @@ struct NativeLiveExternalSessionRequestSnapshot:
     let completedAt: String?
 }
 
+struct NativeLiveConversationHistoryInputMessage:
+    Codable,
+    Sendable,
+    Equatable {
+    let role: String
+    let time: String
+    let content: String
+}
+
+struct NativeLiveConversationHistoryUpload:
+    Encodable,
+    Sendable,
+    Equatable {
+    let sourceLabel: String?
+    let timeZone: String
+    let messages: [NativeLiveConversationHistoryInputMessage]
+
+    enum CodingKeys: String, CodingKey {
+        case sourceLabel = "source_label"
+        case timeZone = "time_zone"
+        case messages
+    }
+}
+
+struct NativeLiveConversationHistorySnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let conversationId: String
+    let sourceProvider: String
+    let sourceProviderSessionId: String
+    let sourceLabel: String?
+    let timeZone: String
+    let messageCount: Int
+    let firstMessageAt: String?
+    let lastMessageAt: String?
+    let createdAt: String
+    let messages: [NativeLiveConversationHistoryMessage]
+}
+
+struct NativeLiveConversationHistoryMessage:
+    Decodable,
+    Sendable,
+    Equatable,
+    Identifiable {
+    let ordinal: Int
+    let role: String
+    let time: String
+    let content: String
+
+    var id: Int { ordinal }
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -1136,7 +1189,8 @@ final class LeileiAPIClient {
     func createNativeLiveConversationFromClaudeSession(
         requestID: String,
         sourceSessionID: String,
-        title: String? = nil
+        title: String? = nil,
+        historySnapshot: NativeLiveConversationHistoryUpload? = nil
     ) async throws -> NativeLiveConversationSummary {
         guard UUID(uuidString: requestID) != nil,
               !sourceSessionID.trimmingCharacters(
@@ -1148,7 +1202,8 @@ final class LeileiAPIClient {
             CreateNativeLiveConversationFromClaudeSessionBody(
                 requestID: requestID.lowercased(),
                 sourceSessionID: sourceSessionID,
-                title: title
+                title: title,
+                historySnapshot: historySnapshot
             )
         )
         let envelope: NativeLiveConversationEnvelope = try await request(
@@ -1158,6 +1213,20 @@ final class LeileiAPIClient {
             body: body,
             authenticated: true
         )
+        return envelope.data
+    }
+
+    func nativeLiveConversationHistorySnapshot(
+        conversationID: UUID
+    ) async throws -> NativeLiveConversationHistorySnapshot {
+        let envelope: NativeLiveConversationHistoryEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/conversations/"
+                    + conversationID.uuidString.lowercased()
+                    + "/history-snapshot",
+                authenticated: true
+            )
         return envelope.data
     }
 
@@ -1937,17 +2006,26 @@ private struct NativeLiveConversationEnvelope: Decodable, Sendable {
     let data: NativeLiveConversationSummary
 }
 
+private struct NativeLiveConversationHistoryEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveConversationHistorySnapshot
+}
+
 private struct CreateNativeLiveConversationFromClaudeSessionBody:
     Encodable,
     Sendable {
     let requestID: String
     let sourceSessionID: String
     let title: String?
+    let historySnapshot: NativeLiveConversationHistoryUpload?
 
     enum CodingKeys: String, CodingKey {
         case requestID = "request_id"
         case sourceSessionID = "source_session_id"
         case title
+        case historySnapshot = "history_snapshot"
     }
 }
 

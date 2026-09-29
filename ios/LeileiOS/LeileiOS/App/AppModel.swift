@@ -61,6 +61,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var nativeLiveArchivedConversationNextCursor: String?
     @Published private(set) var archivedConversationBootstrapState: ConversationBootstrapState = .idle
     @Published private(set) var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
+    @Published private(set) var nativeLiveHistorySnapshot:
+        NativeLiveConversationHistorySnapshot?
     @Published private(set) var chatSyncState: ChatSyncState = .idle
     @Published private(set) var chatSendState: ChatSendState = .idle
     @Published private(set) var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
@@ -470,7 +472,8 @@ final class AppModel: ObservableObject {
     func createNativeLiveConversationFromClaudeSession(
         requestID: String,
         sourceSessionID: String,
-        title: String? = nil
+        title: String? = nil,
+        historySnapshot: NativeLiveConversationHistoryUpload? = nil
     ) async throws -> UUID {
         conversationBootstrapState = .loading
 
@@ -479,7 +482,8 @@ final class AppModel: ObservableObject {
                 try await api.createNativeLiveConversationFromClaudeSession(
                     requestID: requestID,
                     sourceSessionID: sourceSessionID,
-                    title: title
+                    title: title,
+                    historySnapshot: historySnapshot
                 )
             guard let conversationID =
                     UUID(uuidString: conversation.id) else {
@@ -826,6 +830,7 @@ final class AppModel: ObservableObject {
         if activeNativeLiveConversationID != conversationID {
             activeNativeLiveConversationID = conversationID
             nativeLiveCurrentPath = nil
+            nativeLiveHistorySnapshot = nil
             nativeLiveRuntimeMetadata =
                 nativeLiveRuntimeMetadataByConversationID[conversationID]
             activeNativeLiveWorkspaceID = nil
@@ -837,8 +842,39 @@ final class AppModel: ObservableObject {
             conversationID.uuidString.lowercased(),
             forKey: Self.activeNativeLiveConversationDefaultsKey
         )
+        await refreshNativeLiveConversationHistorySnapshot()
         await refreshNativeLiveCurrentPath(force: true)
         await refreshActiveNativeLiveRuntimeMetadata()
+    }
+
+    func refreshNativeLiveConversationHistorySnapshot() async {
+        guard isAuthenticated,
+              let conversationID = activeNativeLiveConversationID else {
+            return
+        }
+
+        do {
+            let snapshot =
+                try await api.nativeLiveConversationHistorySnapshot(
+                    conversationID: conversationID
+                )
+            guard activeNativeLiveConversationID == conversationID else {
+                return
+            }
+            nativeLiveHistorySnapshot = snapshot
+        } catch LeileiAPIError.backend(let status, _, _)
+            where status == 404 {
+            guard activeNativeLiveConversationID == conversationID else {
+                return
+            }
+            nativeLiveHistorySnapshot = nil
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            // History snapshots are display-only and fail soft.
+        }
     }
 
     func refreshActiveNativeLiveRuntimeMetadata() async {
@@ -1459,6 +1495,7 @@ final class AppModel: ObservableObject {
 
         activeNativeLiveConversationID = nil
         nativeLiveCurrentPath = nil
+        nativeLiveHistorySnapshot = nil
         nativeLiveRuntimeMetadata = nil
         activeNativeLiveWorkspaceID = nil
         activeNativeLiveWorkspaceRoot = nil
@@ -1485,6 +1522,7 @@ final class AppModel: ObservableObject {
         nativeLiveArchivedConversationNextCursor = nil
         archivedConversationBootstrapState = .idle
         nativeLiveCurrentPath = nil
+        nativeLiveHistorySnapshot = nil
         nativeLiveRuntimeMetadata = nil
         activeNativeLiveWorkspaceID = nil
         activeNativeLiveWorkspaceRoot = nil
