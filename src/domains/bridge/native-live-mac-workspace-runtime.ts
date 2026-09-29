@@ -121,7 +121,10 @@ implements NativeLiveWorkspaceRuntimeResolver {
 
 function runtimeError(
   message: string,
-  runtimeCode: "WORKSPACE_UNAVAILABLE" | "WORKSPACE_ROOT_MISMATCH",
+  runtimeCode:
+    | "WORKSPACE_UNAVAILABLE"
+    | "WORKSPACE_ROOT_MISMATCH"
+    | "RUNTIME_UNAVAILABLE",
 ): Error {
   return Object.assign(new Error(message), { runtimeCode });
 }
