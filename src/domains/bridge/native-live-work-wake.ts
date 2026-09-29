@@ -122,6 +122,22 @@ export class DrizzleNativeLiveWorkAvailability {
         UNION ALL
 
         SELECT 1
+        FROM native_live_external_session_requests AS external_sessions
+        WHERE external_sessions.user_id = ${input.userId}::uuid
+          AND (
+            (
+              external_sessions.status = 'pending'
+              AND external_sessions.expires_at > now()
+            )
+            OR (
+              external_sessions.status = 'reserved'
+              AND external_sessions.reservation_expires_at <= now()
+            )
+          )
+
+        UNION ALL
+
+        SELECT 1
         FROM native_live_manual_compactions AS compact
         WHERE compact.user_id = ${input.userId}::uuid
           AND (
