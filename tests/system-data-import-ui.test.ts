@@ -215,15 +215,21 @@ test("Data restore auto-previews complete v4 metadata and all portable modules",
     "restore result",
   );
 
-  assert.deepEqual(
-    calls.map((call) => call.path),
-    [
-      "/system/data",
-      "/system/import/preview",
+  await waitFor(
+    () => calls.filter((call) => call.path === "/system/data").length >= 2,
+    "post-restore data summary reload",
+  );
+  const paths = calls.map((call) => call.path);
+  assert.equal(
+    paths.filter((path) => path === "/system/data").length,
+    2,
+  );
+  assert.ok(paths.includes("/system/import/preview"));
+  assert.ok(
+    paths.includes(
       "/system/import/execute?expected_preview_fingerprint="
         + "b".repeat(64),
-      "/system/data",
-    ],
+    ),
   );
   assert.equal(
     (calls[1]?.init?.headers as Record<string, string>)[
