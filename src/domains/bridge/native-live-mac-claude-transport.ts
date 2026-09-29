@@ -43,6 +43,19 @@ export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
     abort(): void;
     deleteSession(sessionId: string): Promise<void>;
+    listSessions?(input?: {
+      limit?: number;
+      offset?: number;
+    }): Promise<Array<{
+      sessionId: string;
+      summary: string | null;
+      customTitle: string | null;
+      firstPrompt: string | null;
+      gitBranch: string | null;
+      cwd: string;
+      lastModified: number | null;
+      createdAt: number | null;
+    }>>;
     executeTurn?(
       prompt: string,
       options: NativeLiveMacInteractiveTurnOptions,

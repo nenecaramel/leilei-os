@@ -72,9 +72,15 @@ import { createHealthSyncAuthMiddleware } from "../web-api/health-sync-auth.js";
 export type NativeLiveProductionDependencies = {
   web:
     Required<
-      Omit<NativeLiveApiDependencies, "manualCompactService">
+      Omit<
+        NativeLiveApiDependencies,
+        "manualCompactService" | "externalSessionBridgeService"
+      >
     >
-    & Pick<NativeLiveApiDependencies, "manualCompactService">;
+    & Pick<
+      NativeLiveApiDependencies,
+      "manualCompactService" | "externalSessionBridgeService"
+    >;
   internal:
     Required<
       Omit<
@@ -83,6 +89,7 @@ export type NativeLiveProductionDependencies = {
         | "mindSemanticGrouping"
         | "observeCompanionBackgroundOpportunity"
         | "manualCompactService"
+        | "externalSessionBridgeService"
       >
     >
     & Pick<
@@ -91,6 +98,7 @@ export type NativeLiveProductionDependencies = {
       | "mindSemanticGrouping"
       | "observeCompanionBackgroundOpportunity"
       | "manualCompactService"
+      | "externalSessionBridgeService"
     >
     & {
       providerSessionStoreService:

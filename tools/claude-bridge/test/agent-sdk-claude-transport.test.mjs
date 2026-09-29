@@ -1552,3 +1552,48 @@ test("deleteSession delegates to Agent SDK with the daemon cwd", async () => {
     options: { dir: "/workspace/leilei-os" },
   }]);
 });
+
+
+test("listSessions reads the current workspace without mutating any session", async () => {
+  let options;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    listSessionsImpl: async (input) => {
+      options = input;
+      return [
+        {
+          sessionId: "external-session-1",
+          summary: "Current Claude Code work",
+          customTitle: "Runtime work",
+          firstPrompt: "continue",
+          gitBranch: "main",
+          cwd: "/workspace/leilei-os",
+          lastModified: 123,
+          createdAt: 100,
+        },
+      ];
+    },
+  });
+
+  const sessions = await transport.listSessions();
+
+  assert.deepEqual(options, {
+    dir: "/workspace/leilei-os",
+    limit: 100,
+    offset: 0,
+    includeWorktrees: false,
+  });
+  assert.deepEqual(sessions, [
+    {
+      sessionId: "external-session-1",
+      summary: "Current Claude Code work",
+      customTitle: "Runtime work",
+      firstPrompt: "continue",
+      gitBranch: "main",
+      cwd: "/workspace/leilei-os",
+      lastModified: 123,
+      createdAt: 100,
+    },
+  ]);
+});

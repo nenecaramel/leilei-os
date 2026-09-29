@@ -122,6 +122,7 @@ const loop = new NativeLiveMacDaemonLoop(
   backgroundModelExecutor,
   workspaceRuntimePool,
   workspaceRuntimePool,
+  workspaceRuntimePool,
 );
 
 let stopping = false;

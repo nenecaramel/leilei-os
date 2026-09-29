@@ -96,6 +96,18 @@ export type NativeLiveDaemonRunOutcome =
       eventDeliveryFailures?: number;
     }
   | {
+      outcome: "external_session_list_completed";
+      reservationId: string;
+    }
+  | {
+      outcome: "external_session_list_failed";
+      reservationId: string;
+    }
+  | {
+      outcome: "external_session_list_delivery_unknown";
+      reservationId: string;
+    }
+  | {
       outcome: "manual_compact_completed";
       reservationId: string;
     }
@@ -131,6 +143,35 @@ export type NativeLiveDaemonRunOutcome =
     };
 
 export interface NativeLiveMacDaemonRelayClient {
+  reserveExternalSessions?(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<{ reservationId: string } | null>;
+
+  submitExternalSessionsResult?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | {
+          status: "success";
+          sessions: Array<{
+            sessionId: string;
+            summary: string | null;
+            customTitle: string | null;
+            firstPrompt: string | null;
+            gitBranch: string | null;
+            lastModified: number | null;
+            createdAt: number | null;
+            workspaceId: string | null;
+            workspaceRoot: string;
+          }>;
+        }
+      | {
+          status: "failure";
+          failureCode: string;
+        };
+  }): Promise<void>;
+
   reserveManualCompact?(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
@@ -306,6 +347,20 @@ export interface NativeLiveDaemonIdleOpportunity {
   offer(): void | Promise<void>;
 }
 
+export interface NativeLiveExternalSessionExecutor {
+  listExternalSessions(): Promise<Array<{
+    sessionId: string;
+    summary: string | null;
+    customTitle: string | null;
+    firstPrompt: string | null;
+    gitBranch: string | null;
+    lastModified: number | null;
+    createdAt: number | null;
+    workspaceId: string | null;
+    workspaceRoot: string;
+  }>>;
+}
+
 export interface NativeLiveManualCompactExecutor {
   compactSession(
     sessionId: string,
@@ -353,6 +408,8 @@ export class NativeLiveMacDaemonLoop {
       NativeLiveProviderSessionCleanupExecutor | null = null,
     private readonly manualCompactExecutor:
       NativeLiveManualCompactExecutor | null = null,
+    private readonly externalSessionExecutor:
+      NativeLiveExternalSessionExecutor | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -434,6 +491,69 @@ export class NativeLiveMacDaemonLoop {
             outcome: "semantic_completed",
             reservationId: semanticReservationId,
           };
+        }
+
+        if (
+          this.externalSessionExecutor
+          && this.relay.reserveExternalSessions
+          && this.relay.submitExternalSessionsResult
+        ) {
+          const external =
+            await this.relay.reserveExternalSessions({
+              listenerInstanceId: this.listenerInstanceId,
+              dispatchTarget: "claude_code",
+            });
+          if (external) {
+            let sessions;
+            try {
+              sessions =
+                await this.externalSessionExecutor
+                  .listExternalSessions();
+            } catch (error) {
+              try {
+                await this.relay.submitExternalSessionsResult({
+                  listenerInstanceId: this.listenerInstanceId,
+                  reservationId: external.reservationId,
+                  outcome: {
+                    status: "failure",
+                    failureCode:
+                      externalSessionFailureCode(error),
+                  },
+                });
+              } catch {
+                return {
+                  outcome:
+                    "external_session_list_delivery_unknown",
+                  reservationId: external.reservationId,
+                };
+              }
+              return {
+                outcome: "external_session_list_failed",
+                reservationId: external.reservationId,
+              };
+            }
+
+            try {
+              await this.relay.submitExternalSessionsResult({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: external.reservationId,
+                outcome: {
+                  status: "success",
+                  sessions,
+                },
+              });
+            } catch {
+              return {
+                outcome:
+                  "external_session_list_delivery_unknown",
+                reservationId: external.reservationId,
+              };
+            }
+            return {
+              outcome: "external_session_list_completed",
+              reservationId: external.reservationId,
+            };
+          }
         }
 
         if (
@@ -985,6 +1105,18 @@ function semanticFallbackCode(
 }
 
 
+
+function externalSessionFailureCode(error: unknown): string {
+  if (
+    typeof error === "object"
+    && error !== null
+    && "runtimeCode" in error
+    && typeof (error as { runtimeCode?: unknown }).runtimeCode === "string"
+  ) {
+    return (error as { runtimeCode: string }).runtimeCode;
+  }
+  return "SESSION_LIST_FAILED";
+}
 
 function manualCompactFailureCode(error: unknown): string {
   if (

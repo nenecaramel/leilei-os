@@ -51,14 +51,34 @@ implements NativeLiveConversationRuntimeMetadataReader {
 
     if (!conversation) return null;
     if (!conversation.currentHeadMessageId) {
+      const bootstrapRows = await this.db.execute<{
+        workspace_id: string | null;
+        effective_workspace_root: string;
+        created_at: string;
+      }>(sql`
+        SELECT
+          workspace_id,
+          effective_workspace_root,
+          created_at::text
+        FROM native_live_conversation_provider_bootstraps
+        WHERE user_id = ${input.userId}::uuid
+          AND conversation_id = ${input.conversationId}::uuid
+          AND provider = 'claude_code'
+          AND consumed_at IS NULL
+        LIMIT 1
+      `);
+      const bootstrap = bootstrapRows[0];
       return {
         conversationId: conversation.id,
         currentHeadMessageId: null,
         sourceMessageId: null,
-        workspaceId: null,
-        effectiveWorkspaceRoot: null,
+        workspaceId: bootstrap?.workspace_id ?? null,
+        effectiveWorkspaceRoot:
+          bootstrap?.effective_workspace_root ?? null,
         runtimeMetadata: null,
-        observedAt: null,
+        observedAt: bootstrap
+          ? new Date(bootstrap.created_at).toISOString()
+          : null,
       };
     }
 

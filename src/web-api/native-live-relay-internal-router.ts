@@ -58,6 +58,10 @@ import {
   type NativeLiveManualCompactService,
 } from "../domains/bridge/native-live-manual-compact.js";
 import {
+  NativeLiveExternalSessionBridgeError,
+  type NativeLiveExternalSessionBridgeService,
+} from "../domains/bridge/native-live-external-session-bridge.js";
+import {
   MindSemanticGroupingRepositoryError,
   type DrizzleMindSemanticGroupingRepository,
 } from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
@@ -124,6 +128,10 @@ export type NativeLiveRelayInternalDependencies = {
   >;
   manualCompactService?: Pick<
     NativeLiveManualCompactService,
+    "reserveNext" | "complete"
+  >;
+  externalSessionBridgeService?: Pick<
+    NativeLiveExternalSessionBridgeService,
     "reserveNext" | "complete"
   >;
 };
@@ -199,6 +207,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/manual-compact/reservations/:reservationId/result",
       submitManualCompactResultHandler(dependencies),
+    );
+  }
+  if (dependencies.externalSessionBridgeService) {
+    router.post(
+      "/external-sessions/reserve",
+      reserveExternalSessionsHandler(dependencies),
+    );
+    router.post(
+      "/external-sessions/reservations/:reservationId/result",
+      submitExternalSessionsResultHandler(dependencies),
     );
   }
   if (dependencies.providerSessionCleanupService) {
@@ -688,6 +706,64 @@ function submitBackgroundModelResultHandler(
       });
     } catch (error) {
       sendBackgroundModelError(response, error);
+    }
+  };
+}
+
+function reserveExternalSessionsHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.externalSessionBridgeService) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const reservation =
+        await dependencies.externalSessionBridgeService.reserveNext({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+        });
+      response.json({
+        success: true,
+        data: reservation,
+      });
+    } catch (error) {
+      sendExternalSessionBridgeInternalError(response, error);
+    }
+  };
+}
+
+function submitExternalSessionsResultHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.externalSessionBridgeService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const body = parseExternalSessionResultBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const outcome =
+        await dependencies.externalSessionBridgeService.complete({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+          outcome: body.outcome,
+        });
+      response.json({
+        success: true,
+        data: { outcome },
+      });
+    } catch (error) {
+      sendExternalSessionBridgeInternalError(response, error);
     }
   };
 }
@@ -1582,6 +1658,126 @@ function parseResultBody(
   };
 }
 
+function parseExternalSessionResultBody(
+  value: unknown,
+): {
+  listener_instance_id: string;
+  outcome:
+    | {
+        status: "success";
+        sessions: Array<{
+          sessionId: string;
+          summary: string | null;
+          customTitle: string | null;
+          firstPrompt: string | null;
+          gitBranch: string | null;
+          lastModified: number | null;
+          createdAt: number | null;
+          workspaceId: string | null;
+          workspaceRoot: string;
+        }>;
+      }
+    | {
+        status: "failure";
+        failureCode: string;
+      };
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!isUuid(record.listener_instance_id)) return null;
+
+  if (record.status === "failure") {
+    if (
+      typeof record.failure_code !== "string"
+      || !record.failure_code.trim()
+    ) return null;
+    return {
+      listener_instance_id: record.listener_instance_id,
+      outcome: {
+        status: "failure",
+        failureCode: record.failure_code,
+      },
+    };
+  }
+
+  if (record.status !== "success" || !Array.isArray(record.sessions)) {
+    return null;
+  }
+  const sessions = [];
+  for (const item of record.sessions) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const row = item as Record<string, unknown>;
+    if (
+      typeof row.session_id !== "string"
+      || !row.session_id.trim()
+      || typeof row.workspace_root !== "string"
+      || !row.workspace_root.trim()
+      || !nullableString(row.summary)
+      || !nullableString(row.custom_title)
+      || !nullableString(row.first_prompt)
+      || !nullableString(row.git_branch)
+      || !nullableString(row.workspace_id)
+      || !nullableFiniteNumberValue(row.last_modified)
+      || !nullableFiniteNumberValue(row.created_at)
+    ) {
+      return null;
+    }
+    if (
+      typeof row.workspace_id === "string"
+      && !isUuid(row.workspace_id)
+    ) {
+      return null;
+    }
+    sessions.push({
+      sessionId: row.session_id,
+      summary:
+        typeof row.summary === "string" ? row.summary : null,
+      customTitle:
+        typeof row.custom_title === "string"
+          ? row.custom_title
+          : null,
+      firstPrompt:
+        typeof row.first_prompt === "string"
+          ? row.first_prompt
+          : null,
+      gitBranch:
+        typeof row.git_branch === "string"
+          ? row.git_branch
+          : null,
+      lastModified:
+        typeof row.last_modified === "number"
+          ? row.last_modified
+          : null,
+      createdAt:
+        typeof row.created_at === "number"
+          ? row.created_at
+          : null,
+      workspaceId:
+        typeof row.workspace_id === "string"
+          ? row.workspace_id
+          : null,
+      workspaceRoot: row.workspace_root,
+    });
+  }
+  return {
+    listener_instance_id: record.listener_instance_id,
+    outcome: {
+      status: "success",
+      sessions,
+    },
+  };
+}
+
+function nullableString(value: unknown): boolean {
+  return value === null || value === undefined || typeof value === "string";
+}
+
+function nullableFiniteNumberValue(value: unknown): boolean {
+  return value === null
+    || value === undefined
+    || (typeof value === "number" && Number.isFinite(value));
+}
+
 function parseManualCompactResultBody(
   value: unknown,
 ): {
@@ -1986,6 +2182,29 @@ function sendBackgroundModelError(
       code: "NATIVE_LIVE_BACKGROUND_MODEL_UNAVAILABLE",
       message:
         "Native live background model queue is temporarily unavailable.",
+    },
+  });
+}
+
+function sendExternalSessionBridgeInternalError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof NativeLiveExternalSessionBridgeError) {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: error.code,
+        message: error.message,
+      },
+    });
+    return;
+  }
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "NATIVE_LIVE_EXTERNAL_SESSION_UNAVAILABLE",
+      message: "External Claude sessions are temporarily unavailable.",
     },
   });
 }

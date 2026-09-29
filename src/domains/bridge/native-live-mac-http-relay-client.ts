@@ -178,6 +178,78 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async reserveExternalSessions(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }) {
+    const data = await this.post(
+      "/external-sessions/reserve",
+      {
+        listener_instance_id: input.listenerInstanceId,
+        dispatch_target: input.dispatchTarget,
+      },
+    );
+    if (data === null) return null;
+    const record = readRecord(data);
+    if (typeof record.reservationId !== "string") {
+      throw new Error(
+        "Native live external session reservation is invalid.",
+      );
+    }
+    return {
+      reservationId: record.reservationId,
+    };
+  }
+
+  async submitExternalSessionsResult(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | {
+          status: "success";
+          sessions: Array<{
+            sessionId: string;
+            summary: string | null;
+            customTitle: string | null;
+            firstPrompt: string | null;
+            gitBranch: string | null;
+            lastModified: number | null;
+            createdAt: number | null;
+            workspaceId: string | null;
+            workspaceRoot: string;
+          }>;
+        }
+      | {
+          status: "failure";
+          failureCode: string;
+        };
+  }): Promise<void> {
+    await this.post(
+      `/external-sessions/reservations/${encodeURIComponent(input.reservationId)}/result`,
+      input.outcome.status === "success"
+        ? {
+            listener_instance_id: input.listenerInstanceId,
+            status: "success",
+            sessions: input.outcome.sessions.map((session) => ({
+              session_id: session.sessionId,
+              summary: session.summary,
+              custom_title: session.customTitle,
+              first_prompt: session.firstPrompt,
+              git_branch: session.gitBranch,
+              last_modified: session.lastModified,
+              created_at: session.createdAt,
+              workspace_id: session.workspaceId,
+              workspace_root: session.workspaceRoot,
+            })),
+          }
+        : {
+            listener_instance_id: input.listenerInstanceId,
+            status: "failure",
+            failure_code: input.outcome.failureCode,
+          },
+    );
+  }
+
   async reserveManualCompact(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";

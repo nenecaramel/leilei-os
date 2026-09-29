@@ -204,6 +204,48 @@ struct NativeLiveManualCompactSnapshot: Decodable, Sendable, Equatable {
     let completedAt: String?
 }
 
+enum NativeLiveExternalSessionRequestStatus:
+    String,
+    Decodable,
+    Sendable,
+    Equatable {
+    case pending
+    case reserved
+    case completed
+    case failed
+    case expired
+}
+
+struct NativeLiveExternalClaudeSession:
+    Decodable,
+    Sendable,
+    Equatable,
+    Identifiable {
+    let sessionId: String
+    let summary: String?
+    let customTitle: String?
+    let firstPrompt: String?
+    let gitBranch: String?
+    let lastModified: Double?
+    let createdAt: Double?
+    let workspaceId: String?
+    let workspaceRoot: String
+
+    var id: String { sessionId }
+}
+
+struct NativeLiveExternalSessionRequestSnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let id: String
+    let status: NativeLiveExternalSessionRequestStatus
+    let failureCode: String?
+    let sessions: [NativeLiveExternalClaudeSession]
+    let createdAt: String
+    let completedAt: String?
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -1064,6 +1106,61 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func createNativeLiveExternalSessionRequest()
+        async throws -> NativeLiveExternalSessionRequestSnapshot {
+        let envelope: NativeLiveExternalSessionRequestEnvelope =
+            try await request(
+                path: "/api/v1/native-live/external-sessions/requests",
+                method: "POST",
+                authenticated: true
+            )
+        return envelope.data
+    }
+
+    func nativeLiveExternalSessionRequest(
+        requestID: String
+    ) async throws -> NativeLiveExternalSessionRequestSnapshot {
+        guard UUID(uuidString: requestID) != nil else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let envelope: NativeLiveExternalSessionRequestEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/external-sessions/requests/"
+                    + requestID.lowercased(),
+                authenticated: true
+            )
+        return envelope.data
+    }
+
+    func createNativeLiveConversationFromClaudeSession(
+        requestID: String,
+        sourceSessionID: String,
+        title: String? = nil
+    ) async throws -> NativeLiveConversationSummary {
+        guard UUID(uuidString: requestID) != nil,
+              !sourceSessionID.trimmingCharacters(
+                  in: .whitespacesAndNewlines
+              ).isEmpty else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let body = try JSONEncoder().encode(
+            CreateNativeLiveConversationFromClaudeSessionBody(
+                requestID: requestID.lowercased(),
+                sourceSessionID: sourceSessionID,
+                title: title
+            )
+        )
+        let envelope: NativeLiveConversationEnvelope = try await request(
+            path:
+                "/api/v1/native-live/conversations/from-claude-session",
+            method: "POST",
+            body: body,
+            authenticated: true
+        )
+        return envelope.data
+    }
+
     func createNativeLiveManualCompact(
         conversationID: UUID
     ) async throws -> NativeLiveManualCompactSnapshot {
@@ -1617,6 +1714,13 @@ final class LeileiAPIClient {
     }
 }
 
+private struct NativeLiveExternalSessionRequestEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveExternalSessionRequestSnapshot
+}
+
 private struct NativeLiveManualCompactEnvelope:
     Decodable,
     Sendable {
@@ -1831,6 +1935,20 @@ private struct NativeLiveConversationListEnvelope: Decodable, Sendable {
 private struct NativeLiveConversationEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLiveConversationSummary
+}
+
+private struct CreateNativeLiveConversationFromClaudeSessionBody:
+    Encodable,
+    Sendable {
+    let requestID: String
+    let sourceSessionID: String
+    let title: String?
+
+    enum CodingKeys: String, CodingKey {
+        case requestID = "request_id"
+        case sourceSessionID = "source_session_id"
+        case title
+    }
 }
 
 private struct CreateNativeLiveConversationBody: Encodable, Sendable {

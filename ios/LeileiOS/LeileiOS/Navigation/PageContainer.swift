@@ -10,6 +10,7 @@ struct PageContainer: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
     @State private var showingContext = false
+    @State private var showingClaudeSessions = false
     @State private var workspaces: [WorkspaceSummary] = []
     @State private var selectedWorkspaceID: String?
 
@@ -57,6 +58,12 @@ struct PageContainer: View {
         .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
+        }
+        .sheet(isPresented: $showingClaudeSessions) {
+            ClaudeSessionForkSheet {
+                onDraftCommitted()
+                onOpenConversation()
+            }
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else {
@@ -180,6 +187,19 @@ struct PageContainer: View {
         } label: {
             Label("Context", systemImage: "chart.bar")
         }
+
+        Button {
+            showingClaudeSessions = true
+        } label: {
+            Label(
+                "Fork Claude Session",
+                systemImage: "arrow.triangle.branch"
+            )
+        }
+        .disabled(
+            !appModel.isAuthenticated
+                || appModel.chatSendState == .sending
+        )
 
         workspaceMenu
 

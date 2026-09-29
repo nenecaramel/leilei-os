@@ -785,6 +785,21 @@ implements NativeLiveBackendTurnPort {
             messageId: assistantMessage.id,
           });
 
+          if (
+            row.runtimeMode === "fork"
+            && row.parentProviderSessionId
+          ) {
+            await transaction.execute(sql`
+              UPDATE native_live_conversation_provider_bootstraps
+              SET consumed_at = now()
+              WHERE user_id = ${input.userId}::uuid
+                AND conversation_id = ${row.conversationId}::uuid
+                AND source_provider_session_id =
+                  ${row.parentProviderSessionId}
+                AND consumed_at IS NULL
+            `);
+          }
+
           const finalizedAt = new Date();
           const updated = await transaction
             .update(nativeLiveTurnPreparations)
@@ -1211,6 +1226,47 @@ implements NativeLiveBackendTurnPort {
       }
   > {
     if (!parentMessageId) {
+      const bootstrapRows = await executor.execute<{
+        source_provider_session_id: string;
+        workspace_id: string | null;
+        effective_workspace_root: string;
+      }>(sql`
+        SELECT
+          source_provider_session_id,
+          workspace_id,
+          effective_workspace_root
+        FROM native_live_conversation_provider_bootstraps
+        WHERE user_id = ${userId}::uuid
+          AND conversation_id = ${conversationId}::uuid
+          AND provider = 'claude_code'
+          AND consumed_at IS NULL
+        LIMIT 1
+      `);
+      const bootstrap = bootstrapRows[0];
+      if (bootstrap) {
+        if (
+          requestedWorkspaceId !== null
+          && requestedWorkspaceId !== bootstrap.workspace_id
+        ) {
+          return {
+            ok: false,
+            result: {
+              ok: false,
+              code: "WORKSPACE_BINDING_CONFLICT",
+            },
+          };
+        }
+        return {
+          ok: true,
+          runtimeMode: "fork",
+          parentProviderSessionId:
+            bootstrap.source_provider_session_id,
+          workspaceId: bootstrap.workspace_id,
+          expectedWorkspaceRoot:
+            bootstrap.effective_workspace_root,
+        };
+      }
+
       if (requestedWorkspaceId) {
         const [workspace] = await executor
           .select({ id: workspaces.id })

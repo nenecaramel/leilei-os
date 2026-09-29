@@ -84,6 +84,81 @@ implements NativeLiveWorkspaceRuntimeResolver {
     };
   }
 
+  async listExternalSessions(): Promise<Array<{
+    sessionId: string;
+    summary: string | null;
+    customTitle: string | null;
+    firstPrompt: string | null;
+    gitBranch: string | null;
+    lastModified: number | null;
+    createdAt: number | null;
+    workspaceId: string | null;
+    workspaceRoot: string;
+  }>> {
+    const bindings: Array<{
+      workspaceId: string | null;
+      workspaceRoot: string;
+    }> = [
+      {
+        workspaceId: null,
+        workspaceRoot: this.baseWorkspaceRoot,
+      },
+      ...Object.entries(this.workspaceRoots).map(
+        ([workspaceId, workspaceRoot]) => ({
+          workspaceId,
+          workspaceRoot,
+        }),
+      ),
+    ];
+    const seenRoots = new Set<string>();
+    const sessions = [];
+
+    for (const binding of bindings) {
+      if (seenRoots.has(binding.workspaceRoot)) continue;
+      seenRoots.add(binding.workspaceRoot);
+
+      const { runtime } = await this.resolveWorkspaceRuntime({
+        workspaceId: binding.workspaceId,
+        expectedWorkspaceRoot: binding.workspaceRoot,
+      });
+      if (!runtime.listSessions) {
+        throw runtimeError(
+          "Native Live runtime does not expose session listing.",
+          "RUNTIME_UNAVAILABLE",
+        );
+      }
+      const rows = await runtime.listSessions({
+        limit: 100,
+        offset: 0,
+      });
+      for (const row of rows) {
+        sessions.push({
+          sessionId: row.sessionId,
+          summary: row.summary,
+          customTitle: row.customTitle,
+          firstPrompt: row.firstPrompt,
+          gitBranch: row.gitBranch,
+          lastModified: row.lastModified,
+          createdAt: row.createdAt,
+          workspaceId: binding.workspaceId,
+          workspaceRoot: binding.workspaceRoot,
+        });
+      }
+    }
+
+    return sessions
+      .sort((left, right) =>
+        (right.lastModified ?? 0) - (left.lastModified ?? 0)
+      )
+      .filter(
+        (session, index, all) =>
+          all.findIndex(
+            (candidate) =>
+              candidate.sessionId === session.sessionId,
+          ) === index,
+      );
+  }
+
   async compactSession(
     sessionId: string,
     workspaceId: string | null,
