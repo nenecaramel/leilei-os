@@ -186,6 +186,24 @@ struct NativeLiveConversationRuntimeMetadataSnapshot:
     let observedAt: String?
 }
 
+enum NativeLiveManualCompactStatus: String, Decodable, Sendable, Equatable {
+    case pending
+    case reserved
+    case completed
+    case failed
+    case stale
+    case expired
+}
+
+struct NativeLiveManualCompactSnapshot: Decodable, Sendable, Equatable {
+    let id: String
+    let conversationId: String
+    let status: NativeLiveManualCompactStatus
+    let failureCode: String?
+    let createdAt: String
+    let completedAt: String?
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?
@@ -1046,6 +1064,35 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func createNativeLiveManualCompact(
+        conversationID: UUID
+    ) async throws -> NativeLiveManualCompactSnapshot {
+        let envelope: NativeLiveManualCompactEnvelope = try await request(
+            path:
+                "/api/v1/native-live/conversations/"
+                + conversationID.uuidString.lowercased()
+                + "/compact",
+            method: "POST",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
+    func nativeLiveManualCompact(
+        requestID: String
+    ) async throws -> NativeLiveManualCompactSnapshot {
+        guard UUID(uuidString: requestID) != nil else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let envelope: NativeLiveManualCompactEnvelope = try await request(
+            path:
+                "/api/v1/native-live/manual-compacts/"
+                + requestID.lowercased(),
+            authenticated: true
+        )
+        return envelope.data
+    }
+
     func mindPage(
         kind: MindProductKind? = nil,
         limit: Int = 100,
@@ -1568,6 +1615,13 @@ final class LeileiAPIClient {
             )
         }
     }
+}
+
+private struct NativeLiveManualCompactEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveManualCompactSnapshot
 }
 
 private struct NativeLiveConversationRuntimeMetadataEnvelope:
