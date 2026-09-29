@@ -106,16 +106,16 @@ test("iOS Summary shows the same portable product modules as Web", () => {
 
 test("iOS no longer calls retired partial export scopes", () => {
   const files = [
-    readFileSync(
-      join(root, "ios/LeileiOS/LeileiOS/Pages/DiaryView.swift"),
+    fs.readFileSync(
+      "ios/LeileiOS/LeileiOS/Pages/DiaryView.swift",
       "utf8",
     ),
-    readFileSync(
-      join(root, "ios/LeileiOS/LeileiOS/Pages/UniverseNodeSheet.swift"),
+    fs.readFileSync(
+      "ios/LeileiOS/LeileiOS/Pages/UniverseNodeSheet.swift",
       "utf8",
     ),
-    readFileSync(
-      join(root, "ios/LeileiOS/LeileiOS/Pages/DaySpaceView.swift"),
+    fs.readFileSync(
+      "ios/LeileiOS/LeileiOS/Pages/DaySpaceView.swift",
       "utf8",
     ),
   ];
