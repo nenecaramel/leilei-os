@@ -466,6 +466,49 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func createNativeLiveConversationFromClaudeSession(
+        requestID: String,
+        sourceSessionID: String,
+        title: String? = nil
+    ) async throws -> UUID {
+        conversationBootstrapState = .loading
+
+        do {
+            let conversation =
+                try await api.createNativeLiveConversationFromClaudeSession(
+                    requestID: requestID,
+                    sourceSessionID: sourceSessionID,
+                    title: title
+                )
+            guard let conversationID =
+                    UUID(uuidString: conversation.id) else {
+                throw LeileiAPIError.invalidResponse
+            }
+
+            nativeLiveConversations.removeAll {
+                $0.id.caseInsensitiveCompare(conversation.id)
+                    == .orderedSame
+            }
+            nativeLiveConversations.insert(conversation, at: 0)
+            conversationBootstrapState = .ready
+
+            await openNativeLiveConversation(conversationID)
+            return conversationID
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.missingAccessToken
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+            throw LeileiAPIError.unauthorized
+        } catch {
+            conversationBootstrapState = .unavailable(
+                error.localizedDescription
+            )
+            throw error
+        }
+    }
+
     func renameActiveNativeLiveConversation(
         _ title: String
     ) async throws {
