@@ -508,7 +508,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version >= 3
+    "diary_comments" in document.data
     && document.data.diary_comments
   ) {
     for (const comment of document.data.diary_comments) {
@@ -539,7 +539,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version >= 3
+    "universe" in document.data
     && document.data.universe
   ) {
     try {
@@ -578,7 +578,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version >= 3
+    "conversations" in document.data
     && document.data.conversations
   ) {
     for (const conversation of document.data.conversations.conversations) {
@@ -618,7 +618,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version >= 3
+    "mind_continuity" in document.data
     && document.data.mind_continuity
   ) {
     for (
@@ -670,7 +670,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
     }
   }
 
-  if (document.schema_version >= 3 && document.data.mind) {
+  if ("mind" in document.data && document.data.mind) {
     for (const state of document.data.mind) {
       if (state.subject_id.trim().length === 0) {
         throw new ImportValidationError(
