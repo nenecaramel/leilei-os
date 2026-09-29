@@ -426,13 +426,14 @@ test(
         () => now,
       ).createExport(userId, "all", false);
 
+      assert.equal(exported.schema_version, 4);
       assert.deepEqual(
         Object.keys(exported.data),
         [
           "diary",
           "diary_comments",
           "todo",
-          "projects",
+          "workspaces",
           "mind",
           "mind_continuity",
           "conversations",
@@ -531,7 +532,7 @@ test(
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
       assert.equal(preview.summary.mind?.create, 8);
-      assert.equal(preview.summary.projects?.create, 3);
+      assert.equal(preview.summary.workspaces?.create, 3);
       assert.equal(
         preview.summary.conversations?.create,
         5,
