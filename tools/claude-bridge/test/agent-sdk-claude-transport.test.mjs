@@ -644,9 +644,9 @@ test("normal turns expose the latest live context usage with provider auto-compa
     environment: { DISABLE_AUTO_COMPACT: "0" },
     queryImpl: (input) => {
       queryInput = input;
-      return ({
-      close() {},
-      async getContextUsage() {
+      return {
+        close() {},
+        async getContextUsage() {
         usageCalls += 1;
         const percentage =
           usageCalls === 1 ? 74 : usageCalls === 2 ? 75 : 76;
@@ -692,7 +692,7 @@ test("normal turns expose the latest live context usage with provider auto-compa
           result: "READY",
         };
       },
-    });
+      };
     },
   });
 
