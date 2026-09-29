@@ -1256,7 +1256,7 @@ test("v3 all-state restore creates canonical conversations before Project member
   );
   assert.deepEqual(
     repository.state.projects,
-    projectBundle,
+    canonicalProjectBundle,
   );
   assert.deepEqual(repository.state.mind, [mindState]);
   assert.deepEqual(repository.state.universe, universeBundle);
