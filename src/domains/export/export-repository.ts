@@ -44,6 +44,7 @@ import type {
   ExportMindContinuityBundle,
   ExportMindStateRecord,
   ExportProjectsBundle,
+  ExportWorkspacesBundle,
   ExportToolActivity,
   ExportTodoPaper,
   ExportUniverseBundle,
@@ -371,7 +372,7 @@ export class DrizzleExportRepository implements ExportRepository {
     };
   }
 
-  async listProjects(userId: string): Promise<ExportProjectsBundle> {
+  async listWorkspaces(userId: string): Promise<ExportWorkspacesBundle> {
     const [workspaceRows, resourceRows, conversationRows] = await Promise.all([
       this.db.select({
         id: workspaces.id,
@@ -415,21 +416,9 @@ export class DrizzleExportRepository implements ExportRepository {
         ),
     ]);
 
-    // Product Export/Restore v3 keeps its historical two-array JSON contract.
-    // The durable model is single-layer: each Workspace is projected as both
-    // the old backing-workspace record and the old project/execution record.
     return {
-      workspaces: workspaceRows.map((row) => ({
+      items: workspaceRows.map((row) => ({
         id: row.id,
-        name: row.name,
-        description: row.description,
-        version: row.version,
-        created_at: toIso(row.createdAt),
-        updated_at: toIso(row.updatedAt),
-      })),
-      projects: workspaceRows.map((row) => ({
-        id: row.id,
-        workspace_id: row.id,
         name: row.name,
         description: row.description,
         version: row.version,
@@ -438,7 +427,7 @@ export class DrizzleExportRepository implements ExportRepository {
       })),
       resources: resourceRows.map((row) => ({
         id: row.id,
-        project_id: row.workspaceId,
+        workspace_id: row.workspaceId,
         kind: row.kind,
         key: row.key,
         title: row.title,
@@ -449,9 +438,39 @@ export class DrizzleExportRepository implements ExportRepository {
         updated_at: toIso(row.updatedAt),
       })),
       conversations: conversationRows.map((row) => ({
-        project_id: row.workspaceId,
+        workspace_id: row.workspaceId,
         conversation_id: row.conversationId,
         added_at: toIso(row.addedAt),
+      })),
+    };
+  }
+
+  // v3 restore compatibility still uses this historical projection in the
+  // import repository. New exports never emit it.
+  async listProjects(userId: string): Promise<ExportProjectsBundle> {
+    const bundle = await this.listWorkspaces(userId);
+    return {
+      workspaces: bundle.items.map((row) => ({ ...row })),
+      projects: bundle.items.map((row) => ({
+        ...row,
+        workspace_id: row.id,
+      })),
+      resources: bundle.resources.map((row) => ({
+        id: row.id,
+        project_id: row.workspace_id,
+        kind: row.kind,
+        key: row.key,
+        title: row.title,
+        content: row.content,
+        metadata: row.metadata,
+        version: row.version,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      })),
+      conversations: bundle.conversations.map((row) => ({
+        project_id: row.workspace_id,
+        conversation_id: row.conversation_id,
+        added_at: row.added_at,
       })),
     };
   }
