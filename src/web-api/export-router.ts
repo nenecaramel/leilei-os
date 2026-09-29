@@ -52,7 +52,7 @@ export function createExportApiHandler(
       );
       response.setHeader(
         "Content-Disposition",
-        `attachment; filename="${toExportFilename(document.exported_at)}"`,
+        `attachment; filename="${toExportFilename(document.exported_at, scope)}"`,
       );
       response.type("application/json").json(document);
     } catch (error) {
@@ -70,12 +70,16 @@ function exactlyOneOptionalQueryValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : "__invalid__";
 }
 
-function toExportFilename(exportedAt: string): string {
+function toExportFilename(
+  exportedAt: string,
+  scope: ExportScope,
+): string {
   const compact = exportedAt
     .replace(/[-:]/gu, "")
     .replace(/\.\d{3}Z$/u, "Z")
     .replace(/[^0-9TZ]/gu, "");
-  return `leileios-export-${compact}.json`;
+  const label = scope === "all" ? "full-backup" : scope;
+  return `leileios-${label}_${compact}.json`;
 }
 
 function requireWebUser(response: Response, userId: string | undefined): userId is string {

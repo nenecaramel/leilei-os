@@ -30,6 +30,17 @@ function validV3Document(
   };
 }
 
+function validV4Document(
+  data: Record<string, unknown>,
+) {
+  return {
+    schema_version: 4,
+    owner_fingerprint: OWNER,
+    exported_at: "2026-08-14T00:00:00.000Z",
+    data,
+  };
+}
+
 function bytes(value: unknown): Uint8Array {
   return new TextEncoder().encode(
     JSON.stringify(value),
@@ -421,4 +432,75 @@ test("parseImportPackage validates conversation continuation checkpoints", () =>
         && error.code === "INVALID_IMPORT_FILE",
     );
   }
+});
+
+
+test("parseImportPackage accepts v4 single-layer Workspace backups", () => {
+  const workspaceId =
+    "00000000-0000-4000-8000-000000000201";
+  const resourceId =
+    "00000000-0000-4000-8000-000000000202";
+  const raw = bytes(validV4Document({
+    workspaces: {
+      items: [{
+        id: workspaceId,
+        name: "LeileiOS",
+        description: "Portable Workspace",
+        version: 1,
+        created_at: "2026-08-14T00:00:00.000Z",
+        updated_at: "2026-08-14T00:00:00.000Z",
+      }],
+      resources: [{
+        id: resourceId,
+        workspace_id: workspaceId,
+        kind: "file",
+        key: "README.md",
+        title: "Readme",
+        content: "hello",
+        metadata: {},
+        version: 1,
+        created_at: "2026-08-14T00:00:00.000Z",
+        updated_at: "2026-08-14T00:00:00.000Z",
+      }],
+      conversations: [],
+    },
+  }));
+  const parsed = parseImportPackage(raw);
+  assert.equal(parsed.document.schema_version, 4);
+  assert.deepEqual(
+    parsed.document.schema_version === 4
+      ? parsed.document.data.workspaces?.items.map((item) => item.id)
+      : [],
+    [workspaceId],
+  );
+});
+
+test("v4 rejects legacy projects and v3 rejects future workspaces", () => {
+  const emptyV3Projects = {
+    workspaces: [],
+    projects: [],
+    resources: [],
+    conversations: [],
+  };
+  const emptyV4Workspaces = {
+    items: [],
+    resources: [],
+    conversations: [],
+  };
+  assert.throws(
+    () => parseImportPackage(
+      bytes(validV4Document({ projects: emptyV3Projects })),
+    ),
+    (error: unknown) =>
+      error instanceof ImportValidationError
+      && error.code === "INVALID_IMPORT_FILE",
+  );
+  assert.throws(
+    () => parseImportPackage(
+      bytes(validV3Document({ workspaces: emptyV4Workspaces })),
+    ),
+    (error: unknown) =>
+      error instanceof ImportValidationError
+      && error.code === "INVALID_IMPORT_FILE",
+  );
 });

@@ -98,6 +98,11 @@ test("import preview uses authenticated identity and active-module summary", asy
       async preview(...args: never[]) {
         calls.push(args);
         return {
+          schema_version: 4,
+          exported_at: "2026-09-29T07:00:00.000Z",
+          raw_bytes: body.length,
+          included_modules: ["diary"],
+          audit_included: false,
           package_sha256: "a".repeat(64),
           preview_fingerprint: "b".repeat(64),
           summary,
@@ -126,6 +131,11 @@ test("import preview uses authenticated identity and active-module summary", asy
       assert.deepEqual(await response.json(), {
         success: true,
         data: {
+          schema_version: 4,
+          exported_at: "2026-09-29T07:00:00.000Z",
+          raw_bytes: body.length,
+          included_modules: ["diary"],
+          audit_included: false,
           package_sha256: "a".repeat(64),
           preview_fingerprint: "b".repeat(64),
           summary,

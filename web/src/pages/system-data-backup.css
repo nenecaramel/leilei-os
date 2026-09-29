@@ -1,0 +1,231 @@
+/* System Data: portable backup + add-only restore */
+
+.system-export-card,
+.system-import-card {
+  margin-top: 12px;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+.system-export-header {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+}
+
+.system-export-label {
+  display: block;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.system-export-action-row {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  min-width: 0;
+  min-height: 60px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.system-export-action,
+.system-import-action {
+  display: block;
+  width: auto;
+  min-width: 0;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  color: #171717;
+  background: transparent;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.system-export-action {
+  text-align: left;
+}
+
+.system-import-action {
+  text-align: right;
+}
+
+.system-export-action:hover,
+.system-export-action:active,
+.system-export-action:focus-visible,
+.system-import-action:hover,
+.system-import-action:active,
+.system-import-action:focus-visible {
+  color: #555555;
+  background: transparent;
+  box-shadow: none;
+  outline: 0;
+  transform: none;
+}
+
+.system-export-action:focus-visible,
+.system-import-action:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.system-export-action:disabled,
+.system-import-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.system-export-audit {
+  display: inline-flex;
+  width: 100%;
+  min-height: 60px;
+  align-items: center;
+  gap: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  color: #8a8a8a;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.system-export-audit:hover,
+.system-export-audit:active,
+.system-export-audit:focus,
+.system-export-audit:focus-within {
+  background: transparent;
+  box-shadow: none;
+  outline: 0;
+}
+
+.system-export-audit[data-active="true"] {
+  color: #555555;
+}
+
+.system-export-audit-input:focus,
+.system-export-audit-input:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
+.system-export-audit-check {
+  flex: 0 0 auto;
+  margin-left: 1px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.system-backup-note,
+.system-export-error {
+  margin: 0;
+  padding: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.system-backup-note {
+  color: #8a8a8a;
+}
+
+.system-export-error {
+  color: var(--theme-danger, #a53b35);
+}
+
+.system-import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 60px;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.system-import-row-label,
+.system-import-row-value {
+  min-width: 0;
+  color: #171717;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.system-import-file-row .system-import-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-import-row-value {
+  max-width: min(520px, 55vw);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.system-import-row-value-blocked {
+  color: var(--theme-danger, #a53b35);
+}
+
+.system-import-status,
+.system-import-message-copy,
+.system-import-error-copy {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.system-import-status,
+.system-import-message-copy {
+  color: #8a8a8a;
+}
+
+.system-import-message-row {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.system-import-message-copy,
+.system-import-error-copy {
+  margin: 0;
+  padding: 14px 0;
+}
+
+.system-import-error-copy {
+  color: var(--theme-danger, #a53b35);
+}
+
+@media (max-width: 640px) {
+  .system-export-action-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 10px 0;
+  }
+
+  .system-export-action {
+    min-height: 38px;
+  }
+
+  .system-import-row {
+    gap: 10px;
+  }
+
+  .system-import-row-value {
+    max-width: 52vw;
+  }
+}

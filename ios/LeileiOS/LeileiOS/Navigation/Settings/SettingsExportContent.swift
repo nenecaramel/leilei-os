@@ -23,6 +23,13 @@ struct SettingsExportContent: View {
                     "Include audit & lifecycle events",
                     isOn: $includesAuditAndLifecycleEvents
                 )
+
+                Text(
+                    "Audit and lifecycle events are diagnostic only and are not restored. "
+                    + "Full Backup excludes machine-local Workspace paths."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
 
             Section {
@@ -48,11 +55,10 @@ struct SettingsExportContent: View {
                 }
             }
 
-            if errorMessage != nil {
+            if let errorMessage {
                 Section {
-                    SettingsSectionState(
-                        title: "Failed"
-                    )
+                    Text(errorMessage)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -76,7 +82,7 @@ struct SettingsExportContent: View {
                 )
             )
         } catch {
-            errorMessage = "Failed"
+            errorMessage = settingsDataErrorMessage(error)
         }
     }
 }

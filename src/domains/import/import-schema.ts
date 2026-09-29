@@ -162,6 +162,31 @@ const projectsBundle = z.object({
   conversations: z.array(projectConversationRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
+const workspaceResourceRecord = z.object({
+  id: uuid,
+  workspace_id: uuid,
+  kind: z.enum(PROJECT_RESOURCE_KINDS),
+  key: z.string().min(1).max(1000),
+  title: nullableBounded(500),
+  content: nullableBounded(1_000_000),
+  metadata: z.record(z.string(), z.unknown()),
+  version: z.number().int().min(1),
+  created_at: isoDateTime,
+  updated_at: isoDateTime,
+}).strict();
+
+const workspaceConversationRecord = z.object({
+  workspace_id: uuid,
+  conversation_id: uuid,
+  added_at: isoDateTime,
+}).strict();
+
+const workspacesBundle = z.object({
+  items: z.array(projectWorkspaceRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+  resources: z.array(workspaceResourceRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+  conversations: z.array(workspaceConversationRecord).max(MAX_IMPORT_RECORDS_PER_MODULE),
+}).strict();
+
 const conversationRecord = z.object({
   id: uuid,
   title: z.string().nullable(),
@@ -418,6 +443,21 @@ const dataV3Schema = z.object({
   universe: universeBundle.nullable().optional(),
 }).strict();
 
+const dataV4Schema = z.object({
+  diary: z.array(diaryRecord).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+  diary_comments: z.array(diaryCommentRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE)
+    .optional(),
+  todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
+  workspaces: workspacesBundle.optional(),
+  mind: z.array(mindStateRecord)
+    .max(MAX_IMPORT_RECORDS_PER_MODULE)
+    .optional(),
+  mind_continuity: mindContinuityBundle.optional(),
+  conversations: conversationsBundle.optional(),
+  universe: universeBundle.nullable().optional(),
+}).strict();
+
 const documentV2Schema = z.object({
   schema_version: z.literal(2),
   owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -431,6 +471,14 @@ const documentV3Schema = z.object({
   owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
   exported_at: isoDateTime,
   data: dataV3Schema,
+  audit: auditSchema.optional(),
+}).strict();
+
+const documentV4Schema = z.object({
+  schema_version: z.literal(4),
+  owner_fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  exported_at: isoDateTime,
+  data: dataV4Schema,
   audit: auditSchema.optional(),
 }).strict();
 
@@ -460,7 +508,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version === 3
+    "diary_comments" in document.data
     && document.data.diary_comments
   ) {
     for (const comment of document.data.diary_comments) {
@@ -491,7 +539,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version === 3
+    "universe" in document.data
     && document.data.universe
   ) {
     try {
@@ -530,7 +578,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version === 3
+    "conversations" in document.data
     && document.data.conversations
   ) {
     for (const conversation of document.data.conversations.conversations) {
@@ -570,7 +618,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
   }
 
   if (
-    document.schema_version === 3
+    "mind_continuity" in document.data
     && document.data.mind_continuity
   ) {
     for (
@@ -622,7 +670,7 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
     }
   }
 
-  if (document.schema_version === 3 && document.data.mind) {
+  if ("mind" in document.data && document.data.mind) {
     for (const state of document.data.mind) {
       if (state.subject_id.trim().length === 0) {
         throw new ImportValidationError(
@@ -693,6 +741,25 @@ function assertBusinessInvariants(document: RestorableExportDocument): void {
       }
     }
   }
+
+  if (document.schema_version === 4 && document.data.workspaces) {
+    for (const workspace of document.data.workspaces.items) {
+      if (workspace.name.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "workspace name must not be blank",
+        );
+      }
+    }
+    for (const resource of document.data.workspaces.resources) {
+      if (resource.key.trim().length === 0) {
+        throw new ImportValidationError(
+          "INVALID_IMPORT_FILE",
+          "workspace resource key must not be blank",
+        );
+      }
+    }
+  }
 }
 
 export type ParsedImportPackage = {
@@ -738,7 +805,9 @@ export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
       ? documentV2Schema
       : version === 3
         ? documentV3Schema
-        : null;
+        : version === 4
+          ? documentV4Schema
+          : null;
   if (!schema) {
     throw new ImportValidationError(
       "INVALID_IMPORT_FILE",

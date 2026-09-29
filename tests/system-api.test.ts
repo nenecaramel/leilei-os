@@ -68,7 +68,12 @@ test("system connections and data routes use server-owned identity", async () =>
       calls.push({ method: "data", userId });
       return {
         diary: { active: 3, archived: 4 },
-        todo: { active: 9 },
+        diary_comments: { count: 5 },
+        todo: { active: 9, count: 9 },
+        workspaces: { count: 2 },
+        conversations: { active: 4, archived: 1 },
+        mind: { count: 8 },
+        universe: { nodes: 6 },
       };
     },
   }, async (baseUrl) => {
@@ -89,7 +94,12 @@ test("system connections and data routes use server-owned identity", async () =>
       success: true,
       data: {
         diary: { active: 3, archived: 4 },
-        todo: { active: 9 },
+        diary_comments: { count: 5 },
+        todo: { active: 9, count: 9 },
+        workspaces: { count: 2 },
+        conversations: { active: 4, archived: 1 },
+        mind: { count: 8 },
+        universe: { nodes: 6 },
       },
     });
   });

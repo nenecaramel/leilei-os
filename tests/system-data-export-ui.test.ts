@@ -47,14 +47,19 @@ function summary() {
     success: true as const,
     data: {
       diary: { active: 3, archived: 4 },
-      todo: { active: 9 },
+      diary_comments: { count: 5 },
+      todo: { active: 9, count: 9 },
+      workspaces: { count: 2 },
+      conversations: { active: 6, archived: 1 },
+      mind: { count: 8 },
+      universe: { nodes: 7 },
     },
   };
 }
 
 function exportDocument(): WebExportDocument {
   return {
-    schema_version: 3,
+    schema_version: 4,
     owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
     data: { diary: [{ title: "approved" }] },
@@ -68,7 +73,7 @@ function render(api: WebApiClient) {
   return { root, container };
 }
 
-test("Data renders Export title, one horizontal scope row, and inactive audit text control", async () => {
+test("Data renders truthful Backup actions and inactive diagnostic audit control", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const api: WebApiClient = {
@@ -86,10 +91,10 @@ test("Data renders Export title, one horizontal scope row, and inactive audit te
   assert.deepEqual(paths, ["/system/data"]);
   const card = container.querySelector(".system-export-card");
   assert.ok(card);
-  assert.equal(card.querySelector(".system-export-label")?.textContent, "Export");
+  assert.equal(card.querySelector(".system-export-label")?.textContent, "Backup");
   assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
-  assert.deepEqual(labels, ["All", "Diary", "Todo"]);
+  assert.deepEqual(labels, ["Full Backup", "Diary", "Todo"]);
 
   const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
   assert.ok(auditControl);
@@ -144,7 +149,8 @@ test("audit text control becomes active with a plain check and still sends inclu
   assert.deepEqual(paths, ["/system/data", "/system/export?scope=diary", "/system/export?scope=all&include_audit=true"]);
   assert.equal(blobs.length, 2);
   assert.equal(clicked.length, 2);
-  assert.equal(clicked[0].download, "leileios-export-20260813T054200Z.json");
+  assert.equal(clicked[0].download, "leileios-diary_20260813T054200Z.json");
+  assert.equal(clicked[1].download, "leileios-full-backup_20260813T054200Z.json");
   assert.deepEqual(JSON.parse(await blobs[1].text()), exportDocument());
 
   env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
@@ -174,7 +180,7 @@ test("export failures are local and do not erase the loaded summary", async () =
   await waitForPaint();
   assert.equal(attempts, 1);
   assert.equal(clicks, 0);
-  assert.match(container.textContent ?? "", /Unable to export data/);
+  assert.match(container.textContent ?? "", /Unable to create this backup/);
   env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
   root.unmount();
   await waitForPaint();

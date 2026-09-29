@@ -6,7 +6,7 @@ import type {
   ExportLifecycleEvent,
   ExportMindContinuityBundle,
   ExportMindStateRecord,
-  ExportProjectsBundle,
+  ExportWorkspacesBundle,
   ExportScope,
   ExportToolActivity,
   ExportTodoPaper,
@@ -27,7 +27,7 @@ export interface ExportRepository {
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
   listDiaryComments(userId: string): Promise<ExportDiaryCommentRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
-  listProjects(userId: string): Promise<ExportProjectsBundle>;
+  listWorkspaces(userId: string): Promise<ExportWorkspacesBundle>;
   listMind(userId: string): Promise<ExportMindStateRecord[]>;
   listMindContinuity(userId: string): Promise<ExportMindContinuityBundle>;
   hasIncompleteMindFollowUps(userId: string): Promise<boolean>;
@@ -130,13 +130,13 @@ export class ExportService {
       }
 
       const [
-        projects,
+        workspaces,
         mind,
         mindContinuity,
         conversations,
         universe,
       ] = await Promise.all([
-        repository.listProjects(userId),
+        repository.listWorkspaces(userId),
         repository.listMind(userId),
         repository.listMindContinuity(userId),
         repository.listConversations(userId),
@@ -151,7 +151,7 @@ export class ExportService {
       ) {
         throw new ExportServiceError("EXPORT_IN_PROGRESS");
       }
-      data.projects = projects;
+      data.workspaces = workspaces;
       data.mind = mind;
       data.mind_continuity = mindContinuity;
       data.conversations = conversations;
@@ -159,7 +159,7 @@ export class ExportService {
     }
 
     const document: ExportDocument = {
-      schema_version: 3,
+      schema_version: 4,
       owner_fingerprint: createOwnerFingerprint(userId),
       exported_at: this.now().toISOString(),
       data,

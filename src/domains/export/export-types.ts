@@ -86,6 +86,40 @@ export type ExportProjectsBundle = {
   conversations: ExportProjectConversationRecord[];
 };
 
+export type ExportWorkspaceRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExportWorkspaceResourceRecord = {
+  id: string;
+  workspace_id: string;
+  kind: ProjectResourceKind;
+  key: string;
+  title: string | null;
+  content: string | null;
+  metadata: Record<string, unknown>;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExportWorkspaceConversationRecord = {
+  workspace_id: string;
+  conversation_id: string;
+  added_at: string;
+};
+
+export type ExportWorkspacesBundle = {
+  items: ExportWorkspaceRecord[];
+  resources: ExportWorkspaceResourceRecord[];
+  conversations: ExportWorkspaceConversationRecord[];
+};
+
 export type ExportUniverseDiarySourceRecord = {
   node_id: string;
   diary_id: string;
@@ -286,6 +320,15 @@ export type ExportDataV3 = ExportDataV2 & {
   universe?: ExportUniverseBundle | null;
 };
 
+export type ExportDataV4 = ExportDataV2 & {
+  diary_comments?: ExportDiaryCommentRecord[];
+  workspaces?: ExportWorkspacesBundle;
+  mind?: ExportMindStateRecord[];
+  mind_continuity?: ExportMindContinuityBundle;
+  conversations?: ExportConversationsBundle;
+  universe?: ExportUniverseBundle | null;
+};
+
 export type ExportAudit = {
   lifecycle: ExportLifecycleEvent[];
   tool_activity: ExportToolActivity[];
@@ -307,8 +350,17 @@ export type ExportDocumentV3 = {
   audit?: ExportAudit;
 };
 
+export type ExportDocumentV4 = {
+  schema_version: 4;
+  owner_fingerprint: string;
+  exported_at: string;
+  data: ExportDataV4;
+  audit?: ExportAudit;
+};
+
 export type RestorableExportDocument =
   | ExportDocumentV2
-  | ExportDocumentV3;
+  | ExportDocumentV3
+  | ExportDocumentV4;
 
-export type ExportDocument = ExportDocumentV3;
+export type ExportDocument = ExportDocumentV4;

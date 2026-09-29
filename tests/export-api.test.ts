@@ -17,7 +17,7 @@ function documentFor(
   includeAudit: boolean,
 ): ExportDocument {
   return {
-    schema_version: 3,
+    schema_version: 4,
     owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
     data:
@@ -26,9 +26,8 @@ function documentFor(
             diary: [],
             diary_comments: [],
             todo: [],
-            projects: {
-              workspaces: [],
-              projects: [],
+            workspaces: {
+              items: [],
               resources: [],
               conversations: [],
             },
@@ -196,9 +195,11 @@ test("export accepts only All, Diary, and Todo scopes", async () => {
           response.headers.get("content-type") ?? "",
           /^application\/json; charset=utf-8/u,
         );
-        assert.match(
-          response.headers.get("content-disposition") ?? "",
-          /^attachment; filename="leileios-export-20260813T054200Z\.json"$/u,
+        const filenameScope =
+          scope === "all" ? "full-backup" : scope;
+        assert.equal(
+          response.headers.get("content-disposition"),
+          `attachment; filename="leileios-${filenameScope}_20260813T054200Z.json"`,
         );
         assert.deepEqual(
           await response.json(),

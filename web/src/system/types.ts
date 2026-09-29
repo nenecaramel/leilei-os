@@ -14,8 +14,25 @@ export type SystemDataSummary = {
     active: number;
     archived: number;
   };
+  diary_comments: {
+    count: number;
+  };
   todo: {
     active: number;
+    count: number;
+  };
+  workspaces: {
+    count: number;
+  };
+  conversations: {
+    active: number;
+    archived: number;
+  };
+  mind: {
+    count: number;
+  };
+  universe: {
+    nodes: number;
   };
 };
 

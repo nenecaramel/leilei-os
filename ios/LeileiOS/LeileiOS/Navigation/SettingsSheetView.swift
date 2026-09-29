@@ -338,7 +338,12 @@ private struct SettingsSummaryContent: View {
         Form {
             Section("Summary") {
                 LabeledContent("Diary", value: diaryValue)
-                LabeledContent("Todo", value: todoValue)
+                LabeledContent("Diary comments", value: countValue(\.diaryComments))
+                LabeledContent("Todo", value: countValue(\.todo))
+                LabeledContent("Workspaces", value: countValue(\.workspaces))
+                LabeledContent("Conversations", value: conversationsValue)
+                LabeledContent("Mind", value: countValue(\.mind))
+                LabeledContent("Universe", value: universeValue)
             }
         }
         .formStyle(.grouped)
@@ -353,14 +358,32 @@ private struct SettingsSummaryContent: View {
         if let summary {
             return "\(summary.diaryActive) active · \(summary.diaryArchived) archived"
         }
-        return isLoading ? "Loading…" : "Unavailable"
+        return placeholder
     }
 
-    private var todoValue: String {
+    private var conversationsValue: String {
         if let summary {
-            return "\(summary.todoActive) active"
+            return "\(summary.conversationsActive) active · \(summary.conversationsArchived) archived"
         }
-        return isLoading ? "Loading…" : "Unavailable"
+        return placeholder
+    }
+
+    private var universeValue: String {
+        if let summary {
+            return "\(summary.universeNodes) nodes"
+        }
+        return placeholder
+    }
+
+    private var placeholder: String {
+        isLoading ? "Loading…" : "Unavailable"
+    }
+
+    private func countValue(
+        _ keyPath: KeyPath<SettingsDataSummary, Int>
+    ) -> String {
+        guard let summary else { return placeholder }
+        return "\(summary[keyPath: keyPath])"
     }
 
     @MainActor

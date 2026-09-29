@@ -4,24 +4,43 @@ import path from "node:path";
 import test from "node:test";
 
 const css = fs.readFileSync(
-  path.resolve("web/src/pages/system-export-ui-polish.css"),
+  path.resolve("web/src/pages/system-data-backup.css"),
   "utf8",
 );
 
-test("export rows mirror the real System data row geometry", () => {
-  assert.match(css, /\.system-export-card\s*\{[\s\S]*?padding-bottom:\s*0;/);
-  assert.match(css, /\.system-export-header\s*\{[\s\S]*?display:\s*flex;[\s\S]*?min-height:\s*60px;[\s\S]*?align-items:\s*center;[\s\S]*?padding-top:\s*0;/);
-  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-columns:\s*repeat\(5, max-content\);[\s\S]*?justify-content:\s*space-between;[\s\S]*?min-height:\s*60px;[\s\S]*?margin-top:\s*0;/);
-  assert.match(css, /\.system-export-action\s*\{[\s\S]*?width:\s*auto;[\s\S]*?padding:\s*4px 0;/);
-  assert.match(css, /\.system-export-audit\s*\{[\s\S]*?min-height:\s*60px;[\s\S]*?margin-top:\s*0;/);
+test("Data backup and restore share one System row language", () => {
+  assert.match(
+    css,
+    /\.system-export-card,[\s\S]*?\.system-import-card\s*\{[\s\S]*?margin-top:\s*12px;/,
+  );
+  assert.match(
+    css,
+    /\.system-export-action-row\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, max-content\);[\s\S]*?min-height:\s*60px;/,
+  );
+  assert.match(
+    css,
+    /\.system-import-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) auto;[\s\S]*?min-height:\s*60px;/,
+  );
 });
 
-test("export row separators match existing System data separators", () => {
-  assert.match(css, /\.system-export-action-row\s*\{[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\);/);
-  assert.match(css, /\.system-export-audit\s*\{[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\);/);
+test("backup and restore rows use the existing System separator", () => {
+  assert.match(
+    css,
+    /\.system-export-action-row\s*\{[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\);/,
+  );
+  assert.match(
+    css,
+    /\.system-import-row\s*\{[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\);/,
+  );
 });
 
-test("audit control has no tap or focus selection tile", () => {
-  assert.match(css, /\.system-export-audit\s*\{[\s\S]*?-webkit-tap-highlight-color:\s*transparent;/);
-  assert.match(css, /\.system-export-audit:hover,[\s\S]*?\.system-export-audit:focus-within\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?outline:\s*0;/);
+test("diagnostic audit control remains a text control without a selection tile", () => {
+  assert.match(
+    css,
+    /\.system-export-audit\s*\{[\s\S]*?-webkit-tap-highlight-color:\s*transparent;/,
+  );
+  assert.match(
+    css,
+    /\.system-export-audit:hover,[\s\S]*?\.system-export-audit:focus-within\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?outline:\s*0;/,
+  );
 });
