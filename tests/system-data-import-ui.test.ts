@@ -65,7 +65,7 @@ const summary = () => ({
   data: {
     diary: { active: 0, archived: 0 },
     diary_comments: { count: 0 },
-    todo: { count: 0 },
+    todo: { active: 0, count: 0 },
     workspaces: { count: 0 },
     conversations: { active: 0, archived: 0 },
     mind: { count: 0 },
