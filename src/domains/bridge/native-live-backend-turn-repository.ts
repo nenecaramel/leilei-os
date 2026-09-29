@@ -9,8 +9,8 @@ import {
   nativeLiveMindFollowUps,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
-  projectConversations,
-  projects,
+  workspaceConversations,
+  workspaces,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
@@ -1213,12 +1213,12 @@ implements NativeLiveBackendTurnPort {
     if (!parentMessageId) {
       if (requestedWorkspaceId) {
         const [workspace] = await executor
-          .select({ id: projects.id })
-          .from(projects)
+          .select({ id: workspaces.id })
+          .from(workspaces)
           .where(
             and(
-              eq(projects.userId, userId),
-              eq(projects.id, requestedWorkspaceId),
+              eq(workspaces.userId, userId),
+              eq(workspaces.id, requestedWorkspaceId),
             ),
           )
           .limit(1);
@@ -1232,10 +1232,10 @@ implements NativeLiveBackendTurnPort {
           };
         }
         await executor
-          .insert(projectConversations)
+          .insert(workspaceConversations)
           .values({
             userId,
-            projectId: requestedWorkspaceId,
+            workspaceId: requestedWorkspaceId,
             conversationId,
           })
           .onConflictDoNothing();
@@ -1249,12 +1249,12 @@ implements NativeLiveBackendTurnPort {
       }
 
       const workspaceRows = await executor
-        .select({ projectId: projectConversations.projectId })
-        .from(projectConversations)
+        .select({ workspaceId: workspaceConversations.workspaceId })
+        .from(workspaceConversations)
         .where(
           and(
-            eq(projectConversations.userId, userId),
-            eq(projectConversations.conversationId, conversationId),
+            eq(workspaceConversations.userId, userId),
+            eq(workspaceConversations.conversationId, conversationId),
           ),
         )
         .limit(2);
@@ -1271,7 +1271,7 @@ implements NativeLiveBackendTurnPort {
         ok: true,
         runtimeMode: "new",
         parentProviderSessionId: null,
-        workspaceId: workspaceRows[0]?.projectId ?? null,
+        workspaceId: workspaceRows[0]?.workspaceId ?? null,
         expectedWorkspaceRoot: null,
       };
     }
