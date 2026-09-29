@@ -278,8 +278,6 @@ export class NativeLiveExternalSessionBridgeService {
         if (
           current?.status === "completed"
           && input.outcome.status === "success"
-          && JSON.stringify(current.result)
-            === JSON.stringify(input.outcome.sessions)
         ) {
           return "completed";
         }
