@@ -5,10 +5,7 @@ import type {
   SystemDataResponse,
   SystemDataSummary,
 } from "../system/types";
-import type {
-  WebExportDocument,
-  WebExportScope,
-} from "../system/export-types";
+import type { WebExportDocument } from "../system/export-types";
 import { downloadExportDocument } from "../system/download-export";
 import {
   executeImport,
@@ -27,7 +24,7 @@ type LoadState =
 
 type ExportState =
   | { status: "idle" }
-  | { status: "loading"; scope: WebExportScope }
+  | { status: "loading" }
   | { status: "error"; message: string };
 
 type ImportState =
@@ -73,7 +70,7 @@ const IMPORT_MODULE_LABELS: Record<WebImportModule, string> = {
   diary_comments: "Diary comments",
   todo: "Todo",
   workspaces: "Workspaces",
-  conversations: "Conversations",
+  conversations: "Conversation records",
   mind: "Mind",
   universe: "Universe",
 };
@@ -257,13 +254,13 @@ export function SystemDataPageContent({
   const importInputRef = useRef<HTMLInputElement>(null);
   const importSelectionRef = useRef(0);
 
-  async function runExport(scope: WebExportScope): Promise<void> {
-    setExportState({ status: "loading", scope });
+  async function runExport(): Promise<void> {
+    setExportState({ status: "loading" });
     const path =
-      `/system/export?scope=${scope}${includeAudit ? "&include_audit=true" : ""}`;
+      `/system/export${includeAudit ? "?include_audit=true" : ""}`;
     try {
       const document = await api.request<WebExportDocument>(path);
-      downloadExportDocument(document, scope);
+      downloadExportDocument(document);
       setExportState({ status: "idle" });
     } catch (error) {
       setExportState({
@@ -457,25 +454,17 @@ export function SystemDataPageContent({
           <strong className="system-export-label">Backup</strong>
         </div>
 
-        <div className="system-export-action-row" aria-label="Backup scope">
-          {([
-            ["all", "Full Backup"],
-            ["diary", "Diary"],
-            ["todo", "Todo"],
-          ] as const).map(([scope, label]) => (
-            <button
-              className="system-export-action"
-              type="button"
-              key={scope}
-              disabled={exportState.status === "loading"}
-              onClick={() => void runExport(scope)}
-            >
-              {exportState.status === "loading"
-                && exportState.scope === scope
-                ? "Creating…"
-                : label}
-            </button>
-          ))}
+        <div className="system-export-action-row">
+          <button
+            className="system-export-action"
+            type="button"
+            disabled={exportState.status === "loading"}
+            onClick={() => void runExport()}
+          >
+            {exportState.status === "loading"
+              ? "Creating…"
+              : "Full Backup"}
+          </button>
         </div>
 
         <label

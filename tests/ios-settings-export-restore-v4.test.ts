@@ -32,9 +32,9 @@ test("iOS keeps the existing Summary Export Restore Settings structure", () => {
   assert.match(settingsView, /SettingsRestoreContent\(dataService: dataService\)/);
 
   assert.match(exportView, /Form \{/);
-  assert.match(exportView, /Picker\("Scope"/);
+  assert.doesNotMatch(exportView, /Picker\("Scope"/);
   assert.match(exportView, /Toggle\(/);
-  assert.match(exportView, /Create Export/);
+  assert.match(exportView, /Create Full Backup/);
   assert.match(exportView, /ShareLink/);
 
   assert.match(restoreView, /Form \{/);
@@ -45,8 +45,8 @@ test("iOS keeps the existing Summary Export Restore Settings structure", () => {
 });
 
 test("iOS Export uses Full Backup wording, timestamp filenames, and diagnostic audit semantics", () => {
-  assert.match(dataService, /case \.all: "Full Backup"/);
-  assert.match(dataService, /scopeLabel = "full-backup"/);
+  assert.doesNotMatch(dataService, /SettingsExportScope/);
+  assert.match(dataService, /leileios-full-backup_/);
   assert.match(dataService, /yyyyMMdd'T'HHmmss'Z'/);
   assert.match(exportView, /Audit and lifecycle events are diagnostic only and are not restored/);
   assert.match(exportView, /Full Backup excludes machine-local Workspace paths/);

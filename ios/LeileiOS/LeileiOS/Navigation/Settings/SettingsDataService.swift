@@ -65,26 +65,7 @@ struct UnavailableSettingsAuthService: SettingsAuthService {
     }
 }
 
-enum SettingsExportScope: String, CaseIterable, Identifiable, Hashable {
-    case all
-    case diary
-    case todo
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: "Full Backup"
-        case .diary: "Diary"
-        case .todo: "Todo"
-        }
-    }
-
-    var backendScope: String { rawValue }
-}
-
 struct SettingsExportRequest {
-    let scope: SettingsExportScope
     let includeAuditAndLifecycleEvents: Bool
 }
 
@@ -110,7 +91,7 @@ enum SettingsRestoreModule: String, Identifiable, Hashable {
         case .diaryComments: "Diary comments"
         case .todo: "Todo"
         case .workspaces: "Workspaces"
-        case .conversations: "Conversations"
+        case .conversations: "Conversation records"
         case .mind: "Mind"
         case .universe: "Universe"
         }
@@ -200,22 +181,12 @@ final class LeileiSettingsDataService: SettingsDataService {
         _ request: SettingsExportRequest
     ) async throws -> SettingsExportDocument {
         let data = try await api.exportData(
-            scope: request.scope.backendScope,
             includeAudit: request.includeAuditAndLifecycleEvents
         )
         let timestamp = Self.exportTimestamp(Date())
-        let scopeLabel: String
-        switch request.scope {
-        case .all:
-            scopeLabel = "full-backup"
-        case .diary:
-            scopeLabel = "diary"
-        case .todo:
-            scopeLabel = "todo"
-        }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(
-                "leileios-\(scopeLabel)_\(timestamp).json"
+                "leileios-full-backup_\(timestamp).json"
             )
         try data.write(to: url, options: .atomic)
         return SettingsExportDocument(fileURL: url)

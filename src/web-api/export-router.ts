@@ -1,16 +1,9 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { ExportServiceError, type ExportService } from "../domains/export/export-service.js";
-import type { ExportScope } from "../domains/export/export-types.js";
 
 export type ExportApiDependencies = {
   exportService: Pick<ExportService, "createExport">;
 };
-
-const EXPORT_SCOPES = new Set<ExportScope>([
-  "all",
-  "diary",
-  "todo",
-]);
 
 export function createExportApiRouter(
   dependencies: ExportApiDependencies,
@@ -26,11 +19,8 @@ export function createExportApiHandler(
   return async (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
 
-    const scopeValue = exactlyOneQueryValue(request.query.scope);
+    const scopeValue = exactlyOneOptionalQueryValue(request.query.scope);
     const includeAuditValue = exactlyOneOptionalQueryValue(request.query.include_audit);
-    const scope = scopeValue && EXPORT_SCOPES.has(scopeValue as ExportScope)
-      ? scopeValue as ExportScope
-      : undefined;
     const includeAudit = includeAuditValue === undefined
       ? false
       : includeAuditValue === "false"
@@ -39,7 +29,12 @@ export function createExportApiHandler(
           ? true
           : undefined;
 
-    if (!scope || includeAudit === undefined) {
+    // scope=all remains accepted temporarily for older clients, but partial
+    // product exports are retired. New clients omit scope entirely.
+    if (
+      (scopeValue !== undefined && scopeValue !== "all")
+      || includeAudit === undefined
+    ) {
       sendInvalidExportRequest(response);
       return;
     }
@@ -47,22 +42,17 @@ export function createExportApiHandler(
     try {
       const document = await dependencies.exportService.createExport(
         request.webUserId!,
-        scope,
         includeAudit,
       );
       response.setHeader(
         "Content-Disposition",
-        `attachment; filename="${toExportFilename(document.exported_at, scope)}"`,
+        `attachment; filename="${toExportFilename(document.exported_at)}"`,
       );
       response.type("application/json").json(document);
     } catch (error) {
       sendExportError(response, error);
     }
   };
-}
-
-function exactlyOneQueryValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function exactlyOneOptionalQueryValue(value: unknown): string | undefined {
@@ -72,14 +62,12 @@ function exactlyOneOptionalQueryValue(value: unknown): string | undefined {
 
 function toExportFilename(
   exportedAt: string,
-  scope: ExportScope,
 ): string {
   const compact = exportedAt
     .replace(/[-:]/gu, "")
     .replace(/\.\d{3}Z$/u, "Z")
     .replace(/[^0-9TZ]/gu, "");
-  const label = scope === "all" ? "full-backup" : scope;
-  return `leileios-${label}_${compact}.json`;
+  return `leileios-full-backup_${compact}.json`;
 }
 
 function requireWebUser(response: Response, userId: string | undefined): userId is string {

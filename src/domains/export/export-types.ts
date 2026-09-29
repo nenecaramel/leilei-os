@@ -2,8 +2,6 @@ import type { ContentAuthor } from "../content-author.js";
 import type { UniverseSnapshot } from "../universe/universe-types.js";
 import type { ProjectResourceKind } from "../../database/schema.js";
 
-export type ExportScope = "all" | "diary" | "todo";
-
 export type ExportDiaryRecord = {
   id: string;
   title: string;

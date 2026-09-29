@@ -7,7 +7,6 @@ import type {
   ExportMindContinuityBundle,
   ExportMindStateRecord,
   ExportWorkspacesBundle,
-  ExportScope,
   ExportToolActivity,
   ExportTodoPaper,
   ExportUniverseBundle,
@@ -75,7 +74,6 @@ export class ExportService {
 
   async createExport(
     userId: string,
-    scope: ExportScope,
     includeAudit: boolean,
   ): Promise<ExportDocument> {
     return this.repository.withConsistentSnapshot(
@@ -83,7 +81,6 @@ export class ExportService {
         this.createExportFromSnapshot(
           repository,
           userId,
-          scope,
           includeAudit,
         ),
     );
@@ -92,7 +89,6 @@ export class ExportService {
   private async createExportFromSnapshot(
     repository: ExportRepository,
     userId: string,
-    scope: ExportScope,
     includeAudit: boolean,
   ): Promise<ExportDocument> {
     try {
@@ -104,73 +100,71 @@ export class ExportService {
       throw error;
     }
 
-    const data: ExportDocument["data"] = {};
-    if (scope === "all" || scope === "diary") {
-      const [diary, diaryComments] = await Promise.all([
-        repository.listDiary(userId),
-        repository.listDiaryComments(userId),
-      ]);
-      data.diary = diary;
-      data.diary_comments = diaryComments;
-    }
-    if (scope === "all" || scope === "todo") {
-      data.todo = await repository.listTodo(userId);
-    }
-    if (scope === "all") {
-      // Portable backup snapshots committed product state. Only foreground
-      // finalization that can leave Conversation/Mind product state half-written
-      // blocks the snapshot. Semantic grouping and background model queues are
-      // recoverable operational work owned by the Mac Companion and may remain
-      // pending while the companion is offline; they must not make backup
-      // unavailable indefinitely.
-      const [incompleteTurns, incompleteMind] = await Promise.all([
-        repository.hasIncompleteTurnPreparations(userId),
-        repository.hasIncompleteMindFollowUps(userId),
-      ]);
-      if (incompleteTurns) {
-        throw new ExportServiceError(
-          "EXPORT_IN_PROGRESS",
-          "prepared_turn",
-        );
-      }
-      if (incompleteMind) {
-        throw new ExportServiceError(
-          "EXPORT_IN_PROGRESS",
-          "mind_followup",
-        );
-      }
+    const [diary, diaryComments, todo] = await Promise.all([
+      repository.listDiary(userId),
+      repository.listDiaryComments(userId),
+      repository.listTodo(userId),
+    ]);
 
-      const [
-        workspaces,
-        mind,
-        mindContinuity,
-        conversations,
-        universe,
-      ] = await Promise.all([
-        repository.listWorkspaces(userId),
-        repository.listMind(userId),
-        repository.listMindContinuity(userId),
-        repository.listConversations(userId),
-        repository.listUniverse(userId),
-      ]);
-      if (
-        conversations.messages.some(
-          (message) =>
-            message.status === "pending"
-            || message.status === "streaming",
-        )
-      ) {
-        throw new ExportServiceError(
-          "EXPORT_IN_PROGRESS",
-          "canonical_message",
-        );
-      }
-      data.workspaces = workspaces;
-      data.mind = mind;
-      data.mind_continuity = mindContinuity;
-      data.conversations = conversations;
-      data.universe = universe;
+    // Portable backup snapshots committed product state. Only foreground
+    // finalization that can leave Conversation/Mind product state half-written
+    // blocks the snapshot. Semantic grouping and background model queues are
+    // recoverable operational work owned by the Mac Companion and may remain
+    // pending while the companion is offline; they must not make backup
+    // unavailable indefinitely.
+    const [incompleteTurns, incompleteMind] = await Promise.all([
+      repository.hasIncompleteTurnPreparations(userId),
+      repository.hasIncompleteMindFollowUps(userId),
+    ]);
+    if (incompleteTurns) {
+      throw new ExportServiceError(
+        "EXPORT_IN_PROGRESS",
+        "prepared_turn",
+      );
     }
+    if (incompleteMind) {
+      throw new ExportServiceError(
+        "EXPORT_IN_PROGRESS",
+        "mind_followup",
+      );
+    }
+
+    const [
+      workspaces,
+      mind,
+      mindContinuity,
+      conversations,
+      universe,
+    ] = await Promise.all([
+      repository.listWorkspaces(userId),
+      repository.listMind(userId),
+      repository.listMindContinuity(userId),
+      repository.listConversations(userId),
+      repository.listUniverse(userId),
+    ]);
+    if (
+      conversations.messages.some(
+        (message) =>
+          message.status === "pending"
+          || message.status === "streaming",
+      )
+    ) {
+      throw new ExportServiceError(
+        "EXPORT_IN_PROGRESS",
+        "canonical_message",
+      );
+    }
+
+    const data: ExportDocument["data"] = {
+      diary,
+      diary_comments: diaryComments,
+      todo,
+      workspaces,
+      mind,
+      mind_continuity: mindContinuity,
+      conversations,
+      universe,
+    };
 
     const document: ExportDocument = {
       schema_version: 4,
