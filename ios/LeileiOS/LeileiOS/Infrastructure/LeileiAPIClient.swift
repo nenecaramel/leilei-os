@@ -456,12 +456,36 @@ struct SystemDataSummarySnapshot: Decodable, Sendable, Equatable {
         let archived: Int
     }
 
-    struct Todo: Decodable, Sendable, Equatable {
+    struct Count: Decodable, Sendable, Equatable {
+        let count: Int
+    }
+
+    struct Conversations: Decodable, Sendable, Equatable {
         let active: Int
+        let archived: Int
+    }
+
+    struct Universe: Decodable, Sendable, Equatable {
+        let nodes: Int
     }
 
     let diary: Diary
-    let todo: Todo
+    let diaryComments: Count
+    let todo: Count
+    let workspaces: Count
+    let conversations: Conversations
+    let mind: Count
+    let universe: Universe
+
+    enum CodingKeys: String, CodingKey {
+        case diary
+        case diaryComments = "diary_comments"
+        case todo
+        case workspaces
+        case conversations
+        case mind
+        case universe
+    }
 }
 
 struct SystemActivitySnapshot: Decodable, Sendable, Equatable, Identifiable {
@@ -489,15 +513,42 @@ struct ImportSummaryCountsSnapshot: Decodable, Sendable, Equatable {
 
 struct ImportSummarySnapshot: Decodable, Sendable, Equatable {
     let diary: ImportSummaryCountsSnapshot
+    let diaryComments: ImportSummaryCountsSnapshot?
     let todo: ImportSummaryCountsSnapshot
+    let workspaces: ImportSummaryCountsSnapshot?
+    let mind: ImportSummaryCountsSnapshot?
+    let conversations: ImportSummaryCountsSnapshot?
+    let universe: ImportSummaryCountsSnapshot?
+
+    enum CodingKeys: String, CodingKey {
+        case diary
+        case diaryComments = "diary_comments"
+        case todo
+        case workspaces
+        case mind
+        case conversations
+        case universe
+    }
 }
 
 struct ImportPreviewSnapshot: Decodable, Sendable, Equatable {
+    let schemaVersion: Int
+    let exportedAt: String
+    let rawBytes: Int
+    let includedModules: [String]
+    let auditIncluded: Bool
+    let packageSHA256: String
     let previewFingerprint: String
     let summary: ImportSummarySnapshot
     let canExecute: Bool
 
     enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case exportedAt = "exported_at"
+        case rawBytes = "raw_bytes"
+        case includedModules = "included_modules"
+        case auditIncluded = "audit_included"
+        case packageSHA256 = "package_sha256"
         case previewFingerprint = "preview_fingerprint"
         case summary
         case canExecute = "can_execute"
@@ -505,10 +556,24 @@ struct ImportPreviewSnapshot: Decodable, Sendable, Equatable {
 }
 
 struct ImportExecutionSnapshot: Decodable, Sendable, Equatable {
+    let schemaVersion: Int
+    let exportedAt: String
+    let rawBytes: Int
+    let includedModules: [String]
+    let auditIncluded: Bool
+    let packageSHA256: String
     let previewFingerprint: String
+    let summary: ImportSummarySnapshot
 
     enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case exportedAt = "exported_at"
+        case rawBytes = "raw_bytes"
+        case includedModules = "included_modules"
+        case auditIncluded = "audit_included"
+        case packageSHA256 = "package_sha256"
         case previewFingerprint = "preview_fingerprint"
+        case summary
     }
 }
 
