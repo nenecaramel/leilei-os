@@ -681,7 +681,6 @@ implements NativeLiveConversationRepository {
               "pending",
               "reserved",
               "executing",
-              "delivery_unknown",
             ]),
           ))
           .limit(1);
