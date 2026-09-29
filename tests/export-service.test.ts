@@ -173,7 +173,7 @@ test("ExportService emits the owner-bound v4 contract", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, "diary", false);
+  ).createExport(USER_ID, false);
 
   assert.deepEqual(
     Object.keys(document),
@@ -185,51 +185,24 @@ test("ExportService emits the owner-bound v4 contract", async () => {
   assert.deepEqual(document.data, {
     diary,
     diary_comments: diaryComments,
+    todo,
+    workspaces,
+    mind,
+    mind_continuity: mindContinuity,
+    conversations,
+    universe,
   });
   assert.equal("audit" in document, false);
 });
 
-test("ExportService preserves C exactly in Todo exports", async () => {
+test("ExportService preserves C exactly in the full backup", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, "todo", false);
+  ).createExport(USER_ID, false);
 
   assert.deepEqual(document.data, { todo });
   assert.equal(document.data.todo?.[0]?.author, "C");
-});
-
-test("ExportService reads only the selected active-module scope", async () => {
-  for (const [scope, key] of [
-    ["diary", "diary"],
-    ["todo", "todo"],
-  ] as const) {
-    const calls: string[] = [];
-    const document = await new ExportService(
-      createRepository(calls),
-      () => new Date(EXPORTED_AT),
-    ).createExport(USER_ID, scope, false);
-
-    assert.deepEqual(
-      Object.keys(document.data),
-      scope === "diary"
-        ? ["diary", "diary_comments"]
-        : [key],
-    );
-    assert.deepEqual(
-      calls,
-      scope === "diary"
-        ? [
-            "snapshot",
-            `diary:${USER_ID}`,
-            `diary_comments:${USER_ID}`,
-          ]
-        : [
-            "snapshot",
-            `${key}:${USER_ID}`,
-          ],
-    );
-  }
 });
 
 test("ExportService reads the full portable v4 scope", async () => {
@@ -237,7 +210,7 @@ test("ExportService reads the full portable v4 scope", async () => {
   const document = await new ExportService(
     createRepository(calls),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, "all", false);
+  ).createExport(USER_ID, false);
 
   assert.deepEqual(
     Object.keys(document.data),
@@ -381,7 +354,7 @@ test("ExportService includes audit only when requested", async () => {
   const document = await new ExportService(
     createRepository(calls),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, "all", true);
+  ).createExport(USER_ID, true);
 
   assert.deepEqual(document.audit, {
     lifecycle,
@@ -395,15 +368,15 @@ test("ExportService owner fingerprint is deterministic and opaque", async () => 
   const first = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, "diary", false);
+  ).createExport(USER_ID, false);
   const second = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, "diary", false);
+  ).createExport(USER_ID, false);
   const other = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport("another-user", "diary", false);
+  ).createExport("another-user", false);
 
   assert.equal(first.owner_fingerprint, second.owner_fingerprint);
   assert.notEqual(first.owner_fingerprint, other.owner_fingerprint);
