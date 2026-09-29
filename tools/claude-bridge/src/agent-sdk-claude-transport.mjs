@@ -16,6 +16,17 @@ function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
 }
 
+async function loadDefaultListSessions() {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  if (typeof sdk.listSessions !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK did not expose listSessions().",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+  return sdk.listSessions;
+}
+
 async function loadDefaultSessionMessages() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
   if (typeof sdk.getSessionMessages !== "function") {
@@ -139,6 +150,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadQuery = loadDefaultQuery,
     deleteSessionImpl = null,
     loadDeleteSession = loadDefaultDeleteSession,
+    listSessionsImpl = null,
+    loadListSessions = loadDefaultListSessions,
     sessionMessagesImpl = null,
     loadSessionMessages = loadDefaultSessionMessages,
     importSessionToStoreImpl = null,
@@ -157,6 +170,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.loadQuery = loadQuery;
     this.deleteSessionImpl = deleteSessionImpl;
     this.loadDeleteSession = loadDeleteSession;
+    this.listSessionsImpl = listSessionsImpl;
+    this.loadListSessions = loadListSessions;
     this.sessionMessagesImpl = sessionMessagesImpl;
     this.loadSessionMessages = loadSessionMessages;
     this.importSessionToStoreImpl = importSessionToStoreImpl;
@@ -524,6 +539,57 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
   }
 
+  async listSessions({
+    limit = 100,
+    offset = 0,
+  } = {}) {
+    if (this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError(
+        "Claude Agent SDK sessions cannot be listed during an active turn.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    const listSessions = await this.#resolveListSessions();
+    let rows;
+    try {
+      rows = await listSessions({
+        dir: this.cwd,
+        limit,
+        offset,
+        includeWorktrees: false,
+      });
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to list Claude Agent SDK sessions: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
+    }
+    if (!Array.isArray(rows)) {
+      throw runtimeError(
+        "Claude Agent SDK listSessions() returned an invalid result.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    return rows
+      .map((row) => ({
+        sessionId: nonblankString(row?.sessionId),
+        summary: nonblankString(row?.summary),
+        customTitle: nonblankString(row?.customTitle),
+        firstPrompt: nonblankString(row?.firstPrompt),
+        gitBranch: nonblankString(row?.gitBranch),
+        cwd: nonblankString(row?.cwd) ?? this.cwd,
+        lastModified:
+          Number.isFinite(row?.lastModified)
+            ? row.lastModified
+            : null,
+        createdAt:
+          Number.isFinite(row?.createdAt)
+            ? row.createdAt
+            : null,
+      }))
+      .filter((row) => row.sessionId);
+  }
+
   async deleteSession(sessionId) {
     if (this.activeQuery || this.activeTurnHandle) {
       throw runtimeError(
@@ -777,6 +843,19 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       await this.sessionStore.markComplete(id);
     } catch (cause) {
       this.events.emit("session-store-status-error", cause);
+    }
+  }
+
+  async #resolveListSessions() {
+    if (this.listSessionsImpl) return this.listSessionsImpl;
+    try {
+      this.listSessionsImpl = await this.loadListSessions();
+      return this.listSessionsImpl;
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to load Claude Agent SDK listSessions(): ${cause instanceof Error ? cause.message : String(cause)}`,
+        { runtimeCode: "RUNTIME_UNAVAILABLE", cause },
+      );
     }
   }
 
