@@ -168,8 +168,6 @@ test(
 
     const runtimeMetadata = {
       context_usage: null,
-      compaction_advisory: null,
-      compaction: null,
       execution: {
         readback: {
           requested: {
