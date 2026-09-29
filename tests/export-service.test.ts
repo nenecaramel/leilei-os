@@ -309,7 +309,9 @@ test("ExportService rejects all export while a native turn is prepared", async (
     (error: unknown) =>
       error instanceof Error
       && "code" in error
-      && error.code === "EXPORT_IN_PROGRESS",
+      && error.code === "EXPORT_IN_PROGRESS"
+      && "reason" in error
+      && error.reason === "prepared_turn",
   );
 });
 
@@ -326,7 +328,9 @@ test("ExportService rejects all export while Mind follow-up is incomplete", asyn
     (error: unknown) =>
       error instanceof Error
       && "code" in error
-      && error.code === "EXPORT_IN_PROGRESS",
+      && error.code === "EXPORT_IN_PROGRESS"
+      && "reason" in error
+      && error.reason === "mind_followup",
   );
 });
 
@@ -366,7 +370,9 @@ test("ExportService rejects an all export while a canonical turn is in progress"
     (error: unknown) =>
       error instanceof Error
       && "code" in error
-      && error.code === "EXPORT_IN_PROGRESS",
+      && error.code === "EXPORT_IN_PROGRESS"
+      && "reason" in error
+      && error.reason === "canonical_message",
   );
 });
 

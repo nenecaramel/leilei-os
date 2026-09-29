@@ -311,7 +311,7 @@ test("export maps service failures without attachment headers", async () => {
 test("export maps incomplete processing and oversized backups without attachment headers", async () => {
   for (const [error, status, code] of [
     [
-      new ExportServiceError("EXPORT_IN_PROGRESS"),
+      new ExportServiceError("EXPORT_IN_PROGRESS", "prepared_turn"),
       409,
       "EXPORT_IN_PROGRESS",
     ],
@@ -342,9 +342,20 @@ test("export maps incomplete processing and oversized backups without attachment
           null,
         );
         const body = await response.json() as {
-          error?: { code?: string };
+          error?: {
+            code?: string;
+            reason?: string | null;
+            message?: string;
+          };
         };
         assert.equal(body.error?.code, code);
+        if (code === "EXPORT_IN_PROGRESS") {
+          assert.equal(body.error?.reason, "prepared_turn");
+          assert.equal(
+            body.error?.message,
+            "A chat turn is still being finalized.",
+          );
+        }
       },
     );
   }

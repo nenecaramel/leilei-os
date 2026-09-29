@@ -127,8 +127,15 @@ function sendExportError(response: Response, error: unknown): void {
       success: false,
       error: {
         code: "EXPORT_IN_PROGRESS",
+        reason: error.reason,
         message:
-          "Finish current runtime processing before exporting all data.",
+          error.reason === "prepared_turn"
+            ? "A chat turn is still being finalized."
+            : error.reason === "mind_followup"
+              ? "A Mind update is still being finalized."
+              : error.reason === "canonical_message"
+                ? "A canonical chat message is still being finalized."
+                : "Finish current runtime processing before exporting all data.",
       },
     });
     return;
