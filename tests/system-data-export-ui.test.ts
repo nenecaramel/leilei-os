@@ -149,7 +149,8 @@ test("audit text control becomes active with a plain check and still sends inclu
   assert.deepEqual(paths, ["/system/data", "/system/export?scope=diary", "/system/export?scope=all&include_audit=true"]);
   assert.equal(blobs.length, 2);
   assert.equal(clicked.length, 2);
-  assert.equal(clicked[0].download, "leileios-export-20260813T054200Z.json");
+  assert.equal(clicked[0].download, "leileios-diary_20260813T054200Z.json");
+  assert.equal(clicked[1].download, "leileios-full-backup_20260813T054200Z.json");
   assert.deepEqual(JSON.parse(await blobs[1].text()), exportDocument());
 
   env.dom.window.HTMLAnchorElement.prototype.click = originalClick;
