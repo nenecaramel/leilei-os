@@ -16,7 +16,7 @@ import {
 export type SystemDataSummary = {
   diary: { active: number; archived: number };
   diary_comments: { count: number };
-  todo: { count: number };
+  todo: { active: number; count: number };
   workspaces: { count: number };
   conversations: { active: number; archived: number };
   mind: { count: number };
@@ -134,6 +134,7 @@ export class DrizzleSystemRepository implements SystemRepository {
         count: Number(diaryCommentRows[0]?.count ?? 0),
       },
       todo: {
+        active: Number(todoRows[0]?.count ?? 0),
         count: Number(todoRows[0]?.count ?? 0),
       },
       workspaces: {
