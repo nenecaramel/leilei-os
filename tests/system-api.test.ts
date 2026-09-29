@@ -69,7 +69,7 @@ test("system connections and data routes use server-owned identity", async () =>
       return {
         diary: { active: 3, archived: 4 },
         diary_comments: { count: 5 },
-        todo: { count: 9 },
+        todo: { active: 9, count: 9 },
         workspaces: { count: 2 },
         conversations: { active: 4, archived: 1 },
         mind: { count: 8 },
@@ -95,7 +95,7 @@ test("system connections and data routes use server-owned identity", async () =>
       data: {
         diary: { active: 3, archived: 4 },
         diary_comments: { count: 5 },
-        todo: { count: 9 },
+        todo: { active: 9, count: 9 },
         workspaces: { count: 2 },
         conversations: { active: 4, archived: 1 },
         mind: { count: 8 },
