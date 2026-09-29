@@ -61,6 +61,7 @@ struct PageContainer: View {
         }
         .sheet(isPresented: $showingClaudeSessions) {
             ClaudeSessionForkSheet {
+                onDraftCommitted()
                 onOpenConversation()
             }
         }
