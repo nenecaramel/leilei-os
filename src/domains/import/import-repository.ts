@@ -1510,7 +1510,7 @@ implements ImportRepository {
       conversations: modules.has("conversations")
         ? state.conversations
         : emptyConversations(),
-      projects: modules.has("projects")
+      projects: modules.has("workspaces")
         ? state.projects
         : emptyProjects(),
     };
