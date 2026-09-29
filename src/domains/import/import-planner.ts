@@ -21,6 +21,7 @@ import type {
   ExportProjectWorkspaceRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
+  ExportWorkspacesBundle,
 } from "../export/export-types.js";
 import {
   ImportValidationError,
@@ -32,7 +33,7 @@ export type ImportModule =
   | "diary"
   | "diary_comments"
   | "todo"
-  | "projects"
+  | "workspaces"
   | "mind"
   | "conversations"
   | "universe";
@@ -81,7 +82,7 @@ export type ImportSummary = {
   diary: ImportCounts;
   diary_comments?: ImportCounts;
   todo: ImportCounts;
-  projects?: ImportCounts;
+  workspaces?: ImportCounts;
   mind?: ImportCounts;
   conversations?: ImportCounts;
   universe?: ImportCounts;
@@ -187,6 +188,35 @@ const emptyProjects = (): ExportProjectsBundle => ({
   resources: [],
   conversations: [],
 });
+
+function legacyProjectsFromWorkspaces(
+  bundle: ExportWorkspacesBundle,
+): ExportProjectsBundle {
+  return {
+    workspaces: bundle.items.map((record) => ({ ...record })),
+    projects: bundle.items.map((record) => ({
+      ...record,
+      workspace_id: record.id,
+    })),
+    resources: bundle.resources.map((record) => ({
+      id: record.id,
+      project_id: record.workspace_id,
+      kind: record.kind,
+      key: record.key,
+      title: record.title,
+      content: record.content,
+      metadata: record.metadata,
+      version: record.version,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+    })),
+    conversations: bundle.conversations.map((record) => ({
+      project_id: record.workspace_id,
+      conversation_id: record.conversation_id,
+      added_at: record.added_at,
+    })),
+  };
+}
 
 const emptyConversations = (): ExportConversationsBundle => ({
   conversations: [],
@@ -554,7 +584,7 @@ function classifyProjectEntity<T>(
     }
 
     return {
-      module: "projects" as const,
+      module: "workspaces" as const,
       logical_key: logicalKey,
       classification,
       record: { entity, value: record } as ProjectRestoreRecord,
@@ -1046,7 +1076,7 @@ function projectItems(
 function summarize(
   items: ImportPlanItem[],
   includeDiaryComments: boolean,
-  includeProjects: boolean,
+  includeWorkspaces: boolean,
   includeMind: boolean,
   includeConversations: boolean,
   includeUniverse: boolean,
@@ -1057,8 +1087,8 @@ function summarize(
       ? { diary_comments: emptyCounts() }
       : {}),
     todo: emptyCounts(),
-    ...(includeProjects
-      ? { projects: emptyCounts() }
+    ...(includeWorkspaces
+      ? { workspaces: emptyCounts() }
       : {}),
     ...(includeMind
       ? { mind: emptyCounts() }
@@ -1121,7 +1151,7 @@ export function buildImportPlan(
   }
 
   const importedDiaryComments =
-    parsed.document.schema_version === 3
+    parsed.document.schema_version !== 2
       ? parsed.document.data.diary_comments
       : undefined;
   if (importedDiaryComments) {
@@ -1163,7 +1193,7 @@ export function buildImportPlan(
   }
 
   const importedUniverse =
-    parsed.document.schema_version === 3
+    parsed.document.schema_version !== 2
       ? parsed.document.data.universe
       : undefined;
   if (importedUniverse) {
@@ -1211,7 +1241,7 @@ export function buildImportPlan(
   }
 
   const importedConversations =
-    parsed.document.schema_version === 3
+    parsed.document.schema_version !== 2
       ? parsed.document.data.conversations
       : undefined;
   if (importedConversations) {
@@ -1223,7 +1253,10 @@ export function buildImportPlan(
   const importedProjects =
     parsed.document.schema_version === 3
       ? parsed.document.data.projects
-      : undefined;
+      : parsed.document.schema_version === 4
+        && parsed.document.data.workspaces
+        ? legacyProjectsFromWorkspaces(parsed.document.data.workspaces)
+        : undefined;
   if (importedProjects) {
     items.push(
       ...projectItems(
@@ -1239,7 +1272,7 @@ export function buildImportPlan(
   }
 
   const importedMind =
-    parsed.document.schema_version === 3
+    parsed.document.schema_version !== 2
       ? parsed.document.data.mind
       : undefined;
   if (importedMind) {
@@ -1260,7 +1293,7 @@ export function buildImportPlan(
   }
 
   const importedMindContinuity =
-    parsed.document.schema_version === 3
+    parsed.document.schema_version !== 2
       ? parsed.document.data.mind_continuity
       : undefined;
   if (importedMindContinuity) {
