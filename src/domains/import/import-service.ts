@@ -119,10 +119,14 @@ function hasExactProjectValue(
     );
   }
   if (record.entity === "project") {
+    const canonical = {
+      ...record.value,
+      workspace_id: record.value.id,
+    };
     return projects.projects.some(
       (candidate) =>
         candidate.id === record.value.id
-        && hashCanonical(candidate) === hashCanonical(record.value),
+        && hashCanonical(candidate) === hashCanonical(canonical),
     );
   }
   if (record.entity === "resource") {
