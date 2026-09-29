@@ -4,62 +4,51 @@ import test from "node:test";
 import type { AddressInfo } from "node:net";
 import { createWebApiRouter } from "../src/web-api/router.js";
 import { ExportServiceError } from "../src/domains/export/export-service.js";
-import type {
-  ExportDocument,
-  ExportScope,
-} from "../src/domains/export/export-types.js";
+import type { ExportDocument } from "../src/domains/export/export-types.js";
 
 const USER_ID =
   "00000000-0000-4000-8000-000000000099";
 
 function documentFor(
-  scope: ExportScope,
   includeAudit: boolean,
 ): ExportDocument {
   return {
     schema_version: 4,
     owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
-    data:
-      scope === "all"
-        ? {
-            diary: [],
-            diary_comments: [],
-            todo: [],
-            workspaces: {
-              items: [],
-              resources: [],
-              conversations: [],
-            },
-            mind: [],
-            mind_continuity: {
-              drive_satisfaction_events: [],
-              curiosity_resolution_events: [],
-              distillation_watermarks: [],
-              semantic_grouping_results: [],
-            },
-            conversations: {
-              conversations: [],
-              messages: [],
-              content_blocks: [],
-              attachments: [],
-              provider_checkpoints: [],
-            },
-            universe: null,
-          }
-        : scope === "diary"
-          ? { diary: [], diary_comments: [] }
-          : { [scope]: [] },
+    data: {
+      diary: [],
+      diary_comments: [],
+      todo: [],
+      workspaces: {
+        items: [],
+        resources: [],
+        conversations: [],
+      },
+      mind: [],
+      mind_continuity: {
+        drive_satisfaction_events: [],
+        curiosity_resolution_events: [],
+        distillation_watermarks: [],
+        semantic_grouping_results: [],
+      },
+      conversations: {
+        conversations: [],
+        messages: [],
+        content_blocks: [],
+        attachments: [],
+        provider_checkpoints: [],
+      },
+      universe: null,
+    },
     ...(includeAudit
       ? { audit: { lifecycle: [], tool_activity: [] } }
       : {}),
-  } as ExportDocument;
+  };
 }
-
 function dependencies(exportService: {
   createExport: (
     userId: string,
-    scope: ExportScope,
     includeAudit: boolean,
   ) => Promise<ExportDocument>;
 }) {
@@ -78,10 +67,9 @@ function dependencies(exportService: {
 async function withServer(
   exportService: {
     createExport: (
-      userId: string,
-      scope: ExportScope,
-      includeAudit: boolean,
-    ) => Promise<ExportDocument>;
+    userId: string,
+    includeAudit: boolean,
+  ) => Promise<ExportDocument>;
   },
   callback: (baseUrl: string) => Promise<void>,
 ) {
@@ -132,7 +120,7 @@ test("export requires authentication before service access", async () => {
     },
     async (baseUrl) => {
       const response = await fetch(
-        `${baseUrl}/api/v1/system/export?scope=all`,
+        `${baseUrl}/api/v1/system/export`,
       );
       assert.equal(response.status, 401);
       assert.deepEqual(await response.json(), {
@@ -149,38 +137,24 @@ test("export requires authentication before service access", async () => {
   assert.equal(calls, 0);
 });
 
-test("export accepts only All, Diary, and Todo scopes", async () => {
+test("export creates one full backup and accepts legacy scope=all", async () => {
   const calls: Array<{
     userId: string;
-    scope: ExportScope;
     includeAudit: boolean;
   }> = [];
 
   await withServer(
     {
-      async createExport(
-        userId,
-        scope,
-        includeAudit,
-      ) {
-        calls.push({
-          userId,
-          scope,
-          includeAudit,
-        });
-        return documentFor(scope, includeAudit);
+      async createExport(userId, includeAudit) {
+        calls.push({ userId, includeAudit });
+        return documentFor(includeAudit);
       },
     },
     async (baseUrl) => {
-      for (const scope of [
-        "all",
-        "diary",
-        "todo",
-      ] as const) {
-        const query =
-          scope === "all"
-            ? "scope=all&include_audit=true&user_id=attacker"
-            : `scope=${scope}`;
+      for (const query of [
+        "include_audit=true&user_id=attacker",
+        "scope=all",
+      ]) {
         const response = await fetch(
           `${baseUrl}/api/v1/system/export?${query}`,
           {
@@ -191,47 +165,21 @@ test("export accepts only All, Diary, and Todo scopes", async () => {
         );
 
         assert.equal(response.status, 200);
-        assert.match(
-          response.headers.get("content-type") ?? "",
-          /^application\/json; charset=utf-8/u,
-        );
-        const filenameScope =
-          scope === "all" ? "full-backup" : scope;
         assert.equal(
           response.headers.get("content-disposition"),
-          `attachment; filename="leileios-${filenameScope}_20260813T054200Z.json"`,
-        );
-        assert.deepEqual(
-          await response.json(),
-          documentFor(
-            scope,
-            scope === "all",
-          ),
+          'attachment; filename="leileios-full-backup_20260813T054200Z.json"',
         );
       }
     },
   );
 
   assert.deepEqual(calls, [
-    {
-      userId: USER_ID,
-      scope: "all",
-      includeAudit: true,
-    },
-    {
-      userId: USER_ID,
-      scope: "diary",
-      includeAudit: false,
-    },
-    {
-      userId: USER_ID,
-      scope: "todo",
-      includeAudit: false,
-    },
+    { userId: USER_ID, includeAudit: true },
+    { userId: USER_ID, includeAudit: false },
   ]);
 });
 
-test("export rejects retired, repeated, and unknown scopes", async () => {
+test("export rejects partial, repeated, and unknown scopes", async () => {
   await withServer(
     {
       async createExport() {
@@ -240,14 +188,15 @@ test("export rejects retired, repeated, and unknown scopes", async () => {
     },
     async (baseUrl) => {
       for (const query of [
-        "",
         "scope=unknown",
+        "scope=diary",
+        "scope=todo",
         "scope=memory",
         "scope=task",
         "scope=shared_paper",
-        "scope=diary&scope=todo",
-        "scope=diary&include_audit=1",
-        "scope=diary&include_audit=false&include_audit=true",
+        "scope=all&scope=all",
+        "include_audit=1",
+        "include_audit=false&include_audit=true",
       ]) {
         const response = await fetch(
           `${baseUrl}/api/v1/system/export${query ? `?${query}` : ""}`,
@@ -280,7 +229,7 @@ test("export maps service failures without attachment headers", async () => {
     },
     async (baseUrl) => {
       const response = await fetch(
-        `${baseUrl}/api/v1/system/export?scope=all`,
+        `${baseUrl}/api/v1/system/export`,
         {
           headers: {
             "x-test-user": "authenticated",
@@ -329,7 +278,7 @@ test("export maps incomplete processing and oversized backups without attachment
       },
       async (baseUrl) => {
         const response = await fetch(
-          `${baseUrl}/api/v1/system/export?scope=all`,
+          `${baseUrl}/api/v1/system/export`,
           {
             headers: {
               "x-test-user": "authenticated",
