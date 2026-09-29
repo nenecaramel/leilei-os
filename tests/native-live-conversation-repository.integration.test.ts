@@ -9,6 +9,7 @@ import {
   conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
+  nativeLiveTurnPreparations,
   runtimeEffects,
   runtimeProactivityWakes,
   runtimeSubjectStates,
@@ -1140,5 +1141,131 @@ test(
       payload,
       envelope,
     });
+  },
+);
+
+test(
+  "Delete ignores terminal delivery-unknown turns but still blocks executing turns",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, {
+      ssl: false,
+      createClient: (url, maxConnections, ssl) =>
+        postgres(url, {
+          max: maxConnections,
+          prepare: false,
+          ssl,
+          connect_timeout: 15,
+          idle_timeout: 60,
+        }),
+    });
+    let userId: string | null = null;
+    t.after(async () => {
+      try {
+        if (userId) {
+          await database.db
+            .delete(conversations)
+            .where(eq(conversations.userId, userId));
+          await database.db.delete(users).where(eq(users.id, userId));
+        }
+      } finally {
+        await database.close();
+      }
+    });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-delete-delivery-unknown-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Delete Delivery Unknown",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+    userId = user.id;
+
+    const service = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+
+    const deliveryUnknownConversation = await service.createConversation({
+      userId,
+      title: "Delivery unknown may be deleted",
+    });
+    const deliveryUnknownUser = await service.appendUserMessage({
+      userId,
+      conversationId: deliveryUnknownConversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "terminal delivery unknown" }],
+    });
+    const listenerId = crypto.randomUUID();
+    const now = new Date();
+    await database.db.insert(nativeLiveTurnPreparations).values({
+      id: crypto.randomUUID(),
+      userId,
+      requestId: crypto.randomUUID(),
+      conversationId: deliveryUnknownConversation.id,
+      operation: "send",
+      requestHash: "a".repeat(64),
+      canonicalUserMessageId: deliveryUnknownUser.id,
+      runtimeMode: "new",
+      parentProviderSessionId: null,
+      prompt: "terminal delivery unknown",
+      status: "prepared",
+      dispatchStatus: "delivery_unknown",
+      reservedBy: listenerId,
+      reservedAt: new Date(now.getTime() - 120_000),
+      reservationExpiresAt: new Date(now.getTime() - 60_000),
+      executionStartedAt: new Date(now.getTime() - 110_000),
+      deliveryUnknownAt: new Date(now.getTime() - 50_000),
+      dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN",
+    });
+
+    assert.equal(
+      (await service.deleteConversation({
+        userId,
+        conversationId: deliveryUnknownConversation.id,
+      })).outcome,
+      "deleted",
+    );
+
+    const executingConversation = await service.createConversation({
+      userId,
+      title: "Executing stays protected",
+    });
+    const executingUser = await service.appendUserMessage({
+      userId,
+      conversationId: executingConversation.id,
+      parentMessageId: null,
+      blocks: [{ kind: "text", text: "still executing" }],
+    });
+    await database.db.insert(nativeLiveTurnPreparations).values({
+      id: crypto.randomUUID(),
+      userId,
+      requestId: crypto.randomUUID(),
+      conversationId: executingConversation.id,
+      operation: "send",
+      requestHash: "b".repeat(64),
+      canonicalUserMessageId: executingUser.id,
+      runtimeMode: "new",
+      parentProviderSessionId: null,
+      prompt: "still executing",
+      status: "prepared",
+      dispatchStatus: "executing",
+      reservedBy: crypto.randomUUID(),
+      reservedAt: now,
+      reservationExpiresAt: new Date(now.getTime() + 60_000),
+      executionStartedAt: now,
+    });
+
+    assert.equal(
+      (await service.deleteConversation({
+        userId,
+        conversationId: executingConversation.id,
+      })).outcome,
+      "busy",
+    );
   },
 );
