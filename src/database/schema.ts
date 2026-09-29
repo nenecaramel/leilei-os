@@ -975,8 +975,8 @@ export const conversations = pgTable(
   ],
 );
 
-export const projectWorkspaces = pgTable(
-  "project_workspaces",
+export const workspaces = pgTable(
+  "workspaces",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
@@ -996,85 +996,39 @@ export const projectWorkspaces = pgTable(
       .notNull(),
   },
   (table) => [
-    unique("project_workspaces_id_user_unique").on(
-      table.id,
-      table.userId,
-    ),
-    index("project_workspaces_user_updated_idx").on(
+    unique("workspaces_id_user_unique").on(table.id, table.userId),
+    index("workspaces_user_updated_idx").on(
       table.userId,
       table.updatedAt.desc(),
       table.id.desc(),
     ),
     check(
-      "project_workspaces_name_not_blank",
+      "workspaces_name_not_blank",
       sql`char_length(btrim(${table.name})) > 0`,
     ),
     check(
-      "project_workspaces_name_length",
+      "workspaces_name_length",
       sql`char_length(${table.name}) <= 200`,
     ),
     check(
-      "project_workspaces_description_length",
+      "workspaces_description_length",
       sql`${table.description} IS NULL OR char_length(${table.description}) <= 4000`,
     ),
     check(
-      "project_workspaces_version_positive",
+      "workspaces_version_positive",
       sql`${table.version} >= 1`,
     ),
   ],
 );
 
-export const projects = pgTable(
-  "projects",
+export const workspaceResources = pgTable(
+  "workspace_resources",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id").notNull(),
-    workspaceId: uuid("workspace_id").notNull(),
-    name: text("name").notNull(),
-    description: text("description"),
-    version: integer("version").default(1).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    unique("projects_id_user_unique").on(table.id, table.userId),
-    foreignKey({
-      columns: [table.workspaceId, table.userId],
-      foreignColumns: [projectWorkspaces.id, projectWorkspaces.userId],
-      name: "projects_workspace_user_fk",
-    }).onDelete("cascade").onUpdate("cascade"),
-    index("projects_user_workspace_updated_idx").on(
-      table.userId,
-      table.workspaceId,
-      table.updatedAt.desc(),
-      table.id.desc(),
-    ),
-    check(
-      "projects_name_not_blank",
-      sql`char_length(btrim(${table.name})) > 0`,
-    ),
-    check(
-      "projects_name_length",
-      sql`char_length(${table.name}) <= 200`,
-    ),
-    check(
-      "projects_description_length",
-      sql`${table.description} IS NULL OR char_length(${table.description}) <= 4000`,
-    ),
-    check("projects_version_positive", sql`${table.version} >= 1`),
-  ],
-);
-
-export const projectResources = pgTable(
-  "project_resources",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id").notNull(),
-    projectId: uuid("project_id").notNull(),
+    // Keep the internal property name projectId for Product Export/Restore v3
+    // compatibility. The durable database column is Workspace-native.
+    projectId: uuid("workspace_id").notNull(),
     kind: varchar("kind", { length: 32 })
       .$type<ProjectResourceKind>()
       .notNull(),
@@ -1096,15 +1050,15 @@ export const projectResources = pgTable(
   (table) => [
     foreignKey({
       columns: [table.projectId, table.userId],
-      foreignColumns: [projects.id, projects.userId],
-      name: "project_resources_project_user_fk",
+      foreignColumns: [workspaces.id, workspaces.userId],
+      name: "workspace_resources_workspace_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
-    uniqueIndex("project_resources_project_kind_key_uidx").on(
+    uniqueIndex("workspace_resources_workspace_kind_key_uidx").on(
       table.projectId,
       table.kind,
       table.resourceKey,
     ),
-    index("project_resources_user_project_kind_idx").on(
+    index("workspace_resources_user_workspace_kind_idx").on(
       table.userId,
       table.projectId,
       table.kind,
@@ -1112,41 +1066,43 @@ export const projectResources = pgTable(
       table.id.desc(),
     ),
     check(
-      "project_resources_kind_allowed",
+      "workspace_resources_kind_allowed",
       sql`${table.kind} IN ('file','instructions','settings','skill','agent','mcp','hook','plugin')`,
     ),
     check(
-      "project_resources_key_not_blank",
+      "workspace_resources_key_not_blank",
       sql`char_length(btrim(${table.resourceKey})) > 0`,
     ),
     check(
-      "project_resources_key_length",
+      "workspace_resources_key_length",
       sql`char_length(${table.resourceKey}) <= 1000`,
     ),
     check(
-      "project_resources_title_length",
+      "workspace_resources_title_length",
       sql`${table.title} IS NULL OR char_length(${table.title}) <= 500`,
     ),
     check(
-      "project_resources_content_length",
+      "workspace_resources_content_length",
       sql`${table.content} IS NULL OR char_length(${table.content}) <= 1000000`,
     ),
     check(
-      "project_resources_metadata_object",
+      "workspace_resources_metadata_object",
       sql`jsonb_typeof(${table.metadata}) = 'object'`,
     ),
     check(
-      "project_resources_version_positive",
+      "workspace_resources_version_positive",
       sql`${table.version} >= 1`,
     ),
   ],
 );
 
-export const projectConversations = pgTable(
-  "project_conversations",
+export const workspaceConversations = pgTable(
+  "workspace_conversations",
   {
     userId: uuid("user_id").notNull(),
-    projectId: uuid("project_id").notNull(),
+    // See workspaceResources.projectId: Product Export/Restore v3 keeps its
+    // historical JSON field while persistence is Workspace-native.
+    projectId: uuid("workspace_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
     addedAt: timestamp("added_at", { withTimezone: true })
       .defaultNow()
@@ -1155,19 +1111,19 @@ export const projectConversations = pgTable(
   (table) => [
     primaryKey({
       columns: [table.projectId, table.conversationId],
-      name: "project_conversations_pk",
+      name: "workspace_conversations_pk",
     }),
     foreignKey({
       columns: [table.projectId, table.userId],
-      foreignColumns: [projects.id, projects.userId],
-      name: "project_conversations_project_user_fk",
+      foreignColumns: [workspaces.id, workspaces.userId],
+      name: "workspace_conversations_workspace_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
     foreignKey({
       columns: [table.conversationId, table.userId],
       foreignColumns: [conversations.id, conversations.userId],
-      name: "project_conversations_conversation_user_fk",
+      name: "workspace_conversations_conversation_user_fk",
     }).onDelete("cascade").onUpdate("cascade"),
-    index("project_conversations_user_project_added_idx").on(
+    index("workspace_conversations_user_workspace_added_idx").on(
       table.userId,
       table.projectId,
       table.addedAt.desc(),
@@ -1175,6 +1131,14 @@ export const projectConversations = pgTable(
     ),
   ],
 );
+
+// Product Export/Restore v3 and a small amount of historical code still use
+// Project-named symbols. They deliberately alias the single durable Workspace
+// tables; there is no longer a second Project persistence layer.
+export const projectWorkspaces = workspaces;
+export const projects = workspaces;
+export const projectResources = workspaceResources;
+export const projectConversations = workspaceConversations;
 
 export const conversationDeletedBranches = pgTable(
   "conversation_deleted_branches",
