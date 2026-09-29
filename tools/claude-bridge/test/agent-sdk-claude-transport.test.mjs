@@ -67,7 +67,10 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
     prompt: "remember this",
     options: {
       cwd: "/workspace/leilei-os",
-      env: { HOME: "/Users/leilei" },
+      env: {
+        HOME: "/Users/leilei",
+        DISABLE_AUTO_COMPACT: "1",
+      },
       settingSources: ["user", "project", "local"],
       systemPrompt: {
         type: "preset",
