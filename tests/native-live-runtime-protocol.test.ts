@@ -189,7 +189,7 @@ test("success result carries provider session and normalized events only", () =>
   assert.equal(result.normalized_events.length, 1);
 });
 
-test("success result accepts bounded runtime compaction metadata", () => {
+test("success result accepts bounded runtime context usage", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
     protocol_version: 1,
     prepare_id: prepareId,
@@ -212,24 +212,6 @@ test("success result accepts bounded runtime compaction metadata", () => {
           is_deferred: false,
         }],
       },
-      compaction_advisory: {
-        due: true,
-        threshold_percent: 75,
-        observed_percent: 76,
-        reason: "turn_boundary_threshold_reached",
-      },
-      compaction: {
-        source: "runtime_threshold",
-        attempted: true,
-        outcome: "succeeded",
-        boundary: {
-          trigger: "manual",
-          pre_tokens: 760000,
-          post_tokens: 120000,
-        },
-        summary: "compact summary",
-        failure_code: null,
-      },
     },
   });
 
@@ -238,14 +220,6 @@ test("success result accepts bounded runtime compaction metadata", () => {
   assert.equal(
     result.runtime_metadata?.context_usage?.percentage,
     76,
-  );
-  assert.equal(
-    result.runtime_metadata?.compaction?.outcome,
-    "succeeded",
-  );
-  assert.equal(
-    result.runtime_metadata?.compaction?.summary,
-    "compact summary",
   );
 });
 
@@ -260,8 +234,6 @@ test("runtime metadata accepts bounded execution readback while remaining backwa
     normalized_events: [],
     runtime_metadata: {
       context_usage: null,
-      compaction_advisory: null,
-      compaction: null,
       execution: {
         readback: {
           requested: {
@@ -297,8 +269,6 @@ test("runtime metadata accepts bounded execution readback while remaining backwa
     normalized_events: [],
     runtime_metadata: {
       context_usage: null,
-      compaction_advisory: null,
-      compaction: null,
     },
   });
   assert.equal(legacy.status, "success");
@@ -325,8 +295,6 @@ test("runtime metadata rejects unbounded execution readback errors", () => {
         normalized_events: [],
         runtime_metadata: {
           context_usage: null,
-          compaction_advisory: null,
-          compaction: null,
           execution: {
             readback: {
               requested: null,

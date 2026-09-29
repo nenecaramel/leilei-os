@@ -361,14 +361,10 @@ struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
 
 struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
     let contextUsage: NativeLiveRuntimeContextUsage?
-    let compactionAdvisory: NativeLiveRuntimeCompactionAdvisory?
-    let compaction: NativeLiveRuntimeCompactionMetadata?
     let execution: NativeLiveRuntimeExecutionMetadata?
 
     enum CodingKeys: String, CodingKey {
         case contextUsage = "context_usage"
-        case compactionAdvisory = "compaction_advisory"
-        case compaction
         case execution
     }
 }
@@ -386,36 +382,6 @@ struct NativeLiveRuntimeContextUsage: Decodable, Sendable, Equatable {
         case maxTokens = "max_tokens"
         case rawMaxTokens = "raw_max_tokens"
         case percentage
-    }
-}
-
-struct NativeLiveRuntimeCompactionAdvisory: Decodable, Sendable, Equatable {
-    let due: Bool
-    let thresholdPercent: Double
-    let observedPercent: Double?
-    let reason: String
-
-    enum CodingKeys: String, CodingKey {
-        case due
-        case thresholdPercent = "threshold_percent"
-        case observedPercent = "observed_percent"
-        case reason
-    }
-}
-
-struct NativeLiveRuntimeCompactionMetadata: Decodable, Sendable, Equatable {
-    let source: String
-    let attempted: Bool
-    let outcome: String
-    let summary: String?
-    let failureCode: String?
-
-    enum CodingKeys: String, CodingKey {
-        case source
-        case attempted
-        case outcome
-        case summary
-        case failureCode = "failure_code"
     }
 }
 

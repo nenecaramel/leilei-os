@@ -76,8 +76,6 @@ class FakeTurnReader {
       failureCode: null,
       runtimeMetadata: {
         context_usage: null,
-        compaction_advisory: null,
-        compaction: null,
         execution: {
           readback: {
             requested: {

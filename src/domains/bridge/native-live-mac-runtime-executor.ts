@@ -7,8 +7,6 @@ import type {
 type NativeLiveForegroundRuntimeResult =
   NativeLiveRuntimeResult & {
     contextUsage?: NativeLiveRuntimeContextUsage | null;
-    compactionAdvisory?:
-      NativeLiveRuntimeCompactionAdvisory | null;
     executionReadback?:
       NativeLiveRuntimeExecutionReadback | null;
     executionReadbackError?: string | null;
@@ -63,7 +61,6 @@ import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
   type NativeLiveRuntimeCommand,
-  type NativeLiveRuntimeCompactionAdvisory,
   type NativeLiveRuntimeContextUsage,
   type NativeLiveRuntimeExecutionReadback,
   type NativeLiveRuntimeExecutionResult,
@@ -201,11 +198,10 @@ export class NativeLiveMacRuntimeExecutor {
   }
 
   private async buildRuntimeMetadata(
-    command: NativeLiveRuntimeCommand,
+    _command: NativeLiveRuntimeCommand,
     runtimeResult: NativeLiveForegroundRuntimeResult,
-    runtime: NativeLiveForegroundRuntime,
+    _runtime: NativeLiveForegroundRuntime,
   ): Promise<NativeLiveRuntimeMetadata | null> {
-    const advisory = runtimeResult.compactionAdvisory ?? null;
     const contextUsage = runtimeResult.contextUsage ?? null;
     const execution =
       runtimeResult.executionReadback
@@ -225,98 +221,12 @@ export class NativeLiveMacRuntimeExecutor {
           }
         : null;
 
-    if (!advisory && !contextUsage && !execution) return null;
+    if (!contextUsage && !execution) return null;
 
-    if (!advisory) {
-      return {
-        context_usage: contextUsage,
-        compaction_advisory: null,
-        compaction: null,
-        ...(execution ? { execution } : {}),
-      };
-    }
-
-    if (!advisory.due) {
-      return {
-        context_usage: contextUsage,
-        compaction_advisory: advisory,
-        compaction: {
-          source: "runtime_threshold",
-          attempted: false,
-          outcome: "not_due",
-          boundary: null,
-          summary: null,
-          failure_code: null,
-        },
-        ...(execution ? { execution } : {}),
-      };
-    }
-
-    if (!runtime.compact) {
-      return {
-        context_usage: contextUsage,
-        compaction_advisory: advisory,
-        compaction: {
-          source: "runtime_threshold",
-          attempted: false,
-          outcome: "unsupported",
-          boundary: null,
-          summary: null,
-          failure_code: "COMPACT_UNSUPPORTED",
-        },
-        ...(execution ? { execution } : {}),
-      };
-    }
-
-    try {
-      const compacted = await runtime.compact(
-        runtimeResult.providerSessionId!,
-        command.execution_selection ?? null,
-      );
-      if (
-        compacted.providerSessionId
-        !== runtimeResult.providerSessionId
-      ) {
-        throw Object.assign(
-          new Error(
-            "Automatic compact changed provider session identity.",
-          ),
-          { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
-        );
-      }
-
-      return {
-        context_usage:
-          compacted.contextUsage ?? contextUsage,
-        compaction_advisory: advisory,
-        compaction: {
-          source: "runtime_threshold",
-          attempted: true,
-          outcome: "succeeded",
-          boundary:
-            compacted.compaction?.boundary ?? null,
-          summary: latestCompactSummary(
-            compacted.compaction?.postCompact,
-          ),
-          failure_code: null,
-        },
-        ...(execution ? { execution } : {}),
-      };
-    } catch {
-      return {
-        context_usage: contextUsage,
-        compaction_advisory: advisory,
-        compaction: {
-          source: "runtime_threshold",
-          attempted: true,
-          outcome: "failed",
-          boundary: null,
-          summary: null,
-          failure_code: "COMPACT_FAILED",
-        },
-        ...(execution ? { execution } : {}),
-      };
-    }
+    return {
+      context_usage: contextUsage,
+      ...(execution ? { execution } : {}),
+    };
   }
 
   private async resolveRuntime(
@@ -351,21 +261,6 @@ export class NativeLiveMacRuntimeExecutor {
       workspaceRoot: this.fallbackWorkspaceRoot,
     };
   }
-}
-
-function latestCompactSummary(
-  values:
-    | Array<{ summary?: string | null }>
-    | undefined,
-): string | null {
-  if (!values) return null;
-  for (let index = values.length - 1; index >= 0; index -= 1) {
-    const summary = values[index]?.summary;
-    if (typeof summary === "string" && summary.trim()) {
-      return summary.trim();
-    }
-  }
-  return null;
 }
 
 function failure(

@@ -6,7 +6,6 @@ import {
   normalizeAgentSdkExecutionSelection,
 } from "./agent-sdk-execution-selection.mjs";
 import {
-  evaluateTurnBoundaryCompaction,
   normalizeAgentSdkContextUsage,
 } from "./agent-sdk-context-observability.mjs";
 import {
@@ -147,7 +146,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     sessionStore = null,
     environment = process.env,
     cwd = process.cwd(),
-    compactionThresholdPercent = 75,
   } = {}) {
     super();
     if (environment.ANTHROPIC_API_KEY) {
@@ -164,9 +162,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.importSessionToStoreImpl = importSessionToStoreImpl;
     this.loadImportSessionToStore = loadImportSessionToStore;
     this.sessionStore = sessionStore;
-    this.environment = environment;
+    this.environment = {
+      ...environment,
+      DISABLE_AUTO_COMPACT: "1",
+    };
     this.cwd = cwd;
-    this.compactionThresholdPercent = compactionThresholdPercent;
     this.events = new EventEmitter();
     this.activeQuery = null;
     this.activeTurnHandle = null;
@@ -347,10 +347,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       const handleResult = await completion;
       const contextUsage =
         normalizeAgentSdkContextUsage(handleResult.rawContextUsage);
-      const compactionAdvisory =
-        evaluateTurnBoundaryCompaction(handleResult.rawContextUsage, {
-          thresholdPercent: this.compactionThresholdPercent,
-        });
       const executionReadback =
         execution
           ? normalizeAgentSdkExecutionReadback({
@@ -405,7 +401,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         ...result,
         contextUsage,
         contextUsageError,
-        compactionAdvisory,
         executionReadback,
         executionReadbackError,
         stdout: "",
@@ -1060,10 +1055,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     const contextUsage =
       normalizeAgentSdkContextUsage(rawContextUsage);
-    const compactionAdvisory =
-      evaluateTurnBoundaryCompaction(rawContextUsage, {
-        thresholdPercent: this.compactionThresholdPercent,
-      });
     const executionReadback =
       execution
         ? normalizeAgentSdkExecutionReadback({
@@ -1079,7 +1070,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       normalizedEvents,
       contextUsage,
       contextUsageError,
-      compactionAdvisory,
       executionReadback,
       executionReadbackError,
       stdout: "",

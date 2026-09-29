@@ -52,25 +52,6 @@ export type NativeLiveRuntimeContextUsage = {
   categories: NativeLiveRuntimeContextUsageCategory[];
 };
 
-export type NativeLiveRuntimeCompactionAdvisory = {
-  due: boolean;
-  threshold_percent: number;
-  observed_percent: number | null;
-  reason:
-    | "context_usage_unavailable"
-    | "turn_boundary_threshold_reached"
-    | "below_threshold";
-};
-
-export type NativeLiveRuntimeCompactionMetadata = {
-  source: "runtime_threshold";
-  attempted: boolean;
-  outcome: "not_due" | "succeeded" | "failed" | "unsupported";
-  boundary: Record<string, unknown> | null;
-  summary: string | null;
-  failure_code: "COMPACT_FAILED" | "COMPACT_UNSUPPORTED" | null;
-};
-
 export type NativeLiveRuntimeExecutionCapability = {
   value: string | null;
   display_name: string | null;
@@ -102,8 +83,6 @@ export type NativeLiveRuntimeExecutionMetadata = {
 
 export type NativeLiveRuntimeMetadata = {
   context_usage: NativeLiveRuntimeContextUsage | null;
-  compaction_advisory: NativeLiveRuntimeCompactionAdvisory | null;
-  compaction: NativeLiveRuntimeCompactionMetadata | null;
   execution?: NativeLiveRuntimeExecutionMetadata | null;
 };
 
@@ -385,11 +364,7 @@ function parseRuntimeMetadata(
   const body = requireRecord(value);
   requireExactKeys(
     body,
-    [
-      "context_usage",
-      "compaction_advisory",
-      "compaction",
-    ],
+    ["context_usage"],
     ["execution"],
   );
 
@@ -398,14 +373,6 @@ function parseRuntimeMetadata(
       body.context_usage === null
         ? null
         : parseContextUsage(body.context_usage),
-    compaction_advisory:
-      body.compaction_advisory === null
-        ? null
-        : parseCompactionAdvisory(body.compaction_advisory),
-    compaction:
-      body.compaction === null
-        ? null
-        : parseCompactionMetadata(body.compaction),
     ...(body.execution === undefined
       ? {}
       : {
@@ -642,117 +609,6 @@ function parseContextUsageCategory(
       `context_usage.categories[${index}].kind`,
     ),
     is_deferred: deferred as boolean | null,
-  };
-}
-
-function parseCompactionAdvisory(
-  value: unknown,
-): NativeLiveRuntimeCompactionAdvisory {
-  const body = requireRecord(value);
-  requireExactKeys(body, [
-    "due",
-    "threshold_percent",
-    "observed_percent",
-    "reason",
-  ]);
-  if (typeof body.due !== "boolean") {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction_advisory.due must be boolean.",
-    );
-  }
-  const threshold = nullableFiniteNumber(
-    body.threshold_percent,
-    "compaction_advisory.threshold_percent",
-  );
-  if (threshold === null || threshold < 0 || threshold > 100) {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction_advisory.threshold_percent is invalid.",
-    );
-  }
-  const observed = nullableFiniteNumber(
-    body.observed_percent,
-    "compaction_advisory.observed_percent",
-  );
-  if (observed !== null && (observed < 0 || observed > 100)) {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction_advisory.observed_percent is invalid.",
-    );
-  }
-  const reason = body.reason;
-  if (
-    reason !== "context_usage_unavailable"
-    && reason !== "turn_boundary_threshold_reached"
-    && reason !== "below_threshold"
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction_advisory.reason is invalid.",
-    );
-  }
-  return {
-    due: body.due,
-    threshold_percent: threshold,
-    observed_percent: observed,
-    reason,
-  };
-}
-
-function parseCompactionMetadata(
-  value: unknown,
-): NativeLiveRuntimeCompactionMetadata {
-  const body = requireRecord(value);
-  requireExactKeys(body, [
-    "source",
-    "attempted",
-    "outcome",
-    "boundary",
-    "summary",
-    "failure_code",
-  ]);
-  if (body.source !== "runtime_threshold") {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction.source is invalid.",
-    );
-  }
-  if (typeof body.attempted !== "boolean") {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction.attempted must be boolean.",
-    );
-  }
-  if (
-    body.outcome !== "not_due"
-    && body.outcome !== "succeeded"
-    && body.outcome !== "failed"
-    && body.outcome !== "unsupported"
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction.outcome is invalid.",
-    );
-  }
-  const boundary =
-    body.boundary === null
-      ? null
-      : requireRecord(body.boundary);
-  const summary = nullableString(
-    body.summary,
-    "compaction.summary",
-  );
-  const failureCode = body.failure_code;
-  if (
-    failureCode !== null
-    && failureCode !== "COMPACT_FAILED"
-    && failureCode !== "COMPACT_UNSUPPORTED"
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "compaction.failure_code is invalid.",
-    );
-  }
-  return {
-    source: "runtime_threshold",
-    attempted: body.attempted,
-    outcome: body.outcome,
-    boundary,
-    summary,
-    failure_code: failureCode,
   };
 }
 

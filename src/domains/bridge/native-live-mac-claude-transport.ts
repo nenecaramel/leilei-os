@@ -6,7 +6,6 @@ import type {
 } from "../conversation/native-live-conversation-orchestrator.js";
 import type { NativeLiveExecutionSelection } from "./native-live-execution-selection.js";
 import type {
-  NativeLiveRuntimeCompactionAdvisory,
   NativeLiveRuntimeContextUsage,
   NativeLiveRuntimeExecutionReadback,
 } from "./native-live-runtime-protocol.js";
@@ -49,8 +48,6 @@ export type NativeLiveMacClaudeTransport =
       options: NativeLiveMacInteractiveTurnOptions,
     ): Promise<NativeLiveRuntimeResult & {
       contextUsage?: NativeLiveRuntimeContextUsage | null;
-      compactionAdvisory?:
-        NativeLiveRuntimeCompactionAdvisory | null;
       executionReadback?:
         NativeLiveRuntimeExecutionReadback | null;
       executionReadbackError?: string | null;

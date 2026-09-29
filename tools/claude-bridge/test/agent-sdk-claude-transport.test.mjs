@@ -637,13 +637,16 @@ test("session preflight read failures stay RUNTIME_UNAVAILABLE", async () => {
   );
 });
 
-test("normal turns expose the latest live context usage and deterministic compaction advisory", async () => {
+test("normal turns expose the latest live context usage with provider auto-compact disabled", async () => {
   let usageCalls = 0;
+  let queryInput;
   const transport = new AgentSdkClaudeTransport({
-    environment: {},
-    queryImpl: () => ({
-      close() {},
-      async getContextUsage() {
+    environment: { DISABLE_AUTO_COMPACT: "0" },
+    queryImpl: (input) => {
+      queryInput = input;
+      return {
+        close() {},
+        async getContextUsage() {
         usageCalls += 1;
         const percentage =
           usageCalls === 1 ? 74 : usageCalls === 2 ? 75 : 76;
@@ -689,7 +692,8 @@ test("normal turns expose the latest live context usage and deterministic compac
           result: "READY",
         };
       },
-    }),
+      };
+    },
   });
 
   const result = await transport.sendNew("hello");
@@ -711,12 +715,10 @@ test("normal turns expose the latest live context usage and deterministic compac
     ],
   });
   assert.equal(result.contextUsageError, null);
-  assert.deepEqual(result.compactionAdvisory, {
-    due: true,
-    threshold_percent: 75,
-    observed_percent: 76,
-    reason: "turn_boundary_threshold_reached",
-  });
+  assert.equal(
+    queryInput.options.env.DISABLE_AUTO_COMPACT,
+    "1",
+  );
 });
 
 test("compact uses a dedicated non-verbatim control path and returns lifecycle observability", async () => {
@@ -1339,7 +1341,7 @@ test("interactive foreground execution applies model thinking and effort selecti
 });
 
 
-test("interactive foreground returns turn-boundary context usage and compaction advisory", async () => {
+test("interactive foreground returns turn-boundary context usage without auto-compaction policy", async () => {
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     queryImpl: () => ({
@@ -1405,12 +1407,6 @@ test("interactive foreground returns turn-boundary context usage and compaction 
     }],
   });
   assert.equal(result.contextUsageError, null);
-  assert.deepEqual(result.compactionAdvisory, {
-    due: true,
-    threshold_percent: 75,
-    observed_percent: 76,
-    reason: "turn_boundary_threshold_reached",
-  });
 });
 
 

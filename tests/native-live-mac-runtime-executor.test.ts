@@ -331,124 +331,7 @@ test("interactive foreground runtime receives the exact prepared execution selec
 });
 
 
-test("auto-compact runs once after a due foreground turn and keeps the provider session", async () => {
-  const calls: unknown[] = [];
-  const runtime = {
-    async sendNew() {
-      throw new Error("phase-1 sendNew must not be used");
-    },
-    async resume() {
-      throw new Error("phase-1 resume must not be used");
-    },
-    async fork() {
-      throw new Error("phase-1 fork must not be used");
-    },
-    async executeTurn() {
-      calls.push(["executeTurn"]);
-      return {
-        providerSessionId: "provider-auto-compact",
-        normalizedEvents: [],
-        contextUsage: {
-          model: "claude-opus-5-5",
-          total_tokens: 760000,
-          max_tokens: 1000000,
-          raw_max_tokens: 1000000,
-          percentage: 76,
-          categories: [],
-        },
-        compactionAdvisory: {
-          due: true,
-          threshold_percent: 75,
-          observed_percent: 76,
-          reason: "turn_boundary_threshold_reached" as const,
-        },
-      };
-    },
-    async compact(
-      sessionId: string,
-      execution: unknown,
-    ) {
-      calls.push(["compact", sessionId, execution]);
-      return {
-        providerSessionId: sessionId,
-        normalizedEvents: [],
-        contextUsage: {
-          model: "claude-opus-5-5",
-          total_tokens: 120000,
-          max_tokens: 1000000,
-          raw_max_tokens: 1000000,
-          percentage: 12,
-          categories: [],
-        },
-        compaction: {
-          boundary: {
-            trigger: "manual",
-            pre_tokens: 760000,
-            post_tokens: 120000,
-          },
-          postCompact: [{
-            summary: "compact summary",
-          }],
-        },
-      };
-    },
-  };
-
-  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
-    command({
-      execution_selection: {
-        model: "claude-opus-5-5",
-        thinking: "adaptive",
-        effort: "medium",
-      },
-    }),
-  );
-
-  assert.equal(result.status, "success");
-  if (result.status !== "success") throw new Error("expected success");
-  assert.deepEqual(calls, [
-    ["executeTurn"],
-    [
-      "compact",
-      "provider-auto-compact",
-      {
-        model: "claude-opus-5-5",
-        thinking: "adaptive",
-        effort: "medium",
-      },
-    ],
-  ]);
-  assert.deepEqual(result.runtime_metadata, {
-    context_usage: {
-      model: "claude-opus-5-5",
-      total_tokens: 120000,
-      max_tokens: 1000000,
-      raw_max_tokens: 1000000,
-      percentage: 12,
-      categories: [],
-    },
-    compaction_advisory: {
-      due: true,
-      threshold_percent: 75,
-      observed_percent: 76,
-      reason: "turn_boundary_threshold_reached",
-    },
-    compaction: {
-      source: "runtime_threshold",
-      attempted: true,
-      outcome: "succeeded",
-      boundary: {
-        trigger: "manual",
-        pre_tokens: 760000,
-        post_tokens: 120000,
-      },
-      summary: "compact summary",
-      failure_code: null,
-    },
-  });
-});
-
-test("auto-compact is skipped deterministically below threshold", async () => {
+test("foreground context usage never triggers compact automatically", async () => {
   let compactCalls = 0;
   const runtime = {
     async sendNew() { throw new Error("unused"); },
@@ -456,27 +339,21 @@ test("auto-compact is skipped deterministically below threshold", async () => {
     async fork() { throw new Error("unused"); },
     async executeTurn() {
       return {
-        providerSessionId: "provider-below-threshold",
+        providerSessionId: "provider-manual-only",
         normalizedEvents: [],
         contextUsage: {
           model: "claude-opus-5-5",
-          total_tokens: 740000,
+          total_tokens: 990000,
           max_tokens: 1000000,
           raw_max_tokens: 1000000,
-          percentage: 74,
+          percentage: 99,
           categories: [],
-        },
-        compactionAdvisory: {
-          due: false,
-          threshold_percent: 75,
-          observed_percent: 74,
-          reason: "below_threshold" as const,
         },
       };
     },
     async compact() {
       compactCalls += 1;
-      throw new Error("compact must not run");
+      throw new Error("foreground execution must never compact automatically");
     },
   };
 
@@ -487,76 +364,8 @@ test("auto-compact is skipped deterministically below threshold", async () => {
   assert.equal(result.status, "success");
   if (result.status !== "success") throw new Error("expected success");
   assert.equal(compactCalls, 0);
-  assert.equal(
-    result.runtime_metadata?.compaction?.outcome,
-    "not_due",
-  );
-  assert.equal(
-    result.runtime_metadata?.compaction?.attempted,
-    false,
-  );
+  assert.equal(result.runtime_metadata?.context_usage?.percentage, 99);
 });
-
-test("auto-compact failure is fail-soft and preserves the successful user turn", async () => {
-  const runtime = {
-    async sendNew() { throw new Error("unused"); },
-    async resume() { throw new Error("unused"); },
-    async fork() { throw new Error("unused"); },
-    async executeTurn() {
-      return {
-        providerSessionId: "provider-compact-failure",
-        normalizedEvents: [{
-          type: "result" as const,
-          payload: {
-            status: "success",
-            final_text: "still committed",
-          },
-        }],
-        contextUsage: {
-          model: null,
-          total_tokens: null,
-          max_tokens: null,
-          raw_max_tokens: null,
-          percentage: 80,
-          categories: [],
-        },
-        compactionAdvisory: {
-          due: true,
-          threshold_percent: 75,
-          observed_percent: 80,
-          reason: "turn_boundary_threshold_reached" as const,
-        },
-      };
-    },
-    async compact() {
-      throw Object.assign(
-        new Error("provider compact failed"),
-        { runtimeCode: "CLAUDE_PROCESS_FAILED" },
-      );
-    },
-  };
-
-  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
-    command(),
-  );
-
-  assert.equal(result.status, "success");
-  if (result.status !== "success") throw new Error("expected success");
-  assert.equal(result.provider_session_id, "provider-compact-failure");
-  assert.equal(
-    result.runtime_metadata?.compaction?.outcome,
-    "failed",
-  );
-  assert.equal(
-    result.runtime_metadata?.compaction?.failure_code,
-    "COMPACT_FAILED",
-  );
-  assert.deepEqual(
-    result.normalized_events.map((event) => event.type),
-    ["result"],
-  );
-});
-
 
 test("foreground execution readback is persisted as bounded runtime metadata", async () => {
   const runtime = {
@@ -568,7 +377,6 @@ test("foreground execution readback is persisted as bounded runtime metadata", a
         providerSessionId: "provider-readback",
         normalizedEvents: [],
         contextUsage: null,
-        compactionAdvisory: null,
         executionReadback: {
           requested: {
             model: "claude-opus-5-5",
@@ -665,7 +473,6 @@ test("foreground execution readback errors are persisted as bounded codes only",
         providerSessionId: "provider-readback-error",
         normalizedEvents: [],
         contextUsage: null,
-        compactionAdvisory: null,
         executionReadback: {
           requested: {
             model: "claude-opus-5-5",
