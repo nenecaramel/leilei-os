@@ -517,7 +517,12 @@ export class NativeLiveManualCompactService {
 
       const compactedAt = new Date().toISOString();
       const metadata = {
-        context_usage: input.outcome.result.contextUsage,
+        ...(input.outcome.result.contextUsage
+          ? {
+              context_usage:
+                input.outcome.result.contextUsage,
+            }
+          : {}),
         manual_compaction: {
           source: "manual",
           boundary: input.outcome.result.boundary,

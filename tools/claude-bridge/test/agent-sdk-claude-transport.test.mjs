@@ -726,6 +726,7 @@ test("normal turns expose the latest live context usage with provider auto-compa
 
 test("compact uses a dedicated non-verbatim control path and returns lifecycle observability", async () => {
   let call;
+  let compactUsageCalls = 0;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     sessionMessagesImpl: async () => [{ type: "assistant" }],
@@ -734,6 +735,10 @@ test("compact uses a dedicated non-verbatim control path and returns lifecycle o
       return {
         close() {},
         async getContextUsage() {
+          compactUsageCalls += 1;
+          if (compactUsageCalls > 1) {
+            throw new Error("query already finished");
+          }
           return {
             model: "claude-opus-5-5",
             totalTokens: 1302,
@@ -792,6 +797,7 @@ test("compact uses a dedicated non-verbatim control path and returns lifecycle o
 
   const result = await transport.compact("provider-root");
 
+  assert.equal(compactUsageCalls, 2);
   assert.equal(call.prompt, "/compact");
   assert.equal(call.options.resume, "provider-root");
   assert.equal(call.options.verbatimPrompts, false);

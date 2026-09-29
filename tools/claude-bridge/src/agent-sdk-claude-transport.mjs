@@ -955,7 +955,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
         if (
           captureContextUsage
-          && message?.type === "assistant"
+          && (
+            message?.type === "assistant"
+            || (
+              message?.type === "system"
+              && message?.subtype === "compact_boundary"
+            )
+          )
           && typeof activeQuery.getContextUsage === "function"
         ) {
           try {
