@@ -23,11 +23,11 @@
 
 .system-export-action-row {
   display: grid;
-  grid-template-columns: repeat(3, max-content);
+  grid-template-columns: max-content;
   min-width: 0;
   min-height: 60px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: start;
   gap: 18px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
