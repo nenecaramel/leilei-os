@@ -17,7 +17,7 @@ function documentFor(
   includeAudit: boolean,
 ): ExportDocument {
   return {
-    schema_version: 3,
+    schema_version: 4,
     owner_fingerprint: "a".repeat(64),
     exported_at: "2026-08-13T05:42:00.000Z",
     data:
@@ -26,9 +26,8 @@ function documentFor(
             diary: [],
             diary_comments: [],
             todo: [],
-            projects: {
-              workspaces: [],
-              projects: [],
+            workspaces: {
+              items: [],
               resources: [],
               conversations: [],
             },
