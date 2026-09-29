@@ -4,6 +4,7 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
+import { WebApiError } from "../web/src/api/web-api-error.js";
 import { SystemDataPageContent } from "../web/src/pages/SystemDataPageContent.js";
 import type { WebExportDocument } from "../web/src/system/export-types.js";
 
@@ -205,6 +206,35 @@ test("pending export disables all export actions without changing summary state"
   resolveExport(exportDocument());
   await waitForPaint();
   assert.equal(Array.from(buttons).some((button) => button.disabled), false);
+  root.unmount();
+  await waitForPaint();
+  env.restore();
+});
+
+
+test("export surfaces the precise backend in-progress message", async () => {
+  const env = installDom("https://leilei.test/system/data");
+  const api: WebApiClient = {
+    async request<T>(path: string): Promise<T> {
+      if (path === "/system/data") return summary() as T;
+      throw new WebApiError(
+        409,
+        "EXPORT_IN_PROGRESS",
+        "A Mind update is still being finalized.",
+      );
+    },
+  };
+  const { root, container } = render(api);
+  await waitForPaint();
+
+  container.querySelector<HTMLButtonElement>(".system-export-action")!.click();
+  await waitForPaint();
+
+  assert.match(
+    container.textContent ?? "",
+    /A Mind update is still being finalized\./u,
+  );
+
   root.unmount();
   await waitForPaint();
   env.restore();
