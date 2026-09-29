@@ -1,16 +1,26 @@
 import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversations,
+  diaryComments,
   diaryEntries,
   resourceLifecycleEvents,
+  runtimeSubjectStates,
   todoPapers,
   toolCalls,
+  universeNodes,
   users,
+  workspaces,
 } from "../../database/schema.js";
 
 export type SystemDataSummary = {
   diary: { active: number; archived: number };
-  todo: { active: number };
+  diary_comments: { count: number };
+  todo: { count: number };
+  workspaces: { count: number };
+  conversations: { active: number; archived: number };
+  mind: { count: number };
+  universe: { nodes: number };
 };
 
 export type SystemLifecycleActivityRecord = {
@@ -67,7 +77,15 @@ export class DrizzleSystemRepository implements SystemRepository {
   }
 
   async readDataSummary(userId: string): Promise<SystemDataSummary> {
-    const [diaryRows, todoRows] = await Promise.all([
+    const [
+      diaryRows,
+      diaryCommentRows,
+      todoRows,
+      workspaceRows,
+      conversationRows,
+      mindRows,
+      universeRows,
+    ] = await Promise.all([
       this.db
         .select({ status: diaryEntries.status, count: count() })
         .from(diaryEntries)
@@ -75,8 +93,36 @@ export class DrizzleSystemRepository implements SystemRepository {
         .groupBy(diaryEntries.status),
       this.db
         .select({ count: count() })
+        .from(diaryComments)
+        .where(eq(diaryComments.userId, userId)),
+      this.db
+        .select({ count: count() })
         .from(todoPapers)
         .where(eq(todoPapers.userId, userId)),
+      this.db
+        .select({ count: count() })
+        .from(workspaces)
+        .where(eq(workspaces.userId, userId)),
+      this.db
+        .select({
+          status: conversations.lifecycleStatus,
+          count: count(),
+        })
+        .from(conversations)
+        .where(and(
+          eq(conversations.userId, userId),
+          eq(conversations.origin, "native_live"),
+          inArray(conversations.lifecycleStatus, ["active", "archived"]),
+        ))
+        .groupBy(conversations.lifecycleStatus),
+      this.db
+        .select({ count: count() })
+        .from(runtimeSubjectStates)
+        .where(eq(runtimeSubjectStates.userId, userId)),
+      this.db
+        .select({ count: count() })
+        .from(universeNodes)
+        .where(eq(universeNodes.userId, userId)),
     ]);
 
     return {
@@ -84,8 +130,24 @@ export class DrizzleSystemRepository implements SystemRepository {
         active: readCount(diaryRows, "active"),
         archived: readCount(diaryRows, "archived"),
       },
+      diary_comments: {
+        count: Number(diaryCommentRows[0]?.count ?? 0),
+      },
       todo: {
-        active: Number(todoRows[0]?.count ?? 0),
+        count: Number(todoRows[0]?.count ?? 0),
+      },
+      workspaces: {
+        count: Number(workspaceRows[0]?.count ?? 0),
+      },
+      conversations: {
+        active: readCount(conversationRows, "active"),
+        archived: readCount(conversationRows, "archived"),
+      },
+      mind: {
+        count: Number(mindRows[0]?.count ?? 0),
+      },
+      universe: {
+        nodes: Number(universeRows[0]?.count ?? 0),
       },
     };
   }
