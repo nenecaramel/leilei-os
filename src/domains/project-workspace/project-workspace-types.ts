@@ -14,25 +14,6 @@ export const PROJECT_RESOURCE_KINDS = [
   "plugin",
 ] as const satisfies readonly ProjectResourceKind[];
 
-export type ProjectWorkspace = {
-  id: string;
-  name: string;
-  description: string | null;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ProjectSummary = {
-  id: string;
-  workspaceId: string;
-  name: string;
-  description: string | null;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type ProductWorkspace = {
   id: string;
   name: string;
@@ -42,23 +23,9 @@ export type ProductWorkspace = {
   updatedAt: string;
 };
 
-export type WorkspaceResourceSummary = Omit<
-  ProjectResourceSummary,
-  "projectId"
-> & {
-  workspaceId: string;
-};
-
-export type WorkspaceResource = Omit<
-  ProjectResource,
-  "projectId"
-> & {
-  workspaceId: string;
-};
-
-export type ProjectResourceSummary = {
+export type WorkspaceResourceSummary = {
   id: string;
-  projectId: string;
+  workspaceId: string;
   kind: ProjectResourceKind;
   key: string;
   title: string | null;
@@ -68,11 +35,11 @@ export type ProjectResourceSummary = {
   updatedAt: string;
 };
 
-export type ProjectResource = ProjectResourceSummary & {
+export type WorkspaceResource = WorkspaceResourceSummary & {
   content: string | null;
 };
 
-export type ProjectConversation = {
+export type WorkspaceConversation = {
   conversationId: string;
   title: string | null;
   lifecycleStatus: ConversationLifecycleStatus;
@@ -100,19 +67,14 @@ export type CreateProductWorkspaceOutcome =
   | { outcome: "idempotency_conflict" };
 
 export type CreateWorkspaceResourceOutcome =
-  | { outcome: "committed"; value: ProjectResource }
+  | { outcome: "committed"; value: WorkspaceResource }
   | { outcome: "workspace_not_found" }
   | { outcome: "resource_conflict" }
   | { outcome: "idempotency_conflict" };
 
-export type CreateResourceOutcome =
-  | { outcome: "committed"; value: ProjectResource }
-  | { outcome: "project_not_found" }
-  | { outcome: "resource_conflict" };
-
-export type ProjectConversationMutationOutcome =
+export type WorkspaceConversationMutationOutcome =
   | { outcome: "committed" | "already_applied" }
-  | { outcome: "project_not_found" }
+  | { outcome: "workspace_not_found" }
   | { outcome: "conversation_not_found" };
 
 export interface ProjectWorkspaceRepository {
@@ -138,18 +100,6 @@ export interface ProjectWorkspaceRepository {
     requestHash: string;
   }): Promise<CreateProductWorkspaceOutcome>;
 
-  createWorkspaceResource(input: {
-    userId: string;
-    workspaceId: string;
-    kind: ProjectResourceKind;
-    key: string;
-    title: string | null;
-    content: string | null;
-    metadata: Record<string, unknown>;
-    idempotencyKey: string;
-    requestHash: string;
-  }): Promise<CreateWorkspaceResourceOutcome>;
-
   updateProductWorkspace(input: {
     userId: string;
     workspaceId: string;
@@ -164,116 +114,61 @@ export interface ProjectWorkspaceRepository {
     expectedVersion: number;
   }): Promise<DeleteProductWorkspaceOutcome>;
 
-  listWorkspaces(userId: string): Promise<ProjectWorkspace[]>;
-
-  createWorkspace(input: {
-    userId: string;
-    name: string;
-    description: string | null;
-  }): Promise<ProjectWorkspace>;
-
-  updateWorkspace(input: {
+  listWorkspaceResources(input: {
     userId: string;
     workspaceId: string;
-    expectedVersion: number;
-    name?: string;
-    description?: string | null;
-  }): Promise<VersionedMutationOutcome<ProjectWorkspace>>;
-
-  deleteWorkspace(input: {
-    userId: string;
-    workspaceId: string;
-    expectedVersion: number;
-  }): Promise<DeleteMutationOutcome>;
-
-  listProjects(input: {
-    userId: string;
-    workspaceId?: string;
-    conversationId?: string;
-  }): Promise<ProjectSummary[]>;
-
-  getProject(input: {
-    userId: string;
-    projectId: string;
-  }): Promise<ProjectSummary | null>;
-
-  createProject(input: {
-    userId: string;
-    workspaceId: string;
-    name: string;
-    description: string | null;
-  }): Promise<
-    | { outcome: "committed"; value: ProjectSummary }
-    | { outcome: "workspace_not_found" }
-  >;
-
-  updateProject(input: {
-    userId: string;
-    projectId: string;
-    expectedVersion: number;
-    name?: string;
-    description?: string | null;
-  }): Promise<VersionedMutationOutcome<ProjectSummary>>;
-
-  deleteProject(input: {
-    userId: string;
-    projectId: string;
-    expectedVersion: number;
-  }): Promise<DeleteMutationOutcome>;
-
-  listResources(input: {
-    userId: string;
-    projectId: string;
     kind?: ProjectResourceKind;
-  }): Promise<ProjectResourceSummary[] | null>;
+  }): Promise<WorkspaceResourceSummary[] | null>;
 
-  getResource(input: {
+  getWorkspaceResource(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     resourceId: string;
-  }): Promise<ProjectResource | null>;
+  }): Promise<WorkspaceResource | null>;
 
-  createResource(input: {
+  createWorkspaceResource(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     kind: ProjectResourceKind;
     key: string;
     title: string | null;
     content: string | null;
     metadata: Record<string, unknown>;
-  }): Promise<CreateResourceOutcome>;
+    idempotencyKey: string;
+    requestHash: string;
+  }): Promise<CreateWorkspaceResourceOutcome>;
 
-  updateResource(input: {
+  updateWorkspaceResource(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     resourceId: string;
     expectedVersion: number;
     title?: string | null;
     content?: string | null;
     metadata?: Record<string, unknown>;
-  }): Promise<VersionedMutationOutcome<ProjectResource>>;
+  }): Promise<VersionedMutationOutcome<WorkspaceResource>>;
 
-  deleteResource(input: {
+  deleteWorkspaceResource(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     resourceId: string;
     expectedVersion: number;
   }): Promise<DeleteMutationOutcome>;
 
-  listProjectConversations(input: {
+  listWorkspaceConversations(input: {
     userId: string;
-    projectId: string;
-  }): Promise<ProjectConversation[] | null>;
+    workspaceId: string;
+  }): Promise<WorkspaceConversation[] | null>;
 
-  attachConversation(input: {
+  attachWorkspaceConversation(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     conversationId: string;
-  }): Promise<ProjectConversationMutationOutcome>;
+  }): Promise<WorkspaceConversationMutationOutcome>;
 
-  detachConversation(input: {
+  detachWorkspaceConversation(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     conversationId: string;
-  }): Promise<ProjectConversationMutationOutcome>;
+  }): Promise<WorkspaceConversationMutationOutcome>;
 }
