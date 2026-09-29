@@ -34,7 +34,7 @@ CREATE TABLE "native_live_conversation_provider_bootstraps" (
   "source_provider_session_id" text NOT NULL,
   "workspace_id" uuid,
   "effective_workspace_root" text NOT NULL,
-  "source_request_id" uuid NOT NULL,
+  "source_request_id" uuid,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "consumed_at" timestamp with time zone,
   CONSTRAINT "native_live_conversation_provider_bootstraps_conversation_user_fk"
@@ -44,7 +44,7 @@ CREATE TABLE "native_live_conversation_provider_bootstraps" (
   CONSTRAINT "native_live_conversation_provider_bootstraps_request_fk"
     FOREIGN KEY ("source_request_id")
     REFERENCES "native_live_external_session_requests"("id")
-    ON DELETE RESTRICT ON UPDATE CASCADE,
+    ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT "native_live_conversation_provider_bootstraps_provider_allowed"
     CHECK ("provider" = 'claude_code'),
   CONSTRAINT "native_live_conversation_provider_bootstraps_session_not_blank"
