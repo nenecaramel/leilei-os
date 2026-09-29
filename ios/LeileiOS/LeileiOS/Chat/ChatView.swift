@@ -34,6 +34,10 @@ struct ChatView: View {
                         isDraftConversation
                             ? nil
                             : appModel.nativeLiveCurrentPath,
+                    historySnapshot:
+                        isDraftConversation
+                            ? nil
+                            : appModel.nativeLiveHistorySnapshot,
                     syncState: appModel.chatSyncState,
                     isAuthenticated: appModel.isAuthenticated,
                     hasActiveConversation:
