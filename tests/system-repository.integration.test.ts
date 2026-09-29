@@ -221,7 +221,7 @@ test(
                 archived: 1,
               },
               diary_comments: { count: 0 },
-              todo: { count: 2 },
+              todo: { active: 2, count: 2 },
               workspaces: { count: 0 },
               conversations: { active: 0, archived: 0 },
               mind: { count: 0 },
