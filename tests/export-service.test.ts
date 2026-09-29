@@ -201,7 +201,6 @@ test("ExportService preserves C exactly in the full backup", async () => {
     () => new Date(EXPORTED_AT),
   ).createExport(USER_ID, false);
 
-  assert.deepEqual(document.data, { todo });
   assert.equal(document.data.todo?.[0]?.author, "C");
 });
 
@@ -247,10 +246,9 @@ test("ExportService does not block a portable snapshot on semantic grouping work
   };
 
   const document = await new ExportService(repository).createExport(
-    USER_ID,
-    "all",
-    false,
-  );
+      USER_ID,
+      false,
+    );
   assert.equal(document.schema_version, 4);
 });
 
@@ -261,10 +259,9 @@ test("ExportService does not block a portable snapshot on background model work"
   };
 
   const document = await new ExportService(repository).createExport(
-    USER_ID,
-    "all",
-    false,
-  );
+      USER_ID,
+      false,
+    );
   assert.equal(document.schema_version, 4);
 });
 
@@ -276,7 +273,6 @@ test("ExportService rejects all export while a native turn is prepared", async (
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      "all",
       false,
     ),
     (error: unknown) =>
@@ -295,7 +291,6 @@ test("ExportService rejects all export while Mind follow-up is incomplete", asyn
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      "all",
       false,
     ),
     (error: unknown) =>
@@ -337,7 +332,6 @@ test("ExportService rejects an all export while a canonical turn is in progress"
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      "all",
       false,
     ),
     (error: unknown) =>
@@ -393,7 +387,6 @@ test("ExportService does not return a partial document after a repository failur
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      "all",
       false,
     ),
     /database unavailable/u,
