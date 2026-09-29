@@ -314,7 +314,22 @@ export class NativeLiveExternalSessionBridgeService {
         return "failed";
       }
 
-      const sessions = normalizeSessions(input.outcome.sessions);
+      const normalizedSessions =
+        normalizeSessions(input.outcome.sessions);
+      const ownedRows = await tx.execute<{
+        provider_session_id: string;
+      }>(sql`
+        SELECT DISTINCT provider_session_id
+        FROM conversation_provider_session_checkpoints
+        WHERE user_id = ${input.userId}::uuid
+          AND provider = 'claude_code'
+      `);
+      const ownedSessionIds = new Set(
+        ownedRows.map((row) => row.provider_session_id),
+      );
+      const sessions = normalizedSessions.filter(
+        (session) => !ownedSessionIds.has(session.sessionId),
+      );
       await tx.execute(sql`
         UPDATE native_live_external_session_requests
         SET status = 'completed',
