@@ -109,23 +109,17 @@ export class ExportService {
       data.todo = await repository.listTodo(userId);
     }
     if (scope === "all") {
-      const [
-        incompleteTurns,
-        incompleteMind,
-        incompleteSemanticGrouping,
-        incompleteBackgroundModel,
-      ] = await Promise.all([
+      // Portable backup snapshots committed product state. Only foreground
+      // finalization that can leave Conversation/Mind product state half-written
+      // blocks the snapshot. Semantic grouping and background model queues are
+      // recoverable operational work owned by the Mac Companion and may remain
+      // pending while the companion is offline; they must not make backup
+      // unavailable indefinitely.
+      const [incompleteTurns, incompleteMind] = await Promise.all([
         repository.hasIncompleteTurnPreparations(userId),
         repository.hasIncompleteMindFollowUps(userId),
-        repository.hasIncompleteMindSemanticGrouping(userId),
-        repository.hasIncompleteBackgroundModelJobs(userId),
       ]);
-      if (
-        incompleteTurns
-        || incompleteMind
-        || incompleteSemanticGrouping
-        || incompleteBackgroundModel
-      ) {
+      if (incompleteTurns || incompleteMind) {
         throw new ExportServiceError("EXPORT_IN_PROGRESS");
       }
 

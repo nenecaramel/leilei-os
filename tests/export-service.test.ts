@@ -259,8 +259,6 @@ test("ExportService reads the full portable v4 scope", async () => {
     `todo:${USER_ID}`,
     `turn_quiescence:${USER_ID}`,
     `mind_quiescence:${USER_ID}`,
-    `semantic_grouping_quiescence:${USER_ID}`,
-    `background_model_quiescence:${USER_ID}`,
     `workspaces:${USER_ID}`,
     `mind:${USER_ID}`,
     `mind_continuity:${USER_ID}`,
@@ -269,40 +267,32 @@ test("ExportService reads the full portable v4 scope", async () => {
   ]);
 });
 
-test("ExportService rejects all export while semantic grouping is unfinished", async () => {
+test("ExportService does not block a portable snapshot on semantic grouping work", async () => {
   const repository = createRepository();
-  repository.hasIncompleteMindSemanticGrouping =
-    async () => true;
+  repository.hasIncompleteMindSemanticGrouping = async () => {
+    throw new Error("semantic grouping quiescence must not be consulted");
+  };
 
-  await assert.rejects(
-    new ExportService(repository).createExport(
-      USER_ID,
-      "all",
-      false,
-    ),
-    (error: unknown) =>
-      error instanceof Error
-      && "code" in error
-      && error.code === "EXPORT_IN_PROGRESS",
+  const document = await new ExportService(repository).createExport(
+    USER_ID,
+    "all",
+    false,
   );
+  assert.equal(document.schema_version, 4);
 });
 
-test("ExportService rejects all export while background model work is unfinished", async () => {
+test("ExportService does not block a portable snapshot on background model work", async () => {
   const repository = createRepository();
-  repository.hasIncompleteBackgroundModelJobs =
-    async () => true;
+  repository.hasIncompleteBackgroundModelJobs = async () => {
+    throw new Error("background model quiescence must not be consulted");
+  };
 
-  await assert.rejects(
-    new ExportService(repository).createExport(
-      USER_ID,
-      "all",
-      false,
-    ),
-    (error: unknown) =>
-      error instanceof Error
-      && "code" in error
-      && error.code === "EXPORT_IN_PROGRESS",
+  const document = await new ExportService(repository).createExport(
+    USER_ID,
+    "all",
+    false,
   );
+  assert.equal(document.schema_version, 4);
 });
 
 test("ExportService rejects all export while a native turn is prepared", async () => {
