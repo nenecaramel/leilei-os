@@ -3,7 +3,6 @@ import SwiftUI
 struct SettingsExportContent: View {
     let dataService: any SettingsDataService
 
-    @State private var selectedScope: SettingsExportScope = .all
     @State private var includesAuditAndLifecycleEvents = false
     @State private var isExporting = false
     @State private var errorMessage: String?
@@ -12,13 +11,6 @@ struct SettingsExportContent: View {
     var body: some View {
         Form {
             Section("Export") {
-                Picker("Scope", selection: $selectedScope) {
-                    ForEach(SettingsExportScope.allCases) { scope in
-                        Text(scope.title)
-                            .tag(scope)
-                    }
-                }
-
                 Toggle(
                     "Include audit & lifecycle events",
                     isOn: $includesAuditAndLifecycleEvents
@@ -39,7 +31,7 @@ struct SettingsExportContent: View {
                     }
                 } label: {
                     HStack {
-                        Text(isExporting ? "Exporting…" : "Create Export")
+                        Text(isExporting ? "Exporting…" : "Create Full Backup")
                         Spacer()
                         if isExporting {
                             ProgressView()
@@ -77,7 +69,6 @@ struct SettingsExportContent: View {
         do {
             exportedDocument = try await dataService.exportData(
                 SettingsExportRequest(
-                    scope: selectedScope,
                     includeAuditAndLifecycleEvents: includesAuditAndLifecycleEvents
                 )
             )
