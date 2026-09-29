@@ -19,7 +19,12 @@ function createRepository(overrides: Partial<SystemRepository> = {}): SystemRepo
     async readDataSummary() {
       return {
         diary: { active: 3, archived: 2 },
-        todo: { active: 0 },
+        diary_comments: { count: 5 },
+        todo: { count: 4 },
+        workspaces: { count: 2 },
+        conversations: { active: 6, archived: 1 },
+        mind: { count: 9 },
+        universe: { nodes: 7 },
       } satisfies SystemDataSummary;
     },
     async listLifecycleActivity() {
@@ -60,14 +65,24 @@ test("data summary forwards the authenticated user id and preserves real counts"
       calls.push(userId);
       return {
         diary: { active: 3, archived: 4 },
-        todo: { active: 9 },
+        diary_comments: { count: 5 },
+        todo: { count: 9 },
+        workspaces: { count: 2 },
+        conversations: { active: 4, archived: 1 },
+        mind: { count: 8 },
+        universe: { nodes: 6 },
       };
     },
   }));
 
   assert.deepEqual(await service.readDataSummary(USER_ID), {
     diary: { active: 3, archived: 4 },
-    todo: { active: 9 },
+    diary_comments: { count: 5 },
+    todo: { count: 9 },
+    workspaces: { count: 2 },
+    conversations: { active: 4, archived: 1 },
+    mind: { count: 8 },
+    universe: { nodes: 6 },
   });
   assert.deepEqual(calls, [USER_ID]);
 });
