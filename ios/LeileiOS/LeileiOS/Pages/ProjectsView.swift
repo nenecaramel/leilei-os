@@ -1220,15 +1220,6 @@ struct ContextOverviewSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                if metadata == nil {
-                    Section {
-                        AppStateSurface(title: "Nothing here")
-                            .frame(
-                                maxWidth: .infinity,
-                                minHeight: 150
-                            )
-                    }
-                } else {
                     Section {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
@@ -1331,7 +1322,6 @@ struct ContextOverviewSheet: View {
                                 .textSelection(.enabled)
                         }
                     }
-                }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
