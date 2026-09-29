@@ -610,6 +610,13 @@
       "when": 1790643600000,
       "tag": "0086_collapse_project_workspace_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1790694000000,
+      "tag": "0087_native_live_manual_compact",
+      "breakpoints": true
     }
   ]
 }
