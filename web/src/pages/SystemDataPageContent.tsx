@@ -70,7 +70,7 @@ const IMPORT_MODULE_LABELS: Record<WebImportModule, string> = {
   diary_comments: "Diary comments",
   todo: "Todo",
   workspaces: "Workspaces",
-  conversations: "Conversations",
+  conversations: "Conversation records",
   mind: "Mind",
   universe: "Universe",
 };
