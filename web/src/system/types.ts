@@ -18,6 +18,7 @@ export type SystemDataSummary = {
     count: number;
   };
   todo: {
+    active: number;
     count: number;
   };
   workspaces: {
