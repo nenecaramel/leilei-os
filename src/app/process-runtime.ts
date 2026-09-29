@@ -144,6 +144,9 @@ import {
   NativeLiveProviderSessionCleanupService,
 } from "../domains/bridge/native-live-provider-session-cleanup.js";
 import {
+  NativeLiveManualCompactService,
+} from "../domains/bridge/native-live-manual-compact.js";
+import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
 } from "../domains/bridge/native-live-provider-session-store.js";
@@ -585,6 +588,11 @@ export function createProcessRuntime(
     new NativeLiveProviderSessionCleanupService(
       new DrizzleNativeLiveProviderSessionCleanupRepository(db),
     );
+  const nativeLiveManualCompactService =
+    new NativeLiveManualCompactService(
+      db,
+      nativeLiveWorkWakePublisher,
+    );
   const nativeLiveProviderSessionStoreService =
     new NativeLiveProviderSessionStoreService(
       new DrizzleNativeLiveProviderSessionStoreRepository(db),
@@ -855,12 +863,16 @@ export function createProcessRuntime(
             nativeLiveRuntimeInteractionService,
           runtimeControlService:
             nativeLiveRuntimeControlService,
+          manualCompactService:
+            nativeLiveManualCompactService,
         },
         internal: {
           relayService: nativeLiveRelayService,
           workWaitService: nativeLiveWorkWaitService,
           providerSessionCleanupService:
             nativeLiveProviderSessionCleanupService,
+          manualCompactService:
+            nativeLiveManualCompactService,
           providerSessionStoreService:
             nativeLiveProviderSessionStoreService,
           semanticService: nativeLiveSemanticService,

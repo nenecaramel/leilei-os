@@ -178,6 +178,99 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async reserveManualCompact(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }) {
+    const data = await this.post(
+      "/manual-compact/reserve",
+      {
+        listener_instance_id: input.listenerInstanceId,
+        dispatch_target: input.dispatchTarget,
+      },
+    );
+    if (data === null) return null;
+    const record = readRecord(data);
+    if (
+      typeof record.reservationId !== "string"
+      || typeof record.conversationId !== "string"
+      || typeof record.expectedHeadMessageId !== "string"
+      || typeof record.sourceMessageId !== "string"
+      || typeof record.providerSessionId !== "string"
+      || !record.providerSessionId.trim()
+      || !(
+        record.workspaceId === undefined
+        || record.workspaceId === null
+        || typeof record.workspaceId === "string"
+      )
+      || !(
+        record.effectiveWorkspaceRoot === undefined
+        || record.effectiveWorkspaceRoot === null
+        || typeof record.effectiveWorkspaceRoot === "string"
+      )
+    ) {
+      throw new Error(
+        "Native live manual compact reservation is invalid.",
+      );
+    }
+    return {
+      reservationId: record.reservationId,
+      conversationId: record.conversationId,
+      expectedHeadMessageId: record.expectedHeadMessageId,
+      sourceMessageId: record.sourceMessageId,
+      providerSessionId: record.providerSessionId,
+      workspaceId:
+        typeof record.workspaceId === "string"
+          ? record.workspaceId
+          : null,
+      effectiveWorkspaceRoot:
+        typeof record.effectiveWorkspaceRoot === "string"
+          ? record.effectiveWorkspaceRoot
+          : null,
+    };
+  }
+
+  async submitManualCompactResult(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | {
+          status: "success";
+          result: {
+            providerSessionId: string;
+            contextUsage: unknown;
+            boundary: Record<string, unknown> | null;
+            summary: string | null;
+          };
+        }
+      | {
+          status: "failure";
+          failureCode: string;
+        };
+  }): Promise<void> {
+    await this.post(
+      `/manual-compact/reservations/${encodeURIComponent(input.reservationId)}/result`,
+      input.outcome.status === "success"
+        ? {
+            listener_instance_id: input.listenerInstanceId,
+            status: "success",
+            result: {
+              provider_session_id:
+                input.outcome.result.providerSessionId,
+              context_usage:
+                input.outcome.result.contextUsage,
+              boundary: input.outcome.result.boundary,
+              summary: input.outcome.result.summary,
+            },
+          }
+        : {
+            listener_instance_id: input.listenerInstanceId,
+            status: "failure",
+            failure_code: input.outcome.failureCode,
+          },
+    );
+  }
+
   async reserveProviderSessionCleanup(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";

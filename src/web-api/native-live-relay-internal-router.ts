@@ -54,6 +54,10 @@ import {
   type NativeLiveProviderSessionCleanupService,
 } from "../domains/bridge/native-live-provider-session-cleanup.js";
 import {
+  NativeLiveManualCompactError,
+  type NativeLiveManualCompactService,
+} from "../domains/bridge/native-live-manual-compact.js";
+import {
   MindSemanticGroupingRepositoryError,
   type DrizzleMindSemanticGroupingRepository,
 } from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
@@ -116,6 +120,10 @@ export type NativeLiveRelayInternalDependencies = {
   workWaitService?: Pick<NativeLiveWorkWaitService, "wait">;
   providerSessionCleanupService?: Pick<
     NativeLiveProviderSessionCleanupService,
+    "reserveNext" | "complete"
+  >;
+  manualCompactService?: Pick<
+    NativeLiveManualCompactService,
     "reserveNext" | "complete"
   >;
 };
@@ -181,6 +189,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/background-model/topic-resurface/opportunity",
       topicResurfaceOpportunityHandler(dependencies),
+    );
+  }
+  if (dependencies.manualCompactService) {
+    router.post(
+      "/manual-compact/reserve",
+      reserveManualCompactHandler(dependencies),
+    );
+    router.post(
+      "/manual-compact/reservations/:reservationId/result",
+      submitManualCompactResultHandler(dependencies),
     );
   }
   if (dependencies.providerSessionCleanupService) {
@@ -670,6 +688,64 @@ function submitBackgroundModelResultHandler(
       });
     } catch (error) {
       sendBackgroundModelError(response, error);
+    }
+  };
+}
+
+function reserveManualCompactHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.manualCompactService) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const reservation =
+        await dependencies.manualCompactService.reserveNext({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+        });
+      response.json({
+        success: true,
+        data: reservation,
+      });
+    } catch (error) {
+      sendManualCompactError(response, error);
+    }
+  };
+}
+
+function submitManualCompactResultHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.manualCompactService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const body = parseManualCompactResultBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const outcome =
+        await dependencies.manualCompactService.complete({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+          outcome: body.outcome,
+        });
+      response.json({
+        success: true,
+        data: { outcome },
+      });
+    } catch (error) {
+      sendManualCompactError(response, error);
     }
   };
 }
@@ -1506,6 +1582,150 @@ function parseResultBody(
   };
 }
 
+function parseManualCompactResultBody(
+  value: unknown,
+): {
+  listener_instance_id: string;
+  outcome:
+    | {
+        status: "success";
+        result: {
+          providerSessionId: string;
+          contextUsage: import("../domains/bridge/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
+          boundary: Record<string, unknown> | null;
+          summary: string | null;
+        };
+      }
+    | {
+        status: "failure";
+        failureCode: string;
+      };
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!isUuid(record.listener_instance_id)) return null;
+
+  if (record.status === "failure") {
+    if (
+      typeof record.failure_code !== "string"
+      || !record.failure_code.trim()
+    ) return null;
+    return {
+      listener_instance_id: record.listener_instance_id,
+      outcome: {
+        status: "failure",
+        failureCode: record.failure_code,
+      },
+    };
+  }
+
+  if (
+    record.status !== "success"
+    || !record.result
+    || typeof record.result !== "object"
+    || Array.isArray(record.result)
+  ) return null;
+  const result = record.result as Record<string, unknown>;
+  if (
+    typeof result.provider_session_id !== "string"
+    || !result.provider_session_id.trim()
+  ) return null;
+
+  const contextUsage =
+    result.context_usage === null
+      ? null
+      : parseManualCompactContextUsage(result.context_usage);
+  if (result.context_usage !== null && !contextUsage) return null;
+
+  const boundary =
+    result.boundary === null
+      ? null
+      : (
+          result.boundary
+          && typeof result.boundary === "object"
+          && !Array.isArray(result.boundary)
+            ? result.boundary as Record<string, unknown>
+            : null
+        );
+  if (result.boundary !== null && !boundary) return null;
+  if (
+    result.summary !== null
+    && typeof result.summary !== "string"
+  ) return null;
+
+  return {
+    listener_instance_id: record.listener_instance_id,
+    outcome: {
+      status: "success",
+      result: {
+        providerSessionId: result.provider_session_id,
+        contextUsage,
+        boundary,
+        summary:
+          typeof result.summary === "string"
+            ? result.summary
+            : null,
+      },
+    },
+  };
+}
+
+function parseManualCompactContextUsage(
+  value: unknown,
+): import("../domains/bridge/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const numberOrNull = (input: unknown): number | null | undefined =>
+    input === null
+      ? null
+      : typeof input === "number" && Number.isFinite(input)
+        ? input
+        : undefined;
+  const total = numberOrNull(record.total_tokens);
+  const max = numberOrNull(record.max_tokens);
+  const rawMax = numberOrNull(record.raw_max_tokens);
+  const percentage = numberOrNull(record.percentage);
+  if (
+    total === undefined
+    || max === undefined
+    || rawMax === undefined
+    || percentage === undefined
+    || !Array.isArray(record.categories)
+  ) return null;
+  const categories = [];
+  for (const item of record.categories) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const category = item as Record<string, unknown>;
+    const tokens = numberOrNull(category.tokens);
+    if (
+      tokens === undefined
+      || !(category.name === null || typeof category.name === "string")
+      || !(category.kind === null || typeof category.kind === "string")
+      || !(
+        category.is_deferred === null
+        || typeof category.is_deferred === "boolean"
+      )
+    ) return null;
+    categories.push({
+      name: category.name as string | null,
+      tokens,
+      kind: category.kind as string | null,
+      is_deferred: category.is_deferred as boolean | null,
+    });
+  }
+  return {
+    model:
+      record.model === null || typeof record.model === "string"
+        ? record.model as string | null
+        : null,
+    total_tokens: total,
+    max_tokens: max,
+    raw_max_tokens: rawMax,
+    percentage,
+    categories,
+  };
+}
+
 function parseBackgroundModelResultBody(
   value: unknown,
 ): {
@@ -1766,6 +1986,29 @@ function sendBackgroundModelError(
       code: "NATIVE_LIVE_BACKGROUND_MODEL_UNAVAILABLE",
       message:
         "Native live background model queue is temporarily unavailable.",
+    },
+  });
+}
+
+function sendManualCompactError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof NativeLiveManualCompactError) {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: error.code,
+        message: error.message,
+      },
+    });
+    return;
+  }
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "NATIVE_LIVE_MANUAL_COMPACT_UNAVAILABLE",
+      message: "Manual compact is temporarily unavailable.",
     },
   });
 }

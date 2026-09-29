@@ -121,6 +121,7 @@ const loop = new NativeLiveMacDaemonLoop(
   companionScheduler,
   backgroundModelExecutor,
   workspaceRuntimePool,
+  workspaceRuntimePool,
 );
 
 let stopping = false;
@@ -212,6 +213,7 @@ while (!stopping) {
       || outcome.outcome === "semantic_completed"
       || outcome.outcome === "background_completed"
       || outcome.outcome === "provider_session_cleanup_completed"
+      || outcome.outcome === "manual_compact_completed"
     ) {
       continue;
     }

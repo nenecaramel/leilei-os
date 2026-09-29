@@ -84,6 +84,24 @@ implements NativeLiveWorkspaceRuntimeResolver {
     };
   }
 
+  async compactSession(
+    sessionId: string,
+    workspaceId: string | null,
+    expectedWorkspaceRoot: string | null,
+  ) {
+    const { runtime } = await this.resolveWorkspaceRuntime({
+      workspaceId,
+      expectedWorkspaceRoot,
+    });
+    if (!runtime.compact) {
+      throw runtimeError(
+        "Native Live runtime does not expose compact.",
+        "RUNTIME_UNAVAILABLE",
+      );
+    }
+    return runtime.compact(sessionId);
+  }
+
   async deleteSession(
     sessionId: string,
     workspaceId: string | null,

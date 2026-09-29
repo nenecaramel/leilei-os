@@ -23,6 +23,10 @@ import type {
 import type {
   NativeLiveMacActiveTurnController,
 } from "./native-live-mac-claude-transport.js";
+import type {
+  NativeLiveManualCompactReservation,
+  NativeLiveManualCompactSuccess,
+} from "./native-live-manual-compact.js";
 
 export type NativeLiveDaemonLeaseState = "acquired" | "renewed" | "busy";
 
@@ -92,6 +96,18 @@ export type NativeLiveDaemonRunOutcome =
       eventDeliveryFailures?: number;
     }
   | {
+      outcome: "manual_compact_completed";
+      reservationId: string;
+    }
+  | {
+      outcome: "manual_compact_failed";
+      reservationId: string;
+    }
+  | {
+      outcome: "manual_compact_delivery_unknown";
+      reservationId: string;
+    }
+  | {
       outcome: "provider_session_cleanup_completed";
       reservationId: string;
     }
@@ -115,6 +131,25 @@ export type NativeLiveDaemonRunOutcome =
     };
 
 export interface NativeLiveMacDaemonRelayClient {
+  reserveManualCompact?(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }): Promise<NativeLiveManualCompactReservation | null>;
+
+  submitManualCompactResult?(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | {
+          status: "success";
+          result: NativeLiveManualCompactSuccess;
+        }
+      | {
+          status: "failure";
+          failureCode: string;
+        };
+  }): Promise<void>;
+
   reserveProviderSessionCleanup?(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
@@ -271,6 +306,23 @@ export interface NativeLiveDaemonIdleOpportunity {
   offer(): void | Promise<void>;
 }
 
+export interface NativeLiveManualCompactExecutor {
+  compactSession(
+    sessionId: string,
+    workspaceId: string | null,
+    expectedWorkspaceRoot: string | null,
+  ): Promise<{
+    providerSessionId: string;
+    contextUsage?: import("./native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
+    compaction?: {
+      boundary?: Record<string, unknown> | null;
+      postCompact?: Array<{
+        summary?: string | null;
+      }>;
+    };
+  }>;
+}
+
 export interface NativeLiveProviderSessionCleanupExecutor {
   deleteSession(
     sessionId: string,
@@ -299,6 +351,8 @@ export class NativeLiveMacDaemonLoop {
       NativeLiveBackgroundModelExecutor | null = null,
     private readonly providerSessionCleanupExecutor:
       NativeLiveProviderSessionCleanupExecutor | null = null,
+    private readonly manualCompactExecutor:
+      NativeLiveManualCompactExecutor | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -380,6 +434,87 @@ export class NativeLiveMacDaemonLoop {
             outcome: "semantic_completed",
             reservationId: semanticReservationId,
           };
+        }
+
+        if (
+          this.manualCompactExecutor
+          && this.relay.reserveManualCompact
+          && this.relay.submitManualCompactResult
+        ) {
+          const compact =
+            await this.relay.reserveManualCompact({
+              listenerInstanceId: this.listenerInstanceId,
+              dispatchTarget: "claude_code",
+            });
+          if (compact) {
+            let result;
+            try {
+              result =
+                await this.manualCompactExecutor.compactSession(
+                  compact.providerSessionId,
+                  compact.workspaceId,
+                  compact.effectiveWorkspaceRoot,
+                );
+            } catch (error) {
+              try {
+                await this.relay.submitManualCompactResult({
+                  listenerInstanceId: this.listenerInstanceId,
+                  reservationId: compact.reservationId,
+                  outcome: {
+                    status: "failure",
+                    failureCode:
+                      manualCompactFailureCode(error),
+                  },
+                });
+              } catch {
+                return {
+                  outcome: "manual_compact_delivery_unknown",
+                  reservationId: compact.reservationId,
+                };
+              }
+              return {
+                outcome: "manual_compact_failed",
+                reservationId: compact.reservationId,
+              };
+            }
+
+            const summary =
+              result.compaction?.postCompact
+                ?.map((item) => item.summary ?? null)
+                .filter(
+                  (value): value is string =>
+                    typeof value === "string"
+                    && value.trim().length > 0,
+                )
+                .at(-1) ?? null;
+            try {
+              await this.relay.submitManualCompactResult({
+                listenerInstanceId: this.listenerInstanceId,
+                reservationId: compact.reservationId,
+                outcome: {
+                  status: "success",
+                  result: {
+                    providerSessionId:
+                      result.providerSessionId,
+                    contextUsage:
+                      result.contextUsage ?? null,
+                    boundary:
+                      result.compaction?.boundary ?? null,
+                    summary,
+                  },
+                },
+              });
+            } catch {
+              return {
+                outcome: "manual_compact_delivery_unknown",
+                reservationId: compact.reservationId,
+              };
+            }
+            return {
+              outcome: "manual_compact_completed",
+              reservationId: compact.reservationId,
+            };
+          }
         }
 
         if (
@@ -850,6 +985,18 @@ function semanticFallbackCode(
 }
 
 
+
+function manualCompactFailureCode(error: unknown): string {
+  if (
+    typeof error === "object"
+    && error !== null
+    && "runtimeCode" in error
+    && typeof (error as { runtimeCode?: unknown }).runtimeCode === "string"
+  ) {
+    return (error as { runtimeCode: string }).runtimeCode;
+  }
+  return "COMPACT_FAILED";
+}
 
 function runtimeControlFailureCode(error: unknown): string {
   if (
