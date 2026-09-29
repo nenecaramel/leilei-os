@@ -46,8 +46,16 @@ export type ExportServiceErrorCode =
   | "EXPORT_IN_PROGRESS"
   | "EXPORT_TOO_LARGE";
 
+export type ExportInProgressReason =
+  | "prepared_turn"
+  | "mind_followup"
+  | "canonical_message";
+
 export class ExportServiceError extends Error {
-  constructor(public readonly code: ExportServiceErrorCode) {
+  constructor(
+    public readonly code: ExportServiceErrorCode,
+    public readonly reason: ExportInProgressReason | null = null,
+  ) {
     super(
       code === "EXPORT_IN_PROGRESS"
         ? "Product export is unavailable while runtime processing is incomplete."
@@ -119,8 +127,17 @@ export class ExportService {
         repository.hasIncompleteTurnPreparations(userId),
         repository.hasIncompleteMindFollowUps(userId),
       ]);
-      if (incompleteTurns || incompleteMind) {
-        throw new ExportServiceError("EXPORT_IN_PROGRESS");
+      if (incompleteTurns) {
+        throw new ExportServiceError(
+          "EXPORT_IN_PROGRESS",
+          "prepared_turn",
+        );
+      }
+      if (incompleteMind) {
+        throw new ExportServiceError(
+          "EXPORT_IN_PROGRESS",
+          "mind_followup",
+        );
       }
 
       const [
@@ -143,7 +160,10 @@ export class ExportService {
             || message.status === "streaming",
         )
       ) {
-        throw new ExportServiceError("EXPORT_IN_PROGRESS");
+        throw new ExportServiceError(
+          "EXPORT_IN_PROGRESS",
+          "canonical_message",
+        );
       }
       data.workspaces = workspaces;
       data.mind = mind;
