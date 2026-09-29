@@ -527,6 +527,12 @@ export class DrizzleExportRepository implements ExportRepository {
       .where(and(
         eq(nativeLiveTurnPreparations.userId, userId),
         eq(nativeLiveTurnPreparations.status, "prepared"),
+        inArray(nativeLiveTurnPreparations.dispatchStatus, [
+          "staged",
+          "pending",
+          "reserved",
+          "executing",
+        ]),
       ))
       .limit(1);
     return rows.length > 0;
