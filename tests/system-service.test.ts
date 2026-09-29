@@ -20,7 +20,7 @@ function createRepository(overrides: Partial<SystemRepository> = {}): SystemRepo
       return {
         diary: { active: 3, archived: 2 },
         diary_comments: { count: 5 },
-        todo: { count: 4 },
+        todo: { active: 4, count: 4 },
         workspaces: { count: 2 },
         conversations: { active: 6, archived: 1 },
         mind: { count: 9 },
@@ -66,7 +66,7 @@ test("data summary forwards the authenticated user id and preserves real counts"
       return {
         diary: { active: 3, archived: 4 },
         diary_comments: { count: 5 },
-        todo: { count: 9 },
+        todo: { active: 9, count: 9 },
         workspaces: { count: 2 },
         conversations: { active: 4, archived: 1 },
         mind: { count: 8 },
@@ -78,7 +78,7 @@ test("data summary forwards the authenticated user id and preserves real counts"
   assert.deepEqual(await service.readDataSummary(USER_ID), {
     diary: { active: 3, archived: 4 },
     diary_comments: { count: 5 },
-    todo: { count: 9 },
+    todo: { active: 9, count: 9 },
     workspaces: { count: 2 },
     conversations: { active: 4, archived: 1 },
     mind: { count: 8 },
