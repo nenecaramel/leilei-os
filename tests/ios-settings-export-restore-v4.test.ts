@@ -102,3 +102,26 @@ test("iOS Summary shows the same portable product modules as Web", () => {
   assert.match(dataService, /mind: summary\.mind\.count/);
   assert.match(dataService, /universeNodes: summary\.universe\.nodes/);
 });
+
+
+test("iOS no longer calls retired partial export scopes", () => {
+  const files = [
+    readFileSync(
+      join(root, "ios/LeileiOS/LeileiOS/Pages/DiaryView.swift"),
+      "utf8",
+    ),
+    readFileSync(
+      join(root, "ios/LeileiOS/LeileiOS/Pages/UniverseNodeSheet.swift"),
+      "utf8",
+    ),
+    readFileSync(
+      join(root, "ios/LeileiOS/LeileiOS/Pages/DaySpaceView.swift"),
+      "utf8",
+    ),
+  ];
+
+  for (const source of files) {
+    assert.doesNotMatch(source, /exportData\s*\(\s*scope\s*:/u);
+    assert.doesNotMatch(source, /scope:\s*"(?:diary|todo)"/u);
+  }
+});
