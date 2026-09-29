@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
+  nativeLiveProviderSessionCleanups,
   productCreateIdempotency,
   users,
   workspaceConversations,
@@ -51,6 +52,9 @@ test(
           await database.db
             .delete(conversations)
             .where(eq(conversations.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
           await database.db
             .delete(productCreateIdempotency)
             .where(eq(productCreateIdempotency.userId, userId));
@@ -218,6 +222,9 @@ test(
           await database.db
             .delete(workspaces)
             .where(eq(workspaces.userId, userId));
+          await database.db
+            .delete(nativeLiveProviderSessionCleanups)
+            .where(eq(nativeLiveProviderSessionCleanups.userId, userId));
           await database.db
             .delete(productCreateIdempotency)
             .where(eq(productCreateIdempotency.userId, userId));
