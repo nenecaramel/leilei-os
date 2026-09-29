@@ -76,6 +76,7 @@ struct NativeLivePendingOperation: Equatable {
 
 struct NativeLiveMessageSurface: View {
     let snapshot: NativeLiveCurrentPathSnapshot?
+    let historySnapshot: NativeLiveConversationHistorySnapshot?
     let syncState: AppModel.ChatSyncState
     let isAuthenticated: Bool
     let hasActiveConversation: Bool
@@ -105,8 +106,9 @@ struct NativeLiveMessageSurface: View {
                 messageList(snapshot)
             } else if !hasActiveConversation {
                 AppStateSurface(title: "Nothing here")
-            } else if let snapshot {
-                if snapshot.messages.isEmpty {
+            } else if snapshot != nil || historySnapshot != nil {
+                if (snapshot?.messages.isEmpty ?? true)
+                    && (historySnapshot?.messages.isEmpty ?? true) {
                     Color.clear
                 } else {
                     messageList(snapshot)
@@ -150,6 +152,22 @@ struct NativeLiveMessageSurface: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 21) {
+                    if let historySnapshot {
+                        ForEach(historySnapshot.messages) { message in
+                            NativeLiveHistorySnapshotRow(
+                                message: message,
+                                timeZone: historySnapshot.timeZone
+                            )
+                            .id(
+                                "history-"
+                                    + String(message.ordinal)
+                            )
+                        }
+
+                        NativeLiveHistoryForkDivider()
+                            .id("native-live-history-fork-divider")
+                    }
+
                     ForEach(messages) { message in
                         NativeLiveMessageRow(
                             message: message,
@@ -225,6 +243,7 @@ struct NativeLiveMessageSurface: View {
             }
             .id(
                 snapshot?.conversationId
+                    ?? historySnapshot?.conversationId
                     ?? "native-live-empty"
             )
             .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -657,6 +676,88 @@ private struct NativeLiveMessageRow: View {
             in: .whitespacesAndNewlines
         )
         return normalized.isEmpty ? nil : normalized
+    }
+}
+
+
+private struct NativeLiveHistorySnapshotRow: View {
+    let message: NativeLiveConversationHistoryMessage
+    let timeZone: String
+
+    var body: some View {
+        if message.role == "user" {
+            HStack(alignment: .top, spacing: 0) {
+                Spacer(minLength: 48)
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    ChatMarkdownView(
+                        text: message.content,
+                        fillsAvailableWidth: false,
+                        lineSpacing: 5,
+                        paragraphSpacing: 19
+                    )
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        Color.chatSoftFill,
+                        in: RoundedRectangle(
+                            cornerRadius: 18,
+                            style: .continuous
+                        )
+                    )
+
+                    timestamp
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                timestamp
+
+                ChatMarkdownView(
+                    text: message.content,
+                    fillsAvailableWidth: true,
+                    lineSpacing: 6,
+                    paragraphSpacing: 22
+                )
+                .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var timestamp: some View {
+        Text(
+            MessageTimestampFormatter.string(
+                from: message.time,
+                timeZoneIdentifier: timeZone
+            )
+        )
+        .font(.system(size: 12.5))
+        .tracking(0.12)
+        .foregroundStyle(.secondary)
+    }
+}
+
+
+private struct NativeLiveHistoryForkDivider: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.18))
+                .frame(height: 0.5)
+
+            Text("Forked into LeileiOS")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.18))
+                .frame(height: 0.5)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1679,14 +1780,19 @@ private enum ChatMarkdownParser {
 
 
 private enum MessageTimestampFormatter {
-    static func string(from iso8601: String) -> String {
+    static func string(
+        from iso8601: String,
+        timeZoneIdentifier: String? = nil
+    ) -> String {
         guard let date = parse(iso8601) else {
             return ""
         }
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .autoupdatingCurrent
+        formatter.timeZone =
+            timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+            ?? .autoupdatingCurrent
         formatter.dateFormat = "MM-dd HH:mm"
         return formatter.string(from: date)
     }
