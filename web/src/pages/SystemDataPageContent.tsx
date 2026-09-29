@@ -196,7 +196,9 @@ function importErrorMessage(error: unknown, fallback: string): string {
 function exportErrorMessage(error: unknown): string {
   if (!(error instanceof WebApiError)) return "Unable to create this backup.";
   if (error.code === "EXPORT_IN_PROGRESS") {
-    return "A conversation or Mind update is still being finalized. Try again in a moment.";
+    return error.message.trim().length > 0
+      ? error.message
+      : "A conversation or Mind update is still being finalized.";
   }
   if (error.code === "EXPORT_TOO_LARGE") {
     return "This backup is too large to export as one JSON file.";
