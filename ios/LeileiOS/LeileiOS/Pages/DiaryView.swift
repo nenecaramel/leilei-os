@@ -509,7 +509,6 @@ private struct DiaryArchiveView: View {
                 all = completeArchive
             } else {
                 let data = try await appModel.api.exportData(
-                    scope: "diary",
                     includeAudit: false
                 )
                 let snapshot = try JSONDecoder().decode(
