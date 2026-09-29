@@ -122,6 +122,22 @@ export class DrizzleNativeLiveWorkAvailability {
         UNION ALL
 
         SELECT 1
+        FROM native_live_manual_compactions AS compact
+        WHERE compact.user_id = ${input.userId}::uuid
+          AND (
+            (
+              compact.status = 'pending'
+              AND compact.expires_at > now()
+            )
+            OR (
+              compact.status = 'reserved'
+              AND compact.reservation_expires_at <= now()
+            )
+          )
+
+        UNION ALL
+
+        SELECT 1
         FROM native_live_provider_session_cleanups AS cleanup
         WHERE cleanup.user_id = ${input.userId}::uuid
           AND (
