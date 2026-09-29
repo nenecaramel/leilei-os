@@ -939,10 +939,24 @@ function projectItems(
   additionalConversationIds: Set<string>,
 ): ImportPlanItem[] {
   const currentProjects = current.projects ?? emptyProjects();
+
+  // Export v3 historically encoded a backing Workspace plus one or more
+  // Projects. The product now has one durable Workspace layer. A backing row
+  // that is referenced by a Project is therefore structural metadata only;
+  // each old Project becomes the restored Workspace. Backing-only rows are
+  // preserved as standalone Workspaces so old packages do not silently lose
+  // user-authored containers.
+  const referencedBackingIds = new Set(
+    imported.projects.map((record) => record.workspace_id),
+  );
+  const standaloneBackingWorkspaces = imported.workspaces.filter(
+    (record) => !referencedBackingIds.has(record.id),
+  );
+
   const items = [
     ...classifyProjectEntity(
       "workspace",
-      imported.workspaces,
+      standaloneBackingWorkspaces,
       currentProjects.workspaces,
       (record) => record.id,
     ),
@@ -968,11 +982,9 @@ function projectItems(
   ];
 
   const workspaceIds = new Set([
-    ...currentProjects.workspaces.map((record) => record.id),
-    ...imported.workspaces.map((record) => record.id),
-  ]);
-  const projectIds = new Set([
     ...currentProjects.projects.map((record) => record.id),
+    ...currentProjects.workspaces.map((record) => record.id),
+    ...standaloneBackingWorkspaces.map((record) => record.id),
     ...imported.projects.map((record) => record.id),
   ]);
   const conversationIds = new Set([
@@ -986,7 +998,10 @@ function projectItems(
 
     if (
       record.entity === "workspace"
-      && current.foreign_workspace_ids?.has(record.value.id)
+      && (
+        current.foreign_workspace_ids?.has(record.value.id)
+        || current.foreign_project_ids?.has(record.value.id)
+      )
     ) {
       item.classification = "conflict";
       continue;
@@ -995,30 +1010,29 @@ function projectItems(
       record.entity === "project"
       && (
         current.foreign_project_ids?.has(record.value.id)
-        || !workspaceIds.has(record.value.workspace_id)
+        || current.foreign_workspace_ids?.has(record.value.id)
       )
     ) {
-      item.classification = current.foreign_project_ids?.has(record.value.id)
-        ? "conflict"
-        : "invalid";
+      item.classification = "conflict";
       continue;
     }
     if (
       record.entity === "resource"
       && (
         current.foreign_project_resource_ids?.has(record.value.id)
-        || !projectIds.has(record.value.project_id)
+        || !workspaceIds.has(record.value.project_id)
       )
     ) {
-      item.classification = current.foreign_project_resource_ids?.has(record.value.id)
-        ? "conflict"
-        : "invalid";
+      item.classification =
+        current.foreign_project_resource_ids?.has(record.value.id)
+          ? "conflict"
+          : "invalid";
       continue;
     }
     if (
       record.entity === "conversation"
       && (
-        !projectIds.has(record.value.project_id)
+        !workspaceIds.has(record.value.project_id)
         || !conversationIds.has(record.value.conversation_id)
       )
     ) {

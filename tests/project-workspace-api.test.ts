@@ -13,9 +13,8 @@ import {
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
-const projectId = "33333333-3333-4333-8333-333333333333";
-const resourceId = "44444444-4444-4444-8444-444444444444";
-const conversationId = "55555555-5555-4555-8555-555555555555";
+const resourceId = "33333333-3333-4333-8333-333333333333";
+const conversationId = "44444444-4444-4444-8444-444444444444";
 
 class FakeService {
   calls: Array<{ name: string; input: unknown }> = [];
@@ -30,145 +29,74 @@ class FakeService {
     this.calls.push({ name: "listProductWorkspaces", input });
     return [];
   }
+
   async getProductWorkspace(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "getProductWorkspace", input });
-    return { id: projectId, name: "LeileiOS", version: 1 };
+    return { id: workspaceId, name: "LeileiOS", version: 1 };
   }
+
   async createProductWorkspace(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "createProductWorkspace", input });
-    return { id: projectId, name: "LeileiOS", version: 1 };
+    return { id: workspaceId, name: "LeileiOS", version: 1 };
   }
+
   async updateProductWorkspace(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "updateProductWorkspace", input });
-    return { id: projectId, name: "Changed", version: 2 };
+    return { id: workspaceId, name: "Changed", version: 2 };
   }
+
   async deleteProductWorkspace(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "deleteProductWorkspace", input });
   }
+
   async listWorkspaceResources(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "listWorkspaceResources", input });
     return [];
   }
+
   async getWorkspaceResource(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "getWorkspaceResource", input });
-    return { id: resourceId, workspaceId: projectId, content: "detail" };
+    return { id: resourceId, workspaceId, content: "detail" };
   }
+
   async createWorkspaceResource(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "createWorkspaceResource", input });
-    return { id: resourceId, workspaceId: projectId };
+    return { id: resourceId, workspaceId };
   }
+
   async updateWorkspaceResource(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "updateWorkspaceResource", input });
-    return { id: resourceId, workspaceId: projectId, version: 2 };
+    return { id: resourceId, workspaceId, version: 2 };
   }
+
   async deleteWorkspaceResource(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "deleteWorkspaceResource", input });
   }
+
   async listWorkspaceConversations(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "listWorkspaceConversations", input });
     return [];
   }
+
   async attachWorkspaceConversation(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "attachWorkspaceConversation", input });
     return { applied: true };
   }
+
   async detachWorkspaceConversation(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "detachWorkspaceConversation", input });
-    return { applied: true };
-  }
-
-  async listWorkspaces(user: string) {
-    this.maybeFail();
-    this.calls.push({ name: "listWorkspaces", input: user });
-    return [];
-  }
-  async createWorkspace(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "createWorkspace", input });
-    return { id: workspaceId };
-  }
-  async updateWorkspace(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "updateWorkspace", input });
-    return { id: workspaceId, version: 2 };
-  }
-  async deleteWorkspace(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "deleteWorkspace", input });
-  }
-  async listProjects(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "listProjects", input });
-    return [];
-  }
-  async getProject(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "getProject", input });
-    return { id: projectId };
-  }
-  async createProject(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "createProject", input });
-    return { id: projectId };
-  }
-  async updateProject(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "updateProject", input });
-    return { id: projectId, version: 2 };
-  }
-  async deleteProject(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "deleteProject", input });
-  }
-  async listResources(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "listResources", input });
-    return [];
-  }
-  async getResource(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "getResource", input });
-    return { id: resourceId, content: "detail" };
-  }
-  async createResource(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "createResource", input });
-    return { id: resourceId };
-  }
-  async updateResource(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "updateResource", input });
-    return { id: resourceId, version: 2 };
-  }
-  async deleteResource(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "deleteResource", input });
-  }
-  async listProjectConversations(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "listProjectConversations", input });
-    return [];
-  }
-  async attachConversation(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "attachConversation", input });
-    return { applied: true };
-  }
-  async detachConversation(input: unknown) {
-    this.maybeFail();
-    this.calls.push({ name: "detachConversation", input });
     return { applied: true };
   }
 }
@@ -203,12 +131,12 @@ async function withServer(
   }
 }
 
-test("Workspaces API exposes one execution Workspace surface and keeps legacy aliases", async () => {
+test("Workspaces API exposes only the single Workspace surface", async () => {
   const service = new FakeService();
   await withServer(service, async (baseUrl) => {
     assert.equal((await fetch(`${baseUrl}/workspaces`)).status, 200);
 
-    const workspaceCreate = await fetch(`${baseUrl}/workspaces`, {
+    const created = await fetch(`${baseUrl}/workspaces`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -216,12 +144,8 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
       },
       body: JSON.stringify({ name: "LeileiOS" }),
     });
-    assert.equal(workspaceCreate.status, 201);
-    assert.equal(
-      (await workspaceCreate.json()).data.id,
-      projectId,
-      "product Workspace id must be the execution id",
-    );
+    assert.equal(created.status, 201);
+    assert.equal((await created.json()).data.id, workspaceId);
 
     assert.equal(
       (await fetch(
@@ -230,12 +154,12 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
       200,
     );
     assert.equal(
-      (await fetch(`${baseUrl}/workspaces/${projectId}`)).status,
+      (await fetch(`${baseUrl}/workspaces/${workspaceId}`)).status,
       200,
     );
 
     const resourceCreate = await fetch(
-      `${baseUrl}/workspaces/${projectId}/resources`,
+      `${baseUrl}/workspaces/${workspaceId}/resources`,
       {
         method: "POST",
         headers: {
@@ -245,155 +169,72 @@ test("Workspaces API exposes one execution Workspace surface and keeps legacy al
         body: JSON.stringify({
           kind: "instructions",
           key: "default",
-          content: "Use the Workspace context.",
+          content: "Use Workspace context.",
         }),
       },
     );
     assert.equal(resourceCreate.status, 201);
     const resourceBody = await resourceCreate.json();
-    assert.equal(resourceBody.data.workspaceId, projectId);
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(
-        resourceBody.data,
-        "projectId",
-      ),
-      false,
-    );
+    assert.equal(resourceBody.data.workspaceId, workspaceId);
+    assert.equal(Object.hasOwn(resourceBody.data, "projectId"), false);
 
     assert.equal(
       (await fetch(
-        `${baseUrl}/workspaces/${projectId}/resources?kind=instructions`,
+        `${baseUrl}/workspaces/${workspaceId}/resources/${resourceId}`,
       )).status,
       200,
     );
     assert.equal(
       (await fetch(
-        `${baseUrl}/workspaces/${projectId}/resources/${resourceId}`,
-      )).status,
-      200,
-    );
-
-    assert.equal(
-      (await fetch(
-        `${baseUrl}/workspaces/${projectId}/conversations/${conversationId}`,
+        `${baseUrl}/workspaces/${workspaceId}/conversations/${conversationId}`,
         { method: "PUT" },
       )).status,
       200,
     );
     assert.equal(
       (await fetch(
-        `${baseUrl}/workspaces/${projectId}/conversations`,
+        `${baseUrl}/workspaces/${workspaceId}/conversations`,
       )).status,
       200,
     );
     assert.equal(
       (await fetch(
-        `${baseUrl}/workspaces/${projectId}/conversations/${conversationId}`,
+        `${baseUrl}/workspaces/${workspaceId}/conversations/${conversationId}`,
         { method: "DELETE" },
       )).status,
       200,
     );
 
-    // Transition compatibility: old backing containers moved under an
-    // explicit legacy path and the existing /projects alias remains.
     assert.equal(
       (await fetch(`${baseUrl}/legacy/project-workspaces`)).status,
-      200,
+      404,
     );
-    assert.equal(
-      (await fetch(
-        `${baseUrl}/projects?workspace_id=${workspaceId}`,
-      )).status,
-      200,
-    );
+    assert.equal((await fetch(`${baseUrl}/projects`)).status, 404);
   });
 
-  assert.deepEqual(service.calls, [
-    {
-      name: "listProductWorkspaces",
-      input: { userId },
-    },
-    {
-      name: "createProductWorkspace",
-      input: {
-        userId,
-        name: "LeileiOS",
-        description: undefined,
-        idempotencyKey: "workspace-create-api-0001",
-      },
-    },
-    {
-      name: "listProductWorkspaces",
-      input: { userId, conversationId },
-    },
-    {
-      name: "getProductWorkspace",
-      input: { userId, workspaceId: projectId },
-    },
-    {
-      name: "createWorkspaceResource",
-      input: {
-        userId,
-        workspaceId: projectId,
-        kind: "instructions",
-        key: "default",
-        title: undefined,
-        content: "Use the Workspace context.",
-        metadata: undefined,
-        idempotencyKey: "workspace-resource-api-0001",
-      },
-    },
-    {
-      name: "listWorkspaceResources",
-      input: {
-        userId,
-        workspaceId: projectId,
-        kind: "instructions",
-      },
-    },
-    {
-      name: "getWorkspaceResource",
-      input: {
-        userId,
-        workspaceId: projectId,
-        resourceId,
-      },
-    },
-    {
-      name: "attachWorkspaceConversation",
-      input: {
-        userId,
-        workspaceId: projectId,
-        conversationId,
-      },
-    },
-    {
-      name: "listWorkspaceConversations",
-      input: { userId, workspaceId: projectId },
-    },
-    {
-      name: "detachWorkspaceConversation",
-      input: {
-        userId,
-        workspaceId: projectId,
-        conversationId,
-      },
-    },
-    { name: "listWorkspaces", input: userId },
-    {
-      name: "listProjects",
-      input: { userId, workspaceId },
-    },
-  ]);
+  assert.deepEqual(
+    service.calls.map((call) => call.name),
+    [
+      "listProductWorkspaces",
+      "createProductWorkspace",
+      "listProductWorkspaces",
+      "getProductWorkspace",
+      "createWorkspaceResource",
+      "getWorkspaceResource",
+      "attachWorkspaceConversation",
+      "listWorkspaceConversations",
+      "detachWorkspaceConversation",
+    ],
+  );
 });
 
-test("Workspaces API maps version conflicts, not found, invalid identity, and auth", async () => {
+test("Workspaces API maps durable conflicts, not found, invalid identity, and auth", async () => {
   const service = new FakeService();
   await withServer(service, async (baseUrl) => {
     service.failure =
       new ProjectWorkspaceServiceError("VERSION_CONFLICT");
     const conflict = await fetch(
-      `${baseUrl}/workspaces/${projectId}`,
+      `${baseUrl}/workspaces/${workspaceId}`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -425,32 +266,16 @@ test("Workspaces API maps version conflicts, not found, invalid identity, and au
     );
 
     service.failure =
-      new ProjectWorkspaceServiceError("INVALID_IDEMPOTENCY_KEY");
-    const invalidKey = await fetch(
-      `${baseUrl}/workspaces`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "LeileiOS" }),
-      },
-    );
-    assert.equal(invalidKey.status, 400);
-    assert.equal(
-      (await invalidKey.json()).error.code,
-      "INVALID_IDEMPOTENCY_KEY",
-    );
-
-    service.failure =
       new ProjectWorkspaceServiceError("WORKSPACE_NOT_FOUND");
     assert.equal(
-      (await fetch(`${baseUrl}/workspaces/${projectId}`)).status,
+      (await fetch(`${baseUrl}/workspaces/${workspaceId}`)).status,
       404,
     );
 
     service.failure =
       new ProjectWorkspaceServiceError("WORKSPACE_IN_USE");
     const inUse = await fetch(
-      `${baseUrl}/workspaces/${projectId}`,
+      `${baseUrl}/workspaces/${workspaceId}`,
       {
         method: "DELETE",
         headers: { "content-type": "application/json" },
@@ -470,6 +295,7 @@ test("Workspaces API maps version conflicts, not found, invalid identity, and au
       }),
     });
     assert.equal(identity.status, 400);
+    assert.equal((await identity.json()).error.code, "INVALID_WORKSPACE");
   });
 
   await withServer(

@@ -9,10 +9,9 @@ import {
   dataImportRuns,
   diaryComments,
   diaryEntries,
-  projectConversations,
-  projectResources,
-  projects,
-  projectWorkspaces,
+  workspaceConversations,
+  workspaceResources,
+  workspaces,
   runtimeCuriosityResolutionEvents,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
@@ -301,56 +300,55 @@ implements ImportRepository {
         .from(diaryComments),
       this.db
         .select({
-          id: projectWorkspaces.id,
-          name: projectWorkspaces.name,
-          description: projectWorkspaces.description,
-          version: projectWorkspaces.version,
-          createdAt: projectWorkspaces.createdAt,
-          updatedAt: projectWorkspaces.updatedAt,
+          id: workspaces.id,
+          name: workspaces.name,
+          description: workspaces.description,
+          version: workspaces.version,
+          createdAt: workspaces.createdAt,
+          updatedAt: workspaces.updatedAt,
         })
-        .from(projectWorkspaces)
-        .where(eq(projectWorkspaces.userId, userId))
-        .orderBy(asc(projectWorkspaces.id)),
+        .from(workspaces)
+        .where(eq(workspaces.userId, userId))
+        .orderBy(asc(workspaces.id)),
       this.db
         .select({
-          id: projects.id,
-          workspaceId: projects.workspaceId,
-          name: projects.name,
-          description: projects.description,
-          version: projects.version,
-          createdAt: projects.createdAt,
-          updatedAt: projects.updatedAt,
+          id: workspaces.id,
+          name: workspaces.name,
+          description: workspaces.description,
+          version: workspaces.version,
+          createdAt: workspaces.createdAt,
+          updatedAt: workspaces.updatedAt,
         })
-        .from(projects)
-        .where(eq(projects.userId, userId))
-        .orderBy(asc(projects.id)),
+        .from(workspaces)
+        .where(eq(workspaces.userId, userId))
+        .orderBy(asc(workspaces.id)),
       this.db
         .select({
-          id: projectResources.id,
-          projectId: projectResources.projectId,
-          kind: projectResources.kind,
-          key: projectResources.resourceKey,
-          title: projectResources.title,
-          content: projectResources.content,
-          metadata: projectResources.metadata,
-          version: projectResources.version,
-          createdAt: projectResources.createdAt,
-          updatedAt: projectResources.updatedAt,
+          id: workspaceResources.id,
+          projectId: workspaceResources.workspaceId,
+          kind: workspaceResources.kind,
+          key: workspaceResources.resourceKey,
+          title: workspaceResources.title,
+          content: workspaceResources.content,
+          metadata: workspaceResources.metadata,
+          version: workspaceResources.version,
+          createdAt: workspaceResources.createdAt,
+          updatedAt: workspaceResources.updatedAt,
         })
-        .from(projectResources)
-        .where(eq(projectResources.userId, userId))
-        .orderBy(asc(projectResources.id)),
+        .from(workspaceResources)
+        .where(eq(workspaceResources.userId, userId))
+        .orderBy(asc(workspaceResources.id)),
       this.db
         .select({
-          projectId: projectConversations.projectId,
-          conversationId: projectConversations.conversationId,
-          addedAt: projectConversations.addedAt,
+          projectId: workspaceConversations.workspaceId,
+          conversationId: workspaceConversations.conversationId,
+          addedAt: workspaceConversations.addedAt,
         })
-        .from(projectConversations)
-        .where(eq(projectConversations.userId, userId))
+        .from(workspaceConversations)
+        .where(eq(workspaceConversations.userId, userId))
         .orderBy(
-          asc(projectConversations.projectId),
-          asc(projectConversations.conversationId),
+          asc(workspaceConversations.workspaceId),
+          asc(workspaceConversations.conversationId),
         ),
       this.db
         .select({
@@ -495,9 +493,9 @@ implements ImportRepository {
           asc(conversationAttachments.ordinal),
           asc(conversationAttachments.id),
         ),
-      this.db.select({ id: projectWorkspaces.id }).from(projectWorkspaces),
-      this.db.select({ id: projects.id }).from(projects),
-      this.db.select({ id: projectResources.id }).from(projectResources),
+      this.db.select({ id: workspaces.id }).from(workspaces),
+      this.db.select({ id: workspaces.id }).from(workspaces),
+      this.db.select({ id: workspaceResources.id }).from(workspaceResources),
       this.db.select({ id: runtimeSubjectStates.id }).from(runtimeSubjectStates),
       this.db.select({ id: conversations.id }).from(conversations),
       this.db.select({ id: conversationMessages.id }).from(conversationMessages),
@@ -896,7 +894,7 @@ implements ImportRepository {
         })),
         projects: projectRows.map((row) => ({
           id: row.id,
-          workspace_id: row.workspaceId,
+          workspace_id: row.id,
           name: row.name,
           description: row.description,
           version: row.version,
@@ -1426,7 +1424,7 @@ implements ImportRepository {
     userId: string,
     record: ExportProjectWorkspaceRecord,
   ): Promise<void> {
-    await this.db.insert(projectWorkspaces).values({
+    await this.db.insert(workspaces).values({
       id: record.id,
       userId,
       name: record.name,
@@ -1441,10 +1439,11 @@ implements ImportRepository {
     userId: string,
     record: ExportProjectRecord,
   ): Promise<void> {
-    await this.db.insert(projects).values({
+    // Historical Project records are canonicalized into the single durable
+    // Workspace layer. The old backing workspace_id is intentionally ignored.
+    await this.db.insert(workspaces).values({
       id: record.id,
       userId,
-      workspaceId: record.workspace_id,
       name: record.name,
       description: record.description,
       version: record.version,
@@ -1457,10 +1456,10 @@ implements ImportRepository {
     userId: string,
     record: ExportProjectResourceRecord,
   ): Promise<void> {
-    await this.db.insert(projectResources).values({
+    await this.db.insert(workspaceResources).values({
       id: record.id,
       userId,
-      projectId: record.project_id,
+      workspaceId: record.project_id,
       kind: record.kind,
       resourceKey: record.key,
       title: record.title,
@@ -1476,9 +1475,9 @@ implements ImportRepository {
     userId: string,
     record: ExportProjectConversationRecord,
   ): Promise<void> {
-    await this.db.insert(projectConversations).values({
+    await this.db.insert(workspaceConversations).values({
       userId,
-      projectId: record.project_id,
+      workspaceId: record.project_id,
       conversationId: record.conversation_id,
       addedAt: new Date(record.added_at),
     });

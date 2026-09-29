@@ -46,7 +46,7 @@ test(
     const curiosityId = randomUUID();
     const curiosityEventId = randomUUID();
     const workspaceId = randomUUID();
-    const projectId = randomUUID();
+    const projectId = workspaceId;
     const resourceId = randomUUID();
     const now =
       new Date("2026-08-14T00:00:00.000Z");
@@ -390,29 +390,19 @@ test(
         updatedAt: now,
       });
 
-      await db.insert(schema.projectWorkspaces).values({
+      await db.insert(schema.workspaces).values({
         id: workspaceId,
         userId,
-        name: "Workspace",
-        description: "Portable workspace",
-        version: 2,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.insert(schema.projects).values({
-        id: projectId,
-        userId,
-        workspaceId,
         name: "Project",
         description: null,
         version: 3,
         createdAt: now,
         updatedAt: now,
       });
-      await db.insert(schema.projectResources).values({
+      await db.insert(schema.workspaceResources).values({
         id: resourceId,
         userId,
-        projectId,
+        workspaceId,
         kind: "file",
         resourceKey: "context.md",
         title: "Context",
@@ -422,9 +412,9 @@ test(
         createdAt: now,
         updatedAt: now,
       });
-      await db.insert(schema.projectConversations).values({
+      await db.insert(schema.workspaceConversations).values({
         userId,
-        projectId,
+        workspaceId,
         conversationId,
         addedAt: now,
       });
@@ -451,17 +441,14 @@ test(
       );
 
       await db
-        .delete(schema.projectConversations)
-        .where(eq(schema.projectConversations.userId, userId));
+        .delete(schema.workspaceConversations)
+        .where(eq(schema.workspaceConversations.userId, userId));
       await db
-        .delete(schema.projectResources)
-        .where(eq(schema.projectResources.userId, userId));
+        .delete(schema.workspaceResources)
+        .where(eq(schema.workspaceResources.userId, userId));
       await db
-        .delete(schema.projects)
-        .where(eq(schema.projects.userId, userId));
-      await db
-        .delete(schema.projectWorkspaces)
-        .where(eq(schema.projectWorkspaces.userId, userId));
+        .delete(schema.workspaces)
+        .where(eq(schema.workspaces.userId, userId));
       await db
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId));
@@ -544,7 +531,7 @@ test(
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
       assert.equal(preview.summary.mind?.create, 8);
-      assert.equal(preview.summary.projects?.create, 4);
+      assert.equal(preview.summary.projects?.create, 3);
       assert.equal(
         preview.summary.conversations?.create,
         5,
@@ -625,17 +612,17 @@ test(
           .from(schema.universeDiarySources)
           .where(eq(schema.universeDiarySources.userId, userId)),
         db.select({ count: count() })
-          .from(schema.projectWorkspaces)
-          .where(eq(schema.projectWorkspaces.userId, userId)),
+          .from(schema.workspaces)
+          .where(eq(schema.workspaces.userId, userId)),
         db.select({ count: count() })
-          .from(schema.projects)
-          .where(eq(schema.projects.userId, userId)),
+          .from(schema.workspaces)
+          .where(eq(schema.workspaces.userId, userId)),
         db.select({ count: count() })
-          .from(schema.projectResources)
-          .where(eq(schema.projectResources.userId, userId)),
+          .from(schema.workspaceResources)
+          .where(eq(schema.workspaceResources.userId, userId)),
         db.select({ count: count() })
-          .from(schema.projectConversations)
-          .where(eq(schema.projectConversations.userId, userId)),
+          .from(schema.workspaceConversations)
+          .where(eq(schema.workspaceConversations.userId, userId)),
       ]);
 
       assert.equal(diaryCount[0]?.count, 1);
@@ -804,14 +791,14 @@ test(
       const [restoredMembership] = await db
         .select({
           projectId:
-            schema.projectConversations.projectId,
+            schema.workspaceConversations.workspaceId,
           conversationId:
-            schema.projectConversations.conversationId,
+            schema.workspaceConversations.conversationId,
         })
-        .from(schema.projectConversations)
+        .from(schema.workspaceConversations)
         .where(
           eq(
-            schema.projectConversations.userId,
+            schema.workspaceConversations.userId,
             userId,
           ),
         );
@@ -821,20 +808,16 @@ test(
       });
     } finally {
       await db
-        .delete(schema.projectConversations)
-        .where(eq(schema.projectConversations.userId, userId))
+        .delete(schema.workspaceConversations)
+        .where(eq(schema.workspaceConversations.userId, userId))
         .catch(() => undefined);
       await db
-        .delete(schema.projectResources)
-        .where(eq(schema.projectResources.userId, userId))
+        .delete(schema.workspaceResources)
+        .where(eq(schema.workspaceResources.userId, userId))
         .catch(() => undefined);
       await db
-        .delete(schema.projects)
-        .where(eq(schema.projects.userId, userId))
-        .catch(() => undefined);
-      await db
-        .delete(schema.projectWorkspaces)
-        .where(eq(schema.projectWorkspaces.userId, userId))
+        .delete(schema.workspaces)
+        .where(eq(schema.workspaces.userId, userId))
         .catch(() => undefined);
       await db
         .delete(schema.runtimeDriveSatisfactionEvents)
