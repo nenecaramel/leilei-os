@@ -485,7 +485,6 @@ struct DaySpaceView: View {
                 all = completeTodoSearch
             } else {
                 let data = try await appModel.api.exportData(
-                    scope: "todo",
                     includeAudit: false
                 )
                 let snapshot = try JSONDecoder().decode(
