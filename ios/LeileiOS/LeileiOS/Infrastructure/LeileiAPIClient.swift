@@ -1448,11 +1448,10 @@ final class LeileiAPIClient {
     }
 
     func exportData(
-        scope: String,
         includeAudit: Bool
     ) async throws -> Data {
         try await rawRequest(
-            path: "/api/v1/system/export?scope=\(scope)&include_audit=\(includeAudit ? "true" : "false")"
+            path: "/api/v1/system/export?include_audit=\(includeAudit ? "true" : "false")"
         )
     }
 
