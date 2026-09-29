@@ -1103,7 +1103,7 @@ test("v3 preview and execute restore Projects atomically with exact product stat
   const raw = v3PackageBytes();
 
   const preview = await service.preview(raw, USER_ID);
-  assert.deepEqual(preview.summary.projects, {
+  assert.deepEqual(preview.summary.workspaces, {
     create: 3,
     duplicate: 0,
     conflict: 0,
@@ -1117,7 +1117,7 @@ test("v3 preview and execute restore Projects atomically with exact product stat
     preview.preview_fingerprint,
   );
 
-  assert.equal(result.summary.projects?.create, 3);
+  assert.equal(result.summary.workspaces?.create, 3);
   assert.deepEqual(repository.state.projects, canonicalProjectBundle);
   assert.equal(repository.writes, 3);
   assert.equal(repository.audits[0]?.schema_version, 3);
@@ -1145,7 +1145,7 @@ test("v3 Projects preview rejects cross-user ids before any write", async () => 
     USER_ID,
   );
 
-  assert.equal(preview.summary.projects?.conflict, 1);
+  assert.equal(preview.summary.workspaces?.conflict, 1);
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
@@ -1236,7 +1236,7 @@ test("v3 all-state restore creates canonical conversations before Project member
     conflict: 0,
     invalid: 0,
   });
-  assert.deepEqual(preview.summary.projects, {
+  assert.deepEqual(preview.summary.workspaces, {
     create: 3,
     duplicate: 0,
     conflict: 0,
