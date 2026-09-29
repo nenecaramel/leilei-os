@@ -684,8 +684,7 @@ struct ClaudeSessionForkSheet: View {
                         )
                 } else if let errorMessage {
                     AppStateSurface(
-                        title: "Unavailable",
-                        detail: errorMessage,
+                        title: errorMessage,
                         actionTitle: "Retry"
                     ) {
                         Task {
@@ -694,9 +693,7 @@ struct ClaudeSessionForkSheet: View {
                     }
                 } else if sessions.isEmpty {
                     AppStateSurface(
-                        title: "Nothing here",
-                        detail:
-                            "No Claude Code sessions were found in the mapped Workspace directories."
+                        title: "No Claude Code sessions"
                     )
                 } else {
                     List(sessions) { session in
