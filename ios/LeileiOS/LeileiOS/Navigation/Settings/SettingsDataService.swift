@@ -74,7 +74,7 @@ enum SettingsExportScope: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .all: "All"
+        case .all: "Full Backup"
         case .diary: "Diary"
         case .todo: "Todo"
         }
@@ -93,23 +93,85 @@ struct SettingsExportDocument: Identifiable {
     let fileURL: URL
 }
 
-struct SettingsRestorePreview {
+enum SettingsRestoreModule: String, Identifiable, Hashable {
+    case diary
+    case diaryComments = "diary_comments"
+    case todo
+    case workspaces
+    case conversations
+    case mind
+    case universe
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .diary: "Diary"
+        case .diaryComments: "Diary comments"
+        case .todo: "Todo"
+        case .workspaces: "Workspaces"
+        case .conversations: "Conversations"
+        case .mind: "Mind"
+        case .universe: "Universe"
+        }
+    }
+}
+
+struct SettingsRestoreModuleResult: Identifiable, Hashable {
+    let module: SettingsRestoreModule
     let newCount: Int
     let alreadyHereCount: Int
     let conflictCount: Int
     let invalidCount: Int
+
+    var id: String { module.id }
+}
+
+struct SettingsRestorePreview {
+    let schemaVersion: Int
+    let exportedAt: String
+    let rawBytes: Int
+    let auditIncluded: Bool
+    let modules: [SettingsRestoreModuleResult]
     let previewFingerprint: String
     let canExecute: Bool
+
+    var newCount: Int {
+        modules.reduce(0) { $0 + $1.newCount }
+    }
+
+    var alreadyHereCount: Int {
+        modules.reduce(0) { $0 + $1.alreadyHereCount }
+    }
+
+    var conflictCount: Int {
+        modules.reduce(0) { $0 + $1.conflictCount }
+    }
+
+    var invalidCount: Int {
+        modules.reduce(0) { $0 + $1.invalidCount }
+    }
 }
 
 struct SettingsRestoreResult {
     let completed: Bool
+    let schemaVersion: Int
+    let exportedAt: String
+    let rawBytes: Int
+    let auditIncluded: Bool
+    let modules: [SettingsRestoreModuleResult]
 }
 
 struct SettingsDataSummary {
     let diaryActive: Int
     let diaryArchived: Int
-    let todoActive: Int
+    let diaryComments: Int
+    let todo: Int
+    let workspaces: Int
+    let conversationsActive: Int
+    let conversationsArchived: Int
+    let mind: Int
+    let universeNodes: Int
 }
 
 struct SettingsRuntimeStatus {
@@ -141,9 +203,19 @@ final class LeileiSettingsDataService: SettingsDataService {
             scope: request.scope.backendScope,
             includeAudit: request.includeAuditAndLifecycleEvents
         )
+        let timestamp = Self.exportTimestamp(Date())
+        let scopeLabel: String
+        switch request.scope {
+        case .all:
+            scopeLabel = "full-backup"
+        case .diary:
+            scopeLabel = "diary"
+        case .todo:
+            scopeLabel = "todo"
+        }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(
-                "leileios-export-\(UUID().uuidString.lowercased()).json"
+                "leileios-\(scopeLabel)_\(timestamp).json"
             )
         try data.write(to: url, options: .atomic)
         return SettingsExportDocument(fileURL: url)
@@ -154,13 +226,16 @@ final class LeileiSettingsDataService: SettingsDataService {
     ) async throws -> SettingsRestorePreview {
         let data = try Data(contentsOf: fileURL)
         let preview = try await api.previewImport(data)
-        let counts = [preview.summary.diary, preview.summary.todo]
 
         return SettingsRestorePreview(
-            newCount: counts.reduce(0) { $0 + $1.create },
-            alreadyHereCount: counts.reduce(0) { $0 + $1.duplicate },
-            conflictCount: counts.reduce(0) { $0 + $1.conflict },
-            invalidCount: counts.reduce(0) { $0 + $1.invalid },
+            schemaVersion: preview.schemaVersion,
+            exportedAt: preview.exportedAt,
+            rawBytes: preview.rawBytes,
+            auditIncluded: preview.auditIncluded,
+            modules: Self.restoreModules(
+                summary: preview.summary,
+                includedModules: preview.includedModules
+            ),
             previewFingerprint: preview.previewFingerprint,
             canExecute: preview.canExecute
         )
@@ -171,11 +246,21 @@ final class LeileiSettingsDataService: SettingsDataService {
         previewFingerprint: String
     ) async throws -> SettingsRestoreResult {
         let data = try Data(contentsOf: fileURL)
-        _ = try await api.executeImport(
+        let result = try await api.executeImport(
             data,
             expectedPreviewFingerprint: previewFingerprint
         )
-        return SettingsRestoreResult(completed: true)
+        return SettingsRestoreResult(
+            completed: true,
+            schemaVersion: result.schemaVersion,
+            exportedAt: result.exportedAt,
+            rawBytes: result.rawBytes,
+            auditIncluded: result.auditIncluded,
+            modules: Self.restoreModules(
+                summary: result.summary,
+                includedModules: result.includedModules
+            )
+        )
     }
 
     func readDataSummary() async throws -> SettingsDataSummary {
@@ -183,7 +268,13 @@ final class LeileiSettingsDataService: SettingsDataService {
         return SettingsDataSummary(
             diaryActive: summary.diary.active,
             diaryArchived: summary.diary.archived,
-            todoActive: summary.todo.active
+            diaryComments: summary.diaryComments.count,
+            todo: summary.todo.count,
+            workspaces: summary.workspaces.count,
+            conversationsActive: summary.conversations.active,
+            conversationsArchived: summary.conversations.archived,
+            mind: summary.mind.count,
+            universeNodes: summary.universe.nodes
         )
     }
 
@@ -233,5 +324,91 @@ final class LeileiSettingsDataService: SettingsDataService {
         let standard = ISO8601DateFormatter()
         standard.formatOptions = [.withInternetDateTime]
         return standard.date(from: value)
+    }
+
+    private static func restoreModules(
+        summary: ImportSummarySnapshot,
+        includedModules: [String]
+    ) -> [SettingsRestoreModuleResult] {
+        includedModules.compactMap { rawModule in
+            guard let module = SettingsRestoreModule(rawValue: rawModule) else {
+                return nil
+            }
+
+            let counts: ImportSummaryCountsSnapshot?
+            switch module {
+            case .diary:
+                counts = summary.diary
+            case .diaryComments:
+                counts = summary.diaryComments
+            case .todo:
+                counts = summary.todo
+            case .workspaces:
+                counts = summary.workspaces
+            case .conversations:
+                counts = summary.conversations
+            case .mind:
+                counts = summary.mind
+            case .universe:
+                counts = summary.universe
+            }
+
+            let resolved = counts ?? ImportSummaryCountsSnapshot(
+                create: 0,
+                duplicate: 0,
+                conflict: 0,
+                invalid: 0
+            )
+            return SettingsRestoreModuleResult(
+                module: module,
+                newCount: resolved.create,
+                alreadyHereCount: resolved.duplicate,
+                conflictCount: resolved.conflict,
+                invalidCount: resolved.invalid
+            )
+        }
+    }
+
+    private static func exportTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        return formatter.string(from: date)
+    }
+
+}
+
+
+func settingsDataErrorMessage(_ error: Error) -> String {
+    guard let apiError = error as? LeileiAPIError else {
+        return error.localizedDescription
+    }
+
+    switch apiError {
+    case .backend(_, let code, let message):
+        switch code {
+        case "EXPORT_IN_PROGRESS":
+            return "A conversation or Mind update is still being finalized. Try again in a moment."
+        case "EXPORT_TOO_LARGE":
+            return "This backup is too large to export as one JSON file."
+        case "INVALID_IMPORT_FILE":
+            return "This file is not a valid LeileiOS backup."
+        case "IMPORT_OWNER_MISMATCH":
+            return "This backup belongs to a different account."
+        case "IMPORT_CONFLICT":
+            return "This backup conflicts with existing data. Existing data was not changed."
+        case "IMPORT_PREVIEW_STALE":
+            return "This restore preview is out of date. Choose the file again."
+        case "IMPORT_NOTHING_TO_RESTORE":
+            return "Everything in this backup is already here."
+        case "IMPORT_VERIFY_FAILED":
+            return "LeileiOS could not verify the restored data. Nothing was committed."
+        default:
+            return message ?? "This operation could not be completed."
+        }
+    default:
+        return apiError.localizedDescription
     }
 }
