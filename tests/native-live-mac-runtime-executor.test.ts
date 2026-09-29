@@ -331,6 +331,42 @@ test("interactive foreground runtime receives the exact prepared execution selec
 });
 
 
+test("foreground context usage never triggers compact automatically", async () => {
+  let compactCalls = 0;
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      return {
+        providerSessionId: "provider-manual-only",
+        normalizedEvents: [],
+        contextUsage: {
+          model: "claude-opus-5-5",
+          total_tokens: 990000,
+          max_tokens: 1000000,
+          raw_max_tokens: 1000000,
+          percentage: 99,
+          categories: [],
+        },
+      };
+    },
+    async compact() {
+      compactCalls += 1;
+      throw new Error("foreground execution must never compact automatically");
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(
+    command(),
+  );
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(compactCalls, 0);
+  assert.equal(result.runtime_metadata?.context_usage?.percentage, 99);
+});
+
 test("foreground execution readback is persisted as bounded runtime metadata", async () => {
   const runtime = {
     async sendNew() { throw new Error("unused"); },
