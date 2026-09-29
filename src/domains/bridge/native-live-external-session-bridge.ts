@@ -5,6 +5,9 @@ type Database = ReturnType<typeof createDatabase>["db"];
 
 const REQUEST_TTL_MS = 30_000;
 const RESERVATION_TTL_MS = 60_000;
+const MAX_HISTORY_SNAPSHOT_MESSAGES = 5_000;
+const MAX_HISTORY_SNAPSHOT_MESSAGE_CHARS = 100_000;
+const MAX_HISTORY_SNAPSHOT_TOTAL_CHARS = 700_000;
 
 export type NativeLiveExternalSession = {
   sessionId: string;
@@ -47,6 +50,33 @@ export type NativeLiveExternalSessionConversation = {
   updatedAt: string;
 };
 
+export type NativeLiveConversationHistoryInputMessage = {
+  role: "user" | "assistant";
+  time: string;
+  content: string;
+};
+
+export type NativeLiveConversationHistoryUpload = {
+  sourceLabel?: string | null;
+  timeZone?: string | null;
+  messages: NativeLiveConversationHistoryInputMessage[];
+};
+
+export type NativeLiveConversationHistorySnapshot = {
+  conversationId: string;
+  sourceProvider: "claude_code";
+  sourceProviderSessionId: string;
+  sourceLabel: string | null;
+  timeZone: string;
+  messageCount: number;
+  firstMessageAt: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+  messages: Array<NativeLiveConversationHistoryInputMessage & {
+    ordinal: number;
+  }>;
+};
+
 export class NativeLiveExternalSessionBridgeError extends Error {
   constructor(
     readonly code:
@@ -55,7 +85,8 @@ export class NativeLiveExternalSessionBridgeError extends Error {
       | "RESERVATION_CONFLICT"
       | "REQUEST_NOT_FOUND"
       | "REQUEST_NOT_READY"
-      | "SESSION_NOT_FOUND",
+      | "SESSION_NOT_FOUND"
+      | "INVALID_HISTORY_SNAPSHOT",
     message: string,
   ) {
     super(message);
@@ -350,7 +381,11 @@ export class NativeLiveExternalSessionBridgeService {
     requestId: string;
     sourceSessionId: string;
     title?: string | null;
+    historySnapshot?: NativeLiveConversationHistoryUpload | null;
   }): Promise<NativeLiveExternalSessionConversation> {
+    const historySnapshot = normalizeHistorySnapshotInput(
+      input.historySnapshot,
+    );
     return this.db.transaction(async (tx) => {
       const requestRows = await tx.execute<{
         status: NativeLiveExternalSessionRequestStatus;
@@ -448,6 +483,34 @@ export class NativeLiveExternalSessionBridgeService {
         )
       `);
 
+      if (historySnapshot) {
+        await tx.execute(sql`
+          INSERT INTO native_live_conversation_history_snapshots (
+            conversation_id,
+            user_id,
+            source_provider,
+            source_provider_session_id,
+            source_label,
+            time_zone,
+            messages,
+            message_count,
+            first_message_at,
+            last_message_at
+          ) VALUES (
+            ${conversation.id}::uuid,
+            ${input.userId}::uuid,
+            'claude_code',
+            ${source.sessionId},
+            ${historySnapshot.sourceLabel},
+            ${historySnapshot.timeZone},
+            ${JSON.stringify(historySnapshot.messages)}::jsonb,
+            ${historySnapshot.messages.length},
+            ${historySnapshot.firstMessageAt}::timestamptz,
+            ${historySnapshot.lastMessageAt}::timestamptz
+          )
+        `);
+      }
+
       if (source.workspaceId) {
         await tx.execute(sql`
           INSERT INTO workspace_conversations (
@@ -472,6 +535,67 @@ export class NativeLiveExternalSessionBridgeService {
         updatedAt: new Date(conversation.updated_at).toISOString(),
       };
     });
+  }
+
+  async readConversationHistorySnapshot(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveConversationHistorySnapshot | null> {
+    const rows = await this.db.execute<{
+      conversation_id: string;
+      source_provider_session_id: string;
+      source_label: string | null;
+      time_zone: string;
+      messages: unknown;
+      message_count: number;
+      first_message_at: string | null;
+      last_message_at: string | null;
+      created_at: string;
+    }>(sql`
+      SELECT
+        conversation_id,
+        source_provider_session_id,
+        source_label,
+        time_zone,
+        messages,
+        message_count,
+        first_message_at::text,
+        last_message_at::text,
+        created_at::text
+      FROM native_live_conversation_history_snapshots
+      WHERE conversation_id = ${input.conversationId}::uuid
+        AND user_id = ${input.userId}::uuid
+      LIMIT 1
+    `);
+    const row = rows[0];
+    if (!row) return null;
+
+    const messages = readStoredHistoryMessages(row.messages);
+    if (messages.length !== row.message_count) {
+      throw new Error(
+        "Stored conversation history snapshot message count is inconsistent.",
+      );
+    }
+
+    return {
+      conversationId: row.conversation_id,
+      sourceProvider: "claude_code",
+      sourceProviderSessionId: row.source_provider_session_id,
+      sourceLabel: row.source_label,
+      timeZone: row.time_zone,
+      messageCount: row.message_count,
+      firstMessageAt: row.first_message_at
+        ? new Date(row.first_message_at).toISOString()
+        : null,
+      lastMessageAt: row.last_message_at
+        ? new Date(row.last_message_at).toISOString()
+        : null,
+      createdAt: new Date(row.created_at).toISOString(),
+      messages: messages.map((message, ordinal) => ({
+        ordinal,
+        ...message,
+      })),
+    };
   }
 }
 
@@ -551,4 +675,107 @@ function normalizeTitle(value: unknown): string | null {
 function normalizeFailureCode(value: string): string {
   const normalized = value.trim().toUpperCase();
   return normalized ? normalized.slice(0, 64) : "SESSION_LIST_FAILED";
+}
+
+function normalizeHistorySnapshotInput(
+  value: NativeLiveConversationHistoryUpload | null | undefined,
+): {
+  sourceLabel: string | null;
+  timeZone: string;
+  messages: NativeLiveConversationHistoryInputMessage[];
+  firstMessageAt: string;
+  lastMessageAt: string;
+} | null {
+  if (value === undefined || value === null) return null;
+
+  const sourceLabel = normalizeString(value.sourceLabel);
+  if (sourceLabel && [...sourceLabel].length > 255) {
+    throw invalidHistorySnapshot("History source label is too long.");
+  }
+
+  const timeZone = normalizeString(value.timeZone) ?? "Asia/Shanghai";
+  if ([...timeZone].length > 64) {
+    throw invalidHistorySnapshot("History time zone is too long.");
+  }
+
+  if (
+    !Array.isArray(value.messages)
+    || value.messages.length < 1
+    || value.messages.length > MAX_HISTORY_SNAPSHOT_MESSAGES
+  ) {
+    throw invalidHistorySnapshot(
+      "History snapshot must contain 1-5000 messages.",
+    );
+  }
+
+  let totalChars = 0;
+  const messages: NativeLiveConversationHistoryInputMessage[] = [];
+  for (const item of value.messages) {
+    if (
+      !item
+      || (item.role !== "user" && item.role !== "assistant")
+      || typeof item.time !== "string"
+      || !item.time.trim()
+      || Number.isNaN(Date.parse(item.time))
+      || typeof item.content !== "string"
+      || !item.content.trim()
+    ) {
+      throw invalidHistorySnapshot("History snapshot contains an invalid message.");
+    }
+    if ([...item.content].length > MAX_HISTORY_SNAPSHOT_MESSAGE_CHARS) {
+      throw invalidHistorySnapshot("History snapshot contains an oversized message.");
+    }
+    totalChars += [...item.content].length;
+    if (totalChars > MAX_HISTORY_SNAPSHOT_TOTAL_CHARS) {
+      throw invalidHistorySnapshot("History snapshot is too large.");
+    }
+    messages.push({
+      role: item.role,
+      time: item.time.trim(),
+      content: item.content,
+    });
+  }
+
+  return {
+    sourceLabel,
+    timeZone,
+    messages,
+    firstMessageAt: new Date(messages[0]!.time).toISOString(),
+    lastMessageAt: new Date(messages[messages.length - 1]!.time).toISOString(),
+  };
+}
+
+function readStoredHistoryMessages(
+  value: unknown,
+): NativeLiveConversationHistoryInputMessage[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Stored conversation history snapshot is not an array.");
+  }
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("Stored conversation history snapshot contains an invalid message.");
+    }
+    const row = item as Record<string, unknown>;
+    if (
+      (row.role !== "user" && row.role !== "assistant")
+      || typeof row.time !== "string"
+      || typeof row.content !== "string"
+    ) {
+      throw new Error("Stored conversation history snapshot contains an invalid message.");
+    }
+    return {
+      role: row.role,
+      time: row.time,
+      content: row.content,
+    };
+  });
+}
+
+function invalidHistorySnapshot(
+  message: string,
+): NativeLiveExternalSessionBridgeError {
+  return new NativeLiveExternalSessionBridgeError(
+    "INVALID_HISTORY_SNAPSHOT",
+    message,
+  );
 }
