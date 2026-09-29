@@ -261,7 +261,7 @@ export function SystemDataPageContent({
       `/system/export?scope=${scope}${includeAudit ? "&include_audit=true" : ""}`;
     try {
       const document = await api.request<WebExportDocument>(path);
-      downloadExportDocument(document);
+      downloadExportDocument(document, scope);
       setExportState({ status: "idle" });
     } catch (error) {
       setExportState({
