@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   nativeLiveBackgroundModelJobs,
@@ -1092,5 +1092,189 @@ test(
     assert.equal(ambiguous.ok, false);
     if (ambiguous.ok) throw new Error("expected ambiguous Workspace failure");
     assert.equal(ambiguous.code, "WORKSPACE_BINDING_AMBIGUOUS");
+  },
+);
+
+
+test(
+  "external Claude session bootstrap forks the first LeileiOS turn without importing provider history",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+
+    const database = createDatabase(databaseUrl, { ssl: false });
+    const suffix = crypto.randomUUID();
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: `native-live-external-bootstrap-${suffix}@example.com`,
+        displayName: "Native Live External Bootstrap",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+
+    t.after(async () => {
+      try {
+        await database.db
+          .delete(conversations)
+          .where(eq(conversations.userId, user.id));
+        await database.db.delete(users).where(eq(users.id, user.id));
+      } finally {
+        await database.close();
+      }
+    });
+
+    const conversationService = new NativeLiveConversationService(
+      new DrizzleNativeLiveConversationRepository(database.db),
+    );
+    const conversation = await conversationService.createConversation({
+      userId: user.id,
+      title: "Forked Claude session",
+    });
+    const sourceSessionId = "external-claude-session-source";
+    const workspaceRoot = "/Users/leilei/Projects/leilei-os";
+
+    await database.db.execute(sql`
+      INSERT INTO native_live_conversation_provider_bootstraps (
+        conversation_id,
+        user_id,
+        provider,
+        source_provider_session_id,
+        workspace_id,
+        effective_workspace_root
+      ) VALUES (
+        ${conversation.id}::uuid,
+        ${user.id}::uuid,
+        'claude_code',
+        ${sourceSessionId},
+        NULL,
+        ${workspaceRoot}
+      )
+    `);
+
+    const before = await conversationService.getConversation({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(before);
+    assert.equal(before.currentHeadMessageId, null);
+    assert.deepEqual(
+      before.messages,
+      [],
+      "provider history must not be copied into the canonical ledger",
+    );
+
+    const port = new DrizzleNativeLiveBackendTurnPort(database.db);
+    const coordinator = new NativeLiveBackendTurnCoordinator(
+      port,
+      () => crypto.randomUUID(),
+    );
+    const requestId = crypto.randomUUID();
+    const prepared = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: null,
+      text: "continue from the Claude Code context",
+    });
+    assert.equal(prepared.ok, true);
+    if (!prepared.ok) throw new Error("expected bootstrap prepare success");
+    assert.equal(prepared.command.runtime_mode, "fork");
+    assert.equal(
+      prepared.command.parent_provider_session_id,
+      sourceSessionId,
+    );
+    assert.equal(prepared.command.workspace_id, null);
+    assert.equal(
+      prepared.command.expected_workspace_root,
+      workspaceRoot,
+    );
+
+    const afterPrepare = await conversationService.getConversation({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(afterPrepare);
+    assert.equal(afterPrepare.messages.length, 1);
+    assert.equal(afterPrepare.messages[0]?.role, "user");
+    assert.equal(
+      afterPrepare.messages[0]?.id,
+      prepared.command.canonical_user_message_id,
+    );
+
+    const finalized = await coordinator.finalize(user.id, {
+      protocol_version: 1,
+      prepare_id: prepared.command.prepare_id,
+      request_id: requestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "leileios-forked-provider-session",
+      workspace_id: null,
+      effective_workspace_root: workspaceRoot,
+      normalized_events: [
+        {
+          type: "text",
+          payload: { text: "continued answer" },
+        },
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text: "continued answer",
+          },
+        },
+      ],
+    });
+    assert.equal(finalized.ok, true);
+    if (!finalized.ok) throw new Error("expected bootstrap finalize success");
+
+    const afterFinalize = await conversationService.getConversation({
+      userId: user.id,
+      conversationId: conversation.id,
+    });
+    assert.ok(afterFinalize);
+    assert.equal(afterFinalize.messages.length, 2);
+    assert.deepEqual(
+      afterFinalize.messages.map((message) => message.role),
+      ["user", "assistant"],
+    );
+    assert.equal(
+      afterFinalize.currentHeadMessageId,
+      finalized.assistantMessageId,
+    );
+
+    const bootstrapRows = await database.db.execute<{
+      source_provider_session_id: string;
+      consumed_at: Date | null;
+    }>(sql`
+      SELECT source_provider_session_id, consumed_at
+      FROM native_live_conversation_provider_bootstraps
+      WHERE conversation_id = ${conversation.id}::uuid
+        AND user_id = ${user.id}::uuid
+    `);
+    assert.equal(bootstrapRows.length, 1);
+    assert.equal(
+      bootstrapRows[0]?.source_provider_session_id,
+      sourceSessionId,
+    );
+    assert.ok(
+      bootstrapRows[0]?.consumed_at,
+      "bootstrap must be consumed after the first successful fork",
+    );
+
+    const checkpoint =
+      await conversationService.getProviderCheckpointForHead({
+        userId: user.id,
+        conversationId: conversation.id,
+        canonicalMessageId: finalized.assistantMessageId,
+      });
+    assert.ok(checkpoint);
+    assert.equal(
+      checkpoint.providerSessionId,
+      "leileios-forked-provider-session",
+    );
+    assert.notEqual(checkpoint.providerSessionId, sourceSessionId);
   },
 );
