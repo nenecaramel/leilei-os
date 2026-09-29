@@ -7,9 +7,8 @@ import {
   nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   conversations,
-  projectConversations,
-  projects,
-  projectWorkspaces,
+  workspaceConversations,
+  workspaces,
   runtimeDistillationWatermarks,
   runtimeSubjectStates,
   users,
@@ -839,8 +838,8 @@ test(
     t.after(async () => {
       try {
         await database.db
-          .delete(projectWorkspaces)
-          .where(eq(projectWorkspaces.userId, user.id));
+          .delete(workspaces)
+          .where(eq(workspaces.userId, user.id));
         await database.db
           .delete(nativeLiveProviderSessionCleanups)
           .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
@@ -862,28 +861,18 @@ test(
         title: "Workspace-bound conversation",
       });
 
-    const [container] = await database.db
-      .insert(projectWorkspaces)
-      .values({
-        userId: user.id,
-        name: "Legacy container",
-      })
-      .returning({ id: projectWorkspaces.id });
-    assert.ok(container);
-
     const [workspace] = await database.db
-      .insert(projects)
+      .insert(workspaces)
       .values({
         userId: user.id,
-        workspaceId: container.id,
         name: "Execution Workspace",
       })
-      .returning({ id: projects.id });
+      .returning({ id: workspaces.id });
     assert.ok(workspace);
 
-    await database.db.insert(projectConversations).values({
+    await database.db.insert(workspaceConversations).values({
       userId: user.id,
-      projectId: workspace.id,
+      workspaceId: workspace.id,
       conversationId: boundConversation.id,
     });
 
@@ -980,10 +969,10 @@ test(
     assert.equal(explicit.command.runtime_mode, "new");
 
     const explicitMemberships = await database.db
-      .select({ projectId: projectConversations.projectId })
-      .from(projectConversations)
-      .where(eq(projectConversations.conversationId, explicitConversation.id));
-    assert.deepEqual(explicitMemberships, [{ projectId: workspace.id }]);
+      .select({ workspaceId: workspaceConversations.workspaceId })
+      .from(workspaceConversations)
+      .where(eq(workspaceConversations.conversationId, explicitConversation.id));
+    assert.deepEqual(explicitMemberships, [{ workspaceId: workspace.id }]);
 
     const missingWorkspace = await coordinator.prepare(user.id, {
       dispatch_target: "claude_code",
@@ -1044,13 +1033,12 @@ test(
     );
 
     const [otherWorkspaceForConflict] = await database.db
-      .insert(projects)
+      .insert(workspaces)
       .values({
         userId: user.id,
-        workspaceId: container.id,
         name: "Conflicting Execution Workspace",
       })
-      .returning({ id: projects.id });
+      .returning({ id: workspaces.id });
     assert.ok(otherWorkspaceForConflict);
 
     const workspaceSwitch = await coordinator.prepare(user.id, {
@@ -1074,24 +1062,23 @@ test(
         title: "Ambiguous legacy membership",
       });
     const [otherWorkspace] = await database.db
-      .insert(projects)
+      .insert(workspaces)
       .values({
         userId: user.id,
-        workspaceId: container.id,
         name: "Other Execution Workspace",
       })
-      .returning({ id: projects.id });
+      .returning({ id: workspaces.id });
     assert.ok(otherWorkspace);
 
-    await database.db.insert(projectConversations).values([
+    await database.db.insert(workspaceConversations).values([
       {
         userId: user.id,
-        projectId: workspace.id,
+        workspaceId: workspace.id,
         conversationId: ambiguousConversation.id,
       },
       {
         userId: user.id,
-        projectId: otherWorkspace.id,
+        workspaceId: otherWorkspace.id,
         conversationId: ambiguousConversation.id,
       },
     ]);
