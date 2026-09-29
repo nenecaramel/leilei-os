@@ -39,6 +39,11 @@ import {
 } from "../require-active-user.js";
 
 export type ImportPreview = {
+  schema_version: 2 | 3 | 4;
+  exported_at: string;
+  raw_bytes: number;
+  included_modules: ImportModule[];
+  audit_included: boolean;
   package_sha256: string;
   preview_fingerprint: string;
   summary: ImportSummary;
@@ -46,6 +51,11 @@ export type ImportPreview = {
 };
 
 export type ImportExecution = {
+  schema_version: 2 | 3 | 4;
+  exported_at: string;
+  raw_bytes: number;
+  included_modules: ImportModule[];
+  audit_included: boolean;
   package_sha256: string;
   preview_fingerprint: string;
   summary: ImportSummary;
@@ -58,8 +68,17 @@ export class ImportAuthorizationError extends Error {
   }
 }
 
-function toPreview(plan: ImportPlan): ImportPreview {
+function toPreview(
+  plan: ImportPlan,
+  document: RestorableExportDocument,
+  rawBytes: number,
+): ImportPreview {
   return {
+    schema_version: document.schema_version,
+    exported_at: document.exported_at,
+    raw_bytes: rawBytes,
+    included_modules: [...includedModules(document)],
+    audit_included: document.audit !== undefined,
     package_sha256: plan.package_sha256,
     preview_fingerprint: plan.preview_fingerprint,
     summary: plan.summary,
@@ -67,24 +86,26 @@ function toPreview(plan: ImportPlan): ImportPreview {
   };
 }
 
-function includedModules(document: RestorableExportDocument): Set<ImportModule> {
+function includedModules(
+  document: RestorableExportDocument,
+): Set<ImportModule> {
   const modules: ImportModule[] = [];
   if (document.data.diary) modules.push("diary");
   if (
-    document.schema_version === 3
+    document.schema_version !== 2
     && document.data.diary_comments
   ) {
     modules.push("diary_comments");
   }
   if (document.data.todo) modules.push("todo");
   if (
-    document.schema_version === 3
-    && document.data.universe
+    (document.schema_version === 3 && document.data.projects)
+    || (document.schema_version === 4 && document.data.workspaces)
   ) {
-    modules.push("universe");
+    modules.push("workspaces");
   }
   if (
-    document.schema_version === 3
+    document.schema_version !== 2
     && (
       document.data.mind
       || document.data.mind_continuity
@@ -92,11 +113,17 @@ function includedModules(document: RestorableExportDocument): Set<ImportModule> 
   ) {
     modules.push("mind");
   }
-  if (document.schema_version === 3 && document.data.projects) {
-    modules.push("projects");
-  }
-  if (document.schema_version === 3 && document.data.conversations) {
+  if (
+    document.schema_version !== 2
+    && document.data.conversations
+  ) {
     modules.push("conversations");
+  }
+  if (
+    document.schema_version !== 2
+    && document.data.universe
+  ) {
+    modules.push("universe");
   }
   return new Set(modules);
 }
@@ -343,7 +370,7 @@ function projectRecords<
   entity: Entity,
 ): Array<Extract<ProjectRestoreRecord, { entity: Entity }>> {
   return creates.flatMap((item) => {
-    if (item.module !== "projects") return [];
+    if (item.module !== "workspaces") return [];
     const record = item.record as ProjectRestoreRecord;
     if (record.entity !== entity) return [];
     return [
@@ -562,7 +589,8 @@ export class ImportService {
     await this.requireActiveUser(this.repository, userId);
     const parsed = parseImportPackage(raw);
     const current = await this.repository.readCurrentState(userId);
-    return toPreview(buildImportPlan(parsed, userId, current));
+    const plan = buildImportPlan(parsed, userId, current);
+    return toPreview(plan, parsed.document, parsed.raw_bytes);
   }
 
   async execute(
@@ -638,6 +666,11 @@ export class ImportService {
           summary: plan.summary,
         });
         return {
+          schema_version: parsed.document.schema_version,
+          exported_at: parsed.document.exported_at,
+          raw_bytes: parsed.raw_bytes,
+          included_modules: [...includedModules(parsed.document)],
+          audit_included: parsed.document.audit !== undefined,
           package_sha256: plan.package_sha256,
           preview_fingerprint: plan.preview_fingerprint,
           summary: plan.summary,
