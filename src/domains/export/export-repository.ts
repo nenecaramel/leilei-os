@@ -19,10 +19,9 @@ import {
   nativeLiveBackgroundModelJobs,
   nativeLiveMindFollowUps,
   nativeLiveTurnPreparations,
-  projectConversations,
-  projectResources,
-  projects,
-  projectWorkspaces,
+  workspaceConversations,
+  workspaceResources,
+  workspaces,
   resourceLifecycleEvents,
   runtimeCuriosityResolutionEvents,
   runtimeDistillationWatermarks,
@@ -373,60 +372,52 @@ export class DrizzleExportRepository implements ExportRepository {
   }
 
   async listProjects(userId: string): Promise<ExportProjectsBundle> {
-    const [workspaceRows, projectRows, resourceRows, conversationRows] = await Promise.all([
+    const [workspaceRows, resourceRows, conversationRows] = await Promise.all([
       this.db.select({
-        id: projectWorkspaces.id,
-        name: projectWorkspaces.name,
-        description: projectWorkspaces.description,
-        version: projectWorkspaces.version,
-        createdAt: projectWorkspaces.createdAt,
-        updatedAt: projectWorkspaces.updatedAt,
-      }).from(projectWorkspaces)
-        .where(eq(projectWorkspaces.userId, userId))
-        .orderBy(asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id)),
+        id: workspaces.id,
+        name: workspaces.name,
+        description: workspaces.description,
+        version: workspaces.version,
+        createdAt: workspaces.createdAt,
+        updatedAt: workspaces.updatedAt,
+      }).from(workspaces)
+        .where(eq(workspaces.userId, userId))
+        .orderBy(asc(workspaces.createdAt), asc(workspaces.id)),
       this.db.select({
-        id: projects.id,
-        workspaceId: projects.workspaceId,
-        name: projects.name,
-        description: projects.description,
-        version: projects.version,
-        createdAt: projects.createdAt,
-        updatedAt: projects.updatedAt,
-      }).from(projects)
-        .where(eq(projects.userId, userId))
-        .orderBy(asc(projects.createdAt), asc(projects.id)),
-      this.db.select({
-        id: projectResources.id,
-        projectId: projectResources.projectId,
-        kind: projectResources.kind,
-        key: projectResources.resourceKey,
-        title: projectResources.title,
-        content: projectResources.content,
-        metadata: projectResources.metadata,
-        version: projectResources.version,
-        createdAt: projectResources.createdAt,
-        updatedAt: projectResources.updatedAt,
-      }).from(projectResources)
-        .where(eq(projectResources.userId, userId))
+        id: workspaceResources.id,
+        workspaceId: workspaceResources.workspaceId,
+        kind: workspaceResources.kind,
+        key: workspaceResources.resourceKey,
+        title: workspaceResources.title,
+        content: workspaceResources.content,
+        metadata: workspaceResources.metadata,
+        version: workspaceResources.version,
+        createdAt: workspaceResources.createdAt,
+        updatedAt: workspaceResources.updatedAt,
+      }).from(workspaceResources)
+        .where(eq(workspaceResources.userId, userId))
         .orderBy(
-          asc(projectResources.projectId),
-          asc(projectResources.kind),
-          asc(projectResources.resourceKey),
-          asc(projectResources.id),
+          asc(workspaceResources.workspaceId),
+          asc(workspaceResources.kind),
+          asc(workspaceResources.resourceKey),
+          asc(workspaceResources.id),
         ),
       this.db.select({
-        projectId: projectConversations.projectId,
-        conversationId: projectConversations.conversationId,
-        addedAt: projectConversations.addedAt,
-      }).from(projectConversations)
-        .where(eq(projectConversations.userId, userId))
+        workspaceId: workspaceConversations.workspaceId,
+        conversationId: workspaceConversations.conversationId,
+        addedAt: workspaceConversations.addedAt,
+      }).from(workspaceConversations)
+        .where(eq(workspaceConversations.userId, userId))
         .orderBy(
-          asc(projectConversations.projectId),
-          asc(projectConversations.addedAt),
-          asc(projectConversations.conversationId),
+          asc(workspaceConversations.workspaceId),
+          asc(workspaceConversations.addedAt),
+          asc(workspaceConversations.conversationId),
         ),
     ]);
 
+    // Product Export/Restore v3 keeps its historical two-array JSON contract.
+    // The durable model is single-layer: each Workspace is projected as both
+    // the old backing-workspace record and the old project/execution record.
     return {
       workspaces: workspaceRows.map((row) => ({
         id: row.id,
@@ -436,9 +427,9 @@ export class DrizzleExportRepository implements ExportRepository {
         created_at: toIso(row.createdAt),
         updated_at: toIso(row.updatedAt),
       })),
-      projects: projectRows.map((row) => ({
+      projects: workspaceRows.map((row) => ({
         id: row.id,
-        workspace_id: row.workspaceId,
+        workspace_id: row.id,
         name: row.name,
         description: row.description,
         version: row.version,
@@ -447,7 +438,7 @@ export class DrizzleExportRepository implements ExportRepository {
       })),
       resources: resourceRows.map((row) => ({
         id: row.id,
-        project_id: row.projectId,
+        project_id: row.workspaceId,
         kind: row.kind,
         key: row.key,
         title: row.title,
@@ -458,7 +449,7 @@ export class DrizzleExportRepository implements ExportRepository {
         updated_at: toIso(row.updatedAt),
       })),
       conversations: conversationRows.map((row) => ({
-        project_id: row.projectId,
+        project_id: row.workspaceId,
         conversation_id: row.conversationId,
         added_at: toIso(row.addedAt),
       })),
