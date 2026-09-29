@@ -257,14 +257,26 @@ export function createNativeLiveConversationFromClaudeSessionHandler(
 ): RequestHandler {
   return async (request, response) => {
     if (!requireWebUser(response, request.webUserId)) return;
-    const body = exactBody(
-      request.body,
-      ["request_id", "source_session_id"],
-      ["title"],
-    );
-    const requestId = body?.request_id;
-    const sourceSessionId = body?.source_session_id;
-    const title = body?.title;
+    const body =
+      request.body
+      && typeof request.body === "object"
+      && !Array.isArray(request.body)
+        ? request.body as Record<string, unknown>
+        : null;
+    const bodyKeys = body ? Object.keys(body) : [];
+    const validKeys =
+      body
+      && bodyKeys.includes("request_id")
+      && bodyKeys.includes("source_session_id")
+      && bodyKeys.every((key) =>
+        key === "request_id"
+        || key === "source_session_id"
+        || key === "title"
+      );
+    const requestId = validKeys ? body.request_id : undefined;
+    const sourceSessionId =
+      validKeys ? body.source_session_id : undefined;
+    const title = validKeys ? body.title : undefined;
     if (
       typeof requestId !== "string"
       || !UUID_PATTERN.test(requestId)
