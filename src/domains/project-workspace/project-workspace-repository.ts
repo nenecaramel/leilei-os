@@ -13,11 +13,10 @@ import {
   conversations,
   nativeLiveProviderSessionEntries,
   nativeLiveProviderSessionStoreStatus,
-  projectConversations,
-  projectResources,
-  projects,
-  projectWorkspaces,
   users,
+  workspaceConversations,
+  workspaceResources,
+  workspaces,
   type ProjectResourceKind,
 } from "../../database/schema.js";
 import {
@@ -26,27 +25,19 @@ import {
 } from "../product-write/product-create-idempotency.js";
 import type {
   CreateProductWorkspaceOutcome,
-  CreateResourceOutcome,
   CreateWorkspaceResourceOutcome,
   DeleteMutationOutcome,
   DeleteProductWorkspaceOutcome,
-  ProjectConversation,
-  ProjectConversationMutationOutcome,
-  ProjectResource,
-  ProjectResourceSummary,
-  ProjectSummary,
   ProductWorkspace,
-  ProjectWorkspace,
   ProjectWorkspaceRepository,
   VersionedMutationOutcome,
+  WorkspaceConversation,
+  WorkspaceConversationMutationOutcome,
+  WorkspaceResource,
+  WorkspaceResourceSummary,
 } from "./project-workspace-types.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
-type Transaction = Parameters<Database["transaction"]>[0] extends (
-  tx: infer T,
-) => unknown
-  ? T
-  : never;
 
 export class DrizzleProjectWorkspaceRepository
 implements ProjectWorkspaceRepository {
@@ -69,32 +60,32 @@ implements ProjectWorkspaceRepository {
   }): Promise<ProductWorkspace[]> {
     if (input.conversationId) {
       const rows = await this.db
-        .select(projectSelection())
-        .from(projectConversations)
+        .select(workspaceSelection())
+        .from(workspaceConversations)
         .innerJoin(
-          projects,
+          workspaces,
           and(
-            eq(projectConversations.projectId, projects.id),
-            eq(projectConversations.userId, projects.userId),
+            eq(workspaceConversations.workspaceId, workspaces.id),
+            eq(workspaceConversations.userId, workspaces.userId),
           ),
         )
         .where(and(
-          eq(projectConversations.userId, input.userId),
+          eq(workspaceConversations.userId, input.userId),
           eq(
-            projectConversations.conversationId,
+            workspaceConversations.conversationId,
             input.conversationId,
           ),
         ))
-        .orderBy(desc(projects.updatedAt), desc(projects.id));
-      return rows.map(mapProductWorkspace);
+        .orderBy(desc(workspaces.updatedAt), desc(workspaces.id));
+      return rows.map(mapWorkspace);
     }
 
     const rows = await this.db
-      .select(projectSelection())
-      .from(projects)
-      .where(eq(projects.userId, input.userId))
-      .orderBy(desc(projects.updatedAt), desc(projects.id));
-    return rows.map(mapProductWorkspace);
+      .select(workspaceSelection())
+      .from(workspaces)
+      .where(eq(workspaces.userId, input.userId))
+      .orderBy(desc(workspaces.updatedAt), desc(workspaces.id));
+    return rows.map(mapWorkspace);
   }
 
   async getProductWorkspace(input: {
@@ -102,14 +93,14 @@ implements ProjectWorkspaceRepository {
     workspaceId: string;
   }): Promise<ProductWorkspace | null> {
     const [row] = await this.db
-      .select(projectSelection())
-      .from(projects)
+      .select(workspaceSelection())
+      .from(workspaces)
       .where(and(
-        eq(projects.userId, input.userId),
-        eq(projects.id, input.workspaceId),
+        eq(workspaces.userId, input.userId),
+        eq(workspaces.id, input.workspaceId),
       ))
       .limit(1);
-    return row ? mapProductWorkspace(row) : null;
+    return row ? mapWorkspace(row) : null;
   }
 
   async createProductWorkspace(input: {
@@ -135,35 +126,21 @@ implements ProjectWorkspaceRepository {
           }
           return {
             outcome: "committed" as const,
-            value:
-              receipt.response as unknown as ProductWorkspace,
+            value: receipt.response as unknown as ProductWorkspace,
           };
         }
 
-        const [backing] = await transaction
-          .insert(projectWorkspaces)
-          .values({
-            userId: input.userId,
-            name: input.name,
-            description: input.description,
-          })
-          .returning({ id: projectWorkspaces.id });
-        if (!backing) {
-          throw new Error("Workspace backing insert failed.");
-        }
-
         const [row] = await transaction
-          .insert(projects)
+          .insert(workspaces)
           .values({
             userId: input.userId,
-            workspaceId: backing.id,
             name: input.name,
             description: input.description,
           })
-          .returning(projectSelection());
+          .returning(workspaceSelection());
         if (!row) throw new Error("Workspace insert failed.");
 
-        const value = mapProductWorkspace(row);
+        const value = mapWorkspace(row);
         await recordProductCreateIdempotency(transaction, {
           userId: input.userId,
           operation: "workspace_create",
@@ -187,39 +164,25 @@ implements ProjectWorkspaceRepository {
     description?: string | null;
   }): Promise<VersionedMutationOutcome<ProductWorkspace>> {
     const [row] = await this.db
-      .update(projects)
+      .update(workspaces)
       .set({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined
           ? { description: input.description }
           : {}),
-        version: sql`${projects.version} + 1`,
+        version: sql`${workspaces.version} + 1`,
         updatedAt: new Date(),
       })
       .where(and(
-        eq(projects.userId, input.userId),
-        eq(projects.id, input.workspaceId),
-        eq(projects.version, input.expectedVersion),
+        eq(workspaces.userId, input.userId),
+        eq(workspaces.id, input.workspaceId),
+        eq(workspaces.version, input.expectedVersion),
       ))
-      .returning(projectSelection());
+      .returning(workspaceSelection());
     if (row) {
-      return {
-        outcome: "committed",
-        value: mapProductWorkspace(row),
-      };
+      return { outcome: "committed", value: mapWorkspace(row) };
     }
-
-    const [existing] = await this.db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(
-        eq(projects.userId, input.userId),
-        eq(projects.id, input.workspaceId),
-      ))
-      .limit(1);
-    return existing
-      ? { outcome: "version_conflict" }
-      : { outcome: "not_found" };
+    return await this.workspaceMiss(input.userId, input.workspaceId);
   }
 
   async deleteProductWorkspace(input: {
@@ -231,14 +194,13 @@ implements ProjectWorkspaceRepository {
       async (transaction) => {
         const [existing] = await transaction
           .select({
-            id: projects.id,
-            backingWorkspaceId: projects.workspaceId,
-            version: projects.version,
+            id: workspaces.id,
+            version: workspaces.version,
           })
-          .from(projects)
+          .from(workspaces)
           .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.id, input.workspaceId),
+            eq(workspaces.userId, input.userId),
+            eq(workspaces.id, input.workspaceId),
           ))
           .for("update")
           .limit(1);
@@ -285,288 +247,55 @@ implements ProjectWorkspaceRepository {
           ));
 
         await transaction
-          .delete(projects)
+          .delete(workspaces)
           .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.id, input.workspaceId),
+            eq(workspaces.userId, input.userId),
+            eq(workspaces.id, input.workspaceId),
           ));
-
-        const [sibling] = await transaction
-          .select({ id: projects.id })
-          .from(projects)
-          .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.workspaceId, existing.backingWorkspaceId),
-          ))
-          .limit(1);
-        if (!sibling) {
-          await transaction
-            .delete(projectWorkspaces)
-            .where(and(
-              eq(projectWorkspaces.userId, input.userId),
-              eq(projectWorkspaces.id, existing.backingWorkspaceId),
-            ));
-        }
         return { outcome: "deleted" as const };
       },
       { isolationLevel: "serializable" },
     );
   }
 
-  async listWorkspaces(userId: string): Promise<ProjectWorkspace[]> {
-    const rows = await this.db
-      .select(workspaceSelection())
-      .from(projectWorkspaces)
-      .where(eq(projectWorkspaces.userId, userId))
-      .orderBy(
-        desc(projectWorkspaces.updatedAt),
-        desc(projectWorkspaces.id),
-      );
-    return rows.map(mapWorkspace);
-  }
-
-  async createWorkspace(input: {
-    userId: string;
-    name: string;
-    description: string | null;
-  }): Promise<ProjectWorkspace> {
-    const [row] = await this.db
-      .insert(projectWorkspaces)
-      .values({
-        userId: input.userId,
-        name: input.name,
-        description: input.description,
-      })
-      .returning(workspaceSelection());
-    if (!row) throw new Error("Workspace insert failed.");
-    return mapWorkspace(row);
-  }
-
-  async updateWorkspace(input: {
+  async listWorkspaceResources(input: {
     userId: string;
     workspaceId: string;
-    expectedVersion: number;
-    name?: string;
-    description?: string | null;
-  }): Promise<VersionedMutationOutcome<ProjectWorkspace>> {
-    const [row] = await this.db
-      .update(projectWorkspaces)
-      .set({
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.description !== undefined
-          ? { description: input.description }
-          : {}),
-        version: sql`${projectWorkspaces.version} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(projectWorkspaces.userId, input.userId),
-        eq(projectWorkspaces.id, input.workspaceId),
-        eq(projectWorkspaces.version, input.expectedVersion),
-      ))
-      .returning(workspaceSelection());
-    if (row) {
-      return { outcome: "committed", value: mapWorkspace(row) };
-    }
-    return await this.workspaceMiss(input.userId, input.workspaceId);
-  }
-
-  async deleteWorkspace(input: {
-    userId: string;
-    workspaceId: string;
-    expectedVersion: number;
-  }): Promise<DeleteMutationOutcome> {
-    const deleted = await this.db
-      .delete(projectWorkspaces)
-      .where(and(
-        eq(projectWorkspaces.userId, input.userId),
-        eq(projectWorkspaces.id, input.workspaceId),
-        eq(projectWorkspaces.version, input.expectedVersion),
-      ))
-      .returning({ id: projectWorkspaces.id });
-    if (deleted.length === 1) return { outcome: "deleted" };
-    return await this.workspaceMiss(input.userId, input.workspaceId);
-  }
-
-  async listProjects(input: {
-    userId: string;
-    workspaceId?: string;
-    conversationId?: string;
-  }): Promise<ProjectSummary[]> {
-    if (input.conversationId) {
-      const rows = await this.db
-        .select(projectSelection())
-        .from(projectConversations)
-        .innerJoin(
-          projects,
-          and(
-            eq(projectConversations.projectId, projects.id),
-            eq(projectConversations.userId, projects.userId),
-          ),
-        )
-        .where(and(
-          eq(projectConversations.userId, input.userId),
-          eq(
-            projectConversations.conversationId,
-            input.conversationId,
-          ),
-          ...(input.workspaceId
-            ? [eq(projects.workspaceId, input.workspaceId)]
-            : []),
-        ))
-        .orderBy(desc(projects.updatedAt), desc(projects.id));
-      return rows.map(mapProject);
-    }
-
-    const rows = await this.db
-      .select(projectSelection())
-      .from(projects)
-      .where(and(
-        eq(projects.userId, input.userId),
-        ...(input.workspaceId
-          ? [eq(projects.workspaceId, input.workspaceId)]
-          : []),
-      ))
-      .orderBy(desc(projects.updatedAt), desc(projects.id));
-    return rows.map(mapProject);
-  }
-
-  async getProject(input: {
-    userId: string;
-    projectId: string;
-  }): Promise<ProjectSummary | null> {
-    const [row] = await this.db
-      .select(projectSelection())
-      .from(projects)
-      .where(and(
-        eq(projects.userId, input.userId),
-        eq(projects.id, input.projectId),
-      ))
-      .limit(1);
-    return row ? mapProject(row) : null;
-  }
-
-  async createProject(input: {
-    userId: string;
-    workspaceId: string;
-    name: string;
-    description: string | null;
-  }): Promise<
-    | { outcome: "committed"; value: ProjectSummary }
-    | { outcome: "workspace_not_found" }
-  > {
-    return this.db.transaction(
-      async (transaction) => {
-        const [workspace] = await transaction
-          .select({ id: projectWorkspaces.id })
-          .from(projectWorkspaces)
-          .where(and(
-            eq(projectWorkspaces.userId, input.userId),
-            eq(projectWorkspaces.id, input.workspaceId),
-          ))
-          .for("update")
-          .limit(1);
-        if (!workspace) return { outcome: "workspace_not_found" as const };
-
-        const [row] = await transaction
-          .insert(projects)
-          .values({
-            userId: input.userId,
-            workspaceId: input.workspaceId,
-            name: input.name,
-            description: input.description,
-          })
-          .returning(projectSelection());
-        if (!row) throw new Error("Project insert failed.");
-        return {
-          outcome: "committed" as const,
-          value: mapProject(row),
-        };
-      },
-      { isolationLevel: "serializable" },
-    );
-  }
-
-  async updateProject(input: {
-    userId: string;
-    projectId: string;
-    expectedVersion: number;
-    name?: string;
-    description?: string | null;
-  }): Promise<VersionedMutationOutcome<ProjectSummary>> {
-    const [row] = await this.db
-      .update(projects)
-      .set({
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.description !== undefined
-          ? { description: input.description }
-          : {}),
-        version: sql`${projects.version} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(projects.userId, input.userId),
-        eq(projects.id, input.projectId),
-        eq(projects.version, input.expectedVersion),
-      ))
-      .returning(projectSelection());
-    if (row) return { outcome: "committed", value: mapProject(row) };
-    return await this.projectMiss(input.userId, input.projectId);
-  }
-
-  async deleteProject(input: {
-    userId: string;
-    projectId: string;
-    expectedVersion: number;
-  }): Promise<DeleteMutationOutcome> {
-    const deleted = await this.db
-      .delete(projects)
-      .where(and(
-        eq(projects.userId, input.userId),
-        eq(projects.id, input.projectId),
-        eq(projects.version, input.expectedVersion),
-      ))
-      .returning({ id: projects.id });
-    if (deleted.length === 1) return { outcome: "deleted" };
-    return await this.projectMiss(input.userId, input.projectId);
-  }
-
-  async listResources(input: {
-    userId: string;
-    projectId: string;
     kind?: ProjectResourceKind;
-  }): Promise<ProjectResourceSummary[] | null> {
-    if (!await this.projectExists(input.userId, input.projectId)) {
+  }): Promise<WorkspaceResourceSummary[] | null> {
+    if (!await this.workspaceExists(input.userId, input.workspaceId)) {
       return null;
     }
     const rows = await this.db
       .select(resourceSummarySelection())
-      .from(projectResources)
+      .from(workspaceResources)
       .where(and(
-        eq(projectResources.userId, input.userId),
-        eq(projectResources.projectId, input.projectId),
-        ...(input.kind ? [eq(projectResources.kind, input.kind)] : []),
+        eq(workspaceResources.userId, input.userId),
+        eq(workspaceResources.workspaceId, input.workspaceId),
+        ...(input.kind
+          ? [eq(workspaceResources.kind, input.kind)]
+          : []),
       ))
       .orderBy(
-        asc(projectResources.kind),
-        asc(projectResources.resourceKey),
-        asc(projectResources.id),
+        asc(workspaceResources.kind),
+        asc(workspaceResources.resourceKey),
+        asc(workspaceResources.id),
       );
     return rows.map(mapResourceSummary);
   }
 
-  async getResource(input: {
+  async getWorkspaceResource(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     resourceId: string;
-  }): Promise<ProjectResource | null> {
+  }): Promise<WorkspaceResource | null> {
     const [row] = await this.db
       .select(resourceSelection())
-      .from(projectResources)
+      .from(workspaceResources)
       .where(and(
-        eq(projectResources.userId, input.userId),
-        eq(projectResources.projectId, input.projectId),
-        eq(projectResources.id, input.resourceId),
+        eq(workspaceResources.userId, input.userId),
+        eq(workspaceResources.workspaceId, input.workspaceId),
+        eq(workspaceResources.id, input.resourceId),
       ))
       .limit(1);
     return row ? mapResource(row) : null;
@@ -599,17 +328,16 @@ implements ProjectWorkspaceRepository {
           }
           return {
             outcome: "committed" as const,
-            value:
-              receipt.response as unknown as ProjectResource,
+            value: receipt.response as unknown as WorkspaceResource,
           };
         }
 
         const [workspace] = await transaction
-          .select({ id: projects.id })
-          .from(projects)
+          .select({ id: workspaces.id })
+          .from(workspaces)
           .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.id, input.workspaceId),
+            eq(workspaces.userId, input.userId),
+            eq(workspaces.id, input.workspaceId),
           ))
           .for("update")
           .limit(1);
@@ -618,12 +346,12 @@ implements ProjectWorkspaceRepository {
         }
 
         const [existing] = await transaction
-          .select({ id: projectResources.id })
-          .from(projectResources)
+          .select({ id: workspaceResources.id })
+          .from(workspaceResources)
           .where(and(
-            eq(projectResources.projectId, input.workspaceId),
-            eq(projectResources.kind, input.kind),
-            eq(projectResources.resourceKey, input.key),
+            eq(workspaceResources.workspaceId, input.workspaceId),
+            eq(workspaceResources.kind, input.kind),
+            eq(workspaceResources.resourceKey, input.key),
           ))
           .limit(1);
         if (existing) {
@@ -631,10 +359,10 @@ implements ProjectWorkspaceRepository {
         }
 
         const [row] = await transaction
-          .insert(projectResources)
+          .insert(workspaceResources)
           .values({
             userId: input.userId,
-            projectId: input.workspaceId,
+            workspaceId: input.workspaceId,
             kind: input.kind,
             resourceKey: input.key,
             title: input.title,
@@ -660,95 +388,40 @@ implements ProjectWorkspaceRepository {
     );
   }
 
-  async createResource(input: {
+  async updateWorkspaceResource(input: {
     userId: string;
-    projectId: string;
-    kind: ProjectResourceKind;
-    key: string;
-    title: string | null;
-    content: string | null;
-    metadata: Record<string, unknown>;
-  }): Promise<CreateResourceOutcome> {
-    return this.db.transaction(
-      async (transaction) => {
-        const [project] = await transaction
-          .select({ id: projects.id })
-          .from(projects)
-          .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.id, input.projectId),
-          ))
-          .for("update")
-          .limit(1);
-        if (!project) return { outcome: "project_not_found" as const };
-
-        const [existing] = await transaction
-          .select({ id: projectResources.id })
-          .from(projectResources)
-          .where(and(
-            eq(projectResources.projectId, input.projectId),
-            eq(projectResources.kind, input.kind),
-            eq(projectResources.resourceKey, input.key),
-          ))
-          .limit(1);
-        if (existing) return { outcome: "resource_conflict" as const };
-
-        const [row] = await transaction
-          .insert(projectResources)
-          .values({
-            userId: input.userId,
-            projectId: input.projectId,
-            kind: input.kind,
-            resourceKey: input.key,
-            title: input.title,
-            content: input.content,
-            metadata: input.metadata,
-          })
-          .returning(resourceSelection());
-        if (!row) throw new Error("Project resource insert failed.");
-        return {
-          outcome: "committed" as const,
-          value: mapResource(row),
-        };
-      },
-      { isolationLevel: "serializable" },
-    );
-  }
-
-  async updateResource(input: {
-    userId: string;
-    projectId: string;
+    workspaceId: string;
     resourceId: string;
     expectedVersion: number;
     title?: string | null;
     content?: string | null;
     metadata?: Record<string, unknown>;
-  }): Promise<VersionedMutationOutcome<ProjectResource>> {
+  }): Promise<VersionedMutationOutcome<WorkspaceResource>> {
     const [row] = await this.db
-      .update(projectResources)
+      .update(workspaceResources)
       .set({
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.content !== undefined ? { content: input.content } : {}),
         ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-        version: sql`${projectResources.version} + 1`,
+        version: sql`${workspaceResources.version} + 1`,
         updatedAt: new Date(),
       })
       .where(and(
-        eq(projectResources.userId, input.userId),
-        eq(projectResources.projectId, input.projectId),
-        eq(projectResources.id, input.resourceId),
-        eq(projectResources.version, input.expectedVersion),
+        eq(workspaceResources.userId, input.userId),
+        eq(workspaceResources.workspaceId, input.workspaceId),
+        eq(workspaceResources.id, input.resourceId),
+        eq(workspaceResources.version, input.expectedVersion),
       ))
       .returning(resourceSelection());
     if (row) return { outcome: "committed", value: mapResource(row) };
 
     const [existing] = await this.db
-      .select({ id: projectResources.id })
-      .from(projectResources)
+      .select({ id: workspaceResources.id })
+      .from(workspaceResources)
       .where(and(
-        eq(projectResources.userId, input.userId),
-        eq(projectResources.projectId, input.projectId),
-        eq(projectResources.id, input.resourceId),
+        eq(workspaceResources.userId, input.userId),
+        eq(workspaceResources.workspaceId, input.workspaceId),
+        eq(workspaceResources.id, input.resourceId),
       ))
       .limit(1);
     return existing
@@ -756,30 +429,30 @@ implements ProjectWorkspaceRepository {
       : { outcome: "not_found" };
   }
 
-  async deleteResource(input: {
+  async deleteWorkspaceResource(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     resourceId: string;
     expectedVersion: number;
   }): Promise<DeleteMutationOutcome> {
     const deleted = await this.db
-      .delete(projectResources)
+      .delete(workspaceResources)
       .where(and(
-        eq(projectResources.userId, input.userId),
-        eq(projectResources.projectId, input.projectId),
-        eq(projectResources.id, input.resourceId),
-        eq(projectResources.version, input.expectedVersion),
+        eq(workspaceResources.userId, input.userId),
+        eq(workspaceResources.workspaceId, input.workspaceId),
+        eq(workspaceResources.id, input.resourceId),
+        eq(workspaceResources.version, input.expectedVersion),
       ))
-      .returning({ id: projectResources.id });
+      .returning({ id: workspaceResources.id });
     if (deleted.length === 1) return { outcome: "deleted" };
 
     const [existing] = await this.db
-      .select({ id: projectResources.id })
-      .from(projectResources)
+      .select({ id: workspaceResources.id })
+      .from(workspaceResources)
       .where(and(
-        eq(projectResources.userId, input.userId),
-        eq(projectResources.projectId, input.projectId),
-        eq(projectResources.id, input.resourceId),
+        eq(workspaceResources.userId, input.userId),
+        eq(workspaceResources.workspaceId, input.workspaceId),
+        eq(workspaceResources.id, input.resourceId),
       ))
       .limit(1);
     return existing
@@ -787,11 +460,11 @@ implements ProjectWorkspaceRepository {
       : { outcome: "not_found" };
   }
 
-  async listProjectConversations(input: {
+  async listWorkspaceConversations(input: {
     userId: string;
-    projectId: string;
-  }): Promise<ProjectConversation[] | null> {
-    if (!await this.projectExists(input.userId, input.projectId)) {
+    workspaceId: string;
+  }): Promise<WorkspaceConversation[] | null> {
+    if (!await this.workspaceExists(input.userId, input.workspaceId)) {
       return null;
     }
     const rows = await this.db
@@ -801,14 +474,14 @@ implements ProjectWorkspaceRepository {
         lifecycleStatus: conversations.lifecycleStatus,
         currentHeadMessageId: conversations.currentHeadMessageId,
         lastMessageAt: conversationMessages.createdAt,
-        addedAt: projectConversations.addedAt,
+        addedAt: workspaceConversations.addedAt,
       })
-      .from(projectConversations)
+      .from(workspaceConversations)
       .innerJoin(
         conversations,
         and(
-          eq(projectConversations.conversationId, conversations.id),
-          eq(projectConversations.userId, conversations.userId),
+          eq(workspaceConversations.conversationId, conversations.id),
+          eq(workspaceConversations.userId, conversations.userId),
         ),
       )
       .leftJoin(
@@ -820,13 +493,13 @@ implements ProjectWorkspaceRepository {
         ),
       )
       .where(and(
-        eq(projectConversations.userId, input.userId),
-        eq(projectConversations.projectId, input.projectId),
+        eq(workspaceConversations.userId, input.userId),
+        eq(workspaceConversations.workspaceId, input.workspaceId),
         eq(conversations.origin, "native_live"),
         inArray(conversations.lifecycleStatus, ["active", "archived"]),
       ))
       .orderBy(
-        desc(projectConversations.addedAt),
+        desc(workspaceConversations.addedAt),
         desc(conversations.id),
       );
 
@@ -840,23 +513,25 @@ implements ProjectWorkspaceRepository {
     }));
   }
 
-  async attachConversation(input: {
+  async attachWorkspaceConversation(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     conversationId: string;
-  }): Promise<ProjectConversationMutationOutcome> {
+  }): Promise<WorkspaceConversationMutationOutcome> {
     return this.db.transaction(
       async (transaction) => {
-        const [project] = await transaction
-          .select({ id: projects.id })
-          .from(projects)
+        const [workspace] = await transaction
+          .select({ id: workspaces.id })
+          .from(workspaces)
           .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.id, input.projectId),
+            eq(workspaces.userId, input.userId),
+            eq(workspaces.id, input.workspaceId),
           ))
           .for("update")
           .limit(1);
-        if (!project) return { outcome: "project_not_found" as const };
+        if (!workspace) {
+          return { outcome: "workspace_not_found" as const };
+        }
 
         const [conversation] = await transaction
           .select({ id: conversations.id })
@@ -873,14 +548,16 @@ implements ProjectWorkspaceRepository {
         }
 
         const inserted = await transaction
-          .insert(projectConversations)
+          .insert(workspaceConversations)
           .values({
             userId: input.userId,
-            projectId: input.projectId,
+            workspaceId: input.workspaceId,
             conversationId: input.conversationId,
           })
           .onConflictDoNothing()
-          .returning({ conversationId: projectConversations.conversationId });
+          .returning({
+            conversationId: workspaceConversations.conversationId,
+          });
 
         return inserted.length === 1
           ? { outcome: "committed" as const }
@@ -890,32 +567,39 @@ implements ProjectWorkspaceRepository {
     );
   }
 
-  async detachConversation(input: {
+  async detachWorkspaceConversation(input: {
     userId: string;
-    projectId: string;
+    workspaceId: string;
     conversationId: string;
-  }): Promise<ProjectConversationMutationOutcome> {
+  }): Promise<WorkspaceConversationMutationOutcome> {
     return this.db.transaction(
       async (transaction) => {
-        const [project] = await transaction
-          .select({ id: projects.id })
-          .from(projects)
+        const [workspace] = await transaction
+          .select({ id: workspaces.id })
+          .from(workspaces)
           .where(and(
-            eq(projects.userId, input.userId),
-            eq(projects.id, input.projectId),
+            eq(workspaces.userId, input.userId),
+            eq(workspaces.id, input.workspaceId),
           ))
           .for("update")
           .limit(1);
-        if (!project) return { outcome: "project_not_found" as const };
+        if (!workspace) {
+          return { outcome: "workspace_not_found" as const };
+        }
 
         const deleted = await transaction
-          .delete(projectConversations)
+          .delete(workspaceConversations)
           .where(and(
-            eq(projectConversations.userId, input.userId),
-            eq(projectConversations.projectId, input.projectId),
-            eq(projectConversations.conversationId, input.conversationId),
+            eq(workspaceConversations.userId, input.userId),
+            eq(workspaceConversations.workspaceId, input.workspaceId),
+            eq(
+              workspaceConversations.conversationId,
+              input.conversationId,
+            ),
           ))
-          .returning({ conversationId: projectConversations.conversationId });
+          .returning({
+            conversationId: workspaceConversations.conversationId,
+          });
 
         return deleted.length === 1
           ? { outcome: "committed" as const }
@@ -925,14 +609,17 @@ implements ProjectWorkspaceRepository {
     );
   }
 
-  private async projectExists(
+  private async workspaceExists(
     userId: string,
-    projectId: string,
+    workspaceId: string,
   ): Promise<boolean> {
     const [row] = await this.db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.userId, userId), eq(projects.id, projectId)))
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(and(
+        eq(workspaces.userId, userId),
+        eq(workspaces.id, workspaceId),
+      ))
       .limit(1);
     return Boolean(row);
   }
@@ -941,29 +628,7 @@ implements ProjectWorkspaceRepository {
     userId: string,
     workspaceId: string,
   ): Promise<{ outcome: "not_found" | "version_conflict" }> {
-    const [row] = await this.db
-      .select({ id: projectWorkspaces.id })
-      .from(projectWorkspaces)
-      .where(and(
-        eq(projectWorkspaces.userId, userId),
-        eq(projectWorkspaces.id, workspaceId),
-      ))
-      .limit(1);
-    return row
-      ? { outcome: "version_conflict" }
-      : { outcome: "not_found" };
-  }
-
-  private async projectMiss(
-    userId: string,
-    projectId: string,
-  ): Promise<{ outcome: "not_found" | "version_conflict" }> {
-    const [row] = await this.db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.userId, userId), eq(projects.id, projectId)))
-      .limit(1);
-    return row
+    return await this.workspaceExists(userId, workspaceId)
       ? { outcome: "version_conflict" }
       : { outcome: "not_found" };
   }
@@ -971,69 +636,46 @@ implements ProjectWorkspaceRepository {
 
 function workspaceSelection() {
   return {
-    id: projectWorkspaces.id,
-    name: projectWorkspaces.name,
-    description: projectWorkspaces.description,
-    version: projectWorkspaces.version,
-    createdAt: projectWorkspaces.createdAt,
-    updatedAt: projectWorkspaces.updatedAt,
-  };
-}
-
-function projectSelection() {
-  return {
-    id: projects.id,
-    workspaceId: projects.workspaceId,
-    name: projects.name,
-    description: projects.description,
-    version: projects.version,
-    createdAt: projects.createdAt,
-    updatedAt: projects.updatedAt,
+    id: workspaces.id,
+    name: workspaces.name,
+    description: workspaces.description,
+    version: workspaces.version,
+    createdAt: workspaces.createdAt,
+    updatedAt: workspaces.updatedAt,
   };
 }
 
 function resourceSummarySelection() {
   return {
-    id: projectResources.id,
-    projectId: projectResources.projectId,
-    kind: projectResources.kind,
-    resourceKey: projectResources.resourceKey,
-    title: projectResources.title,
-    metadata: projectResources.metadata,
-    version: projectResources.version,
-    createdAt: projectResources.createdAt,
-    updatedAt: projectResources.updatedAt,
+    id: workspaceResources.id,
+    workspaceId: workspaceResources.workspaceId,
+    kind: workspaceResources.kind,
+    resourceKey: workspaceResources.resourceKey,
+    title: workspaceResources.title,
+    metadata: workspaceResources.metadata,
+    version: workspaceResources.version,
+    createdAt: workspaceResources.createdAt,
+    updatedAt: workspaceResources.updatedAt,
   };
 }
 
 function resourceSelection() {
   return {
-    id: projectResources.id,
-    projectId: projectResources.projectId,
-    kind: projectResources.kind,
-    resourceKey: projectResources.resourceKey,
-    title: projectResources.title,
-    content: projectResources.content,
-    metadata: projectResources.metadata,
-    version: projectResources.version,
-    createdAt: projectResources.createdAt,
-    updatedAt: projectResources.updatedAt,
+    id: workspaceResources.id,
+    workspaceId: workspaceResources.workspaceId,
+    kind: workspaceResources.kind,
+    resourceKey: workspaceResources.resourceKey,
+    title: workspaceResources.title,
+    content: workspaceResources.content,
+    metadata: workspaceResources.metadata,
+    version: workspaceResources.version,
+    createdAt: workspaceResources.createdAt,
+    updatedAt: workspaceResources.updatedAt,
   };
 }
 
-function mapWorkspace(row: ReturnType<typeof workspaceRowShape>): ProjectWorkspace {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    version: row.version,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function mapProductWorkspace(
-  row: ReturnType<typeof projectRowShape>,
+function mapWorkspace(
+  row: ReturnType<typeof workspaceRowShape>,
 ): ProductWorkspace {
   return {
     id: row.id,
@@ -1045,24 +687,12 @@ function mapProductWorkspace(
   };
 }
 
-function mapProject(row: ReturnType<typeof projectRowShape>): ProjectSummary {
+function mapResourceSummary(
+  row: ReturnType<typeof resourceSummaryRowShape>,
+): WorkspaceResourceSummary {
   return {
     id: row.id,
     workspaceId: row.workspaceId,
-    name: row.name,
-    description: row.description,
-    version: row.version,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function mapResourceSummary(
-  row: ReturnType<typeof resourceSummaryRowShape>,
-): ProjectResourceSummary {
-  return {
-    id: row.id,
-    projectId: row.projectId,
     kind: row.kind,
     key: row.resourceKey,
     title: row.title,
@@ -1073,10 +703,12 @@ function mapResourceSummary(
   };
 }
 
-function mapResource(row: ReturnType<typeof resourceRowShape>): ProjectResource {
+function mapResource(
+  row: ReturnType<typeof resourceRowShape>,
+): WorkspaceResource {
   return {
     id: row.id,
-    projectId: row.projectId,
+    workspaceId: row.workspaceId,
     kind: row.kind,
     key: row.resourceKey,
     title: row.title,
@@ -1088,8 +720,6 @@ function mapResource(row: ReturnType<typeof resourceRowShape>): ProjectResource 
   };
 }
 
-// Type helpers keep the row mappers independent of Drizzle query-builder
-// internals while still checking every projected field.
 function workspaceRowShape() {
   return {
     id: "",
@@ -1101,22 +731,10 @@ function workspaceRowShape() {
   };
 }
 
-function projectRowShape() {
-  return {
-    id: "",
-    workspaceId: "",
-    name: "",
-    description: null as string | null,
-    version: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-}
-
 function resourceSummaryRowShape() {
   return {
     id: "",
-    projectId: "",
+    workspaceId: "",
     kind: "file" as ProjectResourceKind,
     resourceKey: "",
     title: null as string | null,
@@ -1130,7 +748,7 @@ function resourceSummaryRowShape() {
 function resourceRowShape() {
   return {
     id: "",
-    projectId: "",
+    workspaceId: "",
     kind: "file" as ProjectResourceKind,
     resourceKey: "",
     title: null as string | null,
