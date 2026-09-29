@@ -225,25 +225,6 @@ export async function deleteExpiredRuntimeOperationalRecordsBatch(
       consume(rows.length);
     }
 
-    if (remaining > 0) {
-      const rows = await transaction.execute<{ listener_instance_id: string }>(sql`
-        WITH victims AS (
-          SELECT user_id
-          FROM bridge_listener_leases
-          WHERE lease_expires_at
-              < ${cutoff.toISOString()}::timestamptz
-          ORDER BY lease_expires_at ASC, user_id ASC
-          LIMIT ${remaining}
-          FOR UPDATE SKIP LOCKED
-        )
-        DELETE FROM bridge_listener_leases AS lease
-        USING victims
-        WHERE lease.user_id = victims.user_id
-        RETURNING lease.listener_instance_id
-      `);
-      consume(rows.length);
-    }
-
     return deleted;
   });
 }
