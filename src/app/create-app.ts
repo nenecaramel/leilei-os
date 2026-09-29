@@ -70,7 +70,11 @@ import {
 import { createHealthSyncAuthMiddleware } from "../web-api/health-sync-auth.js";
 
 export type NativeLiveProductionDependencies = {
-  web: Required<NativeLiveApiDependencies>;
+  web:
+    Required<
+      Omit<NativeLiveApiDependencies, "manualCompactService">
+    >
+    & Pick<NativeLiveApiDependencies, "manualCompactService">;
   internal:
     Required<
       Omit<
@@ -78,6 +82,7 @@ export type NativeLiveProductionDependencies = {
         "backgroundModelOpportunity"
         | "mindSemanticGrouping"
         | "observeCompanionBackgroundOpportunity"
+        | "manualCompactService"
       >
     >
     & Pick<
@@ -85,6 +90,7 @@ export type NativeLiveProductionDependencies = {
       "backgroundModelOpportunity"
       | "mindSemanticGrouping"
       | "observeCompanionBackgroundOpportunity"
+      | "manualCompactService"
     >
     & {
       providerSessionStoreService:
