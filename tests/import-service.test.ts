@@ -351,6 +351,23 @@ const projectBundle: ExportProjectsBundle = {
   }],
 };
 
+const canonicalProjectBundle: ExportProjectsBundle = {
+  workspaces: projectBundle.projects.map((record) => ({
+    id: record.id,
+    name: record.name,
+    description: record.description,
+    version: record.version,
+    created_at: record.created_at,
+    updated_at: record.updated_at,
+  })),
+  projects: projectBundle.projects.map((record) => ({
+    ...record,
+    workspace_id: record.id,
+  })),
+  resources: structuredClone(projectBundle.resources),
+  conversations: structuredClone(projectBundle.conversations),
+};
+
 function packageBytes(
   data: Record<string, unknown> = {
     diary: [diary],
@@ -735,6 +752,15 @@ class FakeImportRepository implements ImportRepository {
       conversations: [],
     };
     projects.workspaces.push(structuredClone(record));
+    projects.projects.push({
+      id: record.id,
+      workspace_id: record.id,
+      name: record.name,
+      description: record.description,
+      version: record.version,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+    });
     this.writes += 1;
   }
 
@@ -748,7 +774,18 @@ class FakeImportRepository implements ImportRepository {
       resources: [],
       conversations: [],
     };
-    projects.projects.push(structuredClone(record));
+    projects.workspaces.push({
+      id: record.id,
+      name: record.name,
+      description: record.description,
+      version: record.version,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+    });
+    projects.projects.push({
+      ...structuredClone(record),
+      workspace_id: record.id,
+    });
     this.writes += 1;
   }
 
@@ -1067,7 +1104,7 @@ test("v3 preview and execute restore Projects atomically with exact product stat
 
   const preview = await service.preview(raw, USER_ID);
   assert.deepEqual(preview.summary.projects, {
-    create: 4,
+    create: 3,
     duplicate: 0,
     conflict: 0,
     invalid: 0,
@@ -1080,9 +1117,9 @@ test("v3 preview and execute restore Projects atomically with exact product stat
     preview.preview_fingerprint,
   );
 
-  assert.equal(result.summary.projects?.create, 4);
-  assert.deepEqual(repository.state.projects, projectBundle);
-  assert.equal(repository.writes, 4);
+  assert.equal(result.summary.projects?.create, 3);
+  assert.deepEqual(repository.state.projects, canonicalProjectBundle);
+  assert.equal(repository.writes, 3);
   assert.equal(repository.audits[0]?.schema_version, 3);
 });
 
@@ -1097,7 +1134,7 @@ test("v3 Projects preview rejects cross-user ids before any write", async () => 
       conversations: [],
     },
     foreign_workspace_ids:
-      new Set([projectBundle.workspaces[0]!.id]),
+      new Set([projectBundle.projects[0]!.id]),
     native_live_conversation_ids:
       new Set([CONVERSATION_ID]),
   });
@@ -1200,7 +1237,7 @@ test("v3 all-state restore creates canonical conversations before Project member
     invalid: 0,
   });
   assert.deepEqual(preview.summary.projects, {
-    create: 4,
+    create: 3,
     duplicate: 0,
     conflict: 0,
     invalid: 0,
@@ -1223,7 +1260,7 @@ test("v3 all-state restore creates canonical conversations before Project member
   );
   assert.deepEqual(repository.state.mind, [mindState]);
   assert.deepEqual(repository.state.universe, universeBundle);
-  assert.equal(repository.writes, 13);
+  assert.equal(repository.writes, 12);
 });
 
 test("v3 conversation preview rejects a parent cycle before execute", async () => {
