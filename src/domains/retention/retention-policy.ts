@@ -7,6 +7,7 @@ export type RetentionPolicy =
   | "mcp_write_idempotency"
   | "data_import_runs"
   | "native_live_background_model_jobs"
+  | "native_live_chat_attachments"
   | "runtime_operational_records";
 
 export type RetentionRunResult = {
