@@ -214,6 +214,119 @@ export function createNativeLiveApiRouter(
   return router;
 }
 
+export function createNativeLiveAttachmentUploadSlotHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const body = exactBody(request.body, [
+      "filename",
+      "mime_type",
+      "size_bytes",
+      "sha256",
+      "kind",
+    ]);
+    if (
+      !body
+      || typeof body.filename !== "string"
+      || typeof body.mime_type !== "string"
+      || typeof body.size_bytes !== "number"
+      || typeof body.sha256 !== "string"
+      || (body.kind !== "image" && body.kind !== "file")
+    ) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_ATTACHMENT",
+          message: "Native Live attachment upload request is invalid.",
+        },
+      });
+      return;
+    }
+    try {
+      const result =
+        await dependencies.attachmentService!.createUploadSlot({
+          userId: request.webUserId!,
+          filename: body.filename,
+          mimeType: body.mime_type,
+          sizeBytes: body.size_bytes,
+          sha256: body.sha256,
+          kind: body.kind,
+        });
+      response.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      sendNativeLiveAttachmentApiError(response, error);
+    }
+  };
+}
+
+export function completeNativeLiveAttachmentHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const attachmentId = routeParam(request.params.attachmentId);
+    if (!UUID_PATTERN.test(attachmentId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_ATTACHMENT",
+          message: "Native Live attachment id is invalid.",
+        },
+      });
+      return;
+    }
+    try {
+      const attachment =
+        await dependencies.attachmentService!.completeUpload({
+          userId: request.webUserId!,
+          attachmentId,
+        });
+      response.json({
+        success: true,
+        data: { attachment },
+      });
+    } catch (error) {
+      sendNativeLiveAttachmentApiError(response, error);
+    }
+  };
+}
+
+export function createNativeLiveAttachmentDownloadSlotHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+    const attachmentId = routeParam(request.params.attachmentId);
+    if (!UUID_PATTERN.test(attachmentId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_ATTACHMENT",
+          message: "Native Live attachment id is invalid.",
+        },
+      });
+      return;
+    }
+    try {
+      const result =
+        await dependencies.attachmentService!.createDownloadSlot({
+          userId: request.webUserId!,
+          attachmentId,
+        });
+      response.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      sendNativeLiveAttachmentApiError(response, error);
+    }
+  };
+}
+
 export function createNativeLiveExternalSessionListHandler(
   dependencies: NativeLiveApiDependencies,
 ): RequestHandler {
