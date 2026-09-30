@@ -247,7 +247,7 @@ test("Context Assembly tells foreground Claude how to author current Mind writes
     assembledAt: now,
     assemblyVersion: "assembly-v1",
     promptContractVersion: "prompt-v4",
-    breathLimit: 0,
+    breathLimit: 1,
     maxContextItems: 10,
     maxContextChars: 4000,
   });
