@@ -27,9 +27,10 @@ import {
 import type {
   PersistentWriteEnvelope,
 } from "./persistent-write-envelope.js";
-import type {
-  CurrentSubjectStateKind,
-  SubjectStateWrite,
+import {
+  CURRENT_SUBJECT_STATE_KINDS,
+  type CurrentSubjectStateKind,
+  type SubjectStateWrite,
 } from "./subject-state-contract.js";
 import type {
   MindProductCursor,
@@ -71,6 +72,7 @@ implements MindProductRepository {
     const conditions = [
       eq(runtimeSubjectStates.userId, input.userId),
       eq(runtimeSubjectStates.subjectId, input.subjectId),
+      inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
       eq(runtimeSubjectStates.settlementStatus, "settled"),
       eq(runtimeSubjectStates.pathStatus, "current"),
       eq(runtimeSubjectStates.validityStatus, "valid"),
@@ -127,6 +129,7 @@ implements MindProductRepository {
         eq(runtimeSubjectStates.id, input.stateId),
         eq(runtimeSubjectStates.userId, input.userId),
         eq(runtimeSubjectStates.subjectId, input.subjectId),
+        inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
         eq(runtimeSubjectStates.settlementStatus, "settled"),
         eq(runtimeSubjectStates.pathStatus, "current"),
         eq(runtimeSubjectStates.validityStatus, "valid"),
@@ -335,6 +338,7 @@ implements MindProductRepository {
       FROM runtime_subject_states AS state
       WHERE state.user_id = ${input.userId}::uuid
         AND state.subject_id = ${input.subjectId}
+        AND ${inArray(sql`state.kind`, CURRENT_SUBJECT_STATE_KINDS)}
         AND state.envelope ->> 'authority' = 'subject_authorized'
         AND EXISTS (
           SELECT 1

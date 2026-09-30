@@ -16,6 +16,7 @@ import type {
 } from "./native-live-mind-loop-service.js";
 import type { PersistentWriteEnvelope } from "./persistent-write-envelope.js";
 import {
+  CURRENT_SUBJECT_STATE_KINDS,
   validateSubjectStateWrite,
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
@@ -82,6 +83,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         and(
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
+          inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
           or(
             isNull(runtimeSubjectStates.scopeConversationId),
             eq(runtimeSubjectStates.scopeConversationId, input.conversationId),
