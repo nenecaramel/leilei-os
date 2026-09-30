@@ -21,8 +21,8 @@ if [[ -d "$(git rev-parse --git-path rebase-merge)" || -d "$(git rev-parse --git
 fi
 
 echo "[mac-daemon:fresh] branch: $current_branch"
-echo "[mac-daemon:fresh] fetching origin/main..."
-git fetch --prune origin main
+echo "[mac-daemon:fresh] fetching origin..."
+git fetch --prune origin
 
 echo "[mac-daemon:fresh] rebasing current branch onto origin/main with autostash..."
 git rebase --autostash origin/main
