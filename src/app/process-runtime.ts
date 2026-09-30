@@ -698,8 +698,12 @@ export function createProcessRuntime(
     logger,
     appDependencies: {
       logger,
-      nativeLiveAttachmentTransferStore:
-        nativeLivePostgresAttachmentObjectStore,
+      ...(nativeLivePostgresAttachmentObjectStore
+        ? {
+            nativeLiveAttachmentTransferStore:
+              nativeLivePostgresAttachmentObjectStore,
+          }
+        : {}),
       webDiaryService: diaryService,
       webDiaryCommentService: diaryCommentService,
       webSystemService: systemService,
