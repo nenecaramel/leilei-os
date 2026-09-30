@@ -68,6 +68,12 @@ import {
   type HealthSyncApiDependencies,
 } from "../web-api/health-sync-router.js";
 import { createHealthSyncAuthMiddleware } from "../web-api/health-sync-auth.js";
+import {
+  createNativeLiveAttachmentTransferRouter,
+} from "../web-api/native-live-attachment-transfer-router.js";
+import type {
+  PostgresInlineAttachmentObjectStore,
+} from "../domains/bridge/native-live-attachment-postgres-storage.js";
 
 export type NativeLiveProductionDependencies = {
   web:
@@ -106,6 +112,10 @@ export type NativeLiveProductionDependencies = {
 
 export type AppDependencies = {
   logger?: SafeLogger;
+  nativeLiveAttachmentTransferStore?: Pick<
+    PostgresInlineAttachmentObjectStore,
+    "transferMaxFileBytes" | "putTransfer" | "getTransfer"
+  >;
   nativeLiveProduction?: NativeLiveProductionDependencies;
   verifyAccessToken?: AccessTokenVerifier;
   verifyWebAccessToken?: AccessTokenVerifier;
@@ -323,6 +333,16 @@ export function createApp(
           timeoutMs: oauthAuthorizationServerConfig.fetchTimeoutMs,
         }),
       }),
+    );
+  }
+
+  if (dependencies.nativeLiveAttachmentTransferStore) {
+    app.use(
+      "/api/v1/native-live/attachment-transfer",
+      databaseReadinessMiddleware,
+      createNativeLiveAttachmentTransferRouter(
+        dependencies.nativeLiveAttachmentTransferStore,
+      ),
     );
   }
 
