@@ -5,7 +5,8 @@ import {
   type NativeLiveExecutionSelection,
 } from "./native-live-execution-selection.js";
 
-export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 2 as const;
+export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 3 as const;
+export const NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION = 2 as const;
 export const NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION = 1 as const;
 
 export type NativeLiveRuntimeMode = "new" | "fork";
@@ -20,7 +21,7 @@ export type NativeLiveRuntimeAttachment = {
 };
 
 export type NativeLiveRuntimeCommand = {
-  protocol_version: 1 | 2;
+  protocol_version: 1 | 2 | 3;
   dispatch_target: "claude_code";
   prepare_id: string;
   request_id: string;
@@ -100,7 +101,7 @@ export type NativeLiveRuntimeMetadata = {
 
 export type NativeLiveRuntimeExecutionResult =
   | {
-      protocol_version: 1 | 2;
+      protocol_version: 1 | 2 | 3;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
@@ -229,7 +230,7 @@ export function parseNativeLiveRuntimeCommand(
         : parseExecutionSelection(
             body.execution_selection,
           ),
-    ...(protocolVersion === 2
+    ...(protocolVersion >= NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION
       ? {
           attachments:
             body.attachments === undefined
@@ -272,6 +273,14 @@ export function parseNativeLiveRuntimeExecutionResult(
     );
     if (!Array.isArray(body.normalized_events)) {
       throw new NativeLiveRuntimeProtocolError("normalized_events must be an array.");
+    }
+    if (
+      body.output_attachment_ids !== undefined
+      && protocolVersion !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+    ) {
+      throw new NativeLiveRuntimeProtocolError(
+        "output_attachment_ids require runtime protocol v3.",
+      );
     }
 
     return {
@@ -404,9 +413,10 @@ export function assertRuntimeResultMatchesCommand(
 
 function parseProtocolVersion(
   value: unknown,
-): 1 | 2 {
+): 1 | 2 | 3 {
   if (
     value !== NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
+    && value !== NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION
     && value !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
   ) {
     throw new NativeLiveRuntimeProtocolError(
