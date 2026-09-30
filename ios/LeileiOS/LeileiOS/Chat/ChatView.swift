@@ -721,8 +721,11 @@ struct ChatView: View {
                 data: data,
                 filename:
                     values?.name
-                    ?? url.lastPathComponent
-                    ?? "Attachment",
+                    ?? (
+                        url.lastPathComponent.isEmpty
+                            ? "Attachment"
+                            : url.lastPathComponent
+                    ),
                 mimeType:
                     contentType.preferredMIMEType
                     ?? "application/octet-stream",
