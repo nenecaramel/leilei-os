@@ -1597,3 +1597,70 @@ test("listSessions reads the current workspace without mutating any session", as
     },
   ]);
 });
+
+
+test("LeileiOS MCP is injected into every foreground Agent SDK turn", async () => {
+  let call;
+  const mcpServerConfig = {
+    type: "http",
+    url: "https://leilei-os.example/internal/native-live-mcp",
+    headers: {
+      Authorization: "Bearer relay-secret",
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    mcpServerConfig,
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-mcp"));
+    },
+  });
+
+  const result = await transport.executeTurn(
+    "read today's todo",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-mcp");
+  assert.deepEqual(call.options.mcpServers, {
+    leileios: mcpServerConfig,
+  });
+  assert.deepEqual(call.options.allowedTools, [
+    "mcp__leileios__*",
+  ]);
+});
+
+test("LeileiOS MCP is also injected into non-interactive resume turns", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    mcpServerConfig: {
+      type: "http",
+      url: "https://leilei-os.example/internal/native-live-mcp",
+      headers: {
+        Authorization: "Bearer relay-secret",
+      },
+    },
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-existing"));
+    },
+  });
+
+  await transport.resume("provider-existing", "continue");
+
+  assert.equal(call.options.resume, "provider-existing");
+  assert.equal(
+    call.options.mcpServers.leileios.url,
+    "https://leilei-os.example/internal/native-live-mcp",
+  );
+  assert.deepEqual(call.options.allowedTools, [
+    "mcp__leileios__*",
+  ]);
+});
