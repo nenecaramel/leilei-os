@@ -385,6 +385,25 @@ test("successful finalize validates identity, canonicalizes events, and delegate
   });
 });
 
+test("finalize accepts a v2 result for a preparation dispatched during rolling upgrade", async () => {
+  const { port, coordinator } = setup();
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 2,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child-v2",
+    normalized_events: [
+      { type: "text", payload: { text: "READY" } },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(port.finalizeSuccessCalls.length, 1);
+});
+
 test("runtime failure finalizes only the failed preparation and never creates an assistant", async () => {
   const { port, coordinator } = setup();
 
