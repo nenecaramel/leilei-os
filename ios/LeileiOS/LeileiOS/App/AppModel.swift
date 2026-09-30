@@ -752,9 +752,21 @@ final class AppModel: ObservableObject {
         let normalized = text.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
+        let targetHasAttachment =
+            snapshot.messages
+                .first(where: {
+                    $0.id == targetUserMessageID
+                        && $0.role == "user"
+                })?
+                .blocks
+                .contains(where: { $0.kind == "attachment" })
+            == true
+        let editHasAttachment =
+            attachmentIDs == nil
+                ? targetHasAttachment
+                : attachmentIDs?.isEmpty == false
         guard normalized.count <= 4_000,
-              !normalized.isEmpty
-                || (attachmentIDs?.isEmpty == false) else {
+              !normalized.isEmpty || editHasAttachment else {
             throw NativeLiveSendError.invalidText
         }
 
