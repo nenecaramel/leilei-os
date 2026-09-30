@@ -53,7 +53,8 @@ struct ChatView: View {
                             && appModel.activeNativeLiveConversationID != nil,
                     isTurnInFlight:
                         appModel.chatSendState == .sending
-                            || pendingOperation != nil,
+                            || pendingOperation != nil
+                            || visibleRuntimeSurface != nil,
                     pendingOperation: pendingOperation,
                     runtimeSurface: visibleRuntimeSurface,
                     onResolveRuntimeInteraction: {
@@ -87,6 +88,7 @@ struct ChatView: View {
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
+            await appModel.recoverActiveNativeLiveTurn()
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
@@ -129,10 +131,10 @@ struct ChatView: View {
                 isSending:
                     appModel.chatSendState == .sending
                         || isDraftCommitInFlight
-                        || pendingOperation != nil,
+                        || pendingOperation != nil
+                        || visibleRuntimeSurface != nil,
                 isRuntimeTurnActive:
-                    visibleRuntimeSurface != nil
-                        && pendingOperation != nil,
+                    visibleRuntimeSurface != nil,
                 isRuntimeControlInFlight:
                     isRuntimeControlInFlight,
                 interruptRequested:

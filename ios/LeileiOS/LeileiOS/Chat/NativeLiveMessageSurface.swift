@@ -235,6 +235,19 @@ struct NativeLiveMessageSurface: View {
                         )
                     }
 
+                    if pendingOperation == nil,
+                       runtimeSurface != nil {
+                        NativeLiveRuntimeAssistantRow(
+                            runtimeSurface: runtimeSurface,
+                            onResolveInteraction:
+                                onResolveRuntimeInteraction
+                        )
+                        .id(
+                            "recovered-runtime-assistant-"
+                                + (runtimeSurface?.prepareID ?? "")
+                        )
+                    }
+
                     Color.clear
                         .frame(height: 1)
                         .id(bottomAnchorID)
@@ -388,12 +401,7 @@ struct NativeLiveMessageSurface: View {
     private func pendingPresentationIsActive(
         _ snapshot: NativeLiveCurrentPathSnapshot?
     ) -> Bool {
-        guard let pendingOperation else {
-            return false
-        }
-
-        return snapshot?.syncToken
-            == pendingOperation.baselineSyncToken
+        pendingOperation != nil
     }
 
     private func pendingAssistantMessageID(
