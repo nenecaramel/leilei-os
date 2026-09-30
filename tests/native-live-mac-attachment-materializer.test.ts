@@ -83,6 +83,11 @@ test("Mac attachment materializer verifies bytes and writes isolated inbox path"
   assert.match(prompt, /local_path:/u);
   assert.match(prompt, /notes\.md/u);
 
+  await materializer.cleanup(command);
+  await assert.rejects(
+    () => readFile(materialized.localPath),
+  );
+
   await rm(root, { recursive: true, force: true });
 });
 
