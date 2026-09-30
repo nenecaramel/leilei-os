@@ -89,6 +89,13 @@ const workspaceRuntimePool =
         relayToken,
         workspaceId,
       ),
+    {
+      type: "http",
+      url: relayBaseUrl + "/internal/native-live-mcp",
+      headers: {
+        Authorization: "Bearer " + relayToken,
+      },
+    },
   );
 const { runtime } =
   await workspaceRuntimePool.resolveWorkspaceRuntime({
@@ -104,6 +111,7 @@ process.stdout.write(
     baseWorkspaceRoot,
     workspaceMappingCount: Object.keys(workspaceRoots).length,
     providerSessionStore: "remote_workspace_scoped",
+    leileiosMcp: "http_auto_recover",
   }) + "\n",
 );
 
