@@ -766,3 +766,78 @@ test("Mac HTTP relay client transports independent Mind semantic grouping reserv
     dispatch_target: "claude_code",
   });
 });
+
+
+test("Mac HTTP relay wait retries transient deploy 502 and then continues", async () => {
+  let calls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: { code: "BAD_GATEWAY" },
+        }),
+        {
+          status: 502,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { outcome: "ready", version: 9 },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  assert.equal(
+    await client.waitForWork({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    }),
+    "ready",
+  );
+  assert.equal(calls, 2);
+});
+
+test("Mac HTTP relay wait does not retry durable 409 conflicts", async () => {
+  let calls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    calls += 1;
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: { code: "RESERVATION_CONFLICT" },
+      }),
+      {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  await assert.rejects(
+    () => client.waitForWork({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    }),
+    /Native live relay request failed/u,
+  );
+  assert.equal(calls, 1);
+});
