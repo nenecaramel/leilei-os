@@ -23,6 +23,63 @@ function fakeRuntime() {
   };
 }
 
+test("workspace runtime pool preserves a legacy base session rooted below the pinned base", async () => {
+  const created: string[] = [];
+  const pool = new NativeLiveMacWorkspaceRuntimePool(
+    {},
+    "/Users/leilei",
+    {},
+    async (_environment, root) => {
+      created.push(root!);
+      return { kind: "agent_sdk", runtime: fakeRuntime() };
+    },
+  );
+
+  const binding = await pool.resolveWorkspaceRuntime({
+    workspaceId: null,
+    expectedWorkspaceRoot:
+      "/Users/leilei/Developer/leilei-os-main",
+  });
+
+  assert.equal(
+    binding.workspaceRoot,
+    "/Users/leilei/Developer/leilei-os-main",
+  );
+  assert.deepEqual(created, [
+    "/Users/leilei/Developer/leilei-os-main",
+  ]);
+});
+
+test("workspace runtime pool rejects a legacy base session outside the pinned base", async () => {
+  const pool = new NativeLiveMacWorkspaceRuntimePool(
+    {},
+    "/Users/leilei",
+    {},
+    async () => ({
+      kind: "agent_sdk",
+      runtime: fakeRuntime(),
+    }),
+  );
+
+  for (const expectedWorkspaceRoot of [
+    "/Users/leilei-other/demo",
+    "/Volumes/external/demo",
+  ]) {
+    await assert.rejects(
+      () => pool.resolveWorkspaceRuntime({
+        workspaceId: null,
+        expectedWorkspaceRoot,
+      }),
+      (error: unknown) =>
+        typeof error === "object"
+        && error !== null
+        && "runtimeCode" in error
+        && (error as { runtimeCode?: unknown }).runtimeCode
+          === "WORKSPACE_ROOT_MISMATCH",
+    );
+  }
+});
+
 test("workspace runtime pool resolves mapped Workspace and reuses transport by canonical root", async () => {
   const created: string[] = [];
   const pool = new NativeLiveMacWorkspaceRuntimePool(
