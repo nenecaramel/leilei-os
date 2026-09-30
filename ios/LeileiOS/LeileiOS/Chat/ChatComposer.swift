@@ -11,7 +11,13 @@ struct ChatComposer: View {
     var isRuntimeControlInFlight = false
     var interruptRequested = false
     var isEditing = false
+    var attachments: [NativeLiveComposerAttachmentDraft] = []
     var onCancelEdit: (() -> Void)? = nil
+    var onPickPhoto: (() -> Void)? = nil
+    var onTakePhoto: (() -> Void)? = nil
+    var onPickFile: (() -> Void)? = nil
+    var onRemoveAttachment: ((UUID) -> Void)? = nil
+    var onRetryAttachment: ((UUID) -> Void)? = nil
     var onInterrupt: (() -> Void)? = nil
     var onMidTurnInput: ((String) -> Void)? = nil
     var onSend: (() -> Void)? = nil
@@ -50,6 +56,26 @@ struct ChatComposer: View {
                 .transition(.opacity)
             }
 
+            if !attachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(attachments) { attachment in
+                            NativeLiveComposerAttachmentChip(
+                                attachment: attachment,
+                                onRemove: {
+                                    onRemoveAttachment?(attachment.id)
+                                },
+                                onRetry: {
+                                    onRetryAttachment?(attachment.id)
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                }
+                .transition(.opacity)
+            }
+
             TextField(
                 "",
                 text: $text,
@@ -65,16 +91,19 @@ struct ChatComposer: View {
             HStack(spacing: 8) {
                 Menu {
                     Button {
+                        onPickPhoto?()
                     } label: {
                         Label("Photo", systemImage: "photo")
                     }
 
                     Button {
+                        onTakePhoto?()
                     } label: {
                         Label("Camera", systemImage: "camera")
                     }
 
                     Button {
+                        onPickFile?()
                     } label: {
                         Label("File", systemImage: "doc")
                     }
@@ -85,6 +114,11 @@ struct ChatComposer: View {
                         weight: .light
                     )
                 }
+                .disabled(
+                    isRuntimeTurnActive
+                        || isSending
+                        || attachments.count >= 8
+                )
 
                 Menu {
                     Section("Model") {
@@ -161,7 +195,8 @@ struct ChatComposer: View {
                         return
                     }
 
-                    guard !normalized.isEmpty,
+                    guard hasSendableContent,
+                          attachmentsReady,
                           !isSending else {
                         return
                     }
@@ -201,6 +236,13 @@ struct ChatComposer: View {
                             isSending
                             && !isRuntimeTurnActive
                         )
+                        || (
+                            !isRuntimeTurnActive
+                            && (
+                                !hasSendableContent
+                                || !attachmentsReady
+                            )
+                        )
                 )
             }
         }
@@ -234,7 +276,7 @@ struct ChatComposer: View {
                 : "arrow.up"
         }
 
-        return normalized.isEmpty
+        return normalized.isEmpty && attachments.isEmpty
             ? "waveform"
             : "arrow.up"
     }
@@ -249,9 +291,20 @@ struct ChatComposer: View {
             return .regular
         }
 
-        return normalized.isEmpty
+        return normalized.isEmpty && attachments.isEmpty
             ? .semibold
             : .regular
+    }
+
+    private var hasSendableContent: Bool {
+        !text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty
+            || !attachments.isEmpty
+    }
+
+    private var attachmentsReady: Bool {
+        attachments.allSatisfy(\.isReady)
     }
 
     private func selectModel(
@@ -299,6 +352,73 @@ struct ChatComposer: View {
                         : allowedEfforts[0]
                 }
             }
+        )
+    }
+}
+
+
+private struct NativeLiveComposerAttachmentChip: View {
+    let attachment: NativeLiveComposerAttachmentDraft
+    let onRemove: () -> Void
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(
+                systemName:
+                    attachment.kind == .image
+                    ? "photo"
+                    : "doc"
+            )
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+
+            Text(attachment.filename)
+                .font(.system(size: 12.5, weight: .medium))
+                .lineLimit(1)
+                .frame(maxWidth: 150, alignment: .leading)
+
+            switch attachment.state {
+            case .uploading:
+                ProgressView()
+                    .controlSize(.mini)
+
+            case .ready:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+            case .failed:
+                Button {
+                    onRetry()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry upload")
+            }
+
+            Button {
+                onRemove()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove attachment")
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 5)
+        .frame(height: 32)
+        .background(
+            Color.chatSoftFill,
+            in: RoundedRectangle(
+                cornerRadius: 11,
+                style: .continuous
+            )
         )
     }
 }
