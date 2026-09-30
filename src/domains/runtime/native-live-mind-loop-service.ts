@@ -29,10 +29,16 @@ import {
   type BreathSemanticCandidate,
   type BreathSemanticScorer,
 } from "./breath-semantic-recall.js";
-import { filterBreathEligibleStates } from "./breath-recall.js";
+import {
+  breathLexicalScore,
+  filterBreathEligibleStates,
+} from "./breath-recall.js";
 import { canonicalPathToHead } from "./surface-projector.js";
 import { expandCausalStateReferences } from "./persistent-reference-scan.js";
-import type { MemoryLifecyclePolicy } from "./memory-lifecycle.js";
+import {
+  readSubjectStateLifecycle,
+  type MemoryLifecyclePolicy,
+} from "./memory-lifecycle.js";
 
 export type SubjectStateTransition = {
   stateId: string;
@@ -497,17 +503,48 @@ export class NativeLiveMindLoopService {
       );
     }
 
-    const candidates = semanticCandidatesFromStates(
-      filterBreathEligibleStates(input.states, {
+    const eligibleStates = filterBreathEligibleStates(
+      input.states,
+      {
         userId: input.userId,
         subjectId: input.subjectId,
         conversationId: input.conversation.id,
         currentPathMessageIds,
         now: input.assembledAt,
         cooldownHours: this.config.breathCooldownHours ?? 0,
-      }),
-    )
-      .sort((left, right) => left.stateId.localeCompare(right.stateId))
+      },
+    );
+    const stateById = new Map(
+      eligibleStates.map((state) => [state.id, state] as const),
+    );
+    const originalOrder = new Map(
+      input.states.map((state, index) => [state.id, index] as const),
+    );
+
+    const candidates = semanticCandidatesFromStates(eligibleStates)
+      .sort((left, right) => {
+        const lexicalDelta =
+          breathLexicalScore(input.userText, right.text)
+          - breathLexicalScore(input.userText, left.text);
+        if (lexicalDelta !== 0) return lexicalDelta;
+
+        const leftSalience =
+          readSubjectStateLifecycle(
+            stateById.get(left.stateId)?.payload,
+          )?.salience ?? 1;
+        const rightSalience =
+          readSubjectStateLifecycle(
+            stateById.get(right.stateId)?.payload,
+          )?.salience ?? 1;
+        if (rightSalience !== leftSalience) {
+          return rightSalience - leftSalience;
+        }
+
+        return (
+          (originalOrder.get(right.stateId) ?? -1)
+          - (originalOrder.get(left.stateId) ?? -1)
+        );
+      })
       .map((candidate) => ({
         ...candidate,
         text: candidate.text.slice(0, candidateMaxChars),
