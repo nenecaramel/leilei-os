@@ -911,6 +911,7 @@ implements NativeLiveMacDaemonRelayClient {
         headers: {
           authorization: `Bearer ${this.token}`,
           "content-type": "application/json",
+          connection: "close",
         },
         body: JSON.stringify(body),
         ...(signal ? { signal } : {}),
