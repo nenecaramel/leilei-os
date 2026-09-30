@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   assertPermissionCallbackQueryOptions,
   createAgentSdkPermissionCallback,
+  isTrustedLeileiosReadTool,
   normalizeAgentSdkPermissionRequest,
   normalizeLeileiPermissionDecision,
   projectLeileiPermissionDecisionToSdk,
@@ -308,4 +309,56 @@ test("permission contract rejects invalid decisions", () => {
       }),
     /allow or deny/,
   );
+});
+
+
+test("trusted LeileiOS read MCP tools bypass interactive permission", async () => {
+  let permissionCalls = 0;
+  const callback = createAgentSdkPermissionCallback({
+    permissionHandler: async () => {
+      permissionCalls += 1;
+      throw new Error("must not ask");
+    },
+  });
+
+  for (const toolName of [
+    "mcp__leileios__get_current_time",
+    "mcp__leileios__read_todo_day",
+    "mcp__leileios__list_todo_dates",
+    "mcp__leileios__search_todo",
+    "mcp__leileios__global_search",
+    "mcp__leileios__query_notion_data_source",
+  ]) {
+    assert.equal(isTrustedLeileiosReadTool(toolName), true);
+    assert.deepEqual(
+      await callback(toolName, {}, {}),
+      { behavior: "allow" },
+    );
+  }
+
+  assert.equal(permissionCalls, 0);
+});
+
+test("LeileiOS writes remain on the interactive permission path", async () => {
+  let permissionCalls = 0;
+  const callback = createAgentSdkPermissionCallback({
+    permissionHandler: async () => {
+      permissionCalls += 1;
+      return { decision: "allow" };
+    },
+  });
+
+  assert.equal(
+    isTrustedLeileiosReadTool("mcp__leileios__append_todo_entry"),
+    false,
+  );
+  assert.deepEqual(
+    await callback(
+      "mcp__leileios__append_todo_entry",
+      { content: "test" },
+      {},
+    ),
+    { behavior: "allow" },
+  );
+  assert.equal(permissionCalls, 1);
 });
