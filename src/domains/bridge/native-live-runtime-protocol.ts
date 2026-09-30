@@ -109,6 +109,7 @@ export type NativeLiveRuntimeExecutionResult =
       workspace_id: string | null;
       effective_workspace_root: string | null;
       normalized_events: NativeLiveNormalizedEvent[];
+      output_attachment_ids?: string[];
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
@@ -262,6 +263,7 @@ export function parseNativeLiveRuntimeExecutionResult(
         "runtime_metadata",
         "workspace_id",
         "effective_workspace_root",
+        "output_attachment_ids",
       ],
     );
 
@@ -296,6 +298,14 @@ export function parseNativeLiveRuntimeExecutionResult(
             ),
       normalized_events:
         body.normalized_events as NativeLiveNormalizedEvent[],
+      ...(body.output_attachment_ids === undefined
+        ? {}
+        : {
+            output_attachment_ids:
+              parseRuntimeOutputAttachmentIds(
+                body.output_attachment_ids,
+              ),
+          }),
       ...(
         body.runtime_metadata === undefined
           ? {}
@@ -404,6 +414,30 @@ function parseProtocolVersion(
     );
   }
   return value;
+}
+
+function parseRuntimeOutputAttachmentIds(
+  value: unknown,
+): string[] {
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new NativeLiveRuntimeProtocolError(
+      "output_attachment_ids must contain at most 8 items.",
+    );
+  }
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    const id = requireUuid(
+      item,
+      "output_attachment_ids[" + index + "]",
+    );
+    if (seen.has(id)) {
+      throw new NativeLiveRuntimeProtocolError(
+        "output_attachment_ids must not contain duplicates.",
+      );
+    }
+    seen.add(id);
+    return id;
+  });
 }
 
 function parseRuntimeAttachments(
