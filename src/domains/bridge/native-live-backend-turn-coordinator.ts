@@ -21,7 +21,6 @@ import {
 } from "./native-live-relay-contract.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
-  NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
   NativeLiveRuntimeProtocolError,
   assertRuntimeResultMatchesCommand,
   parseNativeLiveRuntimeExecutionResult,
@@ -519,10 +518,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
   const attachments = preparation.attachments ?? [];
   const hasAttachments = attachments.length > 0;
   const command: NativeLiveRuntimeCommand = {
-    protocol_version:
-      hasAttachments
-        ? NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
-        : NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
+    protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
     dispatch_target: "claude_code",
     prepare_id: preparation.prepareId,
     request_id: preparation.requestId,
