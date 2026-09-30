@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -19,6 +21,12 @@ struct ChatView: View {
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
     @State private var isSystemKeyboardVisible = false
+    @State private var composerAttachments:
+        [NativeLiveComposerAttachmentDraft] = []
+    @State private var isPhotoPickerPresented = false
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var isFileImporterPresented = false
+    @State private var isCameraPresented = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -101,6 +109,7 @@ struct ChatView: View {
         }
         .onChange(of: draftConversationID) { _, _ in
             messageText = ""
+            composerAttachments = []
             editDraft = nil
             pendingOperation = nil
             isComposerFocused = false
@@ -129,7 +138,25 @@ struct ChatView: View {
                 interruptRequested:
                     runtimeInterruptRequested,
                 isEditing: editDraft != nil,
+                attachments: composerAttachments,
                 onCancelEdit: cancelEditing,
+                onPickPhoto: {
+                    isPhotoPickerPresented = true
+                },
+                onTakePhoto: {
+                    isCameraPresented = true
+                },
+                onPickFile: {
+                    isFileImporterPresented = true
+                },
+                onRemoveAttachment: { id in
+                    composerAttachments.removeAll {
+                        $0.id == id
+                    }
+                },
+                onRetryAttachment: { id in
+                    retryAttachmentUpload(id)
+                },
                 onInterrupt: {
                     interruptCurrentTurn()
                 },
@@ -158,6 +185,45 @@ struct ChatView: View {
                     ? 0
                     : 10
             )
+        }
+        .photosPicker(
+            isPresented: $isPhotoPickerPresented,
+            selection: $photoPickerItems,
+            maxSelectionCount:
+                max(1, 8 - composerAttachments.count),
+            matching: .images
+        )
+        .onChange(of: photoPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { @MainActor in
+                await importPhotos(items)
+                photoPickerItems = []
+            }
+        }
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: true
+        ) { result in
+            Task { @MainActor in
+                await importFiles(result)
+            }
+        }
+        .sheet(isPresented: $isCameraPresented) {
+            NativeLiveCameraPicker { data in
+                isCameraPresented = false
+                guard let data else { return }
+                addAttachment(
+                    data: data,
+                    filename:
+                        "Camera-"
+                        + UUID().uuidString.lowercased()
+                        + ".jpg",
+                    mimeType: "image/jpeg",
+                    kind: .image
+                )
+            }
+            .ignoresSafeArea()
         }
         .onReceive(
             NotificationCenter.default.publisher(
