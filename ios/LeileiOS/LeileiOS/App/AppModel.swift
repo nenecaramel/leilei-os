@@ -1322,9 +1322,11 @@ final class AppModel: ObservableObject {
         prepareID: String,
         conversationID: UUID
     ) async throws {
-        // Backend holds the completion wait. A timeout only renews the
-        // bounded wait for the same durable prepare id; it does not poll.
-        for _ in 0..<12 {
+        // Backend holds each bounded completion wait, but the durable
+        // prepare itself has no client-side five-minute expiry. Keep renewing
+        // the same prepare id until it reaches a terminal state or this task
+        // is explicitly cancelled.
+        while !Task.isCancelled {
             try Task.checkCancellation()
 
             do {
@@ -1392,8 +1394,7 @@ final class AppModel: ObservableObject {
             }
         }
 
-        await refreshNativeLiveCurrentPath(force: true)
-        throw NativeLiveSendError.completionUnknown
+        throw CancellationError()
     }
 
     private func mergeNativeLiveDelta(
