@@ -121,6 +121,9 @@ import {
   S3PresignedAttachmentObjectStore,
 } from "../domains/bridge/native-live-attachment-storage.js";
 import {
+  PostgresInlineAttachmentObjectStore,
+} from "../domains/bridge/native-live-attachment-postgres-storage.js";
+import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
 } from "../domains/bridge/native-live-provider-session-store.js";
@@ -277,21 +280,38 @@ export function createProcessRuntime(
   const { db } = database;
   const nativeLiveAttachmentStorageConfig =
     getNativeLiveAttachmentStorageConfig(runtimeEnv);
+  const nativeLivePostgresAttachmentObjectStore =
+    nativeLiveAttachmentStorageConfig
+      ? undefined
+      : new PostgresInlineAttachmentObjectStore(
+          db,
+          {
+            signingSecret: runtimeEnv.DATABASE_URL,
+            transferTtlSeconds:
+              runtimeEnv.NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS,
+            maxFileBytes:
+              runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
+            maxTotalBytes:
+              runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_TOTAL_BYTES,
+          },
+        );
   const nativeLiveAttachmentObjectStore =
     nativeLiveAttachmentStorageConfig
       ? new S3PresignedAttachmentObjectStore(
           nativeLiveAttachmentStorageConfig,
         )
-      : undefined;
+      : nativeLivePostgresAttachmentObjectStore!;
   const nativeLiveAttachmentService =
-    nativeLiveAttachmentStorageConfig
-      && nativeLiveAttachmentObjectStore
-      ? new NativeLiveAttachmentService(
-          db,
-          nativeLiveAttachmentObjectStore,
-          nativeLiveAttachmentStorageConfig,
-        )
-      : undefined;
+    new NativeLiveAttachmentService(
+      db,
+      nativeLiveAttachmentObjectStore,
+      {
+        maxFileBytes:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
+        unboundTtlSeconds:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS,
+      },
+    );
   const nativeLiveWorkWakePublisher =
     new DrizzleNativeLiveWorkWakePublisher(db);
   const nativeLiveWorkWakeBroker =
@@ -678,6 +698,8 @@ export function createProcessRuntime(
     logger,
     appDependencies: {
       logger,
+      nativeLiveAttachmentTransferStore:
+        nativeLivePostgresAttachmentObjectStore,
       webDiaryService: diaryService,
       webDiaryCommentService: diaryCommentService,
       webSystemService: systemService,
