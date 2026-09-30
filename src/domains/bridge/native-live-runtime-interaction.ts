@@ -188,6 +188,36 @@ export class DrizzleNativeLiveRuntimeInteractionRepository {
     return row ? mapInteraction(row) : null;
   }
 
+
+  async isTurnActiveForListener(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<boolean> {
+    const [row] = await this.db
+      .select({
+        dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+        reservedBy: nativeLiveTurnPreparations.reservedBy,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.id, input.reservationId),
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(
+      row
+      && row.reservedBy === input.listenerInstanceId
+      && (
+        row.dispatchStatus === "executing"
+        || row.dispatchStatus === "delivery_unknown"
+      ),
+    );
+  }
+
   async listForUser(input: {
     userId: string;
     prepareId: string;
@@ -432,7 +462,38 @@ export class NativeLiveRuntimeInteractionService {
         interactionId: input.interactionId,
       });
 
-    const immediate = await read();
+    const cancelIfOrphaned = async (
+      interaction: NativeLiveRuntimeInteractionRecord,
+    ): Promise<NativeLiveRuntimeInteractionRecord> => {
+      if (interaction.status !== "pending") return interaction;
+
+      const active = await this.repository.isTurnActiveForListener({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+      });
+      if (active) return interaction;
+
+      await this.repository.cancelForListener({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+        interactionId: input.interactionId,
+      });
+      const cancelled = await read();
+      if (!cancelled) {
+        throw new NativeLiveRuntimeInteractionError(
+          "INTERACTION_NOT_FOUND",
+          "Native live interaction was not found after orphan cleanup.",
+        );
+      }
+      return cancelled;
+    };
+
+    const immediateRaw = await read();
+    const immediate = immediateRaw
+      ? await cancelIfOrphaned(immediateRaw)
+      : null;
     if (!immediate) {
       throw new NativeLiveRuntimeInteractionError(
         "INTERACTION_NOT_FOUND",
@@ -456,7 +517,10 @@ export class NativeLiveRuntimeInteractionService {
         input.interactionId,
       );
 
-      const raced = await read();
+      const racedRaw = await read();
+      const raced = racedRaw
+        ? await cancelIfOrphaned(racedRaw)
+        : null;
       if (!raced) {
         throw new NativeLiveRuntimeInteractionError(
           "INTERACTION_NOT_FOUND",
@@ -479,7 +543,22 @@ export class NativeLiveRuntimeInteractionService {
           signal: input.signal,
         });
       if (wake.outcome !== "ready") {
-        return { outcome: "timeout" };
+        const afterTimeoutRaw = await read();
+        const afterTimeout = afterTimeoutRaw
+          ? await cancelIfOrphaned(afterTimeoutRaw)
+          : null;
+        if (!afterTimeout) {
+          throw new NativeLiveRuntimeInteractionError(
+            "INTERACTION_NOT_FOUND",
+            "Native live interaction was not found.",
+          );
+        }
+        return afterTimeout.status === "pending"
+          ? { outcome: "timeout" }
+          : {
+              outcome: "terminal",
+              interaction: afterTimeout,
+            };
       }
 
       const terminal = await read();
