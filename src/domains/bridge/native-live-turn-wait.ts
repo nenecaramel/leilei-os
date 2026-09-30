@@ -9,7 +9,10 @@ import type {
 type TurnReader = Pick<
   DrizzleNativeLiveBackendTurnPort,
   "readTurn"
->;
+> & Partial<Pick<
+  DrizzleNativeLiveBackendTurnPort,
+  "recoverStaleDeliveryUnknownTurn"
+>>;
 
 export type NativeLiveTurnWaitResult =
   | {
@@ -37,11 +40,16 @@ export class NativeLiveTurnWaitService {
     timeoutMs: number;
     signal?: AbortSignal | null;
   }): Promise<NativeLiveTurnWaitResult | null> {
-    const read = () =>
-      this.turnReader.readTurn({
+    const read = async () => {
+      await this.turnReader.recoverStaleDeliveryUnknownTurn?.({
         userId: input.userId,
         prepareId: input.prepareId,
       });
+      return this.turnReader.readTurn({
+        userId: input.userId,
+        prepareId: input.prepareId,
+      });
+    };
 
     const immediate = await read();
     if (!immediate) return null;
