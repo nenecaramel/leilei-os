@@ -264,11 +264,32 @@ while (!stopping) {
     await sleep(outcome.outcome === "busy" ? 5_000 : 1_500);
   } catch (error) {
     if (stopping) break;
+    const errorRecord =
+      error && typeof error === "object"
+        ? error as Record<string, unknown>
+        : {};
     process.stderr.write(
       JSON.stringify({
         at: new Date().toISOString(),
         outcome: "wake_or_poll_error",
         errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage:
+          error instanceof Error ? error.message : String(error),
+        ...(
+          typeof errorRecord.relayCode === "string"
+            ? { relayCode: errorRecord.relayCode }
+            : {}
+        ),
+        ...(
+          typeof errorRecord.finalizeCode === "string"
+            ? { finalizeCode: errorRecord.finalizeCode }
+            : {}
+        ),
+        ...(
+          typeof errorRecord.httpStatus === "number"
+            ? { httpStatus: errorRecord.httpStatus }
+            : {}
+        ),
       }) + "\n",
     );
     await sleep(5_000);
