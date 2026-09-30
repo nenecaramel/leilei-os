@@ -703,7 +703,7 @@ implements NativeLiveMacDaemonRelayClient {
     reservationId: string;
     result: NativeLiveRuntimeExecutionResult;
   }): Promise<void> {
-    await this.post(
+    await this.postRetryable(
       `/reservations/${encodeURIComponent(input.reservationId)}/result`,
       {
         listener_instance_id: input.listenerInstanceId,
@@ -734,6 +734,27 @@ implements NativeLiveMacDaemonRelayClient {
         code: input.code,
       },
     );
+  }
+
+  private async postRetryable(
+    path: string,
+    body: unknown,
+  ): Promise<unknown> {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await this.post(path, body);
+      } catch (error) {
+        if (!isTransientRelayWaitError(error)) {
+          throw error;
+        }
+        attempt += 1;
+        await delayRelayRetry(
+          Math.min(250 * 2 ** Math.min(attempt - 1, 4), 3_000),
+          null,
+        );
+      }
+    }
   }
 
   private async postWait(
