@@ -210,6 +210,59 @@ test("send preparation settles the continued path, then assembles context", asyn
   assert.deepEqual(mind.manifestIds, [prepared("send").prepareId]);
 });
 
+
+test("native Claude schedule command bypasses Mind prompt assembly but still settles the current path", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+  const preparation = {
+    ...prepared("send"),
+    prompt: "/schedule daily at 9am review open pull requests",
+  };
+
+  const prompt = await runtime.preparePrompt({
+    userId,
+    preparation,
+  });
+
+  assert.equal(prompt, preparation.prompt);
+  assert.deepEqual(mind.calls, [
+    `reconcile:${userMessageId}`,
+  ]);
+});
+
+test("schedule aliases bypass semantic planning while retry remains an ordinary replacement turn", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  mind.planSemanticUserTurn = async () => {
+    throw new Error("native schedule must not enter semantic planning");
+  };
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+
+  assert.equal(
+    await runtime.planSemanticPrompt({
+      userId,
+      preparation: {
+        ...prepared("send"),
+        prompt: "/routines list",
+      },
+    }),
+    null,
+  );
+
+  reader.value = conversation(oldAssistantId);
+  await runtime.preparePrompt({
+    userId,
+    preparation: {
+      ...prepared("retry"),
+      prompt: "/schedule daily at 9am must not execute on retry",
+    },
+  });
+  assert.deepEqual(mind.calls, [
+    `prepare:${parentId}:/schedule daily at 9am must not execute on retry`,
+  ]);
+});
+
 test("retry preparation excludes the old assistant suffix before replacement generation", async () => {
   const reader = new Reader();
   reader.value = conversation(oldAssistantId);
