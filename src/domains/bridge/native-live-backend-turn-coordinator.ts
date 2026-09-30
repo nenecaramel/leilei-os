@@ -20,8 +20,8 @@ import {
   type NativeLiveRelayRequest,
 } from "./native-live-relay-contract.js";
 import {
-  NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
+  NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   NativeLiveRuntimeProtocolError,
   assertRuntimeResultMatchesCommand,
   parseNativeLiveRuntimeExecutionResult,
@@ -216,6 +216,7 @@ export interface NativeLiveBackendTurnPort {
     workspaceId: string | null;
     effectiveWorkspaceRoot: string | null;
     blocks: NativeLiveContentBlockInput[];
+    outputAttachmentIds: readonly string[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp: NativeLiveMindFollowUpPayload | null;
@@ -397,8 +398,11 @@ export class NativeLiveBackendTurnCoordinator {
       return failureForResult(result, "PREPARATION_NOT_FOUND");
     }
 
-    const command = nativeLiveRuntimeCommandFromPreparation(preparation);
     try {
+      const command = nativeLiveRuntimeCommandFromPreparation(
+        preparation,
+        result.protocol_version,
+      );
       assertRuntimeResultMatchesCommand(command, result);
     } catch (error) {
       if (error instanceof NativeLiveRuntimeProtocolError) {
@@ -453,6 +457,8 @@ export class NativeLiveBackendTurnCoordinator {
         workspaceId: result.workspace_id,
         effectiveWorkspaceRoot: result.effective_workspace_root,
         blocks: parsedMind.visibleBlocks,
+        outputAttachmentIds:
+          result.output_attachment_ids ?? [],
         normalizedEvents: result.normalized_events,
         runtimeMetadata: result.runtime_metadata ?? null,
         mindFollowUp: this.mind && this.postFinalize
@@ -512,14 +518,21 @@ export class NativeLiveBackendTurnCoordinator {
 
 export function nativeLiveRuntimeCommandFromPreparation(
   preparation: NativeLivePreparedTurn,
+  protocolVersion: NativeLiveRuntimeCommand["protocol_version"] =
+    NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
 ): NativeLiveRuntimeCommand {
   const attachments = preparation.attachments ?? [];
   const hasAttachments = attachments.length > 0;
+  if (
+    protocolVersion === NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
+    && hasAttachments
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "Runtime protocol v1 cannot dispatch prepared attachments.",
+    );
+  }
   const command: NativeLiveRuntimeCommand = {
-    protocol_version:
-      hasAttachments
-        ? NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
-        : NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
+    protocol_version: protocolVersion,
     dispatch_target: "claude_code",
     prepare_id: preparation.prepareId,
     request_id: preparation.requestId,

@@ -513,3 +513,122 @@ test("foreground execution readback errors are persisted as bounded codes only",
     /Admin1|sdk settings failure/,
   );
 });
+
+
+test("protocol v3 collects explicit send_file output attachment ids", async () => {
+  const attachmentId =
+    "66666666-6666-4666-8666-666666666666";
+  const sent: unknown[] = [];
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn(
+      _prompt: string,
+      options: {
+        sendFileHandler?: (input: {
+          path: string;
+          displayName: string | null;
+        }) => Promise<{
+          attachmentId: string;
+          filename: string;
+          mimeType: string;
+          sizeBytes: number;
+          sha256: string;
+          kind: "image" | "file";
+        }>;
+      },
+    ) {
+      assert.equal(typeof options.sendFileHandler, "function");
+      const attachment = await options.sendFileHandler!({
+        path: "out/report.pdf",
+        displayName: "report.pdf",
+      });
+      assert.equal(attachment.attachmentId, attachmentId);
+      return {
+        providerSessionId: "provider-output",
+        normalizedEvents: [],
+      };
+    },
+  };
+  const sender = {
+    async sendFile(input: {
+      path: string;
+      displayName?: string | null;
+      workspaceRoot: string;
+    }) {
+      sent.push(input);
+      return {
+        attachmentId,
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 321,
+        sha256: "a".repeat(64),
+        kind: "file" as const,
+      };
+    },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(
+      runtime,
+      "/workspace",
+      null,
+      sender,
+    ).execute(
+      command({ protocol_version: 3 }),
+    );
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") {
+    throw new Error("expected success");
+  }
+  assert.deepEqual(sent, [{
+    path: "out/report.pdf",
+    displayName: "report.pdf",
+    workspaceRoot: "/workspace",
+  }]);
+  assert.deepEqual(
+    result.output_attachment_ids,
+    [attachmentId],
+  );
+});
+
+test("legacy runtime turns do not expose send_file", async () => {
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn(
+      _prompt: string,
+      options: {
+        sendFileHandler?: unknown;
+      },
+    ) {
+      assert.equal(options.sendFileHandler, undefined);
+      return {
+        providerSessionId: "provider-legacy",
+        normalizedEvents: [],
+      };
+    },
+  };
+  const sender = {
+    async sendFile() {
+      throw new Error("legacy turn must not send files");
+    },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(
+      runtime,
+      "/workspace",
+      null,
+      sender,
+    ).execute(command({ protocol_version: 2 }));
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") {
+    throw new Error("expected success");
+  }
+  assert.equal(result.output_attachment_ids, undefined);
+});

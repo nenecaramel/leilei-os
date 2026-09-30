@@ -827,6 +827,7 @@ implements NativeLiveBackendTurnPort {
     workspaceId: string | null;
     effectiveWorkspaceRoot: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
+    outputAttachmentIds: readonly string[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp:
@@ -838,6 +839,7 @@ implements NativeLiveBackendTurnPort {
       workspaceId: input.workspaceId,
       effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
       normalizedEvents: input.normalizedEvents,
+      outputAttachmentIds: input.outputAttachmentIds,
       ...(input.runtimeMetadata
         ? { runtimeMetadata: input.runtimeMetadata }
         : {}),
@@ -925,6 +927,20 @@ implements NativeLiveBackendTurnPort {
                 block,
               }),
             );
+          }
+
+          if (input.outputAttachmentIds.length > 0) {
+            const attachmentBinding =
+              new DrizzleNativeLiveAttachmentBinding(
+                transaction as Transaction,
+                8,
+              );
+            await attachmentBinding.bindReadyToMessage({
+              userId: input.userId,
+              messageId: assistantMessage.id,
+              attachmentIds: input.outputAttachmentIds,
+              startOrdinal: blocks.length,
+            });
           }
 
           const checkpoint = await conversations.bindProviderCheckpoint({

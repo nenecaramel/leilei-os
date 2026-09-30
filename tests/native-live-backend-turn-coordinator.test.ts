@@ -226,7 +226,7 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
   }]);
   if (!result.ok) throw new Error("expected success");
   assert.deepEqual(result.command, {
-    protocol_version: 1,
+    protocol_version: 3,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -347,7 +347,7 @@ test("successful finalize validates identity, canonicalizes events, and delegate
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -385,11 +385,30 @@ test("successful finalize validates identity, canonicalizes events, and delegate
   });
 });
 
+test("finalize accepts a v2 result for a preparation dispatched during rolling upgrade", async () => {
+  const { port, coordinator } = setup();
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 2,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child-v2",
+    normalized_events: [
+      { type: "text", payload: { text: "READY" } },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(port.finalizeSuccessCalls.length, 1);
+});
+
 test("runtime failure finalizes only the failed preparation and never creates an assistant", async () => {
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -413,7 +432,7 @@ test("mismatched callback identity is rejected before either finalize mutation r
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: "99999999-9999-4999-8999-999999999999",
     conversation_id: conversationId,
@@ -436,7 +455,7 @@ test("success envelope carrying normalized runtime error is recorded as protocol
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -554,7 +573,7 @@ test("Mind-aware finalize strips hidden Mind tags before canonical write and run
   port.preparation = prepared({ mindPrepared: true });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -585,7 +604,7 @@ test("durable post-finalize runner owns Mind follow-up and failures never rewrit
   port.preparation = prepared({ mindPrepared: true });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -616,7 +635,7 @@ test("idempotent finalize never duplicates Mind writes or branch reconciliation"
   port.finalizeOutcome = "idempotent";
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -647,7 +666,7 @@ test("runtime context metadata is handed to durable finalization", async () => {
   };
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,

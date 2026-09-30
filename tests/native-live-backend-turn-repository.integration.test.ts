@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   nativeLiveBackgroundModelJobs,
+  nativeLiveChatAttachments,
   nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   conversations,
@@ -59,6 +60,9 @@ test(
         await database.db
           .delete(nativeLiveProviderSessionCleanups)
           .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db
+          .delete(nativeLiveChatAttachments)
+          .where(eq(nativeLiveChatAttachments.userId, user.id));
         await database.db
           .delete(runtimeSubjectStates)
           .where(eq(runtimeSubjectStates.userId, user.id));
@@ -185,8 +189,29 @@ test(
       },
     };
 
+    const outputAttachmentId = crypto.randomUUID();
+    await database.db
+      .insert(nativeLiveChatAttachments)
+      .values({
+        id: outputAttachmentId,
+        userId: user.id,
+        objectKey:
+          "native-live/"
+          + user.id
+          + "/"
+          + outputAttachmentId,
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 321,
+        sha256: "a".repeat(64),
+        kind: "file",
+        status: "ready",
+        readyAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+
     const firstFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -199,6 +224,7 @@ test(
           payload: { status: "success", final_text: "first answer" },
         },
       ],
+      output_attachment_ids: [outputAttachmentId],
       runtime_metadata: runtimeMetadata,
     });
     assert.equal(firstFinalize.ok, true);
@@ -218,6 +244,25 @@ test(
     assert.equal(
       finalizedRead.assistantMessage?.blocks[0]?.text,
       "first answer",
+    );
+    assert.equal(
+      finalizedRead.assistantMessage?.blocks[1]?.kind,
+      "attachment",
+    );
+    assert.equal(
+      finalizedRead.assistantMessage?.blocks[1]?.payload
+        ?.attachment_id,
+      outputAttachmentId,
+    );
+    const [boundOutputAttachment] = await database.db
+      .select()
+      .from(nativeLiveChatAttachments)
+      .where(eq(nativeLiveChatAttachments.id, outputAttachmentId))
+      .limit(1);
+    assert.equal(boundOutputAttachment?.status, "bound");
+    assert.equal(
+      boundOutputAttachment?.boundMessageId,
+      firstFinalize.assistantMessageId,
     );
     assert.deepEqual(finalizedRead.runtimeMetadata, runtimeMetadata);
 
@@ -253,7 +298,7 @@ test(
     assert.ok(firstDurableMetadata.observedAt);
 
     const finalizeReplay = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -266,6 +311,7 @@ test(
           payload: { status: "success", final_text: "first answer" },
         },
       ],
+      output_attachment_ids: [outputAttachmentId],
       runtime_metadata: runtimeMetadata,
     });
     assert.equal(finalizeReplay.ok, true);
@@ -277,7 +323,7 @@ test(
     );
 
     const conflictingFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -322,7 +368,7 @@ test(
     const secondUserId = secondPrepare.command.canonical_user_message_id;
 
     const secondFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: secondPrepare.command.prepare_id,
       request_id: secondRequestId,
       conversation_id: conversation.id,
@@ -561,7 +607,7 @@ test(
     assert.equal(retry.command.prompt, "second");
 
     const retryFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: retry.command.prepare_id,
       request_id: retryRequestId,
       conversation_id: conversation.id,
@@ -709,7 +755,7 @@ test(
 
     const editedUserId = edit.command.canonical_user_message_id;
     const editFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: edit.command.prepare_id,
       request_id: editRequestId,
       conversation_id: conversation.id,
@@ -775,7 +821,7 @@ test(
     if (!failurePrepare.ok) throw new Error("expected failure prepare success");
 
     const failure = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: failurePrepare.command.prepare_id,
       request_id: failureRequestId,
       conversation_id: conversation.id,
@@ -896,7 +942,7 @@ test(
 
     const root = "/Users/leilei/Projects/workspace-demo";
     const finalized = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: first.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: boundConversation.id,
@@ -991,7 +1037,7 @@ test(
     assert.equal(missingWorkspace.code, "WORKSPACE_NOT_FOUND");
 
     const explicitFinalized = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: explicit.command.prepare_id,
       request_id: explicitRequestId,
       conversation_id: explicitConversation.id,
@@ -1205,7 +1251,7 @@ test(
     );
 
     const finalized = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: prepared.command.prepare_id,
       request_id: requestId,
       conversation_id: conversation.id,

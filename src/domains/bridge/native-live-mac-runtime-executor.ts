@@ -31,6 +31,17 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         request: Record<string, unknown>,
         context: { signal: AbortSignal | null },
       ) => Promise<Record<string, unknown>>;
+      sendFileHandler?: (input: {
+        path: string;
+        displayName: string | null;
+      }) => Promise<{
+        attachmentId: string;
+        filename: string;
+        mimeType: string;
+        sizeBytes: number;
+        sha256: string;
+        kind: "image" | "file";
+      }>;
       controlPump?: (
         controller: NativeLiveMacActiveTurnController,
         context: { signal: AbortSignal },
@@ -60,6 +71,9 @@ import type {
 import type {
   NativeLiveMacAttachmentMaterializer,
 } from "./native-live-mac-attachment-materializer.js";
+import type {
+  NativeLiveMacOutputAttachmentSender,
+} from "./native-live-mac-output-attachment-sender.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -82,6 +96,8 @@ export class NativeLiveMacRuntimeExecutor {
     private readonly fallbackWorkspaceRoot = "/",
     private readonly attachmentMaterializer:
       NativeLiveMacAttachmentMaterializer | null = null,
+    private readonly outputAttachmentSender:
+      Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
   ) {
     if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
       this.runtime = null;
@@ -119,6 +135,7 @@ export class NativeLiveMacRuntimeExecutor {
       runtime: NativeLiveForegroundRuntime;
       workspaceRoot: string;
     };
+    const outputAttachmentIds: string[] = [];
     try {
       const localAttachments =
         this.attachmentMaterializer
@@ -174,6 +191,32 @@ export class NativeLiveMacRuntimeExecutor {
                       options.questionHandler,
                   }
                 : {}),
+              ...(this.outputAttachmentSender
+                && command.protocol_version
+                  === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+                ? {
+                    sendFileHandler: async (input: {
+                      path: string;
+                      displayName: string | null;
+                    }) => {
+                      if (outputAttachmentIds.length >= 8) {
+                        throw new Error(
+                          "send_file may send at most 8 files in one turn.",
+                        );
+                      }
+                      const attachment =
+                        await this.outputAttachmentSender!.sendFile({
+                          path: input.path,
+                          displayName: input.displayName,
+                          workspaceRoot: binding.workspaceRoot,
+                        });
+                      outputAttachmentIds.push(
+                        attachment.attachmentId,
+                      );
+                      return attachment;
+                    },
+                  }
+                : {}),
               ...(options.controlPump
                 ? {
                     controlPump:
@@ -225,6 +268,9 @@ export class NativeLiveMacRuntimeExecutor {
       workspace_id: command.workspace_id,
       effective_workspace_root: binding.workspaceRoot,
       normalized_events: [...runtimeResult.normalizedEvents],
+      ...(outputAttachmentIds.length > 0
+        ? { output_attachment_ids: outputAttachmentIds }
+        : {}),
       ...(runtimeMetadata
         ? { runtime_metadata: runtimeMetadata }
         : {}),

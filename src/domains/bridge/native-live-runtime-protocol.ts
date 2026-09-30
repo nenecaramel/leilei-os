@@ -5,7 +5,8 @@ import {
   type NativeLiveExecutionSelection,
 } from "./native-live-execution-selection.js";
 
-export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 2 as const;
+export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 3 as const;
+export const NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION = 2 as const;
 export const NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION = 1 as const;
 
 export type NativeLiveRuntimeMode = "new" | "fork";
@@ -20,7 +21,7 @@ export type NativeLiveRuntimeAttachment = {
 };
 
 export type NativeLiveRuntimeCommand = {
-  protocol_version: 1 | 2;
+  protocol_version: 1 | 2 | 3;
   dispatch_target: "claude_code";
   prepare_id: string;
   request_id: string;
@@ -100,7 +101,7 @@ export type NativeLiveRuntimeMetadata = {
 
 export type NativeLiveRuntimeExecutionResult =
   | {
-      protocol_version: 1 | 2;
+      protocol_version: 1 | 2 | 3;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
@@ -109,10 +110,11 @@ export type NativeLiveRuntimeExecutionResult =
       workspace_id: string | null;
       effective_workspace_root: string | null;
       normalized_events: NativeLiveNormalizedEvent[];
+      output_attachment_ids?: string[];
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
-      protocol_version: 1 | 2;
+      protocol_version: 1 | 2 | 3;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
@@ -228,7 +230,7 @@ export function parseNativeLiveRuntimeCommand(
         : parseExecutionSelection(
             body.execution_selection,
           ),
-    ...(protocolVersion === 2
+    ...(protocolVersion >= NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION
       ? {
           attachments:
             body.attachments === undefined
@@ -262,6 +264,7 @@ export function parseNativeLiveRuntimeExecutionResult(
         "runtime_metadata",
         "workspace_id",
         "effective_workspace_root",
+        "output_attachment_ids",
       ],
     );
 
@@ -270,6 +273,14 @@ export function parseNativeLiveRuntimeExecutionResult(
     );
     if (!Array.isArray(body.normalized_events)) {
       throw new NativeLiveRuntimeProtocolError("normalized_events must be an array.");
+    }
+    if (
+      body.output_attachment_ids !== undefined
+      && protocolVersion !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+    ) {
+      throw new NativeLiveRuntimeProtocolError(
+        "output_attachment_ids require runtime protocol v3.",
+      );
     }
 
     return {
@@ -296,6 +307,14 @@ export function parseNativeLiveRuntimeExecutionResult(
             ),
       normalized_events:
         body.normalized_events as NativeLiveNormalizedEvent[],
+      ...(body.output_attachment_ids === undefined
+        ? {}
+        : {
+            output_attachment_ids:
+              parseRuntimeOutputAttachmentIds(
+                body.output_attachment_ids,
+              ),
+          }),
       ...(
         body.runtime_metadata === undefined
           ? {}
@@ -394,9 +413,10 @@ export function assertRuntimeResultMatchesCommand(
 
 function parseProtocolVersion(
   value: unknown,
-): 1 | 2 {
+): 1 | 2 | 3 {
   if (
     value !== NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
+    && value !== NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION
     && value !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
   ) {
     throw new NativeLiveRuntimeProtocolError(
@@ -404,6 +424,30 @@ function parseProtocolVersion(
     );
   }
   return value;
+}
+
+function parseRuntimeOutputAttachmentIds(
+  value: unknown,
+): string[] {
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new NativeLiveRuntimeProtocolError(
+      "output_attachment_ids must contain at most 8 items.",
+    );
+  }
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    const id = requireUuid(
+      item,
+      "output_attachment_ids[" + index + "]",
+    );
+    if (seen.has(id)) {
+      throw new NativeLiveRuntimeProtocolError(
+        "output_attachment_ids must not contain duplicates.",
+      );
+    }
+    seen.add(id);
+    return id;
+  });
 }
 
 function parseRuntimeAttachments(

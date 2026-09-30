@@ -37,7 +37,7 @@ function prepared(): NativeLivePreparedTurn {
 
 function failureResult(): NativeLiveRuntimeExecutionResult {
   return {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -122,7 +122,7 @@ class FakeWake {
   }
 }
 
-function setup() {
+function setup(runtimeProtocolVersion: 2 | 3 = 3) {
   const port = new FakePort();
   const coordinator = new FakeCoordinator();
   const wake = new FakeWake();
@@ -130,6 +130,7 @@ function setup() {
     port,
     coordinator,
     wake,
+    runtimeProtocolVersion,
   );
   return { port, coordinator, wake, service };
 }
@@ -145,7 +146,7 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
   assert.deepEqual(reservation, {
     reservationId: prepareId,
     command: {
-      protocol_version: 1,
+      protocol_version: 3,
       dispatch_target: "claude_code",
       prepare_id: prepareId,
       request_id: requestId,
@@ -160,6 +161,17 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
       prompt: "hello",
     },
   });
+});
+
+test("reserve can stay on protocol v2 during a rolling daemon upgrade", async () => {
+  const { service } = setup(2);
+  const reservation = await service.reserveNext({
+    userId,
+    listenerInstanceId,
+    dispatchTarget: "claude_code",
+  });
+
+  assert.equal(reservation?.command.protocol_version, 2);
 });
 
 test("runtime failure is a valid terminal callback, closes the reservation, and wakes turn waiters", async () => {

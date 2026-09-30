@@ -150,7 +150,7 @@ test(
       listenerInstanceId: listenerA,
       reservationId: firstReservation.reservationId,
       result: {
-        protocol_version: 1,
+        protocol_version: 3,
         prepare_id: first.command.prepare_id,
         request_id: firstRequestId,
         conversation_id: conversation.id,

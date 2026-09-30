@@ -126,6 +126,7 @@ const baseEnvSchema = z.object({
     z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
     z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_SEND_FILE_ENABLED: booleanEnv.optional(),
   NATIVE_LIVE_ATTACHMENT_BUCKET: z.string().trim().min(1).optional(),
   NATIVE_LIVE_ATTACHMENT_ENDPOINT: httpsUrl.optional(),
   NATIVE_LIVE_ATTACHMENT_ACCESS_KEY_ID: z.string().trim().min(1).optional(),

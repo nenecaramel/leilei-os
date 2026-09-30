@@ -15,7 +15,7 @@ const userMessageId = "55555555-5555-4555-8555-555555555555";
 
 function command() {
   return {
-    protocol_version: 1,
+    protocol_version: 3,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -113,7 +113,7 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   });
 
   const result: NativeLiveRuntimeExecutionResult = {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -934,4 +934,110 @@ test("Mac HTTP relay terminal result does not retry durable 409 conflicts", asyn
   );
 
   assert.equal(calls, 1);
+});
+
+
+test("Mac HTTP relay client creates and completes private output attachment uploads", async () => {
+  const attachmentId =
+    "66666666-6666-4666-8666-666666666666";
+  const calls: Array<{
+    url: string;
+    body: unknown;
+    authorization: string | null;
+  }> = [];
+  const descriptor = {
+    attachmentId,
+    filename: "report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 321,
+    sha256: "a".repeat(64),
+    kind: "file" as const,
+  };
+  const responses = [
+    {
+      success: true,
+      data: {
+        attachment: descriptor,
+        upload: {
+          url: "https://bucket.example/native-live/upload",
+          method: "PUT",
+          headers: {
+            "content-type": "application/pdf",
+            "x-amz-meta-sha256": "a".repeat(64),
+          },
+          expiresAt: "2026-09-30T06:30:00.000Z",
+        },
+      },
+    },
+    {
+      success: true,
+      data: { attachment: descriptor },
+    },
+  ];
+
+  const fakeFetch: typeof fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+      authorization: headers.get("authorization"),
+    });
+    const payload = responses.shift();
+    if (!payload) throw new Error("unexpected fetch");
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  const slot = await client.createAttachmentUploadSlot({
+    filename: "report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 321,
+    sha256: "a".repeat(64),
+    kind: "file",
+  });
+  assert.deepEqual(slot, {
+    attachment: descriptor,
+    upload: {
+      url: "https://bucket.example/native-live/upload",
+      method: "PUT",
+      headers: {
+        "content-type": "application/pdf",
+        "x-amz-meta-sha256": "a".repeat(64),
+      },
+    },
+  });
+
+  assert.deepEqual(
+    await client.completeAttachmentUpload({ attachmentId }),
+    descriptor,
+  );
+
+  assert.deepEqual(calls, [
+    {
+      url:
+        "https://relay.example/internal/native-live-relay/attachments/upload-slots",
+      body: {
+        filename: "report.pdf",
+        mime_type: "application/pdf",
+        size_bytes: 321,
+        sha256: "a".repeat(64),
+        kind: "file",
+      },
+      authorization: "Bearer secret-token",
+    },
+    {
+      url:
+        `https://relay.example/internal/native-live-relay/attachments/${attachmentId}/complete`,
+      body: {},
+      authorization: "Bearer secret-token",
+    },
+  ]);
 });

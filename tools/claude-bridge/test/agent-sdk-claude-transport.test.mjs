@@ -1673,3 +1673,88 @@ test("LeileiOS MCP is also injected into non-interactive resume turns", async ()
   );
   assert.equal(call.options.allowedTools, undefined);
 });
+
+
+test("interactive foreground turn injects the local send_file MCP only when a handler is present", async () => {
+  let call;
+  let capturedHandler = null;
+  const localServer = {
+    type: "sdk",
+    name: "local-send-file-test",
+  };
+  const remoteServer = {
+    type: "http",
+    url: "https://leilei-os.example/internal/native-live-mcp",
+    headers: {
+      Authorization: "Bearer relay-secret",
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    mcpServerConfig: remoteServer,
+    createSendFileMcpServerImpl: async (handler) => {
+      capturedHandler = handler;
+      return localServer;
+    },
+    queryImpl: (input) => {
+      call = input;
+      return fakeConnectedMcpQuery(
+        successFixture("provider-send-file"),
+      );
+    },
+  });
+
+  const sendFileHandler = async (input) => ({
+    attachmentId: "66666666-6666-4666-8666-666666666666",
+    filename: input.displayName ?? "report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 123,
+    sha256: "a".repeat(64),
+    kind: "file",
+  });
+
+  const result = await transport.executeTurn(
+    "make and send the report",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      sendFileHandler,
+    },
+  );
+
+  assert.equal(result.providerSessionId, "provider-send-file");
+  assert.equal(capturedHandler, sendFileHandler);
+  assert.deepEqual(call.options.mcpServers, {
+    leileios: remoteServer,
+    leileios_local: localServer,
+  });
+});
+
+test("interactive foreground turn does not inject local send_file MCP without a handler", async () => {
+  let call;
+  let localFactoryCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    createSendFileMcpServerImpl: async () => {
+      localFactoryCalls += 1;
+      return { type: "sdk" };
+    },
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-no-send-file"));
+    },
+  });
+
+  await transport.executeTurn(
+    "hello",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+    },
+  );
+
+  assert.equal(localFactoryCalls, 0);
+  assert.equal(call.options.mcpServers, undefined);
+});

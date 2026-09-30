@@ -534,3 +534,51 @@ test("protocol rejects unknown versions and extra fields", () => {
     /Unexpected runtime protocol field: raw_stdout/,
   );
 });
+
+
+test("runtime protocol v3 carries explicit output attachment ids", () => {
+  const outputAttachmentId =
+    "66666666-6666-4666-8666-666666666666";
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 3,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    prompt: "make a file",
+  });
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-output",
+    workspace_id: null,
+    effective_workspace_root: "/workspace",
+    normalized_events: [],
+    output_attachment_ids: [outputAttachmentId],
+  });
+
+  assert.deepEqual(
+    result.status === "success"
+      ? result.output_attachment_ids
+      : null,
+    [outputAttachmentId],
+  );
+  assert.doesNotThrow(() =>
+    assertRuntimeResultMatchesCommand(command, result)
+  );
+
+  assert.throws(
+    () => parseNativeLiveRuntimeExecutionResult({
+      ...result,
+      protocol_version: 2,
+    }),
+    /require runtime protocol v3/u,
+  );
+});

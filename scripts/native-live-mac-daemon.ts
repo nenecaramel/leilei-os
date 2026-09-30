@@ -35,6 +35,9 @@ import {
 import {
   NativeLiveMacAttachmentMaterializer,
 } from "../src/domains/bridge/native-live-mac-attachment-materializer.js";
+import {
+  NativeLiveMacOutputAttachmentSender,
+} from "../src/domains/bridge/native-live-mac-output-attachment-sender.js";
 
 const daemonLock = acquireNativeLiveMacDaemonLock();
 
@@ -115,7 +118,7 @@ process.stdout.write(
     workspaceMappingCount: Object.keys(workspaceRoots).length,
     providerSessionStore: "remote_workspace_scoped",
     leileiosMcp: "http_auto_recover",
-    attachments: "private_bucket_to_isolated_inbox",
+    attachments: "private_bucket_bidirectional",
   }) + "\n",
 );
 
@@ -123,6 +126,7 @@ const executor = new NativeLiveMacRuntimeExecutor(
   workspaceRuntimePool,
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
+  new NativeLiveMacOutputAttachmentSender(relay),
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);

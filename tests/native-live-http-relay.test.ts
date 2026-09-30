@@ -2057,3 +2057,128 @@ test("internal relay Mind semantic grouping endpoints preserve authenticated use
     },
   );
 });
+
+
+test("internal relay output attachment upload endpoints stay user scoped", async () => {
+  const attachmentId =
+    "66666666-6666-4666-8666-666666666666";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const descriptor = {
+    attachmentId,
+    filename: "report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 321,
+    sha256: "a".repeat(64),
+    kind: "file" as const,
+    status: "ready" as const,
+    objectKey: "native-live/user/report",
+    boundMessageId: null,
+    createdAt: "2026-09-30T06:00:00.000Z",
+    expiresAt: "2026-09-30T07:00:00.000Z",
+  };
+  const attachmentService = {
+    async createUploadSlot(input: unknown) {
+      calls.push({ name: "createUploadSlot", input });
+      return {
+        attachment: {
+          ...descriptor,
+          status: "uploading" as const,
+        },
+        upload: {
+          url: "https://bucket.example/upload",
+          method: "PUT" as const,
+          headers: {
+            "content-type": "application/pdf",
+            "x-amz-meta-sha256": "a".repeat(64),
+          },
+          expiresAt: "2026-09-30T06:10:00.000Z",
+        },
+      };
+    },
+    async completeUpload(input: unknown) {
+      calls.push({ name: "completeUpload", input });
+      return descriptor;
+    },
+    async createDownloadSlot() {
+      throw new Error("unused");
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService: new FakeRelayService(),
+          attachmentService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const upload = await fetch(
+        `${baseUrl}/internal/native-live-relay/attachments/upload-slots`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            filename: "report.pdf",
+            mime_type: "application/pdf",
+            size_bytes: 321,
+            sha256: "a".repeat(64),
+            kind: "file",
+          }),
+        },
+      );
+      assert.equal(upload.status, 201);
+      const uploadPayload = await upload.json() as {
+        data: { attachment: { attachmentId: string } };
+      };
+      assert.equal(
+        uploadPayload.data.attachment.attachmentId,
+        attachmentId,
+      );
+
+      const complete = await fetch(
+        `${baseUrl}/internal/native-live-relay/attachments/${attachmentId}/complete`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+      assert.equal(complete.status, 200);
+      const completePayload = await complete.json() as {
+        data: { attachment: { status: string } };
+      };
+      assert.equal(
+        completePayload.data.attachment.status,
+        "ready",
+      );
+    },
+  );
+
+  assert.deepEqual(calls, [
+    {
+      name: "createUploadSlot",
+      input: {
+        userId,
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 321,
+        sha256: "a".repeat(64),
+        kind: "file",
+      },
+    },
+    {
+      name: "completeUpload",
+      input: {
+        userId,
+        attachmentId,
+      },
+    },
+  ]);
+});
