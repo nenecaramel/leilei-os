@@ -1,5 +1,6 @@
 import type {
   NativeLiveMacClaudeTransport,
+  NativeLiveMacMcpServerConfig,
 } from "./native-live-mac-claude-transport.js";
 import {
   createNativeLiveMacClaudeTransport,
@@ -32,6 +33,8 @@ implements NativeLiveWorkspaceRuntimeResolver {
     private readonly createTransport = createNativeLiveMacClaudeTransport,
     private readonly createSessionStore:
       (workspaceId: string) => unknown = () => null,
+    private readonly mcpServerConfig:
+      NativeLiveMacMcpServerConfig | null = null,
   ) {}
 
   async resolveWorkspaceRuntime(input: {
@@ -71,6 +74,7 @@ implements NativeLiveWorkspaceRuntimeResolver {
         this.environment,
         workspaceRoot,
         sessionStore,
+        this.mcpServerConfig,
       ).then(({ runtime }) => {
         this.resolved.add(runtime);
         return runtime;
