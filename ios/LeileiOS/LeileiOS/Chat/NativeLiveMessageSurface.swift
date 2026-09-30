@@ -1561,35 +1561,59 @@ private struct NativeLiveToolCallCard: View {
     let detail: String?
     let state: NativeLiveToolCallState
 
+    @State private var isExpanded = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                switch state {
-                case .running:
-                    ProgressView()
-                        .controlSize(.small)
-                case .completed:
-                    Image(systemName: "checkmark.circle")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                case .failed:
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.18)) {
+                    isExpanded.toggle()
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    switch state {
+                    case .running:
+                        ProgressView()
+                            .controlSize(.small)
+                    case .completed:
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    case .failed:
+                        Image(systemName: "exclamationmark.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
 
-                Text(nativeLiveToolDisplayName(toolName))
-                    .font(.system(size: 14, weight: .medium))
-                    .textSelection(.enabled)
+                    Text(nativeLiveToolDisplayName(toolName))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-                Text(stateLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text(stateLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Image(
+                        systemName:
+                            isExpanded
+                            ? "chevron.up"
+                            : "chevron.down"
+                    )
+                    .font(.system(
+                        size: 10.5,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
-            if let detail,
+            if isExpanded,
+               let detail,
                !detail.isEmpty {
                 Text(detail)
                     .font(.system(
@@ -1598,7 +1622,13 @@ private struct NativeLiveToolCallCard: View {
                     ))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                    .lineLimit(4)
+                    .padding(.top, 8)
+                    .transition(
+                        .opacity
+                            .combined(
+                                with: .move(edge: .top)
+                            )
+                    )
             }
         }
         .padding(.horizontal, 11)
@@ -1630,24 +1660,52 @@ private struct NativeLiveToolResultCard: View {
     let isError: Bool
     let detail: String?
 
+    @State private var isExpanded = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Image(
-                    systemName:
-                        isError
-                        ? "exclamationmark.circle"
-                        : "checkmark.circle"
-                )
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-
-                Text(isError ? "Tool failed" : "Tool result")
-                    .font(.system(size: 13.5, weight: .medium))
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(
+                        systemName:
+                            isError
+                            ? "exclamationmark.circle"
+                            : "checkmark.circle"
+                    )
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
-            }
 
-            if let detail,
+                    Text(isError ? "Tool failed" : "Tool result")
+                        .font(.system(
+                            size: 13.5,
+                            weight: .medium
+                        ))
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 8)
+
+                    Image(
+                        systemName:
+                            isExpanded
+                            ? "chevron.up"
+                            : "chevron.down"
+                    )
+                    .font(.system(
+                        size: 10.5,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded,
+               let detail,
                !detail.isEmpty {
                 Text(detail)
                     .font(.system(
@@ -1656,7 +1714,13 @@ private struct NativeLiveToolResultCard: View {
                     ))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                    .lineLimit(4)
+                    .padding(.top, 7)
+                    .transition(
+                        .opacity
+                            .combined(
+                                with: .move(edge: .top)
+                            )
+                    )
             }
         }
         .padding(.leading, 5)
