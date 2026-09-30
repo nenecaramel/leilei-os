@@ -216,6 +216,7 @@ export interface NativeLiveBackendTurnPort {
     workspaceId: string | null;
     effectiveWorkspaceRoot: string | null;
     blocks: NativeLiveContentBlockInput[];
+    outputAttachmentIds: readonly string[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp: NativeLiveMindFollowUpPayload | null;
@@ -453,6 +454,8 @@ export class NativeLiveBackendTurnCoordinator {
         workspaceId: result.workspace_id,
         effectiveWorkspaceRoot: result.effective_workspace_root,
         blocks: parsedMind.visibleBlocks,
+        outputAttachmentIds:
+          result.output_attachment_ids ?? [],
         normalizedEvents: result.normalized_events,
         runtimeMetadata: result.runtime_metadata ?? null,
         mindFollowUp: this.mind && this.postFinalize
