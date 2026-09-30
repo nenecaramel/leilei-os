@@ -59,6 +59,56 @@ const base = {
   limit: 5,
 };
 
+test("Chinese single-character overlap does not create a lexical Breath match", () => {
+  const unrelated = state("unrelated", "我在九月画了一张画");
+  const hits = recallBreath(
+    "想我吗",
+    [unrelated],
+    {
+      ...base,
+      semanticWeight: 0,
+    },
+  );
+
+  assert.deepEqual(hits, []);
+});
+
+test("semantic candidate preselection prefers lexical relevance over state id order", async () => {
+  const port = new Port([
+    state("000-unrelated", "今天吃了炸鸡"),
+    state("111-unrelated", "昨天整理了桌面"),
+    state("zzz-relevant", "最喜欢的发色是柠檬黄"),
+  ]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 2,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    null,
+  );
+
+  const plan = await mind.planSemanticRecall({
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userText: "柠檬黄",
+    assembledAt: "2026-09-22T10:00:00.000Z",
+  });
+
+  assert.ok(plan);
+  assert.equal(plan.candidates.length, 2);
+  assert.equal(plan.candidates[0]?.stateId, "zzz-relevant");
+});
+
 test("semantic-only candidate can enter Breath when lexical overlap is zero", () => {
   const semantic = state("semantic", "那趟独自旅行让我长大了");
   const hits = recallBreath(
