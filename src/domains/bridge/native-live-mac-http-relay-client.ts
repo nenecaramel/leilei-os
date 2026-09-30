@@ -499,7 +499,7 @@ implements NativeLiveMacDaemonRelayClient {
     dispatchTarget: "claude_code";
     signal?: AbortSignal | null;
   }): Promise<"ready" | "timeout" | "busy"> {
-    const data = await this.post(
+    const data = await this.postWait(
       "/work/wait",
       {
         listener_instance_id: input.listenerInstanceId,
@@ -588,7 +588,7 @@ implements NativeLiveMacDaemonRelayClient {
         if (input.signal?.aborted) {
           throw abortedInteractionError();
         }
-        const data = await this.post(
+        const data = await this.postWait(
           `/reservations/${encodeURIComponent(input.reservationId)}/interactions/${encodeURIComponent(interactionId)}/wait`,
           {
             listener_instance_id: input.listenerInstanceId,
@@ -639,7 +639,7 @@ implements NativeLiveMacDaemonRelayClient {
     reservationId: string;
     signal?: AbortSignal | null;
   }): Promise<import("./native-live-mac-daemon-loop.js").NativeLiveRuntimeControlReservation | null> {
-    const data = await this.post(
+    const data = await this.postWait(
       `/reservations/${encodeURIComponent(input.reservationId)}/controls/wait`,
       {
         listener_instance_id: input.listenerInstanceId,
@@ -736,6 +736,31 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  private async postWait(
+    path: string,
+    body: unknown,
+    signal: AbortSignal | null = null,
+  ): Promise<unknown> {
+    let attempt = 0;
+    while (true) {
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      try {
+        return await this.post(path, body, signal);
+      } catch (error) {
+        if (!isTransientRelayWaitError(error) || signal?.aborted) {
+          throw error;
+        }
+        attempt += 1;
+        await delayRelayRetry(
+          Math.min(250 * 2 ** Math.min(attempt - 1, 4), 3_000),
+          signal,
+        );
+      }
+    }
+  }
+
   private async post(
     path: string,
     body: unknown,
@@ -810,4 +835,47 @@ function isAbortedInteraction(error: unknown): boolean {
     && "runtimeCode" in error
     && (error as { runtimeCode?: unknown }).runtimeCode === "ABORTED"
   );
+}
+
+function isTransientRelayWaitError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as {
+    httpStatus?: unknown;
+    name?: unknown;
+  };
+  if (
+    typeof record.httpStatus === "number"
+    && (
+      record.httpStatus === 502
+      || record.httpStatus === 503
+      || record.httpStatus === 504
+    )
+  ) {
+    return true;
+  }
+  return record.name === "TypeError";
+}
+
+function delayRelayRetry(
+  milliseconds: number,
+  signal: AbortSignal | null,
+): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const cleanup = () => {
+      signal?.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
