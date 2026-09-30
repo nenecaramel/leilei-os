@@ -836,12 +836,14 @@ private struct NativeLiveRuntimeAssistantRow: View {
                         interaction: pendingInteraction,
                         onResolve: onResolveInteraction
                     )
+                    .id(pendingInteraction.interactionID)
 
                 case "question":
                     NativeLiveQuestionInteractionCard(
                         interaction: pendingInteraction,
                         onResolve: onResolveInteraction
                     )
+                    .id(pendingInteraction.interactionID)
 
                 default:
                     EmptyView()
