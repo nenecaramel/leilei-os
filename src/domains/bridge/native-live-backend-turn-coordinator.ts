@@ -46,7 +46,7 @@ export type NativeLivePreparedTurn = {
   workspaceId: string | null;
   expectedWorkspaceRoot: string | null;
   executionSelection?: NativeLiveExecutionSelection | null;
-  attachments: NativeLiveRuntimeAttachment[];
+  attachments?: NativeLiveRuntimeAttachment[];
   prompt: string;
   mindPrepared: boolean;
 };
@@ -513,7 +513,8 @@ export class NativeLiveBackendTurnCoordinator {
 export function nativeLiveRuntimeCommandFromPreparation(
   preparation: NativeLivePreparedTurn,
 ): NativeLiveRuntimeCommand {
-  const hasAttachments = preparation.attachments.length > 0;
+  const attachments = preparation.attachments ?? [];
+  const hasAttachments = attachments.length > 0;
   const command: NativeLiveRuntimeCommand = {
     protocol_version:
       hasAttachments
@@ -532,7 +533,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
       preparation.expectedWorkspaceRoot ?? null,
     execution_selection: preparation.executionSelection ?? null,
     ...(hasAttachments
-      ? { attachments: preparation.attachments }
+      ? { attachments }
       : {}),
     prompt: preparation.prompt,
   };
