@@ -454,6 +454,41 @@ test("recall cannot resurrect archived or forgotten Memory/Feel", () => {
   }
 });
 
+test("zero recall boost records recency without creating reinforcement ledger", () => {
+  const update = evaluateRecallReinforcement(
+    {
+      stateId: "m-zero-boost",
+      kind: "memory",
+      payload: {
+        lifecycle_v1: {
+          status: "active",
+          salience: 0.5,
+          protected: false,
+          lastDecayedAt: "2026-09-20T00:00:00.000Z",
+          lastRecalledAt: null,
+          archivedAt: null,
+          forgottenAt: null,
+        },
+      },
+      updatedAt: "2026-09-20T00:00:01.000Z",
+    },
+    "2026-09-20T01:00:00.000Z",
+    0,
+    "u-zero-boost",
+  );
+
+  assert.ok(update);
+  assert.equal(update.lifecycle.salience, 0.5);
+  assert.equal(
+    update.lifecycle.lastRecalledAt,
+    "2026-09-20T01:00:00.000Z",
+  );
+  assert.equal(
+    "recall_reinforcement_v1" in update.nextPayload,
+    false,
+  );
+});
+
 test("recall reinforcement without decay policy starts a new non-retroactive baseline", () => {
   const update = evaluateRecallReinforcement(
     {
