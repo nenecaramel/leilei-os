@@ -186,7 +186,7 @@ test(
     };
 
     const firstFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -253,7 +253,7 @@ test(
     assert.ok(firstDurableMetadata.observedAt);
 
     const finalizeReplay = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -277,7 +277,7 @@ test(
     );
 
     const conflictingFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -322,7 +322,7 @@ test(
     const secondUserId = secondPrepare.command.canonical_user_message_id;
 
     const secondFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: secondPrepare.command.prepare_id,
       request_id: secondRequestId,
       conversation_id: conversation.id,
@@ -561,7 +561,7 @@ test(
     assert.equal(retry.command.prompt, "second");
 
     const retryFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: retry.command.prepare_id,
       request_id: retryRequestId,
       conversation_id: conversation.id,
@@ -709,7 +709,7 @@ test(
 
     const editedUserId = edit.command.canonical_user_message_id;
     const editFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: edit.command.prepare_id,
       request_id: editRequestId,
       conversation_id: conversation.id,
@@ -775,7 +775,7 @@ test(
     if (!failurePrepare.ok) throw new Error("expected failure prepare success");
 
     const failure = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: failurePrepare.command.prepare_id,
       request_id: failureRequestId,
       conversation_id: conversation.id,
@@ -896,7 +896,7 @@ test(
 
     const root = "/Users/leilei/Projects/workspace-demo";
     const finalized = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: first.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: boundConversation.id,
@@ -991,7 +991,7 @@ test(
     assert.equal(missingWorkspace.code, "WORKSPACE_NOT_FOUND");
 
     const explicitFinalized = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: explicit.command.prepare_id,
       request_id: explicitRequestId,
       conversation_id: explicitConversation.id,
@@ -1205,7 +1205,7 @@ test(
     );
 
     const finalized = await coordinator.finalize(user.id, {
-      protocol_version: 1,
+      protocol_version: 3,
       prepare_id: prepared.command.prepare_id,
       request_id: requestId,
       conversation_id: conversation.id,
