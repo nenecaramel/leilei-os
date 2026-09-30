@@ -271,6 +271,7 @@ implements NativeLiveAttachmentObjectStore {
         const [row] = await transaction
           .select({
             id: nativeLiveChatAttachments.id,
+            userId: nativeLiveChatAttachments.userId,
             mimeType: nativeLiveChatAttachments.mimeType,
             sizeBytes: nativeLiveChatAttachments.sizeBytes,
             sha256: nativeLiveChatAttachments.sha256,
@@ -373,7 +374,8 @@ implements NativeLiveAttachmentObjectStore {
             0
           ) AS total
           FROM native_live_chat_attachments
-          WHERE content IS NOT NULL
+          WHERE user_id = ${row.userId}::uuid
+            AND content IS NOT NULL
         `);
         const total = Number(totalRows[0]?.total ?? 0);
         const existingBytes =
