@@ -1591,6 +1591,10 @@ export const nativeLiveTurnPreparations = pgTable(
     workspaceId: uuid("workspace_id"),
     expectedWorkspaceRoot: text("expected_workspace_root"),
     executionSelection: jsonb("execution_selection").$type<Record<string, unknown> | null>(),
+    attachments: jsonb("attachments")
+      .$type<Array<Record<string, unknown>>>()
+      .default([])
+      .notNull(),
     prompt: text("prompt").notNull(),
     mindPrepared: boolean("mind_prepared").default(false).notNull(),
     status: varchar("status", { length: 32 })
@@ -1704,6 +1708,10 @@ export const nativeLiveTurnPreparations = pgTable(
     check(
       "native_live_turn_preparations_workspace_root_not_blank",
       sql`${table.expectedWorkspaceRoot} IS NULL OR char_length(btrim(${table.expectedWorkspaceRoot})) > 0`,
+    ),
+    check(
+      "native_live_turn_preparations_attachments_array",
+      sql`jsonb_typeof(${table.attachments}) = 'array'`,
     ),
     check(
       "native_live_turn_preparations_request_hash_format",
