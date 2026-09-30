@@ -390,8 +390,8 @@ test("Mac HTTP relay client transports background model reservations without use
         command: {
           protocol_version: 1,
           task_id: prepareId,
-          task_kind: "topic_resurface_retention",
-          prompt_contract_version: "topic-resurface-retention-v1",
+          task_kind: "proactivity_deliberate",
+          prompt_contract_version: "proactivity-wake-deliberation-v1",
           prompt: "retain?",
         },
       },
@@ -427,7 +427,7 @@ test("Mac HTTP relay client transports background model reservations without use
     result: {
       protocol_version: 1,
       task_id: prepareId,
-      task_kind: "topic_resurface_retention",
+      task_kind: "proactivity_deliberate",
       status: "success",
       final_text: '{"decision":"discard"}',
     },
@@ -458,7 +458,6 @@ test("Mac HTTP relay client offers one scoped companion background opportunity",
         maintenanceKinds: ["decay"],
         effectDeliveryScheduled: true,
         proactivityScheduled: false,
-        topicResurfaceOffered: true,
         failures: [],
       },
     }), {
@@ -483,7 +482,6 @@ test("Mac HTTP relay client offers one scoped companion background opportunity",
     maintenanceKinds: ["decay"],
     effectDeliveryScheduled: true,
     proactivityScheduled: false,
-    topicResurfaceOffered: true,
     failures: [],
   });
   assert.deepEqual(calls, [{
@@ -500,56 +498,6 @@ test("Mac HTTP relay client offers one scoped companion background opportunity",
     false,
   );
 });
-
-test("Mac HTTP relay client offers Topic resurface opportunity without user identity", async () => {
-  const calls: Array<{ url: string; body: unknown }> = [];
-  const fakeFetch: typeof fetch = async (input, init) => {
-    calls.push({
-      url: String(input),
-      body: init?.body ? JSON.parse(String(init.body)) : null,
-    });
-    return new Response(JSON.stringify({
-      success: true,
-      data: {
-        outcome: "not_due",
-        lastAttemptAt: "2026-09-23T04:00:00.000Z",
-        nextEligibleAt: "2026-09-23T04:01:00.000Z",
-      },
-    }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-
-  const client = new NativeLiveMacHttpRelayClient(
-    "https://relay.example",
-    "secret-token",
-    fakeFetch,
-  );
-  const result = await client.offerTopicResurfaceOpportunity({
-    listenerInstanceId: listenerId,
-    dispatchTarget: "claude_code",
-  });
-
-  assert.deepEqual(result, {
-    outcome: "not_due",
-    lastAttemptAt: "2026-09-23T04:00:00.000Z",
-    nextEligibleAt: "2026-09-23T04:01:00.000Z",
-  });
-  assert.deepEqual(calls, [{
-    url:
-      "https://relay.example/internal/native-live-relay/background-model/topic-resurface/opportunity",
-    body: {
-      listener_instance_id: listenerId,
-      dispatch_target: "claude_code",
-    },
-  }]);
-  assert.equal(
-    JSON.stringify(calls[0]?.body).includes("user"),
-    false,
-  );
-});
-
 
 test("Mac HTTP relay client round-trips a durable permission interaction", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
@@ -721,80 +669,6 @@ test("Mac HTTP relay client reserves and receipts provider session cleanup", asy
       },
     },
   ]);
-});
-
-
-test("Mac HTTP relay client transports independent Mind semantic grouping reservations", async () => {
-  const groupingId = "99999999-9999-4999-8999-999999999999";
-  const stateId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-  const calls: Array<{ url: string; body: unknown }> = [];
-  const responses = [
-    {
-      success: true,
-      data: {
-        reservationId: groupingId,
-        query: "complete the backend cleanup",
-        candidates: [{
-          stateId,
-          kind: "drive",
-          text: "finish the runtime cleanup",
-        }],
-      },
-    },
-    { success: true, data: { accepted: true } },
-    { success: true, data: { accepted: true } },
-  ];
-  const fakeFetch: typeof fetch = async (input, init) => {
-    calls.push({
-      url: String(input),
-      body: init?.body ? JSON.parse(String(init.body)) : null,
-    });
-    return new Response(JSON.stringify(responses.shift()), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-
-  const client = new NativeLiveMacHttpRelayClient(
-    "https://relay.example",
-    "secret-token",
-    fakeFetch,
-  );
-  assert.deepEqual(
-    await client.reserveMindSemanticGrouping({
-      listenerInstanceId: listenerId,
-      dispatchTarget: "claude_code",
-    }),
-    {
-      reservationId: groupingId,
-      query: "complete the backend cleanup",
-      candidates: [{
-        stateId,
-        kind: "drive",
-        text: "finish the runtime cleanup",
-      }],
-    },
-  );
-  await client.submitMindSemanticGroupingScores({
-    listenerInstanceId: listenerId,
-    reservationId: groupingId,
-    scores: { [stateId]: 0.93 },
-  });
-  await client.submitMindSemanticGroupingFallback({
-    listenerInstanceId: listenerId,
-    reservationId: groupingId,
-    code: "E5_SCORING_FAILED",
-  });
-
-  assert.deepEqual(calls.map((call) => call.url), [
-    "https://relay.example/internal/native-live-relay/mind-semantic-grouping/reserve",
-    `https://relay.example/internal/native-live-relay/mind-semantic-grouping/reservations/${groupingId}/scores`,
-    `https://relay.example/internal/native-live-relay/mind-semantic-grouping/reservations/${groupingId}/fallback`,
-  ]);
-  assert.deepEqual(calls[0]?.body, {
-    listener_instance_id: listenerId,
-    dispatch_target: "claude_code",
-  });
 });
 
 

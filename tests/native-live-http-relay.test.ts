@@ -336,8 +336,8 @@ class FakeBackgroundModelService {
       command: {
         protocol_version: 1 as const,
         task_id: prepareId,
-        task_kind: "topic_resurface_evaluate" as const,
-        prompt_contract_version: "topic-resurface-eval-v1",
+        task_kind: "proactivity_deliberate" as const,
+        prompt_contract_version: "proactivity-wake-deliberation-v1",
         prompt: "evaluate",
       },
     };
@@ -1184,7 +1184,7 @@ test("internal relay background model endpoints preserve authenticated user scop
             result: {
               protocol_version: 1,
               task_id: prepareId,
-              task_kind: "topic_resurface_evaluate",
+              task_kind: "proactivity_deliberate",
               status: "success",
               final_text: '{"decision":"quiet"}',
             },
@@ -1201,7 +1201,7 @@ test("internal relay background model endpoints preserve authenticated user scop
           result: {
             protocol_version: 1,
             task_id: prepareId,
-            task_kind: "topic_resurface_evaluate",
+            task_kind: "proactivity_deliberate",
             status: "success",
             final_text: '{"decision":"quiet"}',
           },
@@ -1221,10 +1221,9 @@ test("internal relay companion background opportunity uses authenticated user sc
       calls.push(input);
       return {
         reason: "startup" as const,
-        maintenanceKinds: ["thought_evolution"],
+        maintenanceKinds: ["decay"],
         effectDeliveryScheduled: true,
         proactivityScheduled: false,
-        topicResurfaceOffered: true,
         failures: [],
       };
     },
@@ -1275,7 +1274,6 @@ test("internal relay companion background opportunity uses authenticated user sc
         maintenanceKindCount: 1,
         effectDeliveryScheduled: true,
         proactivityScheduled: false,
-        topicResurfaceOffered: true,
         failureCount: 0,
       }]);
 
@@ -1297,81 +1295,6 @@ test("internal relay companion background opportunity uses authenticated user sc
     },
   );
 });
-
-test("internal relay Topic resurface opportunity uses authenticated user scope and supports disabled mode", async () => {
-  const relayService = new FakeRelayService();
-  const backgroundModelService = new FakeBackgroundModelService();
-  const opportunity = new FakeBackgroundOpportunity();
-
-  await withServer(
-    (app) => {
-      app.use((request, _response, next) => {
-        request.mcpUserId = userId;
-        next();
-      });
-      app.use(
-        "/internal/native-live-relay",
-        createNativeLiveRelayInternalRouter({
-          relayService,
-          backgroundModelService,
-          backgroundModelOpportunity: opportunity,
-        }),
-      );
-    },
-    async (baseUrl) => {
-      const response = await fetch(
-        `${baseUrl}/internal/native-live-relay/background-model/topic-resurface/opportunity`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            listener_instance_id: listenerId,
-            dispatch_target: "claude_code",
-          }),
-        },
-      );
-      assert.equal(response.status, 200);
-      const payload = await response.json() as { data: unknown };
-      assert.deepEqual(payload.data, opportunity.result);
-      assert.deepEqual(opportunity.calls, [{ userId }]);
-    },
-  );
-
-  await withServer(
-    (app) => {
-      app.use((request, _response, next) => {
-        request.mcpUserId = userId;
-        next();
-      });
-      app.use(
-        "/internal/native-live-relay",
-        createNativeLiveRelayInternalRouter({
-          relayService,
-          backgroundModelService,
-        }),
-      );
-    },
-    async (baseUrl) => {
-      const response = await fetch(
-        `${baseUrl}/internal/native-live-relay/background-model/topic-resurface/opportunity`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            listener_instance_id: listenerId,
-            dispatch_target: "claude_code",
-          }),
-        },
-      );
-      assert.equal(response.status, 200);
-      assert.deepEqual(
-        (await response.json() as { data: unknown }).data,
-        { outcome: "disabled" },
-      );
-    },
-  );
-});
-
 
 test("internal relay persists authenticated foreground runtime event batches", async () => {
   const relayService = new FakeRelayService();
@@ -1968,92 +1891,6 @@ test("internal relay reserves and receipts provider session cleanup in authentic
           },
         },
       ]);
-    },
-  );
-});
-
-
-test("internal relay Mind semantic grouping endpoints preserve authenticated user scope", async () => {
-  const relayService = new FakeRelayService();
-  const calls: Array<{ name: string; input: unknown }> = [];
-  const grouping = {
-    async reserveNext(input: unknown) {
-      calls.push({ name: "reserveNext", input });
-      return {
-        reservationId: "99999999-9999-4999-8999-999999999999",
-        query: "complete the backend cleanup",
-        candidates: [{
-          stateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          kind: "drive" as const,
-          text: "finish the runtime cleanup",
-        }],
-      };
-    },
-    async acceptScores(input: unknown) {
-      calls.push({ name: "acceptScores", input });
-    },
-    async acceptFallback(input: unknown) {
-      calls.push({ name: "acceptFallback", input });
-    },
-  };
-
-  await withServer(
-    (app) => {
-      app.use((request, _response, next) => {
-        request.mcpUserId = userId;
-        next();
-      });
-      app.use(
-        "/internal/native-live-relay",
-        createNativeLiveRelayInternalRouter({
-          relayService,
-          mindSemanticGrouping: grouping,
-        }),
-      );
-    },
-    async (baseUrl) => {
-      const reservationId = "99999999-9999-4999-8999-999999999999";
-      const candidateId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-      const reserve = await fetch(
-        `${baseUrl}/internal/native-live-relay/mind-semantic-grouping/reserve`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            listener_instance_id: listenerId,
-            dispatch_target: "claude_code",
-          }),
-        },
-      );
-      assert.equal(reserve.status, 200);
-
-      const scores = await fetch(
-        `${baseUrl}/internal/native-live-relay/mind-semantic-grouping/reservations/${reservationId}/scores`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            listener_instance_id: listenerId,
-            scores: { [candidateId]: 0.93 },
-          }),
-        },
-      );
-      assert.equal(scores.status, 200);
-      assert.deepEqual(calls, [{
-        name: "reserveNext",
-        input: {
-          userId,
-          listenerInstanceId: listenerId,
-        },
-      }, {
-        name: "acceptScores",
-        input: {
-          userId,
-          listenerInstanceId: listenerId,
-          requestId: reservationId,
-          scores: { [candidateId]: 0.93 },
-        },
-      }]);
     },
   );
 });

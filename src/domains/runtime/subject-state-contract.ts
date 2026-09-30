@@ -6,10 +6,7 @@ import {
 export const CURRENT_SUBJECT_STATE_KINDS = [
   "feel",
   "memory",
-  "drive",
   "thought",
-  "curiosity",
-  "topic",
 ] as const;
 
 export type CurrentSubjectStateKind =

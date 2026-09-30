@@ -1,9 +1,13 @@
+import {
+  normalizeMindVisibleText,
+  overlapsMindProtectedRange,
+  retiredMindProtectedRanges,
+} from "./mind-protected-ranges.js";
+
 export type CurrentMindWriteIntentKind =
   | "feel"
   | "memory"
-  | "drive"
-  | "thought"
-  | "curiosity";
+  | "thought";
 
 export type MindWriteIntentKind = CurrentMindWriteIntentKind;
 
@@ -26,8 +30,15 @@ export type ParsedMindIntents = {
   intents: CurrentMindWriteIntent[];
 };
 
-const TAG_PATTERN = /<(feel|memory|drive|thought|curiosity)>([\s\S]*?)<\/\1>/gi;
-const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|drive|thought|curiosity|topic)>/i;
+const TAG_PATTERN = /<(feel|memory|thought)>([\s\S]*?)<\/\1>/gi;
+
+/**
+ * Retired tags (drive, curiosity, topic, dream) are not parsed and are never
+ * given a new meaning. They stay visible wherever they appear and produce no
+ * Mind state, including when nested inside a current write.
+ */
+const NESTED_TAG_PATTERN =
+  /<\/?(feel|memory|thought|drive|curiosity|topic|dream)>/i;
 
 /**
  * Parses only explicit subject-authored write intents.
@@ -39,6 +50,7 @@ const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|drive|thought|curiosity|topic
 export function parseMindWriteIntents(source: string): ParsedMindIntents {
   const intents: CurrentMindWriteIntent[] = [];
   const removable: Array<{ start: number; end: number }> = [];
+  const protectedRanges = retiredMindProtectedRanges(source);
 
   for (const match of source.matchAll(TAG_PATTERN)) {
     const raw = match[0];
@@ -57,6 +69,7 @@ export function parseMindWriteIntents(source: string): ParsedMindIntents {
     }
 
     const end = start + raw.length;
+    if (overlapsMindProtectedRange(protectedRanges, start, end)) continue;
     intents.push({
       kind,
       text: body,
@@ -75,10 +88,7 @@ export function parseMindWriteIntents(source: string): ParsedMindIntents {
   }
 
   return {
-    visibleText: visibleText
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim(),
+    visibleText: normalizeMindVisibleText(visibleText),
     intents,
   };
 }

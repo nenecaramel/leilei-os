@@ -6,8 +6,12 @@ import {
   conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveRuntimeListenerLeases,
+  runtimeProactivityWakes,
   users,
 } from "../src/database/schema.js";
+import {
+  DrizzleProactivityWakeRepository,
+} from "../src/domains/runtime/proactivity-wake-repository.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -70,8 +74,8 @@ test(
     const command = {
       protocol_version: 1 as const,
       task_id: taskId,
-      task_kind: "topic_resurface_evaluate" as const,
-      prompt_contract_version: "topic-resurface-eval-v1",
+      task_kind: "proactivity_deliberate" as const,
+      prompt_contract_version: "proactivity-wake-deliberation-v1",
       prompt: "evaluate this bounded candidate snapshot",
     };
 
@@ -124,7 +128,7 @@ test(
     const result = {
       protocol_version: 1 as const,
       task_id: taskId,
-      task_kind: "topic_resurface_evaluate" as const,
+      task_kind: "proactivity_deliberate" as const,
       status: "success" as const,
       final_text: '{"decision":"quiet"}',
     };
@@ -195,6 +199,9 @@ test(
             .delete(nativeLiveRuntimeListenerLeases)
             .where(eq(nativeLiveRuntimeListenerLeases.userId, userId));
           await database.db
+            .delete(runtimeProactivityWakes)
+            .where(eq(runtimeProactivityWakes.userId, userId));
+          await database.db
             .delete(conversations)
             .where(eq(conversations.userId, userId));
           await database.db.delete(users).where(eq(users.id, userId));
@@ -234,13 +241,34 @@ test(
     });
 
     const firstTaskId = crypto.randomUUID();
-    const workflow = {
-      kind: "distillation" as const,
-      runId: crypto.randomUUID(),
-      payload: {
-        conversation_id: conversation.id,
-        source_head_message_id: crypto.randomUUID(),
+    const wakeId = crypto.randomUUID();
+    await new DrizzleProactivityWakeRepository(database.db).createOrGet({
+      gate: {
+        wakeId,
+        userId,
+        subjectId: "G",
+        offeredAt: "2026-09-30T00:00:00.000Z",
+        mode: "live",
+        enabled: true,
+        foregroundActive: false,
+        outstandingEffectStatus: null,
+        quietUntil: null,
+        nextEligibleAt: null,
       },
+      contactTarget: null,
+      context: {
+        version: 1,
+        contextManifestId: null,
+        capsule: "archive fence source",
+        sourceConversationId: conversation.id,
+        sourceHeadMessageId: null,
+        sourceActivityAt: "2026-09-29T23:00:00.000Z",
+      },
+    });
+    const workflow = {
+      kind: "proactivity_wake" as const,
+      runId: wakeId,
+      payload: { version: 1, wake_id: wakeId },
     };
     await queue.stage({
       userId,
@@ -249,7 +277,7 @@ test(
       command: {
         protocol_version: 1,
         task_id: firstTaskId,
-        task_kind: "distillation",
+        task_kind: "proactivity_deliberate",
         prompt_contract_version: "archive-fence-v1",
         prompt: "queued before archive",
       },
@@ -278,12 +306,11 @@ test(
         subjectId: "G",
         workflow: {
           ...workflow,
-          runId: crypto.randomUUID(),
         },
         command: {
           protocol_version: 1,
           task_id: crypto.randomUUID(),
-          task_kind: "distillation",
+          task_kind: "proactivity_deliberate",
           prompt_contract_version: "archive-fence-v1",
           prompt: "must not stage while archived",
         },
@@ -322,9 +349,9 @@ test(
         result: {
           protocol_version: 1,
           task_id: firstTaskId,
-          task_kind: "distillation",
+          task_kind: "proactivity_deliberate",
           status: "success",
-          final_text: '{"memories":[]}',
+          final_text: '{"outcome":"quiet"}',
         },
       }),
       /BackgroundWorkflowSourceInactive/,

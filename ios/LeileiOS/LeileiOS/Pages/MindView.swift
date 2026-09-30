@@ -596,14 +596,8 @@ private extension MindProductKind {
             return "heart"
         case .memory:
             return "clock.arrow.circlepath"
-        case .drive:
-            return "arrow.up.forward"
         case .thought:
             return "bubble.left"
-        case .curiosity:
-            return "questionmark.circle"
-        case .topic:
-            return "tag"
         }
     }
 }

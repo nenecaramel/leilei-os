@@ -5,159 +5,103 @@ import {
 } from "../src/domains/runtime/mind-semantic-action.js";
 import {
   NativeLiveMindSemanticActionExecutor,
-  nativeLiveMindSemanticActionIdempotencyKey,
 } from "../src/domains/bridge/native-live-mind-semantic-action.js";
-import {
-  DriveSatisfactionService,
-} from "../src/domains/runtime/drive-satisfaction-runtime-repository.js";
+import type {
+  InitialContextManifest,
+} from "../src/domains/runtime/context-invocation-contract.js";
+import type {
+  ThoughtDropResult,
+} from "../src/domains/runtime/thought-runtime-repository.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";
 const assistantMessageId = "33333333-3333-4333-8333-333333333333";
 const prepareId = "44444444-4444-4444-8444-444444444444";
-const driveStateId = "55555555-5555-4555-8555-555555555555";
-const curiosityStateId = "66666666-6666-4666-8666-666666666666";
+const thoughtOne = "55555555-5555-4555-8555-555555555555";
+const thoughtTwo = "66666666-6666-4666-8666-666666666666";
 
-test("semantic Mind parser extracts only strict branch-safe actions and leaves malformed directives visible", () => {
+function manifest(): InitialContextManifest {
+  const base = {
+    type: "thought",
+    authority: "data" as const,
+    trustBoundary: "subject_state_data" as const,
+    text: "t",
+  };
+  return {
+    manifestId: prepareId,
+    userId,
+    subjectId: "G",
+    conversationId,
+    pathHeadMessageId: null,
+    snapshotSequence: 0,
+    assemblyVersion: "assembly-v2",
+    promptContractVersion: "prompt-v5",
+    createdAt: "2026-09-30T00:00:00.000Z",
+    budget: {
+      maxItems: 16,
+      maxChars: 8000,
+      usedItems: 2,
+      usedChars: 2,
+      overflowPolicy: "drop_lowest_rank",
+    },
+    items: [
+      {
+        ...base,
+        id: `subject-state:${thoughtOne}`,
+        sourceId: thoughtOne,
+        alias: "T1",
+        selection: { reason: "active_thought", rank: 150, truncated: false },
+      },
+      {
+        ...base,
+        id: `subject-state:${thoughtTwo}`,
+        sourceId: thoughtTwo,
+        alias: "T2",
+        selection: { reason: "active_thought", rank: 151, truncated: false },
+      },
+    ],
+  };
+}
+
+const action = (ref: string) => ({
+  kind: "thought_drop" as const,
+  ref,
+  sourceStart: 0,
+  sourceEnd: 1,
+  raw: "x",
+});
+
+test("thought_drop parser extracts strict directives and leaves malformed ones visible", () => {
   const parsed = parseMindSemanticActions([
     "正文。",
-    `<mind_satisfy state_id="${driveStateId}" level="partial" />`,
-    `<mind_satisfy state_id="${driveStateId}" level="full" />`,
-    `<mind_resolve state_id="${curiosityStateId}" />`,
-    '<mind_satisfy state_id="not-a-uuid" level="full" />',
-    `<mind_satisfy state_id="${driveStateId}" level="half" />`,
+    '<thought_drop ref="T1" />',
+    '<thought_drop ref="t2"/>',
+    '<thought_drop ref="X1" />',
+    '<thought_drop ref="T0" />',
+    '<thought_drop state_id="55555555-5555-4555-8555-555555555555" />',
+    '<mind_satisfy state_id="55555555-5555-4555-8555-555555555555" level="full" />',
   ].join("\n"));
 
-  assert.deepEqual(
-    parsed.actions.map((action) =>
-      action.kind === "mind_satisfy"
-        ? [action.kind, action.stateId, action.level]
-        : [action.kind, action.stateId]
-    ),
-    [
-      ["mind_satisfy", driveStateId, "partial"],
-      ["mind_satisfy", driveStateId, "full"],
-      ["mind_resolve", curiosityStateId],
-    ],
-  );
-  assert.equal(
-    parsed.visibleText.includes(
-      `<mind_satisfy state_id="${driveStateId}" level="partial" />`,
-    ),
-    false,
-  );
-  assert.equal(
-    parsed.visibleText.includes(
-      `<mind_satisfy state_id="${driveStateId}" level="full" />`,
-    ),
-    false,
-  );
-  assert.equal(parsed.visibleText.includes("not-a-uuid"), true);
-  assert.equal(parsed.visibleText.includes("level=\"half\""), true);
+  assert.deepEqual(parsed.actions.map((item) => item.ref), ["T1", "T2"]);
+  assert.equal(parsed.visibleText.includes('ref="T1"'), false);
+  assert.equal(parsed.visibleText.includes('ref="t2"'), false);
+  assert.equal(parsed.visibleText.includes('ref="X1"'), true);
+  assert.equal(parsed.visibleText.includes('ref="T0"'), true);
+  assert.equal(parsed.visibleText.includes("state_id"), true);
 });
 
-test("semantic action executor maps meaning to Runtime-owned numbers and returns durable receipts", async () => {
-  const driveCalls: unknown[] = [];
-  const curiosityCalls: unknown[] = [];
+test("thought_drop resolves a turn-local label through the manifest, never through the model", async () => {
+  const drops: unknown[] = [];
   const executor = new NativeLiveMindSemanticActionExecutor(
+    { loadContextManifest: async () => manifest() },
     {
-      async satisfySemantic(input) {
-        driveCalls.push(input);
-        return {
-          outcome: "applied" as const,
-          driveStateId: input.driveStateId,
-          pressure: input.level === "partial" ? 0.2 : 0,
-          phase: input.level === "partial" ? "active" as const : "satisfied" as const,
-          satisfactionTotal: input.level === "partial" ? 0.2 : 1,
-        };
-      },
-    },
-    {
-      async resolve(input) {
-        curiosityCalls.push(input);
-        return {
-          outcome: "applied" as const,
-          curiosityStateId: input.curiosityStateId,
-          resolvedAt: input.now,
-          resolutionSourceId: input.resolutionSourceId,
-          updatedStates: 1,
-        };
+      async dropThought(input): Promise<ThoughtDropResult> {
+        drops.push(input);
+        return { outcome: "applied" };
       },
     },
     "G",
-    () => "2026-09-27T00:30:00.000Z",
-  );
-
-  const satisfy = await executor.execute({
-    userId,
-    conversationId,
-    assistantMessageId,
-    prepareId,
-    actionIndex: 0,
-    action: {
-      kind: "mind_satisfy",
-      stateId: driveStateId,
-      level: "partial",
-      sourceStart: 0,
-      sourceEnd: 1,
-      raw: "x",
-    },
-  });
-  const resolve = await executor.execute({
-    userId,
-    conversationId,
-    assistantMessageId,
-    prepareId,
-    actionIndex: 1,
-    action: {
-      kind: "mind_resolve",
-      stateId: curiosityStateId,
-      sourceStart: 2,
-      sourceEnd: 3,
-      raw: "y",
-    },
-  });
-
-  assert.equal(satisfy.outcome, "applied");
-  assert.equal(resolve.outcome, "applied");
-  assert.deepEqual(driveCalls, [{
-    userId,
-    subjectId: "G",
-    driveStateId,
-    level: "partial",
-    idempotencyKey: nativeLiveMindSemanticActionIdempotencyKey(prepareId, 0),
-    evidence: {
-      kind: "assistant_message",
-      conversationId,
-      messageId: assistantMessageId,
-    },
-    now: "2026-09-27T00:30:00.000Z",
-  }]);
-  assert.deepEqual(curiosityCalls, [{
-    userId,
-    subjectId: "G",
-    curiosityStateId,
-    conversationId,
-    resolutionSourceId: assistantMessageId,
-    idempotencyKey: nativeLiveMindSemanticActionIdempotencyKey(prepareId, 1),
-    now: "2026-09-27T00:30:00.000Z",
-  }]);
-});
-
-test("deterministic semantic action rejection is a receipt, not an endlessly retried exception", async () => {
-  const executor = new NativeLiveMindSemanticActionExecutor(
-    {
-      async satisfySemantic() {
-        return { outcome: "rejected" as const, code: "DRIVE_NOT_ELIGIBLE" as const };
-      },
-    },
-    {
-      async resolve() {
-        return { outcome: "rejected" as const, code: "CURIOSITY_NOT_ACTIVE" as const };
-      },
-    },
-    "G",
-    () => "2026-09-27T00:30:00.000Z",
+    () => "2026-09-30T01:00:00.000Z",
   );
 
   const receipt = await executor.execute({
@@ -166,136 +110,125 @@ test("deterministic semantic action rejection is a receipt, not an endlessly ret
     assistantMessageId,
     prepareId,
     actionIndex: 0,
-    action: {
-      kind: "mind_satisfy",
-      stateId: driveStateId,
-      level: "full",
-      sourceStart: 0,
-      sourceEnd: 1,
-      raw: "x",
-    },
+    action: action("T2"),
   });
+
   assert.deepEqual(receipt, {
     actionIndex: 0,
-    kind: "mind_satisfy",
-    stateId: driveStateId,
-    outcome: "rejected",
-    code: "DRIVE_NOT_ELIGIBLE",
+    kind: "thought_drop",
+    ref: "T2",
+    stateId: thoughtTwo,
+    outcome: "applied",
   });
+  assert.deepEqual(drops, [{
+    userId,
+    subjectId: "G",
+    stateId: thoughtTwo,
+    droppedAt: "2026-09-30T01:00:00.000Z",
+    droppedByMessageId: assistantMessageId,
+  }]);
+});
+
+test("thought_drop rejects a label that was not in front of the model that turn", async () => {
+  let dropped = false;
+  const executor = new NativeLiveMindSemanticActionExecutor(
+    { loadContextManifest: async () => manifest() },
+    {
+      async dropThought(): Promise<ThoughtDropResult> {
+        dropped = true;
+        return { outcome: "applied" };
+      },
+    },
+    "G",
+  );
+
+  const receipt = await executor.execute({
+    userId,
+    conversationId,
+    assistantMessageId,
+    prepareId,
+    actionIndex: 0,
+    action: action("T3"),
+  });
+
+  assert.equal(receipt.outcome, "rejected");
+  assert.equal(receipt.code, "THOUGHT_REF_UNKNOWN");
+  assert.equal(receipt.stateId, null);
+  assert.equal(dropped, false);
+});
+
+test("thought_drop rejects when the manifest is missing or belongs to another conversation", async () => {
+  const missing = new NativeLiveMindSemanticActionExecutor(
+    { loadContextManifest: async () => null },
+    { dropThought: async () => ({ outcome: "applied" }) },
+    "G",
+  );
+  const foreign = new NativeLiveMindSemanticActionExecutor(
+    {
+      loadContextManifest: async () => ({
+        ...manifest(),
+        conversationId: "77777777-7777-4777-8777-777777777777",
+      }),
+    },
+    { dropThought: async () => ({ outcome: "applied" }) },
+    "G",
+  );
+
+  for (const executor of [missing, foreign]) {
+    const receipt = await executor.execute({
+      userId,
+      conversationId,
+      assistantMessageId,
+      prepareId,
+      actionIndex: 0,
+      action: action("T1"),
+    });
+    assert.equal(receipt.outcome, "rejected");
+    assert.equal(receipt.code, "MANIFEST_NOT_FOUND");
+  }
+});
+
+test("thought_drop passes through repository rejections and idempotent replays", async () => {
+  const outcomes: ThoughtDropResult[] = [
+    { outcome: "idempotent" },
+    { outcome: "rejected", code: "THOUGHT_NOT_SETTLED" },
+  ];
+  const executor = new NativeLiveMindSemanticActionExecutor(
+    { loadContextManifest: async () => manifest() },
+    { dropThought: async () => outcomes.shift()! },
+    "G",
+  );
+
+  const replay = await executor.execute({
+    userId, conversationId, assistantMessageId, prepareId,
+    actionIndex: 0, action: action("T1"),
+  });
+  const rejected = await executor.execute({
+    userId, conversationId, assistantMessageId, prepareId,
+    actionIndex: 1, action: action("T1"),
+  });
+
+  assert.equal(replay.outcome, "idempotent");
+  assert.equal(replay.stateId, thoughtOne);
+  assert.equal(rejected.outcome, "rejected");
+  assert.equal(rejected.code, "THOUGHT_NOT_SETTLED");
 });
 
 
-test("Drive semantic satisfaction maps partial/full meaning through Runtime policy instead of model-authored numbers", async () => {
-  const amounts: number[] = [];
-  const evolutionPort = {
-    async listCandidates() {
-      return [];
-    },
-    async applyUpdates() {
-      return { applied: 0, conflicts: 0 };
-    },
-  };
-  const satisfactionPort = {
-    async applySatisfaction(input: { amount: number; driveStateId: string }) {
-      amounts.push(input.amount);
-      return {
-        outcome: "applied" as const,
-        driveStateId: input.driveStateId,
-        pressure: 0,
-        phase: "satisfied" as const,
-        satisfactionTotal: input.amount,
-      };
-    },
-  };
-  const service = new DriveSatisfactionService(
-    evolutionPort,
-    satisfactionPort,
-    {
-      basePressure: 0.4,
-      reinforcementBoost: 0.2,
-      activeThreshold: 0.1,
-      dormantAfterSatisfiedHours: 168,
-      minEvolutionIntervalHours: 6,
-      maxReinforcementSources: 16,
-    },
-  );
-  const base = {
-    userId,
-    subjectId: "G",
-    driveStateId,
-    evidence: {
-      kind: "assistant_message" as const,
-      conversationId,
-      messageId: assistantMessageId,
-    },
-    now: "2026-09-27T00:30:00.000Z",
-  };
-
-  await service.satisfySemantic({
-    ...base,
-    level: "partial",
-    idempotencyKey: "semantic-partial-0001",
-  });
-  await service.satisfySemantic({
-    ...base,
-    level: "full",
-    idempotencyKey: "semantic-full-0000001",
-  });
-
-  assert.deepEqual(amounts, [0.2, 1]);
+test("complete retired wrappers protect thought_drop directives", () => {
+  for (const tag of ["drive", "curiosity", "topic", "dream"]) {
+    const source = `<${tag}><thought_drop ref="T1" /></${tag}>`;
+    const parsed = parseMindSemanticActions(source);
+    assert.deepEqual(parsed.actions, [], source);
+    assert.equal(parsed.visibleText, source);
+  }
 });
 
-
-test("durable Drive satisfaction stays applied when derived post-projection refresh fails", async () => {
-  let evolutionRuns = 0;
-  const service = new DriveSatisfactionService(
-    {
-      async listCandidates() {
-        evolutionRuns += 1;
-        if (evolutionRuns > 1) {
-          throw new Error("derived refresh unavailable");
-        }
-        return [];
-      },
-      async applyUpdates() {
-        return { applied: 0, conflicts: 0 };
-      },
-    },
-    {
-      async applySatisfaction(input) {
-        return {
-          outcome: "applied" as const,
-          driveStateId: input.driveStateId,
-          pressure: 0,
-          phase: "satisfied" as const,
-          satisfactionTotal: input.amount,
-        };
-      },
-    },
-    {
-      basePressure: 0.4,
-      reinforcementBoost: 0.2,
-      activeThreshold: 0.1,
-      dormantAfterSatisfiedHours: 168,
-      minEvolutionIntervalHours: 6,
-      maxReinforcementSources: 16,
-    },
-  );
-
-  const result = await service.satisfySemantic({
-    userId,
-    subjectId: "G",
-    driveStateId,
-    level: "full",
-    idempotencyKey: "semantic-refresh-0001",
-    evidence: {
-      kind: "assistant_message",
-      conversationId,
-      messageId: assistantMessageId,
-    },
-    now: "2026-09-27T00:30:00.000Z",
-  });
-
-  assert.equal(result.outcome, "applied");
-  assert.equal(evolutionRuns, 2);
+test("only thought_drop directives outside retired wrappers are extracted", () => {
+  const wrapper = '<topic><curiosity><thought_drop ref="T1" /></curiosity><thought_drop ref="T2" /></topic>';
+  const source = `${wrapper}<thought_drop ref="T3" />`;
+  const parsed = parseMindSemanticActions(source);
+  assert.deepEqual(parsed.actions.map(({ ref }) => ref), ["T3"]);
+  assert.equal(parsed.actions[0]?.sourceStart, wrapper.length);
+  assert.equal(parsed.visibleText, wrapper);
 });

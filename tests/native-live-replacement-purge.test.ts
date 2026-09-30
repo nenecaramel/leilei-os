@@ -4,7 +4,7 @@ import {
   planCausalSubjectStatePurge,
   planExclusiveProviderSessionCleanup,
   planReplacementMessagePurge,
-  planSubjectStateEvolutionRepairs,
+  planSubjectStateRepairs,
   stateReferencesAnyId,
 } from "../src/domains/bridge/native-live-replacement-purge.js";
 import type {
@@ -118,7 +118,7 @@ test("causal Mind purge follows message provenance and derived state chains", ()
   const states = [
     {
       id: "state-old",
-      kind: "drive",
+      kind: "thought",
       payload: null,
       envelope: { provenance: { sources: [{ kind: "message", id: "a2" }] } },
       scopeConversationId: "c1",
@@ -126,7 +126,7 @@ test("causal Mind purge follows message provenance and derived state chains", ()
     },
     {
       id: "state-derived",
-      kind: "topic",
+      kind: "thought",
       payload: { seed_state_id: "state-old" },
       envelope: { provenance: { sources: [{ kind: "persistent_state", id: "state-old" }] } },
       scopeConversationId: null,
@@ -144,128 +144,72 @@ test("causal Mind purge follows message provenance and derived state chains", ()
 
   assert.deepEqual(
     new Set(planCausalSubjectStatePurge({
-      conversationId: "c1",
       purgeMessageIds: purgedMessages,
-      resetDistillation: false,
       states,
     })),
     new Set(["state-old", "state-derived"]),
   );
 });
 
-test("surviving state is preserved while contaminated evolution cache is stripped", () => {
-  const purgeMessageIds = new Set(["old-message"]);
+test("a thought dropped by a purged turn is active again; the states it touched survive", () => {
+  const purgeMessageIds = new Set(["old-assistant"]);
+  const active = { thought_v2: { status: "active" } };
   const states = [
     {
-      id: "surviving-drive",
-      kind: "drive",
+      id: "dropped-by-purged-turn",
+      kind: "thought",
       payload: {
         source_start: 1,
-        drive_v1: {
-          pressure: 0.8,
-          reinforcementSources: ["safe-message", "old-message"],
+        thought_v2: {
+          status: "dropped",
+          reason: "subject",
+          droppedAt: "2026-09-30T00:00:00.000Z",
+          droppedByMessageId: "old-assistant",
         },
       },
-      envelope: {
-        provenance: {
-          sources: [{ kind: "message", id: "safe-message" }],
-          causedBy: "safe-message",
-        },
-      },
-      scopeConversationId: null,
-      scopePathHeadMessageId: null,
     },
     {
-      id: "old-drive",
-      kind: "drive",
+      id: "dropped-by-surviving-turn",
+      kind: "thought",
       payload: {
-        drive_v1: {
-          pressure: 0.8,
-          reinforcementSources: ["safe-message", "old-message"],
+        thought_v2: {
+          status: "dropped",
+          reason: "subject",
+          droppedAt: "2026-09-30T00:00:00.000Z",
+          droppedByMessageId: "safe-assistant",
         },
       },
-      envelope: {
-        provenance: {
-          sources: [{ kind: "message", id: "old-message" }],
-          causedBy: "old-message",
-        },
-      },
-      scopeConversationId: null,
-      scopePathHeadMessageId: null,
     },
+    {
+      id: "dropped-by-capacity",
+      kind: "thought",
+      payload: {
+        thought_v2: {
+          status: "dropped",
+          reason: "capacity",
+          droppedAt: "2026-09-30T00:00:00.000Z",
+          droppedByMessageId: null,
+        },
+      },
+    },
+    { id: "still-active", kind: "thought", payload: active },
   ];
 
-  const purgeStateIds = new Set(planCausalSubjectStatePurge({
-    conversationId: "c1",
-    purgeMessageIds,
-    resetDistillation: false,
-    states,
-  }));
-  assert.deepEqual(purgeStateIds, new Set(["old-drive"]));
-
-  const repairs = planSubjectStateEvolutionRepairs({
+  const repairs = planSubjectStateRepairs({
     states,
     purgeMessageIds,
-    purgeStateIds,
+    purgeStateIds: new Set(),
   });
+
   assert.deepEqual(repairs, [{
-    stateId: "surviving-drive",
-    nextPayload: { source_start: 1 },
+    stateId: "dropped-by-purged-turn",
+    nextPayload: { source_start: 1, thought_v2: { status: "active" } },
+    revivedThought: true,
   }]);
 });
 
-test("semantic action projections are invalidated when their branch provenance is purged", () => {
-  const repairs = planSubjectStateEvolutionRepairs({
-    states: [
-      {
-        id: "drive-anchor",
-        kind: "drive",
-        payload: {
-          drive_v1: {
-            anchorStateId: "drive-anchor",
-            reinforcementSources: ["safe-message"],
-            pressure: 0.2,
-          },
-        },
-      },
-      {
-        id: "drive-copy",
-        kind: "drive",
-        payload: {
-          drive_v1: {
-            anchorStateId: "drive-anchor",
-            reinforcementSources: ["safe-message"],
-            pressure: 0.2,
-          },
-        },
-      },
-      {
-        id: "curiosity-anchor",
-        kind: "curiosity",
-        payload: {
-          curiosity_v1: {
-            anchorStateId: "curiosity-anchor",
-            reinforcementSources: ["safe-message"],
-            resolutionSourceId: "old-assistant",
-            phase: "resolved",
-          },
-        },
-      },
-    ],
-    purgeMessageIds: new Set(["old-assistant"]),
-    purgeStateIds: new Set(),
-    additionalEvolutionCausalIds: new Set(["drive-anchor"]),
-  });
-
-  assert.deepEqual(
-    repairs.map((repair) => repair.stateId).sort(),
-    ["curiosity-anchor", "drive-anchor", "drive-copy"],
-  );
-  assert.equal(repairs.every((repair) => repair.nextPayload === null), true);
-});
-
 test("Edit causal purge removes only Memory recall contribution from the purged user source", () => {
-  const repairs = planSubjectStateEvolutionRepairs({
+  const repairs = planSubjectStateRepairs({
     states: [{
       id: "memory-anchor",
       kind: "memory",
@@ -320,23 +264,6 @@ test("Edit causal purge removes only Memory recall contribution from the purged 
       currentValue: 0.08,
     }],
   );
-});
-
-test("distillation reset drops all distilled memories for that conversation", () => {
-  const ids = planCausalSubjectStatePurge({
-    conversationId: "c1",
-    purgeMessageIds: new Set(["a4"]),
-    resetDistillation: true,
-    states: [{
-      id: "distilled",
-      kind: "memory",
-      payload: { formation: "distillation" },
-      envelope: { provenance: { sources: [{ kind: "message", id: "a1" }] } },
-      scopeConversationId: "c1",
-      scopePathHeadMessageId: "a1",
-    }],
-  });
-  assert.deepEqual(ids, ["distilled"]);
 });
 
 test("structured reference scan matches exact ids only", () => {

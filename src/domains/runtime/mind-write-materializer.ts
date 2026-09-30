@@ -2,7 +2,7 @@ import type { RuntimeStatusAxes } from "./runtime-status-axes.js";
 import type { RuntimePrincipal } from "./persistent-write-envelope.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
 import type { MindWriteIntent } from "./mind-intent-parser.js";
-import { writeSubjectStateTemporal } from "./subject-state-temporal.js";
+import { createMindState } from "./mind-writer.js";
 
 export type MaterializeMindWritesInput = {
   userId: string;
@@ -27,60 +27,35 @@ export type MaterializeMindWritesInput = {
  * Converts explicit subject-authored tags into typed state. It does not guess
  * from ordinary prose. The caller supplies the source status axes so this layer
  * does not pretend that "generated", "presented", "current", and "settled" are
- * the same thing.
+ * the same thing. Everything that shapes the stored state lives in
+ * `createMindState`.
  */
 export function materializeMindWrites(
   input: MaterializeMindWritesInput,
 ): SubjectStateWrite[] {
-  return input.intents.map((intent) => {
-    const basePayload = {
-      source_start: intent.sourceStart,
-      source_end: intent.sourceEnd,
-    };
-    const payload =
-      intent.kind === "memory" || intent.kind === "feel"
-        ? writeSubjectStateTemporal(basePayload, {
-            occurredAt: input.sourceOccurredAt,
-            basis: "source_message",
-            sourceMessageId: input.assistantMessageId,
-          })
-        : basePayload;
-
-    return {
+  return input.intents.map((intent) =>
+    createMindState({
       id: input.createId(),
+      userId: input.userId,
+      subjectId: input.subjectId,
       kind: intent.kind,
       text: intent.text,
-      payload,
-      envelope: {
-      semanticActor: { kind: "subject", id: input.subjectId },
-      producer: input.producer,
-      committer: input.committer,
-      authority: "subject_authorized",
-      scope: {
-        userId: input.userId,
-        subjectId: input.subjectId,
-        applicability: "path",
+      source: {
+        origin: "assistant",
         conversationId: input.conversationId,
-        pathHeadMessageId: input.assistantMessageId,
+        assistantMessageId: input.assistantMessageId,
+        occurredAt: input.sourceOccurredAt,
+        span: { start: intent.sourceStart, end: intent.sourceEnd },
+        producer: input.producer,
+        committer: input.committer,
+        status: input.sourceStatus,
         visibility: input.visibility,
         sensitivity: input.sensitivity,
         audience: input.audience,
-      },
-      status: input.sourceStatus,
-      provenance: {
-        sources: [{ kind: "message", id: input.assistantMessageId }],
-        causedBy: input.assistantMessageId,
-        derivedFrom: [],
-        decisionId: null,
-        processRunId: null,
-      },
-      versions: {
-        schemaVersion: 1,
         ruleVersion: input.ruleVersion,
         processVersion: input.processVersion,
-        model: input.model ?? null,
+        model: input.model,
       },
-      },
-    };
-  });
+    }),
+  );
 }

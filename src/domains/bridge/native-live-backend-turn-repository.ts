@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { enforceThoughtCapacity } from "../runtime/thought-runtime-repository.js";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationMessages,
@@ -11,8 +12,6 @@ import {
   nativeLiveTurnPreparations,
   workspaceConversations,
   workspaces,
-  runtimeDistillationWatermarks,
-  runtimeDriveSatisfactionEvents,
   runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
@@ -51,7 +50,7 @@ import {
   planCausalSubjectStatePurge,
   planExclusiveProviderSessionCleanup,
   planReplacementMessagePurge,
-  planSubjectStateEvolutionRepairs,
+  planSubjectStateRepairs,
   workflowReferencesAnyId,
   type ReplacementPurgePlan,
 } from "./native-live-replacement-purge.js";
@@ -1201,47 +1200,10 @@ implements NativeLiveBackendTurnPort {
         .onConflictDoNothing();
     }
 
-    const watermarks = await transaction
-      .select({
-        lastSourceMessageId:
-          runtimeDistillationWatermarks.lastSourceMessageId,
-      })
-      .from(runtimeDistillationWatermarks)
-      .where(
-        and(
-          eq(runtimeDistillationWatermarks.userId, row.userId),
-          eq(
-            runtimeDistillationWatermarks.conversationId,
-            row.conversationId,
-          ),
-        ),
-      );
-
-    const resetDistillation = watermarks.some((watermark) =>
-      purgeMessageIds.has(watermark.lastSourceMessageId)
-    );
-
-    const affectedDriveSatisfaction = await transaction
-      .select({
-        driveStateId: runtimeDriveSatisfactionEvents.driveStateId,
-      })
-      .from(runtimeDriveSatisfactionEvents)
-      .where(
-        and(
-          eq(runtimeDriveSatisfactionEvents.userId, row.userId),
-          inArray(
-            runtimeDriveSatisfactionEvents.evidenceMessageId,
-            [...purgeMessageIds],
-          ),
-        ),
-      );
-    const actionProjectionCausalIds = new Set(
-      affectedDriveSatisfaction.map((event) => event.driveStateId),
-    );
-
     const states = await transaction
       .select({
         id: runtimeSubjectStates.id,
+        subjectId: runtimeSubjectStates.subjectId,
         kind: runtimeSubjectStates.kind,
         payload: runtimeSubjectStates.payload,
         envelope: runtimeSubjectStates.envelope,
@@ -1253,17 +1215,14 @@ implements NativeLiveBackendTurnPort {
       .where(eq(runtimeSubjectStates.userId, row.userId));
 
     const purgeStateIds = planCausalSubjectStatePurge({
-      conversationId: row.conversationId,
       purgeMessageIds,
-      resetDistillation,
       states,
     });
     const purgeStateIdSet = new Set(purgeStateIds);
-    const evolutionRepairs = planSubjectStateEvolutionRepairs({
+    const stateRepairs = planSubjectStateRepairs({
       states,
       purgeMessageIds,
       purgeStateIds: purgeStateIdSet,
-      additionalEvolutionCausalIds: actionProjectionCausalIds,
       memoryLifecyclePolicy: this.memoryLifecyclePolicy,
       repairedAt: new Date().toISOString(),
     });
@@ -1282,19 +1241,12 @@ implements NativeLiveBackendTurnPort {
       .where(eq(nativeLiveBackgroundModelJobs.userId, row.userId));
 
     const purgeBackgroundJobIds = backgroundJobs
-      .filter((job) => {
-        if (
-          resetDistillation
-          && job.workflowKind === "distillation"
-          && job.workflowPayload?.conversation_id === row.conversationId
-        ) {
-          return true;
-        }
-        return workflowReferencesAnyId(
+      .filter((job) =>
+        workflowReferencesAnyId(
           job.workflowPayload,
           causalIds,
-        );
-      })
+        )
+      )
       .map((job) => job.id);
 
     if (purgeBackgroundJobIds.length > 0) {
@@ -1311,20 +1263,6 @@ implements NativeLiveBackendTurnPort {
         );
     }
 
-    if (resetDistillation) {
-      await transaction
-        .delete(runtimeDistillationWatermarks)
-        .where(
-          and(
-            eq(runtimeDistillationWatermarks.userId, row.userId),
-            eq(
-              runtimeDistillationWatermarks.conversationId,
-              row.conversationId,
-            ),
-          ),
-        );
-    }
-
     if (purgeStateIds.length > 0) {
       await transaction
         .delete(runtimeSubjectStates)
@@ -1336,7 +1274,7 @@ implements NativeLiveBackendTurnPort {
         );
     }
 
-    for (const repair of evolutionRepairs) {
+    for (const repair of stateRepairs) {
       await transaction
         .update(runtimeSubjectStates)
         .set({
@@ -1349,6 +1287,24 @@ implements NativeLiveBackendTurnPort {
             eq(runtimeSubjectStates.id, repair.stateId),
           ),
         );
+    }
+    // A revived thought can push the active set past its limit.
+    const revivedIds = new Set(
+      stateRepairs
+        .filter((repair) => repair.revivedThought)
+        .map((repair) => repair.stateId),
+    );
+    const revivedSubjectIds = new Set(
+      states
+        .filter((state) => revivedIds.has(state.id))
+        .map((state) => state.subjectId),
+    );
+    for (const subjectId of revivedSubjectIds) {
+      await enforceThoughtCapacity(transaction, {
+        userId: row.userId,
+        subjectId,
+        droppedAt: new Date().toISOString(),
+      });
     }
 
     await transaction

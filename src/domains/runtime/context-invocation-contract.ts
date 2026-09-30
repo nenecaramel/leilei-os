@@ -26,6 +26,11 @@ export type ContextManifestItem = {
     | "subject_state_data";
   text?: string | null;
   payload?: Record<string, unknown> | null;
+  /**
+   * Turn-local label the model sees instead of `sourceId` (for example T1 for
+   * an active thought). Only the manifest can map it back to a real state.
+   */
+  alias?: string | null;
   selection: ContextSelection;
 };
 

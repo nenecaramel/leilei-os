@@ -59,11 +59,11 @@ function job(): NativeLiveMindFollowUpJob {
         raw: "<feel>warm</feel>",
       },
       {
-        kind: "drive",
+        kind: "thought",
         text: "keep exploring",
         sourceStart: 54,
         sourceEnd: 90,
-        raw: "<drive>keep exploring</drive>",
+        raw: "<thought>keep exploring</thought>",
       },
     ],
   };
@@ -116,12 +116,6 @@ class FakeMind implements NativeLiveBackendMindRuntime {
 }
 
 function setup(
-  backgroundOpportunity: {
-    schedule(input: {
-      userId: string;
-      conversationId: string;
-    }): void;
-  } | null = null,
   semanticActions: {
     execute(input: unknown): Promise<any>;
   } | null = null,
@@ -138,7 +132,6 @@ function setup(
     turns,
     mind,
     "77777777-7777-4777-8777-777777777777",
-    backgroundOpportunity,
     semanticActions,
   );
   return { port, mind, service };
@@ -170,25 +163,29 @@ test("durable Mind follow-up uses stable per-intent UUIDs and completes only aft
   assert.equal(port.releaseCalls.length, 0);
 });
 
-test("durable Mind follow-up executes staged semantic actions only after canonical finalize and persists receipts", async () => {
+test("durable Mind follow-up executes staged thought drops only after canonical finalize and persists receipts", async () => {
   const receipts = [
     {
       actionIndex: 0,
-      kind: "mind_satisfy",
+      kind: "thought_drop",
+      ref: "T1",
       stateId: "88888888-8888-4888-8888-888888888888",
       outcome: "applied",
     },
     {
       actionIndex: 1,
-      kind: "mind_resolve",
+      kind: "thought_drop",
+      ref: "T2",
       stateId: "99999999-9999-4999-8999-999999999999",
       outcome: "idempotent",
     },
   ];
   const semanticCalls: unknown[] = [];
-  const { port, service } = setup(null, {
+  const { port, mind, service } = setup({
     async execute(input) {
       semanticCalls.push(input);
+      // The drop must not run before the canonical finalize has happened.
+      assert.equal(mind.finalizeCalls.length, 1);
       return receipts[semanticCalls.length - 1]!;
     },
   });
@@ -197,16 +194,15 @@ test("durable Mind follow-up executes staged semantic actions only after canonic
     intents: [],
     actions: [
       {
-        kind: "mind_satisfy",
-        stateId: "88888888-8888-4888-8888-888888888888",
-        level: "partial",
+        kind: "thought_drop",
+        ref: "T1",
         sourceStart: 0,
         sourceEnd: 1,
         raw: "x",
       },
       {
-        kind: "mind_resolve",
-        stateId: "99999999-9999-4999-8999-999999999999",
+        kind: "thought_drop",
+        ref: "T2",
         sourceStart: 2,
         sourceEnd: 3,
         raw: "y",
@@ -236,27 +232,6 @@ test("failed Mind follow-up is released for durable retry instead of fabricating
   );
   assert.equal(port.completeCalls.length, 0);
   assert.equal(port.releaseCalls.length, 1);
-});
-
-test("completed durable Mind follow-up offers one fail-soft post-turn background opportunity", async () => {
-  const scheduled: unknown[] = [];
-  const { port, service } = setup({
-    schedule(input) {
-      scheduled.push(input);
-      throw new Error("background scheduling stays soft");
-    },
-  });
-
-  assert.equal(
-    await service.processPreparation({ userId, prepareId }),
-    "processed",
-  );
-  assert.deepEqual(scheduled, [{
-    userId,
-    conversationId,
-  }]);
-  assert.equal(port.completeCalls.length, 1);
-  assert.equal(port.releaseCalls.length, 0);
 });
 
 test("Mind follow-up scheduler drains bounded work and never lets one failed job stop later work", async () => {

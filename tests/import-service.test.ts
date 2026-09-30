@@ -1560,88 +1560,88 @@ test("v3 Universe provenance rejects a missing Diary parent", async () => {
 });
 
 
-test("v3 Mind continuity restores semantic ledgers and watermark after canonical state", async () => {
+test("v3 packages carrying a retired Mind kind are rejected at preview", async () => {
   const repository = new FakeImportRepository({
     diary: [],
     todo: [],
     mind: [],
-    mind_continuity: {
-      drive_satisfaction_events: [],
-      curiosity_resolution_events: [],
-      distillation_watermarks: [],
-      semantic_grouping_results: [],
-    },
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
-  });
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes({
-    conversations: conversationBundle,
-    mind: [driveCandidateState, driveState, curiosityState],
-    mind_continuity: mindContinuity,
-  });
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.equal(preview.summary.mind?.create, 7);
-  assert.equal(preview.summary.mind?.invalid, 0);
-  assert.equal(preview.can_execute, true);
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.deepEqual(
-    repository.state.mind,
-    [driveCandidateState, driveState, curiosityState],
-  );
-  assert.deepEqual(
-    repository.state.mind_continuity,
-    mindContinuity,
-  );
-  assert.equal(repository.writes, 13);
-});
-
-test("v3 Mind continuity rejects semantic events without canonical evidence", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [],
-    mind_continuity: {
-      drive_satisfaction_events: [],
-      curiosity_resolution_events: [],
-      distillation_watermarks: [],
-      semantic_grouping_results: [],
-    },
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
   });
   const service = new ImportService(repository);
 
-  const preview = await service.preview(
-    v3PackageBytes({
-      mind: [driveCandidateState, driveState, curiosityState],
-      mind_continuity: mindContinuity,
-    }),
-    USER_ID,
+  await assert.rejects(
+    service.preview(
+      v3PackageBytes({ mind: [driveState] }),
+      USER_ID,
+    ),
+    (error: unknown) =>
+      error instanceof Error
+      && "code" in error
+      && (error as { code: string }).code === "INVALID_IMPORT_FILE",
   );
-
-  assert.ok((preview.summary.mind?.invalid ?? 0) >= 3);
-  assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
 
+const watermarkOnlyContinuity: ExportMindContinuityBundle = {
+  drive_satisfaction_events: [],
+  curiosity_resolution_events: [],
+  distillation_watermarks: mindContinuity.distillation_watermarks,
+  semantic_grouping_results: [],
+};
+
+function emptyContinuityRepository() {
+  return new FakeImportRepository({
+    diary: [],
+    todo: [],
+    mind: [],
+    mind_continuity: {
+      drive_satisfaction_events: [],
+      curiosity_resolution_events: [],
+      distillation_watermarks: [],
+      semantic_grouping_results: [],
+    },
+    conversations: {
+      conversations: [],
+      messages: [],
+      content_blocks: [],
+      attachments: [],
+      provider_checkpoints: [],
+    },
+  });
+}
+
+// Distillation no longer runs, but existing watermarks are still exported, so
+// a backup must keep restoring them after (and only after) canonical state.
+test("v3 Mind continuity still restores a historical watermark after its canonical conversation", async () => {
+  const repository = emptyContinuityRepository();
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({
+    conversations: conversationBundle,
+    mind_continuity: watermarkOnlyContinuity,
+  });
+
+  const preview = await service.preview(raw, USER_ID);
+  assert.equal(preview.can_execute, true);
+  await service.execute(raw, USER_ID, preview.preview_fingerprint);
+
+  assert.deepEqual(
+    repository.state.mind_continuity?.distillation_watermarks,
+    watermarkOnlyContinuity.distillation_watermarks,
+  );
+});
+
+test("v3 Mind continuity rejects a historical watermark without canonical evidence", async () => {
+  const repository = emptyContinuityRepository();
+  const service = new ImportService(repository);
+
+  const preview = await service.preview(
+    v3PackageBytes({ mind_continuity: watermarkOnlyContinuity }),
+    USER_ID,
+  );
+
+  assert.equal(preview.can_execute, false);
+  assert.ok((preview.summary.mind?.invalid ?? 0) >= 1);
+  assert.equal(repository.writes, 0);
+});
 
 test("v3 conversation checkpoint restore preserves continuation handle", async () => {
   const repository = new FakeImportRepository({
@@ -1706,40 +1706,6 @@ test("v3 conversation checkpoint preview rejects a foreign checkpoint id", async
   assert.equal(repository.writes, 0);
 });
 
-
-test("v3 semantic grouping restore rejects a missing candidate state", async () => {
-  const grouping =
-    mindContinuity.semantic_grouping_results[0]!;
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [],
-    mind_continuity: {
-      drive_satisfaction_events: [],
-      curiosity_resolution_events: [],
-      distillation_watermarks: [],
-      semantic_grouping_results: [],
-    },
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({
-      mind: [driveState],
-      mind_continuity: {
-        drive_satisfaction_events: [],
-        curiosity_resolution_events: [],
-        distillation_watermarks: [],
-        semantic_grouping_results: [grouping],
-      },
-    }),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.mind?.invalid, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
 
 test("v3 semantic grouping restore conflicts with an occupied nonterminal grouping key", async () => {
   const grouping =

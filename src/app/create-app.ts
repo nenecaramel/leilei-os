@@ -85,9 +85,7 @@ export type NativeLiveProductionDependencies = {
     Required<
       Omit<
         NativeLiveRelayInternalDependencies,
-        "backgroundModelOpportunity"
-        | "mindSemanticGrouping"
-        | "observeCompanionBackgroundOpportunity"
+        "observeCompanionBackgroundOpportunity"
         | "manualCompactService"
         | "externalSessionBridgeService"
         | "attachmentService"
@@ -95,9 +93,7 @@ export type NativeLiveProductionDependencies = {
     >
     & Pick<
       NativeLiveRelayInternalDependencies,
-      "backgroundModelOpportunity"
-      | "mindSemanticGrouping"
-      | "observeCompanionBackgroundOpportunity"
+      "observeCompanionBackgroundOpportunity"
       | "manualCompactService"
       | "externalSessionBridgeService"
       | "attachmentService"
@@ -513,8 +509,6 @@ export function createApp(
                   event.effectDeliveryScheduled,
                 proactivityScheduled:
                   event.proactivityScheduled,
-                topicResurfaceOffered:
-                  event.topicResurfaceOffered,
                 failureCount: event.failureCount,
               },
             );

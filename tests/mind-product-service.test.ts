@@ -186,6 +186,13 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
       occurredAt: "2025-01-01T19:04:05.000Z",
       note: "copied by hand",
     },
+    temporal_v1: {
+      occurredAt: "2025-01-01T19:04:05.000Z",
+      basis: "user_supplied",
+      sourceMessageId: null,
+    },
+    // A manually written thought starts active.
+    thought_v2: { status: "active" },
   });
 });
 

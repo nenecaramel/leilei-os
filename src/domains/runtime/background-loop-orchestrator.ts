@@ -1,12 +1,6 @@
 
 export type BackgroundLoopKind =
   | "decay"
-  | "distillation"
-  | "thought_evolution"
-  | "drive_evolution"
-  | "topic_lifecycle"
-  | "mind_retirement"
-  | "topic_resurface"
   | "proactivity_wake"
   | "effect_delivery";
 

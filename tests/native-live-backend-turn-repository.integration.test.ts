@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
+import {
+  readThoughtLifecycle,
+  writeThoughtActive,
+  writeThoughtDropped,
+} from "../src/domains/runtime/thought.js";
 import {
   nativeLiveBackgroundModelJobs,
   nativeLiveChatAttachments,
@@ -414,8 +419,8 @@ test(
         id: causalStateId,
         userId: user.id,
         subjectId: "G",
-        kind: "drive",
-        text: "old branch drive",
+        kind: "thought",
+        text: "old branch thought",
         payload: null,
         scopeApplicability: "global",
         scopeConversationId: null,
@@ -545,13 +550,18 @@ test(
             settlementStatus: "settled",
             validityStatus: "valid",
           },
+          // Historical distilled memories cite every message of their window,
+          // so the generic causal purge reaches them without a special case.
           provenance: {
-            sources: [{
-              kind: "message",
-              id: firstFinalize.assistantMessageId,
-            }],
+            sources: [
+              { kind: "message", id: firstFinalize.assistantMessageId },
+              { kind: "message", id: oldSecondAssistantId },
+            ],
             causedBy: firstFinalize.assistantMessageId,
-            derivedFrom: [firstFinalize.assistantMessageId],
+            derivedFrom: [
+              firstFinalize.assistantMessageId,
+              oldSecondAssistantId,
+            ],
             processRunId: crypto.randomUUID(),
           },
           versions: {
@@ -561,6 +571,85 @@ test(
           },
         },
       },
+    ]);
+
+    // Thoughts: one was dropped by the turn that Retry is about to purge, two
+    // others stay active. The dropped one must come back, within the limit.
+    const thoughtEnvelope = {
+      semanticActor: { kind: "subject", id: "G" },
+      producer: { kind: "model", id: "test" },
+      committer: { kind: "runtime", id: "test" },
+      authority: "subject_authorized",
+      scope: {
+        userId: user.id,
+        subjectId: "G",
+        applicability: "global",
+        conversationId: null,
+        pathHeadMessageId: null,
+        visibility: "subject_private",
+        sensitivity: "normal",
+        audience: ["G"],
+      },
+      status: {
+        generationStatus: "committed",
+        presentationStatus: "presented",
+        pathStatus: "current",
+        settlementStatus: "settled",
+        validityStatus: "valid",
+      },
+      provenance: {
+        sources: [{ kind: "manual_entry", id: "manual:thought" }],
+        causedBy: "manual:thought",
+        derivedFrom: [],
+      },
+      versions: { schemaVersion: 1, ruleVersion: "test", processVersion: "test" },
+    };
+    const revivedThoughtId = crypto.randomUUID();
+    const keptThoughtIds = [crypto.randomUUID(), crypto.randomUUID()];
+    const thoughtRow = (
+      id: string,
+      text: string,
+      createdAt: Date,
+      payload: Record<string, unknown>,
+    ) => ({
+      id,
+      userId: user.id,
+      subjectId: "G",
+      kind: "thought" as const,
+      text,
+      payload,
+      scopeApplicability: "global" as const,
+      scopeConversationId: null,
+      scopePathHeadMessageId: null,
+      settlementStatus: "settled" as const,
+      pathStatus: "current" as const,
+      validityStatus: "valid" as const,
+      envelope: thoughtEnvelope,
+      createdAt,
+    });
+    await database.db.insert(runtimeSubjectStates).values([
+      thoughtRow(
+        revivedThoughtId,
+        "dropped by the turn Retry will purge",
+        new Date("2026-09-01T00:00:00.000Z"),
+        writeThoughtDropped(null, {
+          reason: "subject",
+          droppedAt: "2026-09-30T00:00:00.000Z",
+          droppedByMessageId: oldSecondAssistantId,
+        }),
+      ),
+      thoughtRow(
+        keptThoughtIds[0]!,
+        "still active one",
+        new Date("2026-09-02T00:00:00.000Z"),
+        writeThoughtActive(null),
+      ),
+      thoughtRow(
+        keptThoughtIds[1]!,
+        "still active two",
+        new Date("2026-09-03T00:00:00.000Z"),
+        writeThoughtActive(null),
+      ),
     ]);
 
     await database.db.insert(runtimeDistillationWatermarks).values({
@@ -650,6 +739,30 @@ test(
     assert.equal(stateIdsAfterRetry.has(causalStateId), false);
     assert.equal(stateIdsAfterRetry.has(distilledStateId), false);
     assert.equal(stateIdsAfterRetry.has(safeStateId), true);
+
+    const thoughtsAfterRetry = await database.db
+      .select({
+        id: runtimeSubjectStates.id,
+        payload: runtimeSubjectStates.payload,
+      })
+      .from(runtimeSubjectStates)
+      .where(and(
+        eq(runtimeSubjectStates.userId, user.id),
+        eq(runtimeSubjectStates.kind, "thought"),
+      ));
+    const thoughtStatus = (id: string) =>
+      readThoughtLifecycle(
+        thoughtsAfterRetry.find((row) => row.id === id)?.payload,
+      )?.status;
+    assert.equal(
+      thoughtStatus(revivedThoughtId),
+      "active",
+      "a thought dropped by a purged turn is active again after Retry",
+    );
+    assert.deepEqual(
+      keptThoughtIds.map(thoughtStatus),
+      ["active", "active"],
+    );
 
     const watermarksAfterRetry = await database.db
       .select({ conversationId: runtimeDistillationWatermarks.conversationId })

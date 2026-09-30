@@ -49,10 +49,7 @@ enum NativeLiveConversationListScope: String, Sendable {
 enum MindProductKind: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
     case feel
     case memory
-    case drive
     case thought
-    case curiosity
-    case topic
 
     var id: String { rawValue }
 

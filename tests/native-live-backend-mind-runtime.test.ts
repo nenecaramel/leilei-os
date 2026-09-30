@@ -180,7 +180,7 @@ class Mind implements NativeLiveMindRuntime {
   }
 }
 
-test("send preparation settles the continued path, runs targeted catch-up, then assembles context", async () => {
+test("send preparation settles the continued path, then assembles context", async () => {
   const reader = new Reader();
   const mind = new Mind();
   mind.transitions = [{
@@ -192,16 +192,7 @@ test("send preparation settles the continued path, runs targeted catch-up, then 
     validityStatus: "valid",
     promoteScopeToGlobal: true,
   }];
-  const catchUpCalls: unknown[] = [];
-  const runtime = new DefaultNativeLiveBackendMindRuntime(
-    reader,
-    mind,
-    {
-      async run(input) {
-        catchUpCalls.push(input);
-      },
-    },
-  );
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
 
   const prompt = await runtime.preparePrompt({
     userId,
@@ -209,14 +200,12 @@ test("send preparation settles the continued path, runs targeted catch-up, then 
   });
 
   assert.equal(prompt, "ASSEMBLED_PROMPT");
+  // A settled thought is injectable immediately; nothing else has to run
+  // between settlement and context assembly.
   assert.deepEqual(mind.calls, [
     `reconcile:${userMessageId}`,
     `prepare:${parentId}:hello`,
   ]);
-  assert.deepEqual(catchUpCalls, [{
-    userId,
-    transitions: mind.transitions,
-  }]);
   assert.deepEqual(mind.excludedReferenceIds, [[]]);
   assert.deepEqual(mind.manifestIds, [prepared("send").prepareId]);
 });

@@ -8,6 +8,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
+import { enforceThoughtCapacity } from "./thought-runtime-repository.js";
 import {
   conversationMessages,
   nativeLiveBackgroundModelJobs,
@@ -26,9 +27,10 @@ import {
 import type {
   PersistentWriteEnvelope,
 } from "./persistent-write-envelope.js";
-import type {
-  CurrentSubjectStateKind,
-  SubjectStateWrite,
+import {
+  CURRENT_SUBJECT_STATE_KINDS,
+  type CurrentSubjectStateKind,
+  type SubjectStateWrite,
 } from "./subject-state-contract.js";
 import type {
   MindProductCursor,
@@ -53,16 +55,6 @@ type Row = {
   updatedAt: Date;
 };
 
-const PRODUCT_VISIBLE = sql<boolean>`
-  COALESCE(
-    ${runtimeSubjectStates.payload} -> 'drive_v1' ->> 'role',
-    ${runtimeSubjectStates.payload} -> 'thought_v1' ->> 'role',
-    ${runtimeSubjectStates.payload} -> 'curiosity_v1' ->> 'role',
-    ${runtimeSubjectStates.payload} -> 'topic_v1' ->> 'role',
-    'anchor'
-  ) <> 'reinforcement'
-`;
-
 export class DrizzleMindProductRepository
 implements MindProductRepository {
   constructor(private readonly db: Database) {}
@@ -80,10 +72,10 @@ implements MindProductRepository {
     const conditions = [
       eq(runtimeSubjectStates.userId, input.userId),
       eq(runtimeSubjectStates.subjectId, input.subjectId),
+      inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
       eq(runtimeSubjectStates.settlementStatus, "settled"),
       eq(runtimeSubjectStates.pathStatus, "current"),
       eq(runtimeSubjectStates.validityStatus, "valid"),
-      PRODUCT_VISIBLE,
     ];
     if (input.kind) {
       conditions.push(eq(runtimeSubjectStates.kind, input.kind));
@@ -137,11 +129,11 @@ implements MindProductRepository {
         eq(runtimeSubjectStates.id, input.stateId),
         eq(runtimeSubjectStates.userId, input.userId),
         eq(runtimeSubjectStates.subjectId, input.subjectId),
+        inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
         eq(runtimeSubjectStates.settlementStatus, "settled"),
         eq(runtimeSubjectStates.pathStatus, "current"),
         eq(runtimeSubjectStates.validityStatus, "valid"),
-        PRODUCT_VISIBLE,
-      ))
+        ))
       .limit(1);
     return row ? toProductRow(row) : null;
   }
@@ -202,6 +194,13 @@ implements MindProductRepository {
 
         if (!row) {
           throw new Error("Manual Mind insert failed.");
+        }
+        if (state.kind === "thought") {
+          await enforceThoughtCapacity(transaction, {
+            userId: input.userId,
+            subjectId: input.subjectId,
+            droppedAt: new Date().toISOString(),
+          });
         }
         const productRow = toProductRow(row);
         await recordProductCreateIdempotency(transaction, {
@@ -267,35 +266,15 @@ implements MindProductRepository {
           }
         }
 
-        const evolutionEvidenceIds = new Set<string>([
-          ...deleteIds,
-          ...sourceEvidenceIdsForDeletedRows(rows, deleteIds),
-        ]);
-
         for (const row of rows) {
           if (deleteIds.has(row.id)) continue;
           const envelopeRepair =
             repairEnvelopeReferences(row.envelope, deleteIds);
-          const payloadRepair =
-            repairPayloadReferences(
-              row.payload,
-              evolutionEvidenceIds,
-            );
-          if (
-            envelopeRepair.outcome === "repair"
-            || payloadRepair.outcome === "repair"
-          ) {
+          if (envelopeRepair.outcome === "repair") {
             await transaction
               .update(runtimeSubjectStates)
               .set({
-                envelope:
-                  envelopeRepair.outcome === "repair"
-                    ? envelopeRepair.value
-                    : row.envelope,
-                payload:
-                  payloadRepair.outcome === "repair"
-                    ? payloadRepair.value
-                    : row.payload,
+                envelope: envelopeRepair.value,
                 updatedAt: new Date(),
               })
               .where(and(
@@ -359,6 +338,7 @@ implements MindProductRepository {
       FROM runtime_subject_states AS state
       WHERE state.user_id = ${input.userId}::uuid
         AND state.subject_id = ${input.subjectId}
+        AND ${inArray(sql`state.kind`, CURRENT_SUBJECT_STATE_KINDS)}
         AND state.envelope ->> 'authority' = 'subject_authorized'
         AND EXISTS (
           SELECT 1
@@ -499,27 +479,6 @@ async function deleteOperationalReferences(
   }
 }
 
-function sourceEvidenceIdsForDeletedRows(
-  rows: readonly {
-    id: string;
-    envelope: Record<string, unknown>;
-  }[],
-  deletedIds: ReadonlySet<string>,
-): string[] {
-  const result = new Set<string>();
-  for (const row of rows) {
-    if (!deletedIds.has(row.id)) continue;
-    const provenance = isRecord(row.envelope.provenance)
-      ? row.envelope.provenance
-      : null;
-    const causedBy = provenance?.causedBy;
-    if (typeof causedBy === "string" && causedBy.trim()) {
-      result.add(causedBy);
-    }
-  }
-  return [...result];
-}
-
 function repairEnvelopeReferences(
   envelope: Record<string, unknown>,
   deletedIds: ReadonlySet<string>,
@@ -579,36 +538,10 @@ function repairPayloadReferences(
   deletedIds: ReadonlySet<string>,
 ):
   | { outcome: "unchanged" }
-  | { outcome: "repair"; value: Record<string, unknown> | null }
   | { outcome: "delete" } {
-  if (
-    !payload
-    || !structuredValueReferencesAnyId(payload, deletedIds)
-  ) {
-    return { outcome: "unchanged" };
-  }
-
-  const next = { ...payload };
-  for (const key of [
-    "drive_v1",
-    "thought_v1",
-    "curiosity_v1",
-    "topic_v1",
-  ]) {
-    if (
-      key in next
-      && structuredValueReferencesAnyId(next[key], deletedIds)
-    ) {
-      delete next[key];
-    }
-  }
-  if (structuredValueReferencesAnyId(next, deletedIds)) {
-    return { outcome: "delete" };
-  }
-  return {
-    outcome: "repair",
-    value: Object.keys(next).length > 0 ? next : null,
-  };
+  return payload && structuredValueReferencesAnyId(payload, deletedIds)
+    ? { outcome: "delete" }
+    : { outcome: "unchanged" };
 }
 
 function rowSelection() {

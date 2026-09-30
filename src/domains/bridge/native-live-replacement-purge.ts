@@ -10,6 +10,10 @@ import {
   removeRecallReinforcementSources,
   type MemoryLifecyclePolicy,
 } from "../runtime/memory-lifecycle.js";
+import {
+  readThoughtLifecycle,
+  writeThoughtActive,
+} from "../runtime/thought.js";
 
 export type ReplacementPurgePlan = {
   targetUserMessageId: string;
@@ -62,9 +66,7 @@ export {
 };
 
 export function planCausalSubjectStatePurge(input: {
-  conversationId: string;
   purgeMessageIds: ReadonlySet<string>;
-  resetDistillation: boolean;
   states: readonly {
     id: string;
     kind: string;
@@ -74,30 +76,26 @@ export function planCausalSubjectStatePurge(input: {
     scopePathHeadMessageId: string | null;
   }[];
 }): string[] {
-  const initiallySelected = new Set(
-    input.states
-      .filter((state) =>
-        input.resetDistillation
-        && state.kind === "memory"
-        && state.scopeConversationId === input.conversationId
-        && state.payload?.formation === "distillation"
-      )
-      .map((state) => state.id),
-  );
-
   return [...expandCausalStateReferences({
     states: input.states,
     rootIds: input.purgeMessageIds,
-    initiallySelectedStateIds: initiallySelected,
     includePayload: false,
   })];
 }
 
-export type SubjectStateEvolutionRepair = {
+export type SubjectStateRepair = {
   stateId: string;
   nextPayload: Record<string, unknown> | null;
+  /** True when a thought dropped by a purged turn becomes active again. */
+  revivedThought?: true;
 };
-export function planSubjectStateEvolutionRepairs(input: {
+
+/**
+ * Repairs surviving states whose derived payload rests on purged messages:
+ * recall reinforcement is removed from Memory/Feel, and a Thought dropped by
+ * a purged assistant message is active again.
+ */
+export function planSubjectStateRepairs(input: {
   states: readonly {
     id: string;
     kind: string;
@@ -105,23 +103,28 @@ export function planSubjectStateEvolutionRepairs(input: {
   }[];
   purgeMessageIds: ReadonlySet<string>;
   purgeStateIds: ReadonlySet<string>;
-  additionalEvolutionCausalIds?: ReadonlySet<string>;
   memoryLifecyclePolicy?: MemoryLifecyclePolicy;
   repairedAt?: string;
-}): SubjectStateEvolutionRepair[] {
-  const causalIds = new Set<string>([
-    ...input.purgeMessageIds,
-    ...input.purgeStateIds,
-    ...(input.additionalEvolutionCausalIds ?? []),
-  ]);
-  const evolutionKeyByKind: Record<string, string | undefined> = {
-    drive: "drive_v1",
-    thought: "thought_v1",
-    topic: "topic_v1",
-  };
-
-  return input.states.flatMap((state) => {
+}): SubjectStateRepair[] {
+  return input.states.flatMap((state): SubjectStateRepair[] => {
     if (input.purgeStateIds.has(state.id) || !state.payload) return [];
+
+    if (state.kind === "thought") {
+      const lifecycle = readThoughtLifecycle(state.payload);
+      if (
+        lifecycle?.status === "dropped"
+        && lifecycle.reason === "subject"
+        && lifecycle.droppedByMessageId !== null
+        && input.purgeMessageIds.has(lifecycle.droppedByMessageId)
+      ) {
+        return [{
+          stateId: state.id,
+          nextPayload: writeThoughtActive(state.payload),
+          revivedThought: true,
+        }];
+      }
+      return [];
+    }
 
     if (state.kind === "memory" || state.kind === "feel") {
       let repaired;
@@ -142,42 +145,7 @@ export function planSubjectStateEvolutionRepairs(input: {
         }];
       }
     }
-
-    if (state.kind === "curiosity" && "curiosity_v1" in state.payload) {
-      const evolution = state.payload.curiosity_v1;
-      if (
-        evolution
-        && typeof evolution === "object"
-        && !Array.isArray(evolution)
-        && typeof (evolution as Record<string, unknown>).resolutionSourceId
-          === "string"
-        && input.purgeMessageIds.has(
-          (evolution as Record<string, unknown>).resolutionSourceId as string,
-        )
-      ) {
-        const nextPayload = { ...state.payload };
-        delete nextPayload.curiosity_v1;
-        return [{
-          stateId: state.id,
-          nextPayload:
-            Object.keys(nextPayload).length > 0 ? nextPayload : null,
-        }];
-      }
-    }
-
-    const evolutionKey = evolutionKeyByKind[state.kind];
-    if (!evolutionKey || !(evolutionKey in state.payload)) return [];
-    const evolutionPayload = state.payload[evolutionKey];
-    if (!structuredValueReferencesAnyId(evolutionPayload, causalIds)) {
-      return [];
-    }
-    const nextPayload = { ...state.payload };
-    delete nextPayload[evolutionKey];
-    return [{
-      stateId: state.id,
-      nextPayload:
-        Object.keys(nextPayload).length > 0 ? nextPayload : null,
-    }];
+    return [];
   });
 }
 

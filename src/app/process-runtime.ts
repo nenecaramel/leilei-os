@@ -5,11 +5,7 @@ import {
   getMcpGovernanceConfig,
   getNativeLiveAttachmentStorageConfig,
   getMemoryDecayConfig,
-  getMindLifecycleTuningConfig,
-  getMindRetirementConfig,
-  getMindSemanticGroupingConfig,
   getProactivityWakeOpportunityConfig,
-  getTopicResurfaceOpportunityConfig,
   type RuntimeEnv,
 } from "../config/env.js";
 import { createDatabase } from "../database/client.js";
@@ -40,35 +36,14 @@ import {
 } from "../domains/project-workspace/project-workspace-service.js";
 import {
   createDefaultBackendMindRuntime,
-  createDefaultDriveSatisfactionService,
-  createDefaultCuriosityResolutionService,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-  DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
 } from "../domains/runtime/default-backend-mind-runtime.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueService,
 } from "../domains/bridge/native-live-background-model-queue.js";
-import {
-  TopicResurfaceCrossDeviceCoordinator,
-} from "../domains/runtime/topic-resurface-cross-device-coordinator.js";
-import {
-  TopicResurfaceCrossDeviceOpportunity,
-} from "../domains/runtime/topic-resurface-cross-device-opportunity.js";
-import {
-  DrizzleTopicResurfaceCandidatePort,
-} from "../domains/runtime/topic-resurface-candidate-runtime-repository.js";
-import {
-  TopicResurfaceCandidateService,
-} from "../domains/runtime/topic-resurface-candidates.js";
-import {
-  DrizzleTopicResurfaceThoughtMaterializationPort,
-} from "../domains/runtime/topic-resurface-thought-materialization-runtime-repository.js";
-import type {
-  DriveSatisfactionService,
-} from "../domains/runtime/drive-satisfaction-runtime-repository.js";
 import {
   BackgroundLoopOrchestrator,
 } from "../domains/runtime/background-loop-orchestrator.js";
@@ -79,18 +54,6 @@ import {
   BackgroundOpportunityPolicy,
   DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "../domains/runtime/background-opportunity-policy.js";
-import {
-  DistillationCrossDeviceCoordinator,
-} from "../domains/runtime/distillation-cross-device-coordinator.js";
-import {
-  DistillationCrossDeviceBackgroundTrigger,
-} from "../domains/runtime/distillation-cross-device-background-trigger.js";
-import {
-  DrizzleDistillationRuntimePort,
-} from "../domains/runtime/distillation-runtime-repository.js";
-import {
-  CLAUDE_CODE_DISTILLATION_PROMPT_CONTRACT_VERSION,
-} from "../domains/runtime/claude-code-distillation-model.js";
 import {
   NativeLiveBackgroundWorkflowCoordinator,
   type NativeLiveBackgroundWorkflowAdvancer,
@@ -188,28 +151,13 @@ import {
   createNativeLiveMindFollowUpRecoveryRunner,
 } from "../domains/bridge/native-live-mind-followup.js";
 import { NativeLiveMindSemanticActionExecutor } from "../domains/bridge/native-live-mind-semantic-action.js";
+import { DrizzleThoughtDropPort } from "../domains/runtime/thought-runtime-repository.js";
+import { DrizzleSubjectStateRuntimePort } from "../domains/runtime/subject-state-runtime-repository.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
   createNativeLiveSemanticRecoveryRunner,
 } from "../domains/bridge/native-live-semantic-handshake.js";
-import {
-  MindSemanticGroupingService,
-} from "../domains/runtime/mind-semantic-grouping.js";
-import {
-  DrizzleMindSemanticGroupingRepository,
-} from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
-import {
-  MindRetirementPreviewService,
-  type MindRetirementPreview,
-} from "../domains/runtime/mind-retirement-preview.js";
-import {
-  DrizzleMindRetirementRuntimePort,
-} from "../domains/runtime/mind-retirement-runtime-repository.js";
-import {
-  MindCompatibilityCensusService,
-  type MindCompatibilityCensus,
-} from "../domains/runtime/mind-compatibility-census.js";
 import {
   MindProductService,
 } from "../domains/runtime/mind-product-service.js";
@@ -246,56 +194,7 @@ import {
 
 type DatabaseResource = ReturnType<typeof createDatabase>;
 
-function logMindRetirementPreview(
-  logger: SafeLogger,
-  preview: MindRetirementPreview,
-): void {
-  logger.info("mind_retirement_preview_summary", {
-    scannedAnchors: preview.scannedAnchors,
-    truncated: preview.truncated,
-  });
-  for (const kind of preview.kinds) {
-    logger.info("mind_retirement_preview_kind", {
-      mindKind: kind.kind,
-      scannedAnchors: kind.scannedAnchors,
-      terminalAnchors: kind.terminalAnchors,
-      nonTerminalAnchors: kind.nonTerminalAnchors,
-      unreadableAnchors: kind.unreadableAnchors,
-      minAgeHours: kind.terminalAgeHours?.min ?? null,
-      p50AgeHours: kind.terminalAgeHours?.p50 ?? null,
-      p90AgeHours: kind.terminalAgeHours?.p90 ?? null,
-      maxAgeHours: kind.terminalAgeHours?.max ?? null,
-    });
-    for (const retention of kind.eligibleByRetention) {
-      logger.info("mind_retirement_preview_retention", {
-        mindKind: kind.kind,
-        retentionHours: retention.retentionHours,
-        eligibleThreads: retention.threads,
-      });
-    }
-  }
-}
-
-function logMindCompatibilityCensus(
-  logger: SafeLogger,
-  census: MindCompatibilityCensus,
-): void {
-  logger.info("mind_compatibility_census", {
-    legacyDreamStates: census.legacyDreamStates,
-    legacyAuthoredTopicStates: census.legacyAuthoredTopicStates,
-    legacyMemoryRecallWithoutLedger:
-      census.legacyMemoryRecallWithoutLedger,
-    legacyOpenMindFollowUps: census.legacyOpenMindFollowUps,
-    legacyOpenDreamIntents: census.legacyOpenDreamIntents,
-    legacyOpenTopicIntents: census.legacyOpenTopicIntents,
-    quarantinedMindFollowUps: census.quarantinedMindFollowUps,
-  });
-}
-
-type BackgroundWorkflowKind =
-  | "distillation"
-  | "proactivity_wake"
-  | "topic_resurface";
+type BackgroundWorkflowKind = "proactivity_wake";
 
 function observeBackgroundWorkflowAdvancer(
   workflowKind: BackgroundWorkflowKind,
@@ -428,54 +327,15 @@ export function createProcessRuntime(
   );
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
   const breathRankingConfig = getBreathRankingConfig(runtimeEnv);
-  const mindSemanticGroupingConfig =
-    getMindSemanticGroupingConfig(runtimeEnv);
-  const mindLifecycleTuningConfig =
-    getMindLifecycleTuningConfig(runtimeEnv);
-  const mindRetirementConfig =
-    getMindRetirementConfig(runtimeEnv);
-  const mindRetirementPreviewService = runtimeEnv.MCP_USER_ID
-    ? new MindRetirementPreviewService(
-        new DrizzleMindRetirementRuntimePort(db),
-      )
-    : null;
-  let mindRetirementPreviewRun: Promise<void> | null = null;
-  const mindCompatibilityCensusService = runtimeEnv.MCP_USER_ID
-    ? new MindCompatibilityCensusService(db)
-    : null;
-  let mindCompatibilityCensusRun: Promise<void> | null = null;
-  const mindSemanticGroupingRepository =
-    new DrizzleMindSemanticGroupingRepository(
-      db,
-      nativeLiveWorkWakePublisher,
-    );
-  const mindSemanticGrouping =
-    mindSemanticGroupingConfig
-      ? new MindSemanticGroupingService(
-          mindSemanticGroupingRepository,
-          mindSemanticGroupingConfig,
-        )
-      : null;
   const nativeLiveBackendMind = createDefaultBackendMindRuntime(
     db,
     memoryDecayConfig,
     breathRankingConfig,
-    mindLifecycleTuningConfig,
   );
-  const driveSatisfactionService =
-    createDefaultDriveSatisfactionService(
-      db,
-      mindLifecycleTuningConfig,
-    );
-  const curiosityResolutionService =
-    createDefaultCuriosityResolutionService(
-      db,
-      mindLifecycleTuningConfig,
-    );
   const semanticMindActions =
     new NativeLiveMindSemanticActionExecutor(
-      driveSatisfactionService,
-      curiosityResolutionService,
+      new DrizzleSubjectStateRuntimePort(db),
+      new DrizzleThoughtDropPort(db),
       DEFAULT_NATIVE_LIVE_SUBJECT_ID,
     );
   const backgroundLoopOrchestrator = new BackgroundLoopOrchestrator({
@@ -508,74 +368,21 @@ export function createProcessRuntime(
         : {}),
     });
   });
-  const topicResurfaceOpportunityConfig =
-    getTopicResurfaceOpportunityConfig(runtimeEnv);
   const proactivityWakeOpportunityConfig =
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
     decayEnabled: Boolean(memoryDecayConfig),
-    mindRetirementEnabled: Boolean(mindRetirementConfig),
   });
-  const distillationPlan =
-    DEFAULT_BACKGROUND_TARGET_PLANS.distillation;
   const nativeLiveBackgroundModelService =
     new NativeLiveBackgroundModelQueueService(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
       nativeLiveWorkWakePublisher,
-    );
-  const distillationProcessVersion = "distill-process-v1";
-  const distillationCrossDeviceCoordinator =
-    new DistillationCrossDeviceCoordinator(
-      nativeLiveBackgroundModelService,
-      new DrizzleNativeLiveConversationRepository(db),
-      new DrizzleDistillationRuntimePort(
-        db,
-        distillationProcessVersion,
-      ),
-      {
-        settlementLagMessages: DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES,
-        minSourceMessages: 8,
-        maxMemoriesPerRun: 3,
-        ruleVersion: "distill-rule-v1",
-        processVersion: distillationProcessVersion,
-        model: {
-          provider: "claude_code",
-          model: "runtime-selected",
-          configVersion: "cross-device-v1",
-          promptContractVersion:
-            CLAUDE_CODE_DISTILLATION_PROMPT_CONTRACT_VERSION,
-        },
-      },
-    );
-  const distillationCrossDeviceBackgroundTrigger =
-    new DistillationCrossDeviceBackgroundTrigger(
-      backgroundLoopOrchestrator,
-      distillationCrossDeviceCoordinator,
-      DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-      {
-        priority: distillationPlan.priority,
-        cost: distillationPlan.cost,
-      },
-      (event) => {
-        if (event.name === "distillation_cross_device_background_error") {
-          logger.warn(event.name, {
-            errorName: event.errorName,
-          });
-          return;
-        }
-        logger.info(event.name, {
-          outcome: event.result.outcome,
-        });
-      },
     );
   const subjectStateBackgroundMaintenance =
     createDefaultSubjectStateBackgroundMaintenance(
       db,
       backgroundLoopOrchestrator,
       memoryDecayConfig,
-      mindSemanticGrouping,
-      mindLifecycleTuningConfig,
-      mindRetirementConfig,
     );
   const nativeLiveConversationService = new NativeLiveConversationService(
     new DrizzleNativeLiveConversationRepository(db),
@@ -594,7 +401,6 @@ export function createProcessRuntime(
     nativeLiveTurnPort,
     nativeLiveBackendMind,
     undefined,
-    distillationCrossDeviceBackgroundTrigger,
     semanticMindActions,
   );
   const nativeLiveMindFollowUpRecovery =
@@ -715,64 +521,20 @@ export function createProcessRuntime(
         )
       : null;
 
-  let topicResurfaceCrossDeviceCoordinator:
-    TopicResurfaceCrossDeviceCoordinator | null = null;
-  const getTopicResurfaceCrossDeviceCoordinator = () =>
-    topicResurfaceCrossDeviceCoordinator ??=
-      new TopicResurfaceCrossDeviceCoordinator(
-        nativeLiveBackgroundModelService,
-        new TopicResurfaceCandidateService(
-          new DrizzleTopicResurfaceCandidatePort(db),
-        ),
-        new DrizzleTopicResurfaceThoughtMaterializationPort(db),
-        {
-          ruleVersion: "topic-resurface-thought-v1",
-          processVersion: "topic-resurface-thought-materialization-v1",
-          deliberationPromptContractVersion:
-            "topic-resurface-deliberation-v1",
-          retentionPromptContractVersion:
-            "topic-resurface-retention-v1",
-          model: {
-            provider: "claude_code",
-            model: "runtime-selected",
-            configVersion: "cross-device-v1",
-            promptContractVersion: "topic-resurface-v1",
-          },
-        },
-      );
   const nativeLiveBackgroundWorkflowCoordinator =
     new NativeLiveBackgroundWorkflowCoordinator([
-      observeBackgroundWorkflowAdvancer(
-        "distillation",
-        distillationCrossDeviceCoordinator,
-        logger,
-      ),
       lazyBackgroundWorkflowAdvancer(
         "proactivity_wake",
         getProactivityWakeCrossDeviceCoordinator,
         logger,
       ),
-      lazyBackgroundWorkflowAdvancer(
-        "topic_resurface",
-        getTopicResurfaceCrossDeviceCoordinator,
-        logger,
-      ),
     ]);
-  const topicResurfaceCrossDeviceOpportunity =
-    topicResurfaceOpportunityConfig
-      ? new TopicResurfaceCrossDeviceOpportunity(
-          getTopicResurfaceCrossDeviceCoordinator(),
-          DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          topicResurfaceOpportunityConfig,
-        )
-      : undefined;
   const companionBackgroundOpportunity =
     new CompanionBackgroundOpportunityService(
       subjectStateBackgroundMaintenance,
       backgroundOpportunityPolicy,
       runtimeEffectDeliveryWorker,
       proactivityWakeOpportunityProducer,
-      topicResurfaceCrossDeviceOpportunity ?? null,
       Boolean(proactivityWakeOpportunityConfig),
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
@@ -939,18 +701,10 @@ export function createProcessRuntime(
               }
             : {}),
           semanticService: nativeLiveSemanticService,
-          mindSemanticGrouping:
-            mindSemanticGroupingRepository,
           backgroundModelService:
             nativeLiveBackgroundModelService,
           backgroundModelCoordinator:
             nativeLiveBackgroundWorkflowCoordinator,
-          ...(topicResurfaceCrossDeviceOpportunity
-            ? {
-                backgroundModelOpportunity:
-                  topicResurfaceCrossDeviceOpportunity,
-              }
-            : {}),
           runtimeEventService:
             nativeLiveRuntimeEventService,
           runtimeInteractionService:
@@ -981,42 +735,6 @@ export function createProcessRuntime(
         nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
       void mindFollowUpStartupRecovery;
       void nativeLiveSemanticRecovery.runNow().catch(() => undefined);
-      if (
-        mindRetirementPreviewService
-        && runtimeEnv.MCP_USER_ID
-        && !mindRetirementPreviewRun
-      ) {
-        mindRetirementPreviewRun = mindRetirementPreviewService.preview({
-          userId: runtimeEnv.MCP_USER_ID,
-          subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          now: new Date().toISOString(),
-          limit: 2_000,
-        }).then((preview) => {
-          logMindRetirementPreview(logger, preview);
-        }).catch((error) => {
-          logger.warn("mind_retirement_preview_failed", {
-            name: error instanceof Error ? error.name : "UnknownError",
-          });
-        });
-      }
-      if (
-        mindCompatibilityCensusService
-        && runtimeEnv.MCP_USER_ID
-        && !mindCompatibilityCensusRun
-      ) {
-        mindCompatibilityCensusRun = mindFollowUpStartupRecovery
-          .then(() => mindCompatibilityCensusService.read({
-            userId: runtimeEnv.MCP_USER_ID!,
-            subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-          }))
-          .then((census) => {
-            logMindCompatibilityCensus(logger, census);
-          }).catch((error) => {
-            logger.warn("mind_compatibility_census_failed", {
-              name: error instanceof Error ? error.name : "UnknownError",
-            });
-          });
-      }
     },
     stopBackgroundWork: () => {
       retentionCoordinator.stopScheduling();
@@ -1028,8 +746,6 @@ export function createProcessRuntime(
         retentionCoordinator.drain(),
         nativeLiveMindFollowUpRecovery.drain(),
         nativeLiveSemanticRecovery.drain(),
-        mindRetirementPreviewRun ?? Promise.resolve(),
-        mindCompatibilityCensusRun ?? Promise.resolve(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.

@@ -1,36 +1,35 @@
-export type MindSatisfactionLevel = "partial" | "full";
+import {
+  normalizeMindVisibleText,
+  overlapsMindProtectedRange,
+  retiredMindProtectedRanges,
+} from "./mind-protected-ranges.js";
 
-export type MindSemanticAction =
-  | {
-      kind: "mind_satisfy";
-      stateId: string;
-      level: MindSatisfactionLevel;
-      sourceStart: number;
-      sourceEnd: number;
-      raw: string;
-    }
-  | {
-      kind: "mind_resolve";
-      stateId: string;
-      sourceStart: number;
-      sourceEnd: number;
-      raw: string;
-    };
+/**
+ * The only semantic action: let a current thought go.
+ *
+ * The model never sees database ids. Each turn's context labels the active
+ * thoughts T1, T2, T3; the manifest keeps the mapping from label to state id,
+ * and the action executor resolves `ref` through that manifest.
+ */
+export type MindSemanticAction = {
+  kind: "thought_drop";
+  ref: string;
+  sourceStart: number;
+  sourceEnd: number;
+  raw: string;
+};
 
 export type ParsedMindSemanticActions = {
   visibleText: string;
   actions: MindSemanticAction[];
 };
 
-const UUID =
-  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
-const ACTION_PATTERN = new RegExp(
-  `<mind_satisfy\\s+state_id="(${UUID})"\\s+level="(partial|full)"\\s*\\/>|<mind_resolve\\s+state_id="(${UUID})"\\s*\\/>`,
-  "gi",
-);
+export const THOUGHT_REF_PATTERN = /^T[1-9][0-9]?$/;
+
+const ACTION_PATTERN = /<thought_drop\s+ref="(T[1-9][0-9]?)"\s*\/>/gi;
 
 /**
- * Parses only strict self-closing semantic action directives.
+ * Parses only strict self-closing directives.
  *
  * Malformed or unsupported directives remain visible text. This keeps parser
  * failure fail-closed: prose cannot silently mutate Mind.
@@ -40,39 +39,24 @@ export function parseMindSemanticActions(
 ): ParsedMindSemanticActions {
   const actions: MindSemanticAction[] = [];
   const removable: Array<{ start: number; end: number }> = [];
+  const protectedRanges = retiredMindProtectedRanges(source);
 
   for (const match of source.matchAll(ACTION_PATTERN)) {
     const raw = match[0];
     const start = match.index;
-    if (start === undefined) continue;
+    const ref = match[1]?.toUpperCase();
+    if (start === undefined || !ref) continue;
 
-    const satisfyStateId = match[1]?.toLowerCase();
-    const level = match[2]?.toLowerCase() as MindSatisfactionLevel | undefined;
-    const resolveStateId = match[3]?.toLowerCase();
     const end = start + raw.length;
-
-    if (satisfyStateId && level) {
-      actions.push({
-        kind: "mind_satisfy",
-        stateId: satisfyStateId,
-        level,
-        sourceStart: start,
-        sourceEnd: end,
-        raw,
-      });
-      removable.push({ start, end });
-      continue;
-    }
-    if (resolveStateId) {
-      actions.push({
-        kind: "mind_resolve",
-        stateId: resolveStateId,
-        sourceStart: start,
-        sourceEnd: end,
-        raw,
-      });
-      removable.push({ start, end });
-    }
+    if (overlapsMindProtectedRange(protectedRanges, start, end)) continue;
+    actions.push({
+      kind: "thought_drop",
+      ref,
+      sourceStart: start,
+      sourceEnd: end,
+      raw,
+    });
+    removable.push({ start, end });
   }
 
   let visibleText = source;
@@ -83,10 +67,7 @@ export function parseMindSemanticActions(
   }
 
   return {
-    visibleText: visibleText
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim(),
+    visibleText: normalizeMindVisibleText(visibleText),
     actions,
   };
 }

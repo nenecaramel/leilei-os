@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
+import { CURRENT_SUBJECT_STATE_KINDS } from "./subject-state-contract.js";
 import type { createDatabase } from "../../database/client.js";
 import type {
   ProactivityWakeOpportunityConfig,
@@ -423,7 +424,7 @@ implements ProactivityWakeOpportunitySource {
           AND validity_status = 'valid'
           AND settlement_status = 'settled'
           AND path_status = 'current'
-          AND kind <> 'dream'
+          AND ${inArray(sql`kind`, CURRENT_SUBJECT_STATE_KINDS)}
           AND NOT (
             kind IN ('memory', 'feel')
             AND payload #>> '{lifecycle_v1,status}'
