@@ -101,7 +101,7 @@ export class NativeLiveMacOutputAttachmentSender {
       input.displayName,
       filePath,
     );
-    const mimeType = mimeTypeForFilename(filename);
+    const mimeType = mimeTypeForFilename(filePath);
     const kind =
       mimeType.startsWith("image/")
         ? "image" as const
