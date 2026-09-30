@@ -611,6 +611,7 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
     nativeLiveWorkWakePublisher,
+    runtimeEnv.NATIVE_LIVE_SEND_FILE_ENABLED ? 3 : 2,
   );
   const nativeLiveProviderSessionCleanupService =
     new NativeLiveProviderSessionCleanupService(
