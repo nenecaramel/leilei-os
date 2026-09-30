@@ -128,3 +128,37 @@ test("workspace runtime pool isolates SessionStore identity even when roots are 
     },
   ]);
 });
+
+
+test("workspace runtime pool propagates one LeileiOS MCP config to every workspace transport", async () => {
+  const received: unknown[] = [];
+  const mcpConfig = {
+    type: "http" as const,
+    url: "https://leilei-os.example/internal/native-live-mcp",
+    headers: {
+      Authorization: "Bearer relay-secret",
+    },
+  };
+  const pool = new NativeLiveMacWorkspaceRuntimePool(
+    {},
+    "/Users/leilei",
+    { [workspaceId]: workspaceRoot },
+    async (_environment, _root, _store, config) => {
+      received.push(config);
+      return { kind: "agent_sdk", runtime: fakeRuntime() };
+    },
+    () => null,
+    mcpConfig,
+  );
+
+  await pool.resolveWorkspaceRuntime({
+    workspaceId: null,
+    expectedWorkspaceRoot: null,
+  });
+  await pool.resolveWorkspaceRuntime({
+    workspaceId,
+    expectedWorkspaceRoot: null,
+  });
+
+  assert.deepEqual(received, [mcpConfig, mcpConfig]);
+});
