@@ -37,7 +37,7 @@ function prepared(): NativeLivePreparedTurn {
 
 function failureResult(): NativeLiveRuntimeExecutionResult {
   return {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -145,7 +145,7 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
   assert.deepEqual(reservation, {
     reservationId: prepareId,
     command: {
-      protocol_version: 1,
+      protocol_version: 3,
       dispatch_target: "claude_code",
       prepare_id: prepareId,
       request_id: requestId,
