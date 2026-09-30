@@ -5,12 +5,22 @@ import {
   type NativeLiveExecutionSelection,
 } from "./native-live-execution-selection.js";
 
-export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 1 as const;
+export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 2 as const;
+export const NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION = 1 as const;
 
 export type NativeLiveRuntimeMode = "new" | "fork";
 
+export type NativeLiveRuntimeAttachment = {
+  attachment_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  kind: "image" | "file";
+};
+
 export type NativeLiveRuntimeCommand = {
-  protocol_version: 1;
+  protocol_version: 1 | 2;
   dispatch_target: "claude_code";
   prepare_id: string;
   request_id: string;
@@ -22,6 +32,7 @@ export type NativeLiveRuntimeCommand = {
   workspace_id: string | null;
   expected_workspace_root: string | null;
   execution_selection?: NativeLiveExecutionSelection | null;
+  attachments?: NativeLiveRuntimeAttachment[];
   prompt: string;
 };
 
@@ -88,7 +99,7 @@ export type NativeLiveRuntimeMetadata = {
 
 export type NativeLiveRuntimeExecutionResult =
   | {
-      protocol_version: 1;
+      protocol_version: 1 | 2;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
@@ -100,7 +111,7 @@ export type NativeLiveRuntimeExecutionResult =
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
-      protocol_version: 1;
+      protocol_version: 1 | 2;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
@@ -140,10 +151,19 @@ export function parseNativeLiveRuntimeCommand(
     "execution_selection",
     "workspace_id",
     "expected_workspace_root",
+    "attachments",
   ]);
 
-  if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
-    throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
+  const protocolVersion = parseProtocolVersion(
+    body.protocol_version,
+  );
+  if (
+    protocolVersion === NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
+    && body.attachments !== undefined
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "Runtime protocol v1 does not support attachments.",
+    );
   }
   if (body.dispatch_target !== "claude_code") {
     throw new NativeLiveRuntimeProtocolError("Runtime command target must be Claude Code.");
@@ -186,7 +206,7 @@ export function parseNativeLiveRuntimeCommand(
   }
 
   return {
-    protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+    protocol_version: protocolVersion,
     dispatch_target: "claude_code",
     prepare_id: requireUuid(body.prepare_id, "prepare_id"),
     request_id: requireUuid(body.request_id, "request_id"),
@@ -207,6 +227,14 @@ export function parseNativeLiveRuntimeCommand(
         : parseExecutionSelection(
             body.execution_selection,
           ),
+    ...(protocolVersion === 2
+      ? {
+          attachments:
+            body.attachments === undefined
+              ? []
+              : parseRuntimeAttachments(body.attachments),
+        }
+      : {}),
     prompt: normalizePrompt(body.prompt),
   };
 }
@@ -236,15 +264,15 @@ export function parseNativeLiveRuntimeExecutionResult(
       ],
     );
 
-    if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
-      throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
-    }
+    const protocolVersion = parseProtocolVersion(
+      body.protocol_version,
+    );
     if (!Array.isArray(body.normalized_events)) {
       throw new NativeLiveRuntimeProtocolError("normalized_events must be an array.");
     }
 
     return {
-      protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+      protocol_version: protocolVersion,
       prepare_id: requireUuid(body.prepare_id, "prepare_id"),
       request_id: requireUuid(body.request_id, "request_id"),
       conversation_id: requireUuid(body.conversation_id, "conversation_id"),
@@ -290,15 +318,15 @@ export function parseNativeLiveRuntimeExecutionResult(
       "error_code",
     ]);
 
-    if (body.protocol_version !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
-      throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
-    }
+    const protocolVersion = parseProtocolVersion(
+      body.protocol_version,
+    );
     if (!isFailureCode(body.error_code)) {
       throw new NativeLiveRuntimeProtocolError("Runtime failure code is invalid.");
     }
 
     return {
-      protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+      protocol_version: protocolVersion,
       prepare_id: requireUuid(body.prepare_id, "prepare_id"),
       request_id: requireUuid(body.request_id, "request_id"),
       conversation_id: requireUuid(body.conversation_id, "conversation_id"),
@@ -314,6 +342,11 @@ export function assertRuntimeResultMatchesCommand(
   command: NativeLiveRuntimeCommand,
   result: NativeLiveRuntimeExecutionResult,
 ): void {
+  if (result.protocol_version !== command.protocol_version) {
+    throw new NativeLiveRuntimeProtocolError(
+      "Runtime result protocol version does not match the command.",
+    );
+  }
   if (
     result.prepare_id !== command.prepare_id
     || result.request_id !== command.request_id
@@ -356,6 +389,90 @@ export function assertRuntimeResultMatchesCommand(
       "Fork result must use a new provider session id.",
     );
   }
+}
+
+function parseProtocolVersion(
+  value: unknown,
+): 1 | 2 {
+  if (
+    value !== NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
+    && value !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      "Unsupported runtime protocol version.",
+    );
+  }
+  return value;
+}
+
+function parseRuntimeAttachments(
+  value: unknown,
+): NativeLiveRuntimeAttachment[] {
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new NativeLiveRuntimeProtocolError(
+      "attachments must be an array containing at most 8 items.",
+    );
+  }
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    const body = requireRecord(item);
+    requireExactKeys(body, [
+      "attachment_id",
+      "filename",
+      "mime_type",
+      "size_bytes",
+      "sha256",
+      "kind",
+    ]);
+    const attachmentId = requireUuid(
+      body.attachment_id,
+      "attachments[" + index + "].attachment_id",
+    );
+    if (seen.has(attachmentId)) {
+      throw new NativeLiveRuntimeProtocolError(
+        "attachments must not contain duplicate ids.",
+      );
+    }
+    seen.add(attachmentId);
+    const filename = requireNonblank(
+      body.filename,
+      "attachments[" + index + "].filename",
+    );
+    const mimeType = requireNonblank(
+      body.mime_type,
+      "attachments[" + index + "].mime_type",
+    );
+    if (
+      typeof body.size_bytes !== "number"
+      || !Number.isSafeInteger(body.size_bytes)
+      || body.size_bytes <= 0
+    ) {
+      throw new NativeLiveRuntimeProtocolError(
+        "attachment size_bytes must be a positive safe integer.",
+      );
+    }
+    if (
+      typeof body.sha256 !== "string"
+      || !/^[0-9a-f]{64}$/u.test(body.sha256)
+    ) {
+      throw new NativeLiveRuntimeProtocolError(
+        "attachment sha256 must be lowercase hex.",
+      );
+    }
+    if (body.kind !== "image" && body.kind !== "file") {
+      throw new NativeLiveRuntimeProtocolError(
+        "attachment kind must be image or file.",
+      );
+    }
+    return {
+      attachment_id: attachmentId,
+      filename,
+      mime_type: mimeType,
+      size_bytes: body.size_bytes,
+      sha256: body.sha256,
+      kind: body.kind,
+    };
+  });
 }
 
 function parseRuntimeMetadata(
