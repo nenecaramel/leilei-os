@@ -81,7 +81,10 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
     dispatchTarget: "claude_code",
   });
   assert.equal(reservation?.reservationId, prepareId);
-  assert.deepEqual(reservation?.command, command());
+  assert.deepEqual(reservation?.command, {
+    ...command(),
+    attachments: [],
+  });
 
   await client.markExecutionStarted({
     listenerInstanceId: listenerId,
