@@ -485,6 +485,18 @@ export function assembleTurnContext(input: {
   return assembledTurnContextFromManifest(manifest);
 }
 
+function renderMindWriteProtocol(): string {
+  return [
+    '<leileios_mind_write authority="runtime_protocol">',
+    "These directives are optional persistent subject-state writes, not visible prose.",
+    "Emit one only when this turn itself establishes a state worth carrying forward; do not mirror ordinary conversation by default.",
+    "Supported writes: <feel>...</feel>, <memory>...</memory>, <drive>...</drive>, <thought>...</thought>, <curiosity>...</curiosity>.",
+    "Use plain text inside each tag. Do not nest Mind tags.",
+    "Do not emit <topic>; Topic is derived by LeileiOS from Curiosity.",
+    "</leileios_mind_write>",
+  ].join("\n");
+}
+
 function renderMindSemanticActionProtocol(
   manifest: InitialContextManifest,
 ): string {
@@ -555,9 +567,12 @@ export function assembledTurnContextFromManifest(
   const renderedUserText = userTimestamp
     ? `${userTimestamp} ${userItems[0].text}`
     : userItems[0].text;
+  const mindWriteProtocol = renderMindWriteProtocol();
   const mindActionProtocol = renderMindSemanticActionProtocol(manifest);
   const prompt = [
     contextData,
+    "",
+    mindWriteProtocol,
     ...(mindActionProtocol ? ["", mindActionProtocol] : []),
     "",
     `<user_message>${escapeData(renderedUserText)}</user_message>`,

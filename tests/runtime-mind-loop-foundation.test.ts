@@ -234,6 +234,48 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
   assert.equal(parsed.visibleText.includes("<memory></memory>"), true);
 });
 
+test("Context Assembly tells foreground Claude how to author current Mind writes", () => {
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-mind-write-protocol",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-mind-write-protocol",
+    userText: "记一下这一轮",
+    subjectStates: [],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v4",
+    breathLimit: 1,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  assert.equal(
+    assembled.prompt.includes(
+      '<leileios_mind_write authority="runtime_protocol">',
+    ),
+    true,
+  );
+  for (const tag of ["feel", "memory", "drive", "thought", "curiosity"]) {
+    assert.equal(
+      assembled.prompt.includes(`<${tag}>...</${tag}>`),
+      true,
+    );
+  }
+  assert.equal(
+    assembled.prompt.includes(
+      "Do not emit <topic>; Topic is derived by LeileiOS from Curiosity.",
+    ),
+    true,
+  );
+  assert.equal(
+    assembled.prompt.includes("<topic>...</topic>"),
+    false,
+  );
+});
+
 test("unsettled state settles only after the user continues that exact path", () => {
   const provisional = state("p1", "memory", "temporary");
   provisional.envelope = {
