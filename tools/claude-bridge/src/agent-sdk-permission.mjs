@@ -158,6 +158,21 @@ export function projectLeileiPermissionDecisionToSdk(
   };
 }
 
+export function isTrustedLeileiosReadTool(toolName) {
+  if (typeof toolName !== "string") return false;
+  const prefix = "mcp__leileios__";
+  if (!toolName.startsWith(prefix)) return false;
+  const name = toolName.slice(prefix.length);
+  return (
+    name === "global_search"
+    || name.startsWith("get_")
+    || name.startsWith("read_")
+    || name.startsWith("list_")
+    || name.startsWith("search_")
+    || name.startsWith("query_")
+  );
+}
+
 export function createAgentSdkPermissionCallback({
   permissionHandler,
   events = null,
@@ -180,6 +195,16 @@ export function createAgentSdkPermissionCallback({
         input,
         context,
       );
+
+    if (isTrustedLeileiosReadTool(toolName)) {
+      const decision = { decision: "allow" };
+      events?.emit?.("permission-decision", {
+        request,
+        decision,
+        trustedPolicy: "leileios_read",
+      });
+      return { behavior: "allow" };
+    }
 
     events?.emit?.(
       "permission-request",
