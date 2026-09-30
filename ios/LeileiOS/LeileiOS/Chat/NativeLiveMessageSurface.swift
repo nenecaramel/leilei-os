@@ -689,30 +689,35 @@ private struct NativeLiveHistorySnapshotRow: View {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 48)
 
-                VStack(alignment: .trailing, spacing: 6) {
-                    ChatMarkdownView(
-                        text: message.content,
-                        fillsAvailableWidth: false,
-                        lineSpacing: 5,
-                        paragraphSpacing: 19
+                ChatMarkdownView(
+                    text: message.content,
+                    fillsAvailableWidth: false,
+                    lineSpacing: 5,
+                    paragraphSpacing: 19
+                )
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    Color.chatSoftFill,
+                    in: RoundedRectangle(
+                        cornerRadius: 18,
+                        style: .continuous
                     )
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        Color.chatSoftFill,
-                        in: RoundedRectangle(
-                            cornerRadius: 18,
-                            style: .continuous
-                        )
-                    )
-
-                    timestamp
-                }
+                )
             }
         } else {
-            VStack(alignment: .leading, spacing: 10) {
-                timestamp
+            VStack(alignment: .leading, spacing: 6) {
+                Text(
+                    MessageTimestampFormatter.string(
+                        from: message.time,
+                        timeZoneIdentifier: timeZone
+                    )
+                )
+                .font(.system(size: 13.5))
+                .tracking(0.12)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 4)
 
                 ChatMarkdownView(
                     text: message.content,
@@ -724,18 +729,6 @@ private struct NativeLiveHistorySnapshotRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var timestamp: some View {
-        Text(
-            MessageTimestampFormatter.string(
-                from: message.time,
-                timeZoneIdentifier: timeZone
-            )
-        )
-        .font(.system(size: 12.5))
-        .tracking(0.12)
-        .foregroundStyle(.secondary)
     }
 }
 
