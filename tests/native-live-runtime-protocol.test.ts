@@ -505,7 +505,7 @@ test("protocol rejects unknown versions and extra fields", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeCommand({
-        protocol_version: 3,
+        protocol_version: 4,
         dispatch_target: "claude_code",
         prepare_id: prepareId,
         request_id: requestId,
