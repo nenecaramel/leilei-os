@@ -110,6 +110,75 @@ async function loadDefaultQuery() {
   return sdk.query;
 }
 
+async function createDefaultSendFileMcpServer(
+  sendFileHandler,
+) {
+  const sdk = await import("@anthropic-ai/claude-agent-sdk");
+  const { z } = await import("zod");
+  if (
+    typeof sdk.createSdkMcpServer !== "function"
+    || typeof sdk.tool !== "function"
+  ) {
+    throw runtimeError(
+      "Claude Agent SDK did not expose in-process MCP helpers.",
+      { runtimeCode: "RUNTIME_UNAVAILABLE" },
+    );
+  }
+
+  const sendFileTool = sdk.tool(
+    "send_file",
+    [
+      "Send one specific local file from the active workspace to the user.",
+      "Use this only when you explicitly intend to share or deliver that file.",
+      "Never scan directories or infer files to send; pass the exact file path.",
+    ].join(" "),
+    {
+      path: z.string().min(1),
+      display_name: z.string().min(1).max(255).optional(),
+    },
+    async ({ path, display_name }) => {
+      try {
+        const attachment = await sendFileHandler({
+          path,
+          displayName: display_name ?? null,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                "Sent file to the user: "
+                + attachment.filename,
+            },
+          ],
+        };
+      } catch (cause) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text:
+                "send_file failed: "
+                + (
+                  cause instanceof Error
+                    ? cause.message
+                    : "unknown error"
+                ),
+            },
+          ],
+        };
+      }
+    },
+  );
+
+  return sdk.createSdkMcpServer({
+    name: "leileios-local-send-file",
+    version: "1.0.0",
+    tools: [sendFileTool],
+  });
+}
+
 function nonblankString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -176,11 +245,17 @@ function normalizeLeileiosMcpServerConfig(value) {
   };
 }
 
-function leileiosMcpQueryOptions(config) {
-  if (!config) return {};
+function leileiosMcpQueryOptions(
+  config,
+  localSendFileServer = null,
+) {
+  if (!config && !localSendFileServer) return {};
   return {
     mcpServers: {
-      leileios: config,
+      ...(config ? { leileios: config } : {}),
+      ...(localSendFileServer
+        ? { leileios_local: localSendFileServer }
+        : {}),
     },
   };
 }
@@ -199,6 +274,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     loadImportSessionToStore = loadDefaultImportSessionToStore,
     sessionStore = null,
     mcpServerConfig = null,
+    createSendFileMcpServerImpl =
+      createDefaultSendFileMcpServer,
     environment = process.env,
     cwd = process.cwd(),
   } = {}) {
@@ -221,6 +298,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.sessionStore = sessionStore;
     this.mcpServerConfig =
       normalizeLeileiosMcpServerConfig(mcpServerConfig);
+    this.createSendFileMcpServerImpl =
+      createSendFileMcpServerImpl;
     this.environment = {
       ...environment,
       DISABLE_AUTO_COMPACT: "1",
@@ -280,6 +359,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       onNormalizedEvent = null,
       permissionHandler = null,
       questionHandler = null,
+      sendFileHandler = null,
       controlPump = null,
     } = {},
   ) {
@@ -333,6 +413,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     const executionOptions =
       normalizeAgentSdkExecutionSelection(execution);
+    const localSendFileServer =
+      sendFileHandler
+        ? await this.createSendFileMcpServerImpl(
+            sendFileHandler,
+          )
+        : null;
 
     const handle = await createAgentSdkTurnHandle({
       prompt,
@@ -349,7 +435,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       queryOptions: {
         verbatimPrompts: true,
         ...executionOptions,
-        ...leileiosMcpQueryOptions(this.mcpServerConfig),
+        ...leileiosMcpQueryOptions(
+          this.mcpServerConfig,
+          localSendFileServer,
+        ),
         ...(this.sessionStore
           ? { sessionStore: this.sessionStore }
           : {}),
