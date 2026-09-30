@@ -61,6 +61,10 @@ export type NativeLiveApiDependencies = {
       userId: string;
       prepareId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
+    readActiveTurn(input: {
+      userId: string;
+      conversationId: string;
+    }): Promise<NativeLiveBackendTurnReadModel | null>;
   };
   turnWaitService?: Pick<NativeLiveTurnWaitService, "wait">;
   currentPathReader?: NativeLiveCurrentPathReader;
@@ -113,6 +117,10 @@ export function createNativeLiveApiRouter(
     );
   }
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
+  router.get(
+    "/conversations/:conversationId/active-turn",
+    readNativeLiveActiveTurnHandler(dependencies),
+  );
   if (dependencies.turnWaitService) {
     router.post(
       "/turns/:prepareId/wait",
@@ -1673,6 +1681,48 @@ function requireWebUser(
   return false;
 }
 
+
+export function readNativeLiveActiveTurnHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const conversationId = routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const turn = await dependencies.turnReader.readActiveTurn({
+        userId: request.webUserId,
+        conversationId,
+      });
+      response.setHeader("Cache-Control", "private, no-store");
+      response.json({
+        success: true,
+        data: {
+          turn: turn ? nativeLiveTurnResponseData(turn) : null,
+        },
+      });
+    } catch {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_ACTIVE_TURN_READ_UNAVAILABLE",
+          message: "Active native live turn is temporarily unavailable.",
+        },
+      });
+    }
+  };
+}
 
 export function readNativeLiveTurnHandler(
   dependencies: NativeLiveApiDependencies,
