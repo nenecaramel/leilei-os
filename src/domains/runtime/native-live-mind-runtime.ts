@@ -70,6 +70,7 @@ export interface NativeLiveMindRuntime {
     userId: string;
     conversationId: string;
     assistantMessageId: string;
+    assistantMessageCreatedAt: string;
     intents: readonly MindWriteIntent[];
     stateIds?: readonly string[];
   }): Promise<SubjectStateWrite[]>;
@@ -211,6 +212,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userId: string;
     conversationId: string;
     assistantMessageId: string;
+    assistantMessageCreatedAt: string;
     intents: readonly MindWriteIntent[];
     stateIds?: readonly string[];
   }): Promise<SubjectStateWrite[]> {
@@ -233,6 +235,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       subjectId: this.subjectId,
       conversationId: input.conversationId,
       assistantMessageId: input.assistantMessageId,
+      sourceOccurredAt: input.assistantMessageCreatedAt,
       intents: input.intents,
       createStateId,
       producer: { kind: "model", id: this.producerId },

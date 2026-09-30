@@ -14,6 +14,10 @@ import {
   type CurrentSubjectStateKind,
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
+import {
+  readSubjectStateOccurredAt,
+  writeSubjectStateTemporal,
+} from "./subject-state-temporal.js";
 
 export type MindProductSource = "manual" | "runtime";
 
@@ -220,16 +224,27 @@ export class MindProductService {
     const occurredAt = normalizeOptionalIso(input.occurredAt, "occurredAt");
     const id = this.createId();
 
+    const manualPayload = {
+      manual_v1: {
+        occurredAt,
+        note,
+      },
+    };
+    const payload =
+      occurredAt !== null
+      && (input.kind === "memory" || input.kind === "feel")
+        ? writeSubjectStateTemporal(manualPayload, {
+            occurredAt,
+            basis: "user_supplied",
+            sourceMessageId: null,
+          })
+        : manualPayload;
+
     const state = validateSubjectStateWrite({
       id,
       kind: input.kind,
       text,
-      payload: {
-        manual_v1: {
-          occurredAt,
-          note,
-        },
-      },
+      payload,
       envelope: manualEnvelope({
         id,
         userId: input.userId,
@@ -375,7 +390,7 @@ function projectRow(row: MindProductRow): MindProductItem {
         ? "manual"
         : "runtime",
     authority,
-    occurredAt: isoOrNull(manual?.occurredAt),
+    occurredAt: readSubjectStateOccurredAt(payload),
     note: stringOrNull(manual?.note),
     lifecycle: lifecycleProjection(row.kind, payload),
     provenance: provenanceProjection(row.envelope),

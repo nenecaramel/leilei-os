@@ -2,12 +2,14 @@ import type { RuntimeStatusAxes } from "./runtime-status-axes.js";
 import type { RuntimePrincipal } from "./persistent-write-envelope.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
 import type { MindWriteIntent } from "./mind-intent-parser.js";
+import { writeSubjectStateTemporal } from "./subject-state-temporal.js";
 
 export type MaterializeMindWritesInput = {
   userId: string;
   subjectId: string;
   conversationId: string;
   assistantMessageId: string;
+  sourceOccurredAt: string;
   intents: readonly MindWriteIntent[];
   createId: () => string;
   producer: RuntimePrincipal;
@@ -30,15 +32,26 @@ export type MaterializeMindWritesInput = {
 export function materializeMindWrites(
   input: MaterializeMindWritesInput,
 ): SubjectStateWrite[] {
-  return input.intents.map((intent) => ({
-    id: input.createId(),
-    kind: intent.kind,
-    text: intent.text,
-    payload: {
+  return input.intents.map((intent) => {
+    const basePayload = {
       source_start: intent.sourceStart,
       source_end: intent.sourceEnd,
-    },
-    envelope: {
+    };
+    const payload =
+      intent.kind === "memory" || intent.kind === "feel"
+        ? writeSubjectStateTemporal(basePayload, {
+            occurredAt: input.sourceOccurredAt,
+            basis: "source_message",
+            sourceMessageId: input.assistantMessageId,
+          })
+        : basePayload;
+
+    return {
+      id: input.createId(),
+      kind: intent.kind,
+      text: intent.text,
+      payload,
+      envelope: {
       semanticActor: { kind: "subject", id: input.subjectId },
       producer: input.producer,
       committer: input.committer,
@@ -67,6 +80,7 @@ export function materializeMindWrites(
         processVersion: input.processVersion,
         model: input.model ?? null,
       },
-    },
-  }));
+      },
+    };
+  });
 }

@@ -584,6 +584,7 @@ export class NativeLiveMindLoopService {
     subjectId: string;
     conversationId: string;
     assistantMessageId: string;
+    sourceOccurredAt: string;
     intents: readonly MindWriteIntent[];
     createStateId: () => string;
     producer: MaterializeMindWritesInput["producer"];
@@ -599,6 +600,7 @@ export class NativeLiveMindLoopService {
       subjectId: input.subjectId,
       conversationId: input.conversationId,
       assistantMessageId: input.assistantMessageId,
+      sourceOccurredAt: input.sourceOccurredAt,
       intents: input.intents,
       createId: input.createStateId,
       producer: input.producer,
@@ -628,6 +630,7 @@ export class NativeLiveMindLoopService {
     subjectId: string;
     conversationId: string;
     assistantMessageId: string;
+    sourceOccurredAt: string;
     blocks: readonly NativeLiveContentBlockInput[];
     createStateId: () => string;
     producer: MaterializeMindWritesInput["producer"];

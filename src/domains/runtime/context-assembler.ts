@@ -14,6 +14,7 @@ import { readDriveEvolution } from "./drive-evolution.js";
 import { readThoughtEvolution } from "./thought-evolution.js";
 import { readTopicEvolution } from "./topic-evolution.js";
 import { readCuriosityEvolution } from "./curiosity-evolution.js";
+import { readSubjectStateOccurredAt } from "./subject-state-temporal.js";
 
 export type AssembledTurnContext = {
   manifest: InitialContextManifest;
@@ -56,7 +57,7 @@ function formatContextDate(
   return year && month && day ? `[${year}-${month}-${day}]` : null;
 }
 
-function withManualOccurredDate(
+function withOccurredDate(
   item: ContextManifestItem,
   timeZone: string,
 ): ContextManifestItem {
@@ -67,16 +68,7 @@ function withManualOccurredDate(
     return item;
   }
 
-  const manual =
-    item.payload?.manual_v1
-    && typeof item.payload.manual_v1 === "object"
-    && !Array.isArray(item.payload.manual_v1)
-      ? item.payload.manual_v1 as Record<string, unknown>
-      : null;
-  const occurredAt =
-    typeof manual?.occurredAt === "string"
-      ? manual.occurredAt.trim()
-      : "";
+  const occurredAt = readSubjectStateOccurredAt(item.payload);
   const occurredDate =
     occurredAt ? formatContextDate(occurredAt, timeZone) : null;
   if (!occurredDate) return item;
@@ -520,7 +512,7 @@ export function assembleTurnContext(input: {
       ...curiosities,
       ...topics,
       ...breathItems,
-    ].map((item) => withManualOccurredDate(item, contextTimeZone)),
+    ].map((item) => withOccurredDate(item, contextTimeZone)),
     {
       maxItems: input.maxContextItems,
       maxChars: input.maxContextChars,

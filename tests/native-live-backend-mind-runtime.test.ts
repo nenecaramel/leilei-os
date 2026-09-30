@@ -66,6 +66,19 @@ function oldAssistant(): NativeLiveMessage {
   };
 }
 
+function finalizedAssistant(): NativeLiveMessage {
+  return {
+    id: assistantId,
+    conversationId,
+    parentMessageId: userMessageId,
+    role: "assistant",
+    status: "completed",
+    createdAt: "2026-09-22T11:02:03.000Z",
+    completedAt: "2026-09-22T11:02:04.000Z",
+    blocks: [],
+  };
+}
+
 function conversation(head: string | null = parentId): NativeLiveConversation {
   return {
     id: conversationId,
@@ -75,7 +88,12 @@ function conversation(head: string | null = parentId): NativeLiveConversation {
     currentHeadMessageId: head,
     createdAt: now,
     updatedAt: now,
-    messages: [parentAssistant(), userMessage(), oldAssistant()],
+    messages: [
+      parentAssistant(),
+      userMessage(),
+      oldAssistant(),
+      finalizedAssistant(),
+    ],
   };
 }
 
@@ -113,6 +131,7 @@ class Mind implements NativeLiveMindRuntime {
   excludedReferenceIds: string[][] = [];
   manifestIds: Array<string | undefined> = [];
   recallInputs: unknown[] = [];
+  recordInputs: unknown[] = [];
   transitions: Awaited<
     ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
   > = [];
@@ -147,8 +166,9 @@ class Mind implements NativeLiveMindRuntime {
     };
   }
 
-  async recordAssistantIntents() {
+  async recordAssistantIntents(input: unknown) {
     this.calls.push("record");
+    this.recordInputs.push(input);
     return [];
   }
 
@@ -247,6 +267,11 @@ test("branch finalize records intents and then reconciles the finalized canonica
     userId,
     manifestId: prepared("edit").prepareId,
   }]);
+  assert.equal(
+    (mind.recordInputs[0] as { assistantMessageCreatedAt: string })
+      .assistantMessageCreatedAt,
+    "2026-09-22T11:02:03.000Z",
+  );
 });
 
 test("ordinary send finalize records intents but leaves the new state provisional until next user continuation", async () => {
