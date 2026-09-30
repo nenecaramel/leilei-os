@@ -256,10 +256,21 @@ implements NativeLiveBackendMindRuntime {
     });
 
     if (input.intents.length > 0) {
+      const assistantMessage = conversation.messages.find(
+        (candidate) =>
+          candidate.id === input.assistantMessageId
+          && candidate.role === "assistant",
+      );
+      if (!assistantMessage) {
+        throw new Error(
+          "Finalized canonical assistant message was not found.",
+        );
+      }
       await this.mind.recordAssistantIntents({
         userId: input.userId,
         conversationId: input.preparation.conversationId,
         assistantMessageId: input.assistantMessageId,
+        assistantMessageCreatedAt: assistantMessage.createdAt,
         intents: input.intents,
         stateIds: input.stateIds,
       });
