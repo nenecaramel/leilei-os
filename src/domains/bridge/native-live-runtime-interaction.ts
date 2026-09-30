@@ -474,10 +474,50 @@ export class NativeLiveRuntimeInteractionService {
         interactionId: input.interactionId,
       });
 
+    const resolveTrustedLeileiosPermission = async (
+      interaction: NativeLiveRuntimeInteractionRecord,
+    ): Promise<NativeLiveRuntimeInteractionRecord> => {
+      if (
+        interaction.status !== "pending"
+        || interaction.kind !== "permission"
+        || typeof interaction.request.toolName !== "string"
+        || !interaction.request.toolName.startsWith("mcp__leileios__")
+      ) {
+        return interaction;
+      }
+
+      await this.repository.resolve({
+        userId: input.userId,
+        prepareId: input.reservationId,
+        interactionId: input.interactionId,
+        response: { decision: "allow" },
+      });
+      const resolved = await read();
+      if (!resolved) {
+        throw new NativeLiveRuntimeInteractionError(
+          "INTERACTION_NOT_FOUND",
+          "Trusted LeileiOS permission was not found after auto-resolution.",
+        );
+      }
+      try {
+        await this.wakePublisher?.notify({
+          userId: input.userId,
+          kind: "runtime_interaction",
+          interactionId: input.interactionId,
+        });
+      } catch {
+        // Durable resolved state is authoritative.
+      }
+      return resolved;
+    };
+
     const cancelIfOrphaned = async (
       interaction: NativeLiveRuntimeInteractionRecord,
     ): Promise<NativeLiveRuntimeInteractionRecord> => {
       if (interaction.status !== "pending") return interaction;
+
+      const trusted = await resolveTrustedLeileiosPermission(interaction);
+      if (trusted.status !== "pending") return trusted;
 
       const active = await this.repository.isTurnActiveForListener({
         userId: input.userId,
