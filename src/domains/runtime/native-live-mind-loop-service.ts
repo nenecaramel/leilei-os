@@ -264,6 +264,7 @@ export class NativeLiveMindLoopService {
         userId: input.userId,
         subjectId: input.subjectId,
         conversation: input.conversation,
+        userText: input.userText,
         assembledAt: input.assembledAt,
         surfaceHeadMessageId: input.surfaceHeadMessageId,
         states,
