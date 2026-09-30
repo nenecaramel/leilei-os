@@ -561,6 +561,21 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func nativeLiveAttachmentDownloadURL(
+        attachmentID: String
+    ) async -> URL? {
+        guard isAuthenticated else { return nil }
+        do {
+            let slot =
+                try await api.nativeLiveAttachmentDownloadSlot(
+                    attachmentID: attachmentID
+                )
+            return URL(string: slot.download.url)
+        } catch {
+            return nil
+        }
+    }
+
     func uploadNativeLiveAttachment(
         data: Data,
         filename: String,
