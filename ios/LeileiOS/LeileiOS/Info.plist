@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>LeileiOS uses the camera only when you choose Camera to attach a photo to a chat.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

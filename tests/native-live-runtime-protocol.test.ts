@@ -30,6 +30,60 @@ test("new runtime command carries no parent provider session", () => {
   assert.equal(command.parent_provider_session_id, null);
 });
 
+test("runtime protocol v2 carries bounded attachment descriptors", () => {
+  const attachmentId = "55555555-5555-4555-8555-555555555555";
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 2,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    attachments: [{
+      attachment_id: attachmentId,
+      filename: "photo.jpg",
+      mime_type: "image/jpeg",
+      size_bytes: 1234,
+      sha256: "a".repeat(64),
+      kind: "image",
+    }],
+    prompt: "see attachment",
+  });
+
+  assert.equal(command.protocol_version, 2);
+  assert.deepEqual(command.attachments, [{
+    attachment_id: attachmentId,
+    filename: "photo.jpg",
+    mime_type: "image/jpeg",
+    size_bytes: 1234,
+    sha256: "a".repeat(64),
+    kind: "image",
+  }]);
+
+  assert.throws(
+    () => parseNativeLiveRuntimeCommand({
+      ...command,
+      protocol_version: 1,
+    }),
+    /v1 does not support attachments/u,
+  );
+
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 2,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure",
+    error_code: "ATTACHMENT_UNAVAILABLE",
+  });
+  assert.doesNotThrow(() =>
+    assertRuntimeResultMatchesCommand(command, result)
+  );
+});
+
 test("fork runtime command requires an exact parent provider session", () => {
   const command = parseNativeLiveRuntimeCommand({
     protocol_version: 1,
@@ -451,7 +505,7 @@ test("protocol rejects unknown versions and extra fields", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeCommand({
-        protocol_version: 2,
+        protocol_version: 3,
         dispatch_target: "claude_code",
         prepare_id: prepareId,
         request_id: requestId,

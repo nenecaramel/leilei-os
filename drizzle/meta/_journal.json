@@ -631,6 +631,13 @@
       "when": 1790702100000,
       "tag": "0089_native_live_conversation_history_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1790703000000,
+      "tag": "0090_native_live_chat_attachments",
+      "breakpoints": true
     }
   ]
 }

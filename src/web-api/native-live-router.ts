@@ -43,6 +43,10 @@ import {
   type NativeLiveConversationHistoryUpload,
   type NativeLiveExternalSessionBridgeService,
 } from "../domains/bridge/native-live-external-session-bridge.js";
+import {
+  NativeLiveAttachmentError,
+  type NativeLiveAttachmentService,
+} from "../domains/bridge/native-live-attachment-service.js";
 
 export type NativeLiveApiDependencies = {
   coordinator: {
@@ -86,6 +90,7 @@ export type NativeLiveApiDependencies = {
     NativeLiveExternalSessionBridgeService,
     "createListRequest" | "readListRequest" | "createConversationFromSession" | "readConversationHistorySnapshot"
   >;
+  attachmentService?: NativeLiveAttachmentService;
 };
 
 export function createNativeLiveApiRouter(
@@ -93,6 +98,20 @@ export function createNativeLiveApiRouter(
 ): Router {
   const router = Router();
   router.post("/prepare", prepareNativeLiveTurnHandler(dependencies));
+  if (dependencies.attachmentService) {
+    router.post(
+      "/attachments/upload-slots",
+      createNativeLiveAttachmentUploadSlotHandler(dependencies),
+    );
+    router.post(
+      "/attachments/:attachmentId/complete",
+      completeNativeLiveAttachmentHandler(dependencies),
+    );
+    router.post(
+      "/attachments/:attachmentId/download-slot",
+      createNativeLiveAttachmentDownloadSlotHandler(dependencies),
+    );
+  }
   router.get("/turns/:prepareId", readNativeLiveTurnHandler(dependencies));
   if (dependencies.turnWaitService) {
     router.post(
@@ -1897,6 +1916,38 @@ export function readNativeLiveCurrentPathHandler(
       });
     }
   };
+}
+
+function sendNativeLiveAttachmentApiError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof NativeLiveAttachmentError) {
+    const status =
+      error.code === "INVALID_ATTACHMENT"
+      || error.code === "ATTACHMENT_LIMIT_EXCEEDED"
+        ? 400
+        : error.code === "ATTACHMENT_NOT_FOUND"
+          ? 404
+          : error.code === "ATTACHMENT_STORAGE_UNAVAILABLE"
+            ? 503
+            : 409;
+    response.status(status).json({
+      success: false,
+      error: {
+        code: error.code,
+        message: error.message,
+      },
+    });
+    return;
+  }
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "NATIVE_LIVE_ATTACHMENT_UNAVAILABLE",
+      message: "Native Live attachment service is temporarily unavailable.",
+    },
+  });
 }
 
 const DEFAULT_NATIVE_LIVE_CONVERSATION_LIST_LIMIT = 50;

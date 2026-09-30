@@ -74,12 +74,12 @@ export type NativeLiveProductionDependencies = {
     Required<
       Omit<
         NativeLiveApiDependencies,
-        "manualCompactService" | "externalSessionBridgeService"
+        "manualCompactService" | "externalSessionBridgeService" | "attachmentService"
       >
     >
     & Pick<
       NativeLiveApiDependencies,
-      "manualCompactService" | "externalSessionBridgeService"
+      "manualCompactService" | "externalSessionBridgeService" | "attachmentService"
     >;
   internal:
     Required<
@@ -90,6 +90,7 @@ export type NativeLiveProductionDependencies = {
         | "observeCompanionBackgroundOpportunity"
         | "manualCompactService"
         | "externalSessionBridgeService"
+        | "attachmentService"
       >
     >
     & Pick<
@@ -99,6 +100,7 @@ export type NativeLiveProductionDependencies = {
       | "observeCompanionBackgroundOpportunity"
       | "manualCompactService"
       | "externalSessionBridgeService"
+      | "attachmentService"
     >
     & {
       providerSessionStoreService:

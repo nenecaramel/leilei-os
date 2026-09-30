@@ -121,6 +121,122 @@ struct NativeLiveRuntimeEventPage: Sendable, Equatable {
     let nextAfterSequence: Int
 }
 
+enum NativeLiveComposerAttachmentKind: String, Codable, Sendable {
+    case image
+    case file
+}
+
+enum NativeLiveComposerAttachmentUploadState:
+    Sendable,
+    Equatable {
+    case uploading
+    case ready(String)
+    case failed(String)
+}
+
+struct NativeLiveComposerAttachmentDraft:
+    Identifiable,
+    Sendable,
+    Equatable {
+    let id: UUID
+    let filename: String
+    let mimeType: String
+    let kind: NativeLiveComposerAttachmentKind
+    let data: Data?
+    var state: NativeLiveComposerAttachmentUploadState
+
+    init(
+        id: UUID = UUID(),
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind,
+        data: Data?,
+        state: NativeLiveComposerAttachmentUploadState = .uploading
+    ) {
+        self.id = id
+        self.filename = filename
+        self.mimeType = mimeType
+        self.kind = kind
+        self.data = data
+        self.state = state
+    }
+
+    init(
+        existingAttachmentID: String,
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind
+    ) {
+        self.id = UUID()
+        self.filename = filename
+        self.mimeType = mimeType
+        self.kind = kind
+        self.data = nil
+        self.state = .ready(existingAttachmentID)
+    }
+
+    var remoteAttachmentID: String? {
+        guard case .ready(let value) = state else {
+            return nil
+        }
+        return value
+    }
+
+    var isReady: Bool {
+        remoteAttachmentID != nil
+    }
+
+    var isUploading: Bool {
+        if case .uploading = state { return true }
+        return false
+    }
+}
+
+struct NativeLiveChatAttachmentSnapshot:
+    Decodable,
+    Sendable,
+    Equatable,
+    Identifiable {
+    let attachmentId: String
+    let filename: String
+    let mimeType: String
+    let sizeBytes: Int
+    let sha256: String
+    let kind: NativeLiveComposerAttachmentKind
+    let status: String
+    let boundMessageId: String?
+    let createdAt: String
+    let expiresAt: String
+
+    var id: String { attachmentId }
+}
+
+struct NativeLiveAttachmentTransferSlot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let url: String
+    let method: String
+    let headers: [String: String]
+    let expiresAt: String
+}
+
+struct NativeLiveAttachmentUploadSlot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let attachment: NativeLiveChatAttachmentSnapshot
+    let upload: NativeLiveAttachmentTransferSlot
+}
+
+struct NativeLiveAttachmentDownloadSlot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let attachment: NativeLiveChatAttachmentSnapshot
+    let download: NativeLiveAttachmentTransferSlot
+}
+
 struct NativeLiveRuntimeInteractionSnapshot:
     Decodable,
     Sendable,

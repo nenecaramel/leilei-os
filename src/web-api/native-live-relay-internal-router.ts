@@ -65,6 +65,10 @@ import {
   MindSemanticGroupingRepositoryError,
   type DrizzleMindSemanticGroupingRepository,
 } from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
+import {
+  NativeLiveAttachmentError,
+  type NativeLiveAttachmentService,
+} from "../domains/bridge/native-live-attachment-service.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -133,6 +137,10 @@ export type NativeLiveRelayInternalDependencies = {
   externalSessionBridgeService?: Pick<
     NativeLiveExternalSessionBridgeService,
     "reserveNext" | "complete"
+  >;
+  attachmentService?: Pick<
+    NativeLiveAttachmentService,
+    "createDownloadSlot"
   >;
 };
 
@@ -219,6 +227,12 @@ export function createNativeLiveRelayInternalRouter(
       submitExternalSessionsResultHandler(dependencies),
     );
   }
+  if (dependencies.attachmentService) {
+    router.post(
+      "/attachments/:attachmentId/download-slot",
+      createInternalAttachmentDownloadSlotHandler(dependencies),
+    );
+  }
   if (dependencies.providerSessionCleanupService) {
     router.post(
       "/provider-session-cleanup/reserve",
@@ -300,6 +314,60 @@ function renewLeaseHandler(
       response.json({ success: true, data: { state } });
     } catch (error) {
       sendRelayError(response, error);
+    }
+  };
+}
+
+function createInternalAttachmentDownloadSlotHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId =
+      requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.attachmentService) return;
+    const attachmentId =
+      typeof request.params.attachmentId === "string"
+        ? request.params.attachmentId
+        : "";
+    if (!UUID_PATTERN.test(attachmentId)) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const result =
+        await dependencies.attachmentService.createDownloadSlot({
+          userId,
+          attachmentId,
+        });
+      response.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof NativeLiveAttachmentError) {
+        response.status(
+          error.code === "ATTACHMENT_NOT_FOUND"
+            ? 404
+            : error.code === "ATTACHMENT_STORAGE_UNAVAILABLE"
+              ? 503
+              : 409,
+        ).json({
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+        return;
+      }
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_ATTACHMENT_UNAVAILABLE",
+          message:
+            "Native Live attachment download slot is temporarily unavailable.",
+        },
+      });
     }
   };
 }

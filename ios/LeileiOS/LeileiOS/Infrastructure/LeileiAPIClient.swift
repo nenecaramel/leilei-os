@@ -828,10 +828,92 @@ final class LeileiAPIClient {
         )
     }
 
+    func createNativeLiveAttachmentUploadSlot(
+        filename: String,
+        mimeType: String,
+        sizeBytes: Int,
+        sha256: String,
+        kind: NativeLiveComposerAttachmentKind
+    ) async throws -> NativeLiveAttachmentUploadSlot {
+        let body = try JSONEncoder().encode(
+            NativeLiveAttachmentUploadSlotBody(
+                filename: filename,
+                mimeType: mimeType,
+                sizeBytes: sizeBytes,
+                sha256: sha256,
+                kind: kind
+            )
+        )
+        let envelope: NativeLiveAttachmentUploadSlotEnvelope =
+            try await request(
+                path: "/api/v1/native-live/attachments/upload-slots",
+                method: "POST",
+                body: body,
+                authenticated: true
+            )
+        return envelope.data
+    }
+
+    func uploadNativeLiveAttachmentBytes(
+        _ data: Data,
+        to slot: NativeLiveAttachmentTransferSlot
+    ) async throws {
+        guard slot.method == "PUT",
+              let url = URL(string: slot.url) else {
+            throw LeileiAPIError.invalidResponse
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        for (name, value) in slot.headers {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+
+        let (_, response) = try await session.upload(
+            for: request,
+            from: data
+        )
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw LeileiAPIError.invalidResponse
+        }
+    }
+
+    func completeNativeLiveAttachment(
+        attachmentID: String
+    ) async throws -> NativeLiveChatAttachmentSnapshot {
+        let envelope: NativeLiveAttachmentCompleteEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/attachments/"
+                    + attachmentID
+                    + "/complete",
+                method: "POST",
+                authenticated: true
+            )
+        return envelope.data.attachment
+    }
+
+    func nativeLiveAttachmentDownloadSlot(
+        attachmentID: String
+    ) async throws -> NativeLiveAttachmentDownloadSlot {
+        let envelope: NativeLiveAttachmentDownloadSlotEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/attachments/"
+                    + attachmentID
+                    + "/download-slot",
+                method: "POST",
+                authenticated: true
+            )
+        return envelope.data
+    }
+
     func prepareNativeLiveSend(
         conversationID: UUID,
         expectedHeadMessageID: String?,
         text: String,
+        attachmentIDs: [String] = [],
         workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
@@ -845,6 +927,7 @@ final class LeileiAPIClient {
                 expectedHeadMessageId: expectedHeadMessageID,
                 workspaceId: workspaceID,
                 text: text,
+                attachmentIds: attachmentIDs,
                 execution: execution
             )
         )
@@ -886,6 +969,7 @@ final class LeileiAPIClient {
         conversationID: UUID,
         targetUserMessageID: String,
         text: String,
+        attachmentIDs: [String]? = nil,
         execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
     ) async throws -> NativeLivePrepareResult {
@@ -897,6 +981,7 @@ final class LeileiAPIClient {
                 conversationId: conversationID.uuidString.lowercased(),
                 targetUserMessageId: targetUserMessageID,
                 text: text,
+                attachmentIds: attachmentIDs,
                 execution: execution
             )
         )
@@ -2150,6 +2235,49 @@ private struct NativeLiveRuntimeControlsEnvelope:
     let data: ControlData
 }
 
+private struct NativeLiveAttachmentUploadSlotBody:
+    Encodable,
+    Sendable {
+    let filename: String
+    let mimeType: String
+    let sizeBytes: Int
+    let sha256: String
+    let kind: NativeLiveComposerAttachmentKind
+
+    enum CodingKeys: String, CodingKey {
+        case filename
+        case mimeType = "mime_type"
+        case sizeBytes = "size_bytes"
+        case sha256
+        case kind
+    }
+}
+
+private struct NativeLiveAttachmentUploadSlotEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveAttachmentUploadSlot
+}
+
+private struct NativeLiveAttachmentCompleteEnvelope:
+    Decodable,
+    Sendable {
+    struct CompleteData: Decodable, Sendable {
+        let attachment: NativeLiveChatAttachmentSnapshot
+    }
+
+    let success: Bool
+    let data: CompleteData
+}
+
+private struct NativeLiveAttachmentDownloadSlotEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveAttachmentDownloadSlot
+}
+
 private struct NativeLiveSendBody: Encodable, Sendable {
     let dispatchTarget: String
     let requestId: String
@@ -2158,6 +2286,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
     let expectedHeadMessageId: String?
     let workspaceId: String?
     let text: String
+    let attachmentIds: [String]
     let execution: NativeLiveExecutionSelection?
 
     enum CodingKeys: String, CodingKey {
@@ -2168,6 +2297,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         case expectedHeadMessageId = "expected_head_message_id"
         case workspaceId = "workspace_id"
         case text
+        case attachmentIds = "attachment_ids"
         case execution
     }
 
@@ -2187,6 +2317,12 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         }
         try container.encodeIfPresent(workspaceId, forKey: .workspaceId)
         try container.encode(text, forKey: .text)
+        if !attachmentIds.isEmpty {
+            try container.encode(
+                attachmentIds,
+                forKey: .attachmentIds
+            )
+        }
         try container.encodeIfPresent(execution, forKey: .execution)
     }
 }
@@ -2216,6 +2352,7 @@ private struct NativeLiveEditBody: Encodable, Sendable {
     let conversationId: String
     let targetUserMessageId: String
     let text: String
+    let attachmentIds: [String]?
     let execution: NativeLiveExecutionSelection?
 
     enum CodingKeys: String, CodingKey {
@@ -2225,6 +2362,7 @@ private struct NativeLiveEditBody: Encodable, Sendable {
         case conversationId = "conversation_id"
         case targetUserMessageId = "target_user_message_id"
         case text
+        case attachmentIds = "attachment_ids"
         case execution
     }
 }

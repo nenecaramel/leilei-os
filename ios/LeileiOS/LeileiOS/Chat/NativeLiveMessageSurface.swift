@@ -610,7 +610,8 @@ private struct NativeLiveMessageRow: View {
             }
             let visibleBlocks = blocks.filter { block in
                 if block.kind == "tool_use"
-                    || block.kind == "tool_result" {
+                    || block.kind == "tool_result"
+                    || block.kind == "attachment" {
                     return true
                 }
                 return normalizedText(block.text) != nil
@@ -1483,17 +1484,7 @@ private struct NativeLiveBlockView: View {
             )
 
         case "attachment":
-            if let text = normalizedText {
-                Text(text)
-                    .font(.system(size: 15))
-                    .tracking(0.10)
-                    .lineSpacing(isUserMessage ? 5 : 6)
-                    .foregroundStyle(.secondary)
-                    .frame(
-                        maxWidth: fillsAvailableWidth ? .infinity : nil,
-                        alignment: .leading
-                    )
-            }
+            NativeLiveAttachmentBlockView(block: block)
 
         default:
             EmptyView()
@@ -1506,6 +1497,141 @@ private struct NativeLiveBlockView: View {
             in: .whitespacesAndNewlines
         )
         return normalized.isEmpty ? nil : normalized
+    }
+}
+
+
+private struct NativeLiveAttachmentBlockView: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let block: NativeLiveCurrentPathBlock
+
+    @State private var downloadURL: URL?
+
+    private var payload: [String: NativeLiveJSONValue] {
+        block.payload ?? [:]
+    }
+
+    private var attachmentID: String? {
+        payload["attachment_id"]?.stringValue
+    }
+
+    private var filename: String {
+        payload["filename"]?.stringValue ?? "Attachment"
+    }
+
+    private var mimeType: String {
+        payload["mime_type"]?.stringValue
+            ?? "application/octet-stream"
+    }
+
+    private var isImage: Bool {
+        payload["kind"]?.stringValue == "image"
+            || mimeType.hasPrefix("image/")
+    }
+
+    private var sizeText: String? {
+        guard let value =
+                payload["size_bytes"]?.numberValue,
+              value >= 0 else {
+            return nil
+        }
+        return ByteCountFormatter.string(
+            fromByteCount: Int64(value),
+            countStyle: .file
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isImage,
+               let downloadURL {
+                AsyncImage(url: downloadURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 260)
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: 12,
+                                    style: .continuous
+                                )
+                            )
+                    case .failure:
+                        attachmentRow
+                    default:
+                        ZStack {
+                            RoundedRectangle(
+                                cornerRadius: 12,
+                                style: .continuous
+                            )
+                            .fill(Color.primary.opacity(0.045))
+                            ProgressView()
+                        }
+                        .frame(height: 120)
+                    @unknown default:
+                        attachmentRow
+                    }
+                }
+            } else {
+                attachmentRow
+            }
+        }
+        .task(id: attachmentID) {
+            guard let attachmentID else { return }
+            downloadURL =
+                await appModel.nativeLiveAttachmentDownloadURL(
+                    attachmentID: attachmentID
+                )
+        }
+    }
+
+    private var attachmentRow: some View {
+        HStack(spacing: 10) {
+            Image(
+                systemName:
+                    isImage
+                        ? "photo"
+                        : "doc"
+            )
+            .font(.system(size: 15))
+            .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(filename)
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    Text(mimeType)
+                    if let sizeText {
+                        Text("·")
+                        Text(sizeText)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            if downloadURL != nil {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 10)
+        .background(
+            Color.primary.opacity(0.045),
+            in: RoundedRectangle(
+                cornerRadius: 11,
+                style: .continuous
+            )
+        )
     }
 }
 

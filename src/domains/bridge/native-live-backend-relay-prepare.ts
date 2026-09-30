@@ -81,6 +81,7 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          attachmentIds: request.attachment_ids ?? [],
           workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
         });
@@ -101,6 +102,10 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           conversationId: request.conversation_id,
           targetUserMessageId: request.target_user_message_id,
           text: request.text,
+          attachmentIds:
+            request.attachment_ids === undefined
+              ? null
+              : request.attachment_ids,
           executionSelection: request.execution ?? null,
         });
       }

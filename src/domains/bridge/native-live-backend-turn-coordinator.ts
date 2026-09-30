@@ -21,9 +21,11 @@ import {
 } from "./native-live-relay-contract.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+  NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
   NativeLiveRuntimeProtocolError,
   assertRuntimeResultMatchesCommand,
   parseNativeLiveRuntimeExecutionResult,
+  type NativeLiveRuntimeAttachment,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeExecutionResult,
   type NativeLiveRuntimeFailureCode,
@@ -44,6 +46,7 @@ export type NativeLivePreparedTurn = {
   workspaceId: string | null;
   expectedWorkspaceRoot: string | null;
   executionSelection?: NativeLiveExecutionSelection | null;
+  attachments?: NativeLiveRuntimeAttachment[];
   prompt: string;
   mindPrepared: boolean;
 };
@@ -170,6 +173,7 @@ export interface NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    attachmentIds: readonly string[];
     workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
@@ -190,6 +194,7 @@ export interface NativeLiveBackendTurnPort {
     conversationId: string;
     targetUserMessageId: string;
     text: string;
+    attachmentIds: readonly string[] | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
 
@@ -268,6 +273,7 @@ export class NativeLiveBackendTurnCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          attachmentIds: request.attachment_ids ?? [],
           workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
         });
@@ -288,6 +294,10 @@ export class NativeLiveBackendTurnCoordinator {
           conversationId: request.conversation_id,
           targetUserMessageId: request.target_user_message_id,
           text: request.text,
+          attachmentIds:
+            request.attachment_ids === undefined
+              ? null
+              : request.attachment_ids,
           executionSelection: request.execution ?? null,
         });
       }
@@ -503,8 +513,13 @@ export class NativeLiveBackendTurnCoordinator {
 export function nativeLiveRuntimeCommandFromPreparation(
   preparation: NativeLivePreparedTurn,
 ): NativeLiveRuntimeCommand {
+  const attachments = preparation.attachments ?? [];
+  const hasAttachments = attachments.length > 0;
   const command: NativeLiveRuntimeCommand = {
-    protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+    protocol_version:
+      hasAttachments
+        ? NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+        : NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
     dispatch_target: "claude_code",
     prepare_id: preparation.prepareId,
     request_id: preparation.requestId,
@@ -517,6 +532,9 @@ export function nativeLiveRuntimeCommandFromPreparation(
     expected_workspace_root:
       preparation.expectedWorkspaceRoot ?? null,
     execution_selection: preparation.executionSelection ?? null,
+    ...(hasAttachments
+      ? { attachments }
+      : {}),
     prompt: preparation.prompt,
   };
   return command;

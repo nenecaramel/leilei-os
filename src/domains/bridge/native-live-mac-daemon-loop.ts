@@ -143,6 +143,22 @@ export type NativeLiveDaemonRunOutcome =
     };
 
 export interface NativeLiveMacDaemonRelayClient {
+  createAttachmentDownloadSlot?(input: {
+    attachmentId: string;
+  }): Promise<{
+    url: string;
+    method: "GET";
+    headers: Record<string, string>;
+    attachment: {
+      attachmentId: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      kind: "image" | "file";
+    };
+  }>;
+
   reserveExternalSessions?(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";

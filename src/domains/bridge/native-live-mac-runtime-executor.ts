@@ -57,6 +57,9 @@ import type { NativeLiveExecutionSelection } from "./native-live-execution-selec
 import type {
   NativeLiveWorkspaceRuntimeResolver,
 } from "./native-live-mac-workspace-runtime.js";
+import type {
+  NativeLiveMacAttachmentMaterializer,
+} from "./native-live-mac-attachment-materializer.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -77,6 +80,8 @@ export class NativeLiveMacRuntimeExecutor {
       | NativeLiveForegroundRuntime
       | NativeLiveWorkspaceRuntimeResolver,
     private readonly fallbackWorkspaceRoot = "/",
+    private readonly attachmentMaterializer:
+      NativeLiveMacAttachmentMaterializer | null = null,
   ) {
     if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
       this.runtime = null;
@@ -115,11 +120,34 @@ export class NativeLiveMacRuntimeExecutor {
       workspaceRoot: string;
     };
     try {
+      const localAttachments =
+        this.attachmentMaterializer
+          ? await this.attachmentMaterializer.materialize(command)
+          : [];
+      if (
+        (command.attachments?.length ?? 0) > 0
+        && !this.attachmentMaterializer
+      ) {
+        throw Object.assign(
+          new Error(
+            "Native Live attachment materializer is unavailable.",
+          ),
+          { runtimeCode: "ATTACHMENT_UNAVAILABLE" },
+        );
+      }
+      const runtimePrompt =
+        this.attachmentMaterializer
+          ? this.attachmentMaterializer.appendPrompt(
+              command.prompt,
+              localAttachments,
+            )
+          : command.prompt;
+
       binding = await this.resolveRuntime(command);
       const runtime = binding.runtime;
       runtimeResult = runtime.executeTurn
         ? await runtime.executeTurn(
-            command.prompt,
+            runtimePrompt,
             {
               mode: command.runtime_mode,
               parentProviderSessionId:
@@ -155,10 +183,10 @@ export class NativeLiveMacRuntimeExecutor {
             },
           )
         : command.runtime_mode === "new"
-          ? await runtime.sendNew(command.prompt)
+          ? await runtime.sendNew(runtimePrompt)
           : await runtime.fork(
               command.parent_provider_session_id!,
-              command.prompt,
+              runtimePrompt,
             );
     } catch (error) {
       return failure(command, runtimeFailureCode(error));
@@ -182,7 +210,7 @@ export class NativeLiveMacRuntimeExecutor {
     );
 
     return {
-      protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+      protocol_version: command.protocol_version,
       prepare_id: command.prepare_id,
       request_id: command.request_id,
       conversation_id: command.conversation_id,
@@ -268,7 +296,7 @@ function failure(
   errorCode: NativeLiveRuntimeFailureCode,
 ): NativeLiveRuntimeExecutionResult {
   return {
-    protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+    protocol_version: command.protocol_version,
     prepare_id: command.prepare_id,
     request_id: command.request_id,
     conversation_id: command.conversation_id,
@@ -301,6 +329,7 @@ function isRuntimeFailureCode(
     || value === "PROVIDER_SESSION_CONFLICT"
     || value === "WORKSPACE_UNAVAILABLE"
     || value === "WORKSPACE_ROOT_MISMATCH"
+    || value === "ATTACHMENT_UNAVAILABLE"
     || value === "RUNTIME_UNAVAILABLE"
   );
 }

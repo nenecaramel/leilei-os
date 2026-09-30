@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -19,6 +21,12 @@ struct ChatView: View {
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
     @State private var isSystemKeyboardVisible = false
+    @State private var composerAttachments:
+        [NativeLiveComposerAttachmentDraft] = []
+    @State private var isPhotoPickerPresented = false
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var isFileImporterPresented = false
+    @State private var isCameraPresented = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -101,6 +109,7 @@ struct ChatView: View {
         }
         .onChange(of: draftConversationID) { _, _ in
             messageText = ""
+            composerAttachments = []
             editDraft = nil
             pendingOperation = nil
             isComposerFocused = false
@@ -129,7 +138,25 @@ struct ChatView: View {
                 interruptRequested:
                     runtimeInterruptRequested,
                 isEditing: editDraft != nil,
+                attachments: composerAttachments,
                 onCancelEdit: cancelEditing,
+                onPickPhoto: {
+                    isPhotoPickerPresented = true
+                },
+                onTakePhoto: {
+                    isCameraPresented = true
+                },
+                onPickFile: {
+                    isFileImporterPresented = true
+                },
+                onRemoveAttachment: { id in
+                    composerAttachments.removeAll {
+                        $0.id == id
+                    }
+                },
+                onRetryAttachment: { id in
+                    retryAttachmentUpload(id)
+                },
                 onInterrupt: {
                     interruptCurrentTurn()
                 },
@@ -158,6 +185,45 @@ struct ChatView: View {
                     ? 0
                     : 10
             )
+        }
+        .photosPicker(
+            isPresented: $isPhotoPickerPresented,
+            selection: $photoPickerItems,
+            maxSelectionCount:
+                max(1, 8 - composerAttachments.count),
+            matching: .images
+        )
+        .onChange(of: photoPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { @MainActor in
+                await importPhotos(items)
+                photoPickerItems = []
+            }
+        }
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: true
+        ) { result in
+            Task { @MainActor in
+                await importFiles(result)
+            }
+        }
+        .sheet(isPresented: $isCameraPresented) {
+            NativeLiveCameraPicker { data in
+                isCameraPresented = false
+                guard let data else { return }
+                addAttachment(
+                    data: data,
+                    filename:
+                        "Camera-"
+                        + UUID().uuidString.lowercased()
+                        + ".jpg",
+                    mimeType: "image/jpeg",
+                    kind: .image
+                )
+            }
+            .ignoresSafeArea()
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -364,13 +430,20 @@ struct ChatView: View {
         let text = message.displayText.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !text.isEmpty else { return }
+        let existingAttachments =
+            message.blocks.compactMap(
+                composerAttachmentFromCanonicalBlock
+            )
+        guard !text.isEmpty || !existingAttachments.isEmpty else {
+            return
+        }
 
         editDraft = NativeLiveEditDraft(
             targetUserMessageID: message.id,
             text: text
         )
         messageText = text
+        composerAttachments = existingAttachments
 
         Task { @MainActor in
             await Task.yield()
@@ -381,6 +454,7 @@ struct ChatView: View {
     private func cancelEditing() {
         editDraft = nil
         messageText = ""
+        composerAttachments = []
         isComposerFocused = false
     }
 
@@ -396,7 +470,14 @@ struct ChatView: View {
         let pendingText = messageText.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !pendingText.isEmpty,
+        let pendingAttachments = composerAttachments
+        let attachmentIDs =
+            pendingAttachments.compactMap(\.remoteAttachmentID)
+        guard (
+                !pendingText.isEmpty
+                || !pendingAttachments.isEmpty
+              ),
+              attachmentIDs.count == pendingAttachments.count,
               pendingOperation == nil,
               !isDraftCommitInFlight,
               appModel.chatSendState != .sending else {
@@ -414,19 +495,23 @@ struct ChatView: View {
             )
             editDraft = nil
             messageText = ""
+            composerAttachments = []
             isComposerFocused = false
 
             Task { @MainActor in
                 do {
                     try await appModel.editNativeLiveMessage(
-                        targetUserMessageID: draft.targetUserMessageID,
+                        targetUserMessageID:
+                            draft.targetUserMessageID,
                         text: pendingText,
+                        attachmentIDs: attachmentIDs,
                         execution: executionSelection
                     )
                     pendingOperation = nil
                 } catch {
                     pendingOperation = nil
                     editDraft = draft
+                    composerAttachments = pendingAttachments
 
                     if messageText.trimmingCharacters(
                         in: .whitespacesAndNewlines
@@ -447,6 +532,7 @@ struct ChatView: View {
                 appModel.nativeLiveCurrentPath?.syncToken
         )
         messageText = ""
+        composerAttachments = []
         isComposerFocused = false
 
         Task { @MainActor in
@@ -458,9 +544,12 @@ struct ChatView: View {
                     )
 
                     if let pendingOperation {
-                        self.pendingOperation = pendingOperation.rebased(
-                            to: appModel.nativeLiveCurrentPath?.syncToken
-                        )
+                        self.pendingOperation =
+                            pendingOperation.rebased(
+                                to:
+                                    appModel.nativeLiveCurrentPath?
+                                        .syncToken
+                            )
                     }
 
                     onDraftCommitted()
@@ -472,6 +561,7 @@ struct ChatView: View {
                         .currentHeadMessageId == nil
                 try await appModel.sendNativeLiveMessage(
                     pendingText,
+                    attachmentIDs: attachmentIDs,
                     workspaceID:
                         shouldBindWorkspace
                             ? selectedWorkspaceID
@@ -481,6 +571,7 @@ struct ChatView: View {
                 pendingOperation = nil
             } catch {
                 pendingOperation = nil
+                composerAttachments = pendingAttachments
 
                 if messageText.trimmingCharacters(
                     in: .whitespacesAndNewlines
@@ -492,10 +583,248 @@ struct ChatView: View {
             isDraftCommitInFlight = false
         }
     }
+
+    private func addAttachment(
+        data: Data,
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind
+    ) {
+        guard composerAttachments.count < 8,
+              !data.isEmpty,
+              data.count <= 20 * 1024 * 1024 else {
+            return
+        }
+        let draft = NativeLiveComposerAttachmentDraft(
+            filename: filename,
+            mimeType: mimeType,
+            kind: kind,
+            data: data
+        )
+        composerAttachments.append(draft)
+        uploadAttachment(draft.id)
+    }
+
+    private func retryAttachmentUpload(_ id: UUID) {
+        guard let index = composerAttachments.firstIndex(
+            where: { $0.id == id }
+        ),
+        composerAttachments[index].data != nil else {
+            return
+        }
+        composerAttachments[index].state = .uploading
+        uploadAttachment(id)
+    }
+
+    private func uploadAttachment(_ id: UUID) {
+        guard let draft = composerAttachments.first(
+            where: { $0.id == id }
+        ),
+        let data = draft.data else {
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let ready =
+                    try await appModel.uploadNativeLiveAttachment(
+                        data: data,
+                        filename: draft.filename,
+                        mimeType: draft.mimeType,
+                        kind: draft.kind
+                    )
+                guard let index =
+                        composerAttachments.firstIndex(
+                            where: { $0.id == id }
+                        ) else {
+                    return
+                }
+                composerAttachments[index].state =
+                    .ready(ready.attachmentId)
+            } catch {
+                guard let index =
+                        composerAttachments.firstIndex(
+                            where: { $0.id == id }
+                        ) else {
+                    return
+                }
+                composerAttachments[index].state =
+                    .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private func importPhotos(
+        _ items: [PhotosPickerItem]
+    ) async {
+        for item in items.prefix(
+            max(0, 8 - composerAttachments.count)
+        ) {
+            guard let data = try? await item.loadTransferable(
+                type: Data.self
+            ) else {
+                continue
+            }
+            let contentType =
+                item.supportedContentTypes.first
+                ?? .jpeg
+            let mimeType =
+                contentType.preferredMIMEType
+                ?? "image/jpeg"
+            let fileExtension =
+                contentType.preferredFilenameExtension
+                ?? "jpg"
+            addAttachment(
+                data: data,
+                filename:
+                    "Photo-"
+                    + UUID().uuidString.lowercased()
+                    + "."
+                    + fileExtension,
+                mimeType: mimeType,
+                kind: .image
+            )
+        }
+    }
+
+    private func importFiles(
+        _ result: Result<[URL], Error>
+    ) async {
+        guard case .success(let urls) = result else {
+            return
+        }
+
+        for url in urls.prefix(
+            max(0, 8 - composerAttachments.count)
+        ) {
+            let scoped =
+                url.startAccessingSecurityScopedResource()
+            defer {
+                if scoped {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            guard let data = try? Data(contentsOf: url),
+                  !data.isEmpty,
+                  data.count <= 20 * 1024 * 1024 else {
+                continue
+            }
+            let values = try? url.resourceValues(
+                forKeys: [
+                    .contentTypeKey,
+                    .nameKey,
+                ]
+            )
+            let contentType =
+                values?.contentType ?? .data
+            addAttachment(
+                data: data,
+                filename:
+                    values?.name
+                    ?? (
+                        url.lastPathComponent.isEmpty
+                            ? "Attachment"
+                            : url.lastPathComponent
+                    ),
+                mimeType:
+                    contentType.preferredMIMEType
+                    ?? "application/octet-stream",
+                kind:
+                    contentType.conforms(to: .image)
+                        ? .image
+                        : .file
+            )
+        }
+    }
+
+    private func composerAttachmentFromCanonicalBlock(
+        _ block: NativeLiveCurrentPathBlock
+    ) -> NativeLiveComposerAttachmentDraft? {
+        guard block.kind == "attachment",
+              let payload = block.payload,
+              let attachmentID =
+                payload["attachment_id"]?.stringValue,
+              let filename =
+                payload["filename"]?.stringValue,
+              let mimeType =
+                payload["mime_type"]?.stringValue else {
+            return nil
+        }
+        let kind: NativeLiveComposerAttachmentKind =
+            payload["kind"]?.stringValue == "image"
+                ? .image
+                : .file
+        return NativeLiveComposerAttachmentDraft(
+            existingAttachmentID: attachmentID,
+            filename: filename,
+            mimeType: mimeType,
+            kind: kind
+        )
+    }
+
 }
 
 
 private struct NativeLiveEditDraft {
     let targetUserMessageID: String
     let text: String
+}
+
+
+private struct NativeLiveCameraPicker:
+    UIViewControllerRepresentable {
+    let onComplete: (Data?) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onComplete: onComplete)
+    }
+
+    func makeUIViewController(
+        context: Context
+    ) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType =
+            UIImagePickerController.isSourceTypeAvailable(.camera)
+                ? .camera
+                : .photoLibrary
+        picker.delegate = context.coordinator
+        picker.allowsEditing = false
+        return picker
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIImagePickerController,
+        context: Context
+    ) {}
+
+    final class Coordinator:
+        NSObject,
+        UIImagePickerControllerDelegate,
+        UINavigationControllerDelegate {
+        let onComplete: (Data?) -> Void
+
+        init(onComplete: @escaping (Data?) -> Void) {
+            self.onComplete = onComplete
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info:
+                [UIImagePickerController.InfoKey: Any]
+        ) {
+            let image =
+                info[.originalImage] as? UIImage
+            onComplete(
+                image?.jpegData(
+                    compressionQuality: 0.92
+                )
+            )
+        }
+
+        func imagePickerControllerDidCancel(
+            _ picker: UIImagePickerController
+        ) {
+            onComplete(nil)
+        }
+    }
 }

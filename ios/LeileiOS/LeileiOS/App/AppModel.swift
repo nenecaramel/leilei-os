@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Combine
 import Auth0
 
@@ -560,8 +561,62 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func nativeLiveAttachmentDownloadURL(
+        attachmentID: String
+    ) async -> URL? {
+        guard isAuthenticated else { return nil }
+        do {
+            let slot =
+                try await api.nativeLiveAttachmentDownloadSlot(
+                    attachmentID: attachmentID
+                )
+            return URL(string: slot.download.url)
+        } catch {
+            return nil
+        }
+    }
+
+    func uploadNativeLiveAttachment(
+        data: Data,
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind
+    ) async throws -> NativeLiveChatAttachmentSnapshot {
+        guard isAuthenticated,
+              !data.isEmpty,
+              data.count <= 20 * 1024 * 1024 else {
+            throw NativeLiveSendError.notReady
+        }
+
+        let digest = SHA256.hash(data: data)
+        let sha256 = digest.map {
+            String(format: "%02x", $0)
+        }.joined()
+
+        let slot =
+            try await api.createNativeLiveAttachmentUploadSlot(
+                filename: filename,
+                mimeType: mimeType,
+                sizeBytes: data.count,
+                sha256: sha256,
+                kind: kind
+            )
+        do {
+            try await api.uploadNativeLiveAttachmentBytes(
+                data,
+                to: slot.upload
+            )
+            return try await api.completeNativeLiveAttachment(
+                attachmentID: slot.attachment.attachmentId
+            )
+        } catch {
+            throw error
+        }
+    }
+
     func sendNativeLiveMessage(
         _ text: String,
+        attachmentIDs: [String] = [],
         workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil
     ) async throws {
@@ -578,7 +633,8 @@ final class AppModel: ObservableObject {
         let normalized = text.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !normalized.isEmpty, normalized.count <= 4_000 else {
+        guard normalized.count <= 4_000,
+              !normalized.isEmpty || !attachmentIDs.isEmpty else {
             throw NativeLiveSendError.invalidText
         }
 
@@ -593,6 +649,7 @@ final class AppModel: ObservableObject {
                 conversationID: conversationID,
                 expectedHeadMessageID: snapshot.currentHeadMessageId,
                 text: normalized,
+                attachmentIDs: attachmentIDs,
                 workspaceID: workspaceID,
                 execution: execution
             )
@@ -690,6 +747,7 @@ final class AppModel: ObservableObject {
     func editNativeLiveMessage(
         targetUserMessageID: String,
         text: String,
+        attachmentIDs: [String]? = nil,
         execution: NativeLiveExecutionSelection? = nil
     ) async throws {
         guard isAuthenticated,
@@ -709,7 +767,21 @@ final class AppModel: ObservableObject {
         let normalized = text.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !normalized.isEmpty, normalized.count <= 4_000 else {
+        let targetHasAttachment =
+            snapshot.messages
+                .first(where: {
+                    $0.id == targetUserMessageID
+                        && $0.role == "user"
+                })?
+                .blocks
+                .contains(where: { $0.kind == "attachment" })
+            == true
+        let editHasAttachment =
+            attachmentIDs == nil
+                ? targetHasAttachment
+                : attachmentIDs?.isEmpty == false
+        guard normalized.count <= 4_000,
+              !normalized.isEmpty || editHasAttachment else {
             throw NativeLiveSendError.invalidText
         }
 
@@ -724,6 +796,7 @@ final class AppModel: ObservableObject {
                 conversationID: conversationID,
                 targetUserMessageID: targetUserMessageID,
                 text: normalized,
+                attachmentIDs: attachmentIDs,
                 execution: execution
             )
 

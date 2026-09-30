@@ -126,6 +126,19 @@ const baseEnvSchema = z.object({
     z.coerce.number().int().positive().optional(),
   NATIVE_LIVE_PROACTIVITY_COOLDOWN_SECONDS:
     z.coerce.number().int().positive().optional(),
+  NATIVE_LIVE_ATTACHMENT_BUCKET: z.string().trim().min(1).optional(),
+  NATIVE_LIVE_ATTACHMENT_ENDPOINT: httpsUrl.optional(),
+  NATIVE_LIVE_ATTACHMENT_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
+  NATIVE_LIVE_ATTACHMENT_SECRET_ACCESS_KEY: z.string().trim().min(1).optional(),
+  NATIVE_LIVE_ATTACHMENT_REGION: z.string().trim().min(1).default("auto"),
+  NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS:
+    z.coerce.number().int().min(60).max(3_600).default(600),
+  NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES:
+    z.coerce.number().int().positive().default(20 * 1024 * 1024),
+  NATIVE_LIVE_ATTACHMENT_MAX_PER_TURN:
+    z.coerce.number().int().min(1).max(20).default(8),
+  NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS:
+    z.coerce.number().int().min(600).default(24 * 60 * 60),
 });
 
 const mcpGovernanceEnvSchema = z.object({
@@ -347,6 +360,54 @@ export type ProactivityWakeOpportunityConfig = {
   minIdleMs: number;
   cooldownMs: number;
 };
+
+export type NativeLiveAttachmentStorageConfig = {
+  bucket: string;
+  endpoint: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  presignTtlSeconds: number;
+  maxFileBytes: number;
+  maxPerTurn: number;
+  unboundTtlSeconds: number;
+};
+
+export function getNativeLiveAttachmentStorageConfig(
+  environment: RuntimeEnv,
+): NativeLiveAttachmentStorageConfig | undefined {
+  const required = [
+    environment.NATIVE_LIVE_ATTACHMENT_BUCKET,
+    environment.NATIVE_LIVE_ATTACHMENT_ENDPOINT,
+    environment.NATIVE_LIVE_ATTACHMENT_ACCESS_KEY_ID,
+    environment.NATIVE_LIVE_ATTACHMENT_SECRET_ACCESS_KEY,
+  ];
+  if (required.every((value) => value === undefined)) {
+    return undefined;
+  }
+  if (required.some((value) => value === undefined)) {
+    throw new Error(
+      "Native Live attachment storage requires bucket, endpoint, access key id, and secret access key together.",
+    );
+  }
+  return {
+    bucket: environment.NATIVE_LIVE_ATTACHMENT_BUCKET!,
+    endpoint: environment.NATIVE_LIVE_ATTACHMENT_ENDPOINT!,
+    accessKeyId: environment.NATIVE_LIVE_ATTACHMENT_ACCESS_KEY_ID!,
+    secretAccessKey:
+      environment.NATIVE_LIVE_ATTACHMENT_SECRET_ACCESS_KEY!,
+    region: environment.NATIVE_LIVE_ATTACHMENT_REGION,
+    presignTtlSeconds:
+      environment.NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS,
+    maxFileBytes:
+      environment.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
+    maxPerTurn:
+      environment.NATIVE_LIVE_ATTACHMENT_MAX_PER_TURN,
+    unboundTtlSeconds:
+      environment.NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS,
+  };
+}
+
 
 export function getBreathRankingConfig(
   environment: Pick<

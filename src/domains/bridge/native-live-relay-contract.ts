@@ -15,6 +15,7 @@ export type NativeLiveRelaySendRequest = {
   text: string;
   workspace_id?: string;
   execution?: NativeLiveExecutionSelection;
+  attachment_ids?: string[];
 };
 
 export type NativeLiveRelayRetryRequest = {
@@ -34,6 +35,7 @@ export type NativeLiveRelayEditRequest = {
   target_user_message_id: string;
   text: string;
   execution?: NativeLiveExecutionSelection;
+  attachment_ids?: string[];
 };
 
 export type NativeLiveRelayRequest =
@@ -75,7 +77,11 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "conversation_id",
       "expected_head_message_id",
       "text",
-    ], ["execution", "workspace_id"]);
+    ], ["execution", "workspace_id", "attachment_ids"]);
+    const attachmentIds =
+      body.attachment_ids === undefined
+        ? []
+        : parseAttachmentIds(body.attachment_ids);
     return {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -85,13 +91,19 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
         body.expected_head_message_id === null
           ? null
           : requireUuid(body.expected_head_message_id, "expected_head_message_id"),
-      text: normalizeText(body.text),
+      text: normalizeText(
+        body.text,
+        attachmentIds.length > 0,
+      ),
       ...(body.workspace_id === undefined
         ? {}
         : { workspace_id: requireUuid(body.workspace_id, "workspace_id") }),
       ...(body.execution === undefined
         ? {}
         : { execution: parseExecution(body.execution) }),
+      ...(attachmentIds.length === 0
+        ? {}
+        : { attachment_ids: attachmentIds }),
     };
   }
 
@@ -126,7 +138,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "conversation_id",
       "target_user_message_id",
       "text",
-    ], ["execution"]);
+    ], ["execution", "attachment_ids"]);
     return {
       dispatch_target: "claude_code",
       request_id: requestId,
@@ -136,16 +148,44 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
         body.target_user_message_id,
         "target_user_message_id",
       ),
-      text: normalizeText(body.text),
+      text: normalizeText(body.text, true),
       ...(body.execution === undefined
         ? {}
         : { execution: parseExecution(body.execution) }),
+      ...(body.attachment_ids === undefined
+        ? {}
+        : {
+            attachment_ids:
+              parseAttachmentIds(body.attachment_ids),
+          }),
     };
   }
 
   throw new NativeLiveRelayContractError("Native live relay operation is invalid.");
 }
 
+
+function parseAttachmentIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new NativeLiveRelayContractError(
+      "attachment_ids must be an array containing at most 8 UUIDs.",
+    );
+  }
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    const id = requireUuid(
+      item,
+      "attachment_ids[" + index + "]",
+    );
+    if (seen.has(id)) {
+      throw new NativeLiveRelayContractError(
+        "attachment_ids must not contain duplicates.",
+      );
+    }
+    seen.add(id);
+    return id;
+  });
+}
 
 function parseExecution(value: unknown): NativeLiveExecutionSelection {
   try {
@@ -196,14 +236,22 @@ function requireUuid(value: unknown, field: string): string {
   return value;
 }
 
-function normalizeText(value: unknown): string {
+function normalizeText(
+  value: unknown,
+  allowEmpty = false,
+): string {
   if (typeof value !== "string") {
     throw new NativeLiveRelayContractError("text must be a string.");
   }
   const text = value.replace(/\r\n?/g, "\n").trim();
-  if (text.length === 0 || text.length > MAX_TEXT_CHARS) {
+  if (
+    text.length > MAX_TEXT_CHARS
+    || (!allowEmpty && text.length === 0)
+  ) {
     throw new NativeLiveRelayContractError(
-      "text must contain between 1 and 4000 characters.",
+      allowEmpty
+        ? "text must contain at most 4000 characters."
+        : "text must contain between 1 and 4000 characters.",
     );
   }
   return text;
