@@ -67,3 +67,10 @@ CREATE INDEX "native_live_chat_attachments_user_status_created_idx"
   ON "native_live_chat_attachments" ("user_id","status","created_at","id");
 CREATE INDEX "native_live_chat_attachments_bound_message_idx"
   ON "native_live_chat_attachments" ("user_id","bound_message_id");
+
+ALTER TABLE "native_live_turn_preparations"
+  ADD COLUMN "attachments" jsonb DEFAULT '[]'::jsonb NOT NULL;
+
+ALTER TABLE "native_live_turn_preparations"
+  ADD CONSTRAINT "native_live_turn_preparations_attachments_array"
+  CHECK (jsonb_typeof("attachments") = 'array');
