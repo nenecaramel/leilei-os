@@ -50,6 +50,7 @@ export type McpRouterOptions = {
   registry?: McpSessionRegistry;
   createSessionServer?: McpSessionServerFactory;
   logger?: SafeLogger;
+  allowStatelessPostRecovery?: boolean;
 };
 
 type McpSessionRejectionReason =
@@ -224,7 +225,14 @@ export function createMcpRouter(options: McpRouterOptions = {}): Router {
         return;
       }
 
-      if (!activeSession && !knownSession && namespace === "public") {
+      if (
+        !activeSession
+        && !knownSession
+        && (
+          namespace === "public"
+          || options.allowStatelessPostRecovery === true
+        )
+      ) {
         await runPublicPostRecovery(userId, request, response);
         return;
       }

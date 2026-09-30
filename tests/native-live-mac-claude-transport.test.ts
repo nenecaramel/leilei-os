@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createNativeLiveMacClaudeTransport,
   resolveNativeLiveMacClaudeTransportKind,
+  sanitizeNativeLiveClaudeEnvironment,
 } from "../src/domains/bridge/native-live-mac-claude-transport.js";
 
 test("Mac daemon Claude transport defaults to Agent SDK", () => {
@@ -58,4 +59,59 @@ test("Mac daemon transport factory creates the Agent SDK adapter at the configur
     (agent.runtime as unknown as { cwd: string }).cwd,
     workspaceRoot,
   );
+});
+
+
+test("Mac daemon strips LeileiOS credentials from Claude Code environment", () => {
+  assert.deepEqual(
+    sanitizeNativeLiveClaudeEnvironment({
+      HOME: "/Users/leilei",
+      LEILEI_NATIVE_LIVE_RELAY_TOKEN: "relay-secret",
+      NATIVE_LIVE_RELAY_AUTH_TOKEN: "railway-relay-secret",
+      MCP_AUTH_TOKEN: "broad-mcp-secret",
+      SAFE_FLAG: "visible",
+    }),
+    {
+      HOME: "/Users/leilei",
+      SAFE_FLAG: "visible",
+    },
+  );
+});
+
+test("Mac daemon transport carries MCP config outside the Claude environment", async () => {
+  const workspaceRoot = process.cwd();
+  const agent = await createNativeLiveMacClaudeTransport(
+    {
+      HOME: "/Users/leilei",
+      LEILEI_NATIVE_LIVE_RELAY_TOKEN: "must-not-reach-bash",
+    },
+    workspaceRoot,
+    null,
+    {
+      type: "http",
+      url: "https://leilei-os.example/internal/native-live-mcp",
+      headers: {
+        Authorization: "Bearer relay-secret",
+      },
+    },
+  );
+  const runtime = agent.runtime as unknown as {
+    environment: Record<string, string | undefined>;
+    mcpServerConfig: {
+      type: string;
+      url: string;
+      headers: Record<string, string>;
+    };
+  };
+  assert.equal(
+    runtime.environment.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
+    undefined,
+  );
+  assert.deepEqual(runtime.mcpServerConfig, {
+    type: "http",
+    url: "https://leilei-os.example/internal/native-live-mcp",
+    headers: {
+      Authorization: "Bearer relay-secret",
+    },
+  });
 });

@@ -276,3 +276,37 @@ test("unauthenticated public POST remains 401 without recovery", async () => {
   }
   assert.equal(factoryCalls, 0);
 });
+
+
+test("trusted internal MCP can recover a stale POST session after server restart", async () => {
+  const registry = new McpSessionRegistry();
+  let internalFactoryCalls = 0;
+  await withServer(async (url) => {
+    const internalUrl = url.replace("/mcp", "/internal/native-live-mcp");
+    const response = await post(
+      internalUrl,
+      recoveryProbeCallRequest(),
+      requestHeaders(USER_ID, "stale-after-deploy"),
+    );
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /recovery probe ok/iu);
+  }, {
+    registry,
+  }, (app) => {
+    app.use(
+      "/internal/native-live-mcp",
+      createMcpRouter({
+        namespace: "internal",
+        registry,
+        allowStatelessPostRecovery: true,
+        createSessionServer: (userId) => {
+          internalFactoryCalls += 1;
+          return createRecoveryProbeServer(userId);
+        },
+      }),
+    );
+  });
+  assert.equal(internalFactoryCalls, 1);
+  assert.equal(registry.size, 0);
+  assert.equal(registry.capacitySize, 0);
+});

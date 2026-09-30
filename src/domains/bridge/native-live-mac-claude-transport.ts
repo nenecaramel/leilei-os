@@ -12,6 +12,12 @@ import type {
 
 export type NativeLiveMacClaudeTransportKind = "agent_sdk";
 
+export type NativeLiveMacMcpServerConfig = {
+  type: "http";
+  url: string;
+  headers: Readonly<Record<string, string>>;
+};
+
 export type NativeLiveMacActiveTurnController = {
   sendUserMessage(text: string): Record<string, unknown>;
   interrupt(): Promise<Record<string, unknown>>;
@@ -100,6 +106,7 @@ export async function createNativeLiveMacClaudeTransport(
   environment: NodeJS.ProcessEnv = process.env,
   workspaceRoot?: string,
   sessionStore: unknown = null,
+  mcpServerConfig: NativeLiveMacMcpServerConfig | null = null,
 ): Promise<{
   kind: NativeLiveMacClaudeTransportKind;
   runtime: NativeLiveMacClaudeTransport;
@@ -125,15 +132,33 @@ export async function createNativeLiveMacClaudeTransport(
       environment: NodeJS.ProcessEnv;
       cwd: string;
       sessionStore?: unknown;
+      mcpServerConfig?: NativeLiveMacMcpServerConfig;
     }) => NativeLiveMacClaudeTransport;
   };
 
   return {
     kind,
     runtime: new AgentSdkClaudeTransport({
-      environment,
+      environment: sanitizeNativeLiveClaudeEnvironment(environment),
       cwd: normalizedWorkspaceRoot,
       ...(sessionStore ? { sessionStore } : {}),
+      ...(mcpServerConfig ? { mcpServerConfig } : {}),
     }),
   };
+}
+
+const NATIVE_LIVE_CLAUDE_ENV_DENYLIST = new Set([
+  "LEILEI_NATIVE_LIVE_RELAY_TOKEN",
+  "NATIVE_LIVE_RELAY_AUTH_TOKEN",
+  "MCP_AUTH_TOKEN",
+]);
+
+export function sanitizeNativeLiveClaudeEnvironment(
+  environment: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(environment).filter(
+      ([key]) => !NATIVE_LIVE_CLAUDE_ENV_DENYLIST.has(key),
+    ),
+  );
 }
