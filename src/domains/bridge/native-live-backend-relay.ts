@@ -314,6 +314,41 @@ implements NativeLiveBackendRelayPort {
           AND execution_started_at IS NULL
       `);
 
+      await transaction.execute(sql`
+        UPDATE native_live_turn_preparations AS older
+        SET dispatch_status = 'rejected',
+            reserved_by = NULL,
+            reserved_at = NULL,
+            reservation_expires_at = NULL,
+            execution_started_at = NULL,
+            dispatch_error_code = 'SUPERSEDED_BY_NEWER_TURN',
+            updated_at = now()
+        WHERE older.user_id = ${input.userId}::uuid
+          AND older.status = 'prepared'
+          AND older.dispatch_status = 'pending'
+          AND EXISTS (
+            SELECT 1
+            FROM native_live_turn_preparations AS newer
+            WHERE newer.user_id = older.user_id
+              AND newer.conversation_id = older.conversation_id
+              AND newer.status = 'prepared'
+              AND newer.dispatch_status IN (
+                'staged',
+                'pending',
+                'reserved',
+                'executing',
+                'delivery_unknown'
+              )
+              AND (
+                newer.created_at > older.created_at
+                OR (
+                  newer.created_at = older.created_at
+                  AND newer.id > older.id
+                )
+              )
+          )
+      `);
+
       const reserved = await transaction.execute<{ id: string }>(sql`
         WITH candidate AS (
           SELECT id
