@@ -44,6 +44,10 @@ import type {
 } from "./native-live-runtime-protocol.js";
 import type { MemoryLifecyclePolicy } from "../runtime/memory-lifecycle.js";
 import {
+  DrizzleNativeLiveAttachmentBinding,
+  type NativeLiveRuntimeAttachment,
+} from "./native-live-attachment-service.js";
+import {
   planCausalSubjectStatePurge,
   planExclusiveProviderSessionCleanup,
   planReplacementMessagePurge,
@@ -107,6 +111,7 @@ type PreparationRow = {
   workspaceId: string | null;
   expectedWorkspaceRoot: string | null;
   executionSelection: Record<string, unknown> | null;
+  attachments: Array<Record<string, unknown>>;
   prompt: string;
   mindPrepared: boolean;
   status: "prepared" | "finalized_success" | "finalized_failure";
@@ -142,6 +147,7 @@ function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     executionSelection: row.executionSelection === null
       ? null
       : parseNativeLiveExecutionSelection(row.executionSelection),
+    attachments: parseStoredAttachments(row.attachments),
     prompt: row.prompt,
     mindPrepared: row.mindPrepared,
   };
@@ -154,6 +160,42 @@ function readUserText(message: NativeLiveMessage): string | null {
     .join("\n")
     .trim();
   return text.length > 0 ? text : null;
+}
+
+function parseStoredAttachments(
+  value: Array<Record<string, unknown>>,
+): NativeLiveRuntimeAttachment[] {
+  return value.map((item) => {
+    const attachmentId = item.attachment_id;
+    const filename = item.filename;
+    const mimeType = item.mime_type;
+    const sizeBytes = item.size_bytes;
+    const sha256 = item.sha256;
+    const kind = item.kind;
+    if (
+      typeof attachmentId !== "string"
+      || typeof filename !== "string"
+      || typeof mimeType !== "string"
+      || typeof sizeBytes !== "number"
+      || !Number.isSafeInteger(sizeBytes)
+      || sizeBytes <= 0
+      || typeof sha256 !== "string"
+      || !/^[0-9a-f]{64}$/u.test(sha256)
+      || (kind !== "image" && kind !== "file")
+    ) {
+      throw new Error(
+        "Stored Native Live attachment descriptor is invalid.",
+      );
+    }
+    return {
+      attachment_id: attachmentId,
+      filename,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
+      sha256,
+      kind,
+    };
+  });
 }
 
 function requestConflictOrReplay(
@@ -184,6 +226,7 @@ implements NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    attachmentIds: readonly string[];
     workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
@@ -192,6 +235,9 @@ implements NativeLiveBackendTurnPort {
       conversationId: input.conversationId,
       expectedHeadMessageId: input.expectedHeadMessageId,
       text: input.text,
+      ...(input.attachmentIds.length > 0
+        ? { attachmentIds: input.attachmentIds }
+        : {}),
       ...(input.workspaceId
         ? { workspaceId: input.workspaceId }
         : {}),
@@ -263,6 +309,17 @@ implements NativeLiveBackendTurnPort {
             text: input.text,
           },
         });
+        const attachmentBinding =
+          new DrizzleNativeLiveAttachmentBinding(
+            transaction as Transaction,
+          );
+        const attachments =
+          await attachmentBinding.bindReadyToMessage({
+            userId: input.userId,
+            messageId: userMessage.id,
+            attachmentIds: input.attachmentIds,
+            startOrdinal: 1,
+          });
 
         const preparation = await this.insertPreparation(transaction, {
           prepareId: input.prepareId,
@@ -278,6 +335,7 @@ implements NativeLiveBackendTurnPort {
           workspaceId: runtimeParent.workspaceId,
           expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
+          attachments,
           prompt: input.text,
         });
 
@@ -360,6 +418,14 @@ implements NativeLiveBackendTurnPort {
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
+        const attachments =
+          await new DrizzleNativeLiveAttachmentBinding(
+            transaction as Transaction,
+          ).readForMessage({
+            userId: input.userId,
+            messageId: target.id,
+          });
+
         const preparation = await this.insertPreparation(transaction, {
           prepareId: input.prepareId,
           userId: input.userId,
@@ -374,6 +440,7 @@ implements NativeLiveBackendTurnPort {
           workspaceId: runtimeParent.workspaceId,
           expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
+          attachments,
           prompt,
         });
 
@@ -393,6 +460,7 @@ implements NativeLiveBackendTurnPort {
     conversationId: string;
     targetUserMessageId: string;
     text: string;
+    attachmentIds: readonly string[] | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     const requestHash = hashJson(REQUEST_HASH_VERSION, {
@@ -400,6 +468,9 @@ implements NativeLiveBackendTurnPort {
       conversationId: input.conversationId,
       targetUserMessageId: input.targetUserMessageId,
       text: input.text,
+      ...(input.attachmentIds !== null
+        ? { attachmentIds: input.attachmentIds }
+        : {}),
       ...(input.executionSelection
         ? { executionSelection: input.executionSelection }
         : {}),
@@ -457,6 +528,21 @@ implements NativeLiveBackendTurnPort {
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
+        const attachmentBinding =
+          new DrizzleNativeLiveAttachmentBinding(
+            transaction as Transaction,
+          );
+        const originalAttachments =
+          await attachmentBinding.readForMessage({
+            userId: input.userId,
+            messageId: target.id,
+          });
+        const selectedAttachmentIds =
+          input.attachmentIds
+          ?? originalAttachments.map(
+            (attachment) => attachment.attachment_id,
+          );
+
         const editedUser = await conversations.appendUserMessage({
           userId: input.userId,
           conversationId: input.conversationId,
@@ -473,6 +559,14 @@ implements NativeLiveBackendTurnPort {
             text: input.text,
           },
         });
+        const attachments =
+          await attachmentBinding.bindReadyToMessage({
+            userId: input.userId,
+            messageId: editedUser.id,
+            attachmentIds: selectedAttachmentIds,
+            allowPreviouslyBound: true,
+            startOrdinal: 1,
+          });
 
         const preparation = await this.insertPreparation(transaction, {
           prepareId: input.prepareId,
@@ -488,6 +582,7 @@ implements NativeLiveBackendTurnPort {
           workspaceId: runtimeParent.workspaceId,
           expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
+          attachments,
           prompt: input.text,
         });
 
@@ -1416,6 +1511,7 @@ implements NativeLiveBackendTurnPort {
       workspaceId: string | null;
       expectedWorkspaceRoot: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
+      attachments: NativeLiveRuntimeAttachment[];
       prompt: string;
     },
   ): Promise<NativeLivePreparedTurn> {
@@ -1435,6 +1531,7 @@ implements NativeLiveBackendTurnPort {
         workspaceId: input.workspaceId,
         expectedWorkspaceRoot: input.expectedWorkspaceRoot,
         executionSelection: input.executionSelection,
+        attachments: input.attachments,
         prompt: input.prompt,
         mindPrepared: false,
         status: "prepared",
@@ -1542,6 +1639,7 @@ implements NativeLiveBackendTurnPort {
       expectedWorkspaceRoot:
         nativeLiveTurnPreparations.expectedWorkspaceRoot,
       executionSelection: nativeLiveTurnPreparations.executionSelection,
+      attachments: nativeLiveTurnPreparations.attachments,
       prompt: nativeLiveTurnPreparations.prompt,
       mindPrepared: nativeLiveTurnPreparations.mindPrepared,
       status: nativeLiveTurnPreparations.status,
