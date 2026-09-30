@@ -50,6 +50,20 @@ export type RetentionCoordinatorEvent =
       durationMs: number;
     }
   | {
+      name: "native_live_chat_attachments_cleanup_completed";
+      policy: "native_live_chat_attachments";
+      deletedRows: number;
+      batches: number;
+      capped: boolean;
+      durationMs: number;
+    }
+  | {
+      name: "native_live_chat_attachments_cleanup_failed";
+      policy: "native_live_chat_attachments";
+      batches: number;
+      durationMs: number;
+    }
+  | {
       name: "runtime_operational_records_cleanup_completed";
       policy: "runtime_operational_records";
       deletedRows: number;
@@ -119,7 +133,9 @@ export function createRetentionCoordinator(
           ? "data_import_runs_cleanup_completed"
           : policy.policy === "native_live_background_model_jobs"
             ? "native_live_background_model_jobs_cleanup_completed"
-            : "runtime_operational_records_cleanup_completed";
+            : policy.policy === "native_live_chat_attachments"
+              ? "native_live_chat_attachments_cleanup_completed"
+              : "runtime_operational_records_cleanup_completed";
       emit({
         name: completedName,
         policy: policy.policy,
@@ -136,7 +152,9 @@ export function createRetentionCoordinator(
             ? "data_import_runs_cleanup_failed"
             : policy.policy === "native_live_background_model_jobs"
               ? "native_live_background_model_jobs_cleanup_failed"
-              : "runtime_operational_records_cleanup_failed",
+              : policy.policy === "native_live_chat_attachments"
+                ? "native_live_chat_attachments_cleanup_failed"
+                : "runtime_operational_records_cleanup_failed",
         policy: policy.policy,
         batches,
         durationMs: Math.max(0, now() - startedAt),
