@@ -869,6 +869,20 @@ function reserveNextHandler(
         listenerInstanceId: body.listener_instance_id,
         dispatchTarget: "claude_code",
       });
+      if (reservation) {
+        process.stdout.write(
+          JSON.stringify({
+            level: "info",
+            timestamp: new Date().toISOString(),
+            event: "native_live_reservation_dispatch_observed",
+            reservationId: reservation.reservationId,
+            protocolVersion: reservation.command.protocol_version,
+            operation: reservation.command.operation,
+            attachmentCount:
+              reservation.command.attachments?.length ?? 0,
+          }) + "\n",
+        );
+      }
       response.json({
         success: true,
         data: reservation
