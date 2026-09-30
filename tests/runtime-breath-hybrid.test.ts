@@ -73,6 +73,191 @@ test("Chinese single-character overlap does not create a lexical Breath match", 
   assert.deepEqual(hits, []);
 });
 
+test("English low-information words do not create a lexical Breath match", () => {
+  const unrelated = state(
+    "unrelated-english",
+    "you told me that this toy was funny",
+  );
+  const hits = recallBreath(
+    "do you think of me",
+    [unrelated],
+    {
+      ...base,
+      semanticWeight: 0,
+    },
+  );
+
+  assert.deepEqual(hits, []);
+});
+
+test("English content words still create lexical evidence after stopword filtering", () => {
+  const relevant = state(
+    "relevant-english",
+    "I miss you when the conversation goes quiet",
+  );
+  const hits = recallBreath(
+    "do you miss me",
+    [relevant],
+    {
+      ...base,
+      semanticWeight: 0,
+    },
+  );
+
+  assert.deepEqual(hits.map((hit) => hit.state.id), ["relevant-english"]);
+});
+
+test("sub-threshold semantic similarity contributes zero to a lexical hit", () => {
+  const weak = state(
+    "weak-semantic",
+    "runtime alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+  );
+  const hits = recallBreath(
+    "runtime",
+    [weak],
+    {
+      ...base,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      semanticScores: new Map([["weak-semantic", 0.79]]),
+    },
+  );
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]?.channel, "lexical");
+  assert.ok(hits[0]);
+  assert.ok(
+    Math.abs(
+      hits[0].score - (0.35 * hits[0].lexicalScore),
+    ) < 1e-12,
+  );
+});
+
+test("semantic median margin suppresses a uniformly high background", () => {
+  const candidates = [
+    state("background-1", "alpha memory"),
+    state("background-2", "beta memory"),
+    state("background-3", "gamma memory"),
+    state("background-4", "delta memory"),
+    state("background-5", "epsilon memory"),
+    state("background-6", "zeta memory"),
+    state("background-7", "theta memory"),
+    state("standout", "korea shoreline memory"),
+  ];
+  const hits = recallBreath(
+    "travel",
+    candidates,
+    {
+      ...base,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      semanticMedianMargin: 0.03,
+      minimumScore: 0.08,
+      semanticScores: new Map([
+        ["background-1", 0.81],
+        ["background-2", 0.812],
+        ["background-3", 0.814],
+        ["background-4", 0.816],
+        ["background-5", 0.818],
+        ["background-6", 0.82],
+        ["background-7", 0.822],
+        ["standout", 0.9],
+      ]),
+    },
+  );
+
+  assert.deepEqual(hits.map((hit) => hit.state.id), ["standout"]);
+});
+
+test("recent recall penalty prefers an equally relevant older memory", () => {
+  const recent = state(
+    "recent-memory",
+    "lemon yellow hair memory from recently",
+  );
+  recent.payload = {
+    lifecycle_v1: {
+      status: "active",
+      salience: 1,
+      protected: false,
+      lastDecayedAt: "2026-09-22T00:00:00.000Z",
+      lastRecalledAt: "2026-09-22T09:30:00.000Z",
+      archivedAt: null,
+      forgottenAt: null,
+    },
+  };
+  const older = state(
+    "older-memory",
+    "lemon yellow hair memory from years ago",
+  );
+  older.payload = {
+    lifecycle_v1: {
+      status: "active",
+      salience: 1,
+      protected: false,
+      lastDecayedAt: "2026-09-22T00:00:00.000Z",
+      lastRecalledAt: "2026-09-19T00:00:00.000Z",
+      archivedAt: null,
+      forgottenAt: null,
+    },
+  };
+
+  const hits = recallBreath(
+    "lemon yellow hair",
+    [recent, older],
+    {
+      ...base,
+      now: "2026-09-22T10:00:00.000Z",
+      semanticWeight: 0,
+      recentRecallPenalty: true,
+    },
+  );
+
+  assert.deepEqual(
+    hits.map((hit) => hit.state.id),
+    ["older-memory", "recent-memory"],
+  );
+  assert.ok((hits[0]?.score ?? 0) > (hits[1]?.score ?? 0));
+});
+
+test("near-duplicate Breath memories do not consume multiple slots", () => {
+  const first = state(
+    "duplicate-a",
+    "lemon yellow hair was my favorite color",
+  );
+  const second = state(
+    "duplicate-b",
+    "lemon yellow hair is my favorite color",
+  );
+  const distinct = state(
+    "distinct",
+    "solo travel in korea changed how I see myself",
+  );
+  const hits = recallBreath(
+    "lemon yellow hair",
+    [first, second, distinct],
+    {
+      ...base,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      diversityMaxTokenOverlap: 0.75,
+      semanticScores: new Map([
+        ["duplicate-a", 0.95],
+        ["duplicate-b", 0.95],
+        ["distinct", 0.92],
+      ]),
+    },
+  );
+
+  assert.equal(
+    hits.filter((hit) => hit.state.id.startsWith("duplicate-")).length,
+    1,
+  );
+  assert.equal(
+    hits.some((hit) => hit.state.id === "distinct"),
+    true,
+  );
+});
+
 test("semantic candidate preselection prefers lexical relevance over state id order", async () => {
   const port = new Port([
     state("000-unrelated", "今天吃了炸鸡"),

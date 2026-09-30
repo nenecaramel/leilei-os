@@ -109,6 +109,10 @@ export type MindLoopConfig = {
   memoryLifecyclePolicy?: MemoryLifecyclePolicy;
   breathSemanticWeight?: number;
   breathSemanticMinScore?: number;
+  breathMinimumScore?: number;
+  breathSemanticMedianMargin?: number;
+  breathRecentRecallPenalty?: boolean;
+  breathDiversityMaxTokenOverlap?: number;
   breathSemanticCandidateLimit?: number;
   breathSemanticCandidateMaxChars?: number;
   driveLimit?: number;
@@ -318,6 +322,13 @@ export class NativeLiveMindLoopService {
       breathSemanticWeight: effectiveSemanticWeight,
       breathSemanticMinScore: this.config.breathSemanticMinScore ?? 0,
       breathSemanticScores: semanticScores,
+      breathMinimumScore: this.config.breathMinimumScore ?? 0,
+      breathSemanticMedianMargin:
+        this.config.breathSemanticMedianMargin ?? 0,
+      breathRecentRecallPenalty:
+        this.config.breathRecentRecallPenalty ?? false,
+      breathDiversityMaxTokenOverlap:
+        this.config.breathDiversityMaxTokenOverlap ?? 1,
       driveLimit: this.config.driveLimit ?? 0,
       thoughtLimit: this.config.thoughtLimit ?? 0,
       thoughtMinStrength: this.config.thoughtMinStrength ?? 0,
