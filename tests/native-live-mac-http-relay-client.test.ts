@@ -15,7 +15,7 @@ const userMessageId = "55555555-5555-4555-8555-555555555555";
 
 function command() {
   return {
-    protocol_version: 1,
+    protocol_version: 3,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -113,7 +113,7 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   });
 
   const result: NativeLiveRuntimeExecutionResult = {
-    protocol_version: 1,
+    protocol_version: 3,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
