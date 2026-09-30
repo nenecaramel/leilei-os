@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   assertPermissionCallbackQueryOptions,
   createAgentSdkPermissionCallback,
-  isTrustedLeileiosReadTool,
+  isTrustedLeileiosTool,
   normalizeAgentSdkPermissionRequest,
   normalizeLeileiPermissionDecision,
   projectLeileiPermissionDecisionToSdk,
@@ -312,7 +312,7 @@ test("permission contract rejects invalid decisions", () => {
 });
 
 
-test("trusted LeileiOS read MCP tools bypass interactive permission", async () => {
+test("all LeileiOS MCP tools bypass interactive permission", async () => {
   let permissionCalls = 0;
   const callback = createAgentSdkPermissionCallback({
     permissionHandler: async () => {
@@ -324,12 +324,12 @@ test("trusted LeileiOS read MCP tools bypass interactive permission", async () =
   for (const toolName of [
     "mcp__leileios__get_current_time",
     "mcp__leileios__read_todo_day",
-    "mcp__leileios__list_todo_dates",
-    "mcp__leileios__search_todo",
-    "mcp__leileios__global_search",
-    "mcp__leileios__query_notion_data_source",
+    "mcp__leileios__append_todo_entry",
+    "mcp__leileios__replace_todo_paper",
+    "mcp__leileios__create_universe_node",
+    "mcp__leileios__update_universe_node",
   ]) {
-    assert.equal(isTrustedLeileiosReadTool(toolName), true);
+    assert.equal(isTrustedLeileiosTool(toolName), true);
     assert.deepEqual(
       await callback(toolName, {}, {}),
       { behavior: "allow" },
@@ -339,7 +339,7 @@ test("trusted LeileiOS read MCP tools bypass interactive permission", async () =
   assert.equal(permissionCalls, 0);
 });
 
-test("LeileiOS writes remain on the interactive permission path", async () => {
+test("non-LeileiOS tools remain on the interactive permission path", async () => {
   let permissionCalls = 0;
   const callback = createAgentSdkPermissionCallback({
     permissionHandler: async () => {
@@ -348,14 +348,11 @@ test("LeileiOS writes remain on the interactive permission path", async () => {
     },
   });
 
-  assert.equal(
-    isTrustedLeileiosReadTool("mcp__leileios__append_todo_entry"),
-    false,
-  );
+  assert.equal(isTrustedLeileiosTool("Bash"), false);
   assert.deepEqual(
     await callback(
-      "mcp__leileios__append_todo_entry",
-      { content: "test" },
+      "Bash",
+      { command: "pwd" },
       {},
     ),
     { behavior: "allow" },
