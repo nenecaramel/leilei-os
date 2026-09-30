@@ -81,7 +81,10 @@ implements NativeLiveMacDaemonRelayClient {
     return {
       attachment,
       upload: {
-        url: upload.url,
+        url: new URL(
+          upload.url,
+          this.baseUrl + "/",
+        ).toString(),
         method: "PUT",
         headers: readStringRecord(upload.headers),
       },
@@ -144,7 +147,10 @@ implements NativeLiveMacDaemonRelayClient {
       );
     }
     return {
-      url: download.url,
+      url: new URL(
+        download.url,
+        this.baseUrl + "/",
+      ).toString(),
       method: "GET",
       headers: readStringRecord(download.headers),
       attachment,
