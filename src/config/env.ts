@@ -6,8 +6,12 @@ const httpsUrl = z.string().url().refine((value) => value.startsWith("https://")
 });
 
 const booleanEnv = z
-  .enum(["0", "1", "false", "true"])
-  .transform((value) => value === "1" || value === "true");
+  .union([z.boolean(), z.enum(["0", "1", "false", "true"])])
+  .transform((value) =>
+    typeof value === "boolean"
+      ? value
+      : value === "1" || value === "true"
+  );
 
 const oauthStaticClientSchema = z.object({
   client_id: z.string().trim().min(1),
