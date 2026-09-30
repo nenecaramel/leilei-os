@@ -270,7 +270,7 @@ test(
             body: JSON.stringify({
               listener_instance_id: listenerId,
               result: {
-                protocol_version: 1,
+                protocol_version: 3,
                 prepare_id: preparedPayload.data.prepareId,
                 request_id: firstRequestId,
                 conversation_id: conversation.id,
