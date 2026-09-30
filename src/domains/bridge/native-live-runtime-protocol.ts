@@ -114,7 +114,7 @@ export type NativeLiveRuntimeExecutionResult =
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
-      protocol_version: 1 | 2;
+      protocol_version: 1 | 2 | 3;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
