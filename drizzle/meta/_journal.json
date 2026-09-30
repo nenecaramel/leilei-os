@@ -652,6 +652,13 @@
       "when": 1790765100000,
       "tag": "0092_runtime_mind_three_kind_check",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1790773200000,
+      "tag": "0093_native_live_attachment_inline_bytes",
+      "breakpoints": true
     }
   ]
 }

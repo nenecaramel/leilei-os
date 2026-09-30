@@ -848,7 +848,22 @@ final class LeileiAPIClient {
                 body: body,
                 authenticated: true
             )
-        return envelope.data
+        let result = envelope.data
+        guard let transferURL = URL(
+            string: result.upload.url,
+            relativeTo: baseURL
+        )?.absoluteURL else {
+            throw LeileiAPIError.invalidResponse
+        }
+        return NativeLiveAttachmentUploadSlot(
+            attachment: result.attachment,
+            upload: NativeLiveAttachmentTransferSlot(
+                url: transferURL.absoluteString,
+                method: result.upload.method,
+                headers: result.upload.headers,
+                expiresAt: result.upload.expiresAt
+            )
+        )
     }
 
     func uploadNativeLiveAttachmentBytes(
@@ -903,7 +918,22 @@ final class LeileiAPIClient {
                 method: "POST",
                 authenticated: true
             )
-        return envelope.data
+        let result = envelope.data
+        guard let transferURL = URL(
+            string: result.download.url,
+            relativeTo: baseURL
+        )?.absoluteURL else {
+            throw LeileiAPIError.invalidResponse
+        }
+        return NativeLiveAttachmentDownloadSlot(
+            attachment: result.attachment,
+            download: NativeLiveAttachmentTransferSlot(
+                url: transferURL.absoluteString,
+                method: result.download.method,
+                headers: result.download.headers,
+                expiresAt: result.download.expiresAt
+            )
+        )
     }
 
     func prepareNativeLiveSend(

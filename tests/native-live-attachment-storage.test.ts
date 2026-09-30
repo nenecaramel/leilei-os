@@ -3,6 +3,10 @@ import test from "node:test";
 import {
   S3PresignedAttachmentObjectStore,
 } from "../src/domains/bridge/native-live-attachment-storage.js";
+import {
+  PostgresInlineAttachmentObjectStore,
+  PostgresAttachmentTransferError,
+} from "../src/domains/bridge/native-live-attachment-postgres-storage.js";
 
 const config = {
   bucket: "leilei-files-test",
@@ -88,5 +92,88 @@ test("attachment object deletion signs DELETE and treats success as terminal", a
   assert.equal(
     url.searchParams.get("X-Amz-Algorithm"),
     "AWS4-HMAC-SHA256",
+  );
+});
+
+
+test("Postgres attachment transfer slots are short-lived signed capabilities", () => {
+  const store = new PostgresInlineAttachmentObjectStore(
+    {} as never,
+    {
+      signingSecret: "postgres://secret",
+      transferTtlSeconds: 600,
+      maxFileBytes: 20 * 1024 * 1024,
+      maxTotalBytes: 256 * 1024 * 1024,
+      now: () => new Date("2026-09-30T03:00:00.000Z"),
+    },
+  );
+  const slot = store.createUploadSlot({
+    objectKey: "native-live/user/attachment",
+    mimeType: "application/json",
+    sha256: "b".repeat(64),
+  });
+
+  assert.equal(slot.method, "PUT");
+  assert.match(
+    slot.url,
+    /^\/api\/v1\/native-live\/attachment-transfer\//u,
+  );
+  assert.equal(
+    slot.headers["content-type"],
+    "application/json",
+  );
+  assert.equal(
+    slot.headers["x-leileios-sha256"],
+    "b".repeat(64),
+  );
+
+  const token = slot.url.split("/").at(-1)!;
+  assert.deepEqual(
+    store.authorizeTransfer(token, "PUT"),
+    {
+      version: 1,
+      method: "PUT",
+      objectKey: "native-live/user/attachment",
+      expiresAt: 1790737800,
+    },
+  );
+
+  assert.throws(
+    () => store.authorizeTransfer(token, "GET"),
+    PostgresAttachmentTransferError,
+  );
+});
+
+test("expired Postgres attachment transfer capabilities are rejected", () => {
+  const issuer = new PostgresInlineAttachmentObjectStore(
+    {} as never,
+    {
+      signingSecret: "postgres://secret",
+      transferTtlSeconds: 60,
+      maxFileBytes: 20 * 1024 * 1024,
+      maxTotalBytes: 256 * 1024 * 1024,
+      now: () => new Date("2026-09-30T03:00:00.000Z"),
+    },
+  );
+  const slot = issuer.createDownloadSlot({
+    objectKey: "native-live/user/attachment",
+  });
+  const token = slot.url.split("/").at(-1)!;
+
+  const reader = new PostgresInlineAttachmentObjectStore(
+    {} as never,
+    {
+      signingSecret: "postgres://secret",
+      transferTtlSeconds: 60,
+      maxFileBytes: 20 * 1024 * 1024,
+      maxTotalBytes: 256 * 1024 * 1024,
+      now: () => new Date("2026-09-30T03:01:01.000Z"),
+    },
+  );
+  assert.throws(
+    () => reader.authorizeTransfer(token, "GET"),
+    (error: unknown) =>
+      error instanceof PostgresAttachmentTransferError
+      && error.httpStatus === 410,
   );
 });
