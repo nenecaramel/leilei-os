@@ -1,0 +1,149 @@
+import assert from "node:assert/strict";
+import {
+  mkdtemp,
+  mkdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import {
+  NativeLiveMacOutputAttachmentSender,
+} from "../src/domains/bridge/native-live-mac-output-attachment-sender.js";
+
+test("send_file uploads the exact explicit workspace file", async (t) => {
+  const root = await mkdtemp(
+    join(tmpdir(), "leileios-send-file-"),
+  );
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, "workspace");
+  await mkdir(join(workspace, "out"), { recursive: true });
+  const filePath = join(workspace, "out", "report.pdf");
+  const bytes = Buffer.from("%PDF-test");
+  await writeFile(filePath, bytes);
+
+  let declared:
+    | {
+        filename: string;
+        mimeType: string;
+        sizeBytes: number;
+        sha256: string;
+        kind: "image" | "file";
+      }
+    | null = null;
+  let uploaded: Buffer | null = null;
+  const attachmentId =
+    "66666666-6666-4666-8666-666666666666";
+
+  const relay = {
+    async createAttachmentUploadSlot(input: {
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      kind: "image" | "file";
+    }) {
+      declared = input;
+      return {
+        attachment: {
+          attachmentId,
+          ...input,
+        },
+        upload: {
+          url: "https://bucket.example/upload",
+          method: "PUT" as const,
+          headers: {
+            "content-type": input.mimeType,
+            "x-amz-meta-sha256": input.sha256,
+          },
+        },
+      };
+    },
+    async completeAttachmentUpload() {
+      assert.ok(declared);
+      return {
+        attachmentId,
+        ...declared,
+      };
+    },
+  };
+
+  const sender = new NativeLiveMacOutputAttachmentSender(
+    relay,
+    async (url, init) => {
+      assert.equal(
+        url,
+        "https://bucket.example/upload",
+      );
+      assert.equal(init?.method, "PUT");
+      assert.equal(
+        new Headers(init?.headers).get("content-type"),
+        "application/pdf",
+      );
+      uploaded = Buffer.from(
+        await new Response(init?.body).arrayBuffer(),
+      );
+      return new Response(null, { status: 200 });
+    },
+  );
+
+  const attachment = await sender.sendFile({
+    path: "out/report.pdf",
+    displayName: "result.pdf",
+    workspaceRoot: workspace,
+  });
+
+  assert.equal(attachment.attachmentId, attachmentId);
+  assert.deepEqual(uploaded, bytes);
+  assert.ok(declared);
+  assert.equal(declared.filename, "result.pdf");
+  assert.equal(declared.mimeType, "application/pdf");
+  assert.equal(declared.kind, "file");
+  assert.equal(declared.sizeBytes, bytes.length);
+  assert.match(declared.sha256, /^[0-9a-f]{64}$/u);
+});
+
+test("send_file rejects workspace escape including symlinks", async (t) => {
+  const root = await mkdtemp(
+    join(tmpdir(), "leileios-send-file-escape-"),
+  );
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, "workspace");
+  await mkdir(workspace, { recursive: true });
+  const outside = join(root, "secret.txt");
+  await writeFile(outside, "private");
+  await symlink(outside, join(workspace, "linked.txt"));
+
+  let relayCalls = 0;
+  const relay = {
+    async createAttachmentUploadSlot() {
+      relayCalls += 1;
+      throw new Error("must not upload");
+    },
+    async completeAttachmentUpload() {
+      relayCalls += 1;
+      throw new Error("must not complete");
+    },
+  };
+  const sender = new NativeLiveMacOutputAttachmentSender(
+    relay,
+  );
+
+  await assert.rejects(
+    () => sender.sendFile({
+      path: "../secret.txt",
+      workspaceRoot: workspace,
+    }),
+    /active workspace/u,
+  );
+  await assert.rejects(
+    () => sender.sendFile({
+      path: "linked.txt",
+      workspaceRoot: workspace,
+    }),
+    /active workspace/u,
+  );
+  assert.equal(relayCalls, 0);
+});
