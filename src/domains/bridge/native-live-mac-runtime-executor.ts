@@ -97,7 +97,7 @@ export class NativeLiveMacRuntimeExecutor {
     private readonly attachmentMaterializer:
       NativeLiveMacAttachmentMaterializer | null = null,
     private readonly outputAttachmentSender:
-      NativeLiveMacOutputAttachmentSender | null = null,
+      Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
   ) {
     if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
       this.runtime = null;
