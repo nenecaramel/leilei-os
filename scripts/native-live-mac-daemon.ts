@@ -157,6 +157,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function networkCauseDiagnostics(error: unknown): {
+  causeName?: string;
+  causeCode?: string;
+  causeErrno?: string | number;
+  causeSyscall?: string;
+} {
+  if (!error || typeof error !== "object") return {};
+  const cause = (error as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== "object") return {};
+  const record = cause as Record<string, unknown>;
+  return {
+    ...(typeof record.name === "string"
+      ? { causeName: record.name }
+      : {}),
+    ...(typeof record.code === "string"
+      ? { causeCode: record.code }
+      : {}),
+    ...(
+      typeof record.errno === "string"
+      || typeof record.errno === "number"
+        ? { causeErrno: record.errno }
+        : {}
+    ),
+    ...(typeof record.syscall === "string"
+      ? { causeSyscall: record.syscall }
+      : {}),
+  };
+}
+
+let consecutiveWakeErrors = 0;
+
 async function waitForWork(): Promise<
   "ready" | "timeout" | "busy" | "stopped"
 > {
@@ -184,6 +215,7 @@ async function waitForWork(): Promise<
 while (!stopping) {
   try {
     const outcome = await loop.runOnce();
+    consecutiveWakeErrors = 0;
     process.stdout.write(
       JSON.stringify({
         at: new Date().toISOString(),
@@ -268,6 +300,12 @@ while (!stopping) {
       error && typeof error === "object"
         ? error as Record<string, unknown>
         : {};
+    const causeDiagnostics = networkCauseDiagnostics(error);
+    consecutiveWakeErrors += 1;
+    const retryDelayMs = Math.min(
+      5_000 * 2 ** Math.min(consecutiveWakeErrors - 1, 3),
+      30_000,
+    );
     process.stderr.write(
       JSON.stringify({
         at: new Date().toISOString(),
@@ -275,6 +313,9 @@ while (!stopping) {
         errorName: error instanceof Error ? error.name : "UnknownError",
         errorMessage:
           error instanceof Error ? error.message : String(error),
+        ...causeDiagnostics,
+        consecutiveErrors: consecutiveWakeErrors,
+        retryDelayMs,
         ...(
           typeof errorRecord.relayCode === "string"
             ? { relayCode: errorRecord.relayCode }
@@ -292,7 +333,7 @@ while (!stopping) {
         ),
       }) + "\n",
     );
-    await sleep(5_000);
+    await sleep(retryDelayMs);
   }
 }
 

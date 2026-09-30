@@ -156,6 +156,33 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   }
 });
 
+test("Mac HTTP relay client closes each relay connection so aborted waits cannot poison later requests", async () => {
+  const calls: Array<RequestInit | undefined> = [];
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    calls.push(init);
+    return new Response(JSON.stringify({
+      success: true,
+      data: { state: "acquired" },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  await client.renewLease({
+    listenerInstanceId: listenerId,
+    dispatchTarget: "claude_code",
+  });
+
+  const headers = calls[0]?.headers as Record<string, string>;
+  assert.equal(headers.connection, "close");
+});
+
 test("Mac HTTP relay client waits for event-driven work without exposing user identity", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const fakeFetch: typeof fetch = async (input, init) => {
