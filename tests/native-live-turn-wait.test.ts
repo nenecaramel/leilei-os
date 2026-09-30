@@ -189,3 +189,50 @@ test("turn wait returns null for an unknown prepare id", async () => {
     null,
   );
 });
+
+
+test("turn wait self-recovers a stale delivery-unknown turn as terminal", async () => {
+  let current = turn({
+    canonicalStatus: "prepared",
+    dispatchStatus: "delivery_unknown",
+  });
+  let recoveries = 0;
+  let waits = 0;
+
+  const service = new NativeLiveTurnWaitService(
+    {
+      async recoverStaleDeliveryUnknownTurn() {
+        recoveries += 1;
+        current = turn({
+          canonicalStatus: "prepared",
+          dispatchStatus: "rejected",
+        });
+        return true;
+      },
+      async readTurn() {
+        return current;
+      },
+    } as never,
+    {
+      async start() {},
+      turnVersion() {
+        return 0;
+      },
+      async waitForTurnChange() {
+        waits += 1;
+        return { outcome: "ready" as const, version: 1 };
+      },
+    },
+  );
+
+  assert.deepEqual(
+    await service.wait({
+      userId: "11111111-1111-4111-8111-111111111111",
+      prepareId: current.prepareId,
+      timeoutMs: 25_000,
+    }),
+    { outcome: "terminal", turn: current },
+  );
+  assert.equal(recoveries, 1);
+  assert.equal(waits, 0);
+});
