@@ -144,6 +144,50 @@ function sdkFailureMessage(message) {
  * by HeadlessClaudeTransport. Mid-turn input/interrupt semantics belong to a
  * later runtime-contract expansion.
  */
+function normalizeLeileiosMcpServerConfig(value) {
+  if (value === null || value === undefined) return null;
+  if (
+    typeof value !== "object"
+    || value.type !== "http"
+    || typeof value.url !== "string"
+    || !value.url.trim()
+    || !value.headers
+    || typeof value.headers !== "object"
+    || Array.isArray(value.headers)
+  ) {
+    throw new Error("LeileiOS MCP server config is invalid.");
+  }
+  return {
+    type: "http",
+    url: value.url.trim(),
+    headers: Object.fromEntries(
+      Object.entries(value.headers).map(([key, headerValue]) => {
+        if (
+          typeof headerValue !== "string"
+          || !headerValue.trim()
+        ) {
+          throw new Error(
+            "LeileiOS MCP server headers must be nonblank strings.",
+          );
+        }
+        return [key, headerValue];
+      }),
+    ),
+  };
+}
+
+function leileiosMcpQueryOptions(config) {
+  if (!config) return {};
+  return {
+    mcpServers: {
+      leileios: config,
+    },
+    allowedTools: [
+      "mcp__leileios__*",
+    ],
+  };
+}
+
 export class AgentSdkClaudeTransport extends ClaudeTransport {
   constructor({
     queryImpl = null,
@@ -157,6 +201,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     importSessionToStoreImpl = null,
     loadImportSessionToStore = loadDefaultImportSessionToStore,
     sessionStore = null,
+    mcpServerConfig = null,
     environment = process.env,
     cwd = process.cwd(),
   } = {}) {
@@ -177,6 +222,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.importSessionToStoreImpl = importSessionToStoreImpl;
     this.loadImportSessionToStore = loadImportSessionToStore;
     this.sessionStore = sessionStore;
+    this.mcpServerConfig =
+      normalizeLeileiosMcpServerConfig(mcpServerConfig);
     this.environment = {
       ...environment,
       DISABLE_AUTO_COMPACT: "1",
@@ -305,6 +352,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       queryOptions: {
         verbatimPrompts: true,
         ...executionOptions,
+        ...leileiosMcpQueryOptions(this.mcpServerConfig),
         ...(this.sessionStore
           ? { sessionStore: this.sessionStore }
           : {}),
@@ -948,6 +996,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       },
       verbatimPrompts,
       ...executionOptions,
+      ...leileiosMcpQueryOptions(this.mcpServerConfig),
       ...(resume ? { resume } : {}),
       ...(forkSession ? { forkSession: true } : {}),
       ...(this.sessionStore
