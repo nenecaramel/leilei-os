@@ -1643,9 +1643,7 @@ test("LeileiOS MCP is injected into every foreground Agent SDK turn", async () =
   assert.deepEqual(call.options.mcpServers, {
     leileios: mcpServerConfig,
   });
-  assert.deepEqual(call.options.allowedTools, [
-    "mcp__leileios__*",
-  ]);
+  assert.equal(call.options.allowedTools, undefined);
 });
 
 test("LeileiOS MCP is also injected into non-interactive resume turns", async () => {
@@ -1673,7 +1671,5 @@ test("LeileiOS MCP is also injected into non-interactive resume turns", async ()
     call.options.mcpServers.leileios.url,
     "https://leilei-os.example/internal/native-live-mcp",
   );
-  assert.deepEqual(call.options.allowedTools, [
-    "mcp__leileios__*",
-  ]);
+  assert.equal(call.options.allowedTools, undefined);
 });
