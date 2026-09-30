@@ -92,7 +92,7 @@ function conversation(head: string | null = parentId): NativeLiveConversation {
       parentAssistant(),
       userMessage(),
       oldAssistant(),
-      finalizedAssistant(),
+      ...(head === assistantId ? [finalizedAssistant()] : []),
     ],
   };
 }
