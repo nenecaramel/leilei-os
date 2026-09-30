@@ -1686,11 +1686,15 @@ private struct NativeLiveAttachmentBlockView: View {
         Task { @MainActor in
             defer { isPreparingPreview = false }
             guard let attachmentID else { return }
-            let remoteURL =
-                downloadURL
-                ?? await appModel.nativeLiveAttachmentDownloadURL(
-                    attachmentID: attachmentID
-                )
+            let remoteURL: URL?
+            if let downloadURL {
+                remoteURL = downloadURL
+            } else {
+                remoteURL =
+                    await appModel.nativeLiveAttachmentDownloadURL(
+                        attachmentID: attachmentID
+                    )
+            }
             guard let remoteURL else { return }
 
             do {
