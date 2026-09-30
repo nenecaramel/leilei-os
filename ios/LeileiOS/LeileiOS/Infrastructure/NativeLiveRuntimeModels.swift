@@ -121,6 +121,56 @@ struct NativeLiveRuntimeEventPage: Sendable, Equatable {
     let nextAfterSequence: Int
 }
 
+enum NativeLiveComposerAttachmentKind: String, Codable, Sendable {
+    case image
+    case file
+}
+
+struct NativeLiveChatAttachmentSnapshot:
+    Decodable,
+    Sendable,
+    Equatable,
+    Identifiable {
+    let attachmentId: String
+    let filename: String
+    let mimeType: String
+    let sizeBytes: Int
+    let sha256: String
+    let kind: NativeLiveComposerAttachmentKind
+    let status: String
+    let boundMessageId: String?
+    let createdAt: String
+    let expiresAt: String
+
+    var id: String { attachmentId }
+}
+
+struct NativeLiveAttachmentTransferSlot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let url: String
+    let method: String
+    let headers: [String: String]
+    let expiresAt: String
+}
+
+struct NativeLiveAttachmentUploadSlot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let attachment: NativeLiveChatAttachmentSnapshot
+    let upload: NativeLiveAttachmentTransferSlot
+}
+
+struct NativeLiveAttachmentDownloadSlot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let attachment: NativeLiveChatAttachmentSnapshot
+    let download: NativeLiveAttachmentTransferSlot
+}
+
 struct NativeLiveRuntimeInteractionSnapshot:
     Decodable,
     Sendable,
