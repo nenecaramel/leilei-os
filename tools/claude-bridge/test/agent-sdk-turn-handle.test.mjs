@@ -748,3 +748,48 @@ test("turn handle hard abort remains separate from graceful interrupt", async ()
     (error) => error.runtimeCode === "ABORTED",
   );
 });
+
+
+test("turn startup reconnects LeileiOS MCP before releasing the first prompt", async () => {
+  let reconnectCalls = 0;
+  let connected = false;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "use LeileiOS",
+    environment: {},
+    queryOptions: {
+      mcpServers: {
+        leileios: {
+          type: "http",
+          url: "https://leilei-os.example/internal/native-live-mcp",
+          headers: {
+            Authorization: "Bearer relay-secret",
+          },
+        },
+      },
+    },
+    queryImpl: () => ({
+      close() {},
+      async mcpServerStatus() {
+        return [{
+          name: "leileios",
+          status: connected ? "connected" : "failed",
+          ...(connected ? {} : { error: "deployment restarted" }),
+        }];
+      },
+      async reconnectMcpServer(name) {
+        assert.equal(name, "leileios");
+        reconnectCalls += 1;
+        connected = true;
+      },
+      async *[Symbol.asyncIterator]() {
+        for (const message of successMessages("provider-mcp-ready")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  assert.equal(reconnectCalls, 1);
+  const result = await handle.start();
+  assert.equal(result.providerSessionId, "provider-mcp-ready");
+});
