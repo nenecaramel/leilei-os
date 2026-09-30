@@ -110,6 +110,99 @@ function sdkResultFailed(message) {
     && message.subtype !== "success";
 }
 
+export async function waitForAgentSdkMcpServer(
+  query,
+  serverName,
+  {
+    timeoutMs = 8_000,
+    pollMs = 200,
+    probeTimeoutMs = 1_000,
+  } = {},
+) {
+  if (!query || typeof query.mcpServerStatus !== "function") {
+    throw runtimeError(
+      "Claude Agent SDK Query does not expose MCP status control.",
+      {
+        runtimeCode: "RUNTIME_UNAVAILABLE",
+        mcpServerName: serverName,
+      },
+    );
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  let reconnectAttempted = false;
+  let lastStatus = null;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const statuses = await withTimeout(
+        Promise.resolve(query.mcpServerStatus()),
+        probeTimeoutMs,
+      );
+      const status = Array.isArray(statuses)
+        ? statuses.find((item) => item?.name === serverName)
+        : null;
+      lastStatus = status?.status ?? null;
+      lastError =
+        typeof status?.error === "string" ? status.error : null;
+
+      if (lastStatus === "connected") return;
+      if (
+        (lastStatus === "failed" || lastStatus === "needs-auth")
+        && !reconnectAttempted
+        && typeof query.reconnectMcpServer === "function"
+      ) {
+        reconnectAttempted = true;
+        try {
+          await withTimeout(
+            Promise.resolve(query.reconnectMcpServer(serverName)),
+            probeTimeoutMs,
+          );
+        } catch (cause) {
+          lastError =
+            cause instanceof Error ? cause.message : String(cause);
+        }
+      }
+      if (lastStatus === "disabled") {
+        break;
+      }
+    } catch (cause) {
+      lastError =
+        cause instanceof Error ? cause.message : String(cause);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+
+  throw runtimeError(
+    "LeileiOS MCP did not connect before the Claude turn started.",
+    {
+      runtimeCode: "RUNTIME_UNAVAILABLE",
+      mcpServerName: serverName,
+      mcpStatus: lastStatus,
+      mcpError: lastError,
+    },
+  );
+}
+
+async function withTimeout(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("MCP control request timed out.")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function createAgentSdkTurnHandle({
   prompt,
   mode = "new",
@@ -272,6 +365,10 @@ export async function createAgentSdkTurnHandle({
       "Claude Agent SDK query() did not return an async iterable.",
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
+  }
+
+  if (queryOptions.mcpServers?.leileios) {
+    await waitForAgentSdkMcpServer(query, "leileios");
   }
 
   return new AgentSdkTurnHandle({
