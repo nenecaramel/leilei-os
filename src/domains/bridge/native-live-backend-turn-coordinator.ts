@@ -20,6 +20,7 @@ import {
   type NativeLiveRelayRequest,
 } from "./native-live-relay-contract.js";
 import {
+  NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   NativeLiveRuntimeProtocolError,
   assertRuntimeResultMatchesCommand,
