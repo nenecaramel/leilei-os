@@ -182,9 +182,6 @@ function leileiosMcpQueryOptions(config) {
     mcpServers: {
       leileios: config,
     },
-    allowedTools: [
-      "mcp__leileios__*",
-    ],
   };
 }
 
