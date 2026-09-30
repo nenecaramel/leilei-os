@@ -508,6 +508,41 @@ implements NativeLiveBackendTurnPort {
     return row ? mapPreparation(row) : null;
   }
 
+  async recoverStaleDeliveryUnknownTurn(input: {
+    userId: string;
+    prepareId: string;
+  }): Promise<boolean> {
+    const updated = await this.db
+      .update(nativeLiveTurnPreparations)
+      .set({
+        dispatchStatus: "rejected",
+        reservedBy: null,
+        reservedAt: null,
+        reservationExpiresAt: null,
+        executionStartedAt: null,
+        dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN",
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.prepareId),
+          eq(nativeLiveTurnPreparations.status, "prepared"),
+          eq(
+            nativeLiveTurnPreparations.dispatchStatus,
+            "delivery_unknown",
+          ),
+          sql`${nativeLiveTurnPreparations.deliveryUnknownAt}
+            IS NOT NULL
+            AND ${nativeLiveTurnPreparations.deliveryUnknownAt}
+              <= now() - interval '30 seconds'`,
+        ),
+      )
+      .returning({ id: nativeLiveTurnPreparations.id });
+
+    return updated.length === 1;
+  }
+
   async readTurn(input: {
     userId: string;
     prepareId: string;
