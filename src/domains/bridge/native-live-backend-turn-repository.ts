@@ -669,6 +669,43 @@ implements NativeLiveBackendTurnPort {
     return updated.length === 1;
   }
 
+  async readActiveTurn(input: {
+    userId: string;
+    conversationId: string;
+  }): Promise<NativeLiveBackendTurnReadModel | null> {
+    const [active] = await this.db
+      .select({ id: nativeLiveTurnPreparations.id })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(
+            nativeLiveTurnPreparations.conversationId,
+            input.conversationId,
+          ),
+          eq(nativeLiveTurnPreparations.status, "prepared"),
+          inArray(nativeLiveTurnPreparations.dispatchStatus, [
+            "staged",
+            "pending",
+            "reserved",
+            "executing",
+            "delivery_unknown",
+          ]),
+        ),
+      )
+      .orderBy(
+        sql`${nativeLiveTurnPreparations.createdAt} DESC`,
+        sql`${nativeLiveTurnPreparations.id} DESC`,
+      )
+      .limit(1);
+
+    if (!active) return null;
+    return this.readTurn({
+      userId: input.userId,
+      prepareId: active.id,
+    });
+  }
+
   async readTurn(input: {
     userId: string;
     prepareId: string;
