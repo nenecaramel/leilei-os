@@ -131,13 +131,13 @@ implements NativeLiveAttachmentObjectStore {
     };
   }
 
-  private presign(
-    method: "PUT" | "GET" | "HEAD",
+  private presign<T extends "PUT" | "GET" | "HEAD">(
+    method: T,
     objectKey: string,
     headers: Record<string, string>,
   ): {
     url: string;
-    method: "PUT" | "GET" | "HEAD";
+    method: T;
     headers: Record<string, string>;
     expiresAt: string;
   } {
