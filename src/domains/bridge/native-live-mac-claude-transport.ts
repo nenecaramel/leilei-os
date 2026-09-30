@@ -39,6 +39,17 @@ export type NativeLiveMacInteractiveTurnOptions = {
     request: Record<string, unknown>,
     context: { signal: AbortSignal | null },
   ) => Promise<Record<string, unknown>>;
+  sendFileHandler?: (input: {
+    path: string;
+    displayName: string | null;
+  }) => Promise<{
+    attachmentId: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    kind: "image" | "file";
+  }>;
   controlPump?: (
     controller: NativeLiveMacActiveTurnController,
     context: { signal: AbortSignal },
