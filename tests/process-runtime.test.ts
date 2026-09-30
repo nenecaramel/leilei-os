@@ -182,3 +182,31 @@ test("process runtime wires the canonical Conversation read service into MCP ses
   assert.match(factoryCall, /conversationArchiveReadService/);
   assert.match(processRuntimeSource, /new ConversationArchiveReadService\([\s\S]*DrizzleConversationArchiveReadRepository/);
 });
+
+
+test("legacy Proactivity v1 is hard-disabled at process wiring", () => {
+  assert.match(
+    processRuntimeSource,
+    /const legacyProactivityV1Enabled = false;/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /legacyProactivityV1Enabled\s*\? runtimeEffectDeliveryWorker\s*:\s*null/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /legacyProactivityV1Enabled\s*\? proactivityWakeOpportunityProducer\s*:\s*null/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /legacyProactivityV1Enabled\s*\? \[\s*lazyBackgroundWorkflowAdvancer\([\s\S]*?\]\s*:\s*\[\]/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /const nativeLiveBackgroundModelRelayService =[\s\S]*?async reserveNext\([\s\S]*?return null;/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /backgroundModelService:\s*nativeLiveBackgroundModelRelayService/,
+  );
+});
