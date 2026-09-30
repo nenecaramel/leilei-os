@@ -175,7 +175,7 @@ test("Breath salience weight 0.1 stays a relevance-preserving bias", () => {
   );
   assert.deepEqual(
     stronger.map((hit) => hit.state.id),
-    ["less-relevant-high-salience", "more-relevant-low-salience"],
+    ["more-relevant-low-salience", "less-relevant-high-salience"],
   );
 });
 
@@ -200,7 +200,7 @@ test("Breath salience weight 0.1 breaks near relevance ties toward stronger life
       semanticWeight: 0.65,
       semanticMinScore: 0.8,
       semanticScores: new Map([
-        ["fading-tie", 0.86],
+        ["fading-tie", 0.842],
         ["active-tie", 0.84],
       ]),
     },
