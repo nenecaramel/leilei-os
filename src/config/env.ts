@@ -108,6 +108,8 @@ const baseEnvSchema = z.object({
     z.coerce.number().int().positive().default(20 * 1024 * 1024),
   NATIVE_LIVE_ATTACHMENT_MAX_PER_TURN:
     z.coerce.number().int().min(1).max(20).default(8),
+  NATIVE_LIVE_ATTACHMENT_MAX_TOTAL_BYTES:
+    z.coerce.number().int().positive().default(256 * 1024 * 1024),
   NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS:
     z.coerce.number().int().min(600).default(24 * 60 * 60),
 });
