@@ -61,7 +61,7 @@ export type NativeLiveApiDependencies = {
       userId: string;
       prepareId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
-    readActiveTurn(input: {
+    readActiveTurn?(input: {
       userId: string;
       conversationId: string;
     }): Promise<NativeLiveBackendTurnReadModel | null>;
@@ -1700,8 +1700,20 @@ export function readNativeLiveActiveTurnHandler(
       return;
     }
 
+    const readActiveTurn = dependencies.turnReader.readActiveTurn;
+    if (!readActiveTurn) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_ACTIVE_TURN_READ_UNAVAILABLE",
+          message: "Active native live turn lookup is unavailable.",
+        },
+      });
+      return;
+    }
+
     try {
-      const turn = await dependencies.turnReader.readActiveTurn({
+      const turn = await readActiveTurn.call(dependencies.turnReader, {
         userId: request.webUserId,
         conversationId,
       });
