@@ -3259,6 +3259,7 @@ export const nativeLiveChatAttachments = pgTable(
         onUpdate: "cascade",
       }),
     objectKey: text("object_key").notNull(),
+    content: bytea("content"),
     filename: text("filename").notNull(),
     mimeType: text("mime_type").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
