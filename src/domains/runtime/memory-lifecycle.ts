@@ -413,7 +413,7 @@ export function evaluateRecallReinforcement(
       ...contributions[existingIndex]!,
       recalledAt,
     };
-  } else {
+  } else if (effectiveBoost > 0) {
     const beforeBoost = salience;
     salience = clamp01(salience + effectiveBoost);
     contributions.push({
