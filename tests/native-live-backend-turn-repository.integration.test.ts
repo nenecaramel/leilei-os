@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   nativeLiveBackgroundModelJobs,
+  nativeLiveChatAttachments,
   nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   conversations,
@@ -59,6 +60,9 @@ test(
         await database.db
           .delete(nativeLiveProviderSessionCleanups)
           .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db
+          .delete(nativeLiveChatAttachments)
+          .where(eq(nativeLiveChatAttachments.userId, user.id));
         await database.db
           .delete(runtimeSubjectStates)
           .where(eq(runtimeSubjectStates.userId, user.id));
@@ -185,6 +189,27 @@ test(
       },
     };
 
+    const outputAttachmentId = crypto.randomUUID();
+    await database.db
+      .insert(nativeLiveChatAttachments)
+      .values({
+        id: outputAttachmentId,
+        userId: user.id,
+        objectKey:
+          "native-live/"
+          + user.id
+          + "/"
+          + outputAttachmentId,
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 321,
+        sha256: "a".repeat(64),
+        kind: "file",
+        status: "ready",
+        readyAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+
     const firstFinalize = await coordinator.finalize(user.id, {
       protocol_version: 3,
       prepare_id: firstPrepare.command.prepare_id,
@@ -199,6 +224,7 @@ test(
           payload: { status: "success", final_text: "first answer" },
         },
       ],
+      output_attachment_ids: [outputAttachmentId],
       runtime_metadata: runtimeMetadata,
     });
     assert.equal(firstFinalize.ok, true);
@@ -218,6 +244,25 @@ test(
     assert.equal(
       finalizedRead.assistantMessage?.blocks[0]?.text,
       "first answer",
+    );
+    assert.equal(
+      finalizedRead.assistantMessage?.blocks[1]?.kind,
+      "attachment",
+    );
+    assert.equal(
+      finalizedRead.assistantMessage?.blocks[1]?.payload
+        ?.attachment_id,
+      outputAttachmentId,
+    );
+    const [boundOutputAttachment] = await database.db
+      .select()
+      .from(nativeLiveChatAttachments)
+      .where(eq(nativeLiveChatAttachments.id, outputAttachmentId))
+      .limit(1);
+    assert.equal(boundOutputAttachment?.status, "bound");
+    assert.equal(
+      boundOutputAttachment?.boundMessageId,
+      firstFinalize.assistantMessageId,
     );
     assert.deepEqual(finalizedRead.runtimeMetadata, runtimeMetadata);
 
@@ -266,6 +311,7 @@ test(
           payload: { status: "success", final_text: "first answer" },
         },
       ],
+      output_attachment_ids: [outputAttachmentId],
       runtime_metadata: runtimeMetadata,
     });
     assert.equal(finalizeReplay.ok, true);
