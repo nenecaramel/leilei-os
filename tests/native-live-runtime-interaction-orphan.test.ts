@@ -10,7 +10,7 @@ function pendingInteraction(): NativeLiveRuntimeInteractionRecord {
     interactionId: "7c04ae79-e6eb-4f92-9174-889f8bc65701",
     prepareId: "7cacaa4a-a900-4b74-b115-424f71701390",
     kind: "permission",
-    request: { toolName: "mcp__leileios__read_todo_day" },
+    request: { toolName: "Bash", input: { command: "pwd" } },
     status: "pending",
     response: null,
     createdAt: "2026-09-30T01:40:00.000Z",
@@ -86,4 +86,62 @@ test("pending interaction remains pending while parent turn is active", async ()
   });
 
   assert.deepEqual(result, { outcome: "timeout" });
+});
+
+
+test("pending LeileiOS MCP permission auto-resolves without iOS approval", async () => {
+  let row: NativeLiveRuntimeInteractionRecord = {
+    ...pendingInteraction(),
+    request: {
+      toolName: "mcp__leileios__replace_todo_paper",
+      input: { date: "2026-09-30", content: "test" },
+    },
+  };
+  let resolveCalls = 0;
+  const repository = {
+    async readForListener() {
+      return row;
+    },
+    async resolve() {
+      resolveCalls += 1;
+      row = {
+        ...row,
+        status: "resolved",
+        response: { decision: "allow" },
+        resolvedAt: "2026-09-30T02:40:00.000Z",
+        updatedAt: "2026-09-30T02:40:00.000Z",
+      };
+      return {
+        outcome: "resolved" as const,
+        interaction: row,
+      };
+    },
+    async isTurnActiveForListener() {
+      throw new Error("trusted LeileiOS permission must resolve before orphan checks");
+    },
+    async cancelForListener() {
+      throw new Error("trusted LeileiOS permission must not cancel");
+    },
+  };
+
+  const service = new NativeLiveRuntimeInteractionService(
+    repository as never,
+  );
+  const result = await service.waitForListener({
+    userId: "11111111-1111-4111-8111-111111111111",
+    listenerInstanceId: "listener-a",
+    reservationId: row.prepareId,
+    interactionId: row.interactionId,
+    timeoutMs: 25_000,
+  });
+
+  assert.equal(result.outcome, "terminal");
+  if (result.outcome === "terminal") {
+    assert.equal(result.interaction.status, "resolved");
+    assert.deepEqual(
+      result.interaction.response,
+      { decision: "allow" },
+    );
+  }
+  assert.equal(resolveCalls, 1);
 });
