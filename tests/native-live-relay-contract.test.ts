@@ -50,6 +50,55 @@ test("native live send requires explicit Claude target and optimistic head ident
   );
 });
 
+test("send and edit accept bounded attachment ids including attachment-only send", () => {
+  const attachmentId = "55555555-5555-4555-8555-555555555555";
+  assert.deepEqual(
+    parseNativeLiveRelayRequest({
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversationId,
+      expected_head_message_id: headId,
+      text: "",
+      attachment_ids: [attachmentId],
+    }),
+    {
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversationId,
+      expected_head_message_id: headId,
+      text: "",
+      attachment_ids: [attachmentId],
+    },
+  );
+
+  assert.deepEqual(
+    parseNativeLiveRelayRequest({
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "edit",
+      conversation_id: conversationId,
+      target_user_message_id: userMessageId,
+      text: "",
+      attachment_ids: [],
+    }).attachment_ids,
+    [],
+  );
+
+  assert.throws(
+    () => parseNativeLiveRelayRequest({
+      dispatch_target: "claude_code",
+      request_id: requestId,
+      operation: "send",
+      conversation_id: conversationId,
+      expected_head_message_id: headId,
+      text: "",
+    }),
+    /between 1 and 4000/u,
+  );
+});
+
 test("retry carries only the historical user branch point", () => {
   assert.deepEqual(
     parseNativeLiveRelayRequest({
