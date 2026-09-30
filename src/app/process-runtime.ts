@@ -3,6 +3,7 @@ import {
   env,
   getBreathRankingConfig,
   getMcpGovernanceConfig,
+  getNativeLiveAttachmentStorageConfig,
   getMemoryDecayConfig,
   getMindLifecycleTuningConfig,
   getMindRetirementConfig,
@@ -149,6 +150,12 @@ import {
 import {
   NativeLiveExternalSessionBridgeService,
 } from "../domains/bridge/native-live-external-session-bridge.js";
+import {
+  NativeLiveAttachmentService,
+} from "../domains/bridge/native-live-attachment-service.js";
+import {
+  S3PresignedAttachmentObjectStore,
+} from "../domains/bridge/native-live-attachment-storage.js";
 import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
@@ -368,6 +375,18 @@ export function createProcessRuntime(
   const observeLifecycle = createMcpLifecycleObserver(logger);
   const database = (options.createDatabaseResource ?? createDatabase)(runtimeEnv.DATABASE_URL);
   const { db } = database;
+  const nativeLiveAttachmentStorageConfig =
+    getNativeLiveAttachmentStorageConfig(runtimeEnv);
+  const nativeLiveAttachmentService =
+    nativeLiveAttachmentStorageConfig
+      ? new NativeLiveAttachmentService(
+          db,
+          new S3PresignedAttachmentObjectStore(
+            nativeLiveAttachmentStorageConfig,
+          ),
+          nativeLiveAttachmentStorageConfig,
+        )
+      : undefined;
   const nativeLiveWorkWakePublisher =
     new DrizzleNativeLiveWorkWakePublisher(db);
   const nativeLiveWorkWakeBroker =
@@ -875,6 +894,12 @@ export function createProcessRuntime(
             nativeLiveManualCompactService,
           externalSessionBridgeService:
             nativeLiveExternalSessionBridgeService,
+          ...(nativeLiveAttachmentService
+            ? {
+                attachmentService:
+                  nativeLiveAttachmentService,
+              }
+            : {}),
         },
         internal: {
           relayService: nativeLiveRelayService,
@@ -887,6 +912,12 @@ export function createProcessRuntime(
             nativeLiveExternalSessionBridgeService,
           providerSessionStoreService:
             nativeLiveProviderSessionStoreService,
+          ...(nativeLiveAttachmentService
+            ? {
+                attachmentService:
+                  nativeLiveAttachmentService,
+              }
+            : {}),
           semanticService: nativeLiveSemanticService,
           mindSemanticGrouping:
             mindSemanticGroupingRepository,
