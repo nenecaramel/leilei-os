@@ -1466,7 +1466,7 @@ private struct NativeLiveBlockView: View {
                 toolName:
                     block.payload?["tool_name"]?.stringValue
                     ?? "Tool",
-                detail: nativeLiveJSONSummary(
+                detail: nativeLiveJSONDetail(
                     block.payload?["input"]
                 ),
                 state: .completed
@@ -1477,7 +1477,7 @@ private struct NativeLiveBlockView: View {
                 isError:
                     block.payload?["is_error"]?.boolValue
                     == true,
-                detail: nativeLiveJSONSummary(
+                detail: nativeLiveJSONDetail(
                     block.payload?["output"]
                 )
             )
@@ -1532,7 +1532,7 @@ private struct NativeLiveRuntimeToolCallRow: View {
             toolName:
                 toolUse.event.payload?["tool_name"]?.stringValue
                 ?? "Tool",
-            detail: nativeLiveJSONSummary(
+            detail: nativeLiveJSONDetail(
                 toolUse.event.payload?["input"]
             ),
             state:
@@ -1561,76 +1561,48 @@ private struct NativeLiveToolCallCard: View {
     let detail: String?
     let state: NativeLiveToolCallState
 
-    @State private var isExpanded = false
+    @State private var isShowingDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.snappy(duration: 0.18)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    switch state {
-                    case .running:
-                        ProgressView()
-                            .controlSize(.small)
-                    case .completed:
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                    case .failed:
-                        Image(systemName: "exclamationmark.circle")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text(nativeLiveToolDisplayName(toolName))
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 8)
-
-                    Text(stateLabel)
-                        .font(.caption)
+        Button {
+            isShowingDetails = true
+        } label: {
+            HStack(spacing: 8) {
+                switch state {
+                case .running:
+                    ProgressView()
+                        .controlSize(.small)
+                case .completed:
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
+                case .failed:
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
 
-                    Image(
-                        systemName:
-                            isExpanded
-                            ? "chevron.up"
-                            : "chevron.down"
-                    )
+                Text(nativeLiveToolDisplayName(toolName))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(stateLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
                     .font(.system(
                         size: 10.5,
                         weight: .semibold
                     ))
                     .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-
-            if isExpanded,
-               let detail,
-               !detail.isEmpty {
-                Text(detail)
-                    .font(.system(
-                        size: 12.5,
-                        design: .monospaced
-                    ))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.top, 8)
-                    .transition(
-                        .opacity
-                            .combined(
-                                with: .move(edge: .top)
-                            )
-                    )
-            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .background(
@@ -1641,6 +1613,14 @@ private struct NativeLiveToolCallCard: View {
             )
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $isShowingDetails) {
+            NativeLiveToolDetailSheet(
+                title: nativeLiveToolDisplayName(toolName),
+                status: stateLabel,
+                sectionTitle: "Input",
+                detail: detail
+            )
+        }
     }
 
     private var stateLabel: String {
@@ -1660,71 +1640,126 @@ private struct NativeLiveToolResultCard: View {
     let isError: Bool
     let detail: String?
 
-    @State private var isExpanded = false
+    @State private var isShowingDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.snappy(duration: 0.18)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(
-                        systemName:
-                            isError
-                            ? "exclamationmark.circle"
-                            : "checkmark.circle"
-                    )
-                    .font(.system(size: 13))
+        Button {
+            isShowingDetails = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(
+                    systemName:
+                        isError
+                        ? "exclamationmark.circle"
+                        : "checkmark.circle"
+                )
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+                Text(isError ? "Tool failed" : "Tool result")
+                    .font(.system(
+                        size: 13.5,
+                        weight: .medium
+                    ))
                     .foregroundStyle(.secondary)
 
-                    Text(isError ? "Tool failed" : "Tool result")
-                        .font(.system(
-                            size: 13.5,
-                            weight: .medium
-                        ))
-                        .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
 
-                    Spacer(minLength: 8)
-
-                    Image(
-                        systemName:
-                            isExpanded
-                            ? "chevron.up"
-                            : "chevron.down"
-                    )
+                Image(systemName: "chevron.right")
                     .font(.system(
                         size: 10.5,
                         weight: .semibold
                     ))
                     .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-
-            if isExpanded,
-               let detail,
-               !detail.isEmpty {
-                Text(detail)
-                    .font(.system(
-                        size: 12.5,
-                        design: .monospaced
-                    ))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.top, 7)
-                    .transition(
-                        .opacity
-                            .combined(
-                                with: .move(edge: .top)
-                            )
-                    )
-            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.leading, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $isShowingDetails) {
+            NativeLiveToolDetailSheet(
+                title: isError ? "Tool failed" : "Tool result",
+                status: isError ? "Failed" : "Done",
+                sectionTitle: "Output",
+                detail: detail
+            )
+        }
+    }
+}
+
+
+private struct NativeLiveToolDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    let status: String
+    let sectionTitle: String
+    let detail: String?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack {
+                        Text(status)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(sectionTitle)
+                            .font(.headline)
+
+                        if let detail,
+                           !detail.isEmpty {
+                            Text(detail)
+                                .font(.system(
+                                    size: 13,
+                                    design: .monospaced
+                                ))
+                                .foregroundStyle(.primary)
+                                .textSelection(.enabled)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                                .frame(
+                                    maxWidth: .infinity,
+                                    alignment: .leading
+                                )
+                        } else {
+                            Text("No details")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 36)
+            }
+            .background(Color(.systemBackground))
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([
+            .medium,
+            .large
+        ])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(
+            Color(.systemBackground)
+        )
     }
 }
 
@@ -1740,22 +1775,15 @@ private func nativeLiveToolDisplayName(
 }
 
 
-private func nativeLiveJSONSummary(
-    _ value: NativeLiveJSONValue?,
-    maxCharacters: Int = 500
+private func nativeLiveJSONDetail(
+    _ value: NativeLiveJSONValue?
 ) -> String? {
     guard let value else { return nil }
     let rendered = nativeLiveJSONDescription(value)
     let normalized = rendered.trimmingCharacters(
         in: .whitespacesAndNewlines
     )
-    guard !normalized.isEmpty else { return nil }
-    if normalized.count <= maxCharacters {
-        return normalized
-    }
-    return String(
-        normalized.prefix(maxCharacters)
-    ) + "…"
+    return normalized.isEmpty ? nil : normalized
 }
 
 
