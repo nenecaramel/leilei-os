@@ -1,0 +1,47 @@
+name: PR718 macOS verification
+
+on:
+  push:
+    branches:
+      - feat/native-live-send-file
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact branch head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact branch head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Claude bridge dependencies
+        run: pnpm --dir tools/claude-bridge install --no-frozen-lockfile
+      - name: Typecheck root
+        run: pnpm typecheck
+      - name: Build root
+        run: pnpm build
+      - name: Run Native Live send-file regression suite
+        run: >-
+          pnpm exec tsx --test --test-concurrency=1
+          tests/native-live-runtime-protocol.test.ts
+          tests/native-live-backend-relay.test.ts
+          tests/native-live-backend-turn-coordinator.test.ts
+          tests/native-live-mac-output-attachment-sender.test.ts
+          tests/native-live-mac-runtime-executor.test.ts
+          tests/native-live-mac-http-relay-client.test.ts
+          tests/native-live-http-relay.test.ts
+      - name: Run Claude bridge suite
+        run: pnpm --dir tools/claude-bridge test
+      - name: Verify diff whitespace
+        run: git diff --check
