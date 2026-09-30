@@ -33,13 +33,29 @@ function tokens(value: string): Set<string> {
 
   for (const sequence of normalized.match(/[\p{Script=Han}]+/gu) ?? []) {
     const chars = Array.from(sequence);
-    for (const char of chars) result.add(char);
     for (let index = 0; index + 1 < chars.length; index += 1) {
       result.add(`${chars[index]}${chars[index + 1]}`);
     }
   }
 
   return result;
+}
+
+export function breathLexicalScore(
+  query: string,
+  candidateText: string,
+): number {
+  const queryTokens = tokens(query);
+  const candidateTokens = tokens(candidateText);
+  if (queryTokens.size === 0 || candidateTokens.size === 0) return 0;
+
+  let matched = 0;
+  for (const token of queryTokens) {
+    if (candidateTokens.has(token)) matched += 1;
+  }
+  return matched === 0
+    ? 0
+    : matched / Math.sqrt(queryTokens.size * candidateTokens.size);
 }
 
 function dedupeKey(value: string): string {
@@ -231,11 +247,7 @@ export function recallBreath(
     const matchedTokens = [...queryTokens].filter((token) =>
       candidateTokens.has(token),
     );
-    const lexicalScore =
-      matchedTokens.length === 0
-        ? 0
-        : matchedTokens.length
-          / Math.sqrt(queryTokens.size * candidateTokens.size);
+    const lexicalScore = breathLexicalScore(query, state.text!);
 
     const rawSemanticScore = input.semanticScores?.get(state.id);
     const semanticScore =
