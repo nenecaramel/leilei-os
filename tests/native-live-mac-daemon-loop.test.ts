@@ -93,8 +93,8 @@ class FakeBackgroundRelay extends FakeRelay {
     command: {
       protocol_version: 1 as const,
       task_id: prepareId,
-      task_kind: "topic_resurface_evaluate" as const,
-      prompt_contract_version: "topic-resurface-eval-v1",
+      task_kind: "proactivity_deliberate" as const,
+      prompt_contract_version: "proactivity-wake-deliberation-v1",
       prompt: "evaluate",
     },
   };
@@ -187,7 +187,7 @@ implements NativeLiveBackgroundModelExecutor {
     return {
       protocol_version: 1 as const,
       task_id: prepareId,
-      task_kind: "topic_resurface_evaluate" as const,
+      task_kind: "proactivity_deliberate" as const,
       status: "success" as const,
       final_text: '{"decision":"quiet"}',
     };
@@ -1067,142 +1067,3 @@ test("provider session deletion failure is receipted for bounded retry", async (
 });
 
 
-test("idle daemon scores durable Mind semantic grouping before offering background maintenance", async () => {
-  class GroupingRelay extends FakeRelay {
-    groupingReservation = {
-      reservationId: "99999999-9999-4999-8999-999999999999",
-      query: "complete the backend cleanup",
-      candidates: [{
-        stateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        kind: "drive" as const,
-        text: "finish the runtime cleanup",
-      }],
-    };
-
-    async reserveMindSemanticGrouping(input: unknown) {
-      this.calls.push({ name: "reserveMindSemanticGrouping", input });
-      return this.groupingReservation;
-    }
-
-    async submitMindSemanticGroupingScores(input: unknown) {
-      this.calls.push({ name: "submitMindSemanticGroupingScores", input });
-    }
-
-    async submitMindSemanticGroupingFallback(input: unknown) {
-      this.calls.push({ name: "submitMindSemanticGroupingFallback", input });
-    }
-  }
-
-  const relay = new GroupingRelay();
-  relay.reservation = null;
-  const scorer = new FakeSemanticScorer();
-  let offers = 0;
-  const loop = new NativeLiveMacDaemonLoop(
-    listenerInstanceId,
-    relay,
-    new FakeExecutor(),
-    scorer,
-    {
-      async offer() {
-        offers += 1;
-      },
-    },
-  );
-
-  assert.deepEqual(await loop.runOnce(), {
-    outcome: "mind_semantic_grouping_completed",
-    reservationId: "99999999-9999-4999-8999-999999999999",
-  });
-  assert.equal(scorer.calls.length, 1);
-  assert.equal(offers, 1);
-  assert.equal(
-    relay.calls.some((entry) => entry.name === "submitMindSemanticGroupingScores"),
-    true,
-  );
-});
-
-
-test("Mind semantic grouping E5 fallback does not immediately reschedule maintenance", async () => {
-  class GroupingRelay extends FakeRelay {
-    groupingReservation = {
-      reservationId: "88888888-8888-4888-8888-888888888888",
-      query: "complete the backend cleanup",
-      candidates: [{
-        stateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        kind: "drive" as const,
-        text: "finish the runtime cleanup",
-      }],
-    };
-
-    async reserveMindSemanticGrouping(input: unknown) {
-      this.calls.push({ name: "reserveMindSemanticGrouping", input });
-      return this.groupingReservation;
-    }
-
-    async submitMindSemanticGroupingScores(input: unknown) {
-      this.calls.push({ name: "submitMindSemanticGroupingScores", input });
-    }
-
-    async submitMindSemanticGroupingFallback(input: unknown) {
-      this.calls.push({ name: "submitMindSemanticGroupingFallback", input });
-    }
-  }
-
-  const relay = new GroupingRelay();
-  relay.reservation = null;
-  let offers = 0;
-  const loop = new NativeLiveMacDaemonLoop(
-    listenerInstanceId,
-    relay,
-    new FakeExecutor(),
-    null,
-    {
-      async offer() {
-        offers += 1;
-      },
-    },
-  );
-
-  assert.equal(
-    (await loop.runOnce()).outcome,
-    "mind_semantic_grouping_completed",
-  );
-  assert.equal(offers, 0);
-  assert.equal(
-    relay.calls.some(
-      (entry) => entry.name === "submitMindSemanticGroupingFallback",
-    ),
-    true,
-  );
-});
-
-
-test("unavailable Mind semantic grouping reserve is fail-soft for the idle pipeline", async () => {
-  class GroupingReserveFailureRelay extends FakeRelay {
-    async reserveMindSemanticGrouping(input: unknown) {
-      this.calls.push({ name: "reserveMindSemanticGrouping", input });
-      throw new Error("grouping route unavailable");
-    }
-
-    async submitMindSemanticGroupingScores() {}
-    async submitMindSemanticGroupingFallback() {}
-  }
-
-  const relay = new GroupingReserveFailureRelay();
-  relay.reservation = null;
-  let offers = 0;
-  const loop = new NativeLiveMacDaemonLoop(
-    listenerInstanceId,
-    relay,
-    new FakeExecutor(),
-    new FakeSemanticScorer(),
-    {
-      async offer() {
-        offers += 1;
-      },
-    },
-  );
-
-  assert.deepEqual(await loop.runOnce(), { outcome: "idle" });
-  assert.equal(offers, 1);
-});

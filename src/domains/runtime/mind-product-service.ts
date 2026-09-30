@@ -10,14 +10,12 @@ import type {
 } from "./persistent-write-envelope.js";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
-  validateSubjectStateWrite,
   type CurrentSubjectStateKind,
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
-import {
-  readSubjectStateOccurredAt,
-  writeSubjectStateTemporal,
-} from "./subject-state-temporal.js";
+import { readSubjectStateOccurredAt } from "./subject-state-temporal.js";
+import { createMindState } from "./mind-writer.js";
+import { THOUGHT_KEY } from "./thought.js";
 
 export type MindProductSource = "manual" | "runtime";
 
@@ -224,32 +222,13 @@ export class MindProductService {
     const occurredAt = normalizeOptionalIso(input.occurredAt, "occurredAt");
     const id = this.createId();
 
-    const manualPayload = {
-      manual_v1: {
-        occurredAt,
-        note,
-      },
-    };
-    const payload =
-      occurredAt !== null
-      && (input.kind === "memory" || input.kind === "feel")
-        ? writeSubjectStateTemporal(manualPayload, {
-            occurredAt,
-            basis: "user_supplied",
-            sourceMessageId: null,
-          })
-        : manualPayload;
-
-    const state = validateSubjectStateWrite({
+    const state = createMindState({
       id,
+      userId: input.userId,
+      subjectId: this.subjectId,
       kind: input.kind,
       text,
-      payload,
-      envelope: manualEnvelope({
-        id,
-        userId: input.userId,
-        subjectId: this.subjectId,
-      }),
+      source: { origin: "manual", occurredAt, note },
     });
 
     const idempotencyKey = mindCreateIdempotencyKey(
@@ -331,50 +310,6 @@ function mindCreateIdempotencyKey(value: unknown): string {
   }
 }
 
-function manualEnvelope(input: {
-  id: string;
-  userId: string;
-  subjectId: string;
-}): PersistentWriteEnvelope {
-  const sourceId = `manual:${input.id}`;
-  return {
-    semanticActor: { kind: "user", id: input.userId },
-    producer: { kind: "user", id: input.userId },
-    committer: { kind: "runtime", id: "leileios-runtime" },
-    authority: "user_asserted",
-    scope: {
-      userId: input.userId,
-      subjectId: input.subjectId,
-      applicability: "global",
-      conversationId: null,
-      pathHeadMessageId: null,
-      visibility: "user_visible",
-      sensitivity: "normal",
-      audience: [input.subjectId],
-    },
-    status: {
-      generationStatus: "committed",
-      presentationStatus: "presented",
-      pathStatus: "current",
-      settlementStatus: "settled",
-      validityStatus: "valid",
-    },
-    provenance: {
-      sources: [{ kind: "manual_entry", id: sourceId }],
-      causedBy: sourceId,
-      derivedFrom: [],
-      decisionId: null,
-      processRunId: null,
-    },
-    versions: {
-      schemaVersion: 1,
-      ruleVersion: "mind-manual-v1",
-      processVersion: "mind-manual-v1",
-      model: null,
-    },
-  };
-}
-
 function projectRow(row: MindProductRow): MindProductItem {
   const payload = row.payload ?? {};
   const manual = record(payload.manual_v1);
@@ -403,10 +338,7 @@ function lifecycleProjection(
   kind: CurrentSubjectStateKind,
   payload: Record<string, unknown>,
 ): MindProductLifecycleProjection {
-  const key =
-    kind === "memory" || kind === "feel"
-      ? "lifecycle_v1"
-      : `${kind}_v1`;
+  const key = kind === "thought" ? THOUGHT_KEY : "lifecycle_v1";
   const value = record(payload[key]);
   return {
     state:

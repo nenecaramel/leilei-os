@@ -1,11 +1,7 @@
 export const NATIVE_LIVE_BACKGROUND_MODEL_PROTOCOL_VERSION = 1 as const;
 
 export const NATIVE_LIVE_BACKGROUND_MODEL_TASK_KINDS = [
-  "distillation",
   "proactivity_deliberate",
-  "topic_resurface_evaluate",
-  "topic_resurface_deliberate",
-  "topic_resurface_retention",
 ] as const;
 
 export type NativeLiveBackgroundModelTaskKind =

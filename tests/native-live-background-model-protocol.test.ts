@@ -12,7 +12,7 @@ function command() {
   return {
     protocol_version: 1,
     task_id: taskId,
-    task_kind: "topic_resurface_evaluate",
+    task_kind: "proactivity_deliberate",
     prompt_contract_version: "topic-resurface-eval-v1",
     prompt: "evaluate",
   };
@@ -44,14 +44,14 @@ test("background model result carries only task identity and bounded pure text",
   const result = parseNativeLiveBackgroundModelExecutionResult({
     protocol_version: 1,
     task_id: taskId,
-    task_kind: "topic_resurface_evaluate",
+    task_kind: "proactivity_deliberate",
     status: "success",
     final_text: '{"decision":"quiet"}',
   });
   assert.deepEqual(result, {
     protocol_version: 1,
     task_id: taskId,
-    task_kind: "topic_resurface_evaluate",
+    task_kind: "proactivity_deliberate",
     status: "success",
     final_text: '{"decision":"quiet"}',
   });
@@ -70,7 +70,7 @@ test("background model result must match command task identity", () => {
   const result = parseNativeLiveBackgroundModelExecutionResult({
     protocol_version: 1,
     task_id: taskId,
-    task_kind: "topic_resurface_evaluate",
+    task_kind: "proactivity_deliberate",
     status: "failure",
     error_code: "RUNTIME_UNAVAILABLE",
   });
@@ -80,37 +80,14 @@ test("background model result must match command task identity", () => {
 
   const wrong = parseNativeLiveBackgroundModelExecutionResult({
     protocol_version: 1,
-    task_id: taskId,
-    task_kind: "topic_resurface_retention",
+    task_id: "99999999-9999-4999-8999-999999999999",
+    task_kind: "proactivity_deliberate",
     status: "failure",
     error_code: "RUNTIME_UNAVAILABLE",
   });
   assert.throws(
     () => assertBackgroundModelResultMatchesCommand(parsed, wrong),
     /does not match command identity/,
-  );
-});
-
-
-test("background model protocol accepts Distillation as a bounded pure-model task", () => {
-  const parsed = parseNativeLiveBackgroundModelCommand({
-    protocol_version: 1,
-    task_id: "33333333-3333-4333-8333-333333333333",
-    task_kind: "distillation",
-    prompt_contract_version: "distill-prompt-v1",
-    prompt: "distill this settled transcript",
-  });
-  assert.equal(parsed.task_kind, "distillation");
-
-  const result = parseNativeLiveBackgroundModelExecutionResult({
-    protocol_version: 1,
-    task_id: parsed.task_id,
-    task_kind: "distillation",
-    status: "success",
-    final_text: '{"memories":[]}',
-  });
-  assert.doesNotThrow(
-    () => assertBackgroundModelResultMatchesCommand(parsed, result),
   );
 });
 

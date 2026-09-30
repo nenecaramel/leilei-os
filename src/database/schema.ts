@@ -761,6 +761,12 @@ export type RuntimeDriveSatisfactionEvidenceKind =
 export type RuntimeSubjectStateKind =
   | "feel"
   | "memory"
+  | "thought";
+/**
+ * Kinds that Mind semantic grouping historically covered. The table is no
+ * longer written; the type stays wide so archived rows remain representable.
+ */
+export type RuntimeMindSemanticGroupingKind =
   | "drive"
   | "thought"
   | "curiosity"
@@ -2793,7 +2799,7 @@ export const runtimeSubjectStates = pgTable(
       table.validityStatus,
     ),
     check("runtime_subject_states_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
-    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'drive', 'thought', 'curiosity', 'topic')`),
+    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'thought')`),
     check("runtime_subject_states_scope_allowed", sql`${table.scopeApplicability} IN ('global', 'conversation', 'path')`),
     check("runtime_subject_states_settlement_allowed", sql`${table.settlementStatus} IN ('unsettled', 'settled', 'rejected')`),
     check("runtime_subject_states_path_status_allowed", sql`${table.pathStatus} IN ('current', 'superseded')`),
@@ -2874,7 +2880,7 @@ export const runtimeMindSemanticGroupingRequests = pgTable(
       .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
     subjectId: text("subject_id").notNull(),
     kind: varchar("kind", { length: 32 })
-      .$type<RuntimeSubjectStateKind>()
+      .$type<RuntimeMindSemanticGroupingKind>()
       .notNull(),
     queryStateId: uuid("query_state_id").notNull(),
     query: text("query").notNull(),

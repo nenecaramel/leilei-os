@@ -474,7 +474,7 @@ test(
         id: exclusiveMindStateId,
         userId,
         subjectId: "G",
-        kind: "drive",
+        kind: "thought",
         text: "exclusive Mind survives deleted conversation",
         payload: { source: "runtime" },
         scopeApplicability: "global",
@@ -578,14 +578,14 @@ test(
         id: survivingDriveStateId,
         userId,
         subjectId: "G",
-        kind: "drive",
-        text: "drive survives with original evolution payload",
+        kind: "thought",
+        text: "thought survives with its lifecycle payload",
         payload: {
-          drive_v1: {
-            reinforcementSources: [
-              survivingUser.id,
-              secondAssistant.message.id,
-            ],
+          thought_v2: {
+            status: "dropped",
+            reason: "subject",
+            droppedAt: "2026-09-27T06:00:00.000Z",
+            droppedByMessageId: secondAssistant.message.id,
           },
         },
         scopeApplicability: "global",
@@ -963,11 +963,11 @@ test(
     const survivingDrive = preservedById.get(survivingDriveStateId);
     assert.ok(survivingDrive);
     assert.deepEqual(survivingDrive.payload, {
-      drive_v1: {
-        reinforcementSources: [
-          survivingUser.id,
-          secondAssistant.message.id,
-        ],
+      thought_v2: {
+        status: "dropped",
+        reason: "subject",
+        droppedAt: "2026-09-27T06:00:00.000Z",
+        droppedByMessageId: secondAssistant.message.id,
       },
     });
     assert.equal(

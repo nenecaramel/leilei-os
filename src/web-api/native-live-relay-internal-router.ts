@@ -25,9 +25,6 @@ import {
 import type {
   NativeLiveBackgroundWorkflowCoordinator,
 } from "../domains/bridge/native-live-background-workflow-coordinator.js";
-import type {
-  TopicResurfaceCrossDeviceOpportunity,
-} from "../domains/runtime/topic-resurface-cross-device-opportunity.js";
 import {
   NativeLiveRuntimeEventError,
   type NativeLiveRuntimeEventService,
@@ -62,10 +59,6 @@ import {
   type NativeLiveExternalSessionBridgeService,
 } from "../domains/bridge/native-live-external-session-bridge.js";
 import {
-  MindSemanticGroupingRepositoryError,
-  type DrizzleMindSemanticGroupingRepository,
-} from "../domains/runtime/mind-semantic-grouping-runtime-repository.js";
-import {
   NativeLiveAttachmentError,
   type NativeLiveAttachmentService,
 } from "../domains/bridge/native-live-attachment-service.js";
@@ -84,10 +77,6 @@ export type NativeLiveRelayInternalDependencies = {
     NativeLiveSemanticHandshakeService,
     "reserveNext" | "submitScores" | "submitFallback"
   >;
-  mindSemanticGrouping?: Pick<
-    DrizzleMindSemanticGroupingRepository,
-    "reserveNext" | "acceptScores" | "acceptFallback"
-  >;
   backgroundModelService?: Pick<
     NativeLiveBackgroundModelQueueService,
     "reserveNext" | "submitResult"
@@ -95,10 +84,6 @@ export type NativeLiveRelayInternalDependencies = {
   backgroundModelCoordinator?: Pick<
     NativeLiveBackgroundWorkflowCoordinator,
     "advanceNextForUser"
-  >;
-  backgroundModelOpportunity?: Pick<
-    TopicResurfaceCrossDeviceOpportunity,
-    "offer"
   >;
   runtimeEventService?: Pick<
     NativeLiveRuntimeEventService,
@@ -122,7 +107,6 @@ export type NativeLiveRelayInternalDependencies = {
     maintenanceKindCount: number;
     effectDeliveryScheduled: boolean;
     proactivityScheduled: boolean;
-    topicResurfaceOffered: boolean;
     failureCount: number;
   }) => void;
   workWaitService?: Pick<NativeLiveWorkWaitService, "wait">;
@@ -173,20 +157,6 @@ export function createNativeLiveRelayInternalRouter(
       submitSemanticFallbackHandler(dependencies),
     );
   }
-  if (dependencies.mindSemanticGrouping) {
-    router.post(
-      "/mind-semantic-grouping/reserve",
-      reserveMindSemanticGroupingHandler(dependencies),
-    );
-    router.post(
-      "/mind-semantic-grouping/reservations/:reservationId/scores",
-      submitMindSemanticGroupingScoresHandler(dependencies),
-    );
-    router.post(
-      "/mind-semantic-grouping/reservations/:reservationId/fallback",
-      submitMindSemanticGroupingFallbackHandler(dependencies),
-    );
-  }
   if (dependencies.companionBackgroundOpportunity) {
     router.post(
       "/background/opportunity",
@@ -201,10 +171,6 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/background-model/reservations/:reservationId/result",
       submitBackgroundModelResultHandler(dependencies),
-    );
-    router.post(
-      "/background-model/topic-resurface/opportunity",
-      topicResurfaceOpportunityHandler(dependencies),
     );
   }
   if (dependencies.manualCompactService) {
@@ -562,85 +528,6 @@ function submitSemanticFallbackHandler(
   };
 }
 
-function reserveMindSemanticGroupingHandler(
-  dependencies: NativeLiveRelayInternalDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId || !dependencies.mindSemanticGrouping) return;
-    const body = parseListenerBody(request.body);
-    if (!body) {
-      sendInvalid(response);
-      return;
-    }
-
-    try {
-      const reservation =
-        await dependencies.mindSemanticGrouping.reserveNext({
-          userId,
-          listenerInstanceId: body.listener_instance_id,
-        });
-      response.json({ success: true, data: reservation });
-    } catch (error) {
-      sendMindSemanticGroupingError(response, error);
-    }
-  };
-}
-
-function submitMindSemanticGroupingScoresHandler(
-  dependencies: NativeLiveRelayInternalDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId || !dependencies.mindSemanticGrouping) return;
-    const reservationId = parseReservationId(request.params.reservationId);
-    const body = parseSemanticScoresBody(request.body);
-    if (!reservationId || !body) {
-      sendInvalid(response);
-      return;
-    }
-
-    try {
-      await dependencies.mindSemanticGrouping.acceptScores({
-        userId,
-        listenerInstanceId: body.listener_instance_id,
-        requestId: reservationId,
-        scores: body.scores,
-      });
-      response.json({ success: true, data: { accepted: true } });
-    } catch (error) {
-      sendMindSemanticGroupingError(response, error);
-    }
-  };
-}
-
-function submitMindSemanticGroupingFallbackHandler(
-  dependencies: NativeLiveRelayInternalDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId || !dependencies.mindSemanticGrouping) return;
-    const reservationId = parseReservationId(request.params.reservationId);
-    const body = parseSemanticFallbackBody(request.body);
-    if (!reservationId || !body) {
-      sendInvalid(response);
-      return;
-    }
-
-    try {
-      await dependencies.mindSemanticGrouping.acceptFallback({
-        userId,
-        listenerInstanceId: body.listener_instance_id,
-        requestId: reservationId,
-        code: body.code,
-      });
-      response.json({ success: true, data: { accepted: true } });
-    } catch (error) {
-      sendMindSemanticGroupingError(response, error);
-    }
-  };
-}
-
 function companionBackgroundOpportunityHandler(
   dependencies: NativeLiveRelayInternalDependencies,
 ): RequestHandler {
@@ -667,7 +554,6 @@ function companionBackgroundOpportunityHandler(
           maintenanceKindCount: result.maintenanceKinds.length,
           effectDeliveryScheduled: result.effectDeliveryScheduled,
           proactivityScheduled: result.proactivityScheduled,
-          topicResurfaceOffered: result.topicResurfaceOffered,
           failureCount: result.failures.length,
         },
       );
@@ -684,7 +570,6 @@ function companionBackgroundOpportunityHandler(
           maintenanceKindCount: 0,
           effectDeliveryScheduled: false,
           proactivityScheduled: false,
-          topicResurfaceOffered: false,
           failureCount: 1,
         },
       );
@@ -715,48 +600,6 @@ function bestEffortObserveCompanionBackgroundOpportunity(
   } catch {
     // Acceptance observability must never affect runtime behavior.
   }
-}
-
-function topicResurfaceOpportunityHandler(
-  dependencies: NativeLiveRelayInternalDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    const userId = requireInternalUser(response, request.mcpUserId);
-    if (!userId || !dependencies.backgroundModelService) return;
-    const body = parseListenerBody(request.body);
-    if (!body) {
-      sendInvalid(response);
-      return;
-    }
-
-    if (!dependencies.backgroundModelOpportunity) {
-      response.json({
-        success: true,
-        data: { outcome: "disabled" },
-      });
-      return;
-    }
-
-    try {
-      const result =
-        await dependencies.backgroundModelOpportunity.offer({
-          userId,
-        });
-      response.json({
-        success: true,
-        data: result,
-      });
-    } catch {
-      response.status(503).json({
-        success: false,
-        error: {
-          code: "NATIVE_LIVE_TOPIC_RESURFACE_OPPORTUNITY_UNAVAILABLE",
-          message:
-            "Topic resurface background opportunity is temporarily unavailable.",
-        },
-      });
-    }
-  };
 }
 
 function reserveBackgroundModelHandler(
@@ -2305,35 +2148,6 @@ function sendSemanticError(
     error: {
       code: "NATIVE_LIVE_SEMANTIC_UNAVAILABLE",
       message: "Native live semantic scoring is temporarily unavailable.",
-    },
-  });
-}
-
-function sendMindSemanticGroupingError(
-  response: Response,
-  error: unknown,
-): void {
-  if (error instanceof MindSemanticGroupingRepositoryError) {
-    const status = error.code === "SCORE_INVALID" ? 400 : 409;
-    response.status(status).json({
-      success: false,
-      error: {
-        code: error.code,
-        message:
-          error.code === "LISTENER_NOT_ACTIVE"
-            ? "Mind semantic grouping listener lease is not active."
-            : error.code === "SCORE_INVALID"
-              ? "Mind semantic grouping score payload is invalid."
-              : "Mind semantic grouping reservation is no longer valid.",
-      },
-    });
-    return;
-  }
-  response.status(503).json({
-    success: false,
-    error: {
-      code: "MIND_SEMANTIC_GROUPING_UNAVAILABLE",
-      message: "Mind semantic grouping is temporarily unavailable.",
     },
   });
 }

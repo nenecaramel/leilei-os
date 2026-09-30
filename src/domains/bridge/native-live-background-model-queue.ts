@@ -2,10 +2,8 @@ import { isDeepStrictEqual } from "node:util";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
-  conversations,
   nativeLiveBackgroundModelJobs,
   runtimeProactivityWakes,
-  runtimeSubjectStates,
 } from "../../database/schema.js";
 import {
   RETENTION_BATCH_SIZE,
@@ -28,10 +26,7 @@ export type NativeLiveBackgroundModelReservation = {
   command: NativeLiveBackgroundModelCommand;
 };
 
-export type NativeLiveBackgroundModelWorkflowKind =
-  | "topic_resurface"
-  | "distillation"
-  | "proactivity_wake";
+export type NativeLiveBackgroundModelWorkflowKind = "proactivity_wake";
 
 export type NativeLiveBackgroundModelWorkflow = {
   kind: NativeLiveBackgroundModelWorkflowKind;
@@ -172,21 +167,6 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
             AND status = 'pending'
             AND (
               workflow_kind IS NULL
-              OR workflow_kind = 'topic_resurface'
-              OR (
-                workflow_kind = 'distillation'
-                AND EXISTS (
-                  SELECT 1
-                  FROM conversations AS source_conversation
-                  WHERE source_conversation.user_id =
-                      native_live_background_model_jobs.user_id
-                    AND source_conversation.origin = 'native_live'
-                    AND source_conversation.lifecycle_status = 'active'
-                    AND source_conversation.id::text =
-                      native_live_background_model_jobs.workflow_payload
-                        ->> 'conversation_id'
-                )
-              )
               OR (
                 workflow_kind = 'proactivity_wake'
                 AND EXISTS (
@@ -433,11 +413,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
       userId: row.userId,
       subjectId: row.subjectId,
       workflow:
-        (
-          row.workflowKind === "topic_resurface"
-          || row.workflowKind === "distillation"
-          || row.workflowKind === "proactivity_wake"
-        )
+        row.workflowKind === "proactivity_wake"
         && row.workflowRunId
         && row.workflowPayload
           ? {
@@ -461,79 +437,6 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
     };
   }
 
-  async findOpenTopicResurface(input: {
-    userId: string;
-    subjectId: string;
-  }): Promise<NativeLiveBackgroundModelJob | null> {
-    const [row] = await this.db
-      .select({ id: nativeLiveBackgroundModelJobs.id })
-      .from(nativeLiveBackgroundModelJobs)
-      .where(
-        and(
-          eq(nativeLiveBackgroundModelJobs.userId, input.userId),
-          eq(nativeLiveBackgroundModelJobs.subjectId, input.subjectId),
-          eq(nativeLiveBackgroundModelJobs.workflowKind, "topic_resurface"),
-          or(
-            eq(nativeLiveBackgroundModelJobs.status, "pending"),
-            eq(nativeLiveBackgroundModelJobs.status, "reserved"),
-            and(
-              or(
-                eq(nativeLiveBackgroundModelJobs.status, "completed"),
-                eq(nativeLiveBackgroundModelJobs.status, "failed"),
-              ),
-              isNull(nativeLiveBackgroundModelJobs.consumedAt),
-            ),
-          ),
-        ),
-      )
-      .orderBy(
-        asc(nativeLiveBackgroundModelJobs.createdAt),
-        asc(nativeLiveBackgroundModelJobs.id),
-      )
-      .limit(1);
-    return row
-      ? this.get({ userId: input.userId, taskId: row.id })
-      : null;
-  }
-
-  async findOpenDistillation(input: {
-    userId: string;
-    subjectId: string;
-    conversationId: string;
-  }): Promise<NativeLiveBackgroundModelJob | null> {
-    const [row] = await this.db
-      .select({ id: nativeLiveBackgroundModelJobs.id })
-      .from(nativeLiveBackgroundModelJobs)
-      .where(
-        and(
-          eq(nativeLiveBackgroundModelJobs.userId, input.userId),
-          eq(nativeLiveBackgroundModelJobs.subjectId, input.subjectId),
-          eq(nativeLiveBackgroundModelJobs.workflowKind, "distillation"),
-          sql`${nativeLiveBackgroundModelJobs.workflowPayload}
-            ->> 'conversation_id' = ${input.conversationId}`,
-          or(
-            eq(nativeLiveBackgroundModelJobs.status, "pending"),
-            eq(nativeLiveBackgroundModelJobs.status, "reserved"),
-            and(
-              or(
-                eq(nativeLiveBackgroundModelJobs.status, "completed"),
-                eq(nativeLiveBackgroundModelJobs.status, "failed"),
-              ),
-              isNull(nativeLiveBackgroundModelJobs.consumedAt),
-            ),
-          ),
-        ),
-      )
-      .orderBy(
-        asc(nativeLiveBackgroundModelJobs.createdAt),
-        asc(nativeLiveBackgroundModelJobs.id),
-      )
-      .limit(1);
-    return row
-      ? this.get({ userId: input.userId, taskId: row.id })
-      : null;
-  }
-
   async findNextUnconsumedTerminalForWorkflow(input: {
     userId: string;
     workflowKind: NativeLiveBackgroundModelWorkflowKind;
@@ -555,21 +458,6 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
           ),
           sql`(
               workflow_kind IS NULL
-              OR workflow_kind = 'topic_resurface'
-              OR (
-                workflow_kind = 'distillation'
-                AND EXISTS (
-                  SELECT 1
-                  FROM conversations AS source_conversation
-                  WHERE source_conversation.user_id =
-                      native_live_background_model_jobs.user_id
-                    AND source_conversation.origin = 'native_live'
-                    AND source_conversation.lifecycle_status = 'active'
-                    AND source_conversation.id::text =
-                      native_live_background_model_jobs.workflow_payload
-                        ->> 'conversation_id'
-                )
-              )
               OR (
                 workflow_kind = 'proactivity_wake'
                 AND EXISTS (
@@ -619,7 +507,7 @@ export class DrizzleNativeLiveBackgroundModelQueueRepository {
   }): Promise<NativeLiveBackgroundModelJob | null> {
     return this.findNextUnconsumedTerminalForWorkflow({
       ...input,
-      workflowKind: "topic_resurface",
+      workflowKind: "proactivity_wake",
     });
   }
 
@@ -691,21 +579,6 @@ export class NativeLiveBackgroundModelQueueService {
     return this.repository.submitResult(input);
   }
 
-  findOpenTopicResurface(input: {
-    userId: string;
-    subjectId: string;
-  }): Promise<NativeLiveBackgroundModelJob | null> {
-    return this.repository.findOpenTopicResurface(input);
-  }
-
-  findOpenDistillation(input: {
-    userId: string;
-    subjectId: string;
-    conversationId: string;
-  }): Promise<NativeLiveBackgroundModelJob | null> {
-    return this.repository.findOpenDistillation(input);
-  }
-
   findNextUnconsumedTerminalForWorkflow(input: {
     userId: string;
     workflowKind: NativeLiveBackgroundModelWorkflowKind;
@@ -734,26 +607,6 @@ async function assertWorkflowSourceActive(
   workflow: NativeLiveBackgroundModelWorkflow | undefined,
 ): Promise<void> {
   if (!workflow) return;
-
-  if (workflow.kind === "distillation") {
-    const conversationId = workflow.payload.conversation_id;
-    if (typeof conversationId !== "string") {
-      throw new Error("Distillation workflow source conversation is invalid.");
-    }
-    const active = await transaction.execute<{ id: string }>(sql`
-      SELECT id
-      FROM conversations
-      WHERE id = ${conversationId}::uuid
-        AND user_id = ${userId}::uuid
-        AND origin = 'native_live'
-        AND lifecycle_status = 'active'
-      FOR SHARE
-    `);
-    if (active.length !== 1) {
-      throw new Error("BackgroundWorkflowSourceInactive");
-    }
-    return;
-  }
 
   if (workflow.kind === "proactivity_wake") {
     const [snapshot] = await transaction
@@ -805,55 +658,7 @@ async function assertWorkflowSourceActive(
     return;
   }
 
-  const stateIds = collectWorkflowStateIds(workflow.payload);
-  if (stateIds.length === 0) {
-    throw new Error("Topic resurface workflow source state is missing.");
-  }
-  const rows = await transaction
-    .select({ id: runtimeSubjectStates.id })
-    .from(runtimeSubjectStates)
-    .where(and(
-      eq(runtimeSubjectStates.userId, userId),
-      eq(runtimeSubjectStates.subjectId, subjectId),
-      inArray(runtimeSubjectStates.id, stateIds),
-      eq(runtimeSubjectStates.validityStatus, "valid"),
-    ))
-    .for("share");
-  if (rows.length !== stateIds.length) {
-    throw new Error("BackgroundWorkflowSourceInactive");
-  }
-}
-
-function collectWorkflowStateIds(value: unknown): string[] {
-  const ids = new Set<string>();
-  const visit = (candidate: unknown): void => {
-    if (Array.isArray(candidate)) {
-      for (const item of candidate) visit(item);
-      return;
-    }
-    if (
-      !candidate
-      || typeof candidate !== "object"
-      || Array.isArray(candidate)
-    ) {
-      return;
-    }
-    for (const [key, child] of Object.entries(
-      candidate as Record<string, unknown>,
-    )) {
-      if (
-        key === "stateId"
-        && typeof child === "string"
-        && child.trim()
-      ) {
-        ids.add(child);
-      } else {
-        visit(child);
-      }
-    }
-  };
-  visit(value);
-  return [...ids];
+  throw new Error("BackgroundWorkflowKindUnsupported");
 }
 
 export async function deleteExpiredNativeLiveBackgroundModelJobsBatch(

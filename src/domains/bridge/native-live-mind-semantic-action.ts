@@ -1,38 +1,35 @@
-import { createHash } from "node:crypto";
-import type {
-  CuriosityResolutionResult,
-  CuriosityResolutionService,
-} from "../runtime/curiosity-resolution.js";
-import type {
-  DriveSatisfactionResult,
-  DriveSatisfactionService,
-} from "../runtime/drive-satisfaction-runtime-repository.js";
-import type {
-  MindSemanticAction,
-} from "../runtime/mind-semantic-action.js";
+import type { InitialContextManifest } from "../runtime/context-invocation-contract.js";
+import type { MindSemanticAction } from "../runtime/mind-semantic-action.js";
+import type { ThoughtDropPort } from "../runtime/thought-runtime-repository.js";
 
 export type MindSemanticActionReceipt = {
   actionIndex: number;
   kind: MindSemanticAction["kind"];
-  stateId: string;
+  ref: string;
+  stateId: string | null;
   outcome: "applied" | "idempotent" | "rejected";
   code?: string;
 };
 
-type DriveSemanticSatisfaction = Pick<
-  DriveSatisfactionService,
-  "satisfySemantic"
->;
+export interface MindManifestReader {
+  loadContextManifest(input: {
+    userId: string;
+    subjectId: string;
+    manifestId: string;
+  }): Promise<InitialContextManifest | null>;
+}
 
-type CuriositySemanticResolution = Pick<
-  CuriosityResolutionService,
-  "resolve"
->;
-
+/**
+ * Applies `<thought_drop ref="T1" />`.
+ *
+ * The model only ever sees turn-local labels. The turn's Context Manifest is
+ * the authority for which real state a label meant, so a label can never
+ * resolve to a thought that was not in front of the model on that turn.
+ */
 export class NativeLiveMindSemanticActionExecutor {
   constructor(
-    private readonly driveSatisfaction: DriveSemanticSatisfaction,
-    private readonly curiosityResolution: CuriositySemanticResolution,
+    private readonly manifests: MindManifestReader,
+    private readonly thoughts: ThoughtDropPort,
     private readonly subjectId: string,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {
@@ -49,110 +46,48 @@ export class NativeLiveMindSemanticActionExecutor {
     actionIndex: number;
     action: MindSemanticAction;
   }): Promise<MindSemanticActionReceipt> {
-    const now = normalizeIso(this.now());
-    if (input.action.kind === "mind_satisfy") {
-      const result = await this.driveSatisfaction.satisfySemantic({
-        userId: input.userId,
-        subjectId: this.subjectId,
-        driveStateId: input.action.stateId,
-        level: input.action.level,
-        idempotencyKey:
-          nativeLiveMindSemanticActionIdempotencyKey(
-            input.prepareId,
-            input.actionIndex,
-          ),
-        evidence: {
-          kind: "assistant_message",
-          conversationId: input.conversationId,
-          messageId: input.assistantMessageId,
-        },
-        now,
-      });
-      return receiptFromDrive(input.actionIndex, input.action.stateId, result);
-    }
+    const { action } = input;
+    const receipt = (
+      outcome: MindSemanticActionReceipt["outcome"],
+      stateId: string | null,
+      code?: string,
+    ): MindSemanticActionReceipt => ({
+      actionIndex: input.actionIndex,
+      kind: action.kind,
+      ref: action.ref,
+      stateId,
+      outcome,
+      ...(code ? { code } : {}),
+    });
 
-    const result = await this.curiosityResolution.resolve({
+    const manifest = await this.manifests.loadContextManifest({
       userId: input.userId,
       subjectId: this.subjectId,
-      curiosityStateId: input.action.stateId,
-      conversationId: input.conversationId,
-      resolutionSourceId: input.assistantMessageId,
-      idempotencyKey:
-        nativeLiveMindSemanticActionIdempotencyKey(
-          input.prepareId,
-          input.actionIndex,
-        ),
-      now,
+      manifestId: input.prepareId,
     });
-    return receiptFromCuriosity(
-      input.actionIndex,
-      input.action.stateId,
-      result,
+    const item = manifest?.items.find(
+      (candidate) =>
+        candidate.type === "thought"
+        && candidate.alias === action.ref,
     );
-  }
-}
+    if (!manifest || manifest.conversationId !== input.conversationId) {
+      return receipt("rejected", null, "MANIFEST_NOT_FOUND");
+    }
+    if (!item) {
+      return receipt("rejected", null, "THOUGHT_REF_UNKNOWN");
+    }
 
-export function nativeLiveMindSemanticActionIdempotencyKey(
-  prepareId: string,
-  actionIndex: number,
-): string {
-  if (!Number.isInteger(actionIndex) || actionIndex < 0) {
-    throw new Error("Semantic Mind action index must be nonnegative.");
+    const result = await this.thoughts.dropThought({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      stateId: item.sourceId,
+      droppedAt: normalizeIso(this.now()),
+      droppedByMessageId: input.assistantMessageId,
+    });
+    return result.outcome === "rejected"
+      ? receipt("rejected", item.sourceId, result.code)
+      : receipt(result.outcome, item.sourceId);
   }
-  const digest = createHash("sha256")
-    .update(
-      "leileios:mind-semantic-action:v1:"
-      + prepareId
-      + ":"
-      + actionIndex,
-      "utf8",
-    )
-    .digest("hex");
-  return "mind-action:" + digest.slice(0, 48);
-}
-
-function receiptFromDrive(
-  actionIndex: number,
-  stateId: string,
-  result: DriveSatisfactionResult,
-): MindSemanticActionReceipt {
-  if (result.outcome === "rejected") {
-    return {
-      actionIndex,
-      kind: "mind_satisfy",
-      stateId,
-      outcome: "rejected",
-      code: result.code,
-    };
-  }
-  return {
-    actionIndex,
-    kind: "mind_satisfy",
-    stateId,
-    outcome: result.outcome,
-  };
-}
-
-function receiptFromCuriosity(
-  actionIndex: number,
-  stateId: string,
-  result: CuriosityResolutionResult,
-): MindSemanticActionReceipt {
-  if (result.outcome === "rejected") {
-    return {
-      actionIndex,
-      kind: "mind_resolve",
-      stateId,
-      outcome: "rejected",
-      code: result.code,
-    };
-  }
-  return {
-    actionIndex,
-    kind: "mind_resolve",
-    stateId,
-    outcome: result.outcome,
-  };
 }
 
 function normalizeIso(value: string): string {

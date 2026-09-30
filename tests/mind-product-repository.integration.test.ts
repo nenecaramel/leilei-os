@@ -129,12 +129,7 @@ test(
         subjectId: "G",
         kind: "thought",
         text: "shared dependent thought",
-        payload: {
-          thought_v1: {
-            role: "anchor",
-            anchorStateId: manual.id,
-          },
-        },
+        payload: { thought_v2: { status: "active" } },
         scopeApplicability: "global",
         scopeConversationId: null,
         scopePathHeadMessageId: null,
@@ -182,8 +177,8 @@ test(
         id: exclusiveId,
         userId,
         subjectId: "G",
-        kind: "curiosity",
-        text: "exclusive dependent curiosity",
+        kind: "thought",
+        text: "exclusive dependent thought",
         payload: null,
         scopeApplicability: "global",
         scopeConversationId: null,
@@ -251,7 +246,9 @@ test(
       .where(eq(runtimeSubjectStates.id, sharedId))
       .limit(1);
     assert.ok(shared);
-    assert.equal(shared.payload, null);
+    // Only provenance referenced the deleted state, so the thought itself
+    // survives with its own lifecycle intact.
+    assert.deepEqual(shared.payload, { thought_v2: { status: "active" } });
     const provenance = (
       shared.envelope.provenance as Record<string, unknown>
     );

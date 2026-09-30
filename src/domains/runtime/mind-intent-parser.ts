@@ -1,9 +1,7 @@
 export type CurrentMindWriteIntentKind =
   | "feel"
   | "memory"
-  | "drive"
-  | "thought"
-  | "curiosity";
+  | "thought";
 
 export type MindWriteIntentKind = CurrentMindWriteIntentKind;
 
@@ -26,8 +24,15 @@ export type ParsedMindIntents = {
   intents: CurrentMindWriteIntent[];
 };
 
-const TAG_PATTERN = /<(feel|memory|drive|thought|curiosity)>([\s\S]*?)<\/\1>/gi;
-const NESTED_TAG_PATTERN = /<\/?(feel|memory|dream|drive|thought|curiosity|topic)>/i;
+const TAG_PATTERN = /<(feel|memory|thought)>([\s\S]*?)<\/\1>/gi;
+
+/**
+ * Retired tags (drive, curiosity, topic, dream) are not parsed and are never
+ * given a new meaning. They stay visible wherever they appear and produce no
+ * Mind state, including when nested inside a current write.
+ */
+const NESTED_TAG_PATTERN =
+  /<\/?(feel|memory|thought|drive|curiosity|topic|dream)>/i;
 
 /**
  * Parses only explicit subject-authored write intents.

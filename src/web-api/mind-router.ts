@@ -134,10 +134,7 @@ function readKind(value: unknown): CurrentSubjectStateKind {
   if (
     value === "feel"
     || value === "memory"
-    || value === "drive"
     || value === "thought"
-    || value === "curiosity"
-    || value === "topic"
   ) {
     return value;
   }

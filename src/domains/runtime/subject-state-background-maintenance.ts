@@ -1,21 +1,19 @@
-
-import type { BackgroundLoopOrchestrator } from "./background-loop-orchestrator.js";
-import type {
-  SubjectStateEvolutionRunner,
-} from "./subject-state-evolution-contract.js";
 import {
   subjectStateBackgroundMutexKey,
+  type BackgroundLoopOrchestrator,
   type BackgroundLoopPriority,
 } from "./background-loop-orchestrator.js";
 
-export type SubjectStateBackgroundRunner = SubjectStateEvolutionRunner;
+export type SubjectStateBackgroundRunner = {
+  runOnce(input: {
+    userId: string;
+    subjectId: string;
+    now: string;
+    limit?: number;
+  }): Promise<unknown>;
+};
 
-export type SubjectStateMaintenanceKind =
-  | "decay"
-  | "thought_evolution"
-  | "drive_evolution"
-  | "topic_lifecycle"
-  | "mind_retirement";
+export type SubjectStateMaintenanceKind = "decay";
 
 export type SubjectStateBackgroundLoopPlan = {
   priority: BackgroundLoopPriority;
@@ -25,30 +23,19 @@ export type SubjectStateBackgroundLoopPlan = {
 
 export type SubjectStateBackgroundMaintenanceConfig = {
   decay?: SubjectStateBackgroundLoopPlan;
-  thoughtEvolution?: SubjectStateBackgroundLoopPlan;
-  driveEvolution?: SubjectStateBackgroundLoopPlan;
-  topicLifecycle?: SubjectStateBackgroundLoopPlan;
-  mindRetirement?: SubjectStateBackgroundLoopPlan;
 };
 
 export type SubjectStateBackgroundMaintenanceRunners = {
   decay?: SubjectStateBackgroundRunner | null;
-  thoughtEvolution?: SubjectStateBackgroundRunner | null;
-  driveEvolution?: SubjectStateBackgroundRunner | null;
-  curiosityEvolution?: SubjectStateBackgroundRunner | null;
-  curiosityTopicProjection?: SubjectStateBackgroundRunner | null;
-  topicEvolution?: SubjectStateBackgroundRunner | null;
-  mindRetirement?: SubjectStateBackgroundRunner | null;
 };
 
 /**
- * Adapts existing Subject State maintenance services into the shared
- * BackgroundLoopOrchestrator without changing their domain semantics.
+ * Adapts Memory/Feel decay into the shared BackgroundLoopOrchestrator.
  *
- * Topic lifecycle remains one ordered job: Curiosity evolution first,
- * Curiosity projection second, Topic evolution third. All Subject State mutation jobs for one user+subject share
- * one mutex key, so a configured concurrent orchestrator cannot interleave
- * those writes.
+ * Thought has no background maintenance: it is dropped by the subject or by
+ * the active limit at write time, never by the clock. All Subject State
+ * mutation jobs for one user+subject share one mutex key so a concurrent
+ * orchestrator cannot interleave those writes.
  */
 export class SubjectStateBackgroundMaintenance {
   constructor(
@@ -67,22 +54,6 @@ export class SubjectStateBackgroundMaintenance {
       );
     }
     validatePlan("decay", config.decay, runners.decay);
-    validatePlan(
-      "thoughtEvolution",
-      config.thoughtEvolution,
-      runners.thoughtEvolution,
-    );
-    validatePlan(
-      "driveEvolution",
-      config.driveEvolution,
-      runners.driveEvolution,
-    );
-    validateTopicPlan(config.topicLifecycle, runners);
-    validatePlan(
-      "mindRetirement",
-      config.mindRetirement,
-      runners.mindRetirement,
-    );
   }
 
   schedule(input: {
@@ -95,166 +66,28 @@ export class SubjectStateBackgroundMaintenance {
         "Subject State background maintenance userId must not be blank.",
       );
     }
-    const mutex = subjectStateBackgroundMutexKey({
-      userId,
-      subjectId: this.subjectId,
-    });
-    const selected = new Set(
-      input.kinds
-        ?? [
-          "decay",
-          "thought_evolution",
-          "drive_evolution",
-          "topic_lifecycle",
-          "mind_retirement",
-        ],
-    );
+    const selected = new Set(input.kinds ?? ["decay"]);
+    const plan = this.config.decay;
+    const runner = this.runners.decay;
+    if (!selected.has("decay") || !plan || !runner) return;
 
-    if (
-      selected.has("decay")
-      && this.config.decay
-      && this.runners.decay
-    ) {
-      this.scheduleOne({
-        userId,
-        mutex,
-        key: "decay",
-        kind: "decay",
-        plan: this.config.decay,
-        runner: this.runners.decay,
-      });
-    }
-    if (
-      selected.has("thought_evolution")
-      && this.config.thoughtEvolution
-      && this.runners.thoughtEvolution
-    ) {
-      this.scheduleOne({
-        userId,
-        mutex,
-        key: "thought-evolution",
-        kind: "thought_evolution",
-        plan: this.config.thoughtEvolution,
-        runner: this.runners.thoughtEvolution,
-      });
-    }
-    if (
-      selected.has("drive_evolution")
-      && this.config.driveEvolution
-      && this.runners.driveEvolution
-    ) {
-      this.scheduleOne({
-        userId,
-        mutex,
-        key: "drive-evolution",
-        kind: "drive_evolution",
-        plan: this.config.driveEvolution,
-        runner: this.runners.driveEvolution,
-      });
-    }
-    if (
-      selected.has("topic_lifecycle")
-      && this.config.topicLifecycle
-      && (
-        this.runners.curiosityEvolution
-        || this.runners.curiosityTopicProjection
-        || this.runners.topicEvolution
-      )
-    ) {
-      const plan = this.config.topicLifecycle;
-      this.orchestrator.schedule({
-        key:
-          "topic-lifecycle:"
-          + userId
-          + ":"
-          + this.subjectId,
-        kind: "topic_lifecycle",
-        priority: plan.priority,
-        cost: plan.cost,
-        mutexKeys: [mutex],
-        run: async () => {
-          const now = normalizeIso(this.now());
-          if (this.runners.curiosityEvolution) {
-            await this.runners.curiosityEvolution.runOnce({
-              userId,
-              subjectId: this.subjectId,
-              now,
-              ...(plan.limit === undefined
-                ? {}
-                : { limit: plan.limit }),
-            });
-          }
-          if (this.runners.curiosityTopicProjection) {
-            await this.runners.curiosityTopicProjection.runOnce({
-              userId,
-              subjectId: this.subjectId,
-              now,
-              ...(plan.limit === undefined
-                ? {}
-                : { limit: plan.limit }),
-            });
-          }
-          if (this.runners.topicEvolution) {
-            await this.runners.topicEvolution.runOnce({
-              userId,
-              subjectId: this.subjectId,
-              now,
-              ...(plan.limit === undefined
-                ? {}
-                : { limit: plan.limit }),
-            });
-          }
-        },
-      });
-    }
-
-    if (
-      selected.has("mind_retirement")
-      && this.config.mindRetirement
-      && this.runners.mindRetirement
-    ) {
-      this.scheduleOne({
-        userId,
-        mutex,
-        key: "mind-retirement",
-        kind: "mind_retirement",
-        plan: this.config.mindRetirement,
-        runner: this.runners.mindRetirement,
-      });
-    }
-  }
-
-  private scheduleOne(input: {
-    userId: string;
-    mutex: string;
-    key: string;
-    kind:
-      | "decay"
-      | "thought_evolution"
-      | "drive_evolution"
-      | "mind_retirement";
-    plan: SubjectStateBackgroundLoopPlan;
-    runner: SubjectStateBackgroundRunner;
-  }): void {
     this.orchestrator.schedule({
-      key:
-        input.key
-        + ":"
-        + input.userId
-        + ":"
-        + this.subjectId,
-      kind: input.kind,
-      priority: input.plan.priority,
-      cost: input.plan.cost,
-      mutexKeys: [input.mutex],
+      key: "decay:" + userId + ":" + this.subjectId,
+      kind: "decay",
+      priority: plan.priority,
+      cost: plan.cost,
+      mutexKeys: [
+        subjectStateBackgroundMutexKey({
+          userId,
+          subjectId: this.subjectId,
+        }),
+      ],
       run: async () => {
-        await input.runner.runOnce({
-          userId: input.userId,
+        await runner.runOnce({
+          userId,
           subjectId: this.subjectId,
           now: normalizeIso(this.now()),
-          ...(input.plan.limit === undefined
-            ? {}
-            : { limit: input.plan.limit }),
+          ...(plan.limit === undefined ? {} : { limit: plan.limit }),
         });
       },
     });
@@ -286,32 +119,6 @@ function validatePlan(
     throw new Error(
       "Background maintenance " + name
       + " limit must be a positive integer.",
-    );
-  }
-}
-
-function validateTopicPlan(
-  plan: SubjectStateBackgroundLoopPlan | undefined,
-  runners: SubjectStateBackgroundMaintenanceRunners,
-): void {
-  const hasRunner = Boolean(
-    runners.curiosityEvolution
-    || runners.curiosityTopicProjection
-    || runners.topicEvolution,
-  );
-  if (Boolean(plan) !== hasRunner) {
-    throw new Error(
-      "Background maintenance topicLifecycle requires an explicit plan "
-      + "when any Curiosity/Topic runner is configured.",
-    );
-  }
-  if (plan) {
-    validatePlan(
-      "topicLifecycle",
-      plan,
-      runners.curiosityEvolution
-        ?? runners.curiosityTopicProjection
-        ?? runners.topicEvolution,
     );
   }
 }

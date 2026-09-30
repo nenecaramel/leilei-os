@@ -11,9 +11,6 @@ import type {
 import type {
   RuntimeEffectDeliveryWorker,
 } from "./runtime-effect-delivery-worker.js";
-import type {
-  TopicResurfaceCrossDeviceOpportunity,
-} from "./topic-resurface-cross-device-opportunity.js";
 
 export type CompanionBackgroundOpportunityReason =
   | "startup"
@@ -25,12 +22,10 @@ export type CompanionBackgroundOpportunityResult = {
   maintenanceKinds: SubjectStateMaintenanceKind[];
   effectDeliveryScheduled: boolean;
   proactivityScheduled: boolean;
-  topicResurfaceOffered: boolean;
   failures: Array<
     "subject_state"
     | "effect_delivery"
     | "proactivity"
-    | "topic_resurface"
   >;
 };
 
@@ -58,10 +53,6 @@ export class CompanionBackgroundOpportunityService {
     private readonly proactivity: Pick<
       ProactivityWakeOpportunityProducer,
       "scheduleUser"
-    > | null,
-    private readonly topicResurface: Pick<
-      TopicResurfaceCrossDeviceOpportunity,
-      "offer"
     > | null,
     private readonly effectDeliveryOnDirty: boolean = true,
   ) {}
@@ -133,24 +124,11 @@ export class CompanionBackgroundOpportunityService {
       }
     }
 
-    // Topic resurfacing is reflective cadence work, not a post-turn task.
-    // Companion's durable due cadence already decides when to offer it.
-    let topicResurfaceOffered = false;
-    if (input.reason === "due" && this.topicResurface) {
-      try {
-        await this.topicResurface.offer({ userId });
-        topicResurfaceOffered = true;
-      } catch {
-        failures.push("topic_resurface");
-      }
-    }
-
     return {
       reason: input.reason,
       maintenanceKinds,
       effectDeliveryScheduled,
       proactivityScheduled,
-      topicResurfaceOffered,
       failures,
     };
   }
@@ -159,18 +137,5 @@ export class CompanionBackgroundOpportunityService {
 function toMaintenanceKind(
   kind: string,
 ): SubjectStateMaintenanceKind | null {
-  switch (kind) {
-    case "decay":
-      return "decay";
-    case "thought_evolution":
-      return "thought_evolution";
-    case "drive_evolution":
-      return "drive_evolution";
-    case "topic_lifecycle":
-      return "topic_lifecycle";
-    case "mind_retirement":
-      return "mind_retirement";
-    default:
-      return null;
-  }
+  return kind === "decay" ? "decay" : null;
 }

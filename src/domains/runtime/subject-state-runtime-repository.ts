@@ -19,6 +19,7 @@ import {
   validateSubjectStateWrite,
   type SubjectStateWrite,
 } from "./subject-state-contract.js";
+import { enforceThoughtCapacity } from "./thought-runtime-repository.js";
 import {
   evaluateRecallReinforcement,
   type MemoryLifecyclePolicy,
@@ -316,6 +317,20 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           reason: requested.reason,
           beforeEnvelope: envelopeRecord(current.envelope),
           afterEnvelope: envelopeRecord(next.envelope),
+        });
+      }
+
+      if (
+        input.transitions.some(
+          (transition) =>
+            transition.stateKind === "thought"
+            && transition.settlementStatus === "settled",
+        )
+      ) {
+        await enforceThoughtCapacity(transaction, {
+          userId: input.userId,
+          subjectId: input.subjectId,
+          droppedAt: new Date().toISOString(),
         });
       }
     });

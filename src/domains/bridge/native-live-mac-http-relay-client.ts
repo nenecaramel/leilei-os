@@ -17,10 +17,6 @@ import {
   parseNativeLiveBackgroundModelCommand,
   type NativeLiveBackgroundModelExecutionResult,
 } from "./native-live-background-model-protocol.js";
-import type {
-  MindSemanticGroupingFallbackCode,
-  MindSemanticGroupingReservation,
-} from "../runtime/mind-semantic-grouping.js";
 
 type FetchLike = typeof fetch;
 
@@ -216,78 +212,6 @@ implements NativeLiveMacDaemonRelayClient {
   }): Promise<void> {
     await this.post(
       `/semantic/reservations/${encodeURIComponent(input.reservationId)}/fallback`,
-      {
-        listener_instance_id: input.listenerInstanceId,
-        code: input.code,
-      },
-    );
-  }
-
-  async reserveMindSemanticGrouping(input: {
-    listenerInstanceId: string;
-    dispatchTarget: "claude_code";
-  }): Promise<MindSemanticGroupingReservation | null> {
-    const data = await this.post("/mind-semantic-grouping/reserve", {
-      listener_instance_id: input.listenerInstanceId,
-      dispatch_target: input.dispatchTarget,
-    });
-    if (data === null) return null;
-
-    const record = readRecord(data);
-    if (
-      typeof record.reservationId !== "string"
-      || typeof record.query !== "string"
-      || !Array.isArray(record.candidates)
-    ) {
-      throw new Error("Mind semantic grouping reservation is invalid.");
-    }
-    return {
-      reservationId: record.reservationId,
-      query: record.query,
-      candidates: record.candidates.map((candidate) => {
-        const item = readRecord(candidate);
-        if (
-          typeof item.stateId !== "string"
-          || (
-            item.kind !== "drive"
-            && item.kind !== "thought"
-            && item.kind !== "curiosity"
-            && item.kind !== "topic"
-          )
-          || typeof item.text !== "string"
-        ) {
-          throw new Error("Mind semantic grouping candidate is invalid.");
-        }
-        return {
-          stateId: item.stateId,
-          kind: item.kind,
-          text: item.text,
-        };
-      }),
-    };
-  }
-
-  async submitMindSemanticGroupingScores(input: {
-    listenerInstanceId: string;
-    reservationId: string;
-    scores: Record<string, number>;
-  }): Promise<void> {
-    await this.post(
-      `/mind-semantic-grouping/reservations/${encodeURIComponent(input.reservationId)}/scores`,
-      {
-        listener_instance_id: input.listenerInstanceId,
-        scores: input.scores,
-      },
-    );
-  }
-
-  async submitMindSemanticGroupingFallback(input: {
-    listenerInstanceId: string;
-    reservationId: string;
-    code: MindSemanticGroupingFallbackCode;
-  }): Promise<void> {
-    await this.post(
-      `/mind-semantic-grouping/reservations/${encodeURIComponent(input.reservationId)}/fallback`,
       {
         listener_instance_id: input.listenerInstanceId,
         code: input.code,
@@ -579,19 +503,6 @@ implements NativeLiveMacDaemonRelayClient {
         listener_instance_id: input.listenerInstanceId,
         dispatch_target: input.dispatchTarget,
         reason: input.reason,
-      },
-    );
-  }
-
-  async offerTopicResurfaceOpportunity(input: {
-    listenerInstanceId: string;
-    dispatchTarget: "claude_code";
-  }): Promise<unknown> {
-    return this.post(
-      "/background-model/topic-resurface/opportunity",
-      {
-        listener_instance_id: input.listenerInstanceId,
-        dispatch_target: input.dispatchTarget,
       },
     );
   }

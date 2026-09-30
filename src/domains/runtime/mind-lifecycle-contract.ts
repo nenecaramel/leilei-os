@@ -3,9 +3,7 @@ import type { CurrentSubjectStateKind } from "./subject-state-contract.js";
 export type MindLifecycleState =
   | "active"
   | "fading"
-  | "satisfied"
-  | "resolved"
-  | "dormant"
+  | "dropped"
   | "archived"
   | "forgotten";
 
@@ -17,9 +15,8 @@ export type MindLifecycleDriver =
   | "time_decay"
   | "reinforcement"
   | "recall"
-  | "satisfaction"
-  | "resolution"
-  | "inactivity";
+  | "subject_drop"
+  | "capacity";
 
 export type ManagedMindLifecycleProfile = {
   management: "managed";
@@ -43,9 +40,10 @@ export type MindLifecycleProfile = ManagedMindLifecycleProfile;
  * - E5 may inform semantic grouping/relevance but never lifecycle.
  * - Numeric thresholds/half-lives remain runtime policy and are not frozen here.
  *
- * Topic is derived-only. Live authored <topic> parsing is retired and new
- * Topic state is produced only by deterministic runtime projection.
+ * Thought is the only always-present state and has no clock: it ends when the
+ * subject drops it, or when newer thoughts displace it at the active limit.
  *
+ * Drive, Curiosity and Topic are retired; wanting and wondering are thoughts.
  * Dream is fully retired from the Subject State storage/write contract.
  */
 export const MIND_LIFECYCLE_PROFILES = {
@@ -73,51 +71,15 @@ export const MIND_LIFECYCLE_PROFILES = {
     },
     purgeFrom: ["forgotten"],
   },
-  drive: {
-    management: "managed",
-    ownership: "authored",
-    drivers: ["reinforcement", "satisfaction", "inactivity"],
-    initialState: "active",
-    transitions: {
-      active: ["satisfied"],
-      satisfied: ["active", "dormant"],
-      dormant: ["active"],
-    },
-    purgeFrom: ["dormant"],
-  },
   thought: {
     management: "managed",
     ownership: "authored",
-    drivers: ["time_decay", "reinforcement"],
+    drivers: ["subject_drop", "capacity"],
     initialState: "active",
     transitions: {
-      active: ["dormant"],
-      dormant: ["active"],
+      active: ["dropped"],
     },
-    purgeFrom: ["dormant"],
-  },
-  curiosity: {
-    management: "managed",
-    ownership: "authored",
-    drivers: ["reinforcement", "resolution", "inactivity"],
-    initialState: "active",
-    transitions: {
-      active: ["resolved", "dormant"],
-      resolved: ["active", "dormant"],
-      dormant: ["active"],
-    },
-    purgeFrom: ["dormant"],
-  },
-  topic: {
-    management: "managed",
-    ownership: "derived",
-    drivers: ["reinforcement", "inactivity"],
-    initialState: "active",
-    transitions: {
-      active: ["dormant"],
-      dormant: ["active"],
-    },
-    purgeFrom: ["dormant"],
+    purgeFrom: [],
   },
 } as const satisfies Record<CurrentSubjectStateKind, MindLifecycleProfile>;
 

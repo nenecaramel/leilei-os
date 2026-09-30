@@ -58,82 +58,47 @@ test("Memory and Feel share the recoverable decay chain before physical purge", 
   }
 });
 
-test("Drive must cool through satisfaction before dormant purge", () => {
+test("Thought has no clock: it is dropped by the subject or at the active limit, and is never purged", () => {
+  const profile = mindLifecycleProfile("thought");
+  assert.equal(profile.initialState, "active");
+  assert.deepEqual(profile.drivers, ["subject_drop", "capacity"]);
   assert.equal(
     isMindLifecycleTransitionAllowed({
-      kind: "drive",
+      kind: "thought",
       from: "active",
-      to: "satisfied",
+      to: "dropped",
     }),
     true,
   );
+  // There is no dormancy, no reactivation and no automatic physical purge.
+  for (const to of ["dormant", "fading", "archived", "forgotten"] as const) {
+    assert.equal(
+      isMindLifecycleTransitionAllowed({ kind: "thought", from: "active", to }),
+      false,
+    );
+  }
   assert.equal(
     isMindLifecycleTransitionAllowed({
-      kind: "drive",
-      from: "satisfied",
-      to: "dormant",
-    }),
-    true,
-  );
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "drive",
-      from: "active",
-      to: "dormant",
+      kind: "thought",
+      from: "dropped",
+      to: "active",
     }),
     false,
   );
-  assert.equal(canPurgeMindState({ kind: "drive", state: "dormant" }), true);
+  assert.equal(canPurgeMindState({ kind: "thought", state: "dropped" }), false);
 });
 
-test("Thought, Curiosity, and Topic can go dormant and later reactivate", () => {
-  for (const kind of ["thought", "curiosity", "topic"] as const) {
+test("Drive, Curiosity and Topic are no longer Subject State kinds", () => {
+  for (const retired of ["drive", "curiosity", "topic", "dream"]) {
     assert.equal(
-      isMindLifecycleTransitionAllowed({
-        kind,
-        from: "dormant",
-        to: "active",
-      }),
-      true,
+      (CURRENT_SUBJECT_STATE_KINDS as readonly string[]).includes(retired),
+      false,
     );
-    assert.equal(canPurgeMindState({ kind, state: "dormant" }), true);
   }
-
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "curiosity",
-      from: "active",
-      to: "resolved",
-    }),
-    true,
-  );
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "curiosity",
-      from: "resolved",
-      to: "dormant",
-    }),
-    true,
-  );
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "curiosity",
-      from: "resolved",
-      to: "active",
-    }),
-    true,
-  );
 });
 
-test("Topic ownership is derived-only after authored Topic retirement", () => {
-  assert.equal(mindLifecycleProfile("topic").ownership, "derived");
-  for (const kind of [
-    "feel",
-    "memory",
-    "drive",
-    "thought",
-    "curiosity",
-  ] as const) {
+test("every remaining kind is authored by the subject", () => {
+  for (const kind of ["feel", "memory", "thought"] as const) {
     assert.equal(mindLifecycleProfile(kind).ownership, "authored");
   }
 });
@@ -155,36 +120,5 @@ test("invalid lifecycle transitions fail closed", () => {
       });
     },
     /Invalid memory lifecycle transition/,
-  );
-});
-
-
-test("Mind retirement policy has explicit terminal preconditions and no implicit retention", async () => {
-  const {
-    MIND_RETIREMENT_PRECONDITIONS,
-    validateMindRetirementPolicy,
-  } = await import("../src/domains/runtime/mind-retirement-policy.js");
-
-  assert.deepEqual(MIND_RETIREMENT_PRECONDITIONS, {
-    drive: "dormant",
-    thought: "dormant",
-    curiosity: "resolved_or_dormant",
-    topic: "dormant",
-  });
-
-  assert.deepEqual(validateMindRetirementPolicy({}), {});
-  assert.deepEqual(
-    validateMindRetirementPolicy({
-      topic: { retentionHours: 720 },
-    }),
-    {
-      topic: { retentionHours: 720 },
-    },
-  );
-  assert.throws(
-    () => validateMindRetirementPolicy({
-      drive: { retentionHours: 0 },
-    }),
-    /retentionHours must be positive/,
   );
 });

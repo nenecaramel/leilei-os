@@ -26,6 +26,7 @@ import {
   todoEntries,
   todoPapers,
   users,
+  type RuntimeSubjectStateKind,
 } from "../../database/schema.js";
 import type {
   ExportConversationAttachmentRecord,
@@ -1326,7 +1327,8 @@ implements ImportRepository {
       id: record.id,
       userId,
       subjectId: record.subject_id,
-      kind: record.kind,
+      // The import planner rejects packages holding retired Mind kinds.
+      kind: record.kind as RuntimeSubjectStateKind,
       text: record.text,
       payload: record.payload,
       scopeApplicability: record.scope_applicability,

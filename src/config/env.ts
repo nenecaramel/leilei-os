@@ -83,40 +83,6 @@ const baseEnvSchema = z.object({
   MCP_INTERNAL_TOOL_PROFILES: z.string().optional(),
   NATIVE_LIVE_BREATH_SALIENCE_WEIGHT:
     z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD:
-    z.coerce.number().positive().max(1).optional(),
-  NATIVE_LIVE_DRIVE_BASE_PRESSURE:
-    z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST:
-    z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD:
-    z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_THOUGHT_BASE_STRENGTH:
-    z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST:
-    z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH:
-    z.coerce.number().min(0).max(1).optional(),
-  NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_MIND_RETIREMENT_ENABLED: booleanEnv.optional(),
-  NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS:
-    z.coerce.number().positive().optional(),
-  NATIVE_LIVE_TOPIC_RESURFACE_ENABLED: booleanEnv.optional(),
-  NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT:
-    z.coerce.number().int().positive().max(25).optional(),
   NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS:
     z.coerce.number().positive().optional(),
   NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS:
@@ -317,41 +283,6 @@ export type BreathRankingConfig = {
   salienceWeight: number;
 };
 
-export type TopicResurfaceOpportunityConfig = {
-  candidateLimit: number;
-};
-
-export type MindSemanticGroupingConfig = {
-  threshold: number;
-  candidateLimit: number;
-};
-
-export type MindLifecycleTuningConfig = {
-  drive: {
-    basePressure: number;
-    reinforcementBoost: number;
-    activeThreshold: number;
-    dormantAfterSatisfiedHours: number;
-  };
-  thought: {
-    halfLifeHours: number;
-    baseStrength: number;
-    reinforcementBoost: number;
-    dormantBelowStrength: number;
-  };
-  curiosity: {
-    dormantAfterHours: number;
-  };
-  topic: {
-    dormantAfterHours: number;
-  };
-};
-
-export type MindRetirementConfig = Partial<Record<
-  "drive" | "thought" | "curiosity" | "topic",
-  { retentionHours: number }
->>;
-
 export type MemoryDecayConfig = {
   halfLifeHours: {
     memory: number;
@@ -434,141 +365,6 @@ export function getBreathRankingConfig(
   return { salienceWeight };
 }
 
-export function getMindLifecycleTuningConfig(
-  environment: Pick<
-    RuntimeEnv,
-    | "NATIVE_LIVE_DRIVE_BASE_PRESSURE"
-    | "NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST"
-    | "NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD"
-    | "NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS"
-    | "NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS"
-    | "NATIVE_LIVE_THOUGHT_BASE_STRENGTH"
-    | "NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST"
-    | "NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH"
-    | "NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS"
-    | "NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS"
-  >,
-): MindLifecycleTuningConfig {
-  const drive = {
-    basePressure: environment.NATIVE_LIVE_DRIVE_BASE_PRESSURE ?? 0.4,
-    reinforcementBoost:
-      environment.NATIVE_LIVE_DRIVE_REINFORCEMENT_BOOST ?? 0.2,
-    activeThreshold:
-      environment.NATIVE_LIVE_DRIVE_ACTIVE_THRESHOLD ?? 0.1,
-    dormantAfterSatisfiedHours:
-      environment.NATIVE_LIVE_DRIVE_DORMANT_AFTER_SATISFIED_HOURS ?? 168,
-  };
-  const thought = {
-    halfLifeHours:
-      environment.NATIVE_LIVE_THOUGHT_HALF_LIFE_HOURS ?? 168,
-    baseStrength:
-      environment.NATIVE_LIVE_THOUGHT_BASE_STRENGTH ?? 0.35,
-    reinforcementBoost:
-      environment.NATIVE_LIVE_THOUGHT_REINFORCEMENT_BOOST ?? 0.25,
-    dormantBelowStrength:
-      environment.NATIVE_LIVE_THOUGHT_DORMANT_BELOW_STRENGTH ?? 0.1,
-  };
-  if (drive.basePressure <= drive.activeThreshold) {
-    throw new Error(
-      "Drive base pressure must exceed active threshold.",
-    );
-  }
-  if (thought.baseStrength < thought.dormantBelowStrength) {
-    throw new Error(
-      "Thought base strength must be at least dormant threshold.",
-    );
-  }
-  return {
-    drive,
-    thought,
-    curiosity: {
-      dormantAfterHours:
-        environment.NATIVE_LIVE_CURIOSITY_DORMANT_AFTER_HOURS ?? 168,
-    },
-    topic: {
-      dormantAfterHours:
-        environment.NATIVE_LIVE_TOPIC_DORMANT_AFTER_HOURS ?? 168,
-    },
-  };
-}
-
-export function getMindRetirementConfig(
-  environment: Pick<
-    RuntimeEnv,
-    | "NATIVE_LIVE_MIND_RETIREMENT_ENABLED"
-    | "NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS"
-    | "NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS"
-    | "NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS"
-    | "NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS"
-  >,
-): MindRetirementConfig | undefined {
-  const values = {
-    drive:
-      environment.NATIVE_LIVE_MIND_RETIREMENT_DRIVE_RETENTION_HOURS,
-    thought:
-      environment.NATIVE_LIVE_MIND_RETIREMENT_THOUGHT_RETENTION_HOURS,
-    curiosity:
-      environment.NATIVE_LIVE_MIND_RETIREMENT_CURIOSITY_RETENTION_HOURS,
-    topic:
-      environment.NATIVE_LIVE_MIND_RETIREMENT_TOPIC_RETENTION_HOURS,
-  };
-  const configured = Object.entries(values).filter(
-    (entry): entry is [
-      keyof MindRetirementConfig,
-      number,
-    ] => entry[1] !== undefined,
-  );
-
-  if (environment.NATIVE_LIVE_MIND_RETIREMENT_ENABLED !== true) {
-    if (configured.length > 0) {
-      throw new Error(
-        "NATIVE_LIVE_MIND_RETIREMENT_ENABLED=true is required when retirement retention is configured.",
-      );
-    }
-    return undefined;
-  }
-  if (configured.length === 0) {
-    throw new Error(
-      "Mind retirement requires at least one positive per-kind retention.",
-    );
-  }
-
-  const policy: MindRetirementConfig = {};
-  for (const [kind, retentionHours] of configured) {
-    if (!Number.isFinite(retentionHours) || retentionHours <= 0) {
-      throw new Error(
-        "Mind retirement " + kind + " retentionHours must be positive.",
-      );
-    }
-    policy[kind] = { retentionHours };
-  }
-  return policy;
-}
-
-export function getMindSemanticGroupingConfig(
-  environment: Pick<
-    RuntimeEnv,
-    "NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD"
-  >,
-): MindSemanticGroupingConfig | undefined {
-  const threshold =
-    environment.NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD;
-  if (threshold === undefined) return undefined;
-  if (
-    !Number.isFinite(threshold)
-    || threshold <= 0
-    || threshold > 1
-  ) {
-    throw new Error(
-      "NATIVE_LIVE_MIND_SEMANTIC_GROUPING_THRESHOLD must be greater than 0 and at most 1.",
-    );
-  }
-  return {
-    threshold,
-    candidateLimit: 32,
-  };
-}
-
 export function getProactivityWakeOpportunityConfig(
   environment: Pick<
     RuntimeEnv,
@@ -649,32 +445,6 @@ export function getMemoryDecayConfig(
     },
     fadingThreshold,
     archiveThreshold,
-  };
-}
-
-export function getTopicResurfaceOpportunityConfig(
-  environment: Pick<
-    RuntimeEnv,
-    | "NATIVE_LIVE_TOPIC_RESURFACE_ENABLED"
-    | "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT"
-  >,
-): TopicResurfaceOpportunityConfig | undefined {
-  const enabled =
-    environment.NATIVE_LIVE_TOPIC_RESURFACE_ENABLED === true;
-  const limit =
-    environment.NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT;
-
-  if (!enabled) {
-    if (limit !== undefined) {
-      throw new Error(
-        "NATIVE_LIVE_TOPIC_RESURFACE_CANDIDATE_LIMIT requires NATIVE_LIVE_TOPIC_RESURFACE_ENABLED=true.",
-      );
-    }
-    return undefined;
-  }
-
-  return {
-    candidateLimit: limit ?? 5,
   };
 }
 

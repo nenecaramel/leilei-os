@@ -35,6 +35,7 @@ import {
 } from "./breath-recall.js";
 import { canonicalPathToHead } from "./surface-projector.js";
 import { expandCausalStateReferences } from "./persistent-reference-scan.js";
+import { readThoughtLifecycle, writeThoughtActive } from "./thought.js";
 import {
   readSubjectStateLifecycle,
   type MemoryLifecyclePolicy,
@@ -100,8 +101,6 @@ export type MindLoopConfig = {
   contextTimeZone?: string;
   ruleVersion: string;
   processVersion: string;
-  /** @deprecated canonical Surface is no longer injected into model prompts. */
-  surfaceLimit?: number;
   breathLimit: number;
   breathCooldownHours?: number;
   breathSalienceWeight?: number;
@@ -115,11 +114,7 @@ export type MindLoopConfig = {
   breathDiversityMaxTokenOverlap?: number;
   breathSemanticCandidateLimit?: number;
   breathSemanticCandidateMaxChars?: number;
-  driveLimit?: number;
   thoughtLimit?: number;
-  thoughtMinStrength?: number;
-  curiosityLimit?: number;
-  topicLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
 };
@@ -132,8 +127,7 @@ export type MindLoopConfig = {
  * 2. assemble and persist bounded context before a model invocation;
  * 3. convert explicit subject-authored Mind tags into provisional state.
  *
- * It does not decide Drive/Decay policy and does not perform external
- * effects.
+ * It does not decide Decay policy and does not perform external effects.
  */
 export class NativeLiveMindLoopService {
   constructor(
@@ -329,11 +323,7 @@ export class NativeLiveMindLoopService {
         this.config.breathRecentRecallPenalty ?? false,
       breathDiversityMaxTokenOverlap:
         this.config.breathDiversityMaxTokenOverlap ?? 1,
-      driveLimit: this.config.driveLimit ?? 0,
       thoughtLimit: this.config.thoughtLimit ?? 0,
-      thoughtMinStrength: this.config.thoughtMinStrength ?? 0,
-      curiosityLimit: this.config.curiosityLimit ?? 0,
-      topicLimit: this.config.topicLimit ?? 0,
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
@@ -674,6 +664,13 @@ function hasCompleteSemanticScores(
 }
 
 
+/**
+ * Context for a Retry/Edit must match what the replaced turn saw. States that
+ * only exist because of the replaced messages are removed, and a thought that
+ * one of those messages dropped is treated as still active. (The stored drop is
+ * undone for real when the replacement finalizes; this keeps the model from
+ * seeing the world after the very turn it is redoing.)
+ */
 function excludeCausalStates(
   states: readonly SubjectStateWrite[],
   excludedReferenceIds: ReadonlySet<string> | undefined,
@@ -681,9 +678,25 @@ function excludeCausalStates(
   if (!excludedReferenceIds || excludedReferenceIds.size === 0) {
     return [...states];
   }
+  // A thought's own payload names the message that dropped it. That is not
+  // a reason to hide the thought, so only its envelope is scanned; a thought
+  // written by a replaced turn is still caught through its provenance.
   const excludedStateIds = expandCausalStateReferences({
-    states,
+    states: states.map((state) =>
+      state.kind === "thought" ? { ...state, payload: null } : state
+    ),
     rootIds: excludedReferenceIds,
   });
-  return states.filter((state) => !excludedStateIds.has(state.id));
+  return states
+    .filter((state) => !excludedStateIds.has(state.id))
+    .map((state) => {
+      if (state.kind !== "thought") return state;
+      const lifecycle = readThoughtLifecycle(state.payload);
+      return lifecycle?.status === "dropped"
+        && lifecycle.reason === "subject"
+        && lifecycle.droppedByMessageId !== null
+        && excludedReferenceIds.has(lifecycle.droppedByMessageId)
+        ? { ...state, payload: writeThoughtActive(state.payload) }
+        : state;
+    });
 }

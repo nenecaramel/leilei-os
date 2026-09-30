@@ -72,10 +72,8 @@ function createMind(port: Port) {
       promptContractVersion: "prompt-v1",
       ruleVersion: "mind-v1",
       processVersion: "mind-v1",
-      surfaceLimit: 4,
       breathLimit: 3,
       thoughtLimit: 3,
-      thoughtMinStrength: 0.1,
       maxContextItems: 10,
       maxContextChars: 4000,
     },
@@ -103,7 +101,12 @@ test("foreground Mind binding now owns Context Assembly only, not general Subjec
     surfaceHeadMessageId: null,
   });
 
-  assert.equal(\n    prompt.includes(\n      "<user_message>[09-22 周二 15:30] hello</user_message>",\n    ),\n    true,\n  );
+  assert.equal(
+    prompt.includes(
+      "<user_message>[09-22 周二 15:30] hello</user_message>",
+    ),
+    true,
+  );
   assert.equal(port.listCalls, 1);
   assert.equal(port.saved, 1);
 });
@@ -124,4 +127,108 @@ test("semantic planning remains independent from Background Loop maintenance", a
   assert.equal(plan, null);
   assert.equal(port.listCalls, 0);
   assert.equal(port.saved, 0);
+});
+
+test("Retry/Edit context treats a thought dropped by the replaced turn as still active", async () => {
+  const { writeThoughtActive, writeThoughtDropped } = await import(
+    "../src/domains/runtime/thought.js"
+  );
+  const droppedBy = "a-replaced";
+  const thought = (
+    id: string,
+    text: string,
+    payload: Record<string, unknown>,
+  ) => ({
+    id,
+    kind: "thought" as const,
+    text,
+    payload,
+    envelope: {
+      semanticActor: { kind: "subject" as const, id: "G" },
+      producer: { kind: "model" as const, id: "claude-code" },
+      committer: { kind: "runtime" as const, id: "leileios-runtime" },
+      authority: "subject_authorized" as const,
+      scope: {
+        userId: "u1",
+        subjectId: "G",
+        applicability: "global" as const,
+        conversationId: null,
+        pathHeadMessageId: null,
+        visibility: "subject_private" as const,
+        sensitivity: "normal" as const,
+        audience: ["G"],
+      },
+      status: {
+        generationStatus: "committed" as const,
+        presentationStatus: "presented" as const,
+        pathStatus: "current" as const,
+        settlementStatus: "settled" as const,
+        validityStatus: "valid" as const,
+      },
+      provenance: {
+        sources: [{ kind: "manual_entry" as const, id: `manual:${id}` }],
+        causedBy: `manual:${id}`,
+        derivedFrom: [],
+      },
+      versions: {
+        schemaVersion: 1,
+        ruleVersion: "test",
+        processVersion: "test",
+      },
+    },
+  });
+  const states = [
+    thought("dropped-by-replaced", "被这一轮放下的", writeThoughtDropped(null, {
+      reason: "subject",
+      droppedAt: now,
+      droppedByMessageId: droppedBy,
+    })),
+    thought("dropped-earlier", "更早被放下的", writeThoughtDropped(null, {
+      reason: "subject",
+      droppedAt: now,
+      droppedByMessageId: "a-earlier",
+    })),
+    thought("capacity-dropped", "被挤掉的", writeThoughtDropped(null, {
+      reason: "capacity",
+      droppedAt: now,
+    })),
+    thought("active", "一直在的", writeThoughtActive(null)),
+  ];
+
+  const port = new Port();
+  port.list = async () => states as never;
+  const service = new NativeLiveMindLoopService(port, {
+    assemblyVersion: "assembly-v2",
+    promptContractVersion: "prompt-v5",
+    ruleVersion: "mind-v2",
+    processVersion: "mind-v2",
+    breathLimit: 3,
+    thoughtLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  }, null);
+  const prepare = (excluded?: ReadonlySet<string>) =>
+    service.prepareTurn({
+      manifestId: crypto.randomUUID(),
+      userId: "u1",
+      subjectId: "G",
+      conversation: conversation(),
+      userMessageId: "22222222-2222-4222-8222-222222222222",
+      userText: "hello",
+      snapshotSequence: 1,
+      assembledAt: now,
+      excludedReferenceIds: excluded,
+    });
+
+  const plain = await prepare();
+  assert.equal(plain.prompt.includes("被这一轮放下的"), false);
+
+  const retry = await prepare(new Set([droppedBy]));
+  assert.equal(
+    retry.prompt.includes("Current thoughts:\n- [T1] 一直在的\n- [T2] 被这一轮放下的"),
+    true,
+  );
+  // Only the drop issued by the replaced message is undone.
+  assert.equal(retry.prompt.includes("更早被放下的"), false);
+  assert.equal(retry.prompt.includes("被挤掉的"), false);
 });
