@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type {
@@ -69,6 +69,20 @@ export class NativeLiveMacAttachmentMaterializer {
       );
     }
     return output;
+  }
+
+  async cleanup(
+    command: NativeLiveRuntimeCommand,
+  ): Promise<void> {
+    const turnRoot = join(
+      this.inboxRoot,
+      command.conversation_id,
+      command.prepare_id,
+    );
+    await rm(turnRoot, {
+      recursive: true,
+      force: true,
+    });
   }
 
   appendPrompt(
