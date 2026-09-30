@@ -1580,7 +1580,7 @@ private struct NativeLiveAttachmentBlockView: View {
                                 )
                         case .failure:
                             attachmentRowContent
-                        default:
+                        case .empty:
                             ZStack {
                                 RoundedRectangle(
                                     cornerRadius: 12,
