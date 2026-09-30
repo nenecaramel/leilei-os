@@ -132,7 +132,9 @@ export const DEFAULT_MIND_LIFECYCLE_TUNING: MindLifecycleTuning = {
     dormantAfterHours: 168,
   },
 };
-export const DEFAULT_BREATH_RECALL_SALIENCE_BOOST = 0.08;
+// Recall is evidence of relevance for this turn, not new evidence that the
+// memory itself became more important. Keep lifecycle salience unchanged.
+export const DEFAULT_BREATH_RECALL_SALIENCE_BOOST = 0;
 export const DEFAULT_BREATH_SALIENCE_WEIGHT = 0.1;
 // Used by background Distillation only; foreground Claude prompt assembly no longer injects canonical Surface.
 export const DEFAULT_DISTILLATION_SETTLEMENT_LAG_MESSAGES = 8;
@@ -239,7 +241,7 @@ export function createDefaultBackendMindRuntime(
       ...(memoryLifecyclePolicy ? { memoryLifecyclePolicy } : {}),
       breathSemanticWeight: 0.65,
       breathSemanticMinScore: 0.80,
-      breathSemanticCandidateLimit: 64,
+      breathSemanticCandidateLimit: 256,
       breathSemanticCandidateMaxChars: 2_000,
       driveLimit: 3,
       thoughtLimit: 3,
