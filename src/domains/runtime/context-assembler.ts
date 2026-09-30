@@ -34,6 +34,62 @@ function contextTimestampLabel(item: ContextManifestItem): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function formatContextDate(
+  iso8601: string,
+  timeZone: string,
+): string | null {
+  const date = new Date(iso8601);
+  if (!Number.isFinite(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  return year && month && day ? `[${year}-${month}-${day}]` : null;
+}
+
+function withManualOccurredDate(
+  item: ContextManifestItem,
+  timeZone: string,
+): ContextManifestItem {
+  if (
+    item.trustBoundary !== "subject_state_data"
+    || contextTimestampLabel(item)
+  ) {
+    return item;
+  }
+
+  const manual =
+    item.payload?.manual_v1
+    && typeof item.payload.manual_v1 === "object"
+    && !Array.isArray(item.payload.manual_v1)
+      ? item.payload.manual_v1 as Record<string, unknown>
+      : null;
+  const occurredAt =
+    typeof manual?.occurredAt === "string"
+      ? manual.occurredAt.trim()
+      : "";
+  const occurredDate =
+    occurredAt ? formatContextDate(occurredAt, timeZone) : null;
+  if (!occurredDate) return item;
+
+  return {
+    ...item,
+    payload: {
+      ...(item.payload ?? {}),
+      context_timestamp: occurredDate,
+    },
+  };
+}
+
 function charCost(item: ContextManifestItem): number {
   return (item.text?.length ?? 0) + (contextTimestampLabel(item)?.length ?? 0);
 }
@@ -455,7 +511,7 @@ export function assembleTurnContext(input: {
       ...curiosities,
       ...topics,
       ...breathItems,
-    ],
+    ].map((item) => withManualOccurredDate(item, contextTimeZone)),
     {
       maxItems: input.maxContextItems,
       maxChars: input.maxContextChars,

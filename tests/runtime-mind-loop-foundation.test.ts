@@ -399,6 +399,56 @@ test("Context Assembly injects bounded Breath but does not reinject canonical Su
   );
 });
 
+test("manual Mind exposes occurred date but not note to foreground Claude", () => {
+  const manualMemory = state(
+    "manual-memory-1",
+    "memory",
+    "那天完成了一个重要节点",
+    {
+      payload: {
+        manual_v1: {
+          occurredAt: "2026-07-14T18:30:00.000Z",
+          note: "这只是我给自己看的补充备注",
+        },
+      },
+    },
+  );
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-manual-date",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-manual-date",
+    userText: "重要节点",
+    contextTimeZone: "Asia/Shanghai",
+    subjectStates: [manualMemory],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v4",
+    breathLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  assert.equal(
+    assembled.prompt.includes("[2026-07-15] 那天完成了一个重要节点"),
+    true,
+  );
+  assert.equal(
+    assembled.prompt.includes("2026-07-14T18:30:00.000Z"),
+    false,
+  );
+  assert.equal(
+    assembled.prompt.includes("这只是我给自己看的补充备注"),
+    false,
+  );
+
+  const replayed = assembledTurnContextFromManifest(assembled.manifest);
+  assert.equal(replayed.prompt, assembled.prompt);
+});
+
 test("unsettled or superseded Drive never enters Context Assembly", () => {
   const provisional = state(
     "77777777-7777-4777-8777-777777777777",
