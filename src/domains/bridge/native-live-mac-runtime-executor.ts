@@ -190,6 +190,12 @@ export class NativeLiveMacRuntimeExecutor {
             );
     } catch (error) {
       return failure(command, runtimeFailureCode(error));
+    } finally {
+      if (this.attachmentMaterializer) {
+        await this.attachmentMaterializer
+          .cleanup(command)
+          .catch(() => undefined);
+      }
     }
 
     if (!runtimeResult.providerSessionId) {
