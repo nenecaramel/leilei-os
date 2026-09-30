@@ -234,6 +234,15 @@ export function createApp(
 
   app.disable("x-powered-by");
   app.use(createHttpObservabilityMiddleware({ logger }));
+  if (dependencies.nativeLiveAttachmentTransferStore) {
+    app.use(
+      "/api/v1/native-live/attachment-transfer",
+      databaseReadinessMiddleware,
+      createNativeLiveAttachmentTransferRouter(
+        dependencies.nativeLiveAttachmentTransferStore,
+      ),
+    );
+  }
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_request, response) => {
@@ -333,16 +342,6 @@ export function createApp(
           timeoutMs: oauthAuthorizationServerConfig.fetchTimeoutMs,
         }),
       }),
-    );
-  }
-
-  if (dependencies.nativeLiveAttachmentTransferStore) {
-    app.use(
-      "/api/v1/native-live/attachment-transfer",
-      databaseReadinessMiddleware,
-      createNativeLiveAttachmentTransferRouter(
-        dependencies.nativeLiveAttachmentTransferStore,
-      ),
     );
   }
 
