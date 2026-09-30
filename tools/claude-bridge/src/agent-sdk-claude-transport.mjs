@@ -183,6 +183,11 @@ function nonblankString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function isNativeClaudeScheduleCommand(value) {
+  return typeof value === "string"
+    && /^\/(?:schedule|routines)(?:\s|$)/iu.test(value);
+}
+
 function sdkResultFailed(message) {
   if (!message || message.type !== "result") return false;
   if (message.is_error === true) return true;
@@ -413,6 +418,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     const executionOptions =
       normalizeAgentSdkExecutionSelection(execution);
+    const nativeScheduleCommand =
+      isNativeClaudeScheduleCommand(prompt);
     const localSendFileServer =
       sendFileHandler
         ? await this.createSendFileMcpServerImpl(
@@ -433,7 +440,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       environment: this.environment,
       cwd: this.cwd,
       queryOptions: {
-        verbatimPrompts: true,
+        verbatimPrompts: !nativeScheduleCommand,
         ...executionOptions,
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
@@ -446,7 +453,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       streaming,
       permissionHandler,
       questionHandler,
-      midTurnInput: Boolean(controlPump),
+      midTurnInput:
+        Boolean(controlPump) && !nativeScheduleCommand,
       executionReadback: Boolean(execution),
     });
 
