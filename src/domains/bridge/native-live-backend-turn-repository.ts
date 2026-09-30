@@ -298,17 +298,19 @@ implements NativeLiveBackendTurnPort {
           conversationId: input.conversationId,
           parentMessageId: conversation.currentHeadMessageId,
         });
-        await conversations.appendContentBlock({
-          userId: input.userId,
-          conversationId: input.conversationId,
-          messageId: userMessage.id,
-          ordinal: 0,
-          block: {
-            kind: "text",
-            rawType: "text",
-            text: input.text,
-          },
-        });
+        if (input.text.length > 0) {
+          await conversations.appendContentBlock({
+            userId: input.userId,
+            conversationId: input.conversationId,
+            messageId: userMessage.id,
+            ordinal: 0,
+            block: {
+              kind: "text",
+              rawType: "text",
+              text: input.text,
+            },
+          });
+        }
         const attachmentBinding =
           new DrizzleNativeLiveAttachmentBinding(
             transaction as Transaction,
@@ -318,7 +320,8 @@ implements NativeLiveBackendTurnPort {
             userId: input.userId,
             messageId: userMessage.id,
             attachmentIds: input.attachmentIds,
-            startOrdinal: 1,
+            startOrdinal:
+              input.text.length > 0 ? 1 : 0,
           });
 
         const preparation = await this.insertPreparation(transaction, {
@@ -336,7 +339,10 @@ implements NativeLiveBackendTurnPort {
           expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
           attachments,
-          prompt: input.text,
+          prompt:
+            input.text.length > 0
+              ? input.text
+              : "The user sent the attached file(s).",
         });
 
         return {
@@ -397,7 +403,26 @@ implements NativeLiveBackendTurnPort {
             message.id === input.targetUserMessageId
             && message.role === "user",
         );
-        const prompt = target ? readUserText(target) : null;
+        const attachmentBinding =
+          new DrizzleNativeLiveAttachmentBinding(
+            transaction as Transaction,
+          );
+        const attachments = target
+          ? await attachmentBinding.readForMessage({
+              userId: input.userId,
+              messageId: target.id,
+            })
+          : [];
+        const prompt = target
+          ? (
+              readUserText(target)
+              ?? (
+                attachments.length > 0
+                  ? "The user sent the attached file(s)."
+                  : null
+              )
+            )
+          : null;
         const purgePlan = target
           ? planReplacementMessagePurge({
               operation: "retry",
@@ -417,14 +442,6 @@ implements NativeLiveBackendTurnPort {
           target.parentMessageId,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
-
-        const attachments =
-          await new DrizzleNativeLiveAttachmentBinding(
-            transaction as Transaction,
-          ).readForMessage({
-            userId: input.userId,
-            messageId: target.id,
-          });
 
         const preparation = await this.insertPreparation(transaction, {
           prepareId: input.prepareId,
@@ -542,30 +559,42 @@ implements NativeLiveBackendTurnPort {
           ?? originalAttachments.map(
             (attachment) => attachment.attachment_id,
           );
+        if (
+          input.text.length === 0
+          && selectedAttachmentIds.length === 0
+        ) {
+          return {
+            ok: false as const,
+            code: "BRANCH_POINT_INVALID" as const,
+          };
+        }
 
         const editedUser = await conversations.appendUserMessage({
           userId: input.userId,
           conversationId: input.conversationId,
           parentMessageId: target.parentMessageId,
         });
-        await conversations.appendContentBlock({
-          userId: input.userId,
-          conversationId: input.conversationId,
-          messageId: editedUser.id,
-          ordinal: 0,
-          block: {
-            kind: "text",
-            rawType: "text",
-            text: input.text,
-          },
-        });
+        if (input.text.length > 0) {
+          await conversations.appendContentBlock({
+            userId: input.userId,
+            conversationId: input.conversationId,
+            messageId: editedUser.id,
+            ordinal: 0,
+            block: {
+              kind: "text",
+              rawType: "text",
+              text: input.text,
+            },
+          });
+        }
         const attachments =
           await attachmentBinding.bindReadyToMessage({
             userId: input.userId,
             messageId: editedUser.id,
             attachmentIds: selectedAttachmentIds,
             allowPreviouslyBound: true,
-            startOrdinal: 1,
+            startOrdinal:
+              input.text.length > 0 ? 1 : 0,
           });
 
         const preparation = await this.insertPreparation(transaction, {
@@ -583,7 +612,10 @@ implements NativeLiveBackendTurnPort {
           expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
           executionSelection: input.executionSelection,
           attachments,
-          prompt: input.text,
+          prompt:
+            input.text.length > 0
+              ? input.text
+              : "The user sent the attached file(s).",
         });
 
         return {
