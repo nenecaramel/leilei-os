@@ -7,6 +7,7 @@ import {
 import type { createDatabase } from "../../database/client.js";
 import {
   conversationAttachments,
+  conversationContentBlocks,
   nativeLiveChatAttachments,
 } from "../../database/schema.js";
 import type {
@@ -459,6 +460,27 @@ export class DrizzleNativeLiveAttachmentBinding {
             sizeBytes: attachment.size_bytes,
             payload: {
               attachment_id: attachment.attachment_id,
+              sha256: attachment.sha256,
+              kind: attachment.kind,
+              storage: "railway_bucket",
+            },
+          })),
+        );
+      await this.db
+        .insert(conversationContentBlocks)
+        .values(
+          descriptors.map((attachment, index) => ({
+            userId: input.userId,
+            messageId: input.messageId,
+            ordinal: (input.startOrdinal ?? 1) + index,
+            kind: "attachment" as const,
+            rawType: attachment.kind,
+            text: null,
+            payload: {
+              attachment_id: attachment.attachment_id,
+              filename: attachment.filename,
+              mime_type: attachment.mime_type,
+              size_bytes: attachment.size_bytes,
               sha256: attachment.sha256,
               kind: attachment.kind,
               storage: "railway_bucket",
