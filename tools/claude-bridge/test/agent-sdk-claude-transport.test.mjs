@@ -1078,6 +1078,64 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   );
 });
 
+test("interactive native schedule commands use Claude slash-command parsing", async () => {
+  for (const command of [
+    "/schedule list",
+    "/routines daily at 9am review open pull requests",
+  ]) {
+    let call;
+    const transport = new AgentSdkClaudeTransport({
+      environment: {},
+      queryImpl: (input) => {
+        call = input;
+        return fakeQuery(successFixture("provider-schedule"));
+      },
+    });
+
+    const result = await transport.executeTurn(
+      command,
+      {
+        mode: "new",
+        parentProviderSessionId: null,
+        streaming: true,
+        controlPump: async () => {},
+      },
+    );
+
+    assert.equal(call.prompt, command);
+    assert.equal(call.options.verbatimPrompts, false);
+    assert.equal(call.options.includePartialMessages, true);
+    assert.equal(result.providerSessionId, "provider-schedule");
+  }
+});
+
+test("ordinary interactive turns keep verbatim streaming input", async () => {
+  let call;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-ordinary"));
+    },
+  });
+
+  await transport.executeTurn(
+    "please schedule my notes conceptually",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      controlPump: async () => {},
+    },
+  );
+
+  assert.equal(
+    typeof call.prompt?.[Symbol.asyncIterator],
+    "function",
+  );
+  assert.equal(call.options.verbatimPrompts, true);
+});
+
 test("interactive foreground event delivery failure is observability-only", async () => {
   const transport = new AgentSdkClaudeTransport({
     environment: {},

@@ -348,7 +348,12 @@ export async function createAgentSdkTurnHandle({
   try {
     query = resolvedQuery({
       prompt:
-        inputQueue ?? promptStream(),
+        inputQueue
+        ?? (
+          queryOptions.verbatimPrompts === false
+            ? prompt
+            : promptStream()
+        ),
       options,
     });
   } catch (cause) {

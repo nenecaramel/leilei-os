@@ -50,6 +50,14 @@ export interface NativeLiveBackendMindRuntime {
   }): Promise<void>;
 }
 
+function isNativeClaudeScheduleCommand(
+  preparation: NativeLivePreparedTurn,
+): boolean {
+  if (preparation.operation !== "send") return false;
+  return /^\/(?:schedule|routines)(?:\s|$)/iu
+    .test(preparation.prompt);
+}
+
 function requirePreparedUserMessage(
   conversation: NativeLiveConversation,
   messageId: string,
@@ -101,6 +109,10 @@ implements NativeLiveBackendMindRuntime {
       });
     }
 
+    if (isNativeClaudeScheduleCommand(input.preparation)) {
+      return input.preparation.prompt;
+    }
+
     const excludedReferenceIds =
       this.replacementExcludedReferenceIds(
         conversation,
@@ -122,6 +134,9 @@ implements NativeLiveBackendMindRuntime {
     userId: string;
     preparation: NativeLivePreparedTurn;
   }): Promise<NativeLiveMindSemanticPlan | null> {
+    if (isNativeClaudeScheduleCommand(input.preparation)) {
+      return null;
+    }
     if (!this.mind.planSemanticUserTurn) return null;
 
     const conversation = await this.requireConversation(
