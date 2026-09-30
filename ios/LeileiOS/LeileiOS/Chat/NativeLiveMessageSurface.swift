@@ -1510,6 +1510,7 @@ private struct NativeLiveAttachmentBlockView: View {
 
     @State private var downloadURL: URL?
     @State private var preview: NativeLiveAttachmentPreview?
+    @State private var previewDirectoryURL: URL?
     @State private var isPreparingPreview = false
 
     private var payload: [String: NativeLiveJSONValue] {
@@ -1742,6 +1743,7 @@ private struct NativeLiveAttachmentBlockView: View {
                     to: localURL,
                     options: [.atomic]
                 )
+                previewDirectoryURL = directory
                 preview = NativeLiveAttachmentPreview(
                     fileURL: localURL
                 )
@@ -1752,12 +1754,13 @@ private struct NativeLiveAttachmentBlockView: View {
     }
 
     private func cleanupPreview() {
-        guard let preview else { return }
-        try? FileManager.default.removeItem(
-            at: preview.fileURL
-                .deletingLastPathComponent()
-        )
-        self.preview = nil
+        if let previewDirectoryURL {
+            try? FileManager.default.removeItem(
+                at: previewDirectoryURL
+            )
+        }
+        previewDirectoryURL = nil
+        preview = nil
     }
 }
 
@@ -1778,14 +1781,16 @@ private struct NativeLiveAttachmentQuickLook:
 
     func makeUIViewController(
         context: Context
-    ) -> QLPreviewController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        return controller
+    ) -> UINavigationController {
+        let previewController = QLPreviewController()
+        previewController.dataSource = context.coordinator
+        return UINavigationController(
+            rootViewController: previewController
+        )
     }
 
     func updateUIViewController(
-        _ uiViewController: QLPreviewController,
+        _ uiViewController: UINavigationController,
         context: Context
     ) {}
 
