@@ -22,6 +22,19 @@ function fakeQuery(messages, { error = null } = {}) {
   };
 }
 
+function fakeConnectedMcpQuery(messages) {
+  return {
+    ...fakeQuery(messages),
+    async mcpServerStatus() {
+      return [{
+        name: "leileios",
+        status: "connected",
+      }];
+    },
+    async reconnectMcpServer() {},
+  };
+}
+
 function successFixture(sessionId = "provider-sdk-1") {
   return [
     {
@@ -1613,7 +1626,7 @@ test("LeileiOS MCP is injected into every foreground Agent SDK turn", async () =
     mcpServerConfig,
     queryImpl: (input) => {
       call = input;
-      return fakeQuery(successFixture("provider-mcp"));
+      return fakeConnectedMcpQuery(successFixture("provider-mcp"));
     },
   });
 
@@ -1649,7 +1662,7 @@ test("LeileiOS MCP is also injected into non-interactive resume turns", async ()
     sessionMessagesImpl: async () => [{ type: "assistant" }],
     queryImpl: (input) => {
       call = input;
-      return fakeQuery(successFixture("provider-existing"));
+      return fakeConnectedMcpQuery(successFixture("provider-existing"));
     },
   });
 
