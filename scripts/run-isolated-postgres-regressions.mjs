@@ -85,6 +85,7 @@ run([
   "tests/native-live-mind-followup.integration.test.ts",
   "tests/native-live-semantic-handshake.integration.test.ts",
   "tests/native-live-backend-turn-repository.integration.test.ts",
+  "tests/native-live-backend-relay.integration.test.ts",
   "tests/runtime-subject-state-repository.integration.test.ts",
   "tests/native-live-background-model-queue.integration.test.ts",
   "tests/native-live-provider-session-store.integration.test.ts",
