@@ -182,7 +182,7 @@ export class NativeLiveMacRuntimeExecutor {
     );
 
     return {
-      protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+      protocol_version: command.protocol_version,
       prepare_id: command.prepare_id,
       request_id: command.request_id,
       conversation_id: command.conversation_id,
@@ -268,7 +268,7 @@ function failure(
   errorCode: NativeLiveRuntimeFailureCode,
 ): NativeLiveRuntimeExecutionResult {
   return {
-    protocol_version: NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+    protocol_version: command.protocol_version,
     prepare_id: command.prepare_id,
     request_id: command.request_id,
     conversation_id: command.conversation_id,
