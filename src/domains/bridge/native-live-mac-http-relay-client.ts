@@ -38,6 +38,73 @@ implements NativeLiveMacDaemonRelayClient {
     if (!token.trim()) throw new Error("Native live relay token is required.");
   }
 
+  async createAttachmentDownloadSlot(input: {
+    attachmentId: string;
+  }): Promise<{
+    url: string;
+    method: "GET";
+    headers: Record<string, string>;
+    attachment: {
+      attachmentId: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      kind: "image" | "file";
+    };
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/attachments/"
+          + encodeURIComponent(input.attachmentId)
+          + "/download-slot",
+        {},
+      ),
+    );
+    const attachment = readRecord(data.attachment);
+    const download = readRecord(data.download);
+    const headers = readRecord(download.headers);
+    if (
+      typeof download.url !== "string"
+      || download.method !== "GET"
+      || typeof attachment.attachmentId !== "string"
+      || typeof attachment.filename !== "string"
+      || typeof attachment.mimeType !== "string"
+      || typeof attachment.sizeBytes !== "number"
+      || typeof attachment.sha256 !== "string"
+      || (
+        attachment.kind !== "image"
+        && attachment.kind !== "file"
+      )
+    ) {
+      throw new Error(
+        "Native live attachment download slot is invalid.",
+      );
+    }
+    return {
+      url: download.url,
+      method: "GET",
+      headers: Object.fromEntries(
+        Object.entries(headers).map(([key, value]) => {
+          if (typeof value !== "string") {
+            throw new Error(
+              "Native live attachment download header is invalid.",
+            );
+          }
+          return [key, value];
+        }),
+      ),
+      attachment: {
+        attachmentId: attachment.attachmentId,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        sha256: attachment.sha256,
+        kind: attachment.kind,
+      },
+    };
+  }
+
   async reserveSemanticScoring(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
