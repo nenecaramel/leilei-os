@@ -127,6 +127,16 @@ const executor = new NativeLiveMacRuntimeExecutor(
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
   new NativeLiveMacOutputAttachmentSender(relay),
+  (diagnostics) => {
+    process.stdout.write(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        outcome: "runtime_failure_diagnostics",
+        claudeTransport: claudeTransportKind,
+        ...diagnostics,
+      }) + "\n",
+    );
+  },
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
