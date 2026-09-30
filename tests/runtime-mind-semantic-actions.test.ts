@@ -213,3 +213,22 @@ test("thought_drop passes through repository rejections and idempotent replays",
   assert.equal(rejected.outcome, "rejected");
   assert.equal(rejected.code, "THOUGHT_NOT_SETTLED");
 });
+
+
+test("complete retired wrappers protect thought_drop directives", () => {
+  for (const tag of ["drive", "curiosity", "topic", "dream"]) {
+    const source = `<${tag}><thought_drop ref="T1" /></${tag}>`;
+    const parsed = parseMindSemanticActions(source);
+    assert.deepEqual(parsed.actions, [], source);
+    assert.equal(parsed.visibleText, source);
+  }
+});
+
+test("only thought_drop directives outside retired wrappers are extracted", () => {
+  const wrapper = '<topic><curiosity><thought_drop ref="T1" /></curiosity><thought_drop ref="T2" /></topic>';
+  const source = `${wrapper}<thought_drop ref="T3" />`;
+  const parsed = parseMindSemanticActions(source);
+  assert.deepEqual(parsed.actions.map(({ ref }) => ref), ["T3"]);
+  assert.equal(parsed.actions[0]?.sourceStart, wrapper.length);
+  assert.equal(parsed.visibleText, wrapper);
+});

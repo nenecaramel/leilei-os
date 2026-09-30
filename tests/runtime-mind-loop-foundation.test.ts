@@ -800,3 +800,45 @@ test("only thought_drop is a semantic action; retired action directives stay vis
   assert.deepEqual(parsed.actions, []);
   assert.equal(parsed.visibleBlocks[0]?.text, source);
 });
+
+
+test("complete retired wrappers protect all current write kinds", () => {
+  for (const tag of ["drive", "curiosity", "topic", "dream"]) {
+    for (const kind of ["memory", "feel", "thought"]) {
+      const source = `<${tag}>old <${kind}>hidden</${kind}></${tag}>`;
+      const parsed = parseMindWriteIntents(source);
+      assert.deepEqual(parsed.intents, [], source);
+      assert.equal(parsed.visibleText, source);
+    }
+  }
+});
+
+test("only current writes outside retired wrappers are extracted", () => {
+  const wrapper = "<drive>旧 <thought>非法内层</thought></drive>";
+  const source = `前 <thought>合法 thought</thought> 中 ${wrapper} 后`;
+  const parsed = parseMindWriteIntents(source);
+  assert.deepEqual(parsed.intents.map(({ kind, text }) => [kind, text]), [
+    ["thought", "合法 thought"],
+  ]);
+  assert.equal(parsed.visibleText, `前  中 ${wrapper} 后`);
+  assert.equal(parsed.intents[0]?.sourceStart, source.indexOf("<thought>"));
+});
+
+test("nested retired wrappers protect content after an inner closing tag", () => {
+  const source = '<DRIVE><drive>inner</drive><thought>hidden</thought><thought_drop ref="T1" /></DRIVE>';
+  const parsed = parseMindWriteIntentsFromBlocks([{ kind: "text", rawType: "text", text: source }]);
+  assert.deepEqual(parsed.intents, []);
+  assert.deepEqual(parsed.actions, []);
+  assert.equal(parsed.visibleBlocks[0]?.text, source);
+});
+
+test("both block parser passes preserve retired wrapper text including whitespace", () => {
+  const wrapper = '<dream>old  \n\n\n<thought>hidden</thought>\n<thought_drop ref="T1" /></dream>';
+  const parsed = parseMindWriteIntentsFromBlocks([{
+    kind: "text", rawType: "text",
+    text: `<thought>outside</thought>${wrapper}<thought_drop ref="T2" />`,
+  }]);
+  assert.deepEqual(parsed.intents.map(({ text }) => text), ["outside"]);
+  assert.deepEqual(parsed.actions?.map(({ ref }) => ref), ["T2"]);
+  assert.equal(parsed.visibleBlocks[0]?.text, wrapper);
+});

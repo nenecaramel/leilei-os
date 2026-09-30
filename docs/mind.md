@@ -8,9 +8,13 @@ Mind is what carries across conversations. It has three kinds, and only three.
 | `feel` | how it felt | Claude (`<feel>`), the owner by hand | recalled like memory |
 | `thought` | something wanted, wondered about, or being turned over | Claude (`<thought>`), the owner by hand | **always present** while active |
 
-Drive, Curiosity and Topic were folded into Thought (migration `0092`). Distillation
+Drive, Curiosity and Topic are retired from the runtime; old tags are not mapped to Thought. Distillation
 (background memory extraction) and topic resurfacing were removed. Memory now comes from
 exactly two places: Claude choosing to write it, and the owner writing it by hand.
+
+This deployment stops retired-kind writers first. The database CHECK keeps the
+legacy storage vocabulary for old processes during application promotion. Narrow
+it in a separate follow-up deployment only after writer shutdown is live.
 
 ## Thought
 

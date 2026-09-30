@@ -262,12 +262,38 @@ test(
     assert.equal(newThought?.text, "确认主动消息怎么存在");
 
     // Turn 3: only the new thought is shown, and it is T1 now.
-    const third = await turn(second.assistantMessageId, "好", "收到");
+    const protectedText = '<drive>旧 <thought>不能入库</thought><thought_drop ref="T1" /></drive>';
+    const third = await turn(second.assistantMessageId, "好", protectedText);
     assert.equal(
       third.prompt.includes("Current thoughts:\n- [T1] 确认主动消息怎么存在"),
       true,
     );
     assert.equal(third.prompt.includes("想把 Mind 收简单"), false);
+
+    // The canonical response preserves the wrapper and neither writes nor drops.
+    const afterThird = await thoughts();
+    assert.deepEqual(
+      afterThird.map(({ id, text }) => ({ id, text })),
+      afterSecond.map(({ id, text }) => ({ id, text })),
+    );
+    assert.equal(
+      readThoughtLifecycle(afterThird.find((row) => row.id === newThought?.id)?.payload)?.status,
+      "active",
+    );
+    const transitions = await db
+      .select({ reason: runtimeSubjectStateTransitions.reason })
+      .from(runtimeSubjectStateTransitions)
+      .where(eq(runtimeSubjectStateTransitions.stateId, newThought!.id));
+    assert.equal(transitions.some(({ reason }) => reason === "thought_dropped_by_subject"), false);
+    const afterProtectedTurn = await conversationService.getConversation({
+      userId, conversationId: conversation.id,
+    });
+    assert.equal(
+      afterProtectedTurn?.messages
+        .find((message) => message.id === third.assistantMessageId)
+        ?.blocks.map((block) => block.text ?? "").join(""),
+      protectedText,
+    );
   },
 );
 

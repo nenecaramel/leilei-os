@@ -1,3 +1,9 @@
+import {
+  normalizeMindVisibleText,
+  overlapsMindProtectedRange,
+  retiredMindProtectedRanges,
+} from "./mind-protected-ranges.js";
+
 export type CurrentMindWriteIntentKind =
   | "feel"
   | "memory"
@@ -44,6 +50,7 @@ const NESTED_TAG_PATTERN =
 export function parseMindWriteIntents(source: string): ParsedMindIntents {
   const intents: CurrentMindWriteIntent[] = [];
   const removable: Array<{ start: number; end: number }> = [];
+  const protectedRanges = retiredMindProtectedRanges(source);
 
   for (const match of source.matchAll(TAG_PATTERN)) {
     const raw = match[0];
@@ -62,6 +69,7 @@ export function parseMindWriteIntents(source: string): ParsedMindIntents {
     }
 
     const end = start + raw.length;
+    if (overlapsMindProtectedRange(protectedRanges, start, end)) continue;
     intents.push({
       kind,
       text: body,
@@ -80,10 +88,7 @@ export function parseMindWriteIntents(source: string): ParsedMindIntents {
   }
 
   return {
-    visibleText: visibleText
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim(),
+    visibleText: normalizeMindVisibleText(visibleText),
     intents,
   };
 }

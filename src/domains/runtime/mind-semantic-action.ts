@@ -1,3 +1,9 @@
+import {
+  normalizeMindVisibleText,
+  overlapsMindProtectedRange,
+  retiredMindProtectedRanges,
+} from "./mind-protected-ranges.js";
+
 /**
  * The only semantic action: let a current thought go.
  *
@@ -33,6 +39,7 @@ export function parseMindSemanticActions(
 ): ParsedMindSemanticActions {
   const actions: MindSemanticAction[] = [];
   const removable: Array<{ start: number; end: number }> = [];
+  const protectedRanges = retiredMindProtectedRanges(source);
 
   for (const match of source.matchAll(ACTION_PATTERN)) {
     const raw = match[0];
@@ -41,6 +48,7 @@ export function parseMindSemanticActions(
     if (start === undefined || !ref) continue;
 
     const end = start + raw.length;
+    if (overlapsMindProtectedRange(protectedRanges, start, end)) continue;
     actions.push({
       kind: "thought_drop",
       ref,
@@ -59,10 +67,7 @@ export function parseMindSemanticActions(
   }
 
   return {
-    visibleText: visibleText
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim(),
+    visibleText: normalizeMindVisibleText(visibleText),
     actions,
   };
 }

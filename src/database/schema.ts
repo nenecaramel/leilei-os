@@ -2799,7 +2799,10 @@ export const runtimeSubjectStates = pgTable(
       table.validityStatus,
     ),
     check("runtime_subject_states_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
-    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'thought')`),
+    // Legacy storage compatibility only; current runtime does not author retired
+    // kinds. Narrow this constraint in a follow-up deployment after writer
+    // shutdown is live, since Railway migrations run before app promotion.
+    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'drive', 'thought', 'curiosity', 'topic')`),
     check("runtime_subject_states_scope_allowed", sql`${table.scopeApplicability} IN ('global', 'conversation', 'path')`),
     check("runtime_subject_states_settlement_allowed", sql`${table.settlementStatus} IN ('unsettled', 'settled', 'rejected')`),
     check("runtime_subject_states_path_status_allowed", sql`${table.pathStatus} IN ('current', 'superseded')`),
