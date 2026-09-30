@@ -54,3 +54,39 @@ test("attachment presigner uses Railway virtual-host style without leaking secre
     false,
   );
 });
+
+
+test("attachment object deletion signs DELETE and treats success as terminal", async () => {
+  let observedMethod: string | undefined;
+  let observedURL: string | undefined;
+  const store = new S3PresignedAttachmentObjectStore(
+    config,
+    async (input, init) => {
+      observedURL =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      observedMethod = init?.method;
+      return new Response(null, { status: 204 });
+    },
+    () => new Date("2026-09-30T03:00:00.000Z"),
+  );
+
+  await store.deleteObject({
+    objectKey: "native-live/user/expired",
+  });
+
+  assert.equal(observedMethod, "DELETE");
+  assert.ok(observedURL);
+  const url = new URL(observedURL!);
+  assert.equal(
+    url.pathname,
+    "/native-live/user/expired",
+  );
+  assert.equal(
+    url.searchParams.get("X-Amz-Algorithm"),
+    "AWS4-HMAC-SHA256",
+  );
+});

@@ -3,6 +3,7 @@ import {
   and,
   eq,
   inArray,
+  sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -353,6 +354,80 @@ export class NativeLiveAttachmentService {
         ),
       );
   }
+}
+
+export async function deleteExpiredNativeLiveAttachmentsBatch(
+  db: Database,
+  objectStore: Pick<
+    NativeLiveAttachmentObjectStore,
+    "deleteObject"
+  >,
+  cutoff: Date,
+  limit: number,
+): Promise<number> {
+  const safeLimit =
+    Number.isSafeInteger(limit) && limit > 0
+      ? Math.min(limit, 1_000)
+      : 100;
+  const candidates = await db.execute<{
+    id: string;
+    userId: string;
+    objectKey: string;
+  }>(sql`
+    SELECT
+      attachment.id,
+      attachment.user_id AS "userId",
+      attachment.object_key AS "objectKey"
+    FROM native_live_chat_attachments AS attachment
+    WHERE (
+      attachment.bound_message_id IS NULL
+      AND attachment.expires_at <= ${cutoff}
+    ) OR (
+      attachment.status = 'bound'
+      AND attachment.bound_message_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM conversation_messages AS message
+        WHERE message.id = attachment.bound_message_id
+          AND message.user_id = attachment.user_id
+      )
+    )
+    ORDER BY attachment.created_at, attachment.id
+    LIMIT ${safeLimit}
+  `);
+
+  let deleted = 0;
+  for (const candidate of candidates) {
+    try {
+      await objectStore.deleteObject({
+        objectKey: candidate.objectKey,
+      });
+    } catch {
+      continue;
+    }
+
+    const removed = await db
+      .delete(nativeLiveChatAttachments)
+      .where(
+        and(
+          eq(
+            nativeLiveChatAttachments.id,
+            candidate.id,
+          ),
+          eq(
+            nativeLiveChatAttachments.userId,
+            candidate.userId,
+          ),
+          eq(
+            nativeLiveChatAttachments.objectKey,
+            candidate.objectKey,
+          ),
+        ),
+      )
+      .returning({ id: nativeLiveChatAttachments.id });
+    deleted += removed.length;
+  }
+  return deleted;
 }
 
 export class DrizzleNativeLiveAttachmentBinding {

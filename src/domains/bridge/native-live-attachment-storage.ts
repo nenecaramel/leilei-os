@@ -40,6 +40,10 @@ export interface NativeLiveAttachmentObjectStore {
   headObject(input: {
     objectKey: string;
   }): Promise<NativeLiveAttachmentObjectHead | null>;
+
+  deleteObject(input: {
+    objectKey: string;
+  }): Promise<void>;
 }
 
 export class S3PresignedAttachmentObjectStore
@@ -131,7 +135,27 @@ implements NativeLiveAttachmentObjectStore {
     };
   }
 
-  private presign<T extends "PUT" | "GET" | "HEAD">(
+  async deleteObject(input: {
+    objectKey: string;
+  }): Promise<void> {
+    const slot = this.presign("DELETE", input.objectKey, {});
+    const response = await this.fetchImpl(slot.url, {
+      method: "DELETE",
+      headers: slot.headers,
+    });
+    if (response.status === 404) return;
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(
+          "Attachment object DELETE failed with HTTP "
+          + response.status,
+        ),
+        { httpStatus: response.status },
+      );
+    }
+  }
+
+  private presign<T extends "PUT" | "GET" | "HEAD" | "DELETE">(
     method: T,
     objectKey: string,
     headers: Record<string, string>,

@@ -152,6 +152,7 @@ import {
 } from "../domains/bridge/native-live-external-session-bridge.js";
 import {
   NativeLiveAttachmentService,
+  deleteExpiredNativeLiveAttachmentsBatch,
 } from "../domains/bridge/native-live-attachment-service.js";
 import {
   S3PresignedAttachmentObjectStore,
@@ -377,13 +378,18 @@ export function createProcessRuntime(
   const { db } = database;
   const nativeLiveAttachmentStorageConfig =
     getNativeLiveAttachmentStorageConfig(runtimeEnv);
+  const nativeLiveAttachmentObjectStore =
+    nativeLiveAttachmentStorageConfig
+      ? new S3PresignedAttachmentObjectStore(
+          nativeLiveAttachmentStorageConfig,
+        )
+      : undefined;
   const nativeLiveAttachmentService =
     nativeLiveAttachmentStorageConfig
+      && nativeLiveAttachmentObjectStore
       ? new NativeLiveAttachmentService(
           db,
-          new S3PresignedAttachmentObjectStore(
-            nativeLiveAttachmentStorageConfig,
-          ),
+          nativeLiveAttachmentObjectStore,
           nativeLiveAttachmentStorageConfig,
         )
       : undefined;
@@ -819,6 +825,19 @@ export function createProcessRuntime(
             limit,
           ),
       },
+      ...(nativeLiveAttachmentObjectStore
+        ? [{
+            policy: "native_live_chat_attachments" as const,
+            retentionMs: 0,
+            deleteBatch: (cutoff: Date, limit: number) =>
+              deleteExpiredNativeLiveAttachmentsBatch(
+                db,
+                nativeLiveAttachmentObjectStore,
+                cutoff,
+                limit,
+              ),
+          }]
+        : []),
       {
         policy: "runtime_operational_records",
         retentionMs:
