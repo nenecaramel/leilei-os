@@ -449,6 +449,46 @@ test("manual Mind exposes occurred date but not note to foreground Claude", () =
   assert.equal(replayed.prompt, assembled.prompt);
 });
 
+test("runtime Memory temporal metadata renders the canonical occurrence date", () => {
+  const runtimeMemory = state(
+    "runtime-memory-date",
+    "memory",
+    "我们搬进了 LeileiOS",
+    {
+      payload: {
+        temporal_v1: {
+          occurredAt: "2026-09-29T15:30:00.000Z",
+          basis: "source_message",
+          sourceMessageId: "assistant-source",
+        },
+      },
+    },
+  );
+
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-runtime-date",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-runtime-date",
+    userText: "LeileiOS",
+    contextTimeZone: "Asia/Shanghai",
+    subjectStates: [runtimeMemory],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v1",
+    promptContractVersion: "prompt-v4",
+    breathLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+  });
+
+  assert.equal(
+    assembled.prompt.includes("[2026-09-29] 我们搬进了 LeileiOS"),
+    true,
+  );
+});
+
 test("unsettled or superseded Drive never enters Context Assembly", () => {
   const provisional = state(
     "77777777-7777-4777-8777-777777777777",
@@ -792,6 +832,7 @@ test("explicit Mind write can move from emitted intent to settled Breath recall"
     subjectId: "G",
     conversationId: "c1",
     assistantMessageId: "a1",
+    sourceOccurredAt: "2026-09-22T08:00:00.000Z",
     intents: parsed.intents,
     createId: () => `mind-${++nextId}`,
     producer: { kind: "model", id: "claude-code" },
@@ -813,6 +854,11 @@ test("explicit Mind write can move from emitted intent to settled Breath recall"
   assert.ok(provisional);
   assert.equal(provisional.envelope.status.settlementStatus, "unsettled");
   assert.equal(provisional.envelope.scope.pathHeadMessageId, "a1");
+  assert.deepEqual(provisional.payload?.temporal_v1, {
+    occurredAt: "2026-09-22T08:00:00.000Z",
+    basis: "source_message",
+    sourceMessageId: "a1",
+  });
 
   const u1 = message("u1", "user", null, "开始");
   const a1 = message("a1", "assistant", "u1", parsed.visibleText);
