@@ -991,6 +991,19 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func nativeLiveActiveTurn(
+        conversationID: UUID
+    ) async throws -> NativeLiveTurnSnapshot? {
+        let envelope: NativeLiveActiveTurnEnvelope = try await request(
+            path:
+                "/api/v1/native-live/conversations/"
+                + conversationID.uuidString.lowercased()
+                + "/active-turn",
+            authenticated: true
+        )
+        return envelope.data.turn
+    }
+
     func waitNativeLiveTurn(
         prepareID: String
     ) async throws -> NativeLiveTurnWaitResult {
@@ -2123,6 +2136,15 @@ private struct RenameNativeLiveConversationBody: Encodable, Sendable {
 private struct NativeLivePrepareEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLivePrepareResult
+}
+
+private struct NativeLiveActiveTurnEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ActiveTurnData
+
+    struct ActiveTurnData: Decodable, Sendable {
+        let turn: NativeLiveTurnSnapshot?
+    }
 }
 
 private struct NativeLiveTurnWaitEnvelope: Decodable, Sendable {
