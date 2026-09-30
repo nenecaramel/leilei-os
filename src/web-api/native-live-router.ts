@@ -472,7 +472,7 @@ function parseExternalHistorySnapshotInput(
       throw new Error("history snapshot too large");
     }
     return {
-      role: message.role,
+      role: message.role as "user" | "assistant",
       time: message.time.trim(),
       content: message.content,
     };
