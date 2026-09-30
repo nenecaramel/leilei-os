@@ -1,3 +1,4 @@
+import { isAbsolute, relative, sep } from "node:path";
 import type {
   NativeLiveMacClaudeTransport,
   NativeLiveMacMcpServerConfig,
@@ -43,7 +44,10 @@ implements NativeLiveWorkspaceRuntimeResolver {
   }): Promise<NativeLiveWorkspaceRuntimeBinding> {
     const workspaceRoot =
       input.workspaceId === null
-        ? this.baseWorkspaceRoot
+        ? resolveBaseWorkspaceRoot(
+            this.baseWorkspaceRoot,
+            input.expectedWorkspaceRoot,
+          )
         : this.workspaceRoots[input.workspaceId];
 
     if (!workspaceRoot) {
@@ -53,7 +57,8 @@ implements NativeLiveWorkspaceRuntimeResolver {
       );
     }
     if (
-      input.expectedWorkspaceRoot !== null
+      input.workspaceId !== null
+      && input.expectedWorkspaceRoot !== null
       && input.expectedWorkspaceRoot !== workspaceRoot
     ) {
       throw runtimeError(
@@ -196,6 +201,43 @@ implements NativeLiveWorkspaceRuntimeResolver {
   abortAll(): void {
     for (const runtime of this.resolved) runtime.abort();
   }
+}
+
+
+function resolveBaseWorkspaceRoot(
+  baseWorkspaceRoot: string,
+  expectedWorkspaceRoot: string | null,
+): string {
+  if (expectedWorkspaceRoot === null) {
+    return baseWorkspaceRoot;
+  }
+  if (!isAbsolute(expectedWorkspaceRoot)) {
+    throw runtimeError(
+      "Native Live Workspace root changed for an existing provider session.",
+      "WORKSPACE_ROOT_MISMATCH",
+    );
+  }
+
+  const relativePath = relative(
+    baseWorkspaceRoot,
+    expectedWorkspaceRoot,
+  );
+  const staysWithinBase =
+    relativePath === ""
+    || (
+      relativePath !== ".."
+      && !relativePath.startsWith(".." + sep)
+      && !isAbsolute(relativePath)
+    );
+
+  if (!staysWithinBase) {
+    throw runtimeError(
+      "Native Live Workspace root changed for an existing provider session.",
+      "WORKSPACE_ROOT_MISMATCH",
+    );
+  }
+
+  return expectedWorkspaceRoot;
 }
 
 function runtimeError(
