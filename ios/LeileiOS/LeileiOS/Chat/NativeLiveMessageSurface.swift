@@ -608,8 +608,12 @@ private struct NativeLiveMessageRow: View {
             let blocks = message.blocks.sorted {
                 $0.ordinal < $1.ordinal
             }
-            let visibleBlocks = blocks.filter {
-                normalizedText($0.text) != nil
+            let visibleBlocks = blocks.filter { block in
+                if block.kind == "tool_use"
+                    || block.kind == "tool_result" {
+                    return true
+                }
+                return normalizedText(block.text) != nil
             }
 
             if visibleBlocks.isEmpty {
@@ -827,6 +831,18 @@ private struct NativeLiveRuntimeAssistantRow: View {
                         .lineLimit(2)
                 }
                 .transition(.opacity)
+            }
+
+            if let runtimeSurface {
+                let toolUses = runtimeSurface.events.filter {
+                    $0.event.type == "tool_use"
+                }
+                ForEach(toolUses) { toolUse in
+                    NativeLiveRuntimeToolCallRow(
+                        toolUse: toolUse,
+                        events: runtimeSurface.events
+                    )
+                }
             }
 
             if let pendingInteraction {
@@ -1432,18 +1448,42 @@ private struct NativeLiveBlockView: View {
     let fillsAvailableWidth: Bool
     let isUserMessage: Bool
 
+    @ViewBuilder
     var body: some View {
-        if let text = normalizedText {
-            switch block.kind {
-            case "text":
+        switch block.kind {
+        case "text":
+            if let text = normalizedText {
                 ChatMarkdownView(
                     text: text,
                     fillsAvailableWidth: fillsAvailableWidth,
                     lineSpacing: isUserMessage ? 5 : 6,
                     paragraphSpacing: isUserMessage ? 19 : 22
                 )
+            }
 
-            case "tool_use", "tool_result", "attachment":
+        case "tool_use":
+            NativeLiveToolCallCard(
+                toolName:
+                    block.payload?["tool_name"]?.stringValue
+                    ?? "Tool",
+                detail: nativeLiveJSONSummary(
+                    block.payload?["input"]
+                ),
+                state: .completed
+            )
+
+        case "tool_result":
+            NativeLiveToolResultCard(
+                isError:
+                    block.payload?["is_error"]?.boolValue
+                    == true,
+                detail: nativeLiveJSONSummary(
+                    block.payload?["output"]
+                )
+            )
+
+        case "attachment":
+            if let text = normalizedText {
                 Text(text)
                     .font(.system(size: 15))
                     .tracking(0.10)
@@ -1453,10 +1493,10 @@ private struct NativeLiveBlockView: View {
                         maxWidth: fillsAvailableWidth ? .infinity : nil,
                         alignment: .leading
                     )
-
-            default:
-                EmptyView()
             }
+
+        default:
+            EmptyView()
         }
     }
 
@@ -1466,6 +1506,222 @@ private struct NativeLiveBlockView: View {
             in: .whitespacesAndNewlines
         )
         return normalized.isEmpty ? nil : normalized
+    }
+}
+
+
+private struct NativeLiveRuntimeToolCallRow: View {
+    let toolUse: NativeLiveRuntimeEventSnapshot
+    let events: [NativeLiveRuntimeEventSnapshot]
+
+    private var toolUseID: String? {
+        toolUse.event.payload?["tool_use_id"]?.stringValue
+    }
+
+    private var result: NativeLiveRuntimeEventSnapshot? {
+        guard let toolUseID else { return nil }
+        return events.last(where: { event in
+            event.event.type == "tool_result"
+                && event.event.payload?["tool_use_id"]?.stringValue
+                    == toolUseID
+        })
+    }
+
+    var body: some View {
+        NativeLiveToolCallCard(
+            toolName:
+                toolUse.event.payload?["tool_name"]?.stringValue
+                ?? "Tool",
+            detail: nativeLiveJSONSummary(
+                toolUse.event.payload?["input"]
+            ),
+            state:
+                result == nil
+                    ? .running
+                    : (
+                        result?.event.payload?["is_error"]?.boolValue
+                            == true
+                        ? .failed
+                        : .completed
+                    )
+        )
+    }
+}
+
+
+private enum NativeLiveToolCallState {
+    case running
+    case completed
+    case failed
+}
+
+
+private struct NativeLiveToolCallCard: View {
+    let toolName: String
+    let detail: String?
+    let state: NativeLiveToolCallState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                switch state {
+                case .running:
+                    ProgressView()
+                        .controlSize(.small)
+                case .completed:
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                case .failed:
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(nativeLiveToolDisplayName(toolName))
+                    .font(.system(size: 14, weight: .medium))
+                    .textSelection(.enabled)
+
+                Spacer(minLength: 8)
+
+                Text(stateLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let detail,
+               !detail.isEmpty {
+                Text(detail)
+                    .font(.system(
+                        size: 12.5,
+                        design: .monospaced
+                    ))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .lineLimit(4)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(
+            Color.primary.opacity(0.045),
+            in: RoundedRectangle(
+                cornerRadius: 11,
+                style: .continuous
+            )
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var stateLabel: String {
+        switch state {
+        case .running:
+            return "Running"
+        case .completed:
+            return "Done"
+        case .failed:
+            return "Failed"
+        }
+    }
+}
+
+
+private struct NativeLiveToolResultCard: View {
+    let isError: Bool
+    let detail: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Image(
+                    systemName:
+                        isError
+                        ? "exclamationmark.circle"
+                        : "checkmark.circle"
+                )
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+                Text(isError ? "Tool failed" : "Tool result")
+                    .font(.system(size: 13.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let detail,
+               !detail.isEmpty {
+                Text(detail)
+                    .font(.system(
+                        size: 12.5,
+                        design: .monospaced
+                    ))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .lineLimit(4)
+            }
+        }
+        .padding(.leading, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+
+private func nativeLiveToolDisplayName(
+    _ raw: String
+) -> String {
+    let prefix = "mcp__leileios__"
+    guard raw.hasPrefix(prefix) else {
+        return raw
+    }
+    return "LeileiOS · " + String(raw.dropFirst(prefix.count))
+}
+
+
+private func nativeLiveJSONSummary(
+    _ value: NativeLiveJSONValue?,
+    maxCharacters: Int = 500
+) -> String? {
+    guard let value else { return nil }
+    let rendered = nativeLiveJSONDescription(value)
+    let normalized = rendered.trimmingCharacters(
+        in: .whitespacesAndNewlines
+    )
+    guard !normalized.isEmpty else { return nil }
+    if normalized.count <= maxCharacters {
+        return normalized
+    }
+    return String(
+        normalized.prefix(maxCharacters)
+    ) + "…"
+}
+
+
+private func nativeLiveJSONDescription(
+    _ value: NativeLiveJSONValue
+) -> String {
+    switch value {
+    case .string(let string):
+        return string
+    case .number(let number):
+        return String(number)
+    case .bool(let bool):
+        return bool ? "true" : "false"
+    case .null:
+        return "null"
+    case .array(let values):
+        return "["
+            + values.map(nativeLiveJSONDescription)
+                .joined(separator: ", ")
+            + "]"
+    case .object(let object):
+        return "{"
+            + object.keys.sorted().map { key in
+                let value = object[key] ?? .null
+                return key
+                    + ": "
+                    + nativeLiveJSONDescription(value)
+            }
+            .joined(separator: ", ")
+            + "}"
     }
 }
 

@@ -336,6 +336,7 @@ struct NativeLiveCurrentPathBlock: Decodable, Sendable, Equatable, Identifiable 
     let kind: String
     let rawType: String
     let text: String?
+    let payload: [String: NativeLiveJSONValue]?
     let createdAt: String
 }
 
