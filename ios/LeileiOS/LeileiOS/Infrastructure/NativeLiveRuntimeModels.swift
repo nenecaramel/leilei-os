@@ -142,7 +142,7 @@ struct NativeLiveComposerAttachmentDraft:
     let filename: String
     let mimeType: String
     let kind: NativeLiveComposerAttachmentKind
-    let data: Data
+    let data: Data?
     var state: NativeLiveComposerAttachmentUploadState
 
     init(
@@ -150,7 +150,7 @@ struct NativeLiveComposerAttachmentDraft:
         filename: String,
         mimeType: String,
         kind: NativeLiveComposerAttachmentKind,
-        data: Data,
+        data: Data?,
         state: NativeLiveComposerAttachmentUploadState = .uploading
     ) {
         self.id = id
@@ -159,6 +159,20 @@ struct NativeLiveComposerAttachmentDraft:
         self.kind = kind
         self.data = data
         self.state = state
+    }
+
+    init(
+        existingAttachmentID: String,
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind
+    ) {
+        self.id = UUID()
+        self.filename = filename
+        self.mimeType = mimeType
+        self.kind = kind
+        self.data = nil
+        self.state = .ready(existingAttachmentID)
     }
 
     var remoteAttachmentID: String? {
