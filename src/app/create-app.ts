@@ -467,6 +467,27 @@ export function createApp(
     );
   }
 
+  if (
+    config.NATIVE_LIVE_RELAY_AUTH_TOKEN
+    && dependencies.nativeLiveProduction
+  ) {
+    app.use(
+      "/internal/native-live-mcp",
+      createInternalAuthMiddleware(
+        config.NATIVE_LIVE_RELAY_AUTH_TOKEN,
+        config.MCP_USER_ID,
+      ),
+      databaseReadinessMiddleware,
+      createMcpRouter({
+        namespace: "internal",
+        registry: mcpSessionRegistry,
+        createSessionServer: dependencies.createMcpSessionServer,
+        logger,
+        allowStatelessPostRecovery: true,
+      }),
+    );
+  }
+
   if (config.NATIVE_LIVE_RELAY_AUTH_TOKEN) {
     if (dependencies.nativeLiveProduction) {
       app.use(
