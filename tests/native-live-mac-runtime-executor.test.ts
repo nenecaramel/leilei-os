@@ -196,6 +196,110 @@ test("tagged local transport failures map to their bounded runtime code without 
   assert.doesNotMatch(JSON.stringify(result), /Admin1|stderr|private/);
 });
 
+test("runtime failure diagnostics expose bounded Agent SDK cause without leaking prompt payloads", async () => {
+  const diagnostics: unknown[] = [];
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() {
+      throw Object.assign(
+        new Error("Claude Agent SDK turn failed: provider stream ended"),
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          providerSessionId: "provider-debug",
+          cause: Object.assign(
+            new Error(
+              "socket closed under /Users/Admin1/Developer/leilei-os-main with sk-secretsecret",
+            ),
+            { code: "ECONNRESET" },
+          ),
+          result: {
+            type: "result",
+            subtype: "error_during_execution",
+            is_error: true,
+            errors: [
+              "upstream disconnected",
+              "Bearer abc.def.ghi",
+            ],
+          },
+          events: [
+            { type: "system", subtype: "init" },
+            { type: "assistant" },
+            {
+              type: "user",
+              message: "PRIVATE PROMPT MUST NOT BE LOGGED",
+            },
+            {
+              type: "result",
+              subtype: "error_during_execution",
+            },
+          ],
+          normalizedEvents: [
+            {
+              type: "partial_text",
+              payload: {
+                delta: "PRIVATE MODEL TEXT MUST NOT BE LOGGED",
+              },
+            },
+            {
+              type: "result",
+              payload: {
+                final_text: "PRIVATE FINAL TEXT MUST NOT BE LOGGED",
+              },
+            },
+          ],
+          stderr: "PRIVATE STDERR MUST NOT BE LOGGED",
+        },
+      );
+    },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(
+    runtime,
+    "/",
+    null,
+    null,
+    (value) => diagnostics.push(value),
+  ).execute(command());
+
+  assert.equal(result.status, "failure");
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics[0], {
+    prepareId,
+    runtimeCode: "CLAUDE_PROCESS_FAILED",
+    errorName: "Error",
+    errorMessage:
+      "Claude Agent SDK turn failed: provider stream ended",
+    causeName: "Error",
+    causeMessage:
+      "socket closed under ~/Developer/leilei-os-main with sk-[redacted]",
+    causeCode: "ECONNRESET",
+    providerSessionId: "provider-debug",
+    resultSubtype: "error_during_execution",
+    resultIsError: true,
+    resultErrorMessages: [
+      "upstream disconnected",
+      "Bearer [redacted]",
+    ],
+    eventCount: 4,
+    normalizedEventCount: 2,
+    lastRawEventTypes: [
+      "system:init",
+      "assistant",
+      "user",
+      "result:error_during_execution",
+    ],
+    lastNormalizedEventTypes: [
+      "partial_text",
+      "result",
+    ],
+  });
+  assert.doesNotMatch(
+    JSON.stringify(diagnostics[0]),
+    /PRIVATE PROMPT|PRIVATE MODEL TEXT|PRIVATE FINAL TEXT|PRIVATE STDERR|Admin1|secretsecret/,
+  );
+});
+
 test("unknown runtime exceptions collapse to RUNTIME_UNAVAILABLE", async () => {
   const runtime: NativeLiveClaudeRuntime = {
     async sendNew() { throw new Error("socket vanished"); },
