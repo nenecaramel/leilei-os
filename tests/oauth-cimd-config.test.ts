@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getOAuthAuthorizationServerConfig,
+  requireOAuthConfig,
   type RuntimeEnv,
 } from "../src/config/env.js";
 
@@ -29,6 +30,15 @@ const chatGptStaticClientsJson = JSON.stringify([
     jwks_uri: "https://chatgpt.com/oauth/jwks.json",
   },
 ]);
+
+test("accepts already-normalized boolean flags when OAuth config is re-parsed", () => {
+  const config = requireOAuthConfig({
+    ...baseEnvironment,
+    NATIVE_LIVE_SEND_FILE_ENABLED: true,
+  });
+
+  assert.equal(config.NATIVE_LIVE_SEND_FILE_ENABLED, true);
+});
 
 test("uses the initial exact CIMD trust URL when no override is configured", () => {
   const config = getOAuthAuthorizationServerConfig({
