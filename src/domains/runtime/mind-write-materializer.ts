@@ -47,11 +47,11 @@ export function materializeMindWrites(
         : basePayload;
 
     return {
-    id: input.createId(),
-    kind: intent.kind,
-    text: intent.text,
-    payload,
-    envelope: {
+      id: input.createId(),
+      kind: intent.kind,
+      text: intent.text,
+      payload,
+      envelope: {
       semanticActor: { kind: "subject", id: input.subjectId },
       producer: input.producer,
       committer: input.committer,
@@ -80,7 +80,7 @@ export function materializeMindWrites(
         processVersion: input.processVersion,
         model: input.model ?? null,
       },
-    },
-  };
+      },
+    };
   });
 }
