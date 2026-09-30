@@ -471,7 +471,7 @@ export class NativeLiveMindLoopService {
     userId: string;
     subjectId: string;
     conversation: NativeLiveConversation;
-    userText: string;
+    userText?: string;
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
@@ -526,9 +526,12 @@ export class NativeLiveMindLoopService {
 
     const candidates = semanticCandidatesFromStates(eligibleStates)
       .sort((left, right) => {
-        const lexicalDelta =
-          breathLexicalScore(input.userText, right.text)
-          - breathLexicalScore(input.userText, left.text);
+        const lexicalDelta = input.userText
+          ? (
+              breathLexicalScore(input.userText, right.text)
+              - breathLexicalScore(input.userText, left.text)
+            )
+          : 0;
         if (lexicalDelta !== 0) return lexicalDelta;
 
         const leftSalience =
