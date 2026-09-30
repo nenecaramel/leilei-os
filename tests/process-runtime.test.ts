@@ -210,3 +210,19 @@ test("legacy Proactivity v1 is hard-disabled at process wiring", () => {
     /backgroundModelService:\s*nativeLiveBackgroundModelRelayService/,
   );
 });
+
+
+test("process runtime defaults Native Live attachments to Postgres without bucket credentials", () => {
+  assert.match(
+    processRuntimeSource,
+    /new PostgresInlineAttachmentObjectStore\([\s\S]*?signingSecret: runtimeEnv\.DATABASE_URL/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /const nativeLiveAttachmentService =\s*new NativeLiveAttachmentService/,
+  );
+  assert.match(
+    processRuntimeSource,
+    /nativeLiveAttachmentTransferStore:[\s\S]*?nativeLivePostgresAttachmentObjectStore/,
+  );
+});
