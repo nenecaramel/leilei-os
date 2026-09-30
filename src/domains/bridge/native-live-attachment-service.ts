@@ -12,9 +12,6 @@ import {
   nativeLiveChatAttachments,
 } from "../../database/schema.js";
 import type {
-  NativeLiveAttachmentStorageConfig,
-} from "../../config/env.js";
-import type {
   NativeLiveAttachmentObjectStore,
   NativeLiveAttachmentDownloadSlot,
   NativeLiveAttachmentUploadSlot,
@@ -79,8 +76,10 @@ export class NativeLiveAttachmentService {
     private readonly db: Database,
     private readonly objectStore:
       NativeLiveAttachmentObjectStore,
-    private readonly config:
-      NativeLiveAttachmentStorageConfig,
+    private readonly config: {
+      maxFileBytes: number;
+      unboundTtlSeconds: number;
+    },
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
   ) {}
@@ -537,7 +536,7 @@ export class DrizzleNativeLiveAttachmentBinding {
               attachment_id: attachment.attachment_id,
               sha256: attachment.sha256,
               kind: attachment.kind,
-              storage: "railway_bucket",
+              storage: "native_live_attachment",
             },
           })),
         );
@@ -558,7 +557,7 @@ export class DrizzleNativeLiveAttachmentBinding {
               size_bytes: attachment.size_bytes,
               sha256: attachment.sha256,
               kind: attachment.kind,
-              storage: "railway_bucket",
+              storage: "native_live_attachment",
             },
           })),
         );
