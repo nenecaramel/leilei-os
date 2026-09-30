@@ -725,6 +725,7 @@ export class NativeLiveBackendRelayService {
           }
       ): Promise<void>;
     },
+    private readonly runtimeProtocolVersion: 2 | 3 = 3,
   ) {}
 
   async enqueuePreparation(input: {
@@ -763,7 +764,10 @@ export class NativeLiveBackendRelayService {
     if (!preparation) return null;
     return {
       reservationId: preparation.prepareId,
-      command: nativeLiveRuntimeCommandFromPreparation(preparation),
+      command: nativeLiveRuntimeCommandFromPreparation(
+        preparation,
+        this.runtimeProtocolVersion,
+      ),
     };
   }
 
