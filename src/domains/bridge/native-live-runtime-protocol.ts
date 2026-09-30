@@ -45,6 +45,7 @@ export type NativeLiveRuntimeFailureCode =
   | "PROVIDER_SESSION_CONFLICT"
   | "WORKSPACE_UNAVAILABLE"
   | "WORKSPACE_ROOT_MISMATCH"
+  | "ATTACHMENT_UNAVAILABLE"
   | "RUNTIME_UNAVAILABLE";
 
 export type NativeLiveRuntimeContextUsageCategory = {
@@ -778,6 +779,7 @@ function isFailureCode(value: unknown): value is NativeLiveRuntimeFailureCode {
     || value === "PROVIDER_SESSION_CONFLICT"
     || value === "WORKSPACE_UNAVAILABLE"
     || value === "WORKSPACE_ROOT_MISMATCH"
+    || value === "ATTACHMENT_UNAVAILABLE"
     || value === "RUNTIME_UNAVAILABLE"
   );
 }
