@@ -126,6 +126,58 @@ enum NativeLiveComposerAttachmentKind: String, Codable, Sendable {
     case file
 }
 
+enum NativeLiveComposerAttachmentUploadState:
+    Sendable,
+    Equatable {
+    case uploading
+    case ready(String)
+    case failed(String)
+}
+
+struct NativeLiveComposerAttachmentDraft:
+    Identifiable,
+    Sendable,
+    Equatable {
+    let id: UUID
+    let filename: String
+    let mimeType: String
+    let kind: NativeLiveComposerAttachmentKind
+    let data: Data
+    var state: NativeLiveComposerAttachmentUploadState
+
+    init(
+        id: UUID = UUID(),
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind,
+        data: Data,
+        state: NativeLiveComposerAttachmentUploadState = .uploading
+    ) {
+        self.id = id
+        self.filename = filename
+        self.mimeType = mimeType
+        self.kind = kind
+        self.data = data
+        self.state = state
+    }
+
+    var remoteAttachmentID: String? {
+        guard case .ready(let value) = state else {
+            return nil
+        }
+        return value
+    }
+
+    var isReady: Bool {
+        remoteAttachmentID != nil
+    }
+
+    var isUploading: Bool {
+        if case .uploading = state { return true }
+        return false
+    }
+}
+
 struct NativeLiveChatAttachmentSnapshot:
     Decodable,
     Sendable,
