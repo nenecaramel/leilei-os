@@ -368,6 +368,10 @@ export function createProcessRuntime(
         : {}),
     });
   });
+  // Legacy Proactivity v1 is intentionally retired while v2 is redesigned.
+  // Keep historical wake/job/effect rows readable, but do not create,
+  // execute, advance, or deliver any new v1 proactive work.
+  const legacyProactivityV1Enabled = false;
   const proactivityWakeOpportunityConfig =
     getProactivityWakeOpportunityConfig(runtimeEnv);
   const backgroundOpportunityPolicy = new BackgroundOpportunityPolicy({
@@ -378,6 +382,26 @@ export function createProcessRuntime(
       new DrizzleNativeLiveBackgroundModelQueueRepository(db),
       nativeLiveWorkWakePublisher,
     );
+  const nativeLiveBackgroundModelRelayService =
+    legacyProactivityV1Enabled
+      ? nativeLiveBackgroundModelService
+      : {
+          async reserveNext(
+            _input: Parameters<
+              NativeLiveBackgroundModelQueueService["reserveNext"]
+            >[0],
+          ) {
+            return null;
+          },
+          submitResult(
+            input: Parameters<
+              NativeLiveBackgroundModelQueueService["submitResult"]
+            >[0],
+          ) {
+            return nativeLiveBackgroundModelService.submitResult(input);
+          },
+        };
+
   const subjectStateBackgroundMaintenance =
     createDefaultSubjectStateBackgroundMaintenance(
       db,
@@ -483,7 +507,8 @@ export function createProcessRuntime(
     );
 
   const proactivityWakeOpportunitySource =
-    proactivityWakeOpportunityConfig
+    legacyProactivityV1Enabled
+      && proactivityWakeOpportunityConfig
       ? new DrizzleProactivityWakeOpportunitySource(
           db,
           proactivityWakeOpportunityConfig,
@@ -505,7 +530,8 @@ export function createProcessRuntime(
           : null,
       );
   const proactivityWakePlan =
-    proactivityWakeOpportunityConfig
+    legacyProactivityV1Enabled
+      && proactivityWakeOpportunityConfig
       ? DEFAULT_BACKGROUND_TARGET_PLANS.proactivityWake
       : null;
   const proactivityWakeOpportunityProducer =
@@ -522,20 +548,29 @@ export function createProcessRuntime(
       : null;
 
   const nativeLiveBackgroundWorkflowCoordinator =
-    new NativeLiveBackgroundWorkflowCoordinator([
-      lazyBackgroundWorkflowAdvancer(
-        "proactivity_wake",
-        getProactivityWakeCrossDeviceCoordinator,
-        logger,
-      ),
-    ]);
+    new NativeLiveBackgroundWorkflowCoordinator(
+      legacyProactivityV1Enabled
+        ? [
+            lazyBackgroundWorkflowAdvancer(
+              "proactivity_wake",
+              getProactivityWakeCrossDeviceCoordinator,
+              logger,
+            ),
+          ]
+        : [],
+    );
   const companionBackgroundOpportunity =
     new CompanionBackgroundOpportunityService(
       subjectStateBackgroundMaintenance,
       backgroundOpportunityPolicy,
-      runtimeEffectDeliveryWorker,
-      proactivityWakeOpportunityProducer,
-      Boolean(proactivityWakeOpportunityConfig),
+      legacyProactivityV1Enabled
+        ? runtimeEffectDeliveryWorker
+        : null,
+      legacyProactivityV1Enabled
+        ? proactivityWakeOpportunityProducer
+        : null,
+      legacyProactivityV1Enabled
+        && Boolean(proactivityWakeOpportunityConfig),
     );
   const nativeLiveSemanticService = new NativeLiveSemanticHandshakeService(
     new DrizzleNativeLiveSemanticScoringRepository(db),
@@ -702,7 +737,7 @@ export function createProcessRuntime(
             : {}),
           semanticService: nativeLiveSemanticService,
           backgroundModelService:
-            nativeLiveBackgroundModelService,
+            nativeLiveBackgroundModelRelayService,
           backgroundModelCoordinator:
             nativeLiveBackgroundWorkflowCoordinator,
           runtimeEventService:
