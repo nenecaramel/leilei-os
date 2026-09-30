@@ -189,6 +189,48 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
   });
 });
 
+test("manual Memory writes unified user-supplied temporal metadata", async () => {
+  const repository = new Repository();
+  const service = new MindProductService(
+    repository,
+    "G",
+    () => stateId,
+  );
+
+  const created = await service.createManual({
+    userId,
+    kind: "memory",
+    text: "dated memory",
+    occurredAt: "2026-09-29T20:30:00+08:00",
+    idempotencyKey: "mind-manual-create-temporal-01",
+  });
+
+  assert.equal(created.occurredAt, "2026-09-29T12:30:00.000Z");
+  assert.deepEqual(repository.inserted?.state.payload?.temporal_v1, {
+    occurredAt: "2026-09-29T12:30:00.000Z",
+    basis: "user_supplied",
+    sourceMessageId: null,
+  });
+});
+
+test("Mind product projection prefers unified runtime occurrence time", async () => {
+  const repository = new Repository();
+  repository.row = row({
+    payload: {
+      ...(row().payload ?? {}),
+      temporal_v1: {
+        occurredAt: "2026-09-29T12:34:56.000Z",
+        basis: "source_message",
+        sourceMessageId: messageId,
+      },
+    },
+  });
+  const service = new MindProductService(repository, "G");
+
+  const projected = await service.get({ userId, stateId });
+  assert.equal(projected.occurredAt, "2026-09-29T12:34:56.000Z");
+});
+
 test("manual Mind create requires a durable idempotency key", async () => {
   const repository = new Repository();
   const service = new MindProductService(repository, "G");
