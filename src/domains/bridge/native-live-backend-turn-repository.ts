@@ -827,6 +827,7 @@ implements NativeLiveBackendTurnPort {
     workspaceId: string | null;
     effectiveWorkspaceRoot: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
+    outputAttachmentIds: readonly string[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp:
@@ -838,6 +839,7 @@ implements NativeLiveBackendTurnPort {
       workspaceId: input.workspaceId,
       effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
       normalizedEvents: input.normalizedEvents,
+      outputAttachmentIds: input.outputAttachmentIds,
       ...(input.runtimeMetadata
         ? { runtimeMetadata: input.runtimeMetadata }
         : {}),
@@ -925,6 +927,47 @@ implements NativeLiveBackendTurnPort {
                 block,
               }),
             );
+          }
+
+          if (input.outputAttachmentIds.length > 0) {
+            const attachmentBinding =
+              new DrizzleNativeLiveAttachmentBinding(
+                transaction as Transaction,
+                8,
+              );
+            const outputAttachments =
+              await attachmentBinding.bindReadyToMessage({
+                userId: input.userId,
+                messageId: assistantMessage.id,
+                attachmentIds: input.outputAttachmentIds,
+                startOrdinal: blocks.length,
+              });
+            for (
+              const [index, attachment]
+              of outputAttachments.entries()
+            ) {
+              blocks.push({
+                id:
+                  "attachment:"
+                  + attachment.attachment_id,
+                messageId: assistantMessage.id,
+                ordinal: input.blocks.length + index,
+                kind: "attachment",
+                rawType: attachment.kind,
+                text: null,
+                payload: {
+                  attachment_id:
+                    attachment.attachment_id,
+                  filename: attachment.filename,
+                  mime_type: attachment.mime_type,
+                  size_bytes: attachment.size_bytes,
+                  sha256: attachment.sha256,
+                  kind: attachment.kind,
+                  storage: "railway_bucket",
+                },
+                createdAt: assistantMessage.createdAt,
+              });
+            }
           }
 
           const checkpoint = await conversations.bindProviderCheckpoint({
