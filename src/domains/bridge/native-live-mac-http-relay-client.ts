@@ -38,6 +38,81 @@ implements NativeLiveMacDaemonRelayClient {
     if (!token.trim()) throw new Error("Native live relay token is required.");
   }
 
+  async createAttachmentUploadSlot(input: {
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    kind: "image" | "file";
+  }): Promise<{
+    attachment: {
+      attachmentId: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      kind: "image" | "file";
+    };
+    upload: {
+      url: string;
+      method: "PUT";
+      headers: Record<string, string>;
+    };
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/attachments/upload-slots",
+        {
+          filename: input.filename,
+          mime_type: input.mimeType,
+          size_bytes: input.sizeBytes,
+          sha256: input.sha256,
+          kind: input.kind,
+        },
+      ),
+    );
+    const attachment =
+      parseAttachmentDescriptor(data.attachment);
+    const upload = readRecord(data.upload);
+    if (
+      typeof upload.url !== "string"
+      || upload.method !== "PUT"
+    ) {
+      throw new Error(
+        "Native live attachment upload slot is invalid.",
+      );
+    }
+    return {
+      attachment,
+      upload: {
+        url: upload.url,
+        method: "PUT",
+        headers: readStringRecord(upload.headers),
+      },
+    };
+  }
+
+  async completeAttachmentUpload(input: {
+    attachmentId: string;
+  }): Promise<{
+    attachmentId: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    kind: "image" | "file";
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/attachments/"
+          + encodeURIComponent(input.attachmentId)
+          + "/complete",
+        {},
+      ),
+    );
+    return parseAttachmentDescriptor(data.attachment);
+  }
+
   async createAttachmentDownloadSlot(input: {
     attachmentId: string;
   }): Promise<{
@@ -61,21 +136,12 @@ implements NativeLiveMacDaemonRelayClient {
         {},
       ),
     );
-    const attachment = readRecord(data.attachment);
+    const attachment =
+      parseAttachmentDescriptor(data.attachment);
     const download = readRecord(data.download);
-    const headers = readRecord(download.headers);
     if (
       typeof download.url !== "string"
       || download.method !== "GET"
-      || typeof attachment.attachmentId !== "string"
-      || typeof attachment.filename !== "string"
-      || typeof attachment.mimeType !== "string"
-      || typeof attachment.sizeBytes !== "number"
-      || typeof attachment.sha256 !== "string"
-      || (
-        attachment.kind !== "image"
-        && attachment.kind !== "file"
-      )
     ) {
       throw new Error(
         "Native live attachment download slot is invalid.",
@@ -84,24 +150,8 @@ implements NativeLiveMacDaemonRelayClient {
     return {
       url: download.url,
       method: "GET",
-      headers: Object.fromEntries(
-        Object.entries(headers).map(([key, value]) => {
-          if (typeof value !== "string") {
-            throw new Error(
-              "Native live attachment download header is invalid.",
-            );
-          }
-          return [key, value];
-        }),
-      ),
-      attachment: {
-        attachmentId: attachment.attachmentId,
-        filename: attachment.filename,
-        mimeType: attachment.mimeType,
-        sizeBytes: attachment.sizeBytes,
-        sha256: attachment.sha256,
-        kind: attachment.kind,
-      },
+      headers: readStringRecord(download.headers),
+      attachment,
     };
   }
 
@@ -899,6 +949,58 @@ implements NativeLiveMacDaemonRelayClient {
     }
     return record.data;
   }
+}
+
+function parseAttachmentDescriptor(
+  value: unknown,
+): {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  kind: "image" | "file";
+} {
+  const attachment = readRecord(value);
+  if (
+    typeof attachment.attachmentId !== "string"
+    || typeof attachment.filename !== "string"
+    || typeof attachment.mimeType !== "string"
+    || typeof attachment.sizeBytes !== "number"
+    || typeof attachment.sha256 !== "string"
+    || (
+      attachment.kind !== "image"
+      && attachment.kind !== "file"
+    )
+  ) {
+    throw new Error(
+      "Native live attachment descriptor is invalid.",
+    );
+  }
+  return {
+    attachmentId: attachment.attachmentId,
+    filename: attachment.filename,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    sha256: attachment.sha256,
+    kind: attachment.kind,
+  };
+}
+
+function readStringRecord(
+  value: unknown,
+): Record<string, string> {
+  const record = readRecord(value);
+  return Object.fromEntries(
+    Object.entries(record).map(([key, field]) => {
+      if (typeof field !== "string") {
+        throw new Error(
+          "Native live attachment slot header is invalid.",
+        );
+      }
+      return [key, field];
+    }),
+  );
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
