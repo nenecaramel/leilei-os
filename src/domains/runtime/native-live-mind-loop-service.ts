@@ -469,6 +469,7 @@ export class NativeLiveMindLoopService {
     userId: string;
     subjectId: string;
     conversation: NativeLiveConversation;
+    userText: string;
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
