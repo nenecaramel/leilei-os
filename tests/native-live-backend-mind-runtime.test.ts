@@ -234,9 +234,11 @@ test("native Claude schedule command bypasses Mind prompt assembly but still set
 test("schedule aliases bypass semantic planning while retry remains an ordinary replacement turn", async () => {
   const reader = new Reader();
   const mind = new Mind();
-  mind.planSemanticUserTurn = async () => {
-    throw new Error("native schedule must not enter semantic planning");
-  };
+  Object.assign(mind, {
+    planSemanticUserTurn: async () => {
+      throw new Error("native schedule must not enter semantic planning");
+    },
+  });
   const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
 
   assert.equal(
