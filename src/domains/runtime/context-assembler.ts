@@ -226,6 +226,10 @@ export function assembleTurnContext(input: {
   breathSemanticWeight?: number;
   breathSemanticMinScore?: number;
   breathSemanticScores?: ReadonlyMap<string, number>;
+  breathMinimumScore?: number;
+  breathSemanticMedianMargin?: number;
+  breathRecentRecallPenalty?: boolean;
+  breathDiversityMaxTokenOverlap?: number;
   driveLimit?: number;
   thoughtLimit?: number;
   thoughtMinStrength?: number;
@@ -487,6 +491,11 @@ export function assembleTurnContext(input: {
     semanticWeight: input.breathSemanticWeight ?? 0,
     semanticMinScore: input.breathSemanticMinScore ?? 0,
     semanticScores: input.breathSemanticScores,
+    minimumScore: input.breathMinimumScore ?? 0,
+    semanticMedianMargin: input.breathSemanticMedianMargin ?? 0,
+    recentRecallPenalty: input.breathRecentRecallPenalty ?? false,
+    diversityMaxTokenOverlap:
+      input.breathDiversityMaxTokenOverlap ?? 1,
   });
   const breathItems = breath.map((hit, index) =>
     subjectStateToContextItem(
