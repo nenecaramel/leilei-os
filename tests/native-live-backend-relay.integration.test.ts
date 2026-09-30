@@ -216,5 +216,59 @@ test(
     assert.ok(reReserved);
     assert.equal(reReserved.reservationId, secondReservation.reservationId);
     assert.deepEqual(reReserved.command, secondReservation.command);
+
+    await relay.markExecutionStarted({
+      userId: user.id,
+      listenerInstanceId: listenerA,
+      reservationId: reReserved.reservationId,
+    });
+    await relay.markResultDeliveryUnknown({
+      userId: user.id,
+      listenerInstanceId: listenerA,
+      reservationId: reReserved.reservationId,
+    });
+    await database.db
+      .update(nativeLiveTurnPreparations)
+      .set({
+        deliveryUnknownAt: new Date(Date.now() - 31_000),
+      })
+      .where(
+        eq(
+          nativeLiveTurnPreparations.id,
+          reReserved.reservationId,
+        ),
+      );
+
+    assert.equal(
+      await relay.renewLease({
+        userId: user.id,
+        listenerInstanceId: listenerA,
+        dispatchTarget: "claude_code",
+      }),
+      "renewed",
+    );
+
+    const [recoveredUnknown] = await database.db
+      .select({
+        status: nativeLiveTurnPreparations.status,
+        dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+        reservedBy: nativeLiveTurnPreparations.reservedBy,
+        dispatchErrorCode:
+          nativeLiveTurnPreparations.dispatchErrorCode,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        eq(
+          nativeLiveTurnPreparations.id,
+          reReserved.reservationId,
+        ),
+      );
+
+    assert.deepEqual(recoveredUnknown, {
+      status: "prepared",
+      dispatchStatus: "rejected",
+      reservedBy: null,
+      dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN",
+    });
   },
 );
