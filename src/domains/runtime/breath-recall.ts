@@ -23,18 +23,54 @@ export type BreathEligibilityInput = {
   cooldownHours?: number;
 };
 
+const ENGLISH_LOW_INFORMATION_TOKENS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+  "can", "could", "did", "do", "does", "doing", "for", "from", "had", "has",
+  "have", "having", "he", "her", "here", "hers", "him", "his", "how", "i",
+  "if", "in", "into", "is", "it", "its", "just", "know", "like", "maybe",
+  "me", "mean", "my", "no", "not", "of", "oh", "okay", "on", "or", "our",
+  "ours", "really", "say", "she", "so", "some", "sure", "tell", "than",
+  "that", "the", "their", "them", "then", "there", "these", "they", "think",
+  "this", "those", "to", "too", "us", "very", "want", "was", "we", "well",
+  "were", "what", "when", "where", "which", "who", "why", "will", "with",
+  "would", "yeah", "yes", "you", "your", "yours",
+  "don't", "dont", "can't", "cant", "i'm", "im", "you're", "youre", "it's",
+  "that's", "thats", "what's", "whats",
+]);
+
+const HAN_LOW_INFORMATION_BIGRAMS = new Set([
+  "一个", "一些", "不是", "不过", "但是", "他们", "你们", "我们", "什么",
+  "今天", "现在", "可以", "可能", "因为", "就是", "已经", "怎么", "所以",
+  "昨天", "没有", "然后", "真的", "知道", "自己", "觉得", "这个", "那个",
+  "还有", "这里", "那里", "时候",
+]);
+
 function tokens(value: string): Set<string> {
   const normalized = value.toLocaleLowerCase().normalize("NFKC");
   const result = new Set<string>();
 
-  for (const token of normalized.match(/[a-z0-9_'-]+/g) ?? []) {
-    if (token.length > 1) result.add(token);
+  for (const rawToken of normalized.match(/[a-z0-9_'-]+/g) ?? []) {
+    const token = rawToken.replace(/^'+|'+$/g, "");
+    if (
+      token.length > 1
+      && !ENGLISH_LOW_INFORMATION_TOKENS.has(token)
+    ) {
+      result.add(token);
+    }
   }
 
   for (const sequence of normalized.match(/[\p{Script=Han}]+/gu) ?? []) {
     const chars = Array.from(sequence);
     for (let index = 0; index + 1 < chars.length; index += 1) {
-      result.add(`${chars[index]}${chars[index + 1]}`);
+      const bigram = `${chars[index]}${chars[index + 1]}`;
+      if (!HAN_LOW_INFORMATION_BIGRAMS.has(bigram)) {
+        result.add(bigram);
+      }
+    }
+    for (let index = 0; index + 2 < chars.length; index += 1) {
+      result.add(
+        `${chars[index]}${chars[index + 1]}${chars[index + 2]}`,
+      );
     }
   }
 
@@ -56,6 +92,74 @@ export function breathLexicalScore(
   return matched === 0
     ? 0
     : matched / Math.sqrt(queryTokens.size * candidateTokens.size);
+}
+
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const ordered = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 === 1
+    ? ordered[middle]!
+    : (ordered[middle - 1]! + ordered[middle]!) / 2;
+}
+
+function effectiveSemanticFloor(
+  scores: ReadonlyMap<string, number> | undefined,
+  absoluteFloor: number,
+  medianMargin: number,
+): number {
+  if (!scores || medianMargin <= 0) return absoluteFloor;
+  const valid = [...scores.values()].filter(
+    (score) =>
+      Number.isFinite(score)
+      && score >= 0
+      && score <= 1,
+  );
+  if (valid.length < 8) return absoluteFloor;
+  const baseline = median(valid);
+  if (baseline === null) return absoluteFloor;
+  return Math.min(
+    0.98,
+    Math.max(absoluteFloor, baseline + medianMargin),
+  );
+}
+
+function semanticEvidence(
+  score: number | null,
+  floor: number,
+): number {
+  if (score === null || score <= floor || floor >= 1) return 0;
+  return Math.min(1, (score - floor) / (1 - floor));
+}
+
+function recentRecallFactor(
+  lastRecalledAt: string | null | undefined,
+  now: string | undefined,
+  enabled: boolean,
+): number {
+  if (!enabled || !lastRecalledAt || !now) return 1;
+  const nowMs = Date.parse(now);
+  const recalledMs = Date.parse(lastRecalledAt);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(recalledMs)) return 1;
+  const ageHours = (nowMs - recalledMs) / 3_600_000;
+  if (ageHours < 0) return 1;
+  if (ageHours < 1) return 0.35;
+  if (ageHours < 6) return 0.55;
+  if (ageHours < 24) return 0.75;
+  if (ageHours < 72) return 0.9;
+  return 1;
+}
+
+function tokenOverlap(left: string, right: string): number {
+  const leftTokens = tokens(left);
+  const rightTokens = tokens(right);
+  if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
+  let intersection = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) intersection += 1;
+  }
+  const union = leftTokens.size + rightTokens.size - intersection;
+  return union > 0 ? intersection / union : 0;
 }
 
 function dedupeKey(value: string): string {
@@ -167,29 +271,23 @@ function validatePolicy(input: {
   salienceWeight: number;
   semanticWeight: number;
   semanticMinScore: number;
+  minimumScore: number;
+  semanticMedianMargin: number;
+  diversityMaxTokenOverlap: number;
   now?: string;
 }): number | null {
   parseCooldownNow(input.cooldownHours, input.now);
-  if (
-    !Number.isFinite(input.salienceWeight)
-    || input.salienceWeight < 0
-    || input.salienceWeight > 1
-  ) {
-    throw new Error("Breath salienceWeight must be between 0 and 1.");
-  }
-  if (
-    !Number.isFinite(input.semanticWeight)
-    || input.semanticWeight < 0
-    || input.semanticWeight > 1
-  ) {
-    throw new Error("Breath semanticWeight must be between 0 and 1.");
-  }
-  if (
-    !Number.isFinite(input.semanticMinScore)
-    || input.semanticMinScore < 0
-    || input.semanticMinScore > 1
-  ) {
-    throw new Error("Breath semanticMinScore must be between 0 and 1.");
+  for (const [label, value] of [
+    ["salienceWeight", input.salienceWeight],
+    ["semanticWeight", input.semanticWeight],
+    ["semanticMinScore", input.semanticMinScore],
+    ["minimumScore", input.minimumScore],
+    ["semanticMedianMargin", input.semanticMedianMargin],
+    ["diversityMaxTokenOverlap", input.diversityMaxTokenOverlap],
+  ] as const) {
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+      throw new Error(`Breath ${label} must be between 0 and 1.`);
+    }
   }
   return parseCooldownNow(input.cooldownHours, input.now);
 }
@@ -209,6 +307,10 @@ export function recallBreath(
     semanticWeight?: number;
     semanticMinScore?: number;
     semanticScores?: ReadonlyMap<string, number>;
+    minimumScore?: number;
+    semanticMedianMargin?: number;
+    recentRecallPenalty?: boolean;
+    diversityMaxTokenOverlap?: number;
   },
 ): BreathRecallHit[] {
   if (!Number.isInteger(input.limit) || input.limit < 1) {
@@ -219,11 +321,19 @@ export function recallBreath(
   const salienceWeight = input.salienceWeight ?? 0;
   const semanticWeight = input.semanticWeight ?? 0;
   const semanticMinScore = input.semanticMinScore ?? 0;
+  const minimumScore = input.minimumScore ?? 0;
+  const semanticMedianMargin = input.semanticMedianMargin ?? 0;
+  const recentRecallPenalty = input.recentRecallPenalty ?? false;
+  const diversityMaxTokenOverlap =
+    input.diversityMaxTokenOverlap ?? 1;
   validatePolicy({
     cooldownHours,
     salienceWeight,
     semanticWeight,
     semanticMinScore,
+    minimumScore,
+    semanticMedianMargin,
+    diversityMaxTokenOverlap,
     now: input.now,
   });
 
@@ -231,6 +341,11 @@ export function recallBreath(
   if (queryTokens.size === 0) return [];
 
   const hits: BreathRecallHit[] = [];
+  const semanticFloor = effectiveSemanticFloor(
+    input.semanticScores,
+    semanticMinScore,
+    semanticMedianMargin,
+  );
   const eligible = eligibleBreathEntries(candidates, {
     userId: input.userId,
     subjectId: input.subjectId,
@@ -258,20 +373,27 @@ export function recallBreath(
         ? rawSemanticScore
         : null;
 
-    const semanticEligible =
+    const semanticStrength =
       semanticWeight > 0
-      && semanticScore !== null
-      && semanticScore >= semanticMinScore;
+        ? semanticEvidence(semanticScore, semanticFloor)
+        : 0;
+    const semanticEligible = semanticStrength > 0;
     if (lexicalScore <= 0 && !semanticEligible) continue;
 
     const lexicalWeight = 1 - semanticWeight;
     const baseScore =
       lexicalWeight * lexicalScore
-      + semanticWeight * (semanticScore ?? 0);
+      + semanticWeight * semanticStrength;
     const salience = lifecycle?.salience ?? 1;
     const salienceFactor =
       (1 - salienceWeight) + salienceWeight * salience;
-    const score = baseScore * salienceFactor;
+    const recallFactor = recentRecallFactor(
+      lifecycle?.lastRecalledAt,
+      input.now,
+      recentRecallPenalty,
+    );
+    const score = baseScore * salienceFactor * recallFactor;
+    if (score < minimumScore) continue;
     const channel =
       lexicalScore > 0 && semanticEligible
         ? "hybrid"
@@ -299,8 +421,19 @@ export function recallBreath(
   const deduped: BreathRecallHit[] = [];
   const seen = new Set<string>();
   for (const hit of ordered) {
-    const key = dedupeKey(hit.state.text ?? "");
+    const text = hit.state.text ?? "";
+    const key = dedupeKey(text);
     if (!key || seen.has(key)) continue;
+    if (
+      diversityMaxTokenOverlap < 1
+      && deduped.some(
+        (selected) =>
+          tokenOverlap(selected.state.text ?? "", text)
+          >= diversityMaxTokenOverlap,
+      )
+    ) {
+      continue;
+    }
     seen.add(key);
     deduped.push(hit);
     if (deduped.length >= input.limit) break;
