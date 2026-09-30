@@ -12,6 +12,24 @@ type NativeLiveForegroundRuntimeResult =
     executionReadbackError?: string | null;
   };
 
+export type NativeLiveMacRuntimeFailureDiagnostics = {
+  prepareId: string;
+  runtimeCode: NativeLiveRuntimeFailureCode;
+  errorName?: string;
+  errorMessage?: string;
+  causeName?: string;
+  causeMessage?: string;
+  causeCode?: string;
+  providerSessionId?: string;
+  resultSubtype?: string;
+  resultIsError?: boolean;
+  resultErrorMessages?: string[];
+  eventCount: number;
+  normalizedEventCount: number;
+  lastRawEventTypes: string[];
+  lastNormalizedEventTypes: string[];
+};
+
 type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
   executeTurn?: (
     prompt: string,
@@ -98,6 +116,8 @@ export class NativeLiveMacRuntimeExecutor {
       NativeLiveMacAttachmentMaterializer | null = null,
     private readonly outputAttachmentSender:
       Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
+    private readonly onRuntimeFailure:
+      ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null = null,
   ) {
     if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
       this.runtime = null;
@@ -232,7 +252,21 @@ export class NativeLiveMacRuntimeExecutor {
               runtimePrompt,
             );
     } catch (error) {
-      return failure(command, runtimeFailureCode(error));
+      const errorCode = runtimeFailureCode(error);
+      if (this.onRuntimeFailure) {
+        try {
+          this.onRuntimeFailure(
+            runtimeFailureDiagnostics(
+              command.prepare_id,
+              errorCode,
+              error,
+            ),
+          );
+        } catch {
+          // Diagnostics must never alter runtime failure semantics.
+        }
+      }
+      return failure(command, errorCode);
     } finally {
       if (this.attachmentMaterializer) {
         await this.attachmentMaterializer
@@ -341,6 +375,126 @@ export class NativeLiveMacRuntimeExecutor {
       workspaceRoot: this.fallbackWorkspaceRoot,
     };
   }
+}
+
+function runtimeFailureDiagnostics(
+  prepareId: string,
+  runtimeCode: NativeLiveRuntimeFailureCode,
+  error: unknown,
+): NativeLiveMacRuntimeFailureDiagnostics {
+  const record =
+    error && typeof error === "object"
+      ? error as Record<string, unknown>
+      : {};
+  const cause =
+    record.cause && typeof record.cause === "object"
+      ? record.cause as Record<string, unknown>
+      : {};
+  const result =
+    record.result && typeof record.result === "object"
+      ? record.result as Record<string, unknown>
+      : {};
+  const events = Array.isArray(record.events)
+    ? record.events
+    : [];
+  const normalizedEvents =
+    Array.isArray(record.normalizedEvents)
+      ? record.normalizedEvents
+      : [];
+
+  const resultErrors = Array.isArray(result.errors)
+    ? result.errors
+        .map((value) => boundedDiagnosticText(value))
+        .filter((value): value is string => Boolean(value))
+        .slice(0, 3)
+    : [];
+
+  return {
+    prepareId,
+    runtimeCode,
+    ...(error instanceof Error
+      ? {
+          errorName: boundedDiagnosticText(error.name) ?? "Error",
+          ...(boundedDiagnosticText(error.message)
+            ? { errorMessage: boundedDiagnosticText(error.message)! }
+            : {}),
+        }
+      : {}),
+    ...(typeof cause.name === "string"
+      ? { causeName: boundedDiagnosticText(cause.name)! }
+      : {}),
+    ...(typeof cause.message === "string"
+      ? { causeMessage: boundedDiagnosticText(cause.message)! }
+      : {}),
+    ...(typeof cause.code === "string"
+      ? { causeCode: boundedDiagnosticText(cause.code)! }
+      : {}),
+    ...(typeof record.providerSessionId === "string"
+      ? {
+          providerSessionId:
+            boundedDiagnosticText(record.providerSessionId)!,
+        }
+      : {}),
+    ...(typeof result.subtype === "string"
+      ? { resultSubtype: boundedDiagnosticText(result.subtype)! }
+      : {}),
+    ...(typeof result.is_error === "boolean"
+      ? { resultIsError: result.is_error }
+      : {}),
+    ...(resultErrors.length > 0
+      ? { resultErrorMessages: resultErrors }
+      : {}),
+    eventCount: events.length,
+    normalizedEventCount: normalizedEvents.length,
+    lastRawEventTypes: events
+      .slice(-6)
+      .map(describeRawEvent)
+      .filter((value): value is string => Boolean(value)),
+    lastNormalizedEventTypes: normalizedEvents
+      .slice(-6)
+      .map((value) =>
+        value
+        && typeof value === "object"
+        && typeof (value as Record<string, unknown>).type === "string"
+          ? boundedDiagnosticText(
+              (value as Record<string, unknown>).type,
+            )
+          : null
+      )
+      .filter((value): value is string => Boolean(value)),
+  };
+}
+
+function describeRawEvent(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const type =
+    typeof record.type === "string"
+      ? boundedDiagnosticText(record.type)
+      : null;
+  const subtype =
+    typeof record.subtype === "string"
+      ? boundedDiagnosticText(record.subtype)
+      : null;
+  if (!type) return subtype;
+  return subtype ? `${type}:${subtype}` : type;
+}
+
+function boundedDiagnosticText(
+  value: unknown,
+): string | null {
+  if (typeof value !== "string") return null;
+  let text = value
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/giu, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9_-]{8,}/gu, "sk-[redacted]")
+    .replace(/\/Users\/[^/\s]+/gu, "~")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!text) return null;
+  if (text.length > 320) {
+    text = text.slice(0, 317) + "...";
+  }
+  return text;
 }
 
 function failure(
