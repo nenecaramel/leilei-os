@@ -3,6 +3,7 @@ import {
   and,
   asc,
   eq,
+  sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import type {
@@ -194,28 +195,39 @@ export class DrizzleNativeLiveRuntimeInteractionRepository {
     listenerInstanceId: string;
     reservationId: string;
   }): Promise<boolean> {
-    const [row] = await this.db
-      .select({
-        dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
-        reservedBy: nativeLiveTurnPreparations.reservedBy,
-      })
-      .from(nativeLiveTurnPreparations)
-      .where(
-        and(
-          eq(nativeLiveTurnPreparations.id, input.reservationId),
-          eq(nativeLiveTurnPreparations.userId, input.userId),
-        ),
-      )
-      .limit(1);
+    const result = await this.db.execute<{ active: boolean }>(sql`
+      SELECT (
+        preparation.reserved_by = ${input.listenerInstanceId}::uuid
+        AND preparation.dispatch_status IN ('executing', 'delivery_unknown')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM native_live_turn_preparations AS newer
+          WHERE newer.user_id = preparation.user_id
+            AND newer.conversation_id = preparation.conversation_id
+            AND newer.status = 'prepared'
+            AND newer.dispatch_status IN (
+              'staged',
+              'pending',
+              'reserved',
+              'executing',
+              'delivery_unknown'
+            )
+            AND (
+              newer.created_at > preparation.created_at
+              OR (
+                newer.created_at = preparation.created_at
+                AND newer.id > preparation.id
+              )
+            )
+        )
+      ) AS active
+      FROM native_live_turn_preparations AS preparation
+      WHERE preparation.id = ${input.reservationId}::uuid
+        AND preparation.user_id = ${input.userId}::uuid
+      LIMIT 1
+    `);
 
-    return Boolean(
-      row
-      && row.reservedBy === input.listenerInstanceId
-      && (
-        row.dispatchStatus === "executing"
-        || row.dispatchStatus === "delivery_unknown"
-      ),
-    );
+    return result[0]?.active === true;
   }
 
   async listForUser(input: {
