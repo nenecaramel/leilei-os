@@ -366,6 +366,38 @@ test("retry preparation excludes the old assistant suffix before replacement gen
   assert.deepEqual(mind.manifestIds, [prepared("retry").prepareId]);
 });
 
+test("Retry and Edit inherit lineage from the replacement branch point, not the abandoned suffix", async () => {
+  for (const operation of ["retry", "edit"] as const) {
+    const reader = new Reader();
+    reader.value = conversation(oldAssistantId);
+    const mind = new Mind();
+    const lineage = new LineageReader();
+    lineage.value = {
+      epoch: 3,
+      seenStateIds: ["seen-before-branch"],
+      thoughtRevision: 9,
+      thoughtFingerprint: "b".repeat(64),
+    };
+    const runtime = new DefaultNativeLiveBackendMindRuntime(
+      reader,
+      mind,
+      lineage,
+    );
+
+    await runtime.preparePrompt({
+      userId,
+      preparation: prepared(operation),
+    });
+
+    assert.deepEqual(lineage.calls, [{
+      userId,
+      conversationId,
+      canonicalMessageId: parentId,
+    }]);
+    assert.deepEqual(mind.contextLineages, [lineage.value]);
+  }
+});
+
 test("branch finalize records intents and then reconciles the finalized canonical head", async () => {
   const reader = new Reader();
   reader.value = conversation(assistantId);
