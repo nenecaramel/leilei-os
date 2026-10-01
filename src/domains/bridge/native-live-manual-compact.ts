@@ -79,12 +79,20 @@ export class NativeLiveManualCompactService {
         kind: "foreground";
       }): Promise<void>;
     },
+    private readonly runtimePresence?: {
+      isListenerOnline(): Promise<boolean>;
+    },
   ) {}
 
   async create(input: {
     userId: string;
     conversationId: string;
   }): Promise<NativeLiveManualCompactReadModel> {
+    const brokerListenerOnline =
+      await this.runtimePresence
+        ?.isListenerOnline()
+        .catch(() => false)
+      ?? false;
     const created = await this.db.transaction(async (tx) => {
       await tx.execute(sql`
         UPDATE native_live_manual_compactions
@@ -122,7 +130,7 @@ export class NativeLiveManualCompactService {
             AND lease_expires_at > now()
         ) AS ok
       `);
-      if (!listener[0]?.ok) {
+      if (!listener[0]?.ok && !brokerListenerOnline) {
         throw new NativeLiveManualCompactError(
           "RUNTIME_OFFLINE",
           "The Mac runtime is not currently online.",
