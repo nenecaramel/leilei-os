@@ -27,7 +27,7 @@ node dist/database/migrate.js
 
 The pre-deploy runner performs database-readiness checks and applies pending checked-in migrations transactionally through the LeileiOS migration ledger. Application startup itself does not run migrations.
 
-The authoritative checked-in migration record is `drizzle/meta/_journal.json`. Read its final entry when verifying the current migration head. The current checked-in head on this branch is `0094_runtime_context_lineage`.
+The authoritative checked-in migration record is `drizzle/meta/_journal.json`. Read its final entry when verifying the current migration head instead of duplicating that value in release documentation.
 
 A successful deployment must report a healthy service before production smoke checks continue.
 
