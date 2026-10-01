@@ -121,7 +121,14 @@ export class DrizzleNativeLiveWorkWakePublisher {
       // PostgreSQL wake-up is advisory. Durable state remains authoritative.
     }
 
-    if (this.externalWake) {
+    if (
+      this.externalWake
+      && (
+        input.kind === "semantic"
+        || input.kind === "foreground"
+        || input.kind === "background_model"
+      )
+    ) {
       try {
         await this.externalWake.notify({
           kind: input.kind,
