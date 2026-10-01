@@ -242,8 +242,9 @@ function selectWithinBudget(
 }
 
 /**
- * First Non-style Context Assembly slice:
- * current user message + active Drive + active Thought + active Topic + bounded Breath.
+ * Foreground Context Assembly:
+ * current user message + a versioned active-Thought snapshot when changed
+ * + bounded Breath Memory/Feel recall.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -402,6 +403,16 @@ export function assembleTurnContext(input: {
       maxChars: input.maxContextChars,
     },
   );
+  if (
+    thoughtSnapshotEmitted
+    && selected.filter((item) => item.type === "thought").length
+      !== thoughtCandidates.length
+  ) {
+    throw new Error(
+      "Context budget is too small to include the complete current Thought snapshot.",
+    );
+  }
+
   const usedChars = selected.reduce((sum, item) => sum + charCost(item), 0);
 
   const manifest: InitialContextManifest = {
