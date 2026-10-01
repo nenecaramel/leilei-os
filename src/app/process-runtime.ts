@@ -282,27 +282,29 @@ export function createProcessRuntime(
   const { db } = database;
   const nativeLiveAttachmentStorageConfig =
     getNativeLiveAttachmentStorageConfig(runtimeEnv);
-  const nativeLivePostgresAttachmentObjectStore =
-    nativeLiveAttachmentStorageConfig
-      ? undefined
-      : new PostgresInlineAttachmentObjectStore(
-          db,
-          {
-            signingSecret: runtimeEnv.DATABASE_URL,
-            transferTtlSeconds:
-              runtimeEnv.NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS,
-            maxFileBytes:
-              runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
-            maxTotalBytes:
-              runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_TOTAL_BYTES,
-          },
-        );
-  const nativeLiveAttachmentObjectStore =
+  const nativeLiveS3AttachmentObjectStore =
     nativeLiveAttachmentStorageConfig
       ? new S3PresignedAttachmentObjectStore(
           nativeLiveAttachmentStorageConfig,
         )
-      : nativeLivePostgresAttachmentObjectStore!;
+      : null;
+  const nativeLivePostgresAttachmentObjectStore =
+    new PostgresInlineAttachmentObjectStore(
+      db,
+      {
+        signingSecret: runtimeEnv.DATABASE_URL,
+        fallbackObjectStore: nativeLiveS3AttachmentObjectStore ?? undefined,
+        transferTtlSeconds:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS,
+        maxFileBytes:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
+        maxTotalBytes:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_TOTAL_BYTES,
+      },
+    );
+  const nativeLiveAttachmentObjectStore =
+    nativeLiveS3AttachmentObjectStore
+    ?? nativeLivePostgresAttachmentObjectStore;
   const nativeLiveAttachmentService =
     new NativeLiveAttachmentService(
       db,
@@ -313,6 +315,11 @@ export function createProcessRuntime(
         unboundTtlSeconds:
           runtimeEnv.NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS,
       },
+      undefined,
+      undefined,
+      nativeLiveS3AttachmentObjectStore
+        ? nativeLivePostgresAttachmentObjectStore
+        : undefined,
     );
   const nativeLiveWakeBrokerConfig =
     getNativeLiveWakeBrokerConfig(runtimeEnv);
@@ -669,6 +676,9 @@ export function createProcessRuntime(
                 nativeLiveAttachmentObjectStore,
                 cutoff,
                 limit,
+                nativeLiveS3AttachmentObjectStore
+                  ? nativeLivePostgresAttachmentObjectStore
+                  : undefined,
               ),
           }]
         : []),
@@ -714,12 +724,8 @@ export function createProcessRuntime(
     logger,
     appDependencies: {
       logger,
-      ...(nativeLivePostgresAttachmentObjectStore
-        ? {
-            nativeLiveAttachmentTransferStore:
-              nativeLivePostgresAttachmentObjectStore,
-          }
-        : {}),
+      nativeLiveAttachmentTransferStore:
+        nativeLivePostgresAttachmentObjectStore,
       webDiaryService: diaryService,
       webDiaryCommentService: diaryCommentService,
       webSystemService: systemService,
