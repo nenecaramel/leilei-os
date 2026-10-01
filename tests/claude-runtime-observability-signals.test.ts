@@ -173,6 +173,6 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
   );
 
   assert.match(models, /payload\["display_name"\]/);
-  assert.match(models, /kind == "api_retry"|case "api_retry"/);
+  assert.match(models, /payload\["kind"\]\?\.stringValue == "api_retry"/);
   assert.match(surface, /payload\?\["display_name"\]/);
 });
