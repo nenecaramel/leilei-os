@@ -176,7 +176,7 @@ test("rejects invalid dates, steps, and menstruation windows", () => {
     menstruation_dates: Array.from({ length: 61 }, () => "2026-09-06"),
   });
   assertInvalidPayload({ ...valid, menstruation_dates: ["2026-09-07"] });
-  assertInvalidPayload({ ...valid, menstruation_dates: ["2026-07-08"] });
+  assertInvalidPayload({ ...valid, menstruation_dates: ["2026-07-07"] });
   assertInvalidPayload({ ...valid, menstruation_dates: ["2026-02-30"] });
 });
 
