@@ -54,7 +54,7 @@ struct ChatView: View {
                     isTurnInFlight:
                         appModel.chatSendState == .sending
                             || pendingOperation != nil
-                            || visibleRuntimeSurface != nil,
+                            || isRuntimeTurnActive,
                     pendingOperation: pendingOperation,
                     runtimeSurface: visibleRuntimeSurface,
                     onResolveRuntimeInteraction: {
@@ -129,9 +129,9 @@ struct ChatView: View {
                     appModel.chatSendState == .sending
                         || isDraftCommitInFlight
                         || pendingOperation != nil
-                        || visibleRuntimeSurface != nil,
+                        || isRuntimeTurnActive,
                 isRuntimeTurnActive:
-                    visibleRuntimeSurface != nil,
+                    isRuntimeTurnActive,
                 isRuntimeControlInFlight:
                     isRuntimeControlInFlight,
                 interruptRequested:
@@ -250,6 +250,14 @@ struct ChatView: View {
         return surface
     }
 
+    private var isRuntimeTurnActive: Bool {
+        if let nativeState =
+            visibleRuntimeSurface?.providerTurnActive {
+            return nativeState
+        }
+        return visibleRuntimeSurface != nil
+    }
+
     private var runtimeInterruptRequested: Bool {
         visibleRuntimeSurface?.controls.contains {
             $0.kind == "interrupt"
@@ -265,7 +273,7 @@ struct ChatView: View {
         )
         guard !normalized.isEmpty,
               !isRuntimeControlInFlight,
-              visibleRuntimeSurface != nil else {
+              isRuntimeTurnActive else {
             return
         }
 
@@ -297,7 +305,7 @@ struct ChatView: View {
     private func interruptCurrentTurn() {
         guard !isRuntimeControlInFlight,
               !runtimeInterruptRequested,
-              visibleRuntimeSurface != nil else {
+              isRuntimeTurnActive else {
             return
         }
 

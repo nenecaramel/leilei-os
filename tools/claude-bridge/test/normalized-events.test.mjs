@@ -153,6 +153,60 @@ test("normalizes real Agent SDK stream_event text deltas", () => {
   );
 });
 
+test("normalizes Agent SDK session state changes as runtime-only provider authority", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "session_state_changed",
+        session_id: "session-state-1",
+        state: "running",
+        uuid: "event-running",
+      },
+      {
+        type: "system",
+        subtype: "session_state_changed",
+        session_id: "session-state-1",
+        state: "requires_action",
+        uuid: "event-action",
+      },
+      {
+        type: "system",
+        subtype: "session_state_changed",
+        session_id: "session-state-1",
+        state: "idle",
+        uuid: "event-idle",
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["runtime", "runtime", "runtime"],
+  );
+  assert.deepEqual(
+    events.map((event) => event.payload),
+    [
+      {
+        kind: "session_state_changed",
+        state: "running",
+        event_uuid: "event-running",
+      },
+      {
+        kind: "session_state_changed",
+        state: "requires_action",
+        event_uuid: "event-action",
+      },
+      {
+        kind: "session_state_changed",
+        state: "idle",
+        event_uuid: "event-idle",
+      },
+    ],
+  );
+});
+
 test("normalizes Agent SDK compact boundaries for runtime observability", () => {
   const events = normalizeClaudeEvents(
     [
