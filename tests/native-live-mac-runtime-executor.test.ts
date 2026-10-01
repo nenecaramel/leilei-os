@@ -445,6 +445,7 @@ test("interactive foreground runtime is preferred and receives streaming branch 
       mode: "fork",
       parentProviderSessionId: "provider-parent",
       streaming: true,
+      userMessageUuid: userMessageId,
     },
   ]]);
   assert.equal(result.status, "success");
@@ -499,6 +500,7 @@ test("interactive foreground runtime receives the exact prepared execution selec
     mode: "new",
     parentProviderSessionId: null,
     streaming: true,
+    userMessageUuid: userMessageId,
     execution: {
       model: "claude-opus-5-5",
       thinking: "adaptive",
