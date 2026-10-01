@@ -344,7 +344,12 @@ export function assembleTurnContext(input: {
     })),
   );
   const thoughtSnapshotEmitted =
-    thoughtFingerprint !== parentLineage.thoughtFingerprint;
+    thoughtFingerprint !== parentLineage.thoughtFingerprint
+    && !(
+      parentLineage.thoughtFingerprint === null
+      && parentLineage.thoughtRevision === 0
+      && thoughtCandidates.length === 0
+    );
   const thoughtRevision = thoughtSnapshotEmitted
     ? parentLineage.thoughtRevision + 1
     : parentLineage.thoughtRevision;
