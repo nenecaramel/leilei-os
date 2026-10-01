@@ -52,6 +52,8 @@ const baseEnvSchema = z.object({
   DATABASE_URL: z.string().url().optional(),
   MCP_AUTH_TOKEN: z.string().min(16).optional(),
   NATIVE_LIVE_RELAY_AUTH_TOKEN: z.string().min(32).optional(),
+  NATIVE_LIVE_WAKE_BROKER_URL: httpsUrl.optional(),
+  NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN: z.string().min(32).optional(),
   MCP_USER_ID: z.string().uuid().optional(),
   MCP_SERVER_URL: httpsUrl.optional(),
   AUTH0_ISSUER: httpsUrl.optional(),
@@ -310,6 +312,34 @@ export type NativeLiveAttachmentStorageConfig = {
   maxPerTurn: number;
   unboundTtlSeconds: number;
 };
+
+export type NativeLiveWakeBrokerConfig = {
+  url: string;
+  token: string;
+};
+
+export function getNativeLiveWakeBrokerConfig(
+  environment: Pick<
+    RuntimeEnv,
+    | "NATIVE_LIVE_WAKE_BROKER_URL"
+    | "NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN"
+  >,
+): NativeLiveWakeBrokerConfig | undefined {
+  const url = environment.NATIVE_LIVE_WAKE_BROKER_URL;
+  const token = environment.NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN;
+  if (url === undefined && token === undefined) {
+    return undefined;
+  }
+  if (!url || !token) {
+    throw new Error(
+      "Native Live wake broker requires URL and auth token together.",
+    );
+  }
+  return {
+    url: url.replace(/\/+$/u, ""),
+    token,
+  };
+}
 
 export function getNativeLiveAttachmentStorageConfig(
   environment: RuntimeEnv,
