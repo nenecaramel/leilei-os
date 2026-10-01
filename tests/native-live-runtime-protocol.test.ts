@@ -136,6 +136,45 @@ test("runtime command carries optional validated execution selection", () => {
 });
 
 
+test("runtime command accepts Sonnet 5.5 native between_tools thinking", () => {
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 1,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "send",
+    conversation_id: conversationId,
+    canonical_user_message_id: userMessageId,
+    runtime_mode: "new",
+    parent_provider_session_id: null,
+    execution_selection: {
+      model: "claude-sonnet-5-5",
+      thinking: "between_tools",
+      effort: "high",
+    },
+    prompt: "hello",
+  });
+
+  assert.deepEqual(command.execution_selection, {
+    model: "claude-sonnet-5-5",
+    thinking: "between_tools",
+    effort: "high",
+  });
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeCommand({
+        ...command,
+        execution_selection: {
+          model: "claude-sonnet-5-5",
+          thinking: "between_tools",
+          effort: "xhigh",
+        },
+      }),
+    /only supported up to effort=high/i,
+  );
+});
+
 test("runtime protocol preserves Workspace identity and enforces the bound root", () => {
   const workspaceId = "55555555-5555-4555-8555-555555555555";
   const command = parseNativeLiveRuntimeCommand({
