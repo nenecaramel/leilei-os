@@ -13,6 +13,8 @@ import {
   workspaceConversations,
   workspaces,
   runtimeSubjectStates,
+  runtimeContextManifests,
+  runtimeContextLineageStates,
 } from "../../database/schema.js";
 import {
   DrizzleNativeLiveConversationRepository,
@@ -46,6 +48,11 @@ import {
   DrizzleNativeLiveAttachmentBinding,
   type NativeLiveRuntimeAttachment,
 } from "./native-live-attachment-service.js";
+import {
+  normalizeContextLineageState,
+  parseContextLineageManifest,
+} from "../runtime/context-lineage.js";
+import { nativeLiveMindFollowUpStateId } from "./native-live-mind-state-id.js";
 import {
   planCausalSubjectStatePurge,
   planExclusiveProviderSessionCleanup,
@@ -999,6 +1006,13 @@ implements NativeLiveBackendTurnPort {
             messageId: assistantMessage.id,
           });
 
+          await this.persistFinalizedContextLineage(
+            transaction as Transaction,
+            row,
+            assistantMessage.id,
+            input.mindFollowUp,
+          );
+
           if (
             row.runtimeMode === "fork"
             && row.parentProviderSessionId
@@ -1089,6 +1103,155 @@ implements NativeLiveBackendTurnPort {
     } catch {
       return { ok: false, code: "CANONICAL_WRITE_FAILURE" };
     }
+  }
+
+  private async persistFinalizedContextLineage(
+    transaction: Transaction,
+    row: PreparationRow,
+    assistantMessageId: string,
+    mindFollowUp: Parameters<
+      NativeLiveBackendTurnPort["finalizeSuccess"]
+    >[0]["mindFollowUp"],
+  ): Promise<void> {
+    const [userMessage] = await transaction
+      .select({
+        parentMessageId: conversationMessages.parentMessageId,
+      })
+      .from(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.id, row.canonicalUserMessageId),
+          eq(conversationMessages.userId, row.userId),
+          eq(conversationMessages.conversationId, row.conversationId),
+        ),
+      )
+      .limit(1);
+    if (!userMessage) {
+      throw new Error(
+        "Context lineage source user message was not found.",
+      );
+    }
+
+    let parentLineage = normalizeContextLineageState(null);
+    if (userMessage.parentMessageId) {
+      const [parentRow] = await transaction
+        .select({
+          epoch: runtimeContextLineageStates.epoch,
+          seenStateIds: runtimeContextLineageStates.seenStateIds,
+          thoughtRevision: runtimeContextLineageStates.thoughtRevision,
+          thoughtFingerprint: runtimeContextLineageStates.thoughtFingerprint,
+        })
+        .from(runtimeContextLineageStates)
+        .where(
+          and(
+            eq(runtimeContextLineageStates.userId, row.userId),
+            eq(
+              runtimeContextLineageStates.conversationId,
+              row.conversationId,
+            ),
+            eq(
+              runtimeContextLineageStates.canonicalMessageId,
+              userMessage.parentMessageId,
+            ),
+          ),
+        )
+        .limit(1);
+      parentLineage = normalizeContextLineageState(
+        parentRow
+          ? {
+              epoch: parentRow.epoch,
+              seenStateIds: parentRow.seenStateIds,
+              thoughtRevision: parentRow.thoughtRevision,
+              thoughtFingerprint: parentRow.thoughtFingerprint,
+            }
+          : null,
+      );
+    }
+
+    const [manifestRow] = await transaction
+      .select({
+        lineage: runtimeContextManifests.lineage,
+        items: runtimeContextManifests.items,
+      })
+      .from(runtimeContextManifests)
+      .where(
+        and(
+          eq(runtimeContextManifests.id, row.id),
+          eq(runtimeContextManifests.userId, row.userId),
+          eq(
+            runtimeContextManifests.conversationId,
+            row.conversationId,
+          ),
+        ),
+      )
+      .limit(1);
+
+    const manifestLineage =
+      parseContextLineageManifest(manifestRow?.lineage ?? null);
+    if (
+      manifestLineage
+      && manifestLineage.epoch !== parentLineage.epoch
+    ) {
+      throw new Error(
+        "Prepared context lineage no longer matches its parent checkpoint.",
+      );
+    }
+
+    const injectedStateIds = (manifestRow?.items ?? []).flatMap(
+      (item) => {
+        if (
+          !item
+          || typeof item !== "object"
+          || Array.isArray(item)
+        ) {
+          throw new Error("Persisted Context Manifest item is invalid.");
+        }
+        const record = item as Record<string, unknown>;
+        const selection = record.selection;
+        if (
+          (record.type !== "memory" && record.type !== "feel")
+          || typeof record.sourceId !== "string"
+          || !selection
+          || typeof selection !== "object"
+          || Array.isArray(selection)
+          || !String(
+            (selection as Record<string, unknown>).reason ?? "",
+          ).startsWith("breath_")
+        ) {
+          return [];
+        }
+        return [record.sourceId];
+      },
+    );
+
+    const selfWrittenStateIds = (mindFollowUp?.intents ?? []).flatMap(
+      (intent, index) =>
+        intent.kind === "memory" || intent.kind === "feel"
+          ? [nativeLiveMindFollowUpStateId(row.id, index)]
+          : [],
+    );
+
+    const seenStateIds = [
+      ...new Set([
+        ...parentLineage.seenStateIds,
+        ...injectedStateIds,
+        ...selfWrittenStateIds,
+      ]),
+    ];
+
+    await transaction.insert(runtimeContextLineageStates).values({
+      canonicalMessageId: assistantMessageId,
+      userId: row.userId,
+      conversationId: row.conversationId,
+      epoch: manifestLineage?.epoch ?? parentLineage.epoch,
+      seenStateIds,
+      thoughtRevision:
+        manifestLineage?.thoughtRevision
+        ?? parentLineage.thoughtRevision,
+      thoughtFingerprint:
+        manifestLineage?.thoughtFingerprint
+        ?? parentLineage.thoughtFingerprint,
+    });
   }
 
   async finalizeFailure(input: {
