@@ -44,6 +44,7 @@ export interface NativeLiveExternalWakeSignal {
   notify(input: {
     kind: NativeLiveWorkKind;
   }): Promise<void>;
+  isListenerOnline(): Promise<boolean>;
 }
 
 export class NativeLiveHttpWakeSignal
@@ -88,6 +89,38 @@ implements NativeLiveExternalWakeSignal {
           + ".",
       );
     }
+  }
+
+  async isListenerOnline(): Promise<boolean> {
+    const response = await this.fetchImpl(
+      this.baseUrl + "/presence",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer " + this.token,
+        },
+        signal: AbortSignal.timeout(1_500),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        "Native Live wake broker presence failed with HTTP "
+          + response.status
+          + ".",
+      );
+    }
+    const value = await response.json();
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || typeof (value as { online?: unknown }).online !== "boolean"
+    ) {
+      throw new Error(
+        "Native Live wake broker presence response is invalid.",
+      );
+    }
+    return (value as { online: boolean }).online;
   }
 }
 
