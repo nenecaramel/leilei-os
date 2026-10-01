@@ -19,6 +19,7 @@ import type {
   NativeLivePostFinalizeRunner,
 } from "./native-live-backend-turn-coordinator.js";
 import { nativeLiveMindFollowUpStateId } from "./native-live-mind-state-id.js";
+export { nativeLiveMindFollowUpStateId } from "./native-live-mind-state-id.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
