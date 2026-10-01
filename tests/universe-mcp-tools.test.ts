@@ -69,6 +69,7 @@ test("Phase 8.5 registers dedicated Universe read tools", async (t) => {
     "get_universe_diary_sources",
     "get_universe_node",
     "get_universe_relations",
+    "list_universe_galaxies",
     "list_universe_nodes",
     "update_universe_node",
     "update_universe_relation",

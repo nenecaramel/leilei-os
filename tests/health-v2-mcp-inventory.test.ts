@@ -18,7 +18,7 @@ async function listTools(server: McpServer, clientName: string): Promise<string[
   }
 }
 
-test("Health v2 adds exactly get_health and get_current_time to public MCP and never internal MCP", async () => {
+test("device Health and time tools are present once in public and internal MCP", async () => {
   const createSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: { findUserById: async () => ({ status: "active" }) },
     memoryService: {} as never,
@@ -38,15 +38,17 @@ test("Health v2 adds exactly get_health and get_current_time to public MCP and n
   const internalNames = await listTools(createSessionServer("user-1", "internal"), "health-internal");
 
   assert.equal(publicNames.filter((name) => name === "get_health").length, 1);
-  assert.equal(internalNames.includes("get_health"), false);
+  assert.equal(internalNames.filter((name) => name === "get_health").length, 1);
   assert.equal(publicNames.filter((name) => name === "get_current_time").length, 1);
-  assert.equal(internalNames.includes("get_current_time"), false);
+  assert.equal(internalNames.filter((name) => name === "get_current_time").length, 1);
+  for (const ui of ["render_note_card"]) {
+    assert.equal(publicNames.includes(ui), true);
+    assert.equal(internalNames.includes(ui), false);
+  }
   assert.deepEqual(
     publicNames.filter((name) =>
-      name !== "get_health" &&
-      name !== "get_current_time" &&
-      name !== "render_thinking_block"
+      name !== "render_thinking_block" && name !== "render_note_card"
     ),
-    internalNames,
+    internalNames.filter((name) => !name.includes("notion")),
   );
 });

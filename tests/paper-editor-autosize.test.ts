@@ -3,10 +3,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { MemoryPaperEditor } from "../web/src/pages/MemoryPaperEditor.js";
 import { DiaryPaperEditor } from "../web/src/pages/DiaryPaperEditor.js";
-import { TaskPaperEditor } from "../web/src/pages/TaskPaperEditor.js";
-import { SharedPaperBodyEditor } from "../web/src/pages/SharedPaperBodyEditor.js";
 import { resizePaperTextarea } from "../web/src/pages/paper-editor-autosize.js";
 
 type EditorCase = {
@@ -17,17 +14,6 @@ type EditorCase = {
 
 const EDITORS: readonly EditorCase[] = [
   {
-    name: "Memory",
-    bodySelector: 'textarea[aria-label="记忆内容"]',
-    render: (value, onChange) => React.createElement(MemoryPaperEditor, {
-      keyValue: "key",
-      content: value,
-      disabled: false,
-      onKeyChange() {},
-      onContentChange: onChange,
-    }),
-  },
-  {
     name: "Diary",
     bodySelector: 'textarea[aria-label="日记正文"]',
     render: (value, onChange) => React.createElement(DiaryPaperEditor, {
@@ -36,25 +22,6 @@ const EDITORS: readonly EditorCase[] = [
       disabled: false,
       onTitleChange() {},
       onContentChange: onChange,
-    }),
-  },
-  {
-    name: "Shared Paper",
-    bodySelector: 'textarea[aria-label="Shared Paper 正文"]',
-    render: (value, onChange) => React.createElement(SharedPaperBodyEditor, {
-      content: value,
-      onContentChange: onChange,
-    }),
-  },
-  {
-    name: "Task",
-    bodySelector: 'textarea[aria-label="任务正文"]',
-    render: (value, onChange) => React.createElement(TaskPaperEditor, {
-      title: "Title",
-      description: value,
-      disabled: false,
-      onTitleChange() {},
-      onDescriptionChange: onChange,
     }),
   },
 ];

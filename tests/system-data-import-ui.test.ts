@@ -200,7 +200,7 @@ test("Data restore auto-previews complete v4 metadata and all portable modules",
     "Diary comments",
     "Todo",
     "Workspaces",
-    "Conversations",
+    "Conversation records",
     "Mind",
     "Universe",
   ]) {

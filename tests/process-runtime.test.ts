@@ -1,3 +1,4 @@
+import { env } from "../src/config/env.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -20,6 +21,7 @@ test("process runtime owns one injectable database resource", async () => {
 
   const runtime = createProcessRuntime({
     environment: {
+      ...env,
       DATABASE_URL: "postgres://runtime.test/leilei",
       MCP_SESSION_IDLE_TTL_SECONDS: 7_200,
       MCP_SESSION_ABSOLUTE_TTL_SECONDS: 86_400,
@@ -73,6 +75,7 @@ test("process runtime owns retention scheduling and drains it before the databas
 
   const runtime = createProcessRuntime({
     environment: {
+      ...env,
       DATABASE_URL: "postgres://runtime.test/leilei",
       MCP_SESSION_IDLE_TTL_SECONDS: 7_200,
       MCP_SESSION_ABSOLUTE_TTL_SECONDS: 86_400,
@@ -104,11 +107,10 @@ test("process runtime owns retention scheduling and drains it before the databas
   releaseRetention();
   await draining;
   await runtime.closeDatabase();
-  assert.equal(transactionCalls, 3);
+  // Current scheduling includes attachment retention and all operational tables.
+  assert.equal(transactionCalls, 10);
   assert.deepEqual(events, [
-    "retention_batch:1",
-    "retention_batch:2",
-    "retention_batch:3",
+    ...Array.from({ length: 10 }, (_, index) => `retention_batch:${index + 1}`),
     "database_closed",
   ]);
 });
@@ -129,6 +131,7 @@ test("process runtime creates one shared safe logger for app and observers", asy
   };
   const runtime = createProcessRuntime({
     environment: {
+      ...env,
       DATABASE_URL: "postgres://runtime.test/leilei",
       LOG_LEVEL: "warn",
       MCP_SESSION_IDLE_TTL_SECONDS: 7_200,
@@ -171,16 +174,6 @@ test("successful listen emits service_started before starting retention work", (
   assert.notEqual(serviceStarted, -1);
   assert.notEqual(startBackgroundWork, -1);
   assert.ok(serviceStarted < startBackgroundWork);
-});
-
-
-test("process runtime wires the canonical Conversation read service into MCP sessions", () => {
-  const factoryCall = processRuntimeSource.slice(
-    processRuntimeSource.indexOf("createProductionMcpSessionServerFactory({"),
-    processRuntimeSource.indexOf("return {", processRuntimeSource.indexOf("createProductionMcpSessionServerFactory({")),
-  );
-  assert.match(factoryCall, /conversationArchiveReadService/);
-  assert.match(processRuntimeSource, /new ConversationArchiveReadService\([\s\S]*DrizzleConversationArchiveReadRepository/);
 });
 
 

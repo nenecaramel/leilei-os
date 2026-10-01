@@ -7,7 +7,6 @@ import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog.js";
 const requireFromWeb = createRequire(new URL("../web/package.json", import.meta.url));
 const React = requireFromWeb("react");
 const { act, useState } = React;
-const { createRoot } = requireFromWeb("react-dom/client");
 
 test("TodoPaperDialog saves normalized entries with revision and closes once", async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: "http://localhost/", pretendToBeVisual: true });
@@ -20,6 +19,7 @@ test("TodoPaperDialog saves normalized entries with revision and closes once", a
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
   }
   const calls: Array<{ path: string; init?: RequestInit }> = [];
+  const { createRoot } = requireFromWeb("react-dom/client");
   const root = createRoot(dom.window.document.getElementById("root")!);
   let closed = 0;
   const api = { request: async <T>(path: string, init?: RequestInit) => {
@@ -36,12 +36,9 @@ test("TodoPaperDialog saves normalized entries with revision and closes once", a
   }
   try {
     await act(async () => { root.render(React.createElement(Harness)); });
-    const line = dom.window.document.querySelector<HTMLButtonElement>('[aria-label="编辑 Todo 第 1 行"]');
-    assert.ok(line);
-    await act(async () => { line.click(); });
     const textarea = dom.window.document.querySelector<HTMLTextAreaElement>("textarea");
     assert.ok(textarea);
-    await act(async () => { textarea.value = " changed "; textarea.dispatchEvent(new dom.window.Event("input", { bubbles: true })); });
+    await act(async () => { Object.getOwnPropertyDescriptor(Object.getPrototypeOf(textarea), "value")!.set!.call(textarea, " changed "); textarea.dispatchEvent(new dom.window.Event("input", { bubbles: true })); });
     const veil = dom.window.document.querySelector<HTMLButtonElement>(".paper-detail-veil");
     assert.ok(veil);
     await act(async () => { veil.click(); await new Promise((resolve) => setTimeout(resolve, 20)); });

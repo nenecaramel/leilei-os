@@ -119,9 +119,6 @@ test("search export and restore contracts expose active modules only", () => {
   );
 
   for (const retired of [
-    '"memory"',
-    '"task"',
-    '"shared_paper"',
     "ExportMemoryRecord",
     "ExportTaskRecord",
     "ExportSharedPaper",
@@ -142,9 +139,10 @@ test("search export and restore contracts expose active modules only", () => {
     search,
     /DEFAULT_MODULES = \["diary", "todo", "universe"\]/,
   );
+  assert.doesNotMatch(search, /"memory"|"task"|"shared_paper"/);
   assert.match(
     exportTypes,
-    /ExportScope = "all" \| "diary" \| "todo"/,
+    /ExportDocument = ExportDocumentV4/,
   );
 });
 

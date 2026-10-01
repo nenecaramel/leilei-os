@@ -594,7 +594,7 @@ test("Normalized editor output trims text, drops empty rows, and reports dirty c
     assert.ok(first);
 
     await act(async () => {
-      first.value = " changed ";
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(first), "value")!.set!.call(first, " changed ");
       first.dispatchEvent(new harness.dom.window.Event("input", { bubbles: true }));
     });
 
@@ -752,7 +752,7 @@ test("Todo paper writes changed entries before closing and reports the saved pre
     assert.ok(first);
 
     await act(async () => {
-      first.value = "Changed";
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(first), "value")!.set!.call(first, "Changed");
       first.dispatchEvent(new harness.dom.window.Event("input", { bubbles: true }));
     });
 
@@ -794,7 +794,7 @@ test("Todo paper keeps edits open and shows an alert when server save fails", as
     assert.ok(first);
 
     await act(async () => {
-      first.value = "Unsaved";
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(first), "value")!.set!.call(first, "Unsaved");
       first.dispatchEvent(new harness.dom.window.Event("input", { bubbles: true }));
     });
 
@@ -937,7 +937,7 @@ test("Typing in a later Todo row keeps its focus and caret", async () => {
 
     await act(async () => {
       second.focus();
-      second.value = "SecXond";
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(second), "value")!.set!.call(second, "SecXond");
       second.setSelectionRange(4, 4);
       second.dispatchEvent(
         new harness.dom.window.Event("input", { bubbles: true }),
@@ -977,7 +977,7 @@ test("Filling the last visible Todo line grows the paper past 24 lines", async (
     assert.ok(textarea);
 
     await act(async () => {
-      textarea.value = "Item 24";
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(textarea), "value")!.set!.call(textarea, "Item 24");
       textarea.dispatchEvent(
         new harness.dom.window.Event("input", { bubbles: true }),
       );
@@ -1066,7 +1066,7 @@ test("Writing into a blank visible line keeps the paper at 24 lines", async () =
     assert.equal(textarea.value, "");
 
     await act(async () => {
-      textarea.value = "New item";
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(textarea), "value")!.set!.call(textarea, "New item");
       textarea.dispatchEvent(
         new harness.dom.window.Event("input", { bubbles: true }),
       );

@@ -22,7 +22,7 @@ test("Diary comments schema and migration preserve canonical ownership and lifec
   assert.match(migration, /diary_comment/);
   assert.match(schema, /\| "add_diary_comment"/);
   assert.match(schema, /\| "diary_comment"/);
-  assert.deepEqual(journal.entries.at(-1), {
+  assert.deepEqual(journal.entries.find((entry) => entry.tag === "0037_diary_comments"), {
     idx: 37,
     version: "7",
     when: Date.parse("2026-09-14T02:00:00Z"),

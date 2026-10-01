@@ -11,7 +11,7 @@ import {
 import { registerGetDiaryTool } from "../src/mcp/tools/get-diary/register.js";
 import {
   WriteDiaryAuthenticationError,
-  registerWriteDiaryTool,
+  registerCreateDiaryTool,
 } from "../src/mcp/tools/write-diary/register.js";
 import {
   UpdateDiaryAuthenticationError,
@@ -103,7 +103,7 @@ async function callWriteDiaryFailure(input: {
   error: unknown;
 }) {
   const server = new McpServer({ name: "write-diary-error-contract", version: "1.0.0" });
-  registerWriteDiaryTool(server, {
+  registerCreateDiaryTool(server, {
     getAuthenticatedUserId: input.getAuthenticatedUserId ?? (() => USER_ID),
     diaryService: {
       async createMcpDiary() {
@@ -114,7 +114,7 @@ async function callWriteDiaryFailure(input: {
   const pair = await connectServer(server, "write-diary-error-client");
   try {
     return await pair.client.callTool({
-      name: "write_diary",
+      name: "create_diary",
       arguments: {
         title: "Contract",
         content: "Diary contract content",
@@ -252,7 +252,7 @@ test("get_diary sanitizes unknown exceptions as INTERNAL_ERROR", async () => {
   assertSecretAbsent(result, "SECRET_GET_DATABASE_DETAIL");
 });
 
-test("write_diary preserves idempotency conflicts as machine-readable codes", async () => {
+test("create_diary preserves idempotency conflicts as machine-readable codes", async () => {
   const result = await callWriteDiaryFailure({
     error: new DiaryDomainError("IDEMPOTENCY_CONFLICT", "SECRET_WRITE_DETAIL"),
   });
@@ -262,7 +262,7 @@ test("write_diary preserves idempotency conflicts as machine-readable codes", as
   assertSecretAbsent(result, "SECRET_WRITE_DETAIL");
 });
 
-test("write_diary maps missing auth to AUTHENTICATION_REQUIRED", async () => {
+test("create_diary maps missing auth to AUTHENTICATION_REQUIRED", async () => {
   const result = await callWriteDiaryFailure({
     getAuthenticatedUserId: () => {
       throw new WriteDiaryAuthenticationError();
@@ -274,7 +274,7 @@ test("write_diary maps missing auth to AUTHENTICATION_REQUIRED", async () => {
   assert.equal(error.message, "Authentication is required to write a diary entry.");
 });
 
-test("write_diary sanitizes unknown exceptions as INTERNAL_ERROR", async () => {
+test("create_diary sanitizes unknown exceptions as INTERNAL_ERROR", async () => {
   const result = await callWriteDiaryFailure({ error: new Error("SECRET_WRITE_DATABASE_DETAIL") });
   const error = errorOf(result);
   assert.equal(error.code, "INTERNAL_ERROR");

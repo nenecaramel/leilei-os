@@ -387,6 +387,7 @@ test(
         conversationId,
         expectedHeadMessageId,
         text,
+        attachmentIds: [],
         executionSelection: null,
       });
       assert.equal(result.ok, true);

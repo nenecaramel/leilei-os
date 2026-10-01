@@ -1,29 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { NextFunction, Request, Response } from "express";
-import { MemoryDomainError } from "../src/domains/memory/memory-service.js";
 import { DiaryDomainError } from "../src/domains/diary/diary-service.js";
-import { TaskDomainError } from "../src/domains/task/task-service.js";
-import { createMemoryPermanentDeleteApiHandler } from "../src/web-api/memory-router.js";
 import { createDiaryPermanentDeleteApiHandler } from "../src/web-api/diary-router.js";
-import { createTaskPermanentDeleteApiHandler } from "../src/web-api/task-router.js";
-
-test("Memory permanent delete API authenticates, delegates, and returns empty 204", async () => {
-  const calls: unknown[] = [];
-  const handler = createMemoryPermanentDeleteApiHandler({
-    memoryService: {
-      async permanentlyDeleteMemory(input: unknown) { calls.push(input); },
-    },
-  } as never);
-  const result = await invoke(handler, {
-    webUserId: "user-a",
-    params: { id: "memory-1" },
-  });
-  assert.deepEqual(calls, [{ userId: "user-a", id: "memory-1" }]);
-  assert.equal(result.status, 204);
-  assert.equal(result.jsonCalls, 0);
-  assert.equal(result.endCalls, 1);
-});
 
 test("Diary permanent delete API authenticates, delegates, and returns empty 204", async () => {
   const calls: unknown[] = [];
@@ -42,28 +21,9 @@ test("Diary permanent delete API authenticates, delegates, and returns empty 204
   assert.equal(result.endCalls, 1);
 });
 
-test("Task permanent delete API authenticates, delegates, and returns empty 204", async () => {
-  const calls: unknown[] = [];
-  const handler = createTaskPermanentDeleteApiHandler({
-    taskService: {
-      async permanentlyDeleteTask(input: unknown) { calls.push(input); },
-    },
-  } as never);
-  const result = await invoke(handler, {
-    webUserId: "user-a",
-    params: { id: "task-1" },
-  });
-  assert.deepEqual(calls, [{ userId: "user-a", id: "task-1" }]);
-  assert.equal(result.status, 204);
-  assert.equal(result.jsonCalls, 0);
-  assert.equal(result.endCalls, 1);
-});
-
 test("Permanent delete APIs preserve safe not-found status mapping", async () => {
   const cases = [
-    [createMemoryPermanentDeleteApiHandler({ memoryService: { async permanentlyDeleteMemory() { throw new MemoryDomainError("MEMORY_NOT_FOUND", "private"); } } } as never), "MEMORY_NOT_FOUND"],
     [createDiaryPermanentDeleteApiHandler({ diaryService: { async permanentlyDeleteDiary() { throw new DiaryDomainError("DIARY_NOT_FOUND", "private"); } } } as never), "DIARY_NOT_FOUND"],
-    [createTaskPermanentDeleteApiHandler({ taskService: { async permanentlyDeleteTask() { throw new TaskDomainError("TASK_NOT_FOUND", "private"); } } } as never), "TASK_NOT_FOUND"],
   ] as const;
   for (const [handler] of cases) {
     const result = await invoke(handler, { webUserId: "user-a", params: { id: "archived-1" } });

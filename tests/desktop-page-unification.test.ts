@@ -26,10 +26,6 @@ const diaryPageTsx = readFileSync(
   new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
   "utf8",
 );
-const taskPageTsx = readFileSync(
-  new URL("../web/src/pages/TaskPage.tsx", import.meta.url),
-  "utf8",
-);
 const universePageTsx = readFileSync(
   new URL("../web/src/pages/UniversePage.tsx", import.meta.url),
   "utf8",
@@ -59,11 +55,9 @@ test("the only final desktop page stylesheet is geometry-only", () => {
   assert.doesNotMatch(css, /font-family:|font-size:|font-weight:|border-radius:|box-shadow:|letter-spacing:/);
 });
 
-test("Diary and Task keep the paper/mobile component tree as the common render", () => {
+test("Diary keeps the paper/mobile component tree as the common render", () => {
   assert.match(diaryPageTsx, /<DiaryPageHeader\b/);
   assert.match(diaryPageTsx, /<MobileDiaryRows\b/);
-  assert.match(taskPageTsx, /<TaskPageHeader\b/);
-  assert.match(taskPageTsx, /<MobileTaskRows\b/);
 });
 
 test("desktop-only explanatory copy and list reopen affordance are suppressed", () => {
@@ -74,10 +68,4 @@ test("desktop-only explanatory copy and list reopen affordance are suppressed", 
 test("Universe uses the mobile map component for the common render", () => {
   assert.match(universePageTsx, /<UniverseMobileMap\b/);
   assert.doesNotMatch(universePageTsx, /DesktopUniverse|UniverseDesktopMap/);
-});
-
-test("shared Task paper keeps quick-create focus and completion metadata", () => {
-  assert.match(taskPageTsx, /createPaperEditorRef\.current\?\.focusTitle\(\)/);
-  assert.match(taskPageTsx, /<TaskPaperEditor\s+ref=\{createPaperEditorRef\}/);
-  assert.match(taskPageTsx, /完成时间：\{formatTaskPaperDeadline\(task\.completed_at, task\.timezone\)\}/);
 });

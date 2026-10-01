@@ -1,200 +1,45 @@
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/database/schema.js";
-import {
-  coreMemories,
-  diaryEntries,
-  mcpWriteIdempotency,
-  resourceLifecycleEvents,
-  tasks,
-  users,
-} from "../src/database/schema.js";
 import { DrizzleExportRepository } from "../src/domains/export/export-repository.js";
 import { DrizzleGlobalSearchRepository } from "../src/domains/global-search/global-search-repository.js";
-import { DrizzleMemoryRepository } from "../src/domains/memory/memory-repository.js";
 import { DrizzleDiaryRepository } from "../src/domains/diary/diary-repository.js";
-import { DrizzleTaskRepository } from "../src/domains/task/task-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
-const parsedDatabaseUrl = databaseUrl ? new URL(databaseUrl) : null;
-const RUN = process.env.RUN_PERMANENT_DELETE_DATABASE_TEST === "1"
-  && Boolean(databaseUrl)
-  && (parsedDatabaseUrl?.hostname === "localhost" || parsedDatabaseUrl?.hostname === "127.0.0.1");
+const host = databaseUrl ? new URL(databaseUrl).hostname : null;
+const enabled = process.env.RUN_PERMANENT_DELETE_DATABASE_TEST === "1"
+  && Boolean(databaseUrl) && (host === "localhost" || host === "127.0.0.1");
+class RollbackFixture extends Error {}
 
-class RollbackInvariantTest extends Error {}
-
-test(
-  "permanent deletion removes canonical rows from search, export, and direct reads while retaining minimal audit",
-  { skip: !RUN },
-  async () => {
-    const client = postgres(databaseUrl!, { max: 4, prepare: false, ssl: false });
-    const database = { db: drizzle(client, { schema }), close: () => client.end() };
-    try {
-      await assert.rejects(
-        database.db.transaction(async (transaction) => {
-          const userId = randomUUID();
-          const memoryId = randomUUID();
-          const diaryId = randomUUID();
-          const taskId = randomUUID();
-          const now = new Date("2026-08-20T00:00:00.000Z");
-          await transaction.insert(users).values({
-            id: userId,
-            email: `delete-invariants-${userId}@example.invalid`,
-            displayName: "Delete invariant owner",
-            status: "active",
-            createdAt: now,
-            updatedAt: now,
-          });
-          await transaction.insert(coreMemories).values({
-            id: memoryId,
-            userId,
-            category: "goal",
-            key: `deleted-memory-${memoryId}`,
-            content: "deleted memory secret",
-            tags: ["deleted"],
-            visibility: "assistant",
-            source: "mcp",
-            status: "archived",
-            author: "L",
-            createdAt: now,
-            updatedAt: now,
-          });
-          await transaction.insert(diaryEntries).values({
-            id: diaryId,
-            userId,
-            title: "Deleted diary title",
-            content: "deleted diary secret",
-            date: "2026-08-20",
-            tags: ["deleted"],
-            mood: null,
-            source: "chatgpt_mcp",
-            status: "archived",
-            author: "L",
-            idempotencyKey: `delete-invariant-${diaryId}`,
-            requestHash: createHash("sha256").update(diaryId).digest("hex"),
-            createdAt: now,
-            updatedAt: now,
-          });
-          await transaction.insert(tasks).values({
-            id: taskId,
-            userId,
-            title: "Deleted task title",
-            description: "deleted task secret",
-            status: "pending",
-            resumeStatus: null,
-            lifecycleStatus: "archived",
-            author: "L",
-            priority: "normal",
-            dueTime: null,
-            timezone: "Asia/Shanghai",
-            tags: [],
-            createdAt: now,
-            updatedAt: now,
-            completedAt: null,
-          });
-          await transaction.insert(mcpWriteIdempotency).values([
-            {
-              userId,
-              toolName: "write_memory",
-              idempotencyKey: "delete-invariant-memory",
-              requestHash: "a".repeat(64),
-              resourceType: "memory",
-              resourceId: memoryId,
-              createdAt: now,
-            },
-            {
-              userId,
-              toolName: "write_diary",
-              idempotencyKey: "delete-invariant-diary",
-              requestHash: "b".repeat(64),
-              resourceType: "diary_entry",
-              resourceId: diaryId,
-              createdAt: now,
-            },
-            {
-              userId,
-              toolName: "create_task",
-              idempotencyKey: "delete-invariant-task",
-              requestHash: "c".repeat(64),
-              resourceType: "task",
-              resourceId: taskId,
-              createdAt: now,
-            },
-          ]);
-          const memory = new DrizzleMemoryRepository(transaction as never);
-          const diary = new DrizzleDiaryRepository(transaction as never);
-          const task = new DrizzleTaskRepository(transaction as never);
-          for (const input of [
-            { userId, id: memoryId, actorType: "user" as const, channel: "web" as const },
-            { userId, id: diaryId, actorType: "user" as const, channel: "web" as const },
-            { userId, id: taskId, actorType: "user" as const, channel: "web" as const },
-          ]) {
-            const deleted = input.id === memoryId
-              ? await memory.permanentlyDeleteMemory!(input)
-              : input.id === diaryId
-                ? await diary.permanentlyDeleteDiary!(input)
-                : await task.permanentlyDeleteTask!(input);
-            assert.equal(deleted, true);
-          }
-
-          assert.equal(await memory.findArchivedAssistantMemoryById({ userId, id: memoryId }), null);
-          assert.equal(await diary.findArchivedDiaryById(userId, diaryId), null);
-          assert.equal(await task.findArchivedTaskById!(userId, taskId), null);
-
-          const exporter = new DrizzleExportRepository(transaction as never);
-          const [memoryExport, diaryExport, taskExport] = await Promise.all([
-            exporter.listMemory(userId),
-            exporter.listDiary(userId),
-            exporter.listTasks(userId),
-          ]);
-          assert.equal(memoryExport.some((row) => row.id === memoryId), false);
-          assert.equal(diaryExport.some((row) => row.id === diaryId), false);
-          assert.equal(taskExport.some((row) => row.id === taskId), false);
-
-          const search = new DrizzleGlobalSearchRepository(transaction as never);
-          for (const query of ["deleted-memory", "Deleted diary", "Deleted task"]) {
-            const results = await search.search({
-              userId,
-              query,
-              modules: ["memory", "diary", "task"],
-              scope: "all",
-              mode: "normal",
-              timezone: "Asia/Shanghai",
-              limit: 20,
-            });
-            assert.equal(results.length, 0);
-          }
-
-          const ledger = await transaction.select({ resourceType: mcpWriteIdempotency.resourceType })
-            .from(mcpWriteIdempotency).where(eq(mcpWriteIdempotency.userId, userId));
-          assert.deepEqual(
-            ledger.map((row) => row.resourceType).sort(),
-            ["diary_entry", "memory", "task"],
-          );
-          const events = await transaction.select({
-            resourceType: resourceLifecycleEvents.resourceType,
-            resourceId: resourceLifecycleEvents.resourceId,
-            action: resourceLifecycleEvents.action,
-            metadata: resourceLifecycleEvents.metadata,
-          }).from(resourceLifecycleEvents).where(eq(resourceLifecycleEvents.userId, userId));
-          assert.deepEqual(
-            events.map((event) => ({ ...event })).sort((a, b) => a.resourceType.localeCompare(b.resourceType)),
-            [
-              { resourceType: "diary", resourceId: diaryId, action: "permanent_delete", metadata: {} },
-              { resourceType: "memory", resourceId: memoryId, action: "permanent_delete", metadata: {} },
-              { resourceType: "task", resourceId: taskId, action: "permanent_delete", metadata: {} },
-            ],
-          );
-          throw new RollbackInvariantTest();
-        }),
-        RollbackInvariantTest,
-      );
-    } finally {
-      await database.close();
-    }
-  },
-);
+test("permanent deletion removes canonical Diary from search, export, and direct reads while retaining minimal audit", { skip: !enabled }, async () => {
+  const client = postgres(databaseUrl!, { max: 1, prepare: false, ssl: false });
+  const db = drizzle(client, { schema });
+  try {
+    await assert.rejects(db.transaction(async (tx) => {
+      const userId = randomUUID();
+      const id = randomUUID();
+      await tx.insert(schema.users).values({ id: userId, email: `${userId}@example.invalid`, displayName: "Delete invariant", status: "active" });
+      await tx.insert(schema.diaryEntries).values({ id, userId, title: "Deleted diary", content: "private deleted content", date: "2026-08-20", tags: [], author: "L", status: "archived", source: "chatgpt_mcp", idempotencyKey: "delete-invariant-diary", requestHash: "a".repeat(64) });
+      await tx.insert(schema.toolCalls).values({ userId, toolName: "write_diary", operation: "create", resourceType: "diary_entry", resourceId: id, idempotencyKey: "delete-invariant-diary", requestSummary: { title: "private" }, resultSummary: { id }, durationMs: 1, status: "success" });
+      await tx.insert(schema.resourceLifecycleEvents).values({ userId, resourceType: "diary", resourceId: id, action: "archive", actorType: "user", channel: "web", metadata: { title: "private" } });
+      await tx.insert(schema.mcpWriteIdempotency).values({ userId, toolName: "write_diary", idempotencyKey: "delete-invariant-diary", requestHash: "a".repeat(64), resourceType: "diary_entry", resourceId: id });
+      const diary = new DrizzleDiaryRepository(tx as never);
+      assert.equal(await diary.permanentlyDeleteDiary!({ userId, id, actorType: "user", channel: "web" }), true);
+      assert.equal(await diary.findArchivedDiaryById(userId, id), null);
+      const exported = await new DrizzleExportRepository(tx as never).listDiary(userId);
+      assert.equal(exported.some(row => row.id === id), false);
+      const found = await new DrizzleGlobalSearchRepository(tx as never).search({ userId, query: "Deleted diary", modules: ["diary"], scope: "all", mode: "normal", timezone: "Asia/Shanghai", limit: 20 });
+      assert.equal(found.length, 0);
+      const ledger = await tx.select({ resourceType: schema.mcpWriteIdempotency.resourceType }).from(schema.mcpWriteIdempotency).where(eq(schema.mcpWriteIdempotency.userId, userId));
+      assert.deepEqual(ledger, [{ resourceType: "diary_entry" }]);
+      const events = await tx.select({ resourceType: schema.resourceLifecycleEvents.resourceType, resourceId: schema.resourceLifecycleEvents.resourceId, action: schema.resourceLifecycleEvents.action, metadata: schema.resourceLifecycleEvents.metadata }).from(schema.resourceLifecycleEvents).where(eq(schema.resourceLifecycleEvents.userId, userId));
+      assert.deepEqual(events, [{ resourceType: "diary", resourceId: id, action: "permanent_delete", metadata: {} }]);
+      assert.deepEqual(await tx.select({ id: schema.toolCalls.id }).from(schema.toolCalls).where(eq(schema.toolCalls.userId, userId)), []);
+      throw new RollbackFixture();
+    }), RollbackFixture);
+  } finally { await client.end(); }
+});

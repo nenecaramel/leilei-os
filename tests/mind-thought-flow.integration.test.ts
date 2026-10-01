@@ -183,7 +183,7 @@ test(
       "你好",
       "好呀。<thought>想把 Mind 收简单</thought>",
     );
-    assert.equal(first.prompt.includes("Current thoughts:"), false);
+    assert.equal(/Current thoughts(?: \(rev \d+, supersedes all earlier snapshots\))?:/.test(first.prompt), false);
 
     const afterFirst = await thoughts();
     assert.equal(afterFirst.length, 1);
@@ -214,14 +214,40 @@ test(
       '嗯。<thought_drop ref="T1" /><thought>确认主动消息怎么存在</thought>',
     );
     assert.equal(
-      second.prompt.includes("Current thoughts:\n- [T1] 想把 Mind 收简单"),
+      /Current thoughts \(rev \d+, supersedes all earlier snapshots\):\n- \[T1\] 想把 Mind 收简单/.test(second.prompt),
       true,
     );
+    // Backend context and model instructions are separate inputs. Exercise the
+    // actual SDK transport boundary, rather than checking a static prompt constant.
+    const { AgentSdkClaudeTransport } = await import("../tools/claude-bridge/src/agent-sdk-claude-transport.mjs");
+    let providerInput: { prompt: AsyncIterable<{ message: { content: Array<{ text: string }> } }>; options: { systemPrompt: { append: string } } } | null = null;
+    const receivedPrompts: string[] = [];
+    const transport = new AgentSdkClaudeTransport({
+      environment: {},
+      queryImpl: (input: typeof providerInput) => {
+        providerInput = input;
+        return {
+          close() {},
+          async *[Symbol.asyncIterator]() {
+            assert.ok(input);
+            for await (const message of input.prompt) {
+              receivedPrompts.push(message.message.content.map(({ text }) => text).join(""));
+            }
+            yield { type: "result", subtype: "success", session_id: "thought-flow-sdk-fixture", result: "OK" };
+          },
+        };
+      },
+    });
+    await transport.executeTurn(second.prompt, { mode: "new" });
+    assert.ok(providerInput, "the generated context must reach the SDK query");
+    assert.deepEqual(receivedPrompts, [second.prompt]);
     assert.equal(
-      second.prompt.includes('<thought_drop ref="T1" />'),
+      providerInput.options.systemPrompt.append.includes('<thought_drop ref="T1" />'),
       true,
-      "the drop instruction is offered because a thought is in front of the model",
+      "the SDK query offers the drop instruction alongside the generated current T1 context",
     );
+    assert.match(providerInput.options.systemPrompt.append, /latest Current thoughts.*authoritative/);
+
     assert.equal(
       second.prompt.includes(thoughtId),
       false,
@@ -265,7 +291,7 @@ test(
     const protectedText = '<drive>旧 <thought>不能入库</thought><thought_drop ref="T1" /></drive>';
     const third = await turn(second.assistantMessageId, "好", protectedText);
     assert.equal(
-      third.prompt.includes("Current thoughts:\n- [T1] 确认主动消息怎么存在"),
+      /Current thoughts \(rev \d+, supersedes all earlier snapshots\):\n- \[T1\] 确认主动消息怎么存在/.test(third.prompt),
       true,
     );
     assert.equal(third.prompt.includes("想把 Mind 收简单"), false);
@@ -455,7 +481,7 @@ test(
       "换个说法。",
     );
     assert.equal(
-      retry.prompt.includes("Current thoughts:\n- [T1] 想把 Mind 收简单"),
+      /Current thoughts \(rev \d+, supersedes all earlier snapshots\):\n- \[T1\] 想把 Mind 收简单/.test(retry.prompt),
       true,
       "the retried generation sees the thought the old attempt dropped",
     );
@@ -486,7 +512,7 @@ test(
       "行。",
     );
     assert.equal(
-      editAgain.prompt.includes("Current thoughts:\n- [T1] 想把 Mind 收简单"),
+      /Current thoughts \(rev \d+, supersedes all earlier snapshots\):\n- \[T1\] 想把 Mind 收简单/.test(editAgain.prompt),
       true,
     );
     assert.equal(await statusOf("想把 Mind 收简单"), "active");

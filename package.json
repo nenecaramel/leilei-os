@@ -13,7 +13,7 @@
     "check:generated": "node scripts/generate-web-icons.mjs --check",
     "start": "node dist/app/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts",
+    "test": "tsx --tsconfig ./web/tsconfig.app.json --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts",
     "web:icons": "node scripts/generate-web-icons.mjs",
     "test:diary-search-integration": "RUN_DATABASE_INTEGRATION_TEST=1 tsx --test tests/diary-repository.integration.test.ts",
     "test:toy-integration": "RUN_TOY_DATABASE_INTEGRATION_TEST=1 tsx --test --test-reporter=spec tests/toy-command-repository.integration.test.ts",

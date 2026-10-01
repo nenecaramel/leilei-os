@@ -38,7 +38,7 @@ function mobileBlock(): string {
 test("Diary date filter exposes one atomic 全部时间 action", () => {
   assert.match(diaryHeader, /onDateRangeClear\(\): void/);
   assert.match(diaryHeader, />\s*全部时间\s*<\/button>/);
-  assert.match(diaryHeader, /onClick=\{onDateRangeClear\}/);
+  assert.match(diaryHeader, /onClick=\{\(\) => \{[\s\S]*?onDateRangeClear\(\);/);
   assert.match(
     diaryPage,
     /onDateRangeClear=\{\(\) =>\s*commitFilters\(\{[\s\S]*?dateFrom:\s*""[\s\S]*?dateTo:\s*""/,
@@ -84,27 +84,6 @@ test("top quick search compensates for its border width", () => {
   );
 });
 
-test("Home Records cards are 60px tall and keep 10px row gap", () => {
-  const block = mobileBlock();
-  assert.match(
-    block,
-    /\.home-bottom-nav\s*\{[^}]*row-gap:\s*10px\s*!important;/,
-  );
-  assert.match(
-    block,
-    /\.home-bottom-nav a\s*\{[^}]*height:\s*60px\s*!important;[^}]*min-height:\s*60px\s*!important;/,
-  );
-});
-
-test("Home Memory Diary Task use quick-create while Universe stays ordinary", () => {
-  assert.match(dashboard, /createQuickCreateState/);
-  assert.match(dashboard, /navigateWithinApp/);
-  assert.match(dashboard, /openQuickCreate\("memory"/);
-  assert.match(dashboard, /openQuickCreate\("diary"/);
-  assert.match(dashboard, /openQuickCreate\("task"/);
-  assert.match(dashboard, /<Link to="\/universe">Universe<\/Link>/);
-});
-
 function installDom() {
   const dom = new JSDOM(
     "<!doctype html><html><body><div id='root'></div></body></html>",
@@ -146,40 +125,3 @@ function installDom() {
 
 const waitForPaint = () =>
   new Promise((resolve) => setTimeout(resolve, 20));
-
-test("clicking Home Memory writes a root quickCreate intent", async () => {
-  const env = installDom();
-  const container = env.dom.window.document.getElementById("root")!;
-  const root = createRoot(container);
-
-  root.render(
-    React.createElement(
-      BrowserRouter,
-      null,
-      React.createElement(DashboardPageContent, {
-        api: {
-          request: async () => {
-            throw new Error("unexpected request");
-          },
-        },
-      }),
-    ),
-  );
-
-  await waitForPaint();
-
-  const memory = [...container.querySelectorAll<HTMLAnchorElement>(
-    ".home-bottom-nav a",
-  )].find((link) => link.textContent === "Memory");
-
-  assert.ok(memory);
-  memory.click();
-  await waitForPaint();
-
-  assert.equal(env.dom.window.location.pathname, "/memory");
-  assert.equal(env.dom.window.history.state?.quickCreate, "memory");
-
-  root.unmount();
-  await waitForPaint();
-  env.restore();
-});

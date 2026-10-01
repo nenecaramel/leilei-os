@@ -15,7 +15,7 @@ test("Data backup and restore share one System row language", () => {
   );
   assert.match(
     css,
-    /\.system-export-action-row\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, max-content\);[\s\S]*?min-height:\s*60px;/,
+    /\.system-export-action-row\s*\{[\s\S]*?grid-template-columns:\s*max-content;[\s\S]*?min-height:\s*60px;/,
   );
   assert.match(
     css,

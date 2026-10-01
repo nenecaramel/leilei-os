@@ -11,20 +11,20 @@ test("Todo Day Space exposes the shared module search UI and authoritative navig
   const todoApi = read("pages/todo-api.ts");
   assert.match(page, /ModuleSearchButton/);
   assert.match(page, /ModuleSearchField/);
-  assert.match(page, /ModuleSearchStateMessage/);
+  assert.match(page, /ModuleStateMessage/);
   assert.match(page, /searchTodo/);
   assert.match(page, /day-space\?date=/);
   assert.match(todoApi, /\/todo\/search/);
 });
 
-test("Memory, Diary, Task and Day Space use one module search primitive", () => {
-  for (const path of ["pages/MemoryPageHeader.tsx", "pages/DiaryPageHeader.tsx", "pages/TaskPageHeader.tsx", "pages/DaySpacePage.tsx"]) {
+test("Diary and Day Space use one module search primitive", () => {
+  for (const path of ["pages/DiaryPageHeader.tsx", "pages/DaySpacePage.tsx"]) {
     const source = read(path);
     assert.match(source, /ModuleSearchButton/);
     assert.match(source, /ModuleSearchField/);
   }
-  for (const path of ["pages/MemoryPage.tsx", "pages/DiaryPage.tsx", "pages/TaskPage.tsx", "pages/DaySpacePage.tsx"]) {
-    assert.match(read(path), /ModuleSearchStateMessage/);
+  for (const path of ["pages/DiaryPage.tsx", "pages/DaySpacePage.tsx"]) {
+    assert.match(read(path), /ModuleStateMessage/);
   }
   const primitive = read("components/ModuleSearch.tsx");
   assert.match(primitive, /memory-page-search/);

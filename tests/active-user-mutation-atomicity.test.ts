@@ -25,9 +25,7 @@ test("durable write repositories share one transaction-scoped active-user guard"
   assert.match(helper, /requireActiveUser\(/);
 
   const expectedGuards = new Map<string, number>([
-    ["src/domains/memory/memory-repository.ts", 5],
     ["src/domains/diary/diary-repository.ts", 4],
-    ["src/domains/task/task-repository.ts", 7],
     ["src/domains/todo/todo-repository.ts", 2],
     ["src/domains/universe/universe-repository-drizzle.ts", 1],
   ]);

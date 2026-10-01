@@ -11,7 +11,7 @@ test("Docker build stage copies every browser builder referenced by root build",
   const scripts = [...build.matchAll(/scripts\/build-[a-z0-9-]+-browser\.mjs/g)]
     .map((match) => match[0]);
 
-  assert.ok(scripts.length >= 2);
+  assert.deepEqual(scripts, ["scripts/build-mcp-browser.mjs"]);
   for (const script of scripts) {
     assert.ok(
       dockerfile.includes(`COPY ${script} ./${script}`),

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import postgres from "postgres";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -358,7 +360,42 @@ test(
 test("live Mind excludes legacy storage kinds without changing stored rows", { skip: !enabled }, async (t) => {
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(databaseUrl, "DATABASE_URL is required");
-  const database = createDatabase(databaseUrl, { ssl: false });
+  // Reproduce pre-0092 rows in a private test schema. Never relax the checked-in
+  // constraint in public, even in this disposable DB.
+  const databaseName = new URL(databaseUrl).pathname;
+  assert.match(databaseName, /test|ci|regression|ephemeral|scratch/i);
+  assert.notEqual(process.env.NODE_ENV, "production");
+  assert.notEqual(process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase(), "production");
+  const schemaName = `legacy_mind_${crypto.randomUUID().replaceAll("-", "")}`;
+  const admin = createDatabase(databaseUrl, { ssl: false });
+  let fixtureUserId: string | null = null;
+  let fixtureDatabase: ReturnType<typeof createDatabase> | null = null;
+  t.after(async () => {
+    try {
+      await fixtureDatabase?.close();
+      await admin.db.execute(sql.raw(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`));
+      if (fixtureUserId) {
+        await admin.db.delete(runtimeContextManifests).where(eq(runtimeContextManifests.userId, fixtureUserId));
+        await admin.db.delete(conversations).where(eq(conversations.userId, fixtureUserId));
+        await admin.db.delete(users).where(eq(users.id, fixtureUserId));
+      }
+    } finally { await admin.close(); }
+  });
+  await admin.db.execute(sql.raw(`CREATE SCHEMA "${schemaName}"`));
+  await admin.db.execute(sql.raw(`CREATE TABLE "${schemaName}".runtime_subject_states (LIKE public.runtime_subject_states INCLUDING ALL)`));
+  await admin.db.execute(sql.raw(`ALTER TABLE "${schemaName}".runtime_subject_states DROP CONSTRAINT runtime_subject_states_kind_allowed`));
+  const preContraction = readFileSync(new URL("../drizzle/0047_runtime_mind_v1.sql", import.meta.url), "utf8")
+    .split("\n").find((line) => line.includes('CONSTRAINT "runtime_subject_states_kind_allowed"'));
+  assert.ok(preContraction);
+  await admin.db.execute(sql.raw(`ALTER TABLE "${schemaName}".runtime_subject_states ADD ${preContraction.trim().replace(/,$/, "")}`));
+  const database = createDatabase(databaseUrl, {
+    ssl: false,
+    createClient: (url) => postgres(url, {
+      max: 1, ssl: false, prepare: false,
+      connection: { search_path: `"${schemaName}",public` },
+    }),
+  });
+  fixtureDatabase = database;
   const { db } = database;
   const [user] = await db.insert(users).values({
     email: `legacy-mind-${crypto.randomUUID()}@example.com`,
@@ -366,16 +403,7 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
   }).returning({ id: users.id });
   assert.ok(user);
   const userId = user.id;
-  t.after(async () => {
-    try {
-      await db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, userId));
-      await db.delete(runtimeContextManifests).where(eq(runtimeContextManifests.userId, userId));
-      await db.delete(conversations).where(eq(conversations.userId, userId));
-      await db.delete(users).where(eq(users.id, userId));
-    } finally {
-      await database.close();
-    }
-  });
+  fixtureUserId = userId;
   const conversationService = new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(db));
   const conversation = await conversationService.createConversation({ userId, title: "Legacy Mind" });
   const message = await conversationService.appendUserMessage({
@@ -407,7 +435,7 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
       versions: { schemaVersion: 1, ruleVersion: "test", processVersion: "test" },
     };
     // Raw SQL deliberately bypasses the three-kind application type to model
-    // rows an old process can still store during the promotion window.
+    // rows stored before the real CHECK contraction migration.
     await db.execute(sql`
       INSERT INTO runtime_subject_states
         (id, user_id, subject_id, kind, text, payload, scope_applicability,
@@ -419,6 +447,24 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
     `);
     records.push({ id, kind, text: `reader-${kind}` });
   }
+  // Apply the authoritative migration unchanged: historical rows survive its
+  // NOT VALID CHECK, while future retired writes must be rejected.
+  const contraction = readFileSync(new URL("../drizzle/0092_runtime_mind_three_kind_check.sql", import.meta.url), "utf8");
+  for (const statement of contraction.split("--> statement-breakpoint")) {
+    await db.execute(sql.raw(statement));
+  }
+  await t.test("post-contraction retired writes are rejected by the actual CHECK", async () => {
+    for (const kind of ["drive", "curiosity", "topic", "dream", "bedrock"]) {
+      await assert.rejects(db.execute(sql`
+        INSERT INTO runtime_subject_states
+          (id, user_id, subject_id, kind, text, scope_applicability, settlement_status, path_status, validity_status, envelope)
+        VALUES (${crypto.randomUUID()}::uuid, ${userId}::uuid, 'G', ${kind}, 'rejected new row', 'global', 'settled', 'current', 'valid', '{}'::jsonb)
+      `), (error: unknown) => {
+        const cause = (error as { cause?: { code?: string; constraint_name?: string } }).cause;
+        return cause?.code === "23514" && cause.constraint_name === "runtime_subject_states_kind_allowed";
+      });
+    }
+  });
   const current = records.slice(0, 3);
   const legacy = records.slice(3);
   const repository = new DrizzleMindProductRepository(db);

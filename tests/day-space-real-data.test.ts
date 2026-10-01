@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
-import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { MemoryRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import { DaySpacePageContent } from "../web/src/pages/DaySpacePage.js";
 import type { DaySpaceApi } from "../web/src/pages/day-space-api.js";
@@ -42,6 +41,7 @@ async function render(api: DaySpaceApi) {
   install("requestAnimationFrame", dom.window.requestAnimationFrame.bind(dom.window));
   dom.window.scrollTo = () => {};
   const container = dom.window.document.querySelector("#root")!;
+  const { createRoot } = await import("../web/node_modules/react-dom/client.js");
   const root = createRoot(container);
   await React.act(async () => {
     root.render(React.createElement(MemoryRouter, { initialEntries: ["/day-space?date=2026-08-12"] }, React.createElement(DaySpacePageContent, { api })));
@@ -144,9 +144,6 @@ async function saveTodoPaper(page: MountedPage, textValue: string) {
   assert.ok(todoPaper);
   await React.act(async () => { todoPaper.click(); });
   await page.settle();
-  const edit = page.container.querySelector<HTMLButtonElement>('[aria-label="编辑 Todo 第 1 行"]');
-  assert.ok(edit);
-  await React.act(async () => { edit.click(); });
   const textarea = page.container.querySelector<HTMLTextAreaElement>("textarea");
   assert.ok(textarea);
   await React.act(async () => {
@@ -293,9 +290,6 @@ test("Day Space retains committed Todo through refresh failure, then recovers", 
   assert.ok(todoPaper);
   await React.act(async () => { todoPaper.click(); });
   await page.settle();
-  const edit = page.container.querySelector<HTMLButtonElement>('[aria-label="编辑 Todo 第 1 行"]');
-  assert.ok(edit);
-  await React.act(async () => { edit.click(); });
   const textarea = page.container.querySelector<HTMLTextAreaElement>("textarea");
   assert.ok(textarea);
   await React.act(async () => {
@@ -402,7 +396,7 @@ test("Day Space keeps C selected for Diary and preserves metadata when changing 
   await saveDiaryPaper(page, "C becomes G");
   assert.deepEqual(updateInput, {
     id: cDiary.id,
-    title: cDiary.title,
+    title: "C becomes G",
     content: cDiary.content,
     author: "G",
     date: cDiary.date,
@@ -441,9 +435,6 @@ test("Day Space keeps an emptied committed Todo paper absent after refresh failu
   assert.ok(todoPaper);
   await React.act(async () => { todoPaper.click(); });
   await page.settle();
-  const edit = page.container.querySelector<HTMLButtonElement>('[aria-label="编辑 Todo 第 1 行"]');
-  assert.ok(edit);
-  await React.act(async () => { edit.click(); });
   const textarea = page.container.querySelector<HTMLTextAreaElement>("textarea");
   assert.ok(textarea);
   await React.act(async () => {

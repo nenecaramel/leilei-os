@@ -26,10 +26,6 @@ const indexHtml = readFileSync(
   new URL("../web/index.html", import.meta.url),
   "utf8",
 );
-const taskPageSource = readFileSync(
-  new URL("../web/src/pages/TaskPage.tsx", import.meta.url),
-  "utf8",
-);
 const diaryPageSource = readFileSync(
   new URL("../web/src/pages/DiaryPage.tsx", import.meta.url),
   "utf8",
@@ -272,9 +268,7 @@ async function measureLayout(
   });
 }
 
-test("Task and Diary route date fields share NativeDateInput", () => {
-  assert.match(taskPageSource, /import \{ NativeDateInput \}/);
-  assert.match(taskPageSource, /<NativeDateInput[\s\S]*?type="datetime-local"/);
+test("Diary route date fields share NativeDateInput", () => {
   assert.match(diaryPageHeaderSource, /import \{ NativeDateInput \}/);
   assert.match(diaryPageHeaderSource, /<NativeDateInput[\s\S]*?type="date"/);
 });

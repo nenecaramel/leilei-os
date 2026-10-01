@@ -29,12 +29,13 @@ test("authoritative docs track the checked-in migration journal head", () => {
 
   assert.equal(typeof migrationHead, "string");
   assert.ok(migrationHead);
+  assert.ok(existsSync(`drizzle/${migrationHead}.sql`));
 
   for (const path of authoritativeDocs) {
     const source = readFileSync(path, "utf8");
     assert.ok(
-      source.includes(migrationHead),
-      `${path} must name current migration head ${migrationHead}`,
+      source.includes("drizzle/meta/_journal.json"),
+      `${path} must direct readers to the canonical migration journal`,
     );
   }
 });

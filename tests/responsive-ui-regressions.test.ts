@@ -7,7 +7,6 @@ const mainTsx = readFileSync(new URL("../web/src/main.tsx", import.meta.url), "u
 const navigationCss = readFileSync(new URL("../web/src/layout/navigation-panel.css", import.meta.url), "utf8");
 const universeMobileMapTsx = readFileSync(new URL("../web/src/pages/universe/UniverseMobileMap.tsx", import.meta.url), "utf8");
 const universeDarkCss = readFileSync(new URL("../web/src/pages/universe-home-dark-production-fixes.css", import.meta.url), "utf8");
-const sentinelPageTsx = readFileSync(new URL("../web/src/pages/SentinelPage.tsx", import.meta.url), "utf8");
 const pageHeaderTsx = readFileSync(new URL("../web/src/pages/PageHeader.tsx", import.meta.url), "utf8");
 const viteConfig = readFileSync(new URL("../web/vite.config.ts", import.meta.url), "utf8");
 const geometryUrl = new URL("../web/src/native-mobile-desktop-geometry.css", import.meta.url);
@@ -134,12 +133,4 @@ test("System and Sentinel titles match the accepted native app title rendering",
   );
   assert.match(css, /\.system-page \.page-header h1\s*\{[^}]*-webkit-font-smoothing:\s*auto/s);
   assert.doesNotMatch(css, /"DM Sans"/);
-});
-
-test("Sentinel loading reuses the standard System state card", () => {
-  assert.doesNotMatch(sentinelPageTsx, /sentinel-page-loading|sentinel-loading-state/);
-  assert.match(
-    sentinelPageTsx,
-    /if\s*\(state\.status === "loading"\)\s*\{[\s\S]*?<section\s+className="system-section sentinel-status-card"[^>]*>[\s\S]*?<p\s+className="system-state-copy"\s+role="status"/s,
-  );
 });

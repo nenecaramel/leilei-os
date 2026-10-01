@@ -6,7 +6,7 @@ import { GlobalSearchService, type GlobalSearchResult } from "../src/domains/glo
 import type { GlobalSearchQuery, GlobalSearchRepository, GlobalSearchRow } from "../src/domains/global-search/global-search-repository.js";
 import { createGlobalSearchApiHandler } from "../src/web-api/global-search-router.js";
 import type { Request, Response } from "express";
-import { consumeUniverseNodeTarget, readUniverseNodeTarget } from "../web/src/pages/universe/universe-location.js";
+import { consumeUniverseNodeTarget } from "../web/src/pages/universe/universe-location.js";
 import { createMcpServer } from "../src/mcp/server/create-server.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000701";
@@ -142,9 +142,9 @@ test("Web API accepts the Universe module without accepting a client identity se
 });
 
 test("Universe navigation accepts only an existing node from the search route", () => {
-  assert.equal(readUniverseNodeTarget("?node=thought-node-1", ["thought-node-1"]), "thought-node-1");
-  assert.equal(readUniverseNodeTarget("?node=missing", ["thought-node-1"]), null);
-  assert.equal(readUniverseNodeTarget("?node=thought-node-1&user_id=other", ["thought-node-1"]), "thought-node-1");
+  assert.equal(consumeUniverseNodeTarget("?node=thought-node-1", ["thought-node-1"])?.nodeId, "thought-node-1");
+  assert.equal(consumeUniverseNodeTarget("?node=missing", ["thought-node-1"]), null);
+  assert.equal(consumeUniverseNodeTarget("?node=thought-node-1&user_id=other", ["thought-node-1"])?.nodeId, "thought-node-1");
 });
 
 test("Universe search deep-link is consumed once so later map selection is not overwritten", () => {

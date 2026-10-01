@@ -1,3 +1,4 @@
+import { env } from "../src/config/env.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -15,6 +16,7 @@ function runtime() {
   };
   return createProcessRuntime({
     environment: {
+      ...env,
       DATABASE_URL: "postgres://local",
       LOG_LEVEL: "error",
       MCP_AUTH_TOKEN: "",
@@ -152,7 +154,7 @@ test("default production public surface stays compact and reports final inventor
 
   assert.deepEqual(
     tools.map((tool) => tool.name).sort(),
-    expectedPublicNames,
+    expectedPublicNames.sort(),
     "default public inventory must stay exact",
   );
   assert.equal(tools.length, 35);

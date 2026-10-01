@@ -118,7 +118,7 @@ test("mobile drawer closes on Escape and restores focus and body scrolling", asy
     () => container.querySelector('[role="dialog"]') !== null,
     "mobile drawer navigation reopen",
   );
-  (container.querySelector('a[href="/memory"]') as HTMLAnchorElement)?.dispatchEvent(new env.dom.window.MouseEvent("click", { bubbles: true }));
+  (container.querySelector('a[href="/diary"]') as HTMLAnchorElement)?.dispatchEvent(new env.dom.window.MouseEvent("click", { bubbles: true }));
   await waitForCondition(
     () => container.querySelector('[role="dialog"]') === null,
     "mobile drawer navigation close",

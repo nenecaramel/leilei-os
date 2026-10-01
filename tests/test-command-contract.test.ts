@@ -11,9 +11,9 @@ test("root test script is the deterministic CSS-aware canonical gate", () => {
   assert.match(packageJson.scripts?.test ?? "", /--test-concurrency=1/);
 });
 
-test("Notion CI runs the canonical suite without a baseline-flake allowlist", () => {
+test("CI runs the canonical suite without a baseline-flake allowlist", () => {
   const workflow = readFileSync(
-    new URL("../.github/workflows/notion-global-write-verify.yml", import.meta.url),
+    new URL("../.github/workflows/ci.yml", import.meta.url),
     "utf8",
   );
 
