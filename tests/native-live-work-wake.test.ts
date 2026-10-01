@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  NativeLiveHttpWakeSignal,
   NativeLiveWorkWakeBroker,
 } from "../src/domains/bridge/native-live-work-wake.js";
 
@@ -123,5 +124,38 @@ test("durable work availability includes pending Mind semantic grouping requests
   assert.match(
     source,
     /FROM runtime_mind_semantic_grouping_requests AS grouping[\s\S]*grouping\.status = 'pending'[\s\S]*grouping\.status = 'reserved'/,
+  );
+});
+
+test("external wake signal posts only a bounded readiness hint", async () => {
+  const requests: Array<{
+    url: string;
+    init: RequestInit;
+  }> = [];
+  const signal = new NativeLiveHttpWakeSignal(
+    "https://wake.example/",
+    "wake-token-that-is-long-enough-for-tests",
+    (async (url, init) => {
+      requests.push({
+        url: String(url),
+        init: init ?? {},
+      });
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch,
+  );
+
+  await signal.notify({ kind: "foreground" });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.url, "https://wake.example/wake");
+  assert.equal(requests[0]?.init.method, "POST");
+  assert.equal(
+    (requests[0]?.init.headers as Record<string, string>)
+      .authorization,
+    "Bearer wake-token-that-is-long-enough-for-tests",
+  );
+  assert.deepEqual(
+    JSON.parse(String(requests[0]?.init.body)),
+    { kind: "foreground" },
   );
 });
