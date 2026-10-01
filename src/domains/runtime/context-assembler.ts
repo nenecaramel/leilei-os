@@ -12,6 +12,11 @@ import type { SubjectStateWrite } from "./subject-state-contract.js";
 import { isConsolidationEligible } from "./runtime-status-axes.js";
 import { THOUGHT_ACTIVE_LIMIT, isActiveThought } from "./thought.js";
 import { readSubjectStateOccurredAt } from "./subject-state-temporal.js";
+import {
+  fingerprintThoughtSnapshot,
+  normalizeContextLineageState,
+  type ContextLineageState,
+} from "./context-lineage.js";
 
 export type AssembledTurnContext = {
   manifest: InitialContextManifest;
@@ -270,6 +275,7 @@ export function assembleTurnContext(input: {
   maxContextItems: number;
   maxContextChars: number;
   surfaceHeadMessageId?: string | null;
+  contextLineage?: ContextLineageState | null;
 }): AssembledTurnContext {
   const surfaceHeadMessageId =
     input.surfaceHeadMessageId === undefined
@@ -308,8 +314,10 @@ export function assembleTurnContext(input: {
     throw new Error("Thought limit must be a nonnegative integer.");
   }
 
+  const parentLineage = normalizeContextLineageState(input.contextLineage);
+
   // The states arrive oldest-first, so the newest thought is labelled T1.
-  const thoughts = input.subjectStates
+  const thoughtCandidates = input.subjectStates
     .filter((state) =>
       state.kind === "thought"
       && isActiveThought(state.payload)
@@ -329,6 +337,18 @@ export function assembleTurnContext(input: {
       ),
       alias: `T${index + 1}`,
     }));
+  const thoughtFingerprint = fingerprintThoughtSnapshot(
+    thoughtCandidates.map((item) => ({
+      sourceId: item.sourceId,
+      text: item.text,
+    })),
+  );
+  const thoughtSnapshotEmitted =
+    thoughtFingerprint !== parentLineage.thoughtFingerprint;
+  const thoughtRevision = thoughtSnapshotEmitted
+    ? parentLineage.thoughtRevision + 1
+    : parentLineage.thoughtRevision;
+  const thoughts = thoughtSnapshotEmitted ? thoughtCandidates : [];
 
   const breath = recallBreath(input.userText, input.subjectStates, {
     userId: input.userId,
@@ -348,19 +368,22 @@ export function assembleTurnContext(input: {
     diversityMaxTokenOverlap:
       input.breathDiversityMaxTokenOverlap ?? 1,
   });
-  const breathItems = breath.map((hit, index) =>
-    subjectStateToContextItem(
-      hit.state,
-      selection(
-        hit.channel === "hybrid"
-          ? "breath_hybrid_match"
-          : hit.channel === "semantic"
-            ? "breath_semantic_match"
-            : "breath_lexical_match",
-        BREATH_RANK_BASE + index,
-        hit.score,
-      ),
-    ),
+  const seenStateIds = new Set(parentLineage.seenStateIds);
+  const breathItems = breath.flatMap((hit, index) =>
+    seenStateIds.has(hit.state.id)
+      ? []
+      : [subjectStateToContextItem(
+          hit.state,
+          selection(
+            hit.channel === "hybrid"
+              ? "breath_hybrid_match"
+              : hit.channel === "semantic"
+                ? "breath_semantic_match"
+                : "breath_lexical_match",
+            BREATH_RANK_BASE + index,
+            hit.score,
+          ),
+        )],
   );
 
   const selected = selectWithinBudget(
@@ -386,6 +409,13 @@ export function assembleTurnContext(input: {
     assemblyVersion: input.assemblyVersion,
     promptContractVersion: input.promptContractVersion,
     createdAt: input.assembledAt,
+    lineage: {
+      epoch: parentLineage.epoch,
+      thoughtRevision,
+      thoughtFingerprint,
+      thoughtSnapshotEmitted,
+      activeThoughtCount: thoughtCandidates.length,
+    },
     budget: {
       maxItems: input.maxContextItems,
       maxChars: input.maxContextChars,
@@ -440,8 +470,21 @@ export function assembledTurnContextFromManifest(
     ordered.filter((item) => item.type === type);
   const thoughts = ofType("thought");
 
+  const thoughtLines = thoughts
+    .map((item) => renderLine(item, false))
+    .filter(Boolean);
+  const thoughtSection = manifest.lineage
+    ? (
+        manifest.lineage.thoughtSnapshotEmitted
+          ? [
+              `Current thoughts (rev ${manifest.lineage.thoughtRevision}, supersedes all earlier snapshots):`,
+              ...(thoughtLines.length > 0 ? thoughtLines : ["- none"]),
+            ]
+          : []
+      )
+    : renderSection("Current thoughts:", thoughts, false);
   const sections = [
-    ...renderSection("Current thoughts:", thoughts, false),
+    ...thoughtSection,
     ...renderSection("Relevant memories:", ofType("memory"), true),
     ...renderSection("Relevant feelings:", ofType("feel"), true),
   ];
@@ -459,7 +502,11 @@ export function assembledTurnContextFromManifest(
   const prompt = [
     contextData,
     "",
-    renderMindWriteProtocol(thoughts.length > 0),
+    renderMindWriteProtocol(
+      manifest.lineage
+        ? manifest.lineage.activeThoughtCount > 0
+        : thoughts.length > 0,
+    ),
     "",
     `<user_message>${escapeData(renderedUserText)}</user_message>`,
   ].join("\n");
