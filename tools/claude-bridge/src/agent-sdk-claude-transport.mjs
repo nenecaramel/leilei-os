@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
+import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
 import {
   normalizeAgentSdkExecutionSelection,
 } from "./agent-sdk-execution-selection.mjs";
@@ -441,6 +442,15 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       cwd: this.cwd,
       queryOptions: {
         verbatimPrompts: !nativeScheduleCommand,
+        ...(!nativeScheduleCommand
+          ? {
+              systemPrompt: {
+                type: "preset",
+                preset: "claude_code",
+                append: LEILEIOS_MIND_SYSTEM_PROMPT,
+              },
+            }
+          : {}),
         ...executionOptions,
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
