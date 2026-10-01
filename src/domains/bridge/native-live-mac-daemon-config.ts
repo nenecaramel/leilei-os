@@ -93,12 +93,9 @@ export function resolveNativeLiveMacDaemonConfig(
     environment.LEILEI_NATIVE_LIVE_WAKE_BROKER_TOKEN,
   );
   const wakeRailwayVariables =
-    railwayVariables
-    ?? (
-      localWakeBrokerUrl || localWakeBrokerToken
-        ? readRailwayVariables()
-        : null
-    );
+    localWakeBrokerUrl && localWakeBrokerToken
+      ? null
+      : readRailwayVariables();
   const wakeBrokerBaseUrl =
     localWakeBrokerUrl
     ?? firstNonBlank(
