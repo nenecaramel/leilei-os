@@ -730,6 +730,29 @@ test("unchanged thoughts are not reinjected, while a changed snapshot advances r
   );
 });
 
+test("a compact epoch forces an explicit Thought snapshot even when none are active", () => {
+  const assembled = assembleWith(
+    [],
+    "compact 之后",
+    {
+      epoch: 1,
+      seenStateIds: [],
+      thoughtRevision: 0,
+      thoughtFingerprint: null,
+    },
+  );
+
+  assert.equal(assembled.manifest.lineage?.epoch, 1);
+  assert.equal(assembled.manifest.lineage?.thoughtRevision, 1);
+  assert.equal(assembled.manifest.lineage?.thoughtSnapshotEmitted, true);
+  assert.equal(
+    assembled.prompt.includes(
+      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- none",
+    ),
+    true,
+  );
+});
+
 test("dropping the last Thought emits an explicit empty superseding snapshot", () => {
   const first = assembleWith([
     thoughtState("th-last", "最后一个念头"),
