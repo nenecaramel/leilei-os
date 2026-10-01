@@ -290,9 +290,17 @@ test(
 
     assert.deepEqual(recoveredUnknown, {
       status: "prepared",
-      dispatchStatus: "rejected",
-      reservedBy: null,
+      dispatchStatus: "delivery_unknown",
+      reservedBy: listenerA,
       dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN",
     });
+    // Heartbeat only renews the listener. Reservation performs ambiguity expiry.
+    assert.equal(await relay.reserveNext({ userId: user.id, listenerInstanceId: listenerA, dispatchTarget: "claude_code" }), null);
+    const [expiredUnknown] = await database.db.select({
+      dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+      reservedBy: nativeLiveTurnPreparations.reservedBy,
+      dispatchErrorCode: nativeLiveTurnPreparations.dispatchErrorCode,
+    }).from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, reReserved.reservationId));
+    assert.deepEqual(expiredUnknown, { dispatchStatus: "rejected", reservedBy: null, dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN" });
   },
 );

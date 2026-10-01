@@ -8,7 +8,6 @@ import { registerSearchDiaryTool } from "../src/mcp/tools/search-diary/register.
 import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
 import { registerReadTodoDayTool } from "../src/mcp/tools/read-todo-day/register.js";
 import { registerGlobalSearchTool } from "../src/mcp/tools/global-search/register.js";
-import { registerSearchUniverseTool } from "../src/mcp/tools/search-universe/register.js";
 import { registerListUniverseNodesTool } from "../src/mcp/tools/list-universe-nodes/register.js";
 import { registerGetUniverseNodeTool } from "../src/mcp/tools/get-universe-node/register.js";
 import { registerSearchNotionTool } from "../src/mcp/tools/search-notion/register.js";
@@ -16,7 +15,6 @@ import { registerReadNotionPageTool } from "../src/mcp/tools/read-notion-page/re
 import { registerWriteNotionPageTool } from "../src/mcp/tools/write-notion-page/register.js";
 import { registerGetUniverseRelationsTool } from "../src/mcp/tools/get-universe-relations/register.js";
 import { registerGetUniverseDiarySourcesTool } from "../src/mcp/tools/get-universe-diary-sources/register.js";
-import { registerSentinelTools } from "../src/mcp/tools/sentinel/register.js";
 import { assertContentIncludes, contentText } from "./helpers/mcp-content-only.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
@@ -25,8 +23,6 @@ const DATE = "2026-09-05";
 const DIARY_BODY = "Diary body visible to a content-only client.";
 const NODE_ID = "node-content-only";
 const NOTION_PAGE_ID = "00000000-0000-4000-8000-000000000304";
-const WAKE_ID = "00000000-0000-4000-8000-000000000305";
-const SENTINEL_ID = "00000000-0000-4000-8000-000000000306";
 
 async function connect(register: (server: McpServer) => void) {
   const server = new McpServer({ name: "mcp-content-only-compatibility", version: "1.0.0" });
@@ -93,7 +89,7 @@ test("Diary search content contains a compact real-id detail pointer and detail 
       detail_tool: "get_diary",
       detail_arguments: { id: DIARY_ID, scope: "active" },
     }],
-    metadata: { count: 1 },
+    metadata: { count: 1, returned: 1, has_more: false, next_cursor: null },
   });
 
   const detail = await pair.client.callTool({ name: "get_diary", arguments: { id: DIARY_ID } });
@@ -136,7 +132,7 @@ test("Todo day content exposes entries and explicitly identifies an empty day", 
   assertContentIncludes(populated, DATE, "L", "Buy tea", "todo-1");
   assert.deepEqual((populated.structuredContent as { data: unknown }).data, {
     date: DATE,
-    papers: { L: { date: DATE, author: "L", revision: 3, entries: [{ id: "todo-1", kind: "pending", text: "Buy tea" }] }, G: null, C: null },
+    papers: { L: { date: DATE, author: "L", revision: 3, entries: [{ id: "todo-1", kind: "pending", text: "Buy tea", revision: 1 }] }, G: null, C: null },
   });
 
   const empty = await pair.client.callTool({ name: "read_todo_day", arguments: { date: "2026-09-06" } });
@@ -167,7 +163,7 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
             detail_tool: "get_universe_node" as const,
             detail_arguments: { id: NODE_ID },
           }],
-          metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: ["universe" as const], searched_scope: "active" as const },
+          metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: ["universe" as const], searched_scope: "active" as const, searched_author: null },
         };
       },
     };
@@ -191,7 +187,6 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
       },
     };
     registerGlobalSearchTool(server, { globalSearchService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerSearchUniverseTool(server, { globalSearchService, getAuthenticatedUserId: () => USER_ID } as never);
     registerListUniverseNodesTool(server, { universeService, getAuthenticatedUserId: () => USER_ID } as never);
     registerGetUniverseNodeTool(server, { universeService, getAuthenticatedUserId: () => USER_ID } as never);
     registerSearchNotionTool(server, { notionService, getAuthenticatedUserId: () => USER_ID } as never);
@@ -200,7 +195,7 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
   });
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
 
-  for (const name of ["global_search", "search_universe"] as const) {
+  for (const name of ["global_search"] as const) {
     const result = await pair.client.callTool({ name, arguments: { query: "node" } });
     assertContentIncludes(result, NODE_ID, "get_universe_node");
   }
@@ -219,7 +214,7 @@ test("Global, Universe, and Notion discovery/detail content exposes identifiers 
   assert.equal(contentText(write).includes("structured-only"), false);
 });
 
-test("Universe neighborhood, provenance, and Sentinel status content exposes decision-critical values without private capsules", async (t) => {
+test("Universe neighborhood and provenance content exposes decision-critical values", async (t) => {
   const pair = await connect((server) => {
     const universeService = {
       async loadUniverse() {
@@ -235,27 +230,8 @@ test("Universe neighborhood, provenance, and Sentinel status content exposes dec
         return { sources: [{ diaryId: DIARY_ID, title: diary.title, date: DATE, status: "active" as const }], version: 5 };
       },
     };
-    const sentinelService = {
-      async getWakeState() {
-        return {
-          wakeId: WAKE_ID,
-          sentinelId: SENTINEL_ID,
-          controlRevision: 7,
-          scheduledFor: new Date("2026-09-06T00:00:00.000Z"),
-          policyPrompt: "private policy",
-          contextCapsule: "private capsule",
-          nextWakeAt: new Date("2026-09-07T00:00:00.000Z"),
-          lastValidWakeAt: null,
-          currentTime: new Date("2026-09-06T00:00:00.000Z"),
-          timezone: "Asia/Shanghai",
-          limits: { minNextWakeSeconds: 60, maxNextWakeSeconds: 86400 },
-        };
-      },
-      async completeWake() { throw new Error("not used"); },
-    };
     registerGetUniverseRelationsTool(server, { universeService, getAuthenticatedUserId: () => USER_ID } as never);
     registerGetUniverseDiarySourcesTool(server, { sourceService: universeService, getAuthenticatedUserId: () => USER_ID } as never);
-    registerSentinelTools(server, { sentinelService, getAuthenticatedUserId: () => USER_ID } as never);
   });
   t.after(async () => { await pair.client.close(); await pair.server.close(); });
 
@@ -263,8 +239,4 @@ test("Universe neighborhood, provenance, and Sentinel status content exposes dec
   assertContentIncludes(relations, NODE_ID, "relation-1", "supports", "0.8");
   const sources = await pair.client.callTool({ name: "get_universe_diary_sources", arguments: { node_id: NODE_ID } });
   assertContentIncludes(sources, NODE_ID, DIARY_ID, diary.title, DATE, "active");
-  const state = await pair.client.callTool({ name: "sentinel_get_state", arguments: { wakeId: WAKE_ID } });
-  assertContentIncludes(state, WAKE_ID, SENTINEL_ID, "revision 7", "Asia/Shanghai", "2026-09-07");
-  assert.equal(contentText(state).includes("private capsule"), false);
-  assert.equal(JSON.stringify(state.structuredContent).includes("private capsule"), true);
 });

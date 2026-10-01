@@ -40,20 +40,14 @@ test("Data reads active-module counts and exposes active export actions", () => 
     assert.doesNotMatch(dataContentSource, new RegExp(retired));
   }
 
-  assert.match(dataContentSource, /\/system\/export\?scope=/i);
-  assert.match(dataContentSource, />\s*Export\s*</);
-  for (const [scope, label] of [
-    ["all", "All"],
-    ["diary", "Diary"],
-    ["todo", "Todo"],
-  ]) {
-    assert.match(dataContentSource, new RegExp(`\\["${scope}", "${label}"\\]`));
-  }
+  assert.match(dataContentSource, /`\/system\/export\$\{includeAudit/);
+  assert.match(dataContentSource, /Full Backup/);
+  assert.doesNotMatch(dataContentSource, /export\?scope=/);
+  const order = dataContentSource.match(/const IMPORT_MODULE_ORDER: WebImportModule\[\] = \[([\s\S]*?)\];/)?.[1];
+  assert.ok(order);
+  assert.deepEqual([...order.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]),
+    ["diary", "diary_comments", "todo", "workspaces", "conversations", "mind", "universe"]);
 
-  assert.match(
-    dataContentSource,
-    /const IMPORT_MODULE_ORDER = \["diary", "todo"\] as const;/,
-  );
 });
 
 test("Activity reads the approved endpoint and renders only safe public event fields", () => {

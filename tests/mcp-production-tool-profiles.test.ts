@@ -1,3 +1,4 @@
+import { env } from "../src/config/env.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -35,6 +36,7 @@ function runtime(input: {
   };
   return createProcessRuntime({
     environment: {
+      ...env,
       DATABASE_URL: "postgres://local",
       LOG_LEVEL: "error",
       MCP_AUTH_TOKEN: "",

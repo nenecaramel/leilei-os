@@ -59,7 +59,7 @@ test("Global Search full page uses the active-module mobile presentation", async
   assert.match(pageSource, /GlobalSearchPageHeader/);
   assert.doesNotMatch(pageSource, /匹配方式/);
   assert.doesNotMatch(pageSource, /exact_phrase|精确短语/);
-  assert.match(pageSource, /默认搜索 Diary、Todo 与 Universe。/);
+  assert.match(pageSource, /默认搜索 Diary、Todo 与 Universe；Conversations 可在模块筛选中开启/);
   assert.match(pageSource, /没有找到匹配内容/);
   assert.match(pageSource, /SEARCH_MODULES\.map/);
   assert.match(pageSource, /global-search-result-button/);
@@ -73,7 +73,7 @@ test("Global Search full page uses the active-module mobile presentation", async
   assert.match(headerSource, /ScopeIcon/);
   assert.match(headerSource, /全部模块/);
   assert.match(headerSource, /自定义范围/);
-  assert.match(headerSource, /已归档/);
+  assert.match(headerSource, /Archived|已归档/);
   assert.match(headerSource, /global-search-query/);
 
   assert.match(css, /global-search-redesign-2026-08-09:start/);
@@ -90,8 +90,8 @@ test("Global Search mobile geometry reuses the accepted shared visual language",
 
   assert.match(headerSource, /global-search-module-popover/);
   assert.match(headerSource, /global-search-scope-popover/);
-  assert.match(headerSource, />开始日期</);
-  assert.match(headerSource, />结束日期</);
+  assert.match(headerSource, /aria-label="Global Search 自定义开始时间"/);
+  assert.match(headerSource, /aria-label="Global Search 自定义结束时间"/);
 
   assert.match(css, /global-search-visual-parity-2026-08-09:start/);
   assert.match(

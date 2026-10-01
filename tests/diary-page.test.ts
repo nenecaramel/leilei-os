@@ -290,7 +290,7 @@ test("Diary latest request failure keeps URL controls and retries without Histor
   const page = await render("/diary?q=trip&tag=Japan", api);
   try {
     const historyLength = page.window.history.length;
-    assert.match(page.container.textContent ?? "", /暂时无法读取日记/);
+    assert.match(page.container.textContent ?? "", /Unable to read diary entries\./);
     assert.doesNotMatch(
       page.container.textContent ?? "",
       /private failure detail/,
@@ -302,7 +302,7 @@ test("Diary latest request failure keeps URL controls and retries without Histor
       "true",
     );
     const retry = [...page.container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "重新加载");
+      .find((candidate) => candidate.textContent === "Retry");
     assert.ok(retry);
     await React.act(async () => {
       retry.dispatchEvent(new page.window.MouseEvent("click", {

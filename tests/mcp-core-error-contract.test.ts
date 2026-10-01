@@ -14,7 +14,7 @@ import {
 import { registerListTodoDatesTool } from "../src/mcp/tools/list-todo-dates/register.js";
 import {
   WriteTodoPaperAuthenticationError,
-  registerWriteTodoPaperTool,
+  registerReplaceTodoPaperTool,
 } from "../src/mcp/tools/write-todo-paper/register.js";
 import {
   ToyCommandAuthenticationError,
@@ -68,7 +68,7 @@ function assertRawAbsent(result: ToolResult) {
 const TODO_WRITE_ARGS = {
   date: "2026-08-26",
   author: "L",
-  revision: null,
+  expected_revision: null,
   entries: [],
   idempotency_key: "core-todo-contract-0001",
 };
@@ -109,20 +109,20 @@ test("Todo read auth maps to AUTHENTICATION_REQUIRED", async () => {
   assert.equal(errorOf(result).code, "AUTHENTICATION_REQUIRED");
 });
 
-test("write_todo_paper preserves TODO_PAPER_CONFLICT", async () => {
-  const result = await callTool((server) => registerWriteTodoPaperTool(server, {
+test("replace_todo_paper preserves TODO_PAPER_CONFLICT", async () => {
+  const result = await callTool((server) => registerReplaceTodoPaperTool(server, {
     getAuthenticatedUserId: () => USER_ID,
     todoService: { async replacePaperIdempotently() { throw new TodoServiceError("TODO_PAPER_CONFLICT", RAW); } },
-  }), "write_todo_paper", TODO_WRITE_ARGS);
+  }), "replace_todo_paper", TODO_WRITE_ARGS);
   assert.equal(errorOf(result).code, "TODO_PAPER_CONFLICT");
   assertRawAbsent(result);
 });
 
 test("Todo write auth maps to AUTHENTICATION_REQUIRED", async () => {
-  const result = await callTool((server) => registerWriteTodoPaperTool(server, {
+  const result = await callTool((server) => registerReplaceTodoPaperTool(server, {
     getAuthenticatedUserId: () => { throw new WriteTodoPaperAuthenticationError(); },
     todoService: { async replacePaperIdempotently() { throw new Error("service should not run"); } },
-  }), "write_todo_paper", TODO_WRITE_ARGS);
+  }), "replace_todo_paper", TODO_WRITE_ARGS);
   assert.equal(errorOf(result).code, "AUTHENTICATION_REQUIRED");
 });
 

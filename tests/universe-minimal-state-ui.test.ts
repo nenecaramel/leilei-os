@@ -12,7 +12,7 @@ const stateCss = readFileSync(
 );
 
 test("Universe loading and empty states are plain centered text on white", () => {
-  assert.match(pageSource, />正在读取 Universe…</);
+  assert.match(pageSource, /<PageState[\s\S]*?state="loading"[\s\S]*?message="Reading\.\.\."/);
   assert.match(pageSource, /UniverseImportFlow/);
 
   assert.match(

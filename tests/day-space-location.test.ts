@@ -7,10 +7,7 @@ import {
   resolveLatestBusinessDate,
   shiftBusinessDate,
 } from "../web/src/pages/day-space-location.js";
-import {
-  listPersistedTodoPaperDates,
-  todoPaperStorageKey,
-} from "../web/src/pages/todo-paper-storage.js";
+
 
 test("Day Space parses only valid explicit business dates", () => {
   assert.equal(parseExplicitDaySpaceDate("?date=2026-08-05"), "2026-08-05");
@@ -34,30 +31,4 @@ test("Day Space resolves the latest visible content date and otherwise today", (
   );
   assert.equal(resolveLatestBusinessDate([], "2026-08-10"), "2026-08-10");
   assert.equal(buildDaySpaceLocation("2026-08-05"), "/day-space?date=2026-08-05");
-});
-
-test("Todo storage helper ignores malformed, unrelated and empty papers", () => {
-  const map = new Map<string, string>([
-    [
-      todoPaperStorageKey("L", "2026-08-06"),
-      JSON.stringify([{ id: "l-1", author: "L", kind: "pending", text: "real content" }]),
-    ],
-    [todoPaperStorageKey("G", "2026-08-07"), JSON.stringify([])],
-    [todoPaperStorageKey("G", "2026-08-08"), "{broken"],
-    ["unrelated:key", JSON.stringify([{ id: "x" }])],
-  ]);
-
-  const storage = {
-    get length() {
-      return map.size;
-    },
-    key(index: number) {
-      return [...map.keys()][index] ?? null;
-    },
-    getItem(key: string) {
-      return map.get(key) ?? null;
-    },
-  };
-
-  assert.deepEqual(listPersistedTodoPaperDates(storage), ["2026-08-06"]);
 });

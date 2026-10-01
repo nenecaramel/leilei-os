@@ -26,7 +26,7 @@ test("Calendar keeps its geometry while adding month controls, markers, retry an
   assert.match(calendarSource, /calendar-day-marker/);
   assert.match(calendarSource, /status === "ready"/);
   assert.match(calendarSource, /\/day-space\?date=/);
-  assert.match(calendarSource, /Calendar 暂时无法读取/);
+  assert.match(calendarSource, /Unable to read Calendar\./);
   assert.match(mainSource, /home-calendar-real-data\.css/);
 });
 

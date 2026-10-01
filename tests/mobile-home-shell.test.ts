@@ -126,7 +126,7 @@ test("Home uses the Todo paper coordinator and server day endpoint", () => {
   assert.match(dashboardSource, />Todo</);
   assert.doesNotMatch(dashboardSource, />Records</);
   assert.doesNotMatch(dashboardSource, /records-section|home-bottom-nav/);
-  assert.match(dashboardSource, /home-preview-section/);
+  assert.match(dashboardSource, /home-prototype-content/);
   assert.match(dashboardSource, /TodayPanel/);
   assert.match(dashboardSource, /TodoPaperDialog/);
   assert.match(dashboardSource, /CalendarPreview/);

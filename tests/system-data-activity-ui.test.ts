@@ -81,7 +81,12 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
         success: true,
         data: {
           diary: { active: 8, archived: 2 },
-          todo: { active: 9 },
+          todo: { active: 9, count: 9 },
+          diary_comments: { count: 1 },
+          workspaces: { count: 2 },
+          conversations: { active: 3, archived: 1 },
+          mind: { count: 4 },
+          universe: { nodes: 5 },
         },
       } as T;
     },
@@ -108,7 +113,10 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
     "2",
     "Todo",
     "9",
-    "—",
+    "Workspaces",
+    "Conversations",
+    "Mind",
+    "Universe",
   ]) {
     assert.match(text, new RegExp(expected));
   }
@@ -116,7 +124,8 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
 
   const todoRow = Array.from(container.querySelectorAll(".system-data-row")).find((row) => row.textContent?.includes("Todo"));
   assert.ok(todoRow);
-  assert.match(todoRow.textContent ?? "", /—/u);
+  assert.match(todoRow.textContent ?? "", /9/u);
+  assert.doesNotMatch(todoRow.textContent ?? "", /Archived/);
 
   root.unmount();
   await waitForPaint();
@@ -134,7 +143,12 @@ test("Data renders only active modules", async () => {
         success: true,
         data: {
           diary: { active: 2, archived: 1 },
-          todo: { active: 3 },
+          todo: { active: 3, count: 3 },
+          diary_comments: { count: 1 },
+          workspaces: { count: 2 },
+          conversations: { active: 3, archived: 1 },
+          mind: { count: 4 },
+          universe: { nodes: 5 },
         },
       } as T;
     },
@@ -175,7 +189,12 @@ test("Data exposes Retry after a failed count request", async () => {
         success: true,
         data: {
           diary: { active: 2, archived: 0 },
-          todo: { active: 0 },
+          todo: { active: 0, count: 0 },
+          diary_comments: { count: 1 },
+          workspaces: { count: 2 },
+          conversations: { active: 3, archived: 1 },
+          mind: { count: 4 },
+          universe: { nodes: 5 },
         },
       } as T;
     },

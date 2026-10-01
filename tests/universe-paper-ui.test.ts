@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
-import { formatUniverseNodeTimestamp } from "../web/src/pages/universe/UniverseNodePaper.js";
 import { toCanonicalMemberships } from "../web/src/pages/universe/UniverseNodeMetadata.js";
 
 const paperPath = new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url);
@@ -46,11 +45,6 @@ test("Universe node papers locally opt out of rules and signature while shared p
   const dialogSource = readFileSync(new URL("../web/src/pages/PaperDetailDialog.tsx", import.meta.url), "utf8");
   assert.match(dialogSource, /showRules\??:\s*boolean/);
   assert.match(dialogSource, /showRules = true/);
-});
-
-test("Universe node timestamps use a readable local date format", () => {
-  assert.equal(formatUniverseNodeTimestamp("2026-08-15T09:07:00.000Z", "UTC"), "2026.08.15 09:07");
-  assert.equal(formatUniverseNodeTimestamp("not-a-date", "UTC"), "时间未知");
 });
 
 test("Universe detail paper is reading-first with lightweight connection rows", () => {

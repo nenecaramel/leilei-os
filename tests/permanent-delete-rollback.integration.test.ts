@@ -8,12 +8,10 @@ import * as schema from "../src/database/schema.js";
 import {
   diaryEntries,
   resourceLifecycleEvents,
-  tasks,
   toolCalls,
   users,
 } from "../src/database/schema.js";
 import { DrizzleDiaryRepository } from "../src/domains/diary/diary-repository.js";
-import { DrizzleTaskRepository } from "../src/domains/task/task-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const parsedDatabaseUrl = databaseUrl ? new URL(databaseUrl) : null;
@@ -122,101 +120,6 @@ test(
               .where(and(
                 eq(resourceLifecycleEvents.userId, userId),
                 eq(resourceLifecycleEvents.resourceId, diaryId),
-              )),
-            [{ action: "archive" }],
-          );
-          throw new RollbackPermanentDeleteTest();
-        }),
-        (error: unknown) => error instanceof RollbackPermanentDeleteTest,
-      );
-    } finally {
-      await client.end();
-    }
-  },
-);
-
-test(
-  "Task permanent delete rolls lifecycle cleanup back when the business delete affects zero rows",
-  { skip: !RUN },
-  async () => {
-    const client = postgres(databaseUrl!, { max: 1, prepare: false, ssl: false });
-    const db = drizzle(client, { schema });
-    try {
-      await assert.rejects(
-        db.transaction(async (transaction) => {
-          const userId = randomUUID();
-          const taskId = randomUUID();
-          const now = new Date("2026-08-20T00:00:00.000Z");
-          await transaction.insert(users).values({
-            id: userId,
-            email: `task-rollback-${userId}@example.invalid`,
-            displayName: "Task rollback",
-            status: "active",
-            createdAt: now,
-            updatedAt: now,
-          });
-          await transaction.insert(tasks).values({
-            id: taskId,
-            userId,
-            title: "Rollback task",
-            description: "must remain",
-            status: "pending",
-            resumeStatus: null,
-            lifecycleStatus: "archived",
-            priority: "normal",
-            dueTime: null,
-            timezone: "Asia/Shanghai",
-            tags: [],
-            author: "L",
-            completedAt: null,
-            createdAt: now,
-            updatedAt: now,
-          });
-          await transaction.insert(resourceLifecycleEvents).values({
-            userId,
-            resourceType: "task",
-            resourceId: taskId,
-            action: "archive",
-            actorType: "user",
-            channel: "web",
-            metadata: { title: "must remain" },
-            createdAt: now,
-          });
-          await transaction.execute(sql.raw(`
-            CREATE OR REPLACE FUNCTION test_block_task_permanent_delete()
-            RETURNS trigger LANGUAGE plpgsql AS $$
-            BEGIN
-              RETURN NULL;
-            END;
-            $$
-          `));
-          await transaction.execute(sql.raw(`
-            CREATE TRIGGER test_block_task_permanent_delete_trigger
-            BEFORE DELETE ON tasks
-            FOR EACH ROW EXECUTE FUNCTION test_block_task_permanent_delete()
-          `));
-
-          const repository = new DrizzleTaskRepository(transaction as never);
-          await assert.rejects(
-            repository.permanentlyDeleteTask!({
-              userId,
-              id: taskId,
-              actorType: "user",
-              channel: "web",
-            }),
-            /affected an unexpected number of rows/i,
-          );
-          assert.deepEqual(
-            await transaction.select({ id: tasks.id }).from(tasks)
-              .where(eq(tasks.id, taskId)),
-            [{ id: taskId }],
-          );
-          assert.deepEqual(
-            await transaction.select({ action: resourceLifecycleEvents.action })
-              .from(resourceLifecycleEvents)
-              .where(and(
-                eq(resourceLifecycleEvents.userId, userId),
-                eq(resourceLifecycleEvents.resourceId, taskId),
               )),
             [{ action: "archive" }],
           );

@@ -5,7 +5,6 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
-import { legacyTodoPaperKey } from "../web/src/pages/todo-legacy-migration.js";
 import { formatTodoStorageDate } from "../web/src/pages/todo-paper-storage.js";
 
 test("Todo business dates use the device-local calendar date", () => {
@@ -96,7 +95,8 @@ test("foreground date change loads the new local day without carrying yesterday'
   assert.match(container.textContent ?? "", /today/);
   assert.doesNotMatch(container.textContent ?? "", /yesterday/);
   assert.deepEqual(requests, ["/todo/2026-08-12", "/todo/dates", "/diary/dates", "/todo/2026-08-13"]);
-  root.unmount();
+  await React.act(async () => { root.unmount(); });
+  await waitForPaint();
   env.restore();
 });
 
@@ -130,7 +130,8 @@ test("dirty paper defers date rebinding and loads the newest date after close", 
   await waitForPaint();
   assert.match(container.textContent ?? "", /today/);
   assert.deepEqual(requests, ["GET /todo/2026-08-12", "GET /todo/dates", "GET /diary/dates", "PUT /todo/2026-08-12/L", "GET /todo/dates", "GET /diary/dates", "GET /todo/2026-08-13"]);
-  root.unmount();
+  await React.act(async () => { root.unmount(); });
+  await waitForPaint();
   env.restore();
 });
 
@@ -173,7 +174,8 @@ test("a dirty C paper defers the day switch until its close saves it", async () 
   container.querySelector<HTMLButtonElement>(".paper-detail-veil")!.click();
   await waitForCondition(() => /C today/.test(container.textContent ?? ""), "new C Todo paper after close");
   assert.ok(requests.includes("PUT /todo/2026-08-12/C"));
-  root.unmount();
+  await React.act(async () => { root.unmount(); });
+  await waitForPaint();
   env.restore();
 });
 
@@ -202,7 +204,8 @@ test("a stale old-day success cannot overwrite the newer day", async () => {
   await waitForPaint();
   assert.match(container.textContent ?? "", /new day/);
   assert.doesNotMatch(container.textContent ?? "", /old day/);
-  root.unmount();
+  await React.act(async () => { root.unmount(); });
+  await waitForPaint();
   env.restore();
 });
 
@@ -231,27 +234,7 @@ test("a stale old-day failure cannot turn a newer successful load into an error"
   await waitForPaint();
   assert.match(container.textContent ?? "", /new day/);
   assert.equal(container.querySelector(".home-todo-error"), null);
-  root.unmount();
-  env.restore();
-});
-
-test("server-wins legacy migration shows a nonblocking notice", async () => {
-  const env = installDom();
-  const container = env.dom.window.document.getElementById("root")!;
-  const date = "2026-08-12";
-  const now = () => new Date(2026, 7, 12, 9, 0);
-  env.dom.window.localStorage.setItem(legacyTodoPaperKey("L", date), JSON.stringify([{ id: "legacy", author: "L", kind: "record", text: "old local note" }]));
-  const api = { request: async (path: string) => dayResponse(path.split("/").at(-1)!, "server note") };
-  const root = createRoot(container);
-  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, { api, now })));
+  await React.act(async () => { root.unmount(); });
   await waitForPaint();
-  await waitForPaint();
-  const notice = container.querySelector<HTMLElement>("[role='status']");
-  assert.ok(notice);
-  assert.match(notice?.textContent ?? "", /已保留服务器内容/);
-  assert.match(container.textContent ?? "", /server note/);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  root.unmount();
-  await new Promise((resolve) => setTimeout(resolve, 100));
   env.restore();
 });

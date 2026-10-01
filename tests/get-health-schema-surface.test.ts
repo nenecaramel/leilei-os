@@ -47,13 +47,11 @@ test("get_health exposes mutually exclusive query modes through tools/list", asy
   assert.deepEqual(inputSchema.required ?? [], [], "zero-argument today mode should remain valid");
 
   const toolDescription = tool.description ?? "";
-  assert.match(toolDescription, /date only/i);
-  assert.match(toolDescription, /days only/i);
-  assert.match(toolDescription, /omit both/i);
-  assert.match(toolDescription, /never provide both/i);
+  assert.match(toolDescription, /one date, a recent day range, or today/i);
+  const invalid = await client.callTool({ name: "get_health", arguments: { date: "2026-01-01", days: 1 } });
+  assert.equal(invalid.isError, true);
+  assert.match(JSON.stringify(invalid), /INVALID_HEALTH_INPUT/);
 
   assert.match(properties.date?.description ?? "", /mutually exclusive with days/i);
-  assert.match(properties.date?.description ?? "", /never provide both/i);
   assert.match(properties.days?.description ?? "", /mutually exclusive with date/i);
-  assert.match(properties.days?.description ?? "", /never provide both/i);
 });

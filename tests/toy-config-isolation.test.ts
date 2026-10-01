@@ -29,30 +29,10 @@ test("missing or partial Toy configuration fails closed without affecting existi
     next();
   });
   app.use("/api/v1", createWebApiRouter({
-    memory: {
-      memoryService: {
-        async readMemory() {
-          return { user: { display_name: "Leilei" }, memories: [], metadata: { count: 0 } };
-        },
-        async listAvailableCategories() {
-          return [];
-        },
-        async listAvailableTags() {
-          return [];
-        },
-      },
-    },
     diary: {
       diaryService: {
         async listDiaries() {
           return { diaries: [], metadata: { count: 0 } };
-        },
-      } as never,
-    },
-    task: {
-      taskService: {
-        async listTasks() {
-          return { tasks: [], metadata: { count: 0 } };
         },
       } as never,
     },
@@ -82,7 +62,7 @@ test("missing or partial Toy configuration fails closed without affecting existi
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const base = `http://127.0.0.1:${address.port}`;
-    for (const path of ["/api/v1/memory", "/api/v1/diary", "/api/v1/task"]) {
+    for (const path of ["/api/v1/diary"]) {
       assert.equal((await fetch(`${base}${path}`)).status, 200);
     }
 

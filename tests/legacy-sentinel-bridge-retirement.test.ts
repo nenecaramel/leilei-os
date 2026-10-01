@@ -54,15 +54,15 @@ test("current schema and retention no longer depend on retired legacy tables", a
   assert.match(schema, /user_settings/i);
 });
 
-test("0085 is the ordered migration head and preserves historical Sentinel migrations", async () => {
+test("0085 remains ordered in the journal and preserves historical Sentinel migrations", async () => {
   const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
     entries: Array<{ idx: number; when: number; tag: string }>;
   };
   const entries = journal.entries;
-  const head = entries.at(-1);
+  const retirement = entries.find((entry) => entry.idx === 85);
 
-  assert.equal(head?.idx, 85);
-  assert.equal(head?.tag, "0085_retire_legacy_sentinel_bridge");
+  assert.equal(retirement?.idx, 85);
+  assert.equal(retirement?.tag, "0085_retire_legacy_sentinel_bridge");
   assert.equal(
     entries.find((entry) => entry.idx === 30)?.tag,
     "0030_autonomous_sentinel",

@@ -23,12 +23,12 @@ test("internal MCP defaults preserve the full supported maintenance surface", ()
   const exposure = resolveMcpToolExposure(
     DEFAULT_INTERNAL_MCP_TOOL_PROFILES,
   );
+  assert.equal(mcpToolSurfaceEnabled(exposure, "ui"), false);
   for (const surface of [
     "core",
     "notion",
     "notion_advanced",
     "device",
-    "ui",
   ] as const) {
     assert.equal(mcpToolSurfaceEnabled(exposure, surface), true);
   }

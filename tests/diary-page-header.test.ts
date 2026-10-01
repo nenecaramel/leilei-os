@@ -102,13 +102,13 @@ test("Diary date, mood and tag tools expose the existing free-text/date filters"
       if (label === "按日期筛选") {
         assert.equal(
           page.container.querySelector<HTMLInputElement>(
-            'input[aria-label="开始日期"]',
+            'input[aria-label="Diary 自定义开始时间"]',
           )?.value,
           "2026-08-01",
         );
         assert.equal(
           page.container.querySelector<HTMLInputElement>(
-            'input[aria-label="结束日期"]',
+            'input[aria-label="Diary 自定义结束时间"]',
           )?.value,
           "2026-08-08",
         );
