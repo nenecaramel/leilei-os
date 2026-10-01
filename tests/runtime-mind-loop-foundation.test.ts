@@ -730,6 +730,32 @@ test("unchanged thoughts are not reinjected, while a changed snapshot advances r
   );
 });
 
+test("changed Thought snapshots fail closed instead of rendering a partial revision", () => {
+  assert.throws(
+    () => assembleTurnContext({
+      manifestId: "manifest-thought-budget",
+      userId: "u1",
+      subjectId: "G",
+      conversation: conversation([], null),
+      userMessageId: "u-thought-budget",
+      userText: "hello",
+      subjectStates: [
+        thoughtState("th-budget-1", "A".repeat(120)),
+        thoughtState("th-budget-2", "B".repeat(120)),
+      ],
+      snapshotSequence: 1,
+      assembledAt: now,
+      assemblyVersion: "assembly-v2",
+      promptContractVersion: "prompt-v5",
+      breathLimit: 1,
+      thoughtLimit: 3,
+      maxContextItems: 10,
+      maxContextChars: 150,
+    }),
+    /complete current Thought snapshot/,
+  );
+});
+
 test("Breath filters seen top results without backfilling lower-ranked matches", () => {
   const memories = [
     state("mem-a", "memory", "alpha beta gamma delta one"),
