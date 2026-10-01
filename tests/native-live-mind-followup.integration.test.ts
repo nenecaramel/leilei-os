@@ -18,6 +18,9 @@ import {
   DrizzleNativeLiveBackendTurnPort,
 } from "../src/domains/bridge/native-live-backend-turn-repository.js";
 import {
+  DrizzleNativeLiveContextLineageReader,
+} from "../src/domains/bridge/native-live-context-lineage-repository.js";
+import {
   DrizzleNativeLiveBackendRelayRepository,
 } from "../src/domains/bridge/native-live-backend-relay.js";
 import {
@@ -202,6 +205,23 @@ test(
       lineageAfterCanonical.seenStateIdsDelta,
       [expectedStateId],
       "a Memory written by Claude is already seen before its durable follow-up materializes",
+    );
+
+    const lineageReader =
+      new DrizzleNativeLiveContextLineageReader(database.db);
+    assert.deepEqual(
+      await lineageReader.readForMessage({
+        userId,
+        conversationId: conversation.id,
+        canonicalMessageId: finalized.assistantMessageId,
+      }),
+      {
+        epoch: 0,
+        seenStateIds: [expectedStateId],
+        thoughtRevision: 0,
+        thoughtFingerprint:
+          "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e6f7b0d5c7bd8f2c3f6f9f4",
+      },
     );
 
     assert.equal(
