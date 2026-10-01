@@ -106,17 +106,28 @@ export function parseContextLineageManifest(
     throw new Error("Context lineage manifest metadata is invalid.");
   }
 
+  const thoughtRefs =
+    (record.thoughtRefs as Array<Record<string, unknown>>)
+      .map((value) => ({
+        alias: value.alias as string,
+        stateId: value.stateId as string,
+      }));
+  if (
+    new Set(thoughtRefs.map((value) => value.alias)).size
+      !== thoughtRefs.length
+    || new Set(thoughtRefs.map((value) => value.stateId)).size
+      !== thoughtRefs.length
+  ) {
+    throw new Error("Context lineage Thought refs must be unique.");
+  }
+
   return {
     epoch: record.epoch as number,
     thoughtRevision: record.thoughtRevision as number,
     thoughtFingerprint: record.thoughtFingerprint,
     thoughtSnapshotEmitted: record.thoughtSnapshotEmitted,
     activeThoughtCount: record.activeThoughtCount as number,
-    thoughtRefs: (record.thoughtRefs as Array<Record<string, unknown>>)
-      .map((value) => ({
-        alias: value.alias as string,
-        stateId: value.stateId as string,
-      })),
+    thoughtRefs,
   };
 }
 
