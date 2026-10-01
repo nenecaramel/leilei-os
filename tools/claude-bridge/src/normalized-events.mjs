@@ -378,7 +378,6 @@ function normalizeUserMessageAttribution(raw) {
     ordered.push(normalized);
   };
 
-  append(primary);
   if (Array.isArray(raw?.user_message_uuids)) {
     for (
       const value of raw.user_message_uuids.slice(0, 64)
@@ -386,6 +385,7 @@ function normalizeUserMessageAttribution(raw) {
       append(value);
     }
   }
+  append(primary);
 
   if (ordered.length === 0) return null;
   return {
