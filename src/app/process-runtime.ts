@@ -21,6 +21,9 @@ import { DrizzleGlobalSearchRepository } from "../domains/global-search/global-s
 import { GlobalSearchService } from "../domains/global-search/global-search-service.js";
 import { DrizzleSystemRepository } from "../domains/system/system-repository.js";
 import { SystemService } from "../domains/system/system-service.js";
+import {
+  DrizzleClaudeAccountUsageRepository,
+} from "../domains/runtime/claude-account-usage.js";
 import { DrizzleTodoRepository } from "../domains/todo/todo-repository.js";
 import { TodoService } from "../domains/todo/todo-service.js";
 import { DrizzleExportRepository } from "../domains/export/export-repository.js";
@@ -352,8 +355,11 @@ export function createProcessRuntime(
   );
   const globalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
   const systemRepository = new DrizzleSystemRepository(db);
+  const claudeAccountUsageRepository =
+    new DrizzleClaudeAccountUsageRepository(db);
   const systemService = new SystemService(systemRepository, {
     internalMcpEnabled: Boolean(runtimeEnv.MCP_AUTH_TOKEN),
+    claudeUsageReader: claudeAccountUsageRepository,
   });
   const todoService = new TodoService(new DrizzleTodoRepository(db));
   const exportService = new ExportService(new DrizzleExportRepository(db));
@@ -507,6 +513,7 @@ export function createProcessRuntime(
   const nativeLiveRuntimeEventService =
     new NativeLiveRuntimeEventService(
       new DrizzleNativeLiveRuntimeEventRepository(db),
+      claudeAccountUsageRepository,
     );
   const nativeLiveRuntimeInteractionService =
     new NativeLiveRuntimeInteractionService(
