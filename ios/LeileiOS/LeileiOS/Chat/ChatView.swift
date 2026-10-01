@@ -3,6 +3,12 @@ import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
+private struct NativeLivePendingMidTurnDelivery:
+    Equatable {
+    let controlID: String
+    let text: String
+}
+
 struct ChatView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.scenePhase) private var scenePhase
@@ -20,6 +26,8 @@ struct ChatView: View {
     @State private var pendingOperation: NativeLivePendingOperation?
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
+    @State private var pendingMidTurnDelivery:
+        NativeLivePendingMidTurnDelivery?
     @State private var isSystemKeyboardVisible = false
     @State private var composerAttachments:
         [NativeLiveComposerAttachmentDraft] = []
@@ -111,12 +119,16 @@ struct ChatView: View {
             composerAttachments = []
             editDraft = nil
             pendingOperation = nil
+            pendingMidTurnDelivery = nil
             isComposerFocused = false
         }
         .onChange(of: isDraftConversation) { wasDraft, isDraft in
             if wasDraft && !isDraft && !isDraftCommitInFlight {
                 messageText = ""
             }
+        }
+        .onChange(of: pendingMidTurnDeliverySignal) { _, signal in
+            reconcilePendingMidTurnDelivery(signal)
         }
         .safeAreaInset(edge: .bottom) {
             ChatComposer(
@@ -133,7 +145,8 @@ struct ChatView: View {
                 isRuntimeTurnActive:
                     isRuntimeTurnActive,
                 isRuntimeControlInFlight:
-                    isRuntimeControlInFlight,
+                    isRuntimeControlInFlight
+                        || pendingMidTurnDelivery != nil,
                 interruptRequested:
                     runtimeInterruptRequested,
                 isEditing: editDraft != nil,
@@ -258,6 +271,39 @@ struct ChatView: View {
         return visibleRuntimeSurface != nil
     }
 
+    private var pendingMidTurnDeliverySignal: String? {
+        guard let pending = pendingMidTurnDelivery,
+              let surface = visibleRuntimeSurface else {
+            return nil
+        }
+
+        if let state = surface.commandLifecycleState(
+            for: pending.controlID
+        ) {
+            return "lifecycle:\(state)"
+        }
+
+        if surface.hasUserMessageAttribution(
+            pending.controlID
+        ) {
+            return "attributed"
+        }
+
+        if let control = surface.controls.first(where: {
+            $0.controlID == pending.controlID
+        }) {
+            if control.providerQueueAccepted {
+                return "receipt:queued"
+            }
+            if control.status == "failed" {
+                return "failed:"
+                    + (control.failureCode ?? "unknown")
+            }
+        }
+
+        return nil
+    }
+
     private var runtimeInterruptRequested: Bool {
         visibleRuntimeSurface?.controls.contains {
             $0.kind == "interrupt"
@@ -273,6 +319,7 @@ struct ChatView: View {
         )
         guard !normalized.isEmpty,
               !isRuntimeControlInFlight,
+              pendingMidTurnDelivery == nil,
               isRuntimeTurnActive else {
             return
         }
@@ -285,21 +332,59 @@ struct ChatView: View {
             }
 
             do {
-                try await appModel.sendNativeLiveMidTurnInput(
-                    normalized
+                let controlID =
+                    try await appModel.sendNativeLiveMidTurnInput(
+                        normalized
+                    )
+                pendingMidTurnDelivery =
+                    NativeLivePendingMidTurnDelivery(
+                        controlID: controlID,
+                        text: normalized
+                    )
+                reconcilePendingMidTurnDelivery(
+                    pendingMidTurnDeliverySignal
                 )
-
-                if messageText.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ) == normalized {
-                    messageText = ""
-                }
                 isComposerFocused = true
             } catch {
                 // Preserve the typed text. The control may be retried
                 // explicitly by the user; never blind-retry an ambiguous send.
             }
         }
+    }
+
+    private func reconcilePendingMidTurnDelivery(
+        _ signal: String?
+    ) {
+        guard let pending = pendingMidTurnDelivery,
+              let signal else {
+            return
+        }
+
+        let accepted =
+            signal == "receipt:queued"
+            || signal == "attributed"
+            || signal == "lifecycle:queued"
+            || signal == "lifecycle:started"
+            || signal == "lifecycle:completed"
+
+        let rejected =
+            signal.hasPrefix("failed:")
+            || signal == "lifecycle:cancelled"
+            || signal == "lifecycle:discarded"
+            || signal == "lifecycle:refused"
+
+        guard accepted || rejected else {
+            return
+        }
+
+        if accepted,
+           messageText.trimmingCharacters(
+               in: .whitespacesAndNewlines
+           ) == pending.text {
+            messageText = ""
+        }
+
+        pendingMidTurnDelivery = nil
     }
 
     private func interruptCurrentTurn() {
