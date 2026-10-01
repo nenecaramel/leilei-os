@@ -120,6 +120,15 @@ export function parseContextLineageManifest(
   ) {
     throw new Error("Context lineage Thought refs must be unique.");
   }
+  if (
+    thoughtRefs.some(
+      (value, index) => value.alias !== `T${index + 1}`,
+    )
+  ) {
+    throw new Error(
+      "Context lineage Thought refs must use contiguous T1..Tn aliases.",
+    );
+  }
 
   return {
     epoch: record.epoch as number,
