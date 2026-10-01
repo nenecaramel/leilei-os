@@ -1007,6 +1007,26 @@ test("persisted lineage rejects a partial or mismatched Thought snapshot", () =>
     () => assembledTurnContextFromManifest(mismatched),
     /Thought aliases do not match lineage metadata/,
   );
+
+  const tampered = structuredClone(assembled.manifest);
+  const tamperedThought = tampered.items.find(
+    (item) => item.type === "thought",
+  );
+  assert.ok(tamperedThought);
+  tamperedThought.text = "tampered after assembly";
+  assert.throws(
+    () => assembledTurnContextFromManifest(tampered),
+    /Thought fingerprint does not match the delivered snapshot/,
+  );
+
+  const noncontiguous = structuredClone(assembled.manifest);
+  assert.ok(noncontiguous.lineage);
+  noncontiguous.lineage.thoughtRefs[0]!.alias = "T2";
+  noncontiguous.lineage.thoughtRefs[1]!.alias = "T3";
+  assert.throws(
+    () => assembledTurnContextFromManifest(noncontiguous),
+    /contiguous T1\.\.Tn aliases/,
+  );
 });
 
 test("retired Drive and Curiosity tags never create Mind state, alone or beside current tags", () => {
