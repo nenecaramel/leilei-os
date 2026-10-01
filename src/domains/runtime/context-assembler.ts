@@ -433,21 +433,6 @@ export function assembleTurnContext(input: {
   return assembledTurnContextFromManifest(manifest);
 }
 
-function renderMindWriteProtocol(hasThoughts: boolean): string {
-  return [
-    "<leileios_mind_write>",
-    "Optional. Write only when this turn itself establishes something worth carrying forward. Plain text inside the tag, no nesting.",
-    "<memory>...</memory> something that happened",
-    "<feel>...</feel> how it felt",
-    "<thought>...</thought> something you want, wonder about, or are turning over",
-    `At most ${THOUGHT_ACTIVE_LIMIT} thoughts are kept; a new one displaces the oldest.`,
-    ...(hasThoughts
-      ? ['To let a current thought go: <thought_drop ref="T1" />']
-      : []),
-    "</leileios_mind_write>",
-  ].join("\n");
-}
-
 export function assembledTurnContextFromManifest(
   manifest: InitialContextManifest,
 ): AssembledTurnContext {
@@ -506,12 +491,6 @@ export function assembledTurnContextFromManifest(
     : userItems[0].text;
   const prompt = [
     contextData,
-    "",
-    renderMindWriteProtocol(
-      manifest.lineage
-        ? manifest.lineage.activeThoughtCount > 0
-        : thoughts.length > 0,
-    ),
     "",
     `<user_message>${escapeData(renderedUserText)}</user_message>`,
   ].join("\n");
