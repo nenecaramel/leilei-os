@@ -177,6 +177,18 @@ export class ClaudeEventNormalizer {
     }
 
     if (
+      raw.type === "system"
+      && raw.subtype === "session_state_changed"
+    ) {
+      emit("runtime", this.sessionId, {
+        kind: "session_state_changed",
+        state: clippedString(raw.state, 64),
+        event_uuid: clippedString(raw.uuid, 128),
+      });
+      return output;
+    }
+
+    if (
       (raw.type === "system" && raw.subtype === "api_retry")
       || raw.type === "api_retry"
     ) {

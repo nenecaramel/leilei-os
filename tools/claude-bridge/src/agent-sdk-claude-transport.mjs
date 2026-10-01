@@ -309,6 +309,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.environment = {
       ...environment,
       DISABLE_AUTO_COMPACT: "1",
+      CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
     };
     this.cwd = cwd;
     this.events = new EventEmitter();

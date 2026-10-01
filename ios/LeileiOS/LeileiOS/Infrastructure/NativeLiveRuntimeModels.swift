@@ -466,6 +466,29 @@ struct NativeLiveRuntimeSurfaceState:
         .joined(separator: "\n\n")
     }
 
+    var providerSessionState: String? {
+        for event in events.reversed() {
+            guard event.event.type == "runtime",
+                  event.event.payload?["kind"]?.stringValue
+                    == "session_state_changed" else {
+                continue
+            }
+            return event.event.payload?["state"]?.stringValue
+        }
+        return nil
+    }
+
+    var providerTurnActive: Bool? {
+        switch providerSessionState {
+        case "running", "requires_action":
+            return true
+        case "idle":
+            return false
+        default:
+            return nil
+        }
+    }
+
     var activityText: String? {
         for event in events.reversed() {
             let payload = event.event.payload ?? [:]

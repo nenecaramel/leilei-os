@@ -178,6 +178,107 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
 });
 
 
+test("Agent SDK transport enables native session state events for every turn", async () => {
+  const { AgentSdkClaudeTransport } = await import(
+    "../tools/claude-bridge/src/agent-sdk-claude-transport.mjs"
+  );
+  let queryInput: any = null;
+
+  const transport = new AgentSdkClaudeTransport({
+    environment: {
+      HOME: "/tmp/leileios-test",
+      CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "0",
+    },
+    cwd: "/tmp/leileios-test",
+    queryImpl: (input: any) => {
+      queryInput = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "session-state-test",
+          };
+          yield {
+            type: "result",
+            subtype: "success",
+            session_id: "session-state-test",
+            result: "ok",
+          };
+        },
+      };
+    },
+  });
+
+  await transport.sendNew("hello");
+
+  assert.equal(
+    queryInput?.options?.env?.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS,
+    "1",
+  );
+});
+
+test("session_state_changed stays runtime-only and iOS prefers it with legacy fallback", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "session_state_changed",
+        session_id: "session-1",
+        state: "running",
+        uuid: "state-running",
+      },
+      {
+        type: "system",
+        subtype: "session_state_changed",
+        session_id: "session-1",
+        state: "requires_action",
+        uuid: "state-action",
+      },
+      {
+        type: "system",
+        subtype: "session_state_changed",
+        session_id: "session-1",
+        state: "idle",
+        uuid: "state-idle",
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    canonicalizeNativeLiveEvents(events).blocks,
+    [],
+  );
+  assert.deepEqual(
+    events.map((event) => event.payload?.state),
+    ["running", "requires_action", "idle"],
+  );
+
+  const transport = readFileSync(
+    new URL("../tools/claude-bridge/src/agent-sdk-claude-transport.mjs", import.meta.url),
+    "utf8",
+  );
+  const models = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift", import.meta.url),
+    "utf8",
+  );
+  const chat = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Chat/ChatView.swift", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    transport,
+    /CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS:\s*"1"/,
+  );
+  assert.match(models, /case "running", "requires_action":\s*return true/);
+  assert.match(models, /case "idle":\s*return false/);
+  assert.match(chat, /visibleRuntimeSurface\?\.providerTurnActive/);
+  assert.match(chat, /return visibleRuntimeSurface != nil/);
+});
+
 test("system/init preserves bounded authoritative environment and never becomes canonical content", () => {
   const [event] = normalizeClaudeEvents(
     [{

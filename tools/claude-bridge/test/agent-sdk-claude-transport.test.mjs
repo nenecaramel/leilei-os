@@ -84,6 +84,7 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
       env: {
         HOME: "/Users/leilei",
         DISABLE_AUTO_COMPACT: "1",
+        CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
       settingSources: ["user", "project", "local"],
       systemPrompt: {
@@ -658,7 +659,10 @@ test("normal turns expose the latest live context usage with provider auto-compa
   let usageCalls = 0;
   let queryInput;
   const transport = new AgentSdkClaudeTransport({
-    environment: { DISABLE_AUTO_COMPACT: "0" },
+    environment: {
+      DISABLE_AUTO_COMPACT: "0",
+      CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "0",
+    },
     queryImpl: (input) => {
       queryInput = input;
       return {
@@ -734,6 +738,10 @@ test("normal turns expose the latest live context usage with provider auto-compa
   assert.equal(result.contextUsageError, null);
   assert.equal(
     queryInput.options.env.DISABLE_AUTO_COMPACT,
+    "1",
+  );
+  assert.equal(
+    queryInput.options.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS,
     "1",
   );
 });
