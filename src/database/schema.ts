@@ -3173,6 +3173,7 @@ export const runtimeContextManifests = pgTable(
     snapshotSequence: integer("snapshot_sequence").notNull(),
     assemblyVersion: varchar("assembly_version", { length: 64 }).notNull(),
     promptContractVersion: varchar("prompt_contract_version", { length: 64 }).notNull(),
+    lineage: jsonb("lineage").$type<Record<string, unknown> | null>(),
     budget: jsonb("budget").$type<Record<string, unknown>>().notNull(),
     items: jsonb("items").$type<Record<string, unknown>[]>().notNull(),
     assembledAt: timestamp("assembled_at", { withTimezone: true }).notNull(),
@@ -3205,6 +3206,645 @@ export const runtimeContextManifests = pgTable(
     check("runtime_context_manifests_prompt_not_blank", sql`char_length(btrim(${table.promptContractVersion})) > 0`),
     check("runtime_context_manifests_budget_object", sql`jsonb_typeof(${table.budget}) = 'object'`),
     check("runtime_context_manifests_items_array", sql`jsonb_typeof(${table.items}) = 'array'`),
+  ],
+);
+
+export const runtimeContextLineageStates = pgTable(
+  "runtime_context_lineage_states",
+  {
+    canonicalMessageId: uuid("canonical_message_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    epoch: integer("epoch").default(0).notNull(),
+    seenStateIds: jsonb("seen_state_ids")
+      .$type<string[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    thoughtRevision: integer("thought_revision").default(0).notNull(),
+    thoughtFingerprint: varchar("thought_fingerprint", { length: 64 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [
+        table.canonicalMessageId,
+        table.conversationId,
+        table.userId,
+      ],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_context_lineage_states_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    index("runtime_context_lineage_states_user_conversation_idx").on(
+      table.userId,
+      table.conversationId,
+      table.updatedAt.desc(),
+    ),
+    check(
+      "runtime_context_lineage_states_epoch_nonnegative",
+      sql`${table.epoch} >= 0`,
+    ),
+    check(
+      "runtime_context_lineage_states_seen_array",
+      sql`jsonb_typeof(${table.seenStateIds}) = 'array'`,
+    ),
+    check(
+      "runtime_context_lineage_states_thought_revision_nonnegative",
+      sql`${table.thoughtRevision} >= 0`,
+    ),
+    check(
+      "runtime_context_lineage_states_thought_fingerprint_format",
+      sql`${table.thoughtFingerprint} IS NULL OR ${table.thoughtFingerprint} ~ '^[0-9a-f]{64}
+  "runtime_distillation_watermarks",
+  {
+    userId: uuid("user_id").notNull(),
+    subjectId: text("subject_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    lastSourceMessageId: uuid("last_source_message_id").notNull(),
+    processVersion: varchar("process_version", { length: 64 }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.userId, table.subjectId, table.conversationId],
+      name: "runtime_distillation_watermarks_pk",
+    }),
+    foreignKey({
+      columns: [table.conversationId, table.userId],
+      foreignColumns: [conversations.id, conversations.userId],
+      name: "runtime_distillation_watermarks_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.lastSourceMessageId, table.conversationId, table.userId],
+      foreignColumns: [
+        conversationMessages.id,
+        conversationMessages.conversationId,
+        conversationMessages.userId,
+      ],
+      name: "runtime_distillation_watermarks_message_conversation_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    check(
+      "runtime_distillation_watermarks_subject_not_blank",
+      sql`char_length(btrim(${table.subjectId})) > 0`,
+    ),
+    check(
+      "runtime_distillation_watermarks_process_not_blank",
+      sql`char_length(btrim(${table.processVersion})) > 0`,
+    ),
+  ],
+);
+
+export const nativeLiveChatAttachments = pgTable(
+  "native_live_chat_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    objectKey: text("object_key").notNull(),
+    content: bytea("content"),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    sha256: varchar("sha256", { length: 64 }).notNull(),
+    kind: varchar("kind", { length: 16 })
+      .$type<NativeLiveChatAttachmentKind>()
+      .notNull(),
+    status: varchar("status", { length: 16 })
+      .$type<NativeLiveChatAttachmentStatus>()
+      .default("uploading")
+      .notNull(),
+    boundMessageId: uuid("bound_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    boundAt: timestamp("bound_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("native_live_chat_attachments_user_object_uidx").on(
+      table.userId,
+      table.objectKey,
+    ),
+    index("native_live_chat_attachments_user_status_created_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("native_live_chat_attachments_bound_message_idx").on(
+      table.userId,
+      table.boundMessageId,
+    ),
+    check(
+      "native_live_chat_attachments_object_key_not_blank",
+      sql`char_length(btrim(${table.objectKey})) > 0`,
+    ),
+    check(
+      "native_live_chat_attachments_filename_not_blank",
+      sql`char_length(btrim(${table.filename})) > 0`,
+    ),
+    check(
+      "native_live_chat_attachments_mime_not_blank",
+      sql`char_length(btrim(${table.mimeType})) > 0`,
+    ),
+    check(
+      "native_live_chat_attachments_size_positive",
+      sql`${table.sizeBytes} > 0`,
+    ),
+    check(
+      "native_live_chat_attachments_sha_format",
+      sql`${table.sha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "native_live_chat_attachments_kind_allowed",
+      sql`${table.kind} IN ('image', 'file')`,
+    ),
+    check(
+      "native_live_chat_attachments_status_allowed",
+      sql`${table.status} IN ('uploading', 'ready', 'bound', 'failed')`,
+    ),
+    check(
+      "native_live_chat_attachments_state_consistency",
+      sql`(
+        ${table.status} = 'uploading'
+        AND ${table.readyAt} IS NULL
+        AND ${table.boundAt} IS NULL
+        AND ${table.failedAt} IS NULL
+        AND ${table.boundMessageId} IS NULL
+      ) OR (
+        ${table.status} = 'ready'
+        AND ${table.readyAt} IS NOT NULL
+        AND ${table.boundAt} IS NULL
+        AND ${table.failedAt} IS NULL
+        AND ${table.boundMessageId} IS NULL
+      ) OR (
+        ${table.status} = 'bound'
+        AND ${table.readyAt} IS NOT NULL
+        AND ${table.boundAt} IS NOT NULL
+        AND ${table.failedAt} IS NULL
+        AND ${table.boundMessageId} IS NOT NULL
+      ) OR (
+        ${table.status} = 'failed'
+        AND ${table.boundAt} IS NULL
+        AND ${table.failedAt} IS NOT NULL
+        AND ${table.boundMessageId} IS NULL
+      )`,
+    ),
+  ],
+);
+
+export const conversationAttachments = pgTable(
+  "conversation_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    messageId: uuid("message_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    sourceAttachmentId: text("source_attachment_id"),
+    name: text("name"),
+    mimeType: text("mime_type"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.messageId, table.userId],
+      foreignColumns: [conversationMessages.id, conversationMessages.userId],
+      name: "conversation_attachments_message_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("conversation_attachments_message_ordinal_uidx").on(table.messageId, table.ordinal),
+    index("conversation_attachments_user_source_idx").on(table.userId, table.sourceAttachmentId),
+    check("conversation_attachments_ordinal_nonnegative", sql`${table.ordinal} >= 0`),
+    check("conversation_attachments_size_nonnegative", sql`${table.sizeBytes} IS NULL OR ${table.sizeBytes} >= 0`),
+    check("conversation_attachments_payload_object", sql`jsonb_typeof(${table.payload}) = 'object'`),
+  ],
+);
+
+export const conversationFavorites = pgTable(
+  "conversation_favorites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    provider: varchar("provider", { length: 32 }).$type<ConversationProvider>().notNull(),
+    sourceConversationId: text("source_conversation_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    view: varchar("view", { length: 16 }).$type<ConversationFavoriteView>().default("default").notNull(),
+    title: text("title"),
+    note: text("note"),
+    tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    conversationTitleSnapshot: text("conversation_title_snapshot"),
+    startMessageId: uuid("start_message_id").notNull(),
+    endMessageId: uuid("end_message_id").notNull(),
+    startSourceNodeId: text("start_source_node_id").notNull(),
+    endSourceNodeId: text("end_source_node_id").notNull(),
+    messageCount: integer("message_count").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("conversation_favorites_id_user_unique").on(table.id, table.userId),
+    index("conversation_favorites_user_created_idx").on(table.userId, table.createdAt.desc(), table.id.desc()),
+    index("conversation_favorites_user_provider_created_idx").on(table.userId, table.provider, table.createdAt.desc(), table.id.desc()),
+    index("conversation_favorites_user_conversation_idx").on(table.userId, table.conversationId, table.createdAt.desc()),
+    check("conversation_favorites_provider_allowed", sql`${table.provider} IN ('chatgpt', 'claude')`),
+    check("conversation_favorites_view_allowed", sql`${table.view} IN ('default', 'all')`),
+    check("conversation_favorites_source_conversation_not_blank", sql`char_length(btrim(${table.sourceConversationId})) > 0`),
+    check("conversation_favorites_start_node_not_blank", sql`char_length(btrim(${table.startSourceNodeId})) > 0`),
+    check("conversation_favorites_end_node_not_blank", sql`char_length(btrim(${table.endSourceNodeId})) > 0`),
+    check("conversation_favorites_message_count_bounds", sql`${table.messageCount} BETWEEN 1 AND 200`),
+    check("conversation_favorites_title_bounds", sql`${table.title} IS NULL OR char_length(${table.title}) <= 200`),
+    check("conversation_favorites_note_bounds", sql`${table.note} IS NULL OR char_length(${table.note}) <= 4000`),
+    check("conversation_favorites_tags_array", sql`jsonb_typeof(${table.tags}) = 'array'`),
+  ],
+);
+
+export const conversationFavoriteMessages = pgTable(
+  "conversation_favorite_messages",
+  {
+    favoriteId: uuid("favorite_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    messageId: uuid("message_id").notNull(),
+    sourceNodeId: text("source_node_id").notNull(),
+    sourceMessageId: text("source_message_id"),
+    role: varchar("role", { length: 32 }).$type<ConversationMessageRole>().notNull(),
+    model: text("model"),
+    sourceCreatedAt: timestamp("source_created_at", { withTimezone: true }),
+    displayText: text("display_text").default("").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.favoriteId, table.ordinal], name: "conversation_favorite_messages_pk" }),
+    foreignKey({
+      columns: [table.favoriteId, table.userId],
+      foreignColumns: [conversationFavorites.id, conversationFavorites.userId],
+      name: "conversation_favorite_messages_favorite_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    uniqueIndex("conversation_favorite_messages_favorite_message_uidx").on(table.favoriteId, table.messageId),
+    index("conversation_favorite_messages_user_message_idx").on(table.userId, table.messageId),
+    check("conversation_favorite_messages_ordinal_nonnegative", sql`${table.ordinal} >= 0`),
+    check("conversation_favorite_messages_source_node_not_blank", sql`char_length(btrim(${table.sourceNodeId})) > 0`),
+    check(
+      "conversation_favorite_messages_role_allowed",
+      sql`${table.role} IN ('user', 'assistant', 'system', 'tool', 'reasoning', 'unknown')`,
+    ),
+    check("conversation_favorite_messages_snapshot_object", sql`jsonb_typeof(${table.snapshot}) = 'object'`),
+  ],
+);
+
+export const conversationMessageVersions = pgTable(
+  "conversation_message_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    messageId: uuid("message_id").notNull(),
+    previousFingerprint: varchar("previous_fingerprint", { length: 64 }).notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    replacedByImportId: uuid("replaced_by_import_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.messageId, table.userId],
+      foreignColumns: [conversationMessages.id, conversationMessages.userId],
+      name: "conversation_message_versions_message_user_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.replacedByImportId, table.userId],
+      foreignColumns: [conversationImportRuns.id, conversationImportRuns.userId],
+      name: "conversation_message_versions_import_user_fk",
+    }).onDelete("restrict").onUpdate("cascade"),
+    index("conversation_message_versions_message_created_idx").on(table.messageId, table.createdAt.desc(), table.id.desc()),
+    check("conversation_message_versions_fingerprint_format", sql`${table.previousFingerprint} ~ '^[0-9a-f]{64}$'`),
+    check("conversation_message_versions_snapshot_object", sql`jsonb_typeof(${table.snapshot}) = 'object'`),
+  ],
+);
+
+
+export const universeMeta = pgTable(
+  "universe_meta",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    name: text("name").notNull(),
+    schemaVersion: integer("schema_version").default(2).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    version: integer("version").default(0).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId] }),
+    check("universe_meta_schema_version", sql`${table.schemaVersion} = 2`),
+    check("universe_meta_version_nonnegative", sql`${table.version} >= 0`),
+  ],
+);
+
+export const universeGalaxies = pgTable(
+  "universe_galaxies",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    id: text("id").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    color: text("color").notNull(),
+    order: doublePrecision("order").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.id] })],
+);
+
+export const universeNodes = pgTable(
+  "universe_nodes",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    id: text("id").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    content: text("content").notNull(),
+    type: text("type").notNull(),
+    tags: text("tags").array().default(sql`ARRAY[]::text[]`).notNull(),
+    galaxies: text("galaxies").array().default(sql`ARRAY[]::text[]`).notNull(),
+    galaxyMemberships: jsonb("galaxy_memberships")
+      .$type<Array<{ id: string; weight: number }>>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    position: jsonb("position").$type<{ x: number; y: number }>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    importance: text("importance"),
+    migration: jsonb("migration").$type<{ source: string; migratedAt: string }>(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    index("universe_nodes_user_updated_idx").on(table.userId, table.updatedAt.desc()),
+    check("universe_nodes_position_object", sql`jsonb_typeof(${table.position}) = 'object'`),
+    check(
+      "universe_nodes_galaxy_memberships_array",
+      sql`jsonb_typeof(${table.galaxyMemberships}) = 'array'`,
+    ),
+    check(
+      "universe_nodes_legacy_galaxies_empty",
+      sql`cardinality(${table.galaxies}) = 0`,
+    ),
+  ],
+);
+
+export const universeDiarySources = pgTable(
+  "universe_diary_sources",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    diaryId: uuid("diary_id").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.nodeId, table.diaryId] }),
+    foreignKey({
+      columns: [table.userId, table.nodeId],
+      foreignColumns: [universeNodes.userId, universeNodes.id],
+      name: "universe_diary_sources_node_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      columns: [table.userId, table.diaryId],
+      foreignColumns: [diaryEntries.userId, diaryEntries.id],
+      name: "universe_diary_sources_diary_fk",
+    }).onDelete("cascade").onUpdate("cascade"),
+  ],
+);
+
+export const universeRelations = pgTable(
+  "universe_relations",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    id: text("id").notNull(),
+    source: text("source").notNull(),
+    target: text("target").notNull(),
+    relationType: text("relation_type").notNull(),
+    strength: doublePrecision("strength").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("universe_relations_user_source_target_type_uidx").on(
+      table.userId,
+      table.source,
+      table.target,
+      table.relationType,
+    ),
+    index("universe_relations_user_nodes_idx").on(table.userId, table.source, table.target),
+    check(
+      "universe_relations_type_allowed",
+      sql`${table.relationType} IN ('related_to', 'supports', 'contradicts', 'extends', 'part_of', 'raises')`,
+    ),
+  ],
+);
+
+export const universeRevisions = pgTable(
+  "universe_revisions",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    id: text("id").notNull(),
+    nodeId: text("node_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    index("universe_revisions_user_node_created_idx").on(
+      table.userId,
+      table.nodeId,
+      table.createdAt.desc(),
+    ),
+    check("universe_revisions_snapshot_object", sql`jsonb_typeof(${table.snapshot}) = 'object'`),
+  ],
+);
+
+export const universeBackups = pgTable(
+  "universe_backups",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    id: text("id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    reason: text("reason").notNull(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    index("universe_backups_user_created_idx").on(table.userId, table.createdAt.desc()),
+    check("universe_backups_data_object", sql`jsonb_typeof(${table.data}) = 'object'`),
+    check("universe_backups_no_recursive_backups", sql`NOT (${table.data} ? 'backups')`),
+  ],
+);
+
+export const toyCommands = pgTable(
+  "toy_commands",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    action: toyCommandActionEnum("action").notNull(),
+    percent: integer("percent"),
+    durationSeconds: integer("duration_seconds").default(60),
+    status: toyCommandStatusEnum("status").default("pending").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    expiredAt: timestamp("expired_at", { withTimezone: true }),
+    error: varchar("error", { length: 500 }),
+  },
+  (table) => [
+    index("toy_commands_claim_queue_idx").on(
+      table.userId,
+      table.status,
+      table.expiresAt,
+      table.action,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "toy_commands_action_allowed",
+      sql`${table.action} IN ('set', 'stop')`,
+    ),
+    check(
+      "toy_commands_status_allowed",
+      sql`${table.status} IN ('pending', 'claimed', 'completed', 'failed', 'expired')`,
+    ),
+    check(
+      "toy_commands_action_percent_consistency",
+      sql`(${table.action} = 'set' AND ${table.percent} IS NOT NULL AND ${table.percent} BETWEEN 1 AND 50) OR (${table.action} = 'stop' AND ${table.percent} IS NULL)`,
+    ),
+    check(
+      "toy_commands_error_length",
+      sql`${table.error} IS NULL OR char_length(${table.error}) <= 500`,
+    ),
+    check(
+      "toy_commands_expiry_after_creation",
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    check(
+      "toy_commands_duration_seconds_consistency",
+      sql`(${table.action} = 'set' AND ${table.durationSeconds} BETWEEN 1 AND 1200) OR (${table.action} = 'stop' AND (${table.durationSeconds} IS NULL OR ${table.durationSeconds} = 60))`,
+    ),
+  ],
+);
+export type UserPageCopy = {
+  diarySubtitle?: string;
+  settingsSubtitle?: string;
+  homeHeroEyebrow?: string | null;
+  homeHeroTitleMode?: "auto" | "custom";
+  homeHeroTitle?: string | null;
+  homeHeroDescriptionMode?: "auto" | "custom";
+  homeHeroDescription?: string | null;
+};
+
+export const userSettings = pgTable(
+  "user_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+
+    accentColor: varchar("accent_color", { length: 7 })
+      .default("#405f4d")
+      .notNull(),
+
+    homeTitle: varchar("home_title", { length: 120 }),
+
+    homeSubtitle: varchar("home_subtitle", { length: 240 }),
+
+    preferredName: varchar("preferred_name", { length: 80 }),
+
+    timezone: varchar("timezone", { length: 64 })
+      .default("Asia/Shanghai")
+      .notNull(),
+
+    pageCopy: jsonb("page_copy")
+      .$type<UserPageCopy>()
+      .default(sql`'{}'::jsonb`)
+      .notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_settings_user_unique_idx").on(table.userId),
+
+    check(
+      "user_settings_accent_color_format",
+      sql`${table.accentColor} ~ '^#[0-9A-Fa-f]{6}$'`,
+    ),
+
+    check(
+      "user_settings_home_title_not_blank",
+      sql`${table.homeTitle} IS NULL OR char_length(btrim(${table.homeTitle})) > 0`,
+    ),
+
+    check(
+      "user_settings_home_subtitle_not_blank",
+      sql`${table.homeSubtitle} IS NULL OR char_length(btrim(${table.homeSubtitle})) > 0`,
+    ),
+
+    check(
+      "user_settings_preferred_name_not_blank",
+      sql`${table.preferredName} IS NULL OR char_length(btrim(${table.preferredName})) > 0`,
+    ),
+
+    check(
+      "user_settings_timezone_not_blank",
+      sql`char_length(btrim(${table.timezone})) > 0`,
+    ),
+  ],
+);
+`,
+    ),
   ],
 );
 
