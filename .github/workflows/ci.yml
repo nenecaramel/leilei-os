@@ -8,7 +8,34 @@ on:
       - main
 
 jobs:
-  verify:
+  canonical-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact event head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install root dependencies
+        id: install
+        run: pnpm install --frozen-lockfile
+      - name: Install Web test dependencies
+        run: cd web && npm ci
+      - name: Run deterministic canonical suite
+        run: pnpm test
+
+  postgres-regressions:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -43,20 +70,17 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-      - name: Build tiny wake broker
-        run: cd cmd/native-live-wake-broker && go test ./...
-      - run: pnpm install --frozen-lockfile
-      - run: cd web && npm ci
+      - name: Install root dependencies
+        id: install
+        run: pnpm install --frozen-lockfile
       - name: Apply ephemeral PostgreSQL migrations
+        id: migrate
         run: pnpm db:migrate
       - name: Verify migration ledger
+        id: ledger
         run: pnpm db:check
-      - name: Run deterministic canonical suite
-        run: pnpm test
       - name: Run active-user PostgreSQL regressions
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' && steps.ledger.outcome == 'success' }}
         env:
           RUN_ACTIVE_USER_DATABASE_INTEGRATION_TEST: "1"
           RUN_DATABASE_INTEGRATION_TEST: "1"
@@ -74,21 +98,122 @@ jobs:
           tests/mcp-write-idempotency.integration.test.ts
           tests/universe-mcp-provenance.integration.test.ts
       - name: Run isolated Native Live / Runtime PostgreSQL regressions
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' && steps.ledger.outcome == 'success' }}
         env:
           RUN_ISOLATED_POSTGRES_REGRESSIONS: "1"
         run: pnpm test:isolated-postgres-regressions
       - name: Run retention PostgreSQL regression
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' && steps.ledger.outcome == 'success' }}
         env:
           RUN_DATA_RETENTION_DATABASE_TEST: "1"
         run: >-
           pnpm exec tsx --test --test-concurrency=1
           tests/data-retention.integration.test.ts
+
+  root-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact event head: $actual"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install root dependencies
+        id: install
+        run: pnpm install --frozen-lockfile
       - name: Typecheck root
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm typecheck
       - name: Verify generated artifacts
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm check:generated
       - name: Build root
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm build
-      - name: Typecheck and build Web
-        run: cd web && npm run typecheck && npm run build
-      - run: git diff --check
+      - name: Check whitespace
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: git diff --check
+
+  web-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        working-directory: .
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact event head: $actual"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install Web dependencies
+        id: install
+        run: npm ci
+      - name: Typecheck Web
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+      - name: Build Web
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+
+  wake-broker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+          echo "Checked out exact event head: $actual"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: cmd/native-live-wake-broker/go.sum
+      - name: Build tiny wake broker
+        run: cd cmd/native-live-wake-broker && go test ./...
+
+
+  claude-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact event head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$actual" = "$expected"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test Claude bridge
+        run: cd tools/claude-bridge && pnpm test
