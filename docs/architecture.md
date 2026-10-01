@@ -99,7 +99,7 @@ Streamable HTTP sessions are process-local and namespaced: `/mcp` uses the publi
 
 PostgreSQL holds durable user, Diary, Todo, Universe, Conversation Archive, Native Live/Runtime, audit, integration, and related application state. Historical migrations for retired product surfaces remain in the migration chain because migration history is append-only.
 
-The canonical checked-in migration source is `drizzle/meta/_journal.json`; read its final entry when the current migration head is needed. The current checked-in head on this branch is `0094_runtime_context_lineage`.
+The canonical checked-in migration source is `drizzle/meta/_journal.json`; read its final entry when the current migration head is needed instead of copying a head value into this document.
 
 Railway runs `node dist/database/migrate.js` as the configured pre-deploy command. The runner performs readiness checks, uses the LeileiOS-owned `public.leilei_schema_migrations` ledger, cross-checks the legacy Drizzle ledger when bootstrapping, and applies pending checked-in migrations transactionally.
 
