@@ -49,6 +49,7 @@ import {
   type NativeLiveRuntimeAttachment,
 } from "./native-live-attachment-service.js";
 import {
+  normalizeContextLineageState,
   parseContextLineageManifest,
 } from "../runtime/context-lineage.js";
 import { nativeLiveMindFollowUpStateId } from "./native-live-mind-state-id.js";
@@ -1139,6 +1140,87 @@ implements NativeLiveBackendTurnPort {
       return;
     }
 
+    const [userMessage] = await transaction
+      .select({
+        parentMessageId: conversationMessages.parentMessageId,
+      })
+      .from(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.id, row.canonicalUserMessageId),
+          eq(conversationMessages.userId, row.userId),
+          eq(conversationMessages.conversationId, row.conversationId),
+        ),
+      )
+      .limit(1);
+    if (!userMessage) {
+      throw new Error(
+        "Context lineage source user message was not found.",
+      );
+    }
+
+    let parentLineage = normalizeContextLineageState(null);
+    if (userMessage.parentMessageId) {
+      const rows = await transaction.execute<{
+        epoch: number;
+        seen_state_ids: string[];
+        thought_revision: number;
+        thought_fingerprint: string | null;
+      }>(sql`
+        WITH RECURSIVE current_path AS (
+          SELECT
+            message.id,
+            message.parent_message_id,
+            0 AS depth
+          FROM conversation_messages AS message
+          WHERE message.id = ${userMessage.parentMessageId}::uuid
+            AND message.user_id = ${row.userId}::uuid
+            AND message.conversation_id = ${row.conversationId}::uuid
+
+          UNION ALL
+
+          SELECT
+            parent.id,
+            parent.parent_message_id,
+            path.depth + 1
+          FROM conversation_messages AS parent
+          INNER JOIN current_path AS path
+            ON parent.id = path.parent_message_id
+          WHERE parent.user_id = ${row.userId}::uuid
+            AND parent.conversation_id = ${row.conversationId}::uuid
+        )
+        SELECT
+          lineage.epoch,
+          lineage.seen_state_ids,
+          lineage.thought_revision,
+          lineage.thought_fingerprint
+        FROM current_path AS path
+        INNER JOIN runtime_context_lineage_states AS lineage
+          ON lineage.canonical_message_id = path.id
+         AND lineage.user_id = ${row.userId}::uuid
+         AND lineage.conversation_id = ${row.conversationId}::uuid
+        ORDER BY path.depth ASC
+        LIMIT 1
+      `);
+      const parentRow = rows[0];
+      parentLineage = normalizeContextLineageState(
+        parentRow
+          ? {
+              epoch: Number(parentRow.epoch),
+              seenStateIds: parentRow.seen_state_ids,
+              thoughtRevision: Number(parentRow.thought_revision),
+              thoughtFingerprint: parentRow.thought_fingerprint,
+            }
+          : null,
+      );
+    }
+
+    if (manifestLineage.epoch !== parentLineage.epoch) {
+      throw new Error(
+        "Prepared context lineage no longer matches its parent checkpoint.",
+      );
+    }
+
     const injectedStateIds = (manifestRow?.items ?? []).flatMap(
       (item) => {
         if (
@@ -1173,8 +1255,9 @@ implements NativeLiveBackendTurnPort {
           : [],
     );
 
-    const seenStateIdsDelta = [
+    const seenStateIds = [
       ...new Set([
+        ...parentLineage.seenStateIds,
         ...injectedStateIds,
         ...selfWrittenStateIds,
       ]),
@@ -1185,7 +1268,7 @@ implements NativeLiveBackendTurnPort {
       userId: row.userId,
       conversationId: row.conversationId,
       epoch: manifestLineage.epoch,
-      seenStateIdsDelta,
+      seenStateIds,
       thoughtRevision: manifestLineage.thoughtRevision,
       thoughtFingerprint: manifestLineage.thoughtFingerprint,
     });
