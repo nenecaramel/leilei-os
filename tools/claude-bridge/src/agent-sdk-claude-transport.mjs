@@ -442,15 +442,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       cwd: this.cwd,
       queryOptions: {
         verbatimPrompts: !nativeScheduleCommand,
-        ...(!nativeScheduleCommand
-          ? {
-              systemPrompt: {
-                type: "preset",
-                preset: "claude_code",
-                append: LEILEIOS_MIND_SYSTEM_PROMPT,
-              },
-            }
-          : {}),
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: LEILEIOS_MIND_SYSTEM_PROMPT,
+        },
         ...executionOptions,
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
