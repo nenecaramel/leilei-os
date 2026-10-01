@@ -65,28 +65,33 @@ export class NativeLiveMindSemanticActionExecutor {
       subjectId: this.subjectId,
       manifestId: input.prepareId,
     });
-    const item = manifest?.items.find(
+    if (!manifest || manifest.conversationId !== input.conversationId) {
+      return receipt("rejected", null, "MANIFEST_NOT_FOUND");
+    }
+
+    const lineageRef = manifest.lineage?.thoughtRefs.find(
+      (candidate) => candidate.alias === action.ref,
+    );
+    const legacyItem = manifest.items.find(
       (candidate) =>
         candidate.type === "thought"
         && candidate.alias === action.ref,
     );
-    if (!manifest || manifest.conversationId !== input.conversationId) {
-      return receipt("rejected", null, "MANIFEST_NOT_FOUND");
-    }
-    if (!item) {
+    const stateId = lineageRef?.stateId ?? legacyItem?.sourceId ?? null;
+    if (!stateId) {
       return receipt("rejected", null, "THOUGHT_REF_UNKNOWN");
     }
 
     const result = await this.thoughts.dropThought({
       userId: input.userId,
       subjectId: this.subjectId,
-      stateId: item.sourceId,
+      stateId,
       droppedAt: normalizeIso(this.now()),
       droppedByMessageId: input.assistantMessageId,
     });
     return result.outcome === "rejected"
-      ? receipt("rejected", item.sourceId, result.code)
-      : receipt(result.outcome, item.sourceId);
+      ? receipt("rejected", stateId, result.code)
+      : receipt(result.outcome, stateId);
   }
 }
 

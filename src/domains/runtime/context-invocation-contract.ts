@@ -2,6 +2,11 @@ import type {
   PersistentAuthority,
   RuntimePrincipal,
 } from "./persistent-write-envelope.js";
+import {
+  fingerprintThoughtSnapshot,
+  parseContextLineageManifest,
+  type ContextLineageManifest,
+} from "./context-lineage.js";
 
 export type ContextSelection = {
   reason: string;
@@ -52,6 +57,7 @@ export type InitialContextManifest = {
   assemblyVersion: string;
   promptContractVersion: string;
   createdAt: string;
+  lineage?: ContextLineageManifest | null;
   budget: ContextBudget;
   items: ContextManifestItem[];
 };
@@ -93,6 +99,68 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
     || manifest.budget.usedChars > manifest.budget.maxChars
   ) {
     throw new Error("Context manifest exceeds its declared budget.");
+  }
+  if (manifest.lineage) {
+    const lineage = parseContextLineageManifest(manifest.lineage);
+    if (!lineage) {
+      throw new Error("Context manifest lineage metadata is invalid.");
+    }
+    const thoughtItems = manifest.items.filter(
+      (item) => item.type === "thought",
+    );
+    if (
+      lineage.thoughtSnapshotEmitted
+        ? thoughtItems.length !== lineage.activeThoughtCount
+        : thoughtItems.length !== 0
+    ) {
+      throw new Error(
+        "Context manifest Thought snapshot does not match lineage metadata.",
+      );
+    }
+    if (lineage.thoughtSnapshotEmitted) {
+      const expected = new Map(
+        lineage.thoughtRefs.map((value) => [
+          value.alias,
+          value.stateId,
+        ]),
+      );
+      if (
+        new Set(thoughtItems.map((item) => item.alias)).size
+          !== thoughtItems.length
+        || thoughtItems.some(
+          (item) =>
+            !item.alias
+            || expected.get(item.alias) !== item.sourceId,
+        )
+      ) {
+        throw new Error(
+          "Context manifest Thought aliases do not match lineage metadata.",
+        );
+      }
+
+      const itemByAlias = new Map(
+        thoughtItems.map((item) => [item.alias!, item]),
+      );
+      const deliveredFingerprint = fingerprintThoughtSnapshot(
+        lineage.thoughtRefs.map((ref) => {
+          const item = itemByAlias.get(ref.alias);
+          if (!item) {
+            throw new Error(
+              "Context manifest Thought aliases do not match lineage metadata.",
+            );
+          }
+          return {
+            sourceId: item.sourceId,
+            text: item.text,
+          };
+        }),
+      );
+      if (deliveredFingerprint !== lineage.thoughtFingerprint) {
+        throw new Error(
+          "Context manifest Thought fingerprint does not match the delivered snapshot.",
+        );
+      }
+    }
   }
   for (const item of manifest.items) {
     if (

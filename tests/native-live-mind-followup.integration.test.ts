@@ -7,6 +7,7 @@ import {
   nativeLiveMindFollowUps,
   nativeLiveRuntimeListenerLeases,
   runtimeContextManifests,
+  runtimeContextLineageStates,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -16,6 +17,12 @@ import {
 import {
   DrizzleNativeLiveBackendTurnPort,
 } from "../src/domains/bridge/native-live-backend-turn-repository.js";
+import {
+  DrizzleNativeLiveContextLineageReader,
+} from "../src/domains/bridge/native-live-context-lineage-repository.js";
+import {
+  NativeLiveManualCompactService,
+} from "../src/domains/bridge/native-live-manual-compact.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
 } from "../src/domains/bridge/native-live-backend-relay.js";
@@ -33,6 +40,9 @@ import {
 import {
   createDefaultBackendMindRuntime,
 } from "../src/domains/runtime/default-backend-mind-runtime.js";
+import {
+  fingerprintThoughtSnapshot,
+} from "../src/domains/runtime/context-lineage.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST === "1";
@@ -177,6 +187,48 @@ test(
     assert.equal(finalized.ok, true);
     if (!finalized.ok) throw new Error("expected canonical success");
 
+    const expectedStateId = nativeLiveMindFollowUpStateId(
+      prepared.command.prepare_id,
+      0,
+    );
+    const [lineageAfterCanonical] = await database.db
+      .select({
+        seenStateIds: runtimeContextLineageStates.seenStateIds,
+      })
+      .from(runtimeContextLineageStates)
+      .where(
+        and(
+          eq(runtimeContextLineageStates.userId, userId),
+          eq(
+            runtimeContextLineageStates.canonicalMessageId,
+            finalized.assistantMessageId,
+          ),
+        ),
+      )
+      .limit(1);
+    assert.ok(lineageAfterCanonical);
+    assert.deepEqual(
+      lineageAfterCanonical.seenStateIds,
+      [expectedStateId],
+      "a Memory written by Claude is already seen before its durable follow-up materializes",
+    );
+
+    const lineageReader =
+      new DrizzleNativeLiveContextLineageReader(database.db);
+    assert.deepEqual(
+      await lineageReader.readForMessage({
+        userId,
+        conversationId: conversation.id,
+        canonicalMessageId: finalized.assistantMessageId,
+      }),
+      {
+        epoch: 0,
+        seenStateIds: [expectedStateId],
+        thoughtRevision: 0,
+        thoughtFingerprint: fingerprintThoughtSnapshot([]),
+      },
+    );
+
     assert.equal(
       await relay.markCompleted({
         userId,
@@ -256,10 +308,6 @@ test(
       "processed",
     );
 
-    const expectedStateId = nativeLiveMindFollowUpStateId(
-      prepared.command.prepare_id,
-      0,
-    );
     const afterRecovery = await database.db
       .select({
         id: runtimeSubjectStates.id,
@@ -313,6 +361,196 @@ test(
       id: expectedStateId,
       text: "durable outbox memory",
     }]);
+
+    const scheduleRequestId = crypto.randomUUID();
+    const schedulePrepared = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: scheduleRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: finalized.assistantMessageId,
+      text: "/schedule daily at 9am remember this",
+    });
+    assert.equal(schedulePrepared.ok, true);
+    if (!schedulePrepared.ok) {
+      throw new Error("expected schedule prepare success");
+    }
+    assert.equal(
+      schedulePrepared.command.prompt,
+      "/schedule daily at 9am remember this",
+      "native schedule commands bypass Mind Context Assembly",
+    );
+
+    const scheduleFinalized = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: schedulePrepared.command.prepare_id,
+      request_id: scheduleRequestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "followup-provider-schedule",
+      normalized_events: [
+        {
+          type: "text",
+          payload: {
+            text: "scheduled <memory>schedule-side memory</memory>",
+          },
+        },
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text:
+              "scheduled <memory>schedule-side memory</memory>",
+          },
+        },
+      ],
+    });
+    assert.equal(scheduleFinalized.ok, true);
+    if (!scheduleFinalized.ok) {
+      throw new Error("expected schedule canonical success");
+    }
+
+    const scheduleStateId = nativeLiveMindFollowUpStateId(
+      schedulePrepared.command.prepare_id,
+      0,
+    );
+    assert.deepEqual(
+      await lineageReader.readForMessage({
+        userId,
+        conversationId: conversation.id,
+        canonicalMessageId: scheduleFinalized.assistantMessageId,
+      }),
+      {
+        epoch: 0,
+        seenStateIds: [expectedStateId, scheduleStateId],
+        thoughtRevision: 0,
+        thoughtFingerprint: fingerprintThoughtSnapshot([]),
+      },
+      "a non-Mind turn carries its parent lineage and still reserves any self-authored Memory/Feel",
+    );
+
+    const preCompactProbeRequestId = crypto.randomUUID();
+    const preCompactProbe = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: preCompactProbeRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: scheduleFinalized.assistantMessageId,
+      text: "durable outbox memory",
+    });
+    assert.equal(preCompactProbe.ok, true);
+    if (!preCompactProbe.ok) {
+      throw new Error("expected pre-compact probe prepare success");
+    }
+    assert.equal(
+      preCompactProbe.command.prompt.includes("Relevant memories:"),
+      false,
+      "the just-written Memory must not be handed back after a transparent non-Mind turn",
+    );
+    const preCompactProbeFailure = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: preCompactProbe.command.prepare_id,
+      request_id: preCompactProbeRequestId,
+      conversation_id: conversation.id,
+      status: "failure",
+      error_code: "ABORTED",
+    });
+    assert.equal(preCompactProbeFailure.ok, false);
+
+    await relay.renewLease({
+      userId,
+      listenerInstanceId,
+    });
+    const manualCompact =
+      new NativeLiveManualCompactService(database.db);
+    const compactRequest = await manualCompact.create({
+      userId,
+      conversationId: conversation.id,
+    });
+    assert.equal(compactRequest.status, "pending");
+
+    const compactReservation = await manualCompact.reserveNext({
+      userId,
+      listenerInstanceId,
+    });
+    assert.ok(compactReservation);
+    assert.equal(
+      compactReservation.providerSessionId,
+      "followup-provider-schedule",
+    );
+
+    assert.equal(
+      await manualCompact.complete({
+        userId,
+        listenerInstanceId,
+        reservationId: compactReservation.reservationId,
+        outcome: {
+          status: "success",
+          result: {
+            providerSessionId: "followup-provider-schedule",
+            contextUsage: null,
+            boundary: { source: "test" },
+            summary: "test compact",
+          },
+        },
+      }),
+      "completed",
+    );
+
+    assert.deepEqual(
+      await lineageReader.readForMessage({
+        userId,
+        conversationId: conversation.id,
+        canonicalMessageId: scheduleFinalized.assistantMessageId,
+      }),
+      {
+        epoch: 1,
+        seenStateIds: [],
+        thoughtRevision: 0,
+        thoughtFingerprint: null,
+        forceThoughtSnapshot: true,
+      },
+      "successful compact starts a fresh context epoch and forces a new Thought snapshot",
+    );
+
+    const nextRequestId = crypto.randomUUID();
+    const nextPrepared = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: nextRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: scheduleFinalized.assistantMessageId,
+      text: "durable outbox memory",
+    });
+    assert.equal(nextPrepared.ok, true);
+    if (!nextPrepared.ok) throw new Error("expected next prepare success");
+    assert.equal(
+      nextPrepared.command.prompt.includes(
+        "Current thoughts (rev 1, supersedes all earlier snapshots):",
+      ),
+      true,
+      "the first post-compact turn must re-establish an authoritative Thought snapshot",
+    );
+    assert.equal(
+      nextPrepared.command.prompt.includes("Relevant memories:"),
+      true,
+      "compact clears the epoch seen set so a still-relevant Memory may be recalled again",
+    );
+    assert.equal(
+      nextPrepared.command.prompt.includes("durable outbox memory"),
+      true,
+      "the relevant Memory is available again in the fresh epoch",
+    );
+
+    const nextFailure = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: nextPrepared.command.prepare_id,
+      request_id: nextRequestId,
+      conversation_id: conversation.id,
+      status: "failure",
+      error_code: "ABORTED",
+    });
+    assert.equal(nextFailure.ok, false);
   },
 );
 

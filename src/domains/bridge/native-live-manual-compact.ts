@@ -560,6 +560,86 @@ export class NativeLiveManualCompactService {
         );
       }
 
+      const lineage = await tx.execute<{ canonical_message_id: string }>(sql`
+        WITH RECURSIVE current_path AS (
+          SELECT
+            message.id,
+            message.parent_message_id,
+            0 AS depth
+          FROM conversation_messages AS message
+          WHERE message.id = ${current.source_message_id}::uuid
+            AND message.user_id = ${input.userId}::uuid
+            AND message.conversation_id =
+              ${current.conversation_id}::uuid
+
+          UNION ALL
+
+          SELECT
+            parent.id,
+            parent.parent_message_id,
+            path.depth + 1
+          FROM conversation_messages AS parent
+          INNER JOIN current_path AS path
+            ON parent.id = path.parent_message_id
+          WHERE parent.user_id = ${input.userId}::uuid
+            AND parent.conversation_id =
+              ${current.conversation_id}::uuid
+        ),
+        nearest_lineage AS (
+          SELECT
+            lineage.epoch,
+            lineage.thought_revision
+          FROM current_path AS path
+          INNER JOIN runtime_context_lineage_states AS lineage
+            ON lineage.canonical_message_id = path.id
+           AND lineage.user_id = ${input.userId}::uuid
+           AND lineage.conversation_id =
+             ${current.conversation_id}::uuid
+          ORDER BY path.depth ASC
+          LIMIT 1
+        )
+        INSERT INTO runtime_context_lineage_states (
+          canonical_message_id,
+          user_id,
+          conversation_id,
+          epoch,
+          seen_state_ids,
+          thought_revision,
+          thought_fingerprint
+        )
+        SELECT
+          ${current.source_message_id}::uuid,
+          ${input.userId}::uuid,
+          ${current.conversation_id}::uuid,
+          COALESCE(
+            (SELECT epoch + 1 FROM nearest_lineage),
+            1
+          ),
+          '[]'::jsonb,
+          COALESCE(
+            (SELECT thought_revision FROM nearest_lineage),
+            0
+          ),
+          NULL
+        ON CONFLICT (canonical_message_id)
+        DO UPDATE SET
+          epoch = runtime_context_lineage_states.epoch + 1,
+          seen_state_ids = '[]'::jsonb,
+          thought_fingerprint = NULL,
+          updated_at = now()
+        WHERE runtime_context_lineage_states.user_id =
+              ${input.userId}::uuid
+          AND runtime_context_lineage_states.conversation_id =
+              ${current.conversation_id}::uuid
+        RETURNING canonical_message_id
+      `);
+      if (lineage.length !== 1) {
+        throw new NativeLiveManualCompactError(
+          "RESERVATION_CONFLICT",
+          "Manual compact context lineage could not advance.",
+        );
+      }
+
       await tx.execute(sql`
         UPDATE native_live_manual_compactions
         SET status = 'completed',

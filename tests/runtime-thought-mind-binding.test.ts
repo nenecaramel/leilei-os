@@ -225,7 +225,7 @@ test("Retry/Edit context treats a thought dropped by the replaced turn as still 
 
   const retry = await prepare(new Set([droppedBy]));
   assert.equal(
-    retry.prompt.includes("Current thoughts:\n- [T1] 一直在的\n- [T2] 被这一轮放下的"),
+    retry.prompt.includes("Current thoughts (rev 1, supersedes all earlier snapshots):\n- [T1] 一直在的\n- [T2] 被这一轮放下的"),
     true,
   );
   // Only the drop issued by the replaced message is undone.

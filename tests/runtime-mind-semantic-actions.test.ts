@@ -129,6 +129,53 @@ test("thought_drop resolves a turn-local label through the manifest, never throu
   }]);
 });
 
+test("thought_drop keeps resolving the latest lineage alias when thoughts are not reinjected", async () => {
+  const drops: unknown[] = [];
+  const current = manifest();
+  current.items = [];
+  current.budget.usedItems = 0;
+  current.budget.usedChars = 0;
+  current.lineage = {
+    epoch: 0,
+    thoughtRevision: 4,
+    thoughtFingerprint: "a".repeat(64),
+    thoughtSnapshotEmitted: false,
+    activeThoughtCount: 2,
+    thoughtRefs: [
+      { alias: "T1", stateId: thoughtOne },
+      { alias: "T2", stateId: thoughtTwo },
+    ],
+  };
+
+  const executor = new NativeLiveMindSemanticActionExecutor(
+    { loadContextManifest: async () => current },
+    {
+      async dropThought(input): Promise<ThoughtDropResult> {
+        drops.push(input);
+        return { outcome: "applied" };
+      },
+    },
+    "G",
+    () => "2026-09-30T01:00:00.000Z",
+  );
+
+  const receipt = await executor.execute({
+    userId,
+    conversationId,
+    assistantMessageId,
+    prepareId,
+    actionIndex: 0,
+    action: action("T1"),
+  });
+
+  assert.equal(receipt.outcome, "applied");
+  assert.equal(receipt.stateId, thoughtOne);
+  assert.equal(
+    (drops[0] as { stateId: string }).stateId,
+    thoughtOne,
+  );
+});
+
 test("thought_drop rejects a label that was not in front of the model that turn", async () => {
   let dropped = false;
   const executor = new NativeLiveMindSemanticActionExecutor(

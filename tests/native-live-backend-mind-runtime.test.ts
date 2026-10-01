@@ -10,6 +10,7 @@ import type {
   NativeLiveMessage,
 } from "../src/domains/conversation/native-live-conversation-types.js";
 import type { NativeLiveMindRuntime } from "../src/domains/runtime/native-live-mind-runtime.js";
+import type { ContextLineageState } from "../src/domains/runtime/context-lineage.js";
 
 const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const conversationId = "33333333-3333-4333-8333-333333333333";
@@ -126,12 +127,28 @@ class Reader {
   }
 }
 
+class LineageReader {
+  calls: unknown[] = [];
+  value: ContextLineageState = {
+    epoch: 2,
+    seenStateIds: ["memory-seen"],
+    thoughtRevision: 7,
+    thoughtFingerprint: "a".repeat(64),
+  };
+
+  async readForMessage(input: unknown) {
+    this.calls.push(input);
+    return this.value;
+  }
+}
+
 class Mind implements NativeLiveMindRuntime {
   calls: string[] = [];
   excludedReferenceIds: string[][] = [];
   manifestIds: Array<string | undefined> = [];
   recallInputs: unknown[] = [];
   recordInputs: unknown[] = [];
+  contextLineages: Array<ContextLineageState | null | undefined> = [];
   transitions: Awaited<
     ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
   > = [];
@@ -141,6 +158,7 @@ class Mind implements NativeLiveMindRuntime {
     userText: string;
     manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }) {
     this.calls.push(
       `prepare:${input.surfaceHeadMessageId}:${input.userText}`,
@@ -149,6 +167,7 @@ class Mind implements NativeLiveMindRuntime {
       [...(input.excludedReferenceIds ?? [])].sort(),
     );
     this.manifestIds.push(input.manifestId);
+    this.contextLineages.push(input.contextLineage);
     return "ASSEMBLED_PROMPT";
   }
 
@@ -210,6 +229,70 @@ test("send preparation settles the continued path, then assembles context", asyn
   assert.deepEqual(mind.manifestIds, [prepared("send").prepareId]);
 });
 
+
+test("Mind preparation inherits context lineage from the canonical parent message", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const lineage = new LineageReader();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(
+    reader,
+    mind,
+    lineage,
+  );
+
+  await runtime.preparePrompt({
+    userId,
+    preparation: prepared("send"),
+  });
+
+  assert.deepEqual(lineage.calls, [{
+    userId,
+    conversationId,
+    canonicalMessageId: parentId,
+  }]);
+  assert.deepEqual(mind.contextLineages, [lineage.value]);
+});
+
+test("bootstrap fork with no canonical parent forces one authoritative Thought snapshot", async () => {
+  const reader = new Reader();
+  const bootstrapUser = {
+    ...userMessage(),
+    parentMessageId: null,
+  };
+  reader.value = {
+    ...conversation(null),
+    currentHeadMessageId: null,
+    messages: [bootstrapUser],
+  };
+  const mind = new Mind();
+  const lineage = new LineageReader();
+  lineage.value = {
+    epoch: 0,
+    seenStateIds: [],
+    thoughtRevision: 0,
+    thoughtFingerprint: null,
+  };
+  const runtime = new DefaultNativeLiveBackendMindRuntime(
+    reader,
+    mind,
+    lineage,
+  );
+
+  await runtime.preparePrompt({
+    userId,
+    preparation: prepared("send"),
+  });
+
+  assert.deepEqual(lineage.calls, [{
+    userId,
+    conversationId,
+    canonicalMessageId: null,
+  }]);
+  assert.deepEqual(mind.contextLineages, [{
+    ...lineage.value,
+    forceThoughtSnapshot: true,
+  }]);
+});
 
 test("native Claude schedule command bypasses Mind prompt assembly but still settles the current path", async () => {
   const reader = new Reader();
@@ -281,6 +364,38 @@ test("retry preparation excludes the old assistant suffix before replacement gen
   ]);
   assert.deepEqual(mind.excludedReferenceIds, [[oldAssistantId]]);
   assert.deepEqual(mind.manifestIds, [prepared("retry").prepareId]);
+});
+
+test("Retry and Edit inherit lineage from the replacement branch point, not the abandoned suffix", async () => {
+  for (const operation of ["retry", "edit"] as const) {
+    const reader = new Reader();
+    reader.value = conversation(oldAssistantId);
+    const mind = new Mind();
+    const lineage = new LineageReader();
+    lineage.value = {
+      epoch: 3,
+      seenStateIds: ["seen-before-branch"],
+      thoughtRevision: 9,
+      thoughtFingerprint: "b".repeat(64),
+    };
+    const runtime = new DefaultNativeLiveBackendMindRuntime(
+      reader,
+      mind,
+      lineage,
+    );
+
+    await runtime.preparePrompt({
+      userId,
+      preparation: prepared(operation),
+    });
+
+    assert.deepEqual(lineage.calls, [{
+      userId,
+      conversationId,
+      canonicalMessageId: parentId,
+    }]);
+    assert.deepEqual(mind.contextLineages, [lineage.value]);
+  }
 });
 
 test("branch finalize records intents and then reconciles the finalized canonical head", async () => {

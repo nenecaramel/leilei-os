@@ -11,6 +11,9 @@ import type {
 } from "../runtime/native-live-mind-runtime.js";
 import type { NativeLivePreparedTurn } from "./native-live-backend-turn-coordinator.js";
 import { planReplacementMessagePurge } from "./native-live-replacement-purge.js";
+import type {
+  NativeLiveContextLineageReader,
+} from "./native-live-context-lineage-repository.js";
 
 export interface NativeLiveBackendMindConversationReader {
   getConversation(input: {
@@ -84,6 +87,7 @@ implements NativeLiveBackendMindRuntime {
   constructor(
     private readonly conversations: NativeLiveBackendMindConversationReader,
     private readonly mind: NativeLiveMindRuntime,
+    private readonly contextLineage: NativeLiveContextLineageReader | null = null,
   ) {}
 
   async preparePrompt(input: {
@@ -119,6 +123,13 @@ implements NativeLiveBackendMindRuntime {
         input.preparation,
       );
 
+    const contextLineage = await this.readContextLineage({
+      userId: input.userId,
+      conversationId: input.preparation.conversationId,
+      parentMessageId: userMessage.parentMessageId,
+      runtimeMode: input.preparation.runtimeMode,
+    });
+
     return this.mind.prepareUserTurn({
       userId: input.userId,
       conversation,
@@ -127,6 +138,7 @@ implements NativeLiveBackendMindRuntime {
       surfaceHeadMessageId: userMessage.parentMessageId,
       manifestId: input.preparation.prepareId,
       excludedReferenceIds,
+      contextLineage,
     });
   }
 
@@ -164,6 +176,13 @@ implements NativeLiveBackendMindRuntime {
         input.preparation,
       );
 
+    const contextLineage = await this.readContextLineage({
+      userId: input.userId,
+      conversationId: input.preparation.conversationId,
+      parentMessageId: userMessage.parentMessageId,
+      runtimeMode: input.preparation.runtimeMode,
+    });
+
     return this.mind.planSemanticUserTurn({
       userId: input.userId,
       conversation,
@@ -172,6 +191,7 @@ implements NativeLiveBackendMindRuntime {
       surfaceHeadMessageId: userMessage.parentMessageId,
       manifestId: input.preparation.prepareId,
       excludedReferenceIds,
+      contextLineage,
     });
   }
 
@@ -200,6 +220,13 @@ implements NativeLiveBackendMindRuntime {
         input.preparation,
       );
 
+    const contextLineage = await this.readContextLineage({
+      userId: input.userId,
+      conversationId: input.preparation.conversationId,
+      parentMessageId: userMessage.parentMessageId,
+      runtimeMode: input.preparation.runtimeMode,
+    });
+
     return this.mind.prepareUserTurnFromSemanticPlan({
       userId: input.userId,
       conversation,
@@ -207,9 +234,41 @@ implements NativeLiveBackendMindRuntime {
       userText: input.preparation.prompt,
       surfaceHeadMessageId: userMessage.parentMessageId,
       excludedReferenceIds,
+      contextLineage,
       plan: input.plan,
       scores: input.scores,
     });
+  }
+
+  private async readContextLineage(input: {
+    userId: string;
+    conversationId: string;
+    parentMessageId: string | null;
+    runtimeMode: NativeLivePreparedTurn["runtimeMode"];
+  }) {
+    const lineage = this.contextLineage
+      ? await this.contextLineage.readForMessage({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          canonicalMessageId: input.parentMessageId,
+        })
+      : null;
+
+    // A bootstrap fork can carry provider history even though the new
+    // LeileiOS conversation has no canonical parent message yet. Force one
+    // authoritative Thought snapshot (including an explicit empty snapshot)
+    // so stale aliases from that provider history cannot remain current.
+    if (
+      lineage
+      && input.runtimeMode === "fork"
+      && input.parentMessageId === null
+    ) {
+      return {
+        ...lineage,
+        forceThoughtSnapshot: true,
+      };
+    }
+    return lineage;
   }
 
   private replacementExcludedReferenceIds(

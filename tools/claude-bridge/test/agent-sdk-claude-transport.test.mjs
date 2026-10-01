@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
+import { LEILEIOS_MIND_SYSTEM_PROMPT } from "../src/leileios-mind-system-prompt.mjs";
 
 function fakeQuery(messages, { error = null } = {}) {
   let closed = false;
@@ -1059,6 +1060,11 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   assert.equal(call.options.resume, "provider-parent");
   assert.equal(call.options.forkSession, true);
   assert.equal(call.options.verbatimPrompts, true);
+  assert.deepEqual(call.options.systemPrompt, {
+    type: "preset",
+    preset: "claude_code",
+    append: LEILEIOS_MIND_SYSTEM_PROMPT,
+  });
   assert.equal(call.options.includePartialMessages, true);
   assert.equal(
     result.providerSessionId,
@@ -1104,6 +1110,11 @@ test("interactive native schedule commands use Claude slash-command parsing", as
 
     assert.equal(call.prompt, command);
     assert.equal(call.options.verbatimPrompts, false);
+    assert.deepEqual(call.options.systemPrompt, {
+      type: "preset",
+      preset: "claude_code",
+      append: LEILEIOS_MIND_SYSTEM_PROMPT,
+    });
     assert.equal(call.options.includePartialMessages, true);
     assert.equal(result.providerSessionId, "provider-schedule");
   }
@@ -1134,6 +1145,11 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
     "function",
   );
   assert.equal(call.options.verbatimPrompts, true);
+  assert.deepEqual(call.options.systemPrompt, {
+    type: "preset",
+    preset: "claude_code",
+    append: LEILEIOS_MIND_SYSTEM_PROMPT,
+  });
 });
 
 test("interactive foreground event delivery failure is observability-only", async () => {
