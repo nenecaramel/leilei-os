@@ -6,7 +6,7 @@ CREATE TABLE "runtime_context_lineage_states" (
   "user_id" uuid NOT NULL,
   "conversation_id" uuid NOT NULL,
   "epoch" integer DEFAULT 0 NOT NULL,
-  "seen_state_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+  "seen_state_ids_delta" jsonb DEFAULT '[]'::jsonb NOT NULL,
   "thought_revision" integer DEFAULT 0 NOT NULL,
   "thought_fingerprint" varchar(64),
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -17,8 +17,8 @@ CREATE TABLE "runtime_context_lineage_states" (
     ON DELETE cascade ON UPDATE cascade,
   CONSTRAINT "runtime_context_lineage_states_epoch_nonnegative"
     CHECK ("epoch" >= 0),
-  CONSTRAINT "runtime_context_lineage_states_seen_array"
-    CHECK (jsonb_typeof("seen_state_ids") = 'array'),
+  CONSTRAINT "runtime_context_lineage_states_seen_delta_array"
+    CHECK (jsonb_typeof("seen_state_ids_delta") = 'array'),
   CONSTRAINT "runtime_context_lineage_states_thought_revision_nonnegative"
     CHECK ("thought_revision" >= 0),
   CONSTRAINT "runtime_context_lineage_states_thought_fingerprint_format"
