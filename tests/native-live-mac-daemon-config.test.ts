@@ -14,15 +14,23 @@ const fakeFilesystem = {
 
 test("Mac daemon config prefers dedicated Native Live variables", () => {
   const root = process.cwd();
-  const config = resolveNativeLiveMacDaemonConfig({
-    LEILEI_NATIVE_LIVE_RELAY_URL: " https://relay.example/ ",
-    LEILEI_NATIVE_LIVE_RELAY_TOKEN: " dedicated-token ",
-    LEILEI_NATIVE_LIVE_LISTENER_ID:
-      "11111111-1111-4111-8111-111111111111",
-    LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: root,
-    MCP_SERVER_URL: "https://fallback.example",
-    MCP_AUTH_TOKEN: "fallback-token",
-  });
+  const config = resolveNativeLiveMacDaemonConfig(
+    {
+      LEILEI_NATIVE_LIVE_RELAY_URL: " https://relay.example/ ",
+      LEILEI_NATIVE_LIVE_RELAY_TOKEN: " dedicated-token ",
+      LEILEI_NATIVE_LIVE_LISTENER_ID:
+        "11111111-1111-4111-8111-111111111111",
+      LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: root,
+      MCP_SERVER_URL: "https://fallback.example",
+      MCP_AUTH_TOKEN: "fallback-token",
+    },
+    {
+      hostname: () => "Leilei-Mac",
+      homedir: () => root,
+    },
+    () => ({}),
+    fakeFilesystem,
+  );
 
   assert.deepEqual(config, {
     relayBaseUrl: "https://relay.example",
