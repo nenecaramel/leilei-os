@@ -1110,6 +1110,10 @@ test("interactive native schedule commands use Claude slash-command parsing", as
 
     assert.equal(call.prompt, command);
     assert.equal(call.options.verbatimPrompts, false);
+    assert.deepEqual(call.options.systemPrompt, {
+      type: "preset",
+      preset: "claude_code",
+    });
     assert.equal(call.options.includePartialMessages, true);
     assert.equal(result.providerSessionId, "provider-schedule");
   }
