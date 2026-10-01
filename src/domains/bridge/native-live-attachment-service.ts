@@ -18,11 +18,7 @@ import type {
 } from "./native-live-attachment-storage.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
-type Transaction = Parameters<Database["transaction"]>[0] extends (
-  tx: infer T,
-) => unknown
-  ? T
-  : never;
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export type NativeLiveAttachmentDb = Database | Transaction;
 
 export type NativeLiveChatAttachmentKind = "image" | "file";
@@ -365,76 +361,67 @@ export class NativeLiveAttachmentService {
   }
 }
 
+// Migration and retention share an object-key lock across replicas. Re-read
+// after acquiring it so a stale candidate cannot resurrect a deleted object.
+export async function withNativeLiveAttachmentObjectLock<T>(
+  db: Database,
+  objectKey: string,
+  operation: (tx: NativeLiveAttachmentDb) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${objectKey}, 0))`);
+    return operation(tx);
+  });
+}
+
 export async function deleteExpiredNativeLiveAttachmentsBatch(
   db: Database,
-  objectStore: Pick<
-    NativeLiveAttachmentObjectStore,
-    "deleteObject"
-  >,
+  objectStore: Pick<NativeLiveAttachmentObjectStore, "deleteObject">,
   cutoff: Date,
   limit: number,
+  legacyInlineObjectStore?: Pick<NativeLiveAttachmentObjectStore, "deleteObject">,
 ): Promise<number> {
-  const safeLimit =
-    Number.isSafeInteger(limit) && limit > 0
-      ? Math.min(limit, 1_000)
-      : 100;
-  const candidates = await db.execute<{
-    id: string;
-    userId: string;
-    objectKey: string;
-  }>(sql`
-    SELECT
-      attachment.id,
-      attachment.user_id AS "userId",
-      attachment.object_key AS "objectKey"
+  const safeLimit = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1_000) : 100;
+  type Candidate = { id: string; userId: string; objectKey: string; hasInlineContent: boolean };
+  const expired = sql`(
+    (attachment.bound_message_id IS NULL AND attachment.expires_at <= ${cutoff.toISOString()}::timestamptz)
+    OR (attachment.status = 'bound' AND attachment.bound_message_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM conversation_messages AS message
+        WHERE message.id = attachment.bound_message_id AND message.user_id = attachment.user_id))
+  )`;
+  const candidates = await db.execute<Candidate>(sql`
+    SELECT attachment.id, attachment.user_id AS "userId", attachment.object_key AS "objectKey",
+      (attachment.content IS NOT NULL) AS "hasInlineContent"
     FROM native_live_chat_attachments AS attachment
-    WHERE (
-      attachment.bound_message_id IS NULL
-      AND attachment.expires_at <= ${cutoff}
-    ) OR (
-      attachment.status = 'bound'
-      AND attachment.bound_message_id IS NOT NULL
-      AND NOT EXISTS (
-        SELECT 1
-        FROM conversation_messages AS message
-        WHERE message.id = attachment.bound_message_id
-          AND message.user_id = attachment.user_id
-      )
-    )
-    ORDER BY attachment.created_at, attachment.id
-    LIMIT ${safeLimit}
+    WHERE ${expired}
+    ORDER BY attachment.created_at, attachment.id LIMIT ${safeLimit}
   `);
-
   let deleted = 0;
   for (const candidate of candidates) {
     try {
-      await objectStore.deleteObject({
-        objectKey: candidate.objectKey,
+      deleted += await withNativeLiveAttachmentObjectLock(db, candidate.objectKey, async (tx) => {
+        const [current] = await tx.execute<Candidate>(sql`
+          SELECT attachment.id, attachment.user_id AS "userId", attachment.object_key AS "objectKey",
+            (attachment.content IS NOT NULL) AS "hasInlineContent"
+          FROM native_live_chat_attachments AS attachment
+          WHERE attachment.id = ${candidate.id}::uuid
+            AND attachment.object_key = ${candidate.objectKey} AND ${expired}
+        `);
+        if (!current) return 0;
+        // A failed migration may have left a verified object alongside inline
+        // bytes. Delete the Bucket copy first, including for inline candidates.
+        await objectStore.deleteObject({ objectKey: current.objectKey });
+        if (current.hasInlineContent && legacyInlineObjectStore) {
+          await legacyInlineObjectStore.deleteObject({ objectKey: current.objectKey });
+        }
+        const removed = await tx.delete(nativeLiveChatAttachments).where(and(
+          eq(nativeLiveChatAttachments.id, current.id),
+          eq(nativeLiveChatAttachments.userId, current.userId),
+          eq(nativeLiveChatAttachments.objectKey, current.objectKey),
+        )).returning({ id: nativeLiveChatAttachments.id });
+        return removed.length;
       });
-    } catch {
-      continue;
-    }
-
-    const removed = await db
-      .delete(nativeLiveChatAttachments)
-      .where(
-        and(
-          eq(
-            nativeLiveChatAttachments.id,
-            candidate.id,
-          ),
-          eq(
-            nativeLiveChatAttachments.userId,
-            candidate.userId,
-          ),
-          eq(
-            nativeLiveChatAttachments.objectKey,
-            candidate.objectKey,
-          ),
-        ),
-      )
-      .returning({ id: nativeLiveChatAttachments.id });
-    deleted += removed.length;
+    } catch { continue; }
   }
   return deleted;
 }

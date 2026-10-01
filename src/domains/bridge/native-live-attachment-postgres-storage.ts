@@ -55,6 +55,8 @@ implements NativeLiveAttachmentObjectStore {
       maxFileBytes: number;
       maxTotalBytes: number;
       now?: () => Date;
+      fallbackObjectStore?: NativeLiveAttachmentObjectStore;
+      fetchImpl?: typeof fetch;
     },
   ) {
     if (!config.signingSecret.trim()) {
@@ -428,6 +430,8 @@ implements NativeLiveAttachmentObjectStore {
         mimeType: nativeLiveChatAttachments.mimeType,
         filename: nativeLiveChatAttachments.filename,
         status: nativeLiveChatAttachments.status,
+        sizeBytes: nativeLiveChatAttachments.sizeBytes,
+        sha256: nativeLiveChatAttachments.sha256,
       })
       .from(nativeLiveChatAttachments)
       .where(
@@ -439,7 +443,7 @@ implements NativeLiveAttachmentObjectStore {
       .limit(1);
 
     if (
-      !row?.content
+      !row
       || (row.status !== "ready" && row.status !== "bound")
     ) {
       throw new PostgresAttachmentTransferError(
@@ -447,8 +451,23 @@ implements NativeLiveAttachmentObjectStore {
         "Attachment content is not available.",
       );
     }
+    let bytes = row.content;
+    if (bytes === null && this.config.fallbackObjectStore) {
+      // Preserve already-issued GET capabilities when migration clears inline
+      // content between slot creation and transfer. PUT never falls back.
+      const slot = this.config.fallbackObjectStore.createDownloadSlot({ objectKey: claims.objectKey });
+      const response = await (this.config.fetchImpl ?? fetch)(slot.url, {
+        method: slot.method, headers: slot.headers, signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) throw new PostgresAttachmentTransferError(502, "Migrated attachment download failed.");
+      bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length !== row.sizeBytes || createHash("sha256").update(bytes).digest("hex") !== row.sha256) {
+        throw new PostgresAttachmentTransferError(502, "Migrated attachment content does not match metadata.");
+      }
+    }
+    if (!bytes) throw new PostgresAttachmentTransferError(404, "Attachment content is not available.");
     return {
-      bytes: row.content,
+      bytes,
       mimeType: row.mimeType,
       filename: row.filename,
     };

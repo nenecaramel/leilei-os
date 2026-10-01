@@ -273,3 +273,64 @@ test("attachment service keeps legacy inline downloads readable after bucket cut
     "/api/v1/native-live/attachment-transfer/legacy",
   );
 });
+
+
+test("Bucket cutover uploads and migrated downloads use only the primary store", async () => {
+  const row = {
+    id: "11111111-1111-4111-8111-111111111111", userId: "22222222-2222-4222-8222-222222222222",
+    filename: "new.txt", mimeType: "text/plain", sizeBytes: 6, sha256: "a".repeat(64), kind: "file" as const,
+    objectKey: "native-live/user/object", content: null, status: "bound" as string, boundMessageId: "message",
+    createdAt: new Date("2026-10-01T00:00:00Z"), expiresAt: new Date("2026-10-02T00:00:00Z"),
+  };
+  let inserted: Record<string, unknown> | undefined;
+  const db = {
+    insert() { return { values(value: Record<string, unknown>) { inserted = value; return { async returning() { return [row]; } }; } }; },
+    select() { return { from() { return { where() { return { async limit() { return [row]; } }; } }; } }; },
+    update() { return { set(value: { status: string }) { return { where() { return { async returning() { row.status = value.status; return [row]; } }; } }; } }; },
+  };
+  const requests: string[] = [];
+  const primary = new S3PresignedAttachmentObjectStore(config, async (_url, init) => {
+    requests.push(init!.method!);
+    return new Response(null, { status: 200, headers: { "content-length": "6", "content-type": "text/plain", "x-amz-meta-sha256": "a".repeat(64) } });
+  });
+  const legacy = {
+    createUploadSlot() { throw new Error("new upload must not fall back"); },
+    createDownloadSlot() { throw new Error("migrated download must not fall back"); },
+    async headObject() { throw new Error("new complete must not fall back"); },
+    async deleteObject() {},
+  };
+  const service = new NativeLiveAttachmentService(db as never, primary, { maxFileBytes: 1024, unboundTtlSeconds: 600 }, () => new Date("2026-10-01T00:30:00Z"), () => row.id, legacy);
+  const upload = await service.createUploadSlot({ userId: row.userId, filename: row.filename, mimeType: row.mimeType, sizeBytes: row.sizeBytes, sha256: row.sha256 });
+  assert.equal(new URL(upload.upload.url).hostname, "leilei-files-test.t3.storageapi.dev");
+  assert.equal(inserted!.content, undefined);
+  const download = await service.createDownloadSlot({ userId: row.userId, attachmentId: row.id });
+  assert.equal(new URL(download.download.url).hostname, "leilei-files-test.t3.storageapi.dev");
+  assert.deepEqual(requests, []);
+  row.status = "uploading";
+  assert.equal((await service.completeUpload({ userId: row.userId, attachmentId: row.id })).status, "ready");
+  assert.deepEqual(requests, ["HEAD"]);
+});
+
+
+test("an already issued inline download capability stays readable after migration", async () => {
+  const bytes = Buffer.from("legacy attachment");
+  const row = { content: null, filename: "legacy.txt", mimeType: "text/plain", status: "bound", sizeBytes: 17, sha256: "ab0abec23a813de8b92bea070d3375ce06a7260e47ec8167377ae2c15a21ba3a" };
+  const db = { select() { return { from() { return { where() { return { async limit() { return [row]; } }; } }; } }; } };
+  let corrupt = false;
+  const legacy = new PostgresInlineAttachmentObjectStore(db as never, {
+    signingSecret: "test", transferTtlSeconds: 600, maxFileBytes: 1024, maxTotalBytes: 2048,
+    fallbackObjectStore: new S3PresignedAttachmentObjectStore(config),
+    fetchImpl: async (input: RequestInfo | URL, init?: RequestInit) => {
+      assert.equal(new URL(String(input)).pathname, "/native-live/user/attachment");
+      assert.equal(init!.method, "GET");
+      return new Response(corrupt ? Buffer.from("wrong") : bytes);
+    },
+  });
+  const token = legacy.createDownloadSlot({ objectKey: "native-live/user/attachment" }).url.split("/").at(-1)!;
+  const result = await legacy.getTransfer({ token });
+  assert.deepEqual(result.bytes, bytes);
+  assert.equal(result.filename, "legacy.txt");
+  assert.equal(result.mimeType, "text/plain");
+  corrupt = true;
+  await assert.rejects(legacy.getTransfer({ token }), (error: unknown) => error instanceof PostgresAttachmentTransferError && error.httpStatus === 502);
+});

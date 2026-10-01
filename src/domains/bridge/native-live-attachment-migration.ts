@@ -6,6 +6,7 @@ import {
   inArray,
   isNotNull,
 } from "drizzle-orm";
+import { withNativeLiveAttachmentObjectLock, type NativeLiveAttachmentDb } from "./native-live-attachment-service.js";
 import type { createDatabase } from "../../database/client.js";
 import {
   nativeLiveChatAttachments,
@@ -32,14 +33,19 @@ export interface NativeLiveInlineAttachmentMigrationRepository {
   ): Promise<NativeLiveInlineAttachmentMigrationRecord[]>;
 
   clearInlineContent(
-    input: { id: string },
-  ): Promise<void>;
+    input: NativeLiveInlineAttachmentMigrationRecord,
+  ): Promise<boolean>;
+
+  withLockedRecord?<T>(
+    row: NativeLiveInlineAttachmentMigrationRecord,
+    operation: (row: NativeLiveInlineAttachmentMigrationRecord | null, repository: NativeLiveInlineAttachmentMigrationRepository) => Promise<T>,
+  ): Promise<T>;
 }
 
 export class DrizzleNativeLiveInlineAttachmentMigrationRepository
 implements NativeLiveInlineAttachmentMigrationRepository {
   constructor(
-    private readonly db: Database,
+    private readonly db: NativeLiveAttachmentDb,
   ) {}
 
   async listInlineBatch(
@@ -88,91 +94,85 @@ implements NativeLiveInlineAttachmentMigrationRepository {
     );
   }
 
-  async clearInlineContent(
-    input: { id: string },
-  ): Promise<void> {
-    await this.db
-      .update(nativeLiveChatAttachments)
-      .set({
-        content: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(nativeLiveChatAttachments.id, input.id),
-          isNotNull(nativeLiveChatAttachments.content),
-          inArray(
-            nativeLiveChatAttachments.status,
-            ["ready", "bound"],
-          ),
-        ),
-      );
+  async withLockedRecord<T>(
+    row: NativeLiveInlineAttachmentMigrationRecord,
+    operation: (row: NativeLiveInlineAttachmentMigrationRecord | null, repository: NativeLiveInlineAttachmentMigrationRepository) => Promise<T>,
+  ): Promise<T> {
+    return withNativeLiveAttachmentObjectLock(this.db as Database, row.objectKey, async (tx) => {
+      const [current] = await tx.select().from(nativeLiveChatAttachments).where(and(
+        eq(nativeLiveChatAttachments.id, row.id),
+        eq(nativeLiveChatAttachments.objectKey, row.objectKey),
+        isNotNull(nativeLiveChatAttachments.content),
+        inArray(nativeLiveChatAttachments.status, ["ready", "bound"]),
+      )).limit(1);
+      return operation(current?.content ? { ...current, content: current.content } : null,
+        new DrizzleNativeLiveInlineAttachmentMigrationRepository(tx));
+    });
+  }
+
+  async clearInlineContent(input: NativeLiveInlineAttachmentMigrationRecord): Promise<boolean> {
+    const cleared = await this.db.update(nativeLiveChatAttachments).set({
+      content: null, updatedAt: new Date(),
+    }).where(and(
+      eq(nativeLiveChatAttachments.id, input.id),
+      eq(nativeLiveChatAttachments.objectKey, input.objectKey),
+      eq(nativeLiveChatAttachments.mimeType, input.mimeType),
+      eq(nativeLiveChatAttachments.sizeBytes, input.sizeBytes),
+      eq(nativeLiveChatAttachments.sha256, input.sha256),
+      eq(nativeLiveChatAttachments.content, input.content),
+      isNotNull(nativeLiveChatAttachments.content),
+      inArray(nativeLiveChatAttachments.status, ["ready", "bound"]),
+    )).returning({ id: nativeLiveChatAttachments.id });
+    return cleared.length === 1;
   }
 }
+
+export type NativeLiveAttachmentMigrationStats = {
+  examined: number;
+  migrated: number;
+  skipped: number;
+  failed: number;
+  bytesMigrated: number;
+};
 
 export async function migrateNativeLiveAttachmentInlineContentBatch(
   repository: NativeLiveInlineAttachmentMigrationRepository,
   objectStore: NativeLiveAttachmentObjectStore,
   limit = 8,
   fetchImpl: typeof fetch = fetch,
-): Promise<{
-  examined: number;
-  migrated: number;
-  failed: number;
-}> {
+): Promise<NativeLiveAttachmentMigrationStats> {
   const rows = await repository.listInlineBatch(limit);
-  let migrated = 0;
-  let failed = 0;
-
+  const result: NativeLiveAttachmentMigrationStats = { examined: rows.length, migrated: 0, skipped: 0, failed: 0, bytesMigrated: 0 };
   for (const row of rows) {
     try {
-      if (!inlineRecordMatchesDeclaredMetadata(row)) {
-        failed += 1;
-        continue;
-      }
-
-      let head = await objectStore.headObject({
-        objectKey: row.objectKey,
-      });
-      if (!head) {
-        const slot = objectStore.createUploadSlot({
-          objectKey: row.objectKey,
-          mimeType: row.mimeType,
-          sha256: row.sha256,
-        });
-        const response = await fetchImpl(slot.url, {
-          method: slot.method,
-          headers: slot.headers,
-          body: row.content,
-        });
-        if (!response.ok) {
-          failed += 1;
-          continue;
+      const migrate = async (current: NativeLiveInlineAttachmentMigrationRecord | null, repo: NativeLiveInlineAttachmentMigrationRepository) => {
+        if (!current) return { migrated: false, bytes: 0 };
+        if (!inlineRecordMatchesDeclaredMetadata(current)) throw new Error("Invalid inline attachment metadata");
+        let head = await objectStore.headObject({ objectKey: current.objectKey });
+        if (!head) {
+          const slot = objectStore.createUploadSlot({ objectKey: current.objectKey, mimeType: current.mimeType, sha256: current.sha256 });
+          const response = await fetchImpl(slot.url, {
+            method: slot.method, headers: slot.headers,
+            body: Uint8Array.from(current.content), signal: AbortSignal.timeout(30_000),
+          });
+          if (!response.ok) throw new Error("Attachment upload failed");
+          head = await objectStore.headObject({ objectKey: current.objectKey });
         }
-        head = await objectStore.headObject({
-          objectKey: row.objectKey,
-        });
-      }
-
-      if (!objectHeadMatchesRecord(head, row)) {
-        failed += 1;
-        continue;
-      }
-
-      await repository.clearInlineContent({
-        id: row.id,
-      });
-      migrated += 1;
-    } catch {
-      failed += 1;
-    }
+        // A mismatching existing object must never be overwritten.
+        if (!objectHeadMatchesRecord(head, current)) throw new Error("Attachment HEAD verification failed");
+        const cleared = await repo.clearInlineContent(current);
+        return { migrated: cleared, bytes: cleared ? current.content.byteLength : 0 };
+      };
+      const outcome = repository.withLockedRecord
+        ? await repository.withLockedRecord(row, migrate)
+        : await migrate(row, repository);
+      if (outcome.migrated) {
+        result.migrated++;
+        result.bytesMigrated += outcome.bytes;
+      } else result.skipped++;
+    } catch { result.failed++; }
   }
-
-  return {
-    examined: rows.length,
-    migrated,
-    failed,
-  };
+  return result;
 }
 
 export async function migrateNativeLiveAttachmentInlineContentUntilIdle(
@@ -183,12 +183,7 @@ export async function migrateNativeLiveAttachmentInlineContentUntilIdle(
     maxBatches?: number;
     fetchImpl?: typeof fetch;
   } = {},
-): Promise<{
-  examined: number;
-  migrated: number;
-  failed: number;
-  batches: number;
-}> {
+): Promise<NativeLiveAttachmentMigrationStats & { batches: number }> {
   const batchSize =
     Number.isSafeInteger(options.batchSize)
       && (options.batchSize ?? 0) > 0
@@ -204,6 +199,8 @@ export async function migrateNativeLiveAttachmentInlineContentUntilIdle(
   let migrated = 0;
   let failed = 0;
   let batches = 0;
+  let skipped = 0;
+  let bytesMigrated = 0;
 
   while (batches < maxBatches) {
     const batch =
@@ -217,6 +214,8 @@ export async function migrateNativeLiveAttachmentInlineContentUntilIdle(
     examined += batch.examined;
     migrated += batch.migrated;
     failed += batch.failed;
+    skipped += batch.skipped;
+    bytesMigrated += batch.bytesMigrated;
 
     if (
       batch.examined === 0
@@ -230,6 +229,8 @@ export async function migrateNativeLiveAttachmentInlineContentUntilIdle(
     examined,
     migrated,
     failed,
+    skipped,
+    bytesMigrated,
     batches,
   };
 }
@@ -238,7 +239,11 @@ function inlineRecordMatchesDeclaredMetadata(
   row: NativeLiveInlineAttachmentMigrationRecord,
 ): boolean {
   return (
-    row.content.byteLength === row.sizeBytes
+    /^native-live\/[^/]+\/[^/]+$/u.test(row.objectKey)
+    && /^[^\s/;]+\/[^\s/;]+$/u.test(row.mimeType)
+    && Number.isSafeInteger(row.sizeBytes) && row.sizeBytes > 0
+    && /^[a-f0-9]{64}$/u.test(row.sha256)
+    && row.content.byteLength === row.sizeBytes
     && createHash("sha256")
       .update(row.content)
       .digest("hex") === row.sha256
