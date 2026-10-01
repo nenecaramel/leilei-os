@@ -68,27 +68,42 @@ implements NativeLiveExternalWakeSignal {
   async notify(input: {
     kind: NativeLiveWorkKind;
   }): Promise<void> {
-    const response = await this.fetchImpl(
-      this.baseUrl + "/wake",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer " + this.token,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          kind: input.kind,
-        }),
-        signal: AbortSignal.timeout(1_500),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(
-        "Native Live wake broker signal failed with HTTP "
-          + response.status
-          + ".",
-      );
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const response = await this.fetchImpl(
+          this.baseUrl + "/wake",
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer " + this.token,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              kind: input.kind,
+            }),
+            signal: AbortSignal.timeout(500),
+          },
+        );
+        if (response.ok) return;
+        lastError = new Error(
+          "Native Live wake broker signal failed with HTTP "
+            + response.status
+            + ".",
+        );
+      } catch (error) {
+        lastError = error;
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 50 * (attempt + 1)),
+        );
+      }
     }
+    throw (
+      lastError
+      ?? new Error("Native Live wake broker signal failed.")
+    );
   }
 
   async isListenerOnline(): Promise<boolean> {
