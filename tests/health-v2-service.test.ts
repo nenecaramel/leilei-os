@@ -106,6 +106,58 @@ test("chooses the latest consecutive run when history has multiple periods", () 
   );
 });
 
+test("accepts menstruation dates from requestDate minus 60 days through requestDate inclusive", () => {
+  const now = new Date("2026-10-01T04:00:00.000Z");
+
+  const earliest = normalizeHealthSyncPayload(
+    {
+      date: "2026-10-01",
+      steps: 319,
+      menstruation_dates: ["2026-08-02"],
+    },
+    now,
+  );
+  assert.equal(earliest.periodStartDate, "2026-08-02");
+
+  const today = normalizeHealthSyncPayload(
+    {
+      date: "2026-10-01",
+      steps: 319,
+      menstruation_dates: ["2026-10-01"],
+    },
+    now,
+  );
+  assert.equal(today.menstruating, true);
+
+  assert.throws(
+    () => normalizeHealthSyncPayload(
+      {
+        date: "2026-10-01",
+        steps: 319,
+        menstruation_dates: ["2026-08-01"],
+      },
+      now,
+    ),
+    (error: unknown) =>
+      error instanceof HealthServiceError
+      && error.code === "INVALID_HEALTH_INPUT",
+  );
+
+  assert.throws(
+    () => normalizeHealthSyncPayload(
+      {
+        date: "2026-10-01",
+        steps: 319,
+        menstruation_dates: ["2026-10-02"],
+      },
+      now,
+    ),
+    (error: unknown) =>
+      error instanceof HealthServiceError
+      && error.code === "INVALID_HEALTH_INPUT",
+  );
+});
+
 test("rejects invalid dates, steps, and menstruation windows", () => {
   const valid = {
     date: "2026-09-06",
