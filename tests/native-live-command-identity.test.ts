@@ -50,7 +50,7 @@ test("provider command lifecycle and user-message attribution stay runtime-only"
   assert.equal(canonical.error, null);
   assert.equal(canonical.blocks.length, 1);
   assert.equal(canonical.blocks[0]?.kind, "text");
-  assert.equal(canonical.blocks[0]?.payload?.text, "READY");
+  assert.equal(canonical.blocks[0]?.text, "READY");
   assert.equal(
     JSON.stringify(canonical).includes("command_lifecycle"),
     false,
