@@ -14,19 +14,28 @@ const fakeFilesystem = {
 
 test("Mac daemon config prefers dedicated Native Live variables", () => {
   const root = process.cwd();
-  const config = resolveNativeLiveMacDaemonConfig({
-    LEILEI_NATIVE_LIVE_RELAY_URL: " https://relay.example/ ",
-    LEILEI_NATIVE_LIVE_RELAY_TOKEN: " dedicated-token ",
-    LEILEI_NATIVE_LIVE_LISTENER_ID:
-      "11111111-1111-4111-8111-111111111111",
-    LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: root,
-    MCP_SERVER_URL: "https://fallback.example",
-    MCP_AUTH_TOKEN: "fallback-token",
-  });
+  const config = resolveNativeLiveMacDaemonConfig(
+    {
+      LEILEI_NATIVE_LIVE_RELAY_URL: " https://relay.example/ ",
+      LEILEI_NATIVE_LIVE_RELAY_TOKEN: " dedicated-token ",
+      LEILEI_NATIVE_LIVE_LISTENER_ID:
+        "11111111-1111-4111-8111-111111111111",
+      LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: root,
+      MCP_SERVER_URL: "https://fallback.example",
+      MCP_AUTH_TOKEN: "fallback-token",
+    },
+    {
+      hostname: () => "Leilei-Mac",
+      homedir: () => root,
+    },
+    () => ({}),
+    fakeFilesystem,
+  );
 
   assert.deepEqual(config, {
     relayBaseUrl: "https://relay.example",
     relayToken: "dedicated-token",
+    wakeBroker: null,
     listenerInstanceId:
       "11111111-1111-4111-8111-111111111111",
     companionBackgroundIntervalMs: 3_600_000,
@@ -236,6 +245,10 @@ test("Mac daemon config bootstraps production relay from Railway variables when 
       MCP_SERVER_URL: "https://railway-production.example",
       NATIVE_LIVE_RELAY_AUTH_TOKEN:
         "railway-relay-token-that-is-long-enough",
+      NATIVE_LIVE_WAKE_BROKER_URL:
+        "https://wake-production.example/",
+      NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN:
+        "wake-token-that-is-long-enough-for-production",
     }),
     fakeFilesystem,
   );
@@ -248,6 +261,31 @@ test("Mac daemon config bootstraps production relay from Railway variables when 
     config.relayToken,
     "railway-relay-token-that-is-long-enough",
   );
+  assert.deepEqual(config.wakeBroker, {
+    baseUrl: "https://wake-production.example",
+    token: "wake-token-that-is-long-enough-for-production",
+  });
+});
+
+test("Mac daemon wake broker requires URL and token together", () => {
+  assert.throws(
+    () => resolveNativeLiveMacDaemonConfig(
+      {
+        MCP_SERVER_URL: "https://local.example",
+        LEILEI_NATIVE_LIVE_RELAY_TOKEN:
+          "local-relay-token-that-is-long-enough",
+        LEILEI_NATIVE_LIVE_WAKE_BROKER_URL:
+          "https://wake.example",
+      },
+      {
+        hostname: () => "Leilei-Mac",
+        homedir: () => "/Users/leilei",
+      },
+      () => ({}),
+      fakeFilesystem,
+    ),
+    /wake broker URL and token must be configured together/u,
+  );
 });
 
 test("Mac daemon config does not invoke Railway loader when local env is complete", () => {
@@ -257,6 +295,10 @@ test("Mac daemon config does not invoke Railway loader when local env is complet
       MCP_SERVER_URL: "https://local.example",
       LEILEI_NATIVE_LIVE_RELAY_TOKEN:
         "local-relay-token-that-is-long-enough",
+      LEILEI_NATIVE_LIVE_WAKE_BROKER_URL:
+        "https://wake.local.example",
+      LEILEI_NATIVE_LIVE_WAKE_BROKER_TOKEN:
+        "local-wake-token-that-is-long-enough",
     },
     {
       hostname: () => "Leilei-Mac",

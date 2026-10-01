@@ -4,6 +4,7 @@ import {
   getBreathRankingConfig,
   getMcpGovernanceConfig,
   getNativeLiveAttachmentStorageConfig,
+  getNativeLiveWakeBrokerConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
   type RuntimeEnv,
@@ -130,6 +131,7 @@ import {
 import {
   DrizzleNativeLiveWorkAvailability,
   DrizzleNativeLiveWorkWakePublisher,
+  NativeLiveHttpWakeSignal,
   NativeLiveWorkWakeBroker,
   NativeLiveWorkWaitService,
 } from "../domains/bridge/native-live-work-wake.js";
@@ -312,8 +314,20 @@ export function createProcessRuntime(
           runtimeEnv.NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS,
       },
     );
+  const nativeLiveWakeBrokerConfig =
+    getNativeLiveWakeBrokerConfig(runtimeEnv);
+  const nativeLiveExternalWakeSignal =
+    nativeLiveWakeBrokerConfig
+      ? new NativeLiveHttpWakeSignal(
+          nativeLiveWakeBrokerConfig.url,
+          nativeLiveWakeBrokerConfig.token,
+        )
+      : null;
   const nativeLiveWorkWakePublisher =
-    new DrizzleNativeLiveWorkWakePublisher(db);
+    new DrizzleNativeLiveWorkWakePublisher(
+      db,
+      nativeLiveExternalWakeSignal,
+    );
   const nativeLiveWorkWakeBroker =
     new NativeLiveWorkWakeBroker(runtimeEnv.DATABASE_URL);
   const nativeLiveWorkWaitService =
@@ -471,11 +485,13 @@ export function createProcessRuntime(
     new NativeLiveManualCompactService(
       db,
       nativeLiveWorkWakePublisher,
+      nativeLiveExternalWakeSignal ?? undefined,
     );
   const nativeLiveExternalSessionBridgeService =
     new NativeLiveExternalSessionBridgeService(
       db,
       nativeLiveWorkWakePublisher,
+      nativeLiveExternalWakeSignal ?? undefined,
     );
   const nativeLiveProviderSessionStoreService =
     new NativeLiveProviderSessionStoreService(

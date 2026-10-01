@@ -24,6 +24,10 @@ const nativeFilesystem: NativeLiveMacFilesystem = {
 export type NativeLiveMacDaemonConfig = {
   relayBaseUrl: string;
   relayToken: string;
+  wakeBroker: {
+    baseUrl: string;
+    token: string;
+  } | null;
   listenerInstanceId: string;
   companionBackgroundIntervalMs: number;
   baseWorkspaceRoot: string;
@@ -82,6 +86,58 @@ export function resolveNativeLiveMacDaemonConfig(
     );
   }
 
+  const localWakeBrokerUrl = firstNonBlank(
+    environment.LEILEI_NATIVE_LIVE_WAKE_BROKER_URL,
+  );
+  const localWakeBrokerToken = firstNonBlank(
+    environment.LEILEI_NATIVE_LIVE_WAKE_BROKER_TOKEN,
+  );
+  const wakeRailwayVariables =
+    localWakeBrokerUrl && localWakeBrokerToken
+      ? null
+      : readRailwayVariables();
+  const wakeBrokerBaseUrl =
+    localWakeBrokerUrl
+    ?? firstNonBlank(
+      wakeRailwayVariables?.NATIVE_LIVE_WAKE_BROKER_URL,
+    );
+  const wakeBrokerToken =
+    localWakeBrokerToken
+    ?? firstNonBlank(
+      wakeRailwayVariables?.NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN,
+    );
+
+  if (Boolean(wakeBrokerBaseUrl) !== Boolean(wakeBrokerToken)) {
+    throw new Error(
+      "Native Live wake broker URL and token must be configured together.",
+    );
+  }
+
+  let wakeBroker:
+    NativeLiveMacDaemonConfig["wakeBroker"] = null;
+  if (wakeBrokerBaseUrl && wakeBrokerToken) {
+    let parsedWakeUrl: URL;
+    try {
+      parsedWakeUrl = new URL(wakeBrokerBaseUrl);
+    } catch {
+      throw new Error(
+        "Native Live wake broker URL must be a valid absolute URL.",
+      );
+    }
+    if (
+      parsedWakeUrl.protocol !== "https:"
+      && parsedWakeUrl.protocol !== "http:"
+    ) {
+      throw new Error(
+        "Native Live wake broker URL must use http or https.",
+      );
+    }
+    wakeBroker = {
+      baseUrl: wakeBrokerBaseUrl.replace(/\/+$/u, ""),
+      token: wakeBrokerToken,
+    };
+  }
+
   const configuredListenerId = firstNonBlank(
     environment.LEILEI_NATIVE_LIVE_LISTENER_ID,
   );
@@ -120,6 +176,7 @@ export function resolveNativeLiveMacDaemonConfig(
   return {
     relayBaseUrl: relayBaseUrl.replace(/\/+$/u, ""),
     relayToken,
+    wakeBroker,
     listenerInstanceId,
     companionBackgroundIntervalMs:
       companionBackgroundIntervalSeconds * 1_000,
@@ -327,7 +384,12 @@ function collectRailwayVariables(
   if (!value || typeof value !== "object") return;
 
   const record = value as Record<string, unknown>;
-  for (const key of ["MCP_SERVER_URL", "NATIVE_LIVE_RELAY_AUTH_TOKEN"]) {
+  for (const key of [
+    "MCP_SERVER_URL",
+    "NATIVE_LIVE_RELAY_AUTH_TOKEN",
+    "NATIVE_LIVE_WAKE_BROKER_URL",
+    "NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN",
+  ]) {
     const candidate = record[key];
     if (typeof candidate === "string" && candidate.trim()) {
       result[key] = candidate.trim();
@@ -348,6 +410,8 @@ function collectRailwayVariables(
     && (
       name === "MCP_SERVER_URL"
       || name === "NATIVE_LIVE_RELAY_AUTH_TOKEN"
+      || name === "NATIVE_LIVE_WAKE_BROKER_URL"
+      || name === "NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN"
     )
   ) {
     result[name] = variableValue.trim();

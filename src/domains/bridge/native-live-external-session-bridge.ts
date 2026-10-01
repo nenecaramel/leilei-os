@@ -103,11 +103,19 @@ export class NativeLiveExternalSessionBridgeService {
         kind: "foreground";
       }): Promise<void>;
     },
+    private readonly runtimePresence?: {
+      isListenerOnline(): Promise<boolean>;
+    },
   ) {}
 
   async createListRequest(input: {
     userId: string;
   }): Promise<NativeLiveExternalSessionRequest> {
+    const brokerListenerOnline =
+      await this.runtimePresence
+        ?.isListenerOnline()
+        .catch(() => false)
+      ?? false;
     const request = await this.db.transaction(async (tx) => {
       await tx.execute(sql`
         UPDATE native_live_external_session_requests
@@ -129,7 +137,7 @@ export class NativeLiveExternalSessionBridgeService {
             AND lease_expires_at > now()
         ) AS ok
       `);
-      if (!listener[0]?.ok) {
+      if (!listener[0]?.ok && !brokerListenerOnline) {
         throw new NativeLiveExternalSessionBridgeError(
           "RUNTIME_OFFLINE",
           "The Mac runtime is not currently online.",
