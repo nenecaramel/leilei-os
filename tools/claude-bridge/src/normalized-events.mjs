@@ -282,11 +282,11 @@ export class ClaudeEventNormalizer {
           });
         }
         if (block.type === "tool_result") {
-          emit("tool_result", this.sessionId, {
-            tool_use_id: block.tool_use_id,
-            output: block.content,
-            is_error: Boolean(block.is_error),
-          });
+          emit(
+            "tool_result",
+            this.sessionId,
+            normalizeToolResultPayload(block),
+          );
         }
       }
       return output;
@@ -297,11 +297,11 @@ export class ClaudeEventNormalizer {
       for (const block of raw.message?.content ?? []) {
         if (block.type === "tool_result") {
           emittedToolResult = true;
-          emit("tool_result", this.sessionId, {
-            tool_use_id: block.tool_use_id,
-            output: block.content,
-            is_error: Boolean(block.is_error),
-          });
+          emit(
+            "tool_result",
+            this.sessionId,
+            normalizeToolResultPayload(block),
+          );
         }
       }
       if (emittedToolResult) return output;
@@ -347,6 +347,231 @@ export function normalizeClaudeEvents(
   return rawEvents.flatMap((raw) => normalizer.normalize(raw));
 }
 
+
+const TOOL_RESULT_TEXT_BUDGET_CHARS = 48_000;
+const TOOL_RESULT_MAX_STRING_CHARS = 24_000;
+const TOOL_RESULT_MAX_ARRAY_ITEMS = 32;
+const TOOL_RESULT_MAX_OBJECT_KEYS = 48;
+const TOOL_RESULT_MAX_DEPTH = 6;
+
+function normalizeToolResultPayload(block) {
+  const stats = {
+    truncated: false,
+    omittedBinaryItems: 0,
+    omittedBinaryBytes: 0,
+  };
+  const budget = {
+    remainingTextChars: TOOL_RESULT_TEXT_BUDGET_CHARS,
+  };
+  const output = projectToolResultValue(
+    block.content,
+    stats,
+    budget,
+    0,
+  );
+
+  return {
+    tool_use_id: block.tool_use_id,
+    output,
+    is_error: Boolean(block.is_error),
+    ...(stats.truncated
+      ? { output_truncated: true }
+      : {}),
+    ...(stats.omittedBinaryItems > 0
+      ? {
+          output_binary_omitted: true,
+          omitted_binary_items:
+            stats.omittedBinaryItems,
+          omitted_binary_bytes:
+            stats.omittedBinaryBytes,
+        }
+      : {}),
+  };
+}
+
+function projectToolResultValue(
+  value,
+  stats,
+  budget,
+  depth,
+) {
+  if (value === null || value === undefined) {
+    return value ?? null;
+  }
+  if (
+    typeof value === "number"
+    || typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const dataUrl = parseBase64DataUrl(value);
+    if (dataUrl) {
+      stats.omittedBinaryItems += 1;
+      stats.omittedBinaryBytes += dataUrl.byteLength;
+      return {
+        type: "binary_omitted",
+        encoding: "base64",
+        media_type: dataUrl.mediaType,
+        byte_length: dataUrl.byteLength,
+      };
+    }
+    return boundedToolResultString(value, stats, budget);
+  }
+  if (depth >= TOOL_RESULT_MAX_DEPTH) {
+    stats.truncated = true;
+    return "[omitted: tool result nesting limit]";
+  }
+  if (Array.isArray(value)) {
+    if (value.length > TOOL_RESULT_MAX_ARRAY_ITEMS) {
+      stats.truncated = true;
+    }
+    return value
+      .slice(0, TOOL_RESULT_MAX_ARRAY_ITEMS)
+      .map((item) =>
+        projectToolResultValue(
+          item,
+          stats,
+          budget,
+          depth + 1,
+        )
+      );
+  }
+  if (typeof value !== "object") {
+    return String(value);
+  }
+
+  const record = value;
+  if (isBase64BinaryRecord(record)) {
+    const data =
+      typeof record.data === "string"
+        ? record.data
+        : "";
+    const byteLength = estimateBase64Bytes(data);
+    stats.omittedBinaryItems += 1;
+    stats.omittedBinaryBytes += byteLength;
+    return {
+      type:
+        safeString(record.type)
+        ?? "binary_omitted",
+      ...(safeString(
+        record.media_type ?? record.mime_type,
+      )
+        ? {
+            media_type: clippedString(
+              record.media_type ?? record.mime_type,
+              256,
+            ),
+          }
+        : {}),
+      encoding: "base64",
+      omitted: true,
+      byte_length: byteLength,
+    };
+  }
+
+  const keys = Object.keys(record);
+  if (keys.length > TOOL_RESULT_MAX_OBJECT_KEYS) {
+    stats.truncated = true;
+  }
+  const projected = {};
+  for (
+    const key of keys.slice(0, TOOL_RESULT_MAX_OBJECT_KEYS)
+  ) {
+    const item = record[key];
+    if (key === "blob" && typeof item === "string") {
+      const byteLength = estimateBase64Bytes(item);
+      stats.omittedBinaryItems += 1;
+      stats.omittedBinaryBytes += byteLength;
+      projected[key] = {
+        encoding: "base64",
+        omitted: true,
+        byte_length: byteLength,
+      };
+      continue;
+    }
+    projected[key] = projectToolResultValue(
+      item,
+      stats,
+      budget,
+      depth + 1,
+    );
+  }
+  return projected;
+}
+
+function boundedToolResultString(value, stats, budget) {
+  const allowed = Math.max(
+    0,
+    Math.min(
+      value.length,
+      TOOL_RESULT_MAX_STRING_CHARS,
+      budget.remainingTextChars,
+    ),
+  );
+  budget.remainingTextChars -= allowed;
+  if (allowed < value.length) {
+    stats.truncated = true;
+  }
+  return value.slice(0, allowed);
+}
+
+function isBase64BinaryRecord(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || typeof value.data !== "string"
+  ) {
+    return false;
+  }
+  const encoding =
+    safeString(value.type)
+    ?? safeString(value.encoding);
+  if (encoding === "base64") return true;
+
+  const mediaType = safeString(
+    value.media_type ?? value.mime_type,
+  );
+  return Boolean(
+    mediaType
+    && (
+      mediaType.startsWith("image/")
+      || mediaType.startsWith("audio/")
+      || mediaType.startsWith("video/")
+      || mediaType === "application/octet-stream"
+    )
+  );
+}
+
+function parseBase64DataUrl(value) {
+  const match =
+    /^data:([^;,]{1,256});base64,([A-Za-z0-9+/=\s]+)$/u
+      .exec(value);
+  if (!match) return null;
+  return {
+    mediaType: match[1],
+    byteLength: estimateBase64Bytes(match[2]),
+  };
+}
+
+function estimateBase64Bytes(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return 0;
+  }
+  const compact = value.replace(/\s/gu, "");
+  if (compact.length === 0) return 0;
+  const padding =
+    compact.endsWith("==")
+      ? 2
+      : compact.endsWith("=")
+        ? 1
+        : 0;
+  return Math.max(
+    0,
+    Math.floor((compact.length * 3) / 4) - padding,
+  );
+}
 
 function normalizeClaudeAccountUsage(value) {
   const info =
