@@ -52,15 +52,21 @@ implements NativeLiveContextLineageReader {
       )
       .limit(1);
 
-    return normalizeContextLineageState(
-      row
-        ? {
-            epoch: row.epoch,
-            seenStateIds: row.seenStateIds,
-            thoughtRevision: row.thoughtRevision,
-            thoughtFingerprint: row.thoughtFingerprint,
-          }
-        : null,
-    );
+    if (!row) {
+      return normalizeContextLineageState({
+        epoch: 0,
+        seenStateIds: [],
+        thoughtRevision: 0,
+        thoughtFingerprint: null,
+        forceThoughtSnapshot: true,
+      });
+    }
+
+    return normalizeContextLineageState({
+      epoch: row.epoch,
+      seenStateIds: row.seenStateIds,
+      thoughtRevision: row.thoughtRevision,
+      thoughtFingerprint: row.thoughtFingerprint,
+    });
   }
 }
