@@ -560,6 +560,43 @@ export class NativeLiveManualCompactService {
         );
       }
 
+      const lineage = await tx.execute<{ canonical_message_id: string }>(sql`
+        INSERT INTO runtime_context_lineage_states (
+          canonical_message_id,
+          user_id,
+          conversation_id,
+          epoch,
+          seen_state_ids,
+          thought_revision,
+          thought_fingerprint
+        ) VALUES (
+          ${current.source_message_id}::uuid,
+          ${input.userId}::uuid,
+          ${current.conversation_id}::uuid,
+          1,
+          '[]'::jsonb,
+          0,
+          NULL
+        )
+        ON CONFLICT (canonical_message_id)
+        DO UPDATE SET
+          epoch = runtime_context_lineage_states.epoch + 1,
+          seen_state_ids = '[]'::jsonb,
+          thought_fingerprint = NULL,
+          updated_at = now()
+        WHERE runtime_context_lineage_states.user_id =
+              ${input.userId}::uuid
+          AND runtime_context_lineage_states.conversation_id =
+              ${current.conversation_id}::uuid
+        RETURNING canonical_message_id
+      `);
+      if (lineage.length !== 1) {
+        throw new NativeLiveManualCompactError(
+          "RESERVATION_CONFLICT",
+          "Manual compact context lineage could not advance.",
+        );
+      }
+
       await tx.execute(sql`
         UPDATE native_live_manual_compactions
         SET status = 'completed',
