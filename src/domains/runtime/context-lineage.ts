@@ -53,6 +53,10 @@ export function normalizeContextLineageState(
       value.thoughtFingerprint !== null
       && !/^[0-9a-f]{64}$/u.test(value.thoughtFingerprint)
     )
+    || (
+      value.forceThoughtSnapshot !== undefined
+      && typeof value.forceThoughtSnapshot !== "boolean"
+    )
   ) {
     throw new Error("Context lineage state is invalid.");
   }
