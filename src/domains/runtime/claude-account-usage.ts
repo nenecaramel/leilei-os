@@ -173,16 +173,30 @@ export function parseClaudeAccountUsageRuntimeSnapshot(
       ? null
       : parseOverage(value.overage);
 
+  const status = nullableString(value.status);
+  const activeWindow = nullableString(value.active_window);
+  const surpassedThreshold = nullableFiniteNumber(
+    value.surpassed_threshold,
+  );
+
+  if (
+    windows.length === 0
+    && !status
+    && !activeWindow
+    && !overage
+    && surpassedThreshold === null
+  ) {
+    return null;
+  }
+
   return {
     kind: "claude_account_usage",
     provider: "claude_code",
-    status: nullableString(value.status),
-    active_window: nullableString(value.active_window),
+    status,
+    active_window: activeWindow,
     windows,
     overage,
-    surpassed_threshold: nullableFiniteNumber(
-      value.surpassed_threshold,
-    ),
+    surpassed_threshold: surpassedThreshold,
   };
 }
 
