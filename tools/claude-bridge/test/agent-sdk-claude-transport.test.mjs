@@ -1060,6 +1060,11 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   assert.equal(call.options.resume, "provider-parent");
   assert.equal(call.options.forkSession, true);
   assert.equal(call.options.verbatimPrompts, true);
+  assert.deepEqual(call.options.systemPrompt, {
+    type: "preset",
+    preset: "claude_code",
+    append: LEILEIOS_MIND_SYSTEM_PROMPT,
+  });
   assert.equal(call.options.includePartialMessages, true);
   assert.equal(
     result.providerSessionId,
