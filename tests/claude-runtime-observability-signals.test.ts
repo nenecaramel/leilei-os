@@ -176,3 +176,114 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
   assert.match(models, /payload\["kind"\]\?\.stringValue == "api_retry"/);
   assert.match(surface, /payload\?\["display_name"\]/);
 });
+
+
+test("system/init preserves bounded authoritative environment and never becomes canonical content", () => {
+  const [event] = normalizeClaudeEvents(
+    [{
+      type: "system",
+      subtype: "init",
+      session_id: "session-init",
+      model: "claude-sonnet-5-5",
+      cwd: "/Users/Admin1/Developer/leilei-os-main",
+      tools: ["Read", "Bash", "mcp__leileios__global_search"],
+      mcp_servers: [
+        {
+          name: "leileios",
+          status: "connected",
+          source: "project",
+          url: "https://private.invalid/mcp",
+          headers: { Authorization: "Bearer should-not-persist" },
+        },
+      ],
+      permissionMode: "default",
+      slash_commands: ["/compact", "/schedule"],
+      terminal_slash_commands: ["/context"],
+      apiKeySource: "subscription",
+      output_style: "default",
+      agents: ["Explore"],
+      betas: ["context-1m"],
+      claude_code_version: "2.1.267",
+      sdk_version: "0.3.283",
+      skills: ["pdfs", "slides"],
+      plugins: [{
+        name: "superpowers",
+        path: "/Users/Admin1/.claude/plugins/superpowers",
+      }],
+      plugin_errors: [{
+        plugin: "broken-plugin",
+        type: "load_error",
+        message: "failed to load",
+        path: "/Users/Admin1/.claude/plugins/broken",
+      }],
+      effort: "high",
+      capabilities: ["interrupt_receipt_v1"],
+      fast_mode_state: "on",
+      fast_mode_disabled_reason: null,
+      arbitrary_secret: "must-not-persist",
+    }],
+    base,
+  );
+
+  assert.equal(event?.type, "session");
+  assert.deepEqual(event?.payload?.environment, {
+    model: "claude-sonnet-5-5",
+    cwd: "/Users/Admin1/Developer/leilei-os-main",
+    tools: ["Read", "Bash", "mcp__leileios__global_search"],
+    mcp_servers: [{
+      name: "leileios",
+      status: "connected",
+      source: "project",
+    }],
+    permission_mode: "default",
+    slash_commands: ["/compact", "/schedule"],
+    terminal_slash_commands: ["/context"],
+    api_key_source: "subscription",
+    output_style: "default",
+    agents: ["Explore"],
+    betas: ["context-1m"],
+    claude_code_version: "2.1.267",
+    sdk_version: "0.3.283",
+    skills: ["pdfs", "slides"],
+    plugins: [{
+      name: "superpowers",
+      path: "/Users/Admin1/.claude/plugins/superpowers",
+    }],
+    plugin_errors: [{
+      plugin: "broken-plugin",
+      type: "load_error",
+      message: "failed to load",
+      path: "/Users/Admin1/.claude/plugins/broken",
+    }],
+    effort: "high",
+    capabilities: ["interrupt_receipt_v1"],
+    fast_mode: {
+      state: "on",
+      disabled_reason: null,
+    },
+  });
+
+  const serialized = JSON.stringify(event);
+  assert.doesNotMatch(serialized, /should-not-persist|private\.invalid|arbitrary_secret/);
+
+  assert.deepEqual(
+    canonicalizeNativeLiveEvents([event!]).blocks,
+    [],
+  );
+});
+
+test("iOS Context reads durable system/init environment from runtime metadata", () => {
+  const api = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Infrastructure/LeileiAPIClient.swift", import.meta.url),
+    "utf8",
+  );
+  const context = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Pages/ProjectsView.swift", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(api, /let environment: NativeLiveRuntimeEnvironment\?/);
+  assert.match(context, /Section\("Session Environment"\)/);
+  assert.match(context, /metadata\?\.environment/);
+  assert.match(context, /mcpServers/);
+});
