@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import {
@@ -26,9 +27,10 @@ async function loadDefaultQuery() {
   return sdk.query;
 }
 
-function userMessage(text) {
+function userMessage(text, uuid) {
   return {
     type: "user",
+    uuid,
     parent_tool_use_id: null,
     message: {
       role: "user",
@@ -218,6 +220,7 @@ export async function createAgentSdkTurnHandle({
   questionHandler = null,
   streaming = false,
   midTurnInput = false,
+  userMessageUuid = null,
   executionReadback = false,
   mcpStartupTimeoutMs = 30_000,
 } = {}) {
@@ -244,6 +247,9 @@ export async function createAgentSdkTurnHandle({
   ) {
     throw new Error("Agent SDK MCP startup timeout must be positive.");
   }
+  const initialUserMessageUuid =
+    nonblankString(userMessageUuid) ?? randomUUID();
+
   if (
     streaming
     && queryOptions.includePartialMessages === false
@@ -322,12 +328,12 @@ export async function createAgentSdkTurnHandle({
 
   const inputQueue = midTurnInput
     ? createAgentSdkInputQueue(
-        userMessage(prompt),
+        userMessage(prompt, initialUserMessageUuid),
       )
     : null;
 
   async function* promptStream() {
-    yield userMessage(prompt);
+    yield userMessage(prompt, initialUserMessageUuid);
   }
 
   const options = {
@@ -452,7 +458,7 @@ export class AgentSdkTurnHandle {
     return this.completion;
   }
 
-  sendUserMessage(text) {
+  sendUserMessage(text, { uuid = null } = {}) {
     if (!this.midTurnInput || !this.inputQueue) {
       throw runtimeError(
         "Agent SDK turn does not have mid-turn input enabled.",
@@ -488,11 +494,14 @@ export class AgentSdkTurnHandle {
       );
     }
 
+    const commandUuid =
+      nonblankString(uuid) ?? randomUUID();
     this.inputQueue.push(
-      userMessage(normalizedText),
+      userMessage(normalizedText, commandUuid),
     );
     const receipt = {
       status: "queued",
+      command_uuid: commandUuid,
     };
     this.events.emit(
       "mid-turn-input",
