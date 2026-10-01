@@ -985,6 +985,30 @@ test("the manifest keeps ids and labels so a replay is byte-identical", () => {
   assert.equal(replayed.prompt, assembled.prompt);
 });
 
+test("persisted lineage rejects a partial or mismatched Thought snapshot", () => {
+  const assembled = assembleWith([
+    thoughtState("th-safe-1", "一"),
+    thoughtState("th-safe-2", "二"),
+  ]);
+  const partial = structuredClone(assembled.manifest);
+  partial.items = partial.items.filter(
+    (item) => item.type !== "thought" || item.alias === "T1",
+  );
+  assert.throws(
+    () => assembledTurnContextFromManifest(partial),
+    /Thought snapshot does not match lineage metadata/,
+  );
+
+  const mismatched = structuredClone(assembled.manifest);
+  const thought = mismatched.items.find((item) => item.type === "thought");
+  assert.ok(thought);
+  thought.sourceId = "wrong-thought";
+  assert.throws(
+    () => assembledTurnContextFromManifest(mismatched),
+    /Thought aliases do not match lineage metadata/,
+  );
+});
+
 test("retired Drive and Curiosity tags never create Mind state, alone or beside current tags", () => {
   for (const tag of ["drive", "curiosity", "topic", "dream"]) {
     const alone = `<${tag}>旧标签</${tag}>`;
