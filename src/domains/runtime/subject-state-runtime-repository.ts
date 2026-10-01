@@ -552,7 +552,11 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         budget: row.budget,
         items: row.items,
       };
-      if (!isDeepStrictEqual(actual, manifest)) {
+      const expected = {
+        ...manifest,
+        lineage: manifest.lineage ?? null,
+      };
+      if (!isDeepStrictEqual(actual, expected)) {
         throw new Error(
           "Context manifest idempotent save encountered a conflicting manifest id.",
         );
