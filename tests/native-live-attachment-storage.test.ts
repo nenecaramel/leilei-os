@@ -7,6 +7,9 @@ import {
   PostgresInlineAttachmentObjectStore,
   PostgresAttachmentTransferError,
 } from "../src/domains/bridge/native-live-attachment-postgres-storage.js";
+import {
+  NativeLiveAttachmentService,
+} from "../src/domains/bridge/native-live-attachment-service.js";
 
 const config = {
   bucket: "leilei-files-test",
@@ -175,5 +178,98 @@ test("expired Postgres attachment transfer capabilities are rejected", () => {
     (error: unknown) =>
       error instanceof PostgresAttachmentTransferError
       && error.httpStatus === 410,
+  );
+});
+
+
+test("attachment service keeps legacy inline downloads readable after bucket cutover", async () => {
+  const row = {
+    id: "11111111-1111-4111-8111-111111111111",
+    userId: "22222222-2222-4222-8222-222222222222",
+    objectKey: "native-live/user/attachment",
+    content: Buffer.from("legacy"),
+    filename: "legacy.txt",
+    mimeType: "text/plain",
+    sizeBytes: 6,
+    sha256: "a".repeat(64),
+    kind: "file",
+    status: "bound",
+    boundMessageId: "33333333-3333-4333-8333-333333333333",
+    createdAt: new Date("2026-10-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-10-01T00:00:00.000Z"),
+    readyAt: new Date("2026-10-01T00:00:00.000Z"),
+    boundAt: new Date("2026-10-01T00:00:00.000Z"),
+    failedAt: null,
+    expiresAt: new Date("2026-10-02T00:00:00.000Z"),
+  };
+  const db = {
+    select() {
+      return {
+        from() {
+          return {
+            where() {
+              return {
+                async limit() {
+                  return [row];
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  const primary = {
+    createUploadSlot() {
+      throw new Error("unused");
+    },
+    createDownloadSlot() {
+      return {
+        url: "https://bucket.example/object",
+        method: "GET" as const,
+        headers: {},
+        expiresAt: "2026-10-01T01:00:00.000Z",
+      };
+    },
+    async headObject() {
+      return null;
+    },
+    async deleteObject() {},
+  };
+  const legacy = {
+    ...primary,
+    createDownloadSlot() {
+      return {
+        url: "/api/v1/native-live/attachment-transfer/legacy",
+        method: "GET" as const,
+        headers: {},
+        expiresAt: "2026-10-01T01:00:00.000Z",
+      };
+    },
+  };
+
+  const Service = NativeLiveAttachmentService as unknown as new (
+    ...args: unknown[]
+  ) => NativeLiveAttachmentService;
+  const service = new Service(
+    db,
+    primary,
+    {
+      maxFileBytes: 20 * 1024 * 1024,
+      unboundTtlSeconds: 86_400,
+    },
+    () => new Date("2026-10-01T00:30:00.000Z"),
+    () => row.id,
+    legacy,
+  );
+
+  const result = await service.createDownloadSlot({
+    userId: row.userId,
+    attachmentId: row.id,
+  });
+
+  assert.equal(
+    result.download.url,
+    "/api/v1/native-live/attachment-transfer/legacy",
   );
 });
