@@ -95,6 +95,7 @@ import type {
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
+  parseNativeLiveRuntimeEnvironment,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeContextUsage,
   type NativeLiveRuntimeExecutionReadback,
@@ -348,12 +349,17 @@ export class NativeLiveMacRuntimeExecutor {
                 : null,
           }
         : null;
+    const environment =
+      runtimeEnvironmentFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
 
-    if (!contextUsage && !execution) return null;
+    if (!contextUsage && !execution && !environment) return null;
 
     return {
       context_usage: contextUsage,
       ...(execution ? { execution } : {}),
+      ...(environment ? { environment } : {}),
     };
   }
 
@@ -393,6 +399,30 @@ export class NativeLiveMacRuntimeExecutor {
 
 const LEILEIOS_MCP_STARTUP_ERROR =
   "LeileiOS MCP did not connect before the Claude turn started.";
+
+function runtimeEnvironmentFromNormalizedEvents(
+  events: readonly NativeLiveNormalizedEvent[],
+) {
+  const session = events.find(
+    (event) =>
+      event.type === "session"
+      && event.payload
+      && typeof event.payload.environment === "object"
+      && event.payload.environment !== null
+      && !Array.isArray(event.payload.environment),
+  );
+  if (!session?.payload?.environment) return null;
+  try {
+    return parseNativeLiveRuntimeEnvironment(
+      session.payload.environment,
+    );
+  } catch {
+    // Observability must never turn a successful provider execution into
+    // a canonical failure. Malformed/unknown init data is ignored here;
+    // the normalized runtime event remains available for diagnosis.
+    return null;
+  }
+}
 
 function isRetryableLeileiosMcpStartupFailure(
   error: unknown,

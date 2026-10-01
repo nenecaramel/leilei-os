@@ -1273,6 +1273,119 @@ struct ContextOverviewSheet: View {
                     }
 
 
+                    if let environment =
+                        metadata?.environment {
+                        Section("Session Environment") {
+                            environmentRow(
+                                "Runtime Model",
+                                environment.model
+                            )
+                            environmentRow(
+                                "Working Directory",
+                                environment.cwd
+                            )
+                            environmentRow(
+                                "Permission",
+                                environment.permissionMode
+                            )
+                            environmentRow(
+                                "Claude Code",
+                                environment.claudeCodeVersion
+                            )
+                            environmentRow(
+                                "Agent SDK",
+                                environment.sdkVersion
+                            )
+                            environmentRow(
+                                "Auth Source",
+                                environment.apiKeySource
+                            )
+                            environmentRow(
+                                "Output Style",
+                                environment.outputStyle
+                            )
+
+                            if !environment.mcpServers.isEmpty {
+                                environmentRow(
+                                    "MCP",
+                                    environment.mcpServers
+                                        .map { server in
+                                            [
+                                                normalized(server.name),
+                                                normalized(server.status)
+                                            ]
+                                            .compactMap { $0 }
+                                            .joined(separator: " · ")
+                                        }
+                                        .filter { !$0.isEmpty }
+                                        .joined(separator: "\n")
+                                )
+                            }
+
+                            environmentListRow(
+                                "Tools",
+                                environment.tools
+                            )
+                            environmentListRow(
+                                "Skills",
+                                environment.skills
+                            )
+                            environmentListRow(
+                                "Agents",
+                                environment.agents
+                            )
+                            environmentListRow(
+                                "Commands",
+                                environment.slashCommands
+                                    + environment.terminalSlashCommands
+                            )
+                            environmentListRow(
+                                "Betas",
+                                environment.betas
+                            )
+
+                            if !environment.plugins.isEmpty {
+                                environmentRow(
+                                    "Plugins",
+                                    environment.plugins
+                                        .map { plugin in
+                                            normalized(plugin.name)
+                                                ?? normalized(plugin.path)
+                                                ?? "Unknown"
+                                        }
+                                        .joined(separator: "\n")
+                                )
+                            }
+
+                            if !environment.pluginErrors.isEmpty {
+                                environmentRow(
+                                    "Plugin Errors",
+                                    environment.pluginErrors
+                                        .map { error in
+                                            [
+                                                normalized(error.name)
+                                                    ?? normalized(error.path),
+                                                normalized(error.message)
+                                            ]
+                                            .compactMap { $0 }
+                                            .joined(separator: " · ")
+                                        }
+                                        .filter { !$0.isEmpty }
+                                        .joined(separator: "\n")
+                                )
+                            }
+
+                            if let fastModeText =
+                                fastModeText(environment.fastMode) {
+                                environmentRow(
+                                    "Fast Mode",
+                                    fastModeText
+                                )
+                            }
+                        }
+                    }
+
+
                     Section("Manual Compact") {
                         Button {
                             Task {
@@ -1493,6 +1606,49 @@ struct ContextOverviewSheet: View {
         return NativeLiveEffortLevel(
             rawValue: raw
         )?.displayName ?? raw
+    }
+
+    @ViewBuilder
+    private func environmentRow(
+        _ label: String,
+        _ value: String?
+    ) -> some View {
+        if let value = normalized(value) {
+            LabeledContent(label) {
+                Text(value)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func environmentListRow(
+        _ label: String,
+        _ values: [String]
+    ) -> some View {
+        let normalizedValues =
+            values.compactMap(normalized)
+        if !normalizedValues.isEmpty {
+            environmentRow(
+                label,
+                normalizedValues.joined(separator: "\n")
+            )
+        }
+    }
+
+    private func fastModeText(
+        _ fastMode: NativeLiveRuntimeEnvironmentFastMode?
+    ) -> String? {
+        guard let fastMode else { return nil }
+        if let state = normalized(fastMode.state) {
+            return state
+        }
+        if let enabled = fastMode.enabled {
+            return enabled ? "On" : "Off"
+        }
+        return nil
     }
 
     private func clampedProgress(

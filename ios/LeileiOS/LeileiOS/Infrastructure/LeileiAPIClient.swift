@@ -485,11 +485,86 @@ struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
 struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
     let contextUsage: NativeLiveRuntimeContextUsage?
     let execution: NativeLiveRuntimeExecutionMetadata?
+    let environment: NativeLiveRuntimeEnvironment?
 
     enum CodingKeys: String, CodingKey {
         case contextUsage = "context_usage"
         case execution
+        case environment
     }
+}
+
+struct NativeLiveRuntimeEnvironment: Decodable, Sendable, Equatable {
+    let model: String?
+    let cwd: String?
+    let tools: [String]
+    let mcpServers: [NativeLiveRuntimeEnvironmentNamedStatus]
+    let permissionMode: String?
+    let slashCommands: [String]
+    let terminalSlashCommands: [String]
+    let apiKeySource: String?
+    let outputStyle: String?
+    let agents: [String]
+    let betas: [String]
+    let claudeCodeVersion: String?
+    let sdkVersion: String?
+    let skills: [String]
+    let plugins: [NativeLiveRuntimeEnvironmentPlugin]
+    let pluginErrors: [NativeLiveRuntimeEnvironmentPluginError]
+    let fastMode: NativeLiveRuntimeEnvironmentFastMode?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case cwd
+        case tools
+        case mcpServers = "mcp_servers"
+        case permissionMode = "permission_mode"
+        case slashCommands = "slash_commands"
+        case terminalSlashCommands = "terminal_slash_commands"
+        case apiKeySource = "api_key_source"
+        case outputStyle = "output_style"
+        case agents
+        case betas
+        case claudeCodeVersion = "claude_code_version"
+        case sdkVersion = "sdk_version"
+        case skills
+        case plugins
+        case pluginErrors = "plugin_errors"
+        case fastMode = "fast_mode"
+    }
+}
+
+struct NativeLiveRuntimeEnvironmentNamedStatus:
+    Decodable,
+    Sendable,
+    Equatable {
+    let name: String?
+    let status: String?
+}
+
+struct NativeLiveRuntimeEnvironmentPlugin:
+    Decodable,
+    Sendable,
+    Equatable {
+    let name: String?
+    let path: String?
+}
+
+struct NativeLiveRuntimeEnvironmentPluginError:
+    Decodable,
+    Sendable,
+    Equatable {
+    let name: String?
+    let path: String?
+    let message: String?
+}
+
+struct NativeLiveRuntimeEnvironmentFastMode:
+    Decodable,
+    Sendable,
+    Equatable {
+    let enabled: Bool?
+    let state: String?
 }
 
 struct NativeLiveRuntimeContextUsage: Decodable, Sendable, Equatable {

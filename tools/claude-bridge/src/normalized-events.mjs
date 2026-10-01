@@ -53,6 +53,7 @@ export class ClaudeEventNormalizer {
         provider_session_id: this.sessionId,
         parent_provider_session_id: this.parentProviderSessionId,
         mode: this.mode,
+        environment: normalizeSystemInitEnvironment(raw),
       });
       return output;
     }
@@ -454,6 +455,152 @@ function normalizeRateLimitWindows(value) {
         ),
       }];
     });
+}
+
+function normalizeSystemInitEnvironment(raw) {
+  return {
+    model: clippedString(raw.model, 512),
+    cwd: clippedString(raw.cwd, 2_048),
+    tools: boundedStringArray(raw.tools, 256, 512),
+    mcp_servers: boundedNamedRecords(
+      raw.mcp_servers ?? raw.mcpServers,
+      64,
+      ["name", "server_name", "serverName"],
+      ["status", "state"],
+      256,
+    ),
+    permission_mode: clippedString(
+      raw.permissionMode ?? raw.permission_mode,
+      128,
+    ),
+    slash_commands: boundedStringArray(
+      raw.slash_commands ?? raw.slashCommands,
+      256,
+      512,
+    ),
+    terminal_slash_commands: boundedStringArray(
+      raw.terminal_slash_commands ?? raw.terminalSlashCommands,
+      256,
+      512,
+    ),
+    api_key_source: clippedString(
+      raw.apiKeySource ?? raw.api_key_source,
+      128,
+    ),
+    output_style: clippedString(
+      raw.output_style ?? raw.outputStyle,
+      128,
+    ),
+    agents: boundedStringArray(raw.agents, 128, 512),
+    betas: boundedStringArray(raw.betas, 64, 256),
+    claude_code_version: clippedString(
+      raw.claude_code_version ?? raw.claudeCodeVersion,
+      128,
+    ),
+    sdk_version: clippedString(
+      raw.sdk_version ?? raw.sdkVersion,
+      128,
+    ),
+    skills: boundedStringArray(raw.skills, 128, 512),
+    plugins: boundedPlugins(raw.plugins),
+    plugin_errors: boundedPluginErrors(
+      raw.plugin_errors ?? raw.pluginErrors,
+    ),
+    fast_mode: normalizedFastMode(
+      raw.fast_mode_state
+      ?? raw.fastModeState
+      ?? raw.fast_mode
+      ?? raw.fastMode,
+    ),
+  };
+}
+
+function boundedStringArray(value, maxItems, maxChars) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).flatMap((item) => {
+    const normalized = clippedString(item, maxChars);
+    return normalized ? [normalized] : [];
+  });
+}
+
+function boundedNamedRecords(
+  value,
+  maxItems,
+  nameKeys,
+  statusKeys,
+  maxChars,
+) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+    const name = firstClipped(item, nameKeys, maxChars);
+    const status = firstClipped(item, statusKeys, maxChars);
+    if (!name && !status) return [];
+    return [{ name, status }];
+  });
+}
+
+function boundedPlugins(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 128).flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+    const name = firstClipped(item, ["name", "plugin_name", "pluginName"], 512);
+    const path = firstClipped(item, ["path"], 2_048);
+    if (!name && !path) return [];
+    return [{ name, path }];
+  });
+}
+
+function boundedPluginErrors(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 64).flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+    const name = firstClipped(item, ["name", "plugin_name", "pluginName"], 512);
+    const path = firstClipped(item, ["path"], 2_048);
+    const message = firstClipped(
+      item,
+      ["error", "message", "reason"],
+      2_000,
+    );
+    if (!name && !path && !message) return [];
+    return [{ name, path, message }];
+  });
+}
+
+function normalizedFastMode(value) {
+  if (typeof value === "boolean") {
+    return { enabled: value, state: null };
+  }
+  if (typeof value === "string") {
+    return { enabled: null, state: clippedString(value, 128) };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const enabled =
+    typeof value.enabled === "boolean"
+      ? value.enabled
+      : typeof value.isEnabled === "boolean"
+        ? value.isEnabled
+        : null;
+  const state = firstClipped(value, ["state", "status"], 128);
+  return enabled === null && !state
+    ? null
+    : { enabled, state };
+}
+
+function firstClipped(value, keys, maxChars) {
+  for (const key of keys) {
+    const found = clippedString(value?.[key], maxChars);
+    if (found) return found;
+  }
+  return null;
 }
 
 function normalizedToolUseMeta(value, toolUseId) {
