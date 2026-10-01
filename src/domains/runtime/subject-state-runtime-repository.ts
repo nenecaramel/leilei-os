@@ -444,6 +444,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         snapshotSequence: runtimeContextManifests.snapshotSequence,
         assemblyVersion: runtimeContextManifests.assemblyVersion,
         promptContractVersion: runtimeContextManifests.promptContractVersion,
+        lineage: runtimeContextManifests.lineage,
         budget: runtimeContextManifests.budget,
         items: runtimeContextManifests.items,
         assembledAt: runtimeContextManifests.assembledAt,
@@ -469,6 +470,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       assemblyVersion: row.assemblyVersion,
       promptContractVersion: row.promptContractVersion,
       createdAt: row.assembledAt.toISOString(),
+      lineage: row.lineage,
       budget: row.budget,
       items: row.items,
     } as InitialContextManifest;
@@ -505,6 +507,8 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           snapshotSequence: manifest.snapshotSequence,
           assemblyVersion: manifest.assemblyVersion,
           promptContractVersion: manifest.promptContractVersion,
+          lineage:
+            manifest.lineage as unknown as Record<string, unknown> | null | undefined,
           budget: manifest.budget as unknown as Record<string, unknown>,
           items: manifest.items as unknown as Record<string, unknown>[],
           assembledAt: new Date(manifest.createdAt),
@@ -521,6 +525,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           snapshotSequence: runtimeContextManifests.snapshotSequence,
           assemblyVersion: runtimeContextManifests.assemblyVersion,
           promptContractVersion: runtimeContextManifests.promptContractVersion,
+          lineage: runtimeContextManifests.lineage,
           budget: runtimeContextManifests.budget,
           items: runtimeContextManifests.items,
           assembledAt: runtimeContextManifests.assembledAt,
@@ -543,6 +548,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         assemblyVersion: row.assemblyVersion,
         promptContractVersion: row.promptContractVersion,
         createdAt: row.assembledAt.toISOString(),
+        lineage: row.lineage,
         budget: row.budget,
         items: row.items,
       };
