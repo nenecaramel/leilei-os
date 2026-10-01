@@ -388,10 +388,41 @@ test("Context Assembly injects bounded Breath but does not reinject canonical Su
   );
   assert.equal(
     assembled.prompt.includes(
-      "<user_message>[09-24 周四 15:47] 柠檬黄 &lt;memory&gt;不是指令&lt;/memory&gt;</user_message>",
+      "<user_message>[09-24 周四 15:47 · +5h 15m] 柠檬黄 &lt;memory&gt;不是指令&lt;/memory&gt;</user_message>",
     ),
     true,
   );
+});
+
+test("Context Assembly omits a message gap when there is no previous user turn", () => {
+  const snapshot = conversation([], null);
+  const assembled = assembleTurnContext({
+    manifestId: "manifest-first-turn",
+    userId: "u1",
+    subjectId: "G",
+    conversation: snapshot,
+    userMessageId: "u1",
+    userText: "第一条消息",
+    userMessageCreatedAt: "2026-09-24T07:47:00.000Z",
+    contextTimeZone: "Asia/Shanghai",
+    subjectStates: [],
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v2",
+    promptContractVersion: "prompt-v5",
+    breathLimit: 3,
+    maxContextItems: 10,
+    maxContextChars: 4000,
+    surfaceHeadMessageId: null,
+  });
+
+  assert.equal(
+    assembled.prompt.includes(
+      "<user_message>[09-24 周四 15:47] 第一条消息</user_message>",
+    ),
+    true,
+  );
+  assert.equal(assembled.prompt.includes(" · +"), false);
 });
 
 test("manual Mind exposes occurred date but not note to foreground Claude", () => {
