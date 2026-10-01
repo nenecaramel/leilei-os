@@ -10,6 +10,7 @@ import type {
   NativeLiveMessage,
 } from "../src/domains/conversation/native-live-conversation-types.js";
 import type { NativeLiveMindRuntime } from "../src/domains/runtime/native-live-mind-runtime.js";
+import type { ContextLineageState } from "../src/domains/runtime/context-lineage.js";
 
 const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const conversationId = "33333333-3333-4333-8333-333333333333";
@@ -126,12 +127,28 @@ class Reader {
   }
 }
 
+class LineageReader {
+  calls: unknown[] = [];
+  value: ContextLineageState = {
+    epoch: 2,
+    seenStateIds: ["memory-seen"],
+    thoughtRevision: 7,
+    thoughtFingerprint: "a".repeat(64),
+  };
+
+  async readForMessage(input: unknown) {
+    this.calls.push(input);
+    return this.value;
+  }
+}
+
 class Mind implements NativeLiveMindRuntime {
   calls: string[] = [];
   excludedReferenceIds: string[][] = [];
   manifestIds: Array<string | undefined> = [];
   recallInputs: unknown[] = [];
   recordInputs: unknown[] = [];
+  contextLineages: Array<ContextLineageState | null | undefined> = [];
   transitions: Awaited<
     ReturnType<NativeLiveMindRuntime["reconcileSelectedPath"]>
   > = [];
@@ -141,6 +158,7 @@ class Mind implements NativeLiveMindRuntime {
     userText: string;
     manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }) {
     this.calls.push(
       `prepare:${input.surfaceHeadMessageId}:${input.userText}`,
@@ -149,6 +167,7 @@ class Mind implements NativeLiveMindRuntime {
       [...(input.excludedReferenceIds ?? [])].sort(),
     );
     this.manifestIds.push(input.manifestId);
+    this.contextLineages.push(input.contextLineage);
     return "ASSEMBLED_PROMPT";
   }
 
@@ -210,6 +229,29 @@ test("send preparation settles the continued path, then assembles context", asyn
   assert.deepEqual(mind.manifestIds, [prepared("send").prepareId]);
 });
 
+
+test("Mind preparation inherits context lineage from the canonical parent message", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const lineage = new LineageReader();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(
+    reader,
+    mind,
+    lineage,
+  );
+
+  await runtime.preparePrompt({
+    userId,
+    preparation: prepared("send"),
+  });
+
+  assert.deepEqual(lineage.calls, [{
+    userId,
+    conversationId,
+    canonicalMessageId: parentId,
+  }]);
+  assert.deepEqual(mind.contextLineages, [lineage.value]);
+});
 
 test("native Claude schedule command bypasses Mind prompt assembly but still settles the current path", async () => {
   const reader = new Reader();
