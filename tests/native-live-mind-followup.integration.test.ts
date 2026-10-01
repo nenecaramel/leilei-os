@@ -190,7 +190,7 @@ test(
     );
     const [lineageAfterCanonical] = await database.db
       .select({
-        seenStateIdsDelta: runtimeContextLineageStates.seenStateIdsDelta,
+        seenStateIds: runtimeContextLineageStates.seenStateIds,
       })
       .from(runtimeContextLineageStates)
       .where(
@@ -205,7 +205,7 @@ test(
       .limit(1);
     assert.ok(lineageAfterCanonical);
     assert.deepEqual(
-      lineageAfterCanonical.seenStateIdsDelta,
+      lineageAfterCanonical.seenStateIds,
       [expectedStateId],
       "a Memory written by Claude is already seen before its durable follow-up materializes",
     );
