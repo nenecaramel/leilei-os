@@ -8,6 +8,7 @@ import {
   type AssembledTurnContext,
 } from "./context-assembler.js";
 import type { InitialContextManifest } from "./context-assembly-contract.js";
+import type { ContextLineageState } from "./context-lineage.js";
 import {
   materializeMindWrites,
   type MaterializeMindWritesInput,
@@ -198,6 +199,7 @@ export class NativeLiveMindLoopService {
     semanticScores?: ReadonlyMap<string, number>;
     semanticCandidates?: readonly BreathSemanticCandidate[];
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }): Promise<AssembledTurnContext> {
     if (this.port.loadContextManifest) {
       const persisted = await this.port.loadContextManifest({
@@ -327,6 +329,7 @@ export class NativeLiveMindLoopService {
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
+      contextLineage: input.contextLineage,
     });
 
     await this.port.saveContextManifest({ manifest: assembled.manifest });
