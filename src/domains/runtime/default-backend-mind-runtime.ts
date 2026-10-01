@@ -61,8 +61,8 @@ export function createDefaultBackendMindRuntime(
   const loop = new NativeLiveMindLoopService(
     subjectState,
     {
-      assemblyVersion: "assembly-v2",
-      promptContractVersion: "prompt-v5",
+      assemblyVersion: "assembly-v3",
+      promptContractVersion: "prompt-v6",
       contextTimeZone: DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE,
       ruleVersion: "mind-v2",
       processVersion: "subject-write-v2",
