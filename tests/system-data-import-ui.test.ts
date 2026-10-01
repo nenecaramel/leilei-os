@@ -234,10 +234,12 @@ test("Data restore auto-previews complete v4 metadata and all portable modules",
   const previewCall = calls.find(
     (call) => call.path === "/system/import/preview",
   );
+  assert.ok(previewCall);
+  const previewHeaders = previewCall.init?.headers as
+    | Record<string, string>
+    | undefined;
   assert.equal(
-    (previewCall?.init?.headers as Record<string, string>)[
-      "Content-Type"
-    ],
+    previewHeaders?.["Content-Type"],
     "application/octet-stream",
   );
 
