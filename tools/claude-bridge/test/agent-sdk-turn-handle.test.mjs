@@ -793,3 +793,43 @@ test("turn startup reconnects LeileiOS MCP before releasing the first prompt", a
   const result = await handle.start();
   assert.equal(result.providerSessionId, "provider-mcp-ready");
 });
+
+
+test("turn startup closes a query that misses the LeileiOS MCP startup budget", async () => {
+  let closeCalls = 0;
+  await assert.rejects(
+    () => createAgentSdkTurnHandle({
+      prompt: "wait for LeileiOS",
+      environment: {},
+      mcpStartupTimeoutMs: 5,
+      queryOptions: {
+        mcpServers: {
+          leileios: {
+            type: "http",
+            url: "https://leilei-os.example/internal/native-live-mcp",
+            headers: {
+              Authorization: "Bearer relay-secret",
+            },
+          },
+        },
+      },
+      queryImpl: () => ({
+        close() {
+          closeCalls += 1;
+        },
+        async mcpServerStatus() {
+          return [{
+            name: "leileios",
+            status: "connecting",
+          }];
+        },
+        async *[Symbol.asyncIterator]() {
+          throw new Error("turn must not start before MCP readiness");
+        },
+      }),
+    }),
+    /LeileiOS MCP did not connect before the Claude turn started/u,
+  );
+  assert.equal(closeCalls, 1);
+});
+
