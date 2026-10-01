@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
+import { LEILEIOS_MIND_SYSTEM_PROMPT } from "../src/leileios-mind-system-prompt.mjs";
 
 function fakeQuery(messages, { error = null } = {}) {
   let closed = false;
