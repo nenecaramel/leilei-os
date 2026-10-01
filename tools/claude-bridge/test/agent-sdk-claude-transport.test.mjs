@@ -1144,6 +1144,11 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
     "function",
   );
   assert.equal(call.options.verbatimPrompts, true);
+  assert.deepEqual(call.options.systemPrompt, {
+    type: "preset",
+    preset: "claude_code",
+    append: LEILEIOS_MIND_SYSTEM_PROMPT,
+  });
 });
 
 test("interactive foreground event delivery failure is observability-only", async () => {
