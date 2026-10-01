@@ -347,7 +347,8 @@ export function assembleTurnContext(input: {
   const thoughtSnapshotEmitted =
     thoughtFingerprint !== parentLineage.thoughtFingerprint
     && !(
-      parentLineage.thoughtFingerprint === null
+      parentLineage.epoch === 0
+      && parentLineage.thoughtFingerprint === null
       && parentLineage.thoughtRevision === 0
       && thoughtCandidates.length === 0
     );
