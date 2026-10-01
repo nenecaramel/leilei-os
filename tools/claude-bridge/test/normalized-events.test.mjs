@@ -296,8 +296,8 @@ test("normalizes command lifecycle and provider user-message attribution as runt
     user_message_uuid:
       "55555555-5555-4555-8555-555555555555",
     user_message_uuids: [
-      "55555555-5555-4555-8555-555555555555",
       "44444444-4444-4444-8444-444444444444",
+      "55555555-5555-4555-8555-555555555555",
     ],
   });
 });
