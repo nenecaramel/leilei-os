@@ -44,7 +44,6 @@ export interface NativeLiveExternalWakeSignal {
   notify(input: {
     kind: NativeLiveWorkKind;
   }): Promise<void>;
-  isListenerOnline(): Promise<boolean>;
 }
 
 export class NativeLiveHttpWakeSignal
