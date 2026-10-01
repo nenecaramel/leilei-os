@@ -152,6 +152,6 @@ test("attachment bucket migration only selects stable ready or bound rows", () =
 
   assert.match(
     source,
-    /inArray\(\s*nativeLiveChatAttachments\.status,\s*\["ready", "bound"\]\s*\)/,
+    /inArray\(\s*nativeLiveChatAttachments\.status,\s*\["ready", "bound"\],?\s*\)/,
   );
 });
