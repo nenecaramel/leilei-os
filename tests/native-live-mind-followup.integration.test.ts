@@ -359,13 +359,67 @@ test(
       text: "durable outbox memory",
     }]);
 
+    const scheduleRequestId = crypto.randomUUID();
+    const schedulePrepared = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: scheduleRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: finalized.assistantMessageId,
+      text: "/schedule daily at 9am remember this",
+    });
+    assert.equal(schedulePrepared.ok, true);
+    if (!schedulePrepared.ok) {
+      throw new Error("expected schedule prepare success");
+    }
+    assert.equal(
+      schedulePrepared.command.prompt,
+      "/schedule daily at 9am remember this",
+      "native schedule commands bypass Mind Context Assembly",
+    );
+
+    const scheduleFinalized = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: schedulePrepared.command.prepare_id,
+      request_id: scheduleRequestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "followup-provider-schedule",
+      normalized_events: [
+        { type: "text", payload: { text: "scheduled" } },
+        {
+          type: "result",
+          payload: { status: "success", final_text: "scheduled" },
+        },
+      ],
+    });
+    assert.equal(scheduleFinalized.ok, true);
+    if (!scheduleFinalized.ok) {
+      throw new Error("expected schedule canonical success");
+    }
+
+    assert.deepEqual(
+      await lineageReader.readForMessage({
+        userId,
+        conversationId: conversation.id,
+        canonicalMessageId: scheduleFinalized.assistantMessageId,
+      }),
+      {
+        epoch: 0,
+        seenStateIds: [expectedStateId],
+        thoughtRevision: 0,
+        thoughtFingerprint: fingerprintThoughtSnapshot([]),
+      },
+      "a non-Mind schedule turn must transparently carry the nearest lineage checkpoint",
+    );
+
     const nextRequestId = crypto.randomUUID();
     const nextPrepared = await coordinator.prepare(userId, {
       dispatch_target: "claude_code",
       request_id: nextRequestId,
       operation: "send",
       conversation_id: conversation.id,
-      expected_head_message_id: finalized.assistantMessageId,
+      expected_head_message_id: scheduleFinalized.assistantMessageId,
       text: "durable outbox memory",
     });
     assert.equal(nextPrepared.ok, true);
@@ -378,7 +432,7 @@ test(
     assert.equal(
       nextPrepared.command.prompt.includes("Relevant memories:"),
       false,
-      "the just-written Memory must not be immediately handed back by Breath",
+      "the just-written Memory must not be handed back after a transparent non-Mind turn",
     );
   },
 );
