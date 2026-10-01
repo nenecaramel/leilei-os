@@ -262,6 +262,7 @@ struct NativeLiveMessageSurface: View {
                 .padding(.top, 8)
                 .padding(.bottom, 8)
             }
+            .scrollClipDisabled()
             .id(
                 snapshot?.conversationId
                     ?? historySnapshot?.conversationId
