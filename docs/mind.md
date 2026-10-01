@@ -48,9 +48,12 @@ Relevant feelings:
 
 Memory/Feel Breath recall is ranked first, then any state id already seen on the current
 canonical checkpoint lineage is filtered out. The runtime does not backfill lower-ranked
-matches just to fill the recall limit. Each successful checkpoint stores the cumulative seen-id set inherited from its canonical
-parent lineage, so Retry/Edit naturally rolls back to the set that was true at that branch
-point without keying anything to the provider session id. A successful manual compact starts a new context
+matches just to fill the recall limit. Each lineage-aware successful checkpoint stores the cumulative seen-id set inherited from its
+canonical parent lineage, so Retry/Edit naturally rolls back to the set that was true at that
+branch point without keying anything to the provider session id. Native schedule/routines turns
+that bypass Mind carry the nearest lineage checkpoint transparently unless their reply authors
+Memory/Feel, in which case those deterministic state ids are reserved as seen. A successful
+manual compact starts a new context
 epoch, clears that seen set, and forces the current Thought snapshot to be emitted again.
 The first turn that continues a provider checkpoint created before lineage persistence also
 forces one authoritative Thought snapshot, so stale pre-upgrade snapshots are explicitly
