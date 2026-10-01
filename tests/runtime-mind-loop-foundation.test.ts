@@ -732,10 +732,10 @@ test("unchanged thoughts are not reinjected, while a changed snapshot advances r
 
 test("Breath filters seen top results without backfilling lower-ranked matches", () => {
   const memories = [
-    state("mem-a", "memory", "alpha beta gamma"),
-    state("mem-b", "memory", "alpha beta gamma"),
-    state("mem-c", "memory", "alpha beta gamma"),
-    state("mem-d", "memory", "alpha beta gamma"),
+    state("mem-a", "memory", "alpha beta gamma delta one"),
+    state("mem-b", "memory", "alpha beta gamma delta two"),
+    state("mem-c", "memory", "alpha beta gamma three"),
+    state("mem-d", "memory", "alpha beta four"),
   ];
   const common = {
     manifestId: "manifest-breath-baseline",
@@ -743,7 +743,7 @@ test("Breath filters seen top results without backfilling lower-ranked matches",
     subjectId: "G",
     conversation: conversation([], null),
     userMessageId: "u-breath",
-    userText: "alpha beta gamma",
+    userText: "alpha beta gamma delta",
     subjectStates: memories,
     snapshotSequence: 1,
     assembledAt: now,
