@@ -105,9 +105,41 @@ function renderSection(
   return lines.length > 0 ? [heading, ...lines] : [];
 }
 
+function formatMessageGap(
+  currentIso8601: string,
+  previousIso8601: string,
+): string | null {
+  const current = new Date(currentIso8601);
+  const previous = new Date(previousIso8601);
+  const deltaMs = current.getTime() - previous.getTime();
+  if (
+    !Number.isFinite(current.getTime())
+    || !Number.isFinite(previous.getTime())
+    || deltaMs < 0
+  ) {
+    return null;
+  }
+
+  const totalMinutes = Math.floor(deltaMs / 60_000);
+  if (totalMinutes < 1) return "<1m";
+
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `+${days}d ${hours}h` : `+${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `+${hours}h ${minutes}m` : `+${hours}h`;
+  }
+  return `+${minutes}m`;
+}
+
 function formatContextTimestamp(
   iso8601: string,
   timeZone: string,
+  previousUserIso8601?: string | null,
 ): string {
   const date = new Date(iso8601);
   if (!Number.isFinite(date.getTime())) {
@@ -126,8 +158,11 @@ function formatContextTimestamp(
 
   const part = (type: Intl.DateTimeFormatPartTypes): string =>
     parts.find((candidate) => candidate.type === type)?.value ?? "";
+  const gap = previousUserIso8601
+    ? formatMessageGap(iso8601, previousUserIso8601)
+    : null;
 
-  return `[${part("month")}-${part("day")} ${part("weekday")} ${part("hour")}:${part("minute")}]`;
+  return `[${part("month")}-${part("day")} ${part("weekday")} ${part("hour")}:${part("minute")}${gap ? ` · ${gap}` : ""}]`;
 }
 
 function stateApplies(
@@ -242,10 +277,14 @@ export function assembleTurnContext(input: {
       : input.surfaceHeadMessageId;
   const path = canonicalPathToHead(input.conversation, surfaceHeadMessageId);
   const currentPathMessageIds = new Set(path.map((message) => message.id));
+  const previousUserMessage = [...path]
+    .reverse()
+    .find((message) => message.role === "user");
   const contextTimeZone = input.contextTimeZone ?? "UTC";
   const userTimestamp = formatContextTimestamp(
     input.userMessageCreatedAt ?? input.assembledAt,
     contextTimeZone,
+    previousUserMessage?.createdAt ?? null,
   );
 
   const userItem: ContextManifestItem = {
