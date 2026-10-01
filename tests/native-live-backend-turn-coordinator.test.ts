@@ -223,6 +223,9 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
     conversationId,
     expectedHeadMessageId: headId,
     text: "hello",
+    attachmentIds: [],
+    workspaceId: null,
+    executionSelection: null,
   }]);
   if (!result.ok) throw new Error("expected success");
   assert.deepEqual(result.command, {
@@ -288,6 +291,7 @@ test("prepare Retry and Edit preserve exact historical branch requests", async (
     requestId,
     conversationId,
     targetUserMessageId: targetUserId,
+    executionSelection: null,
   });
 
   port.prepareResult = {
@@ -313,6 +317,8 @@ test("prepare Retry and Edit preserve exact historical branch requests", async (
     conversationId,
     targetUserMessageId: targetUserId,
     text: "replacement",
+    attachmentIds: null,
+    executionSelection: null,
   });
 });
 
