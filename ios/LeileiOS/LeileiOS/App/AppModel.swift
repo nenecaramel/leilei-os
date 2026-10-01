@@ -1422,7 +1422,7 @@ final class AppModel: ObservableObject {
 
             guard nativeLiveRuntimeSurface?.prepareID
                     == surface.prepareID else {
-                return
+                return created
             }
 
             if let index = surface.controls.firstIndex(where: {
