@@ -183,6 +183,12 @@ struct NativeLiveMessageSurface: View {
                                 ),
                             showPendingReplacement:
                                 message.id == replacementAssistantID,
+                            replacementRuntimeSurface:
+                                message.id == replacementAssistantID
+                                    ? runtimeSurface
+                                    : nil,
+                            onResolveReplacementInteraction:
+                                onResolveRuntimeInteraction,
                             isTurnInFlight: isTurnInFlight,
                             isCopied: copiedMessageID == message.id,
                             onCopyMessage: { text in
@@ -477,6 +483,13 @@ private struct NativeLiveMessageRow: View {
     let isCurrentHead: Bool
     let displayTextOverride: String?
     let showPendingReplacement: Bool
+    let replacementRuntimeSurface:
+        NativeLiveRuntimeSurfaceState?
+    let onResolveReplacementInteraction:
+        (
+            NativeLiveRuntimeInteractionSnapshot,
+            [String: NativeLiveJSONValue]
+        ) async throws -> Void
     let isTurnInFlight: Bool
     let isCopied: Bool
     let onCopyMessage: (String) -> Void
@@ -536,7 +549,11 @@ private struct NativeLiveMessageRow: View {
                     .hidden()
                     .accessibilityHidden(true)
 
-                AssistantTypingIndicatorRow()
+                NativeLiveRuntimeAssistantRow(
+                    runtimeSurface: replacementRuntimeSurface,
+                    onResolveInteraction:
+                        onResolveReplacementInteraction
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if message.status == "pending"
