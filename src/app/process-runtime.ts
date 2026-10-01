@@ -4,6 +4,7 @@ import {
   getBreathRankingConfig,
   getMcpGovernanceConfig,
   getNativeLiveAttachmentStorageConfig,
+  getNativeLiveWakeBrokerConfig,
   getMemoryDecayConfig,
   getProactivityWakeOpportunityConfig,
   type RuntimeEnv,
@@ -130,6 +131,7 @@ import {
 import {
   DrizzleNativeLiveWorkAvailability,
   DrizzleNativeLiveWorkWakePublisher,
+  NativeLiveHttpWakeSignal,
   NativeLiveWorkWakeBroker,
   NativeLiveWorkWaitService,
 } from "../domains/bridge/native-live-work-wake.js";
@@ -312,8 +314,18 @@ export function createProcessRuntime(
           runtimeEnv.NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS,
       },
     );
+  const nativeLiveWakeBrokerConfig =
+    getNativeLiveWakeBrokerConfig(runtimeEnv);
   const nativeLiveWorkWakePublisher =
-    new DrizzleNativeLiveWorkWakePublisher(db);
+    new DrizzleNativeLiveWorkWakePublisher(
+      db,
+      nativeLiveWakeBrokerConfig
+        ? new NativeLiveHttpWakeSignal(
+            nativeLiveWakeBrokerConfig.url,
+            nativeLiveWakeBrokerConfig.token,
+          )
+        : null,
+    );
   const nativeLiveWorkWakeBroker =
     new NativeLiveWorkWakeBroker(runtimeEnv.DATABASE_URL);
   const nativeLiveWorkWaitService =
