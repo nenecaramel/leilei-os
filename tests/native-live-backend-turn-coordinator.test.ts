@@ -223,9 +223,6 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
     conversationId,
     expectedHeadMessageId: headId,
     text: "hello",
-    attachmentIds: [],
-    workspaceId: null,
-    executionSelection: null,
   }]);
   if (!result.ok) throw new Error("expected success");
   assert.deepEqual(result.command, {
@@ -238,9 +235,6 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
     canonical_user_message_id: userMessageId,
     runtime_mode: "fork",
     parent_provider_session_id: "provider-parent",
-    workspace_id: null,
-    expected_workspace_root: null,
-    execution_selection: null,
     prompt: "hello",
   });
 });
@@ -294,7 +288,6 @@ test("prepare Retry and Edit preserve exact historical branch requests", async (
     requestId,
     conversationId,
     targetUserMessageId: targetUserId,
-    executionSelection: null,
   });
 
   port.prepareResult = {
@@ -320,8 +313,6 @@ test("prepare Retry and Edit preserve exact historical branch requests", async (
     conversationId,
     targetUserMessageId: targetUserId,
     text: "replacement",
-    attachmentIds: null,
-    executionSelection: null,
   });
 });
 
@@ -686,6 +677,12 @@ test("runtime context metadata is handed to durable finalization", async () => {
     ],
     runtime_metadata: metadata,
   });
+
+  assert.equal(result.ok, true);
+  const call = port.finalizeSuccessCalls[0] as
+    Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0];
+  assert.deepEqual(call.runtimeMetadata, metadata);
+});
 
   assert.equal(result.ok, true);
   const call = port.finalizeSuccessCalls[0] as
