@@ -666,7 +666,7 @@
       "when": 1790839800000,
       "tag": "0094_runtime_context_lineage",
       "breakpoints": true
-    ,
+    },
     {
       "idx": 95,
       "version": "7",
