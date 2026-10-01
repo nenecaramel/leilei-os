@@ -3216,7 +3216,7 @@ export const runtimeContextLineageStates = pgTable(
     userId: uuid("user_id").notNull(),
     conversationId: uuid("conversation_id").notNull(),
     epoch: integer("epoch").default(0).notNull(),
-    seenStateIds: jsonb("seen_state_ids")
+    seenStateIdsDelta: jsonb("seen_state_ids_delta")
       .$type<string[]>()
       .default(sql`'[]'::jsonb`)
       .notNull(),
@@ -3253,8 +3253,8 @@ export const runtimeContextLineageStates = pgTable(
       sql`${table.epoch} >= 0`,
     ),
     check(
-      "runtime_context_lineage_states_seen_array",
-      sql`jsonb_typeof(${table.seenStateIds}) = 'array'`,
+      "runtime_context_lineage_states_seen_delta_array",
+      sql`jsonb_typeof(${table.seenStateIdsDelta}) = 'array'`,
     ),
     check(
       "runtime_context_lineage_states_thought_revision_nonnegative",
