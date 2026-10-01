@@ -55,8 +55,9 @@ that bypass Mind carry the nearest lineage checkpoint transparently unless their
 Memory/Feel, in which case those deterministic state ids are reserved as seen. A successful
 manual compact starts a new context
 epoch, clears that seen set, and forces the current Thought snapshot to be emitted again.
-The first turn that continues a provider checkpoint created before lineage persistence also
-forces one authoritative Thought snapshot, so stale pre-upgrade snapshots are explicitly
+The first turn that continues a provider checkpoint created before lineage persistence, or
+bootstraps a new canonical conversation by forking provider history with no canonical parent,
+also forces one authoritative Thought snapshot so stale historical aliases are explicitly
 superseded. If there are no active thoughts, that snapshot says `- none`.
 
 When a turn has no new Thought snapshot and no unseen Memory/Feel recall, Context Assembly
