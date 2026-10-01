@@ -287,6 +287,10 @@ test("Mac daemon config does not invoke Railway loader when local env is complet
       MCP_SERVER_URL: "https://local.example",
       LEILEI_NATIVE_LIVE_RELAY_TOKEN:
         "local-relay-token-that-is-long-enough",
+      LEILEI_NATIVE_LIVE_WAKE_BROKER_URL:
+        "https://wake.local.example",
+      LEILEI_NATIVE_LIVE_WAKE_BROKER_TOKEN:
+        "local-wake-token-that-is-long-enough",
     },
     {
       hostname: () => "Leilei-Mac",
