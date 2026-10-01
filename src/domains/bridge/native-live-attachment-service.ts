@@ -82,6 +82,8 @@ export class NativeLiveAttachmentService {
     },
     private readonly now: () => Date = () => new Date(),
     private readonly createId: () => string = randomUUID,
+    private readonly legacyInlineObjectStore?:
+      NativeLiveAttachmentObjectStore,
   ) {}
 
   async createUploadSlot(input: {
@@ -196,9 +198,13 @@ export class NativeLiveAttachmentService {
       );
     }
 
+    const objectStore =
+      row.content && this.legacyInlineObjectStore
+        ? this.legacyInlineObjectStore
+        : this.objectStore;
     let head;
     try {
-      head = await this.objectStore.headObject({
+      head = await objectStore.headObject({
         objectKey: row.objectKey,
       });
     } catch (cause) {
@@ -308,9 +314,13 @@ export class NativeLiveAttachmentService {
         "Unbound attachment has expired.",
       );
     }
+    const objectStore =
+      row.content && this.legacyInlineObjectStore
+        ? this.legacyInlineObjectStore
+        : this.objectStore;
     return {
       attachment: mapAttachment(row),
-      download: this.objectStore.createDownloadSlot({
+      download: objectStore.createDownloadSlot({
         objectKey: row.objectKey,
       }),
     };
