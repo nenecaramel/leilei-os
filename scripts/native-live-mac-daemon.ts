@@ -216,7 +216,7 @@ function networkCauseDiagnostics(error: unknown): {
 let consecutiveWakeErrors = 0;
 
 async function waitForWork(): Promise<
-  "ready" | "timeout" | "busy" | "stopped"
+  "ready" | "timeout" | "busy" | "retry" | "stopped"
 > {
   if (stopping) return "stopped";
   const controller = new AbortController();
@@ -260,11 +260,10 @@ async function waitForWork(): Promise<
         if (stopping || controller.signal.aborted) {
           return "stopped";
         }
-        wakeBrokerCursor = null;
         process.stderr.write(
           JSON.stringify({
             at: new Date().toISOString(),
-            outcome: "wake_broker_fallback",
+            outcome: "wake_broker_retry",
             errorName:
               error instanceof Error
                 ? error.name
@@ -275,6 +274,7 @@ async function waitForWork(): Promise<
                 : String(error),
           }) + "\n",
         );
+        return "retry";
       }
     }
 
@@ -375,6 +375,10 @@ while (!stopping) {
             }) + "\n",
           );
           break;
+        }
+        if (wake === "retry") {
+          await sleep(5_000);
+          continue;
         }
         if (wake === "busy") {
           await sleep(5_000);
