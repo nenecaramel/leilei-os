@@ -127,6 +127,7 @@ implements NativeLiveBackendMindRuntime {
       userId: input.userId,
       conversationId: input.preparation.conversationId,
       parentMessageId: userMessage.parentMessageId,
+      runtimeMode: input.preparation.runtimeMode,
     });
 
     return this.mind.prepareUserTurn({
@@ -179,6 +180,7 @@ implements NativeLiveBackendMindRuntime {
       userId: input.userId,
       conversationId: input.preparation.conversationId,
       parentMessageId: userMessage.parentMessageId,
+      runtimeMode: input.preparation.runtimeMode,
     });
 
     return this.mind.planSemanticUserTurn({
@@ -222,6 +224,7 @@ implements NativeLiveBackendMindRuntime {
       userId: input.userId,
       conversationId: input.preparation.conversationId,
       parentMessageId: userMessage.parentMessageId,
+      runtimeMode: input.preparation.runtimeMode,
     });
 
     return this.mind.prepareUserTurnFromSemanticPlan({
@@ -241,14 +244,31 @@ implements NativeLiveBackendMindRuntime {
     userId: string;
     conversationId: string;
     parentMessageId: string | null;
+    runtimeMode: NativeLivePreparedTurn["runtimeMode"];
   }) {
-    return this.contextLineage
-      ? this.contextLineage.readForMessage({
+    const lineage = this.contextLineage
+      ? await this.contextLineage.readForMessage({
           userId: input.userId,
           conversationId: input.conversationId,
           canonicalMessageId: input.parentMessageId,
         })
       : null;
+
+    // A bootstrap fork can carry provider history even though the new
+    // LeileiOS conversation has no canonical parent message yet. Force one
+    // authoritative Thought snapshot (including an explicit empty snapshot)
+    // so stale aliases from that provider history cannot remain current.
+    if (
+      lineage
+      && input.runtimeMode === "fork"
+      && input.parentMessageId === null
+    ) {
+      return {
+        ...lineage,
+        forceThoughtSnapshot: true,
+      };
+    }
+    return lineage;
   }
 
   private replacementExcludedReferenceIds(
