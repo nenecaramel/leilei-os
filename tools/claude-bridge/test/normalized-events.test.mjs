@@ -17,6 +17,66 @@ test("normalizes real Claude 2.1.267 system, assistant, rate-limit, and result e
   assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4]);
 });
 
+test("preserves Claude account usage windows from rate_limit_event", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "rate_limit_event",
+        session_id: "usage-session",
+        rate_limit_info: {
+          status: "allowed_warning",
+          resetsAt: 1788588000,
+          rateLimitType: "seven_day",
+          utilization: 0.79,
+          overageStatus: "allowed",
+          overageResetsAt: 1790812800,
+          isUsingOverage: false,
+          surpassedThreshold: 0.75,
+          unifiedWindows: {
+            five_hour: {
+              utilization: 0.14,
+              resetsAt: 1788284400,
+            },
+            seven_day: {
+              utilization: 0.79,
+              resetsAt: 1788588000,
+            },
+          },
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "runtime");
+  assert.deepEqual(events[0].payload, {
+    kind: "claude_account_usage",
+    provider: "claude_code",
+    status: "allowed_warning",
+    active_window: "seven_day",
+    windows: [
+      {
+        kind: "five_hour",
+        utilization: 0.14,
+        resets_at: "2026-09-01T12:20:00.000Z",
+      },
+      {
+        kind: "seven_day",
+        utilization: 0.79,
+        resets_at: "2026-09-05T00:40:00.000Z",
+      },
+    ],
+    overage: {
+      status: "allowed",
+      resets_at: "2026-10-01T18:40:00.000Z",
+      disabled_reason: null,
+      is_using: false,
+    },
+    surpassed_threshold: 0.75,
+  });
+});
+
 test("keeps rate-limit events out of final text and maps synthetic partial/tool contracts", () => {
   const events = normalizeClaudeEvents([{ type: "system", subtype: "init", session_id: "s" }, { type: "assistant", session_id: "s", delta: { text: "hel" } }, { type: "assistant", session_id: "s", message: { content: [{ type: "tool_use", id: "tu-1", name: "Read", input: { path: "x" } }, { type: "tool_result", tool_use_id: "tu-1", content: "ok", is_error: false }] } }], base);
   assert.deepEqual(events.map((event) => event.type), ["session", "partial_text", "tool_use", "tool_result"]);
