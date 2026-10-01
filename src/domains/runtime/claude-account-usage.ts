@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   runtimeClaudeAccountUsageSnapshots,
