@@ -316,15 +316,17 @@ export function createProcessRuntime(
     );
   const nativeLiveWakeBrokerConfig =
     getNativeLiveWakeBrokerConfig(runtimeEnv);
+  const nativeLiveExternalWakeSignal =
+    nativeLiveWakeBrokerConfig
+      ? new NativeLiveHttpWakeSignal(
+          nativeLiveWakeBrokerConfig.url,
+          nativeLiveWakeBrokerConfig.token,
+        )
+      : null;
   const nativeLiveWorkWakePublisher =
     new DrizzleNativeLiveWorkWakePublisher(
       db,
-      nativeLiveWakeBrokerConfig
-        ? new NativeLiveHttpWakeSignal(
-            nativeLiveWakeBrokerConfig.url,
-            nativeLiveWakeBrokerConfig.token,
-          )
-        : null,
+      nativeLiveExternalWakeSignal,
     );
   const nativeLiveWorkWakeBroker =
     new NativeLiveWorkWakeBroker(runtimeEnv.DATABASE_URL);
@@ -483,11 +485,13 @@ export function createProcessRuntime(
     new NativeLiveManualCompactService(
       db,
       nativeLiveWorkWakePublisher,
+      nativeLiveExternalWakeSignal ?? undefined,
     );
   const nativeLiveExternalSessionBridgeService =
     new NativeLiveExternalSessionBridgeService(
       db,
       nativeLiveWorkWakePublisher,
+      nativeLiveExternalWakeSignal ?? undefined,
     );
   const nativeLiveProviderSessionStoreService =
     new NativeLiveProviderSessionStoreService(
