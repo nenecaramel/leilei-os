@@ -12,6 +12,7 @@ export type ContextLineageManifest = {
   thoughtRevision: number;
   thoughtFingerprint: string;
   thoughtSnapshotEmitted: boolean;
+  activeThoughtCount: number;
 };
 
 export const EMPTY_CONTEXT_LINEAGE_STATE: ContextLineageState = {
