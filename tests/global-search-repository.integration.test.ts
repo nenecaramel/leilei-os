@@ -235,6 +235,28 @@ test(
             { id: "node-travel" },
           );
 
+          const authored = await service.search({
+            userId: owner,
+            query: "海边旅行",
+            modules: [
+              "diary",
+              "todo",
+              "universe",
+            ],
+            scope: "active",
+            author: "C",
+            limit: 25,
+          });
+          assert.deepEqual(
+            authored.results.map((entry) => entry.entity_type).sort(),
+            ["diary", "todo"],
+          );
+          assert.equal(
+            authored.results.every((entry) => entry.author === "C"),
+            true,
+          );
+          assert.equal(authored.metadata.searched_author, "C");
+
           const after = {
             tool: (
               await tx
