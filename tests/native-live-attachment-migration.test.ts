@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 
 test("attachment bucket migration uploads, verifies, then clears inline bytes", async () => {
@@ -140,4 +141,17 @@ test("attachment bucket migration never clears inline bytes before verification"
     migrated: 0,
     failed: 1,
   });
+});
+
+
+test("attachment bucket migration only selects stable ready or bound rows", () => {
+  const source = fs.readFileSync(
+    "src/domains/bridge/native-live-attachment-migration.ts",
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /inArray\(\s*nativeLiveChatAttachments\.status,\s*\["ready", "bound"\]\s*\)/,
+  );
 });
