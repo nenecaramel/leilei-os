@@ -32,6 +32,8 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
   const handle = await createAgentSdkTurnHandle({
     prompt: "hello",
     environment: {},
+    userMessageUuid:
+      "44444444-4444-4444-8444-444444444444",
     queryImpl: (input) => {
       call = input;
       return {
@@ -56,6 +58,8 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
       done: false,
       value: {
         type: "user",
+        uuid:
+          "44444444-4444-4444-8444-444444444444",
         parent_tool_use_id: null,
         message: {
           role: "user",
