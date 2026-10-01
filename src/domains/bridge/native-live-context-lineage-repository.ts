@@ -1,6 +1,5 @@
-import { and, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
-import { runtimeContextLineageStates } from "../../database/schema.js";
 import {
   normalizeContextLineageState,
   type ContextLineageState,
@@ -29,28 +28,74 @@ implements NativeLiveContextLineageReader {
       return normalizeContextLineageState(null);
     }
 
-    const [row] = await this.db
-      .select({
-        epoch: runtimeContextLineageStates.epoch,
-        seenStateIds: runtimeContextLineageStates.seenStateIds,
-        thoughtRevision: runtimeContextLineageStates.thoughtRevision,
-        thoughtFingerprint: runtimeContextLineageStates.thoughtFingerprint,
-      })
-      .from(runtimeContextLineageStates)
-      .where(
-        and(
-          eq(runtimeContextLineageStates.userId, input.userId),
-          eq(
-            runtimeContextLineageStates.conversationId,
-            input.conversationId,
-          ),
-          eq(
-            runtimeContextLineageStates.canonicalMessageId,
-            input.canonicalMessageId,
-          ),
-        ),
+    const rows = await this.db.execute<{
+      epoch: number;
+      thought_revision: number;
+      thought_fingerprint: string | null;
+      seen_state_ids: string[];
+    }>(sql`
+      WITH RECURSIVE current_path AS (
+        SELECT
+          message.id,
+          message.parent_message_id
+        FROM conversation_messages AS message
+        WHERE message.id = ${input.canonicalMessageId}::uuid
+          AND message.user_id = ${input.userId}::uuid
+          AND message.conversation_id = ${input.conversationId}::uuid
+
+        UNION ALL
+
+        SELECT
+          parent.id,
+          parent.parent_message_id
+        FROM conversation_messages AS parent
+        INNER JOIN current_path AS path
+          ON parent.id = path.parent_message_id
+        WHERE parent.user_id = ${input.userId}::uuid
+          AND parent.conversation_id = ${input.conversationId}::uuid
+      ),
+      target_lineage AS (
+        SELECT
+          lineage.epoch,
+          lineage.thought_revision,
+          lineage.thought_fingerprint
+        FROM runtime_context_lineage_states AS lineage
+        WHERE lineage.canonical_message_id =
+              ${input.canonicalMessageId}::uuid
+          AND lineage.user_id = ${input.userId}::uuid
+          AND lineage.conversation_id = ${input.conversationId}::uuid
+        LIMIT 1
+      ),
+      seen AS (
+        SELECT DISTINCT
+          jsonb_array_elements_text(
+            lineage.seen_state_ids_delta
+          ) AS state_id
+        FROM current_path AS path
+        INNER JOIN runtime_context_lineage_states AS lineage
+          ON lineage.canonical_message_id = path.id
+         AND lineage.user_id = ${input.userId}::uuid
+         AND lineage.conversation_id = ${input.conversationId}::uuid
+        INNER JOIN target_lineage AS target
+          ON lineage.epoch = target.epoch
       )
-      .limit(1);
+      SELECT
+        target.epoch,
+        target.thought_revision,
+        target.thought_fingerprint,
+        COALESCE(
+          jsonb_agg(seen.state_id ORDER BY seen.state_id)
+            FILTER (WHERE seen.state_id IS NOT NULL),
+          '[]'::jsonb
+        ) AS seen_state_ids
+      FROM target_lineage AS target
+      LEFT JOIN seen ON TRUE
+      GROUP BY
+        target.epoch,
+        target.thought_revision,
+        target.thought_fingerprint
+    `);
+    const row = rows[0];
 
     if (!row) {
       return normalizeContextLineageState({
@@ -63,10 +108,10 @@ implements NativeLiveContextLineageReader {
     }
 
     return normalizeContextLineageState({
-      epoch: row.epoch,
-      seenStateIds: row.seenStateIds,
-      thoughtRevision: row.thoughtRevision,
-      thoughtFingerprint: row.thoughtFingerprint,
+      epoch: Number(row.epoch),
+      seenStateIds: row.seen_state_ids,
+      thoughtRevision: Number(row.thought_revision),
+      thoughtFingerprint: row.thought_fingerprint,
     });
   }
 }
