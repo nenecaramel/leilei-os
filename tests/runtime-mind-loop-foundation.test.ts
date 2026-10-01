@@ -238,7 +238,7 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
   assert.equal(parsed.visibleText.includes("<memory></memory>"), true);
 });
 
-test("Context Assembly tells foreground Claude how to author current Mind writes", () => {
+test("Context Assembly keeps fixed Mind write instructions out of user history", () => {
   const assembled = assembleTurnContext({
     manifestId: "manifest-mind-write-protocol",
     userId: "u1",
@@ -256,17 +256,10 @@ test("Context Assembly tells foreground Claude how to author current Mind writes
     maxContextChars: 4000,
   });
 
-  assert.equal(assembled.prompt.includes("<leileios_mind_write>"), true);
-  for (const tag of ["feel", "memory", "thought"]) {
-    assert.equal(
-      assembled.prompt.includes(`<${tag}>...</${tag}>`),
-      true,
-    );
-  }
-  for (const retired of ["drive", "curiosity", "topic", "dream"]) {
-    assert.equal(assembled.prompt.includes(`<${retired}>`), false);
-  }
-  // No thought is in front of the model, so there is nothing to let go.
+  assert.equal(assembled.prompt.includes("<leileios_mind_write>"), false);
+  assert.equal(assembled.prompt.includes("<memory>...</memory>"), false);
+  assert.equal(assembled.prompt.includes("<feel>...</feel>"), false);
+  assert.equal(assembled.prompt.includes("<thought>...</thought>"), false);
   assert.equal(assembled.prompt.includes("thought_drop"), false);
 });
 
@@ -688,7 +681,7 @@ test("active thoughts are always present, newest first, and labelled T1..T3 for 
   }
   assert.equal(
     assembled.prompt.includes('<thought_drop ref="T1" />'),
-    true,
+    false,
   );
 });
 
@@ -719,7 +712,7 @@ test("unchanged thoughts are not reinjected, while a changed snapshot advances r
   assert.equal(unchanged.prompt.includes("Current thoughts (rev"), false);
   assert.equal(
     unchanged.prompt.includes('<thought_drop ref="T1" />'),
-    true,
+    false,
   );
 
   const changed = assembleWith(
