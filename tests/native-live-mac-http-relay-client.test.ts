@@ -945,3 +945,130 @@ test("Mac HTTP relay client creates and completes private output attachment uplo
     },
   ]);
 });
+
+
+test("Mac HTTP relay runtime event batch retries a transient transport failure with the exact same payload", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+  let attempt = 0;
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    attempt += 1;
+    if (attempt === 1) {
+      throw new TypeError("fetch failed");
+    }
+    return new Response(JSON.stringify({
+      success: true,
+      data: { created: 0, idempotent: 2 },
+    }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const events = [{
+    sequence: 1,
+    event: {
+      type: "partial_text" as const,
+      payload: { delta: "hel", accumulated_length: 3 },
+    },
+  }, {
+    sequence: 2,
+    event: {
+      type: "result" as const,
+      payload: { status: "success", final_text: "hello" },
+    },
+  }];
+
+  await client.appendRuntimeEvents({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    events,
+  });
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], calls[1]);
+  assert.deepEqual(calls[1]?.body, {
+    listener_instance_id: listenerId,
+    events,
+  });
+});
+
+test("Mac HTTP relay runtime event batch bounds transient retries", async () => {
+  let calls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      success: false,
+      error: { code: "TEMPORARILY_UNAVAILABLE" },
+    }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  await assert.rejects(
+    () => client.appendRuntimeEvents({
+      listenerInstanceId: listenerId,
+      reservationId: prepareId,
+      events: [{
+        sequence: 1,
+        event: {
+          type: "result",
+          payload: { status: "success", final_text: "hello" },
+        },
+      }],
+    }),
+    /Native live relay request failed/u,
+  );
+  assert.equal(calls, 3);
+});
+
+test("Mac HTTP relay runtime event batch does not retry durable 409 conflicts", async () => {
+  let calls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      success: false,
+      error: { code: "EVENT_CONFLICT" },
+    }), {
+      status: 409,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  await assert.rejects(
+    () => client.appendRuntimeEvents({
+      listenerInstanceId: listenerId,
+      reservationId: prepareId,
+      events: [{
+        sequence: 1,
+        event: {
+          type: "result",
+          payload: { status: "success", final_text: "hello" },
+        },
+      }],
+    }),
+    /Native live relay request failed/u,
+  );
+  assert.equal(calls, 1);
+});

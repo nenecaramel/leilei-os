@@ -766,9 +766,10 @@ export class NativeLiveMacDaemonLoop {
             events: batch,
           });
         } catch {
-          // Runtime events are observability/UI data; the canonical terminal
-          // result still carries the complete normalized event stream.
-          // Do not blind-retry an ambiguously delivered batch.
+          // The HTTP relay client already bounded-retries this exact,
+          // idempotent sequence batch on transient transport / 5xx failures.
+          // Once that budget is exhausted, stay fail-soft: the canonical
+          // terminal result still carries the complete normalized event stream.
           eventDeliveryFailures += batch.length;
         }
       };
