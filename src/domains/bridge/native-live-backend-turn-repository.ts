@@ -49,7 +49,6 @@ import {
   type NativeLiveRuntimeAttachment,
 } from "./native-live-attachment-service.js";
 import {
-  normalizeContextLineageState,
   parseContextLineageManifest,
 } from "../runtime/context-lineage.js";
 import { nativeLiveMindFollowUpStateId } from "./native-live-mind-state-id.js";
@@ -1113,61 +1112,6 @@ implements NativeLiveBackendTurnPort {
       NativeLiveBackendTurnPort["finalizeSuccess"]
     >[0]["mindFollowUp"],
   ): Promise<void> {
-    const [userMessage] = await transaction
-      .select({
-        parentMessageId: conversationMessages.parentMessageId,
-      })
-      .from(conversationMessages)
-      .where(
-        and(
-          eq(conversationMessages.id, row.canonicalUserMessageId),
-          eq(conversationMessages.userId, row.userId),
-          eq(conversationMessages.conversationId, row.conversationId),
-        ),
-      )
-      .limit(1);
-    if (!userMessage) {
-      throw new Error(
-        "Context lineage source user message was not found.",
-      );
-    }
-
-    let parentLineage = normalizeContextLineageState(null);
-    if (userMessage.parentMessageId) {
-      const [parentRow] = await transaction
-        .select({
-          epoch: runtimeContextLineageStates.epoch,
-          seenStateIds: runtimeContextLineageStates.seenStateIds,
-          thoughtRevision: runtimeContextLineageStates.thoughtRevision,
-          thoughtFingerprint: runtimeContextLineageStates.thoughtFingerprint,
-        })
-        .from(runtimeContextLineageStates)
-        .where(
-          and(
-            eq(runtimeContextLineageStates.userId, row.userId),
-            eq(
-              runtimeContextLineageStates.conversationId,
-              row.conversationId,
-            ),
-            eq(
-              runtimeContextLineageStates.canonicalMessageId,
-              userMessage.parentMessageId,
-            ),
-          ),
-        )
-        .limit(1);
-      parentLineage = normalizeContextLineageState(
-        parentRow
-          ? {
-              epoch: parentRow.epoch,
-              seenStateIds: parentRow.seenStateIds,
-              thoughtRevision: parentRow.thoughtRevision,
-              thoughtFingerprint: parentRow.thoughtFingerprint,
-            }
-          : null,
-      );
-    }
-
     const [manifestRow] = await transaction
       .select({
         lineage: runtimeContextManifests.lineage,
@@ -1188,13 +1132,11 @@ implements NativeLiveBackendTurnPort {
 
     const manifestLineage =
       parseContextLineageManifest(manifestRow?.lineage ?? null);
-    if (
-      manifestLineage
-      && manifestLineage.epoch !== parentLineage.epoch
-    ) {
-      throw new Error(
-        "Prepared context lineage no longer matches its parent checkpoint.",
-      );
+    if (!manifestLineage) {
+      // Native schedule turns and legacy preparations have no lineage-aware
+      // Context Manifest. Leaving no row makes the lineage reader carry the
+      // nearest canonical ancestor forward without fabricating new state.
+      return;
     }
 
     const injectedStateIds = (manifestRow?.items ?? []).flatMap(
@@ -1231,9 +1173,8 @@ implements NativeLiveBackendTurnPort {
           : [],
     );
 
-    const seenStateIds = [
+    const seenStateIdsDelta = [
       ...new Set([
-        ...parentLineage.seenStateIds,
         ...injectedStateIds,
         ...selfWrittenStateIds,
       ]),
@@ -1243,14 +1184,10 @@ implements NativeLiveBackendTurnPort {
       canonicalMessageId: assistantMessageId,
       userId: row.userId,
       conversationId: row.conversationId,
-      epoch: manifestLineage?.epoch ?? parentLineage.epoch,
-      seenStateIds,
-      thoughtRevision:
-        manifestLineage?.thoughtRevision
-        ?? parentLineage.thoughtRevision,
-      thoughtFingerprint:
-        manifestLineage?.thoughtFingerprint
-        ?? parentLineage.thoughtFingerprint,
+      epoch: manifestLineage.epoch,
+      seenStateIdsDelta,
+      thoughtRevision: manifestLineage.thoughtRevision,
+      thoughtFingerprint: manifestLineage.thoughtFingerprint,
     });
   }
 
