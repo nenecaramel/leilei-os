@@ -11,6 +11,7 @@ import {
   assembledTurnContextFromManifest,
 } from "../src/domains/runtime/context-assembler.js";
 import { parseMindWriteIntents } from "../src/domains/runtime/mind-intent-parser.js";
+import type { ContextLineageState } from "../src/domains/runtime/context-lineage.js";
 import { parseMindWriteIntentsFromBlocks } from "../src/domains/runtime/mind-block-parser.js";
 import { materializeMindWrites } from "../src/domains/runtime/mind-write-materializer.js";
 import {
@@ -639,6 +640,7 @@ function thoughtState(
 function assembleWith(
   states: SubjectStateWrite[],
   userText = "在吗",
+  contextLineage?: ContextLineageState,
 ): ReturnType<typeof assembleTurnContext> {
   return assembleTurnContext({
     manifestId: "manifest-thoughts",
@@ -655,6 +657,7 @@ function assembleWith(
     breathLimit: 3,
     maxContextItems: 16,
     maxContextChars: 8000,
+    contextLineage,
   });
 }
 
@@ -675,7 +678,7 @@ test("active thoughts are always present, newest first, and labelled T1..T3 for 
   );
   assert.equal(
     assembled.prompt.includes(
-      "Current thoughts:\n- [T1] 最新的念头\n- [T2] 中间的念头\n- [T3] 最早的念头",
+      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- [T1] 最新的念头\n- [T2] 中间的念头\n- [T3] 最早的念头",
     ),
     true,
   );
@@ -686,6 +689,97 @@ test("active thoughts are always present, newest first, and labelled T1..T3 for 
   assert.equal(
     assembled.prompt.includes('<thought_drop ref="T1" />'),
     true,
+  );
+});
+
+test("unchanged thoughts are not reinjected, while a changed snapshot advances revision", () => {
+  const states = [
+    thoughtState("th-1", "第一个"),
+    thoughtState("th-2", "第二个"),
+  ];
+  const first = assembleWith(states);
+  const firstLineage = first.manifest.lineage;
+  assert.ok(firstLineage);
+  assert.equal(firstLineage.thoughtSnapshotEmitted, true);
+  assert.equal(firstLineage.thoughtRevision, 1);
+
+  const parent: ContextLineageState = {
+    epoch: firstLineage.epoch,
+    seenStateIds: [],
+    thoughtRevision: firstLineage.thoughtRevision,
+    thoughtFingerprint: firstLineage.thoughtFingerprint,
+  };
+  const unchanged = assembleWith(states, "还在吗", parent);
+  assert.equal(
+    unchanged.manifest.items.some((item) => item.type === "thought"),
+    false,
+  );
+  assert.equal(unchanged.manifest.lineage?.thoughtSnapshotEmitted, false);
+  assert.equal(unchanged.manifest.lineage?.thoughtRevision, 1);
+  assert.equal(unchanged.prompt.includes("Current thoughts (rev"), false);
+  assert.equal(
+    unchanged.prompt.includes('<thought_drop ref="T1" />'),
+    true,
+  );
+
+  const changed = assembleWith(
+    [...states, thoughtState("th-3", "第三个")],
+    "现在呢",
+    parent,
+  );
+  assert.equal(changed.manifest.lineage?.thoughtSnapshotEmitted, true);
+  assert.equal(changed.manifest.lineage?.thoughtRevision, 2);
+  assert.equal(
+    changed.prompt.includes(
+      "Current thoughts (rev 2, supersedes all earlier snapshots):",
+    ),
+    true,
+  );
+});
+
+test("Breath filters seen top results without backfilling lower-ranked matches", () => {
+  const memories = [
+    state("mem-a", "memory", "alpha beta gamma"),
+    state("mem-b", "memory", "alpha beta gamma"),
+    state("mem-c", "memory", "alpha beta gamma"),
+    state("mem-d", "memory", "alpha beta gamma"),
+  ];
+  const common = {
+    manifestId: "manifest-breath-baseline",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation([], null),
+    userMessageId: "u-breath",
+    userText: "alpha beta gamma",
+    subjectStates: memories,
+    snapshotSequence: 1,
+    assembledAt: now,
+    assemblyVersion: "assembly-v2",
+    promptContractVersion: "prompt-v5",
+    breathLimit: 2,
+    maxContextItems: 16,
+    maxContextChars: 8000,
+  } as const;
+
+  const baseline = assembleTurnContext(common);
+  assert.equal(baseline.breathStateIds.length, 2);
+
+  const deduped = assembleTurnContext({
+    ...common,
+    manifestId: "manifest-breath-deduped",
+    contextLineage: {
+      epoch: 0,
+      seenStateIds: baseline.breathStateIds,
+      thoughtRevision: 0,
+      thoughtFingerprint: null,
+    },
+  });
+  assert.deepEqual(deduped.breathStateIds, []);
+  assert.equal(
+    deduped.manifest.items.some(
+      (item) => item.type === "memory" || item.type === "feel",
+    ),
+    false,
   );
 });
 
@@ -760,12 +854,17 @@ test("Memory and Feel are grouped and dated; Thought is not dated", () => {
   const assembled = assembleWith([memory, feel, thought], "柠檬黄");
   const context = assembled.contextData;
 
-  assert.equal(context.includes("Current thoughts:\n- [T1] 想把柠檬黄用进设计"), true);
+  assert.equal(
+    context.includes(
+      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- [T1] 想把柠檬黄用进设计",
+    ),
+    true,
+  );
   assert.equal(context.includes("Relevant memories:\n- [2026-09-24] 蕾蕾喜欢柠檬黄"), true);
   assert.equal(context.includes("Relevant feelings:\n- 柠檬黄让人放松"), true);
   assert.equal(context.includes("[2026-09-24] 想把"), false);
   assert.equal(
-    context.indexOf("Current thoughts:")
+    context.indexOf("Current thoughts (rev 1")
       < context.indexOf("Relevant memories:"),
     true,
   );
