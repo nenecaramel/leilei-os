@@ -22,6 +22,7 @@ const inputSchema = z.object({
     .describe("Domains to search. Defaults to Diary, Todo, and Universe."),
   scope: z.enum(["active", "archived", "all"]).default("active").optional(),
   mode: z.enum(["normal", "phrase"]).default("normal").optional().describe("normal collapses runs of whitespace before matching; phrase preserves internal whitespace and matches the literal contiguous phrase."),
+  author: z.enum(["L", "G", "C"]).optional().describe("Filter Diary and Todo records by author. Universe has no author and is excluded when this filter is set."),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.number().int().min(1).max(25).default(10).optional(),
@@ -89,6 +90,7 @@ const globalSearchDataSchema = z.object({
     next_cursor: z.string().max(MAX_CURSOR_ENCODED_LENGTH).nullable(),
     searched_modules: z.array(globalSearchModuleSchema).min(1).max(3),
     searched_scope: z.enum(["active", "archived", "all"]),
+    searched_author: z.enum(["L", "G", "C"]).nullable(),
   }).strict(),
 }).strict();
 
@@ -103,7 +105,7 @@ export type GlobalSearchToolDependencies = { globalSearchService: { search(input
 export function registerGlobalSearchTool(server: McpServer, dependencies: GlobalSearchToolDependencies): void {
   server.registerTool("global_search", {
     title: "Search all Leilei OS records",
-    description: "Search across LeileiOS Diary, Todo, and Universe. Prefer a domain search when the domain is known.",
+    description: "Search across LeileiOS Diary, Todo, and Universe, optionally filtering authored Diary/Todo records by L, G, or C. Prefer a domain search when the domain is known.",
     inputSchema,
     outputSchema: globalSearchOutputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

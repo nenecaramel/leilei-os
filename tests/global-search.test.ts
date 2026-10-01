@@ -84,6 +84,31 @@ test("Global Search defaults to Diary Todo and Universe", async () => {
     repository.queries[0]?.modules,
     ["diary", "todo", "universe"],
   );
+  assert.equal(repository.queries[0]?.author, undefined);
+  assert.equal(result.metadata.searched_author, null);
+});
+
+test("Global Search forwards author filters and reports the applied author", async () => {
+  const repository = new FakeRepository();
+  const service = new GlobalSearchService(repository);
+
+  const result = await service.search({
+    userId: USER_ID,
+    query: "计划",
+    author: "G",
+  });
+
+  assert.equal(repository.queries[0]?.author, "G");
+  assert.equal(result.metadata.searched_author, "G");
+
+  await assert.rejects(
+    service.search({
+      userId: USER_ID,
+      query: "计划",
+      author: "X",
+    }),
+    /invalid/i,
+  );
 });
 
 test("Global Search rejects retired modules", async () => {
@@ -252,6 +277,7 @@ test("MCP global_search exposes only active search modules", async (t) => {
       next_cursor: null,
       searched_modules: ["diary"],
       searched_scope: "active",
+      searched_author: null,
     },
   };
 
@@ -290,10 +316,12 @@ test("MCP global_search exposes only active search modules", async (t) => {
     arguments: {
       query: "计划",
       modules: ["diary"],
+      author: "G",
     },
   });
   assert.equal(ok.isError, undefined);
   assert.equal(calls.length, 1);
+  assert.equal((calls[0] as { author?: string }).author, "G");
 
   const retired = await client.callTool({
     name: "global_search",

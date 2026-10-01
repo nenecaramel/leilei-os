@@ -28,6 +28,7 @@ export type GlobalSearchInput = {
   modules?: readonly string[];
   scope?: string;
   mode?: string;
+  author?: string;
   date_from?: string;
   date_to?: string;
   limit?: number;
@@ -62,6 +63,7 @@ export type GlobalSearchResult = {
     next_cursor: string | null;
     searched_modules: GlobalSearchModule[];
     searched_scope: GlobalSearchScope;
+    searched_author: ContentAuthor | null;
   };
 };
 
@@ -83,12 +85,15 @@ export class GlobalSearchService {
     const modules = normalizeModules(input.modules);
     const scope = enumValue(input.scope ?? "active", ["active", "archived", "all"] as const);
     const mode = enumValue(input.mode ?? "normal", ["phrase", "normal"] as const);
+    const author = input.author === undefined
+      ? undefined
+      : enumValue(input.author, ["L", "G", "C"] as const);
     const dateFrom = validDate(input.date_from);
     const dateTo = validDate(input.date_to);
     if (dateFrom && dateTo && dateFrom > dateTo) invalid();
     const limit = input.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1 || limit > 25) invalid();
-    const fingerprint = hashRequest({ query, modules, scope, mode, dateFrom, dateTo });
+    const fingerprint = hashRequest({ query, modules, scope, mode, author, dateFrom, dateTo });
     const after = decodeCursor(input.cursor, fingerprint);
 
     const user = await this.repository.findUser(input.userId);
@@ -100,6 +105,7 @@ export class GlobalSearchService {
       modules,
       scope,
       mode,
+      author,
       dateFrom,
       dateTo,
       timezone: user.timezone,
@@ -139,6 +145,7 @@ export class GlobalSearchService {
           : null,
         searched_modules: modules,
         searched_scope: scope,
+        searched_author: author ?? null,
       },
     };
   }

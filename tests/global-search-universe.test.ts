@@ -127,7 +127,7 @@ test("Web API accepts the Universe module without accepting a client identity se
   const calls: GlobalSearchQuery[] = [];
   const result: GlobalSearchResult = {
     results: [],
-    metadata: { count: 0, has_more: false, next_cursor: null, searched_modules: ["universe"], searched_scope: "active" },
+    metadata: { count: 0, has_more: false, next_cursor: null, searched_modules: ["universe"], searched_scope: "active", searched_author: null },
   };
   const handler = createGlobalSearchApiHandler({ globalSearchService: { async search(input) { calls.push(input); return result; } } });
   const { state, response } = recorder();
@@ -171,7 +171,7 @@ test("MCP global_search returns an exact-read link for Universe results", async 
       detail_tool: "get_universe_node",
       detail_arguments: { id: NODE_ID },
     }],
-    metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: ["universe"], searched_scope: "active" },
+    metadata: { count: 1, has_more: false, next_cursor: null, searched_modules: ["universe"], searched_scope: "active", searched_author: null },
   };
   const calls: GlobalSearchQuery[] = [];
   const server = createMcpServer({
