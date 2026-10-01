@@ -40,8 +40,64 @@ export type NativeLiveWorkWaitOutcome =
   | { outcome: "ready"; version: number }
   | { outcome: "timeout"; version: number };
 
+export interface NativeLiveExternalWakeSignal {
+  notify(input: {
+    kind: NativeLiveWorkKind;
+  }): Promise<void>;
+}
+
+export class NativeLiveHttpWakeSignal
+implements NativeLiveExternalWakeSignal {
+  private readonly baseUrl: string;
+
+  constructor(
+    baseUrl: string,
+    private readonly token: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {
+    this.baseUrl = baseUrl.replace(/\/+$/u, "");
+    if (!this.baseUrl) {
+      throw new Error("Native Live wake broker URL is required.");
+    }
+    if (!token.trim()) {
+      throw new Error("Native Live wake broker token is required.");
+    }
+  }
+
+  async notify(input: {
+    kind: NativeLiveWorkKind;
+  }): Promise<void> {
+    const response = await this.fetchImpl(
+      this.baseUrl + "/wake",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer " + this.token,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          kind: input.kind,
+        }),
+        signal: AbortSignal.timeout(1_500),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        "Native Live wake broker signal failed with HTTP "
+          + response.status
+          + ".",
+      );
+    }
+  }
+}
+
 export class DrizzleNativeLiveWorkWakePublisher {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly externalWake:
+      | NativeLiveExternalWakeSignal
+      | null = null,
+  ) {}
 
   async notify(input: NativeLiveWorkWakeInput): Promise<void> {
     const payload = JSON.stringify({
@@ -62,8 +118,18 @@ export class DrizzleNativeLiveWorkWakePublisher {
         SELECT pg_notify(${WORK_WAKE_CHANNEL}, ${payload})
       `);
     } catch {
-      // Wake-up is advisory. Durable state remains authoritative and
-      // wait-side reads recover missed notifications.
+      // PostgreSQL wake-up is advisory. Durable state remains authoritative.
+    }
+
+    if (this.externalWake) {
+      try {
+        await this.externalWake.notify({
+          kind: input.kind,
+        });
+      } catch {
+        // External wake-up is advisory too. The Mac daemon performs a
+        // durable relay check after broker resets/reconnects.
+      }
     }
   }
 }
