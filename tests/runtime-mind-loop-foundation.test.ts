@@ -730,6 +730,29 @@ test("unchanged thoughts are not reinjected, while a changed snapshot advances r
   );
 });
 
+test("a legacy provider checkpoint gets one explicit Thought bootstrap snapshot", () => {
+  const assembled = assembleWith(
+    [],
+    "升级后的第一轮",
+    {
+      epoch: 0,
+      seenStateIds: [],
+      thoughtRevision: 0,
+      thoughtFingerprint: null,
+      forceThoughtSnapshot: true,
+    },
+  );
+
+  assert.equal(assembled.manifest.lineage?.thoughtRevision, 1);
+  assert.equal(assembled.manifest.lineage?.thoughtSnapshotEmitted, true);
+  assert.equal(
+    assembled.prompt.includes(
+      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- none",
+    ),
+    true,
+  );
+});
+
 test("a compact epoch forces an explicit Thought snapshot even when none are active", () => {
   const assembled = assembleWith(
     [],
