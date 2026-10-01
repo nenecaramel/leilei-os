@@ -86,6 +86,9 @@ implements NativeLiveContextLineageReader {
       seenStateIds: row.seen_state_ids,
       thoughtRevision: Number(row.thought_revision),
       thoughtFingerprint: row.thought_fingerprint,
+      ...(row.thought_fingerprint === null
+        ? { forceThoughtSnapshot: true }
+        : {}),
     });
   }
 }
