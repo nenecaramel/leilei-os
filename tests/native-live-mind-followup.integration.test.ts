@@ -295,28 +295,6 @@ test(
       text: "durable outbox memory",
     }]);
 
-    const nextRequestId = crypto.randomUUID();
-    const nextPrepared = await coordinator.prepare(userId, {
-      dispatch_target: "claude_code",
-      request_id: nextRequestId,
-      operation: "send",
-      conversation_id: conversation.id,
-      expected_head_message_id: finalized.assistantMessageId,
-      text: "durable outbox memory",
-    });
-    assert.equal(nextPrepared.ok, true);
-    if (!nextPrepared.ok) throw new Error("expected next prepare success");
-    assert.equal(
-      nextPrepared.command.prompt.includes("durable outbox memory"),
-      true,
-      "the current user message itself stays present",
-    );
-    assert.equal(
-      nextPrepared.command.prompt.includes("Relevant memories:"),
-      false,
-      "the just-written Memory must not be immediately handed back by Breath",
-    );
-
     const [completed] = await database.db
       .select({
         status: nativeLiveMindFollowUps.status,
@@ -358,6 +336,28 @@ test(
       id: expectedStateId,
       text: "durable outbox memory",
     }]);
+
+    const nextRequestId = crypto.randomUUID();
+    const nextPrepared = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: nextRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: finalized.assistantMessageId,
+      text: "durable outbox memory",
+    });
+    assert.equal(nextPrepared.ok, true);
+    if (!nextPrepared.ok) throw new Error("expected next prepare success");
+    assert.equal(
+      nextPrepared.command.prompt.includes("durable outbox memory"),
+      true,
+      "the current user message itself stays present",
+    );
+    assert.equal(
+      nextPrepared.command.prompt.includes("Relevant memories:"),
+      false,
+      "the just-written Memory must not be immediately handed back by Breath",
+    );
   },
 );
 
