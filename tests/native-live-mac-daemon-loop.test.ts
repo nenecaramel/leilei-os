@@ -846,9 +846,19 @@ test("daemon applies reserved mid-turn and interrupt controls exactly once on th
       const abort = new AbortController();
       await pump(
         {
-          sendUserMessage(text: string) {
-            providerCalls.push(["mid_turn_input", text]);
-            return { status: "queued" };
+          sendUserMessage(
+            text: string,
+            options?: { uuid?: string | null },
+          ) {
+            providerCalls.push([
+              "mid_turn_input",
+              text,
+              options?.uuid ?? null,
+            ]);
+            return {
+              status: "queued",
+              command_uuid: options?.uuid ?? null,
+            };
           },
           async interrupt() {
             providerCalls.push(["interrupt"]);
@@ -870,7 +880,11 @@ test("daemon applies reserved mid-turn and interrupt controls exactly once on th
   const outcome = await loop.runOnce();
   assert.equal(outcome.outcome, "completed");
   assert.deepEqual(providerCalls, [
-    ["mid_turn_input", "steer this turn"],
+    [
+      "mid_turn_input",
+      "steer this turn",
+      "77777777-7777-4777-8777-777777777777",
+    ],
     ["interrupt"],
   ]);
 
@@ -893,7 +907,11 @@ test("daemon applies reserved mid-turn and interrupt controls exactly once on th
       [
         "77777777-7777-4777-8777-777777777777",
         "applied",
-        { status: "queued" },
+        {
+          status: "queued",
+          command_uuid:
+            "77777777-7777-4777-8777-777777777777",
+        },
       ],
       [
         "88888888-8888-4888-8888-888888888888",
