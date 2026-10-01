@@ -344,13 +344,16 @@ export function assembleTurnContext(input: {
       text: item.text,
     })),
   );
+  const initialEmptyThoughtState =
+    parentLineage.epoch === 0
+    && parentLineage.thoughtFingerprint === null
+    && parentLineage.thoughtRevision === 0
+    && thoughtCandidates.length === 0;
   const thoughtSnapshotEmitted =
-    thoughtFingerprint !== parentLineage.thoughtFingerprint
-    && !(
-      parentLineage.epoch === 0
-      && parentLineage.thoughtFingerprint === null
-      && parentLineage.thoughtRevision === 0
-      && thoughtCandidates.length === 0
+    parentLineage.forceThoughtSnapshot === true
+    || (
+      thoughtFingerprint !== parentLineage.thoughtFingerprint
+      && !initialEmptyThoughtState
     );
   const thoughtRevision = thoughtSnapshotEmitted
     ? parentLineage.thoughtRevision + 1
