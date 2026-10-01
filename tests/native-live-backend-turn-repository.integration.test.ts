@@ -16,6 +16,7 @@ import {
   workspaceConversations,
   workspaces,
   runtimeDistillationWatermarks,
+  runtimeContextLineageStates,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -282,6 +283,25 @@ test(
       finalizedCheckpoint.providerSessionId,
       "provider-first",
     );
+
+    const [firstLineage] = await database.db
+      .select()
+      .from(runtimeContextLineageStates)
+      .where(
+        and(
+          eq(runtimeContextLineageStates.userId, user.id),
+          eq(
+            runtimeContextLineageStates.canonicalMessageId,
+            firstFinalize.assistantMessageId,
+          ),
+        ),
+      )
+      .limit(1);
+    assert.ok(firstLineage);
+    assert.equal(firstLineage.epoch, 0);
+    assert.deepEqual(firstLineage.seenStateIds, []);
+    assert.equal(firstLineage.thoughtRevision, 0);
+    assert.equal(firstLineage.thoughtFingerprint, null);
 
     const firstDurableMetadata = await runtimeMetadataReader.readLatest({
       userId: user.id,
