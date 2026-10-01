@@ -577,6 +577,7 @@ test("global_search runtime defaults cannot reintroduce retired modules", async 
               next_cursor: null,
               searched_modules: input.modules as ["diary", "todo", "universe"],
               searched_scope: "active" as const,
+              searched_author: null,
             },
           };
         },
