@@ -59,17 +59,17 @@ test("preserves Claude account usage windows from rate_limit_event", () => {
       {
         kind: "five_hour",
         utilization: 0.14,
-        resets_at: "2026-09-01T12:20:00.000Z",
+        resets_at: "2026-09-01T17:40:00.000Z",
       },
       {
         kind: "seven_day",
         utilization: 0.79,
-        resets_at: "2026-09-05T00:40:00.000Z",
+        resets_at: "2026-09-05T06:00:00.000Z",
       },
     ],
     overage: {
       status: "allowed",
-      resets_at: "2026-10-01T18:40:00.000Z",
+      resets_at: "2026-10-01T00:00:00.000Z",
       disabled_reason: null,
       is_using: false,
     },
