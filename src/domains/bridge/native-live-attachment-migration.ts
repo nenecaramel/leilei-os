@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
+  and,
   asc,
   eq,
+  inArray,
   isNotNull,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
@@ -58,7 +60,13 @@ implements NativeLiveInlineAttachmentMigrationRepository {
       })
       .from(nativeLiveChatAttachments)
       .where(
-        isNotNull(nativeLiveChatAttachments.content),
+        and(
+          isNotNull(nativeLiveChatAttachments.content),
+          inArray(
+            nativeLiveChatAttachments.status,
+            ["ready", "bound"],
+          ),
+        ),
       )
       .orderBy(
         asc(nativeLiveChatAttachments.createdAt),
@@ -90,7 +98,14 @@ implements NativeLiveInlineAttachmentMigrationRepository {
         updatedAt: new Date(),
       })
       .where(
-        eq(nativeLiveChatAttachments.id, input.id),
+        and(
+          eq(nativeLiveChatAttachments.id, input.id),
+          isNotNull(nativeLiveChatAttachments.content),
+          inArray(
+            nativeLiveChatAttachments.status,
+            ["ready", "bound"],
+          ),
+        ),
       );
   }
 }
