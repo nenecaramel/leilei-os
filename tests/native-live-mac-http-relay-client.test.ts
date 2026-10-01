@@ -156,6 +156,61 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   }
 });
 
+test("Mac HTTP relay client splits oversized runtime event batches on 413", async () => {
+  const attempts: number[][] = [];
+  const delivered: number[] = [];
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      events?: Array<{ sequence: number }>;
+    };
+    const sequences = (body.events ?? []).map((event) => event.sequence);
+    attempts.push(sequences);
+
+    if (sequences.length > 1) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: { code: "PAYLOAD_TOO_LARGE" },
+      }), {
+        status: 413,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    delivered.push(...sequences);
+    return new Response(JSON.stringify({
+      success: true,
+      data: { outcome: { created: 1, idempotent: 0 } },
+    }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  await client.appendRuntimeEvents({
+    listenerInstanceId: listenerId,
+    reservationId: prepareId,
+    events: [1, 2, 3, 4].map((sequence) => ({
+      sequence,
+      event: {
+        type: "runtime" as const,
+        payload: { kind: "fixture", sequence },
+      },
+    })),
+  });
+
+  assert.deepEqual(delivered, [1, 2, 3, 4]);
+  assert.deepEqual(
+    attempts.map((batch) => batch.length),
+    [4, 2, 1, 1, 2, 1, 1],
+  );
+});
+
 test("Mac HTTP relay client closes each relay connection so aborted waits cannot poison later requests", async () => {
   const calls: Array<RequestInit | undefined> = [];
   const fakeFetch: typeof fetch = async (_input, init) => {

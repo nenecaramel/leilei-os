@@ -589,14 +589,48 @@ implements NativeLiveMacDaemonRelayClient {
       event: import("../conversation/native-live-conversation-orchestrator.js").NativeLiveNormalizedEvent;
     }>;
   }): Promise<void> {
-    await this.postRetryableBounded(
-      `/reservations/${encodeURIComponent(input.reservationId)}/events/batch`,
-      {
-        listener_instance_id: input.listenerInstanceId,
-        events: input.events,
-      },
-      3,
-    );
+    await this.appendRuntimeEventBatch({
+      listenerInstanceId: input.listenerInstanceId,
+      reservationId: input.reservationId,
+      events: [...input.events],
+    });
+  }
+
+  private async appendRuntimeEventBatch(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    events: Array<{
+      sequence: number;
+      event: import("../conversation/native-live-conversation-orchestrator.js").NativeLiveNormalizedEvent;
+    }>;
+  }): Promise<void> {
+    try {
+      await this.postRetryableBounded(
+        `/reservations/${encodeURIComponent(input.reservationId)}/events/batch`,
+        {
+          listener_instance_id: input.listenerInstanceId,
+          events: input.events,
+        },
+        3,
+      );
+    } catch (error) {
+      if (
+        !isRelayPayloadTooLarge(error)
+        || input.events.length <= 1
+      ) {
+        throw error;
+      }
+
+      const midpoint = Math.ceil(input.events.length / 2);
+      await this.appendRuntimeEventBatch({
+        ...input,
+        events: input.events.slice(0, midpoint),
+      });
+      await this.appendRuntimeEventBatch({
+        ...input,
+        events: input.events.slice(midpoint),
+      });
+    }
   }
 
   async requestRuntimeInteraction(input: {
@@ -967,6 +1001,15 @@ function isAbortedInteraction(error: unknown): boolean {
     && error !== null
     && "runtimeCode" in error
     && (error as { runtimeCode?: unknown }).runtimeCode === "ABORTED"
+  );
+}
+
+function isRelayPayloadTooLarge(error: unknown): boolean {
+  return Boolean(
+    error
+    && typeof error === "object"
+    && "httpStatus" in error
+    && (error as { httpStatus?: unknown }).httpStatus === 413,
   );
 }
 

@@ -16,6 +16,7 @@ function configureEnvironment(): void {
     WEB_APP_ORIGIN: "https://web.example.test",
     WEB_AUTH0_AUDIENCE: "https://web.example.test/api",
     WEB_AUTH0_REQUIRED_SCOPE: "web:access",
+    NATIVE_LIVE_RELAY_AUTH_TOKEN: "relay-secret",
   });
 }
 
@@ -81,3 +82,42 @@ test("the app JSON parser remains bounded above 1mb", async () => {
     assert.deepEqual(calls, []);
   });
 });
+
+test("authenticated Native Live internal JSON can exceed the public 1mb limit", async () => {
+  await withApp(async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/internal/native-live-relay/parser-probe`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer relay-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          payload: "x".repeat(1_200_000),
+        }),
+      },
+    );
+    assert.equal(response.status, 404);
+  });
+});
+
+test("unauthenticated Native Live internal JSON does not get the larger parser budget", async () => {
+  await withApp(async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/internal/native-live-relay/parser-probe`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer wrong-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          payload: "x".repeat(1_200_000),
+        }),
+      },
+    );
+    assert.equal(response.status, 413);
+  });
+});
+

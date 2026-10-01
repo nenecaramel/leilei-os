@@ -243,7 +243,32 @@ export function createApp(
       ),
     );
   }
-  app.use(express.json({ limit: "1mb" }));
+
+  const defaultJsonParser = express.json({ limit: "1mb" });
+  const nativeLiveInternalJsonParser = express.json({ limit: "8mb" });
+  app.use((request, response, next) => {
+    const internalRelayToken =
+      config.NATIVE_LIVE_RELAY_AUTH_TOKEN;
+    const usesLargeNativeLiveInternalParser =
+      Boolean(internalRelayToken)
+      && request.header("authorization")
+        === `Bearer ${internalRelayToken}`
+      && (
+        request.path === "/internal/native-live-relay"
+        || request.path.startsWith(
+          "/internal/native-live-relay/",
+        )
+        || request.path === "/internal/native-live-session-store"
+        || request.path.startsWith(
+          "/internal/native-live-session-store/",
+        )
+      );
+
+    const parser = usesLargeNativeLiveInternalParser
+      ? nativeLiveInternalJsonParser
+      : defaultJsonParser;
+    parser(request, response, next);
+  });
 
   app.get("/health", (_request, response) => {
     response.json({
