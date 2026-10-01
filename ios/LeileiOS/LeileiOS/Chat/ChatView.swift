@@ -168,6 +168,17 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.top, 18)
             .padding(.bottom, 10)
+            .background {
+                LinearGradient(
+                    colors: [
+                        Color(.systemBackground).opacity(0),
+                        Color(.systemBackground)
+                    ],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+                .ignoresSafeArea()
+            }
             .offset(
                 y: isSystemKeyboardVisible
                     ? 0
