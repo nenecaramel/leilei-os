@@ -175,6 +175,52 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (
+      (raw.type === "system" && raw.subtype === "api_retry")
+      || raw.type === "api_retry"
+    ) {
+      emit("runtime", this.sessionId, {
+        kind: "api_retry",
+        attempt: finiteNonNegative(raw.attempt),
+        max_retries: finiteNonNegative(raw.max_retries),
+        retry_delay_ms: finiteNonNegative(raw.retry_delay_ms),
+        error_status: finiteNonNegative(raw.error_status),
+        error: clippedString(raw.error, 256),
+        no_response:
+          typeof raw.no_response === "boolean"
+            ? raw.no_response
+            : null,
+      });
+      return output;
+    }
+
+    if (
+      raw.type === "system"
+      && (
+        raw.subtype === "informational"
+        || raw.subtype === "warning"
+        || raw.subtype === "notice"
+      )
+    ) {
+      emit("runtime", this.sessionId, {
+        kind: "provider_notice",
+        level:
+          clippedString(raw.level, 64)
+          ?? (
+            raw.subtype === "informational"
+              ? null
+              : raw.subtype
+          ),
+        content:
+          clippedString(raw.content, 4_000)
+          ?? clippedString(raw.message, 4_000),
+        title: clippedString(raw.title, 256),
+        code: clippedString(raw.code, 128),
+        source: clippedString(raw.source, 128),
+      });
+      return output;
+    }
+
     if (raw.type === "stream_event") {
       const event = raw.event;
       if (
@@ -211,10 +257,15 @@ export class ClaudeEventNormalizer {
           });
         }
         if (block.type === "tool_use") {
+          const displayMeta = normalizedToolUseMeta(
+            raw.tool_use_meta ?? raw.message?.tool_use_meta,
+            block.id,
+          );
           emit("tool_use", this.sessionId, {
             tool_use_id: block.id,
             tool_name: block.name,
             input: block.input,
+            ...(displayMeta ?? {}),
           });
         }
         if (block.type === "tool_result") {
@@ -403,6 +454,81 @@ function normalizeRateLimitWindows(value) {
         ),
       }];
     });
+}
+
+function normalizedToolUseMeta(value, toolUseId) {
+  if (!toolUseId || !value) return null;
+
+  let entry = null;
+  if (Array.isArray(value)) {
+    entry = value.find((candidate) => {
+      if (!candidate || typeof candidate !== "object") return false;
+      return (
+        candidate.id === toolUseId
+        || candidate.tool_use_id === toolUseId
+        || candidate.toolUseId === toolUseId
+      );
+    }) ?? null;
+  } else if (typeof value === "object") {
+    const keyed = value[toolUseId];
+    if (keyed && typeof keyed === "object" && !Array.isArray(keyed)) {
+      entry = keyed;
+    }
+  }
+
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return null;
+  }
+
+  const displayName =
+    clippedString(entry.display_name, 512)
+    ?? clippedString(entry.displayName, 512)
+    ?? clippedString(entry.name, 512);
+  const serverDisplayName =
+    clippedString(entry.server_display_name, 512)
+    ?? clippedString(entry.serverDisplayName, 512);
+  const iconUrl = safeHttpUrl(
+    entry.icon_url ?? entry.iconUrl,
+    2_048,
+  );
+
+  if (!displayName && !serverDisplayName && !iconUrl) {
+    return null;
+  }
+
+  return {
+    ...(displayName ? { display_name: displayName } : {}),
+    ...(serverDisplayName
+      ? { server_display_name: serverDisplayName }
+      : {}),
+    ...(iconUrl ? { icon_url: iconUrl } : {}),
+  };
+}
+
+function safeHttpUrl(value, maxChars) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > maxChars
+  ) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function finiteNonNegative(value) {
+  return typeof value === "number"
+    && Number.isFinite(value)
+    && value >= 0
+    ? value
+    : null;
 }
 
 function finiteNumber(value) {
