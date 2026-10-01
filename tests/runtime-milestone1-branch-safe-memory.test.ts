@@ -164,7 +164,6 @@ test("Milestone 1 positive path: explicit Memory settles and Breath injects it l
     subjectId: "G",
     conversationId: "c1",
     assistantMessageId: "a1",
-    sourceOccurredAt: now,
     blocks: [
       {
         kind: "text",
@@ -240,7 +239,6 @@ test("Milestone 1 abandoned branch: Retry sibling invalidates provisional Memory
     subjectId: "G",
     conversationId: "c1",
     assistantMessageId: "a-old",
-    sourceOccurredAt: now,
     blocks: [
       {
         kind: "text",
