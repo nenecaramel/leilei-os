@@ -768,8 +768,9 @@ export class NativeLiveMacDaemonLoop {
         } catch {
           // The HTTP relay client already bounded-retries this exact,
           // idempotent sequence batch on transient transport / 5xx failures.
-          // Once that budget is exhausted, stay fail-soft: the canonical
-          // terminal result still carries the complete normalized event stream.
+          // Once that budget is exhausted, stay fail-soft: the terminal
+          // result still carries the canonical fallback event set. Runtime-only
+          // observability is intentionally not duplicated into the result body.
           eventDeliveryFailures += batch.length;
         }
       };

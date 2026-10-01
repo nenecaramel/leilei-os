@@ -293,6 +293,139 @@ test("normalizes Agent SDK tool_result blocks emitted on user messages", () => {
   assert.equal(events[2].payload.is_error, false);
 });
 
+test("bounds oversized tool_result text without changing ordinary tool semantics", () => {
+  const huge = "x".repeat(100_000);
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "user",
+        session_id: "s",
+        message: {
+          content: [{
+            type: "tool_result",
+            tool_use_id: "tu-large-text",
+            content: huge,
+            is_error: false,
+          }],
+        },
+      },
+    ],
+    base,
+  );
+
+  const payload = events[1].payload;
+  assert.equal(payload.tool_use_id, "tu-large-text");
+  assert.equal(payload.is_error, false);
+  assert.equal(payload.output.length, 24_000);
+  assert.equal(payload.output_truncated, true);
+  assert.equal("output_binary_omitted" in payload, false);
+});
+
+test("omits base64 image/blob bytes from tool_result while preserving useful metadata and references", () => {
+  const imageBytes = Buffer.alloc(90_000, 7);
+  const imageBase64 = imageBytes.toString("base64");
+  const blobBytes = Buffer.alloc(12_345, 9);
+  const blobBase64 = blobBytes.toString("base64");
+
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "user",
+        session_id: "s",
+        message: {
+          content: [{
+            type: "tool_result",
+            tool_use_id: "tu-image",
+            is_error: false,
+            content: [
+              {
+                type: "text",
+                text: "image inspected",
+              },
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/png",
+                  data: imageBase64,
+                },
+              },
+              {
+                type: "resource",
+                resource: {
+                  uri: "file:///tmp/result.bin",
+                  mimeType: "application/octet-stream",
+                  blob: blobBase64,
+                },
+              },
+            ],
+          }],
+        },
+      },
+    ],
+    base,
+  );
+
+  const payload = events[1].payload;
+  const serialized = JSON.stringify(payload);
+  assert.equal(serialized.includes(imageBase64.slice(0, 64)), false);
+  assert.equal(serialized.includes(blobBase64.slice(0, 64)), false);
+  assert.equal(payload.output_binary_omitted, true);
+  assert.equal(payload.omitted_binary_items, 2);
+  assert.equal(payload.omitted_binary_bytes, 102_345);
+  assert.equal(payload.output[0].text, "image inspected");
+  assert.deepEqual(payload.output[1].source, {
+    type: "base64",
+    media_type: "image/png",
+    encoding: "base64",
+    omitted: true,
+    byte_length: 90_000,
+  });
+  assert.equal(
+    payload.output[2].resource.uri,
+    "file:///tmp/result.bin",
+  );
+  assert.deepEqual(payload.output[2].resource.blob, {
+    encoding: "base64",
+    omitted: true,
+    byte_length: 12_345,
+  });
+  assert.ok(serialized.length < 8_000);
+});
+
+test("omits base64 data URLs from tool_result projections", () => {
+  const binary = Buffer.alloc(4_096, 4).toString("base64");
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "assistant",
+        session_id: "s",
+        message: {
+          content: [{
+            type: "tool_result",
+            tool_use_id: "tu-data-url",
+            content: `data:image/jpeg;base64,${binary}`,
+            is_error: false,
+          }],
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(events[1].payload.output, {
+    type: "binary_omitted",
+    encoding: "base64",
+    media_type: "image/jpeg",
+    byte_length: 4_096,
+  });
+  assert.equal(events[1].payload.output_binary_omitted, true);
+  assert.equal(events[1].payload.omitted_binary_bytes, 4_096);
+});
+
 test("unknown and conflicting-session events are surfaced without crashing", () => {
   const events = normalizeClaudeEvents([{ type: "system", subtype: "init", session_id: "s" }, { type: "future", subtype: "x", session_id: "s" }, { type: "assistant", session_id: "other", message: { content: [] } }], base);
   assert.equal(events[1].type, "runtime"); assert.equal(events[2].type, "error");

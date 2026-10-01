@@ -66,6 +66,79 @@ test("new command invokes sendNew and returns a correlated success envelope", as
   });
 });
 
+test("terminal result excludes runtime-only duplicate events but preserves canonical fallback events", async () => {
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() {
+      return {
+        providerSessionId: "provider-new",
+        normalizedEvents: [
+          {
+            type: "session",
+            payload: {
+              provider_session_id: "provider-new",
+            },
+          },
+          {
+            type: "partial_text",
+            payload: { delta: "he" },
+          },
+          {
+            type: "runtime",
+            payload: { kind: "session_state_changed", state: "running" },
+          },
+          {
+            type: "task",
+            payload: { phase: "progress" },
+          },
+          {
+            type: "tool_use",
+            payload: {
+              tool_use_id: "tu-1",
+              tool_name: "Read",
+              input: { file_path: "a.txt" },
+            },
+          },
+          {
+            type: "tool_result",
+            payload: {
+              tool_use_id: "tu-1",
+              output: "contents",
+              is_error: false,
+            },
+          },
+          {
+            type: "text",
+            payload: {
+              role: "assistant",
+              text: "READY",
+              final: false,
+            },
+          },
+          {
+            type: "result",
+            payload: {
+              status: "success",
+              final_text: "READY",
+            },
+          },
+        ],
+      };
+    },
+    async resume() { throw new Error("resume must not be used"); },
+    async fork() { throw new Error("fork must not be used"); },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(runtime).execute(command());
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(
+    result.normalized_events.map((event) => event.type),
+    ["tool_use", "tool_result", "text", "result"],
+  );
+});
+
 test("fork command invokes fork with the exact prepared parent session and never resume", async () => {
   const calls: unknown[] = [];
   const runtime: NativeLiveClaudeRuntime = {
