@@ -44,6 +44,28 @@ enum GlobalSearchMode: String, CaseIterable, Identifiable, Hashable, Codable {
     }
 }
 
+enum GlobalSearchAuthorFilter: String, CaseIterable, Identifiable, Hashable {
+    case all
+    case l = "L"
+    case g = "G"
+    case c = "C"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .l: "L"
+        case .g: "G"
+        case .c: "C"
+        }
+    }
+
+    var queryValue: String? {
+        self == .all ? nil : rawValue
+    }
+}
+
 enum GlobalSearchTimePreset: String, CaseIterable, Identifiable, Hashable {
     case anyTime
     case today
@@ -98,6 +120,7 @@ struct GlobalSearchRequest: Equatable {
     let modules: Set<GlobalSearchModule>
     let scope: GlobalSearchScope
     let mode: GlobalSearchMode
+    let author: GlobalSearchAuthorFilter
     let dateFrom: String?
     let dateTo: String?
 }
@@ -109,6 +132,7 @@ struct GlobalSearchResponse {
     let nextCursor: String?
     let searchedModules: [GlobalSearchModule]
     let searchedScope: GlobalSearchScope
+    let searchedAuthor: String?
 }
 
 struct GlobalSearchResultItem: Identifiable, Decodable {
@@ -213,6 +237,12 @@ final class LeileiGlobalSearchService: GlobalSearchService {
             URLQueryItem(name: "limit", value: "25"),
         ]
 
+        if let author = request.author.queryValue {
+            components.queryItems?.append(
+                URLQueryItem(name: "author", value: author)
+            )
+        }
+
         if let dateFrom = request.dateFrom {
             components.queryItems?.append(
                 URLQueryItem(name: "date_from", value: dateFrom)
@@ -239,7 +269,8 @@ final class LeileiGlobalSearchService: GlobalSearchService {
             hasMore: envelope.data.metadata.hasMore,
             nextCursor: envelope.data.metadata.nextCursor,
             searchedModules: envelope.data.metadata.searchedModules,
-            searchedScope: envelope.data.metadata.searchedScope
+            searchedScope: envelope.data.metadata.searchedScope,
+            searchedAuthor: envelope.data.metadata.searchedAuthor
         )
     }
 }
@@ -260,6 +291,7 @@ private struct GlobalSearchMetadata: Decodable {
     let nextCursor: String?
     let searchedModules: [GlobalSearchModule]
     let searchedScope: GlobalSearchScope
+    let searchedAuthor: String?
 
     enum CodingKeys: String, CodingKey {
         case count
@@ -267,5 +299,6 @@ private struct GlobalSearchMetadata: Decodable {
         case nextCursor = "next_cursor"
         case searchedModules = "searched_modules"
         case searchedScope = "searched_scope"
+        case searchedAuthor = "searched_author"
     }
 }
