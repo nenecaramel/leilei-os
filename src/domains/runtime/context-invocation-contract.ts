@@ -103,6 +103,8 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
       || !Number.isInteger(manifest.lineage.thoughtRevision)
       || manifest.lineage.thoughtRevision < 0
       || !/^[0-9a-f]{64}$/u.test(manifest.lineage.thoughtFingerprint)
+      || !Number.isInteger(manifest.lineage.activeThoughtCount)
+      || manifest.lineage.activeThoughtCount < 0
     ) {
       throw new Error("Context manifest lineage metadata is invalid.");
     }
