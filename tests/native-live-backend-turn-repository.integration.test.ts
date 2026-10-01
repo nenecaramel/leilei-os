@@ -299,7 +299,7 @@ test(
       .limit(1);
     assert.ok(firstLineage);
     assert.equal(firstLineage.epoch, 0);
-    assert.deepEqual(firstLineage.seenStateIds, []);
+    assert.deepEqual(firstLineage.seenStateIdsDelta, []);
     assert.equal(firstLineage.thoughtRevision, 0);
     assert.equal(firstLineage.thoughtFingerprint, null);
 
