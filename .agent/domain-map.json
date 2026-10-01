@@ -148,6 +148,18 @@
         "{mergeBase}"
       ],
       "cwd": "."
+    },
+    "workspace-policy": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "--test-name-pattern",
+        "coding-agent workspace policy is enforced by closeout commands",
+        "tests/repository-hygiene.test.ts"
+      ],
+      "cwd": "."
     }
   },
   "surfaces": [
@@ -430,6 +442,7 @@
       ],
       "verification": [
         "agent-workflow",
+        "workspace-policy",
         "root-typecheck"
       ],
       "runtime_locations": [

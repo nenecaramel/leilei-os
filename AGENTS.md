@@ -10,14 +10,19 @@
 ## Runtime boundaries
 
 - **Railway:** Node 22 server/MCP/writers. Merge != production live: verify deployed SHA, readiness and the changed authenticated contract.
-- **Mac:** Native Live daemon/Claude SDK execute locally. Merged daemon/bridge code needs local fresh. `pnpm runtime:native-live-mac-daemon:fresh` requires clean canonical `~/Developer/leilei-os-main` on `main`, and fast-forwards only. `...:fresh-current` explicitly runs a clean current feature branch without fetch/rebase. Neither autostashes, resets or discards edits.
+- **Mac:** Native Live daemon/Claude SDK execute locally. Merged daemon/bridge code needs local fresh. `pnpm runtime:native-live-mac-daemon:fresh` requires canonical `~/Developer/leilei-os-main` on `main`, and fast-forwards only. Both fresh modes allow dirty `ios/**` files and preserve them; any dirty path outside `ios/**` blocks restart. If upstream touches the same dirty iOS file, Git safely refuses the merge. `...:fresh-current` explicitly runs the current feature branch without fetch/rebase. Neither autostashes, resets or discards edits.
 - **iPhone:** sync intended iOS code before the next Xcode Run; preserve local signing settings. Device rebuild/acceptance is separate from server deployment.
 - **Web:** Node **24**, as declared in `web/package.json`; use `npm ci` and Web typecheck/build there. Root `.node-version` is **22** for server/Mac tooling, not a Web override. CI currently uses Node 24; Claude bridge supports >=20. Do not upgrade server Docker incidentally.
 - **Postgres:** schema/migrations and bytes/metadata live independently of devices. Production DB mutation, migrations, deployment/config changes and messages to external systems require explicit user authorization. Local gates never run production acceptance or `db:migrate`. Use an isolated local DB for integration tests.
 
 ## Workspace and closeout
 
-Only long-lived copies: `~/Developer/leilei-os-main` and `~/Developer/leilei-os-ui`. No persistent clones/worktrees/builds under Documents, Desktop, iCloud or other sync-provider folders; no third persistent clone. Use disposable worktrees under `${TMPDIR:-/tmp}` when isolation is needed, and preserve the owner's unrelated edits.
+On the owner's Mac, the only long-lived LeileiOS working copies are:
+
+- `~/Developer/leilei-os-main` for mainline work.
+- `~/Developer/leilei-os-ui` for the current UI integration branch.
+
+Do not create persistent clones, worktrees, recovery copies, dependency stores, or build directories under `~/Documents`, iCloud Drive, Desktop, Dropbox, OneDrive, or another sync-provider location. Do not create a third persistent LeileiOS clone just to isolate a task. Use disposable worktrees under `${TMPDIR:-/tmp}` when isolation is needed, and preserve the owner's unrelated edits.
 
 Before closeout: commit/push work that must survive; run `pnpm hygiene:finish` and `git status --short --branch`; remove task-created temporary worktrees, dependency/build/cache artifacts and files; run `git worktree prune`. Report any residue that cannot safely be removed. Dependencies in the two canonical clones may stay. Never remove tracked files, `.env`, DBs, keys, backups, runtime/user data or uncertain-provenance files as cleanup; use the repository hygiene script for known disposable residue. No ad hoc backup clones: preserve work in Git or an explicitly requested patch/bundle.
 

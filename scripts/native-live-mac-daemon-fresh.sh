@@ -44,18 +44,38 @@ for state in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD; 
   fi
 done
 
-require_clean() {
-  local status_output
-  if ! status_output="$(git status --porcelain --untracked-files=all)"; then
-    echo "[mac-daemon:fresh] could not inspect local changes; refusing restart" >&2
-    exit 1
-  fi
-  if [[ -n "$status_output" ]]; then
-    echo "[mac-daemon:fresh] dirty worktree: commit or deliberately preserve local changes first; no autostash or reset is performed" >&2
-    exit 1
-  fi
+require_mac_safe_worktree() {
+  # NUL-delimited porcelain keeps whitespace/newlines literal. Check both
+  # sides of a rename so moving runtime code into ios/ cannot bypass the guard.
+  node --input-type=commonjs <<'NODE'
+const { spawnSync } = require('node:child_process');
+const result = spawnSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+  encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+});
+if (result.error || result.status !== 0) {
+  console.error('[mac-daemon:fresh] could not inspect local changes; refusing restart');
+  process.exit(1);
 }
-require_clean
+const records = result.stdout.split('\0').filter(Boolean);
+const blocked = [];
+let allowed = 0;
+for (let i = 0; i < records.length; i++) {
+  const status = records[i].slice(0, 2);
+  const paths = [records[i].slice(3)];
+  if (/[RC]/u.test(status)) paths.push(records[++i] ?? '');
+  if (status.includes('U') || status === 'AA' || status === 'DD' || paths.some(path => !path.startsWith('ios/'))) {
+    blocked.push(...paths);
+  } else allowed++;
+}
+if (blocked.length) {
+  console.error('[mac-daemon:fresh] dirty paths outside ios/ or unresolved conflicts: ' + blocked.map(path => JSON.stringify(path)).join(', '));
+  console.error('[mac-daemon:fresh] preserve/commit local changes first; no autostash or reset is performed');
+  process.exit(1);
+}
+if (allowed) console.log('[mac-daemon:fresh] preserving ' + allowed + ' dirty iOS path(s) unchanged');
+NODE
+}
+require_mac_safe_worktree
 
 echo "[mac-daemon:fresh] branch: $current_branch"
 if [[ "$allow_current" == true ]]; then
@@ -63,13 +83,13 @@ if [[ "$allow_current" == true ]]; then
 else
   echo "[mac-daemon:fresh] fetching origin/main..."
   git fetch origin main
-  require_clean
+  require_mac_safe_worktree
   if ! git merge-base --is-ancestor HEAD origin/main; then
     echo "[mac-daemon:fresh] main has unpublished or divergent commits; reconcile manually before normal fresh" >&2
     exit 1
   fi
-  git merge --ff-only origin/main
-  require_clean
+  git -c merge.autostash=false merge --ff-only origin/main
+  require_mac_safe_worktree
 fi
 
 echo "[mac-daemon:fresh] starting from: $(git rev-parse --short HEAD)"

@@ -186,3 +186,12 @@ test('status remains bounded when the package-manager version probe stalls', (t)
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).pnpmVersion, 'unavailable');
 });
+
+test('workflow-only changes include the existing workspace policy regression gate', (t) => {
+  const root = fixture(t);
+  file(root, 'AGENTS.md');
+  const plan = json(verifyScript, root, '--plan');
+  assert.ok(plan.gates.some((gate: { command: string[] }) =>
+    gate.command.includes('tests/repository-hygiene.test.ts') &&
+    gate.command.includes('coding-agent workspace policy is enforced by closeout commands')));
+});
