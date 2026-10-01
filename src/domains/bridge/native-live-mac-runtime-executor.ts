@@ -316,7 +316,8 @@ export class NativeLiveMacRuntimeExecutor {
       provider_session_id: runtimeResult.providerSessionId,
       workspace_id: command.workspace_id,
       effective_workspace_root: binding.workspaceRoot,
-      normalized_events: [...runtimeResult.normalizedEvents],
+      normalized_events:
+        terminalFallbackEvents(runtimeResult.normalizedEvents),
       ...(outputAttachmentIds.length > 0
         ? { output_attachment_ids: outputAttachmentIds }
         : {}),
@@ -399,6 +400,26 @@ export class NativeLiveMacRuntimeExecutor {
 
 const LEILEIOS_MCP_STARTUP_ERROR =
   "LeileiOS MCP did not connect before the Claude turn started.";
+
+const TERMINAL_RESULT_RUNTIME_ONLY_EVENT_TYPES =
+  new Set<string>([
+    "session",
+    "partial_text",
+    "task",
+    "runtime",
+    "compaction",
+  ]);
+
+function terminalFallbackEvents(
+  events: readonly NativeLiveNormalizedEvent[],
+): NativeLiveNormalizedEvent[] {
+  return events.filter(
+    (event) =>
+      !TERMINAL_RESULT_RUNTIME_ONLY_EVENT_TYPES.has(
+        String(event.type),
+      ),
+  );
+}
 
 function runtimeEnvironmentFromNormalizedEvents(
   events: readonly NativeLiveNormalizedEvent[],
