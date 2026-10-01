@@ -3,6 +3,7 @@ import type {
   RuntimePrincipal,
 } from "./persistent-write-envelope.js";
 import {
+  fingerprintThoughtSnapshot,
   parseContextLineageManifest,
   type ContextLineageManifest,
 } from "./context-lineage.js";
@@ -124,7 +125,9 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
         ]),
       );
       if (
-        thoughtItems.some(
+        new Set(thoughtItems.map((item) => item.alias)).size
+          !== thoughtItems.length
+        || thoughtItems.some(
           (item) =>
             !item.alias
             || expected.get(item.alias) !== item.sourceId,
@@ -132,6 +135,29 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
       ) {
         throw new Error(
           "Context manifest Thought aliases do not match lineage metadata.",
+        );
+      }
+
+      const itemByAlias = new Map(
+        thoughtItems.map((item) => [item.alias!, item]),
+      );
+      const deliveredFingerprint = fingerprintThoughtSnapshot(
+        lineage.thoughtRefs.map((ref) => {
+          const item = itemByAlias.get(ref.alias);
+          if (!item) {
+            throw new Error(
+              "Context manifest Thought aliases do not match lineage metadata.",
+            );
+          }
+          return {
+            sourceId: item.sourceId,
+            text: item.text,
+          };
+        }),
+      );
+      if (deliveredFingerprint !== lineage.thoughtFingerprint) {
+        throw new Error(
+          "Context manifest Thought fingerprint does not match the delivered snapshot.",
         );
       }
     }
