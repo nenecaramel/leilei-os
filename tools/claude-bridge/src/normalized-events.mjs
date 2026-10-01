@@ -48,6 +48,23 @@ export class ClaudeEventNormalizer {
 
     if (raw.session_id) this.sessionId = raw.session_id;
 
+    const attribution =
+      normalizeUserMessageAttribution(raw);
+    if (attribution) {
+      emit("runtime", this.sessionId, attribution);
+    }
+
+    if (raw.type === "command_lifecycle") {
+      emit("runtime", this.sessionId, {
+        kind: "command_lifecycle",
+        command_uuid:
+          clippedString(raw.command_uuid, 128),
+        state: clippedString(raw.state, 64),
+        event_uuid: clippedString(raw.uuid, 128),
+      });
+      return output;
+    }
+
     if (raw.type === "system" && raw.subtype === "init") {
       emit("session", this.sessionId, {
         provider_session_id: this.sessionId,
@@ -347,6 +364,37 @@ export function normalizeClaudeEvents(
   return rawEvents.flatMap((raw) => normalizer.normalize(raw));
 }
 
+
+function normalizeUserMessageAttribution(raw) {
+  const primary =
+    clippedString(raw?.user_message_uuid, 128);
+  const ordered = [];
+  const seen = new Set();
+
+  const append = (value) => {
+    const normalized = clippedString(value, 128);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    ordered.push(normalized);
+  };
+
+  append(primary);
+  if (Array.isArray(raw?.user_message_uuids)) {
+    for (
+      const value of raw.user_message_uuids.slice(0, 64)
+    ) {
+      append(value);
+    }
+  }
+
+  if (ordered.length === 0) return null;
+  return {
+    kind: "user_message_attribution",
+    source_type: clippedString(raw?.type, 64),
+    user_message_uuid: primary ?? ordered[0] ?? null,
+    user_message_uuids: ordered,
+  };
+}
 
 const TOOL_RESULT_TEXT_BUDGET_CHARS = 48_000;
 const TOOL_RESULT_MAX_STRING_CHARS = 24_000;
