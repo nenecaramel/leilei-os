@@ -621,3 +621,62 @@ test("runtime protocol v3 carries explicit output attachment ids", () => {
     /require runtime protocol v3/u,
   );
 });
+
+
+test("runtime metadata accepts the bounded system/init environment projection", () => {
+  const environment = {
+    model: "claude-sonnet-5-5",
+    cwd: "/workspace",
+    tools: ["Read"],
+    mcp_servers: [{ name: "leileios", status: "connected" }],
+    permission_mode: "default",
+    slash_commands: ["/compact"],
+    terminal_slash_commands: [],
+    api_key_source: "subscription",
+    output_style: "default",
+    agents: ["Explore"],
+    betas: [],
+    claude_code_version: "2.1.267",
+    sdk_version: "0.3.283",
+    skills: ["pdfs"],
+    plugins: [{ name: "superpowers", path: "/plugin" }],
+    plugin_errors: [{
+      name: "broken",
+      path: "/broken",
+      message: "failed",
+    }],
+    fast_mode: { enabled: false, state: "off" },
+  };
+
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-init",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      environment,
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(result.runtime_metadata?.environment, environment);
+
+  assert.throws(
+    () => parseNativeLiveRuntimeExecutionResult({
+      ...result,
+      runtime_metadata: {
+        context_usage: null,
+        environment: {
+          ...environment,
+          arbitrary_raw_payload: "forbidden",
+        },
+      },
+    }),
+    /Unexpected runtime protocol field: arbitrary_raw_payload/,
+  );
+});

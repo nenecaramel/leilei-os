@@ -804,3 +804,60 @@ test("MCP startup retry is never used after any runtime event was observed", asy
   assert.equal(result.error_code, "RUNTIME_UNAVAILABLE");
 });
 
+
+
+test("system/init environment is persisted with terminal runtime metadata", async () => {
+  const environment = {
+    model: "claude-sonnet-5-5",
+    cwd: "/workspace",
+    tools: ["Read", "Bash"],
+    mcp_servers: [{ name: "leileios", status: "connected" }],
+    permission_mode: "default",
+    slash_commands: ["/compact"],
+    terminal_slash_commands: [],
+    api_key_source: "subscription",
+    output_style: "default",
+    agents: ["Explore"],
+    betas: [],
+    claude_code_version: "2.1.267",
+    sdk_version: "0.3.283",
+    skills: ["pdfs"],
+    plugins: [],
+    plugin_errors: [],
+    fast_mode: { enabled: false, state: "off" },
+  };
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      return {
+        providerSessionId: "provider-init",
+        normalizedEvents: [{
+          type: "session",
+          payload: {
+            provider_session_id: "provider-init",
+            parent_provider_session_id: null,
+            mode: "new",
+            environment,
+          },
+        }],
+        contextUsage: null,
+        executionReadback: null,
+        executionReadbackError: null,
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(
+    runtime,
+    "/workspace",
+  ).execute(command());
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    environment,
+  });
+});
