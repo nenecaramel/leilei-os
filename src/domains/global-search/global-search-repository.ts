@@ -17,6 +17,7 @@ export type GlobalSearchQuery = {
   modules: readonly GlobalSearchModule[];
   scope: GlobalSearchScope;
   mode: GlobalSearchMode;
+  author?: ContentAuthor;
   dateFrom?: string;
   dateTo?: string;
   timezone: string;
@@ -66,7 +67,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     const moduleQueries: SQL[] = [];
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
-    if (input.modules.includes("universe") && input.scope !== "archived") moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
+    if (input.modules.includes("universe") && input.scope !== "archived" && input.author === undefined) moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
     if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
     const result = await this.db.execute(sql<GlobalSearchRow>`
@@ -174,6 +175,7 @@ function diaryQuery(input: GlobalSearchQuery, query: string, pattern: string, pr
     ${reasonAndField(sql`d.title`, fields, input.mode, query, pattern, prefix)}, d.status::text lifecycle_status,
     d.author::text author, (d.date::timestamp at time zone ${input.timezone}) business_time, 'diary_date'::text time_basis, d.updated_at, null::date business_date
     from diary_entries d where d.user_id=${input.userId}::uuid and ${lifecycle(sql`d.status`, input.scope)}
+    and ${input.author === undefined ? sql`true` : sql`d.author = ${input.author}`}
     and ${match(fields.map((f) => f.value), input.mode, pattern)} and ${dates(sql`d.date`, input)}`, input);
 }
 function todoQuery(input: GlobalSearchQuery, query: string, pattern: string): SQL {
@@ -193,6 +195,7 @@ function todoQuery(input: GlobalSearchQuery, query: string, pattern: string): SQ
     from todo_entries e
     inner join todo_papers p on p.id=e.paper_id
     where p.user_id=${input.userId}::uuid
+      and ${input.author === undefined ? sql`true` : sql`p.author = ${input.author}`}
       and ${normalizedText} like ${pattern} escape '\\'
       and ${dates(sql`p.business_date`, input)}`, input);
 }
