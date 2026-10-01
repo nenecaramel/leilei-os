@@ -48,7 +48,7 @@ export function normalizeHealthSyncPayload(
     invalidInput();
   }
 
-  const earliestDate = requestDate.subtract({ days: MAX_HISTORY_DAYS - 1 });
+  const earliestDate = requestDate.subtract({ days: MAX_HISTORY_DAYS });
   const normalizedDates = [...new Set(payload.menstruation_dates)]
     .map((value) => parseDate(value))
     .map((value) => {
