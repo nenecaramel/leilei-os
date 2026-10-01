@@ -736,3 +736,71 @@ test("legacy runtime turns do not expose send_file", async () => {
   }
   assert.equal(result.output_attachment_ids, undefined);
 });
+
+
+test("zero-event LeileiOS MCP startup failure retries the same foreground turn once", async () => {
+  let calls = 0;
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      calls += 1;
+      if (calls === 1) {
+        throw Object.assign(
+          new Error(
+            "LeileiOS MCP did not connect before the Claude turn started.",
+          ),
+          {
+            runtimeCode: "RUNTIME_UNAVAILABLE",
+            events: [],
+            normalizedEvents: [],
+          },
+        );
+      }
+      return {
+        providerSessionId: "provider-after-mcp-retry",
+        normalizedEvents: [],
+      };
+    },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(runtime).execute(command());
+
+  assert.equal(calls, 2);
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.equal(result.provider_session_id, "provider-after-mcp-retry");
+});
+
+test("MCP startup retry is never used after any runtime event was observed", async () => {
+  let calls = 0;
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      calls += 1;
+      throw Object.assign(
+        new Error(
+          "LeileiOS MCP did not connect before the Claude turn started.",
+        ),
+        {
+          runtimeCode: "RUNTIME_UNAVAILABLE",
+          events: [{ type: "system", subtype: "init" }],
+          normalizedEvents: [],
+        },
+      );
+    },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(runtime).execute(command());
+
+  assert.equal(calls, 1);
+  assert.equal(result.status, "failure");
+  if (result.status !== "failure") throw new Error("expected failure");
+  assert.equal(result.error_code, "RUNTIME_UNAVAILABLE");
+});
+
