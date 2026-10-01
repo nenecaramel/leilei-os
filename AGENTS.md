@@ -1,63 +1,29 @@
-# LeileiOS coding-agent workspace policy
+# LeileiOS agent workflow
 
-This policy applies to every coding agent working on LeileiOS, including ChatGPT and Codex.
+## Quick Start
 
-## Long-lived local workspaces
+1. Read [.agent/domain-map.json](.agent/domain-map.json): paths, gates, runtime boundaries, refresh/acceptance requirements and conflict hotspots.
+2. Fetch `origin/main` explicitly before starting a branch. Run `pnpm agent:status` (or `--json`). Status never fetches or modifies Git.
+3. Run `pnpm agent:verify --plan`; use `--run` to execute the deduplicated local gates. Plans include committed diff from merge-base, staged/unstaged edits and untracked files. `--base <ref>` changes the comparison base. Review unmapped paths and shared hotspots manually; a plan is a starting scope, not proof of acceptance.
+4. Write a failing targeted test, then implement and record RED → GREEN. Report tests actually run and baseline delta. Existing historical CI failures are a separate task; do not fix them incidentally.
+
+## Runtime boundaries
+
+- **Railway:** Node 22 server/MCP/writers. Merge != production live: verify deployed SHA, readiness and the changed authenticated contract.
+- **Mac:** Native Live daemon/Claude SDK execute locally. Merged daemon/bridge code needs local fresh. `pnpm runtime:native-live-mac-daemon:fresh` requires canonical `~/Developer/leilei-os-main` on `main`, and fast-forwards only. Both fresh modes allow dirty `ios/**` files and preserve them; any dirty path outside `ios/**` blocks restart. If upstream touches the same dirty iOS file, Git safely refuses the merge. `...:fresh-current` explicitly runs the current feature branch without fetch/rebase. Neither autostashes, resets or discards edits.
+- **iPhone:** sync intended iOS code before the next Xcode Run; preserve local signing settings. Device rebuild/acceptance is separate from server deployment.
+- **Web:** Node **24**, as declared in `web/package.json`; use `npm ci` and Web typecheck/build there. Root `.node-version` is **22** for server/Mac tooling, not a Web override. CI currently uses Node 24; Claude bridge supports >=20. Do not upgrade server Docker incidentally.
+- **Postgres:** schema/migrations and bytes/metadata live independently of devices. Production DB mutation, migrations, deployment/config changes and messages to external systems require explicit user authorization. Local gates never run production acceptance or `db:migrate`. Use an isolated local DB for integration tests.
+
+## Workspace and closeout
 
 On the owner's Mac, the only long-lived LeileiOS working copies are:
 
 - `~/Developer/leilei-os-main` for mainline work.
 - `~/Developer/leilei-os-ui` for the current UI integration branch.
 
-Do not create persistent clones, worktrees, recovery copies, dependency stores, or build directories under `~/Documents`, iCloud Drive, Desktop, Dropbox, OneDrive, or another sync-provider location.
+Do not create persistent clones, worktrees, recovery copies, dependency stores, or build directories under `~/Documents`, iCloud Drive, Desktop, Dropbox, OneDrive, or another sync-provider location. Do not create a third persistent LeileiOS clone just to isolate a task. Use disposable worktrees under `${TMPDIR:-/tmp}` when isolation is needed, and preserve the owner's unrelated edits.
 
-Do not create a third persistent LeileiOS clone just to isolate a task.
+Before closeout: commit/push work that must survive; run `pnpm hygiene:finish` and `git status --short --branch`; remove task-created temporary worktrees, dependency/build/cache artifacts and files; run `git worktree prune`. Report any residue that cannot safely be removed. Dependencies in the two canonical clones may stay. Never remove tracked files, `.env`, DBs, keys, backups, runtime/user data or uncertain-provenance files as cleanup; use the repository hygiene script for known disposable residue. No ad hoc backup clones: preserve work in Git or an explicitly requested patch/bundle.
 
-## Temporary task isolation
-
-If a task truly needs an isolated checkout, create a temporary Git worktree outside sync-provider folders, preferably under `${TMPDIR:-/tmp}` or another disposable local path.
-
-The task that creates a temporary worktree owns its cleanup. Before the task is considered finished:
-
-1. Commit or push any work that must survive.
-2. Verify there are no unique uncommitted changes that need preservation.
-3. Remove the temporary worktree.
-4. Run `git worktree prune`.
-5. Remove task-local dependency/build/cache artifacts with the worktree.
-
-Never preserve work by making an ad hoc backup clone. Use Git history, a branch/PR, or an explicitly requested patch/bundle instead.
-
-## Generated files and caches
-
-Generated output is disposable unless it is tracked by Git or explicitly documented as durable project data.
-
-Before deleting something because its name looks generated, check whether Git tracks that exact file or any child path. A path named `build` or similar is not automatically disposable.
-
-Safe cleanup targets include untracked instances of:
-
-- `.DS_Store`
-- `.pnpm-store`
-- `.derivedData`
-- `dist`
-- `coverage`
-- `.turbo`
-- `.vite`
-- `test-results`
-- `playwright-report`
-- `xcuserdata`
-- `*.tsbuildinfo`
-
-Dependencies in the two canonical active clones may remain when they are useful for ongoing work. Dependencies installed only for a temporary checkout must disappear when that checkout is removed.
-
-Do not auto-delete or overwrite `.env`, databases, encrypted backups, patches, bundles, keys, certificates, runtime state, user data, or any file with uncertain provenance.
-
-## Mandatory task closeout
-
-Before reporting a coding task as complete on the owner's Mac:
-
-1. Run `pnpm hygiene:finish` from the active repository.
-2. Run `git status --short --branch`.
-3. Confirm no task-created worktree, clone, cache directory, build output, user-data directory, or temporary file remains.
-4. If cleanup cannot safely complete, report exactly what remains and why instead of silently leaving residue.
-
-A task is not complete merely because its code is committed or merged; its temporary local footprint must also be closed out.
+Open a PR with scope, verification and refresh/acceptance evidence; do not merge unless requested.
