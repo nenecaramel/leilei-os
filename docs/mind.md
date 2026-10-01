@@ -50,6 +50,13 @@ Memory/Feel Breath recall is ranked first, then any state id already seen on the
 canonical checkpoint lineage is filtered out. The runtime does not backfill lower-ranked
 matches just to fill the recall limit. A successful manual compact starts a new context
 epoch, clears that seen set, and forces the current Thought snapshot to be emitted again.
+The first turn that continues a provider checkpoint created before lineage persistence also
+forces one authoritative Thought snapshot, so stale pre-upgrade snapshots are explicitly
+superseded. If there are no active thoughts, that snapshot says `- none`.
+
+When a turn has no new Thought snapshot and no unseen Memory/Feel recall, Context Assembly
+does not emit an empty `<leileios_context>` wrapper; the provider receives only the
+timestamped `<user_message>` for that turn.
 
 The fixed `<leileios_mind_write>` authoring protocol is not part of the user message.
 Foreground Agent SDK turns append that byte-stable protocol to the Claude Code system
