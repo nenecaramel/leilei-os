@@ -12,6 +12,7 @@ import {
 } from "./native-live-mind-loop-service.js";
 import type { SubjectStateWrite } from "./subject-state-contract.js";
 import type { BreathSemanticCandidate } from "./breath-semantic-recall.js";
+import type { ContextLineageState } from "./context-lineage.js";
 
 export type NativeLiveMindSemanticPlan = {
   manifestId: string;
@@ -39,6 +40,7 @@ export interface NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
     manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }): Promise<string>;
 
   planSemanticUserTurn?(input: {
@@ -49,6 +51,7 @@ export interface NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
     manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }): Promise<NativeLiveMindSemanticPlan | null>;
 
   prepareUserTurnFromSemanticPlan?(input: {
@@ -58,6 +61,7 @@ export interface NativeLiveMindRuntime {
     userText: string;
     surfaceHeadMessageId: string | null;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
     plan: NativeLiveMindSemanticPlan;
     scores: ReadonlyMap<string, number> | null;
   }): Promise<string>;
@@ -122,6 +126,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
     manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }): Promise<string> {
     const assembledAt = this.now();
     const assembled = await this.service.prepareTurn({
@@ -136,6 +141,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
       excludedReferenceIds: input.excludedReferenceIds,
+      contextLineage: input.contextLineage,
     });
     return assembled.prompt;
   }
@@ -148,6 +154,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     surfaceHeadMessageId: string | null;
     manifestId?: string;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }): Promise<NativeLiveMindSemanticPlan | null> {
     const assembledAt = this.now();
     const semantic = await this.service.planSemanticRecall({
@@ -177,6 +184,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     userText: string;
     surfaceHeadMessageId: string | null;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
     plan: NativeLiveMindSemanticPlan;
     scores: ReadonlyMap<string, number> | null;
   }): Promise<string> {
@@ -198,6 +206,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       excludedReferenceIds: input.excludedReferenceIds,
       ...(input.scores ? { semanticScores: input.scores } : {}),
       semanticCandidates: input.plan.candidates,
+      contextLineage: input.contextLineage,
     });
     return assembled.prompt;
   }
