@@ -2,6 +2,7 @@ import type {
   PersistentAuthority,
   RuntimePrincipal,
 } from "./persistent-write-envelope.js";
+import type { ContextLineageManifest } from "./context-lineage.js";
 
 export type ContextSelection = {
   reason: string;
@@ -52,6 +53,7 @@ export type InitialContextManifest = {
   assemblyVersion: string;
   promptContractVersion: string;
   createdAt: string;
+  lineage?: ContextLineageManifest | null;
   budget: ContextBudget;
   items: ContextManifestItem[];
 };
@@ -93,6 +95,17 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
     || manifest.budget.usedChars > manifest.budget.maxChars
   ) {
     throw new Error("Context manifest exceeds its declared budget.");
+  }
+  if (manifest.lineage) {
+    if (
+      !Number.isInteger(manifest.lineage.epoch)
+      || manifest.lineage.epoch < 0
+      || !Number.isInteger(manifest.lineage.thoughtRevision)
+      || manifest.lineage.thoughtRevision < 0
+      || !/^[0-9a-f]{64}$/u.test(manifest.lineage.thoughtFingerprint)
+    ) {
+      throw new Error("Context manifest lineage metadata is invalid.");
+    }
   }
   for (const item of manifest.items) {
     if (
