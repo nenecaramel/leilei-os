@@ -21,6 +21,9 @@ import {
   DrizzleNativeLiveContextLineageReader,
 } from "../src/domains/bridge/native-live-context-lineage-repository.js";
 import {
+  NativeLiveManualCompactService,
+} from "../src/domains/bridge/native-live-manual-compact.js";
+import {
   DrizzleNativeLiveBackendRelayRepository,
 } from "../src/domains/bridge/native-live-backend-relay.js";
 import {
@@ -426,6 +429,90 @@ test(
       "a non-Mind turn carries its parent lineage and still reserves any self-authored Memory/Feel",
     );
 
+    const preCompactProbeRequestId = crypto.randomUUID();
+    const preCompactProbe = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: preCompactProbeRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: scheduleFinalized.assistantMessageId,
+      text: "durable outbox memory",
+    });
+    assert.equal(preCompactProbe.ok, true);
+    if (!preCompactProbe.ok) {
+      throw new Error("expected pre-compact probe prepare success");
+    }
+    assert.equal(
+      preCompactProbe.command.prompt.includes("Relevant memories:"),
+      false,
+      "the just-written Memory must not be handed back after a transparent non-Mind turn",
+    );
+    const preCompactProbeFailure = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: preCompactProbe.command.prepare_id,
+      request_id: preCompactProbeRequestId,
+      conversation_id: conversation.id,
+      status: "failure",
+      error_code: "ABORTED",
+    });
+    assert.equal(preCompactProbeFailure.ok, false);
+
+    await relay.renewLease({
+      userId,
+      listenerInstanceId,
+    });
+    const manualCompact =
+      new NativeLiveManualCompactService(database.db);
+    const compactRequest = await manualCompact.create({
+      userId,
+      conversationId: conversation.id,
+    });
+    assert.equal(compactRequest.status, "pending");
+
+    const compactReservation = await manualCompact.reserveNext({
+      userId,
+      listenerInstanceId,
+    });
+    assert.ok(compactReservation);
+    assert.equal(
+      compactReservation.providerSessionId,
+      "followup-provider-schedule",
+    );
+
+    assert.equal(
+      await manualCompact.complete({
+        userId,
+        listenerInstanceId,
+        reservationId: compactReservation.reservationId,
+        outcome: {
+          status: "success",
+          result: {
+            providerSessionId: "followup-provider-schedule",
+            contextUsage: null,
+            boundary: { source: "test" },
+            summary: "test compact",
+          },
+        },
+      }),
+      "completed",
+    );
+
+    assert.deepEqual(
+      await lineageReader.readForMessage({
+        userId,
+        conversationId: conversation.id,
+        canonicalMessageId: scheduleFinalized.assistantMessageId,
+      }),
+      {
+        epoch: 1,
+        seenStateIds: [],
+        thoughtRevision: 0,
+        thoughtFingerprint: null,
+        forceThoughtSnapshot: true,
+      },
+      "successful compact starts a fresh context epoch and forces a new Thought snapshot",
+    );
+
     const nextRequestId = crypto.randomUUID();
     const nextPrepared = await coordinator.prepare(userId, {
       dispatch_target: "claude_code",
@@ -438,15 +525,32 @@ test(
     assert.equal(nextPrepared.ok, true);
     if (!nextPrepared.ok) throw new Error("expected next prepare success");
     assert.equal(
-      nextPrepared.command.prompt.includes("durable outbox memory"),
+      nextPrepared.command.prompt.includes(
+        "Current thoughts (rev 1, supersedes all earlier snapshots):",
+      ),
       true,
-      "the current user message itself stays present",
+      "the first post-compact turn must re-establish an authoritative Thought snapshot",
     );
     assert.equal(
       nextPrepared.command.prompt.includes("Relevant memories:"),
-      false,
-      "the just-written Memory must not be handed back after a transparent non-Mind turn",
+      true,
+      "compact clears the epoch seen set so a still-relevant Memory may be recalled again",
     );
+    assert.equal(
+      nextPrepared.command.prompt.includes("durable outbox memory"),
+      true,
+      "the relevant Memory is available again in the fresh epoch",
+    );
+
+    const nextFailure = await coordinator.finalize(userId, {
+      protocol_version: 1,
+      prepare_id: nextPrepared.command.prepare_id,
+      request_id: nextRequestId,
+      conversation_id: conversation.id,
+      status: "failure",
+      error_code: "ABORTED",
+    });
+    assert.equal(nextFailure.ok, false);
   },
 );
 
