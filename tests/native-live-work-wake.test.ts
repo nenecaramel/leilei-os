@@ -159,3 +159,22 @@ test("external wake signal posts only a bounded readiness hint", async () => {
     { kind: "foreground" },
   );
 });
+
+test("external wake signal reads broker listener presence", async () => {
+  const signal = new NativeLiveHttpWakeSignal(
+    "https://wake.example",
+    "wake-token-that-is-long-enough-for-tests",
+    (async (url) => {
+      assert.equal(
+        String(url),
+        "https://wake.example/presence",
+      );
+      return new Response(
+        JSON.stringify({ online: true }),
+        { status: 200 },
+      );
+    }) as typeof fetch,
+  );
+
+  assert.equal(await signal.isListenerOnline(), true);
+});
