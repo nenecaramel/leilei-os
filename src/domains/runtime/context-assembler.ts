@@ -420,6 +420,10 @@ export function assembleTurnContext(input: {
       thoughtFingerprint,
       thoughtSnapshotEmitted,
       activeThoughtCount: thoughtCandidates.length,
+      thoughtRefs: thoughtCandidates.map((item) => ({
+        alias: item.alias ?? "",
+        stateId: item.sourceId,
+      })),
     },
     budget: {
       maxItems: input.maxContextItems,
