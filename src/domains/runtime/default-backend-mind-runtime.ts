@@ -4,6 +4,9 @@ import {
   DefaultNativeLiveBackendMindRuntime,
 } from "../bridge/native-live-backend-mind-runtime.js";
 import {
+  DrizzleNativeLiveContextLineageReader,
+} from "../bridge/native-live-context-lineage-repository.js";
+import {
   DefaultNativeLiveMindRuntime,
 } from "./native-live-mind-runtime.js";
 import {
@@ -85,7 +88,12 @@ export function createDefaultBackendMindRuntime(
   const mind = new DefaultNativeLiveMindRuntime(loop, {
     subjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
   });
-  return new DefaultNativeLiveBackendMindRuntime(conversations, mind);
+  const contextLineage = new DrizzleNativeLiveContextLineageReader(db);
+  return new DefaultNativeLiveBackendMindRuntime(
+    conversations,
+    mind,
+    contextLineage,
+  );
 }
 
 export function createDefaultSubjectStateBackgroundMaintenance(
