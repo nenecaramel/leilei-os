@@ -37,7 +37,8 @@ implements NativeLiveContextLineageReader {
       WITH RECURSIVE current_path AS (
         SELECT
           message.id,
-          message.parent_message_id
+          message.parent_message_id,
+          0 AS depth
         FROM conversation_messages AS message
         WHERE message.id = ${input.canonicalMessageId}::uuid
           AND message.user_id = ${input.userId}::uuid
@@ -47,23 +48,25 @@ implements NativeLiveContextLineageReader {
 
         SELECT
           parent.id,
-          parent.parent_message_id
+          parent.parent_message_id,
+          path.depth + 1
         FROM conversation_messages AS parent
         INNER JOIN current_path AS path
           ON parent.id = path.parent_message_id
         WHERE parent.user_id = ${input.userId}::uuid
           AND parent.conversation_id = ${input.conversationId}::uuid
       ),
-      target_lineage AS (
+      nearest_lineage AS (
         SELECT
           lineage.epoch,
           lineage.thought_revision,
           lineage.thought_fingerprint
         FROM runtime_context_lineage_states AS lineage
-        WHERE lineage.canonical_message_id =
-              ${input.canonicalMessageId}::uuid
-          AND lineage.user_id = ${input.userId}::uuid
+        INNER JOIN current_path AS path
+          ON path.id = lineage.canonical_message_id
+        WHERE lineage.user_id = ${input.userId}::uuid
           AND lineage.conversation_id = ${input.conversationId}::uuid
+        ORDER BY path.depth ASC
         LIMIT 1
       ),
       seen AS (
@@ -76,7 +79,7 @@ implements NativeLiveContextLineageReader {
           ON lineage.canonical_message_id = path.id
          AND lineage.user_id = ${input.userId}::uuid
          AND lineage.conversation_id = ${input.conversationId}::uuid
-        INNER JOIN target_lineage AS target
+        INNER JOIN nearest_lineage AS target
           ON lineage.epoch = target.epoch
       )
       SELECT
@@ -88,7 +91,7 @@ implements NativeLiveContextLineageReader {
             FILTER (WHERE seen.state_id IS NOT NULL),
           '[]'::jsonb
         ) AS seen_state_ids
-      FROM target_lineage AS target
+      FROM nearest_lineage AS target
       LEFT JOIN seen ON TRUE
       GROUP BY
         target.epoch,
