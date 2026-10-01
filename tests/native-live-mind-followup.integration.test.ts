@@ -37,6 +37,9 @@ import {
 import {
   createDefaultBackendMindRuntime,
 } from "../src/domains/runtime/default-backend-mind-runtime.js";
+import {
+  fingerprintThoughtSnapshot,
+} from "../src/domains/runtime/context-lineage.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST === "1";
@@ -219,8 +222,7 @@ test(
         epoch: 0,
         seenStateIds: [expectedStateId],
         thoughtRevision: 0,
-        thoughtFingerprint:
-          "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e6f7b0d5c7bd8f2c3f6f9f4",
+        thoughtFingerprint: fingerprintThoughtSnapshot([]),
       },
     );
 
