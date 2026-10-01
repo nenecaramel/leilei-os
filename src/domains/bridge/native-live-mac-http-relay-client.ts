@@ -81,7 +81,10 @@ implements NativeLiveMacDaemonRelayClient {
     return {
       attachment,
       upload: {
-        url: upload.url,
+        url: new URL(
+          upload.url,
+          this.baseUrl + "/",
+        ).toString(),
         method: "PUT",
         headers: readStringRecord(upload.headers),
       },
@@ -144,7 +147,10 @@ implements NativeLiveMacDaemonRelayClient {
       );
     }
     return {
-      url: download.url,
+      url: new URL(
+        download.url,
+        this.baseUrl + "/",
+      ).toString(),
       method: "GET",
       headers: readStringRecord(download.headers),
       attachment,
@@ -583,12 +589,13 @@ implements NativeLiveMacDaemonRelayClient {
       event: import("../conversation/native-live-conversation-orchestrator.js").NativeLiveNormalizedEvent;
     }>;
   }): Promise<void> {
-    await this.post(
+    await this.postRetryableBounded(
       `/reservations/${encodeURIComponent(input.reservationId)}/events/batch`,
       {
         listener_instance_id: input.listenerInstanceId,
         events: input.events,
       },
+      3,
     );
   }
 
@@ -762,6 +769,30 @@ implements NativeLiveMacDaemonRelayClient {
         code: input.code,
       },
     );
+  }
+
+  private async postRetryableBounded(
+    path: string,
+    body: unknown,
+    maxAttempts: number,
+  ): Promise<unknown> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.post(path, body);
+      } catch (error) {
+        if (
+          !isTransientRelayWaitError(error)
+          || attempt >= maxAttempts
+        ) {
+          throw error;
+        }
+        await delayRelayRetry(
+          Math.min(250 * 2 ** (attempt - 1), 1_000),
+          null,
+        );
+      }
+    }
+    throw new Error("Native live relay retry budget exhausted.");
   }
 
   private async postRetryable(

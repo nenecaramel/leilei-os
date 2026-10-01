@@ -23,6 +23,7 @@ const result: GlobalSearchResult = {
       "universe",
     ],
     searched_scope: "active",
+    searched_author: null,
   },
 };
 
@@ -72,6 +73,7 @@ test("Web global search uses authenticated identity and active modules", async (
         query: "计划",
         modules: "diary,todo",
         scope: "all",
+        author: "C",
         limit: "5",
       },
     } as unknown as Request,
@@ -94,6 +96,7 @@ test("Web global search uses authenticated identity and active modules", async (
     modules: ["diary", "todo"],
     scope: "all",
     mode: undefined,
+    author: "C",
     date_from: undefined,
     date_to: undefined,
     limit: 5,
@@ -131,6 +134,7 @@ test("Web global search forwards C author records unchanged", async () => {
       next_cursor: null,
       searched_modules: ["diary"],
       searched_scope: "active",
+      searched_author: "C",
     },
   };
 
@@ -177,6 +181,7 @@ test("Web global search rejects malformed module query geometry", async () => {
     });
 
   for (const query of [
+    { query: "计划", author: ["C"] },
     { query: "计划", modules: ["diary", 1] },
     { query: "计划", modules: "diary,,todo" },
     { query: "计划", modules: ["diary,todo"] },

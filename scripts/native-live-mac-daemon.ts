@@ -38,12 +38,17 @@ import {
 import {
   NativeLiveMacOutputAttachmentSender,
 } from "../src/domains/bridge/native-live-mac-output-attachment-sender.js";
+import {
+  NativeLiveMacWakeBrokerClient,
+  type NativeLiveWakeBrokerCursor,
+} from "../src/domains/bridge/native-live-mac-wake-broker-client.js";
 
 const daemonLock = acquireNativeLiveMacDaemonLock();
 
 const {
   relayBaseUrl,
   relayToken,
+  wakeBroker,
   listenerInstanceId,
   companionBackgroundIntervalMs,
   baseWorkspaceRoot,
@@ -60,6 +65,14 @@ const relay = new NativeLiveMacHttpRelayClient(
   relayBaseUrl,
   relayToken,
 );
+const wakeBrokerClient =
+  wakeBroker
+    ? new NativeLiveMacWakeBrokerClient(
+        wakeBroker.baseUrl,
+        wakeBroker.token,
+      )
+    : null;
+let wakeBrokerCursor: NativeLiveWakeBrokerCursor | null = null;
 const companionScheduler = new NativeLiveMacCompanionScheduler(
   relay,
   listenerInstanceId,
@@ -118,6 +131,10 @@ process.stdout.write(
     workspaceMappingCount: Object.keys(workspaceRoots).length,
     providerSessionStore: "remote_workspace_scoped",
     leileiosMcp: "http_auto_recover",
+    wakeMode:
+      wakeBrokerClient
+        ? "tiny_broker"
+        : "relay_long_poll",
     attachments: "private_bucket_bidirectional",
   }) + "\n",
 );
@@ -127,6 +144,16 @@ const executor = new NativeLiveMacRuntimeExecutor(
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
   new NativeLiveMacOutputAttachmentSender(relay),
+  (diagnostics) => {
+    process.stdout.write(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        outcome: "runtime_failure_diagnostics",
+        claudeTransport: claudeTransportKind,
+        ...diagnostics,
+      }) + "\n",
+    );
+  },
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
@@ -189,12 +216,68 @@ function networkCauseDiagnostics(error: unknown): {
 let consecutiveWakeErrors = 0;
 
 async function waitForWork(): Promise<
-  "ready" | "timeout" | "busy" | "stopped"
+  "ready" | "timeout" | "busy" | "retry" | "stopped"
 > {
   if (stopping) return "stopped";
   const controller = new AbortController();
   activeWorkWaitController = controller;
   try {
+    if (wakeBrokerClient) {
+      try {
+        if (!wakeBrokerCursor) {
+          wakeBrokerCursor =
+            await wakeBrokerClient.snapshot(
+              controller.signal,
+            );
+          if (stopping || controller.signal.aborted) {
+            return "stopped";
+          }
+          // Re-check durable relay state once after broker recovery so a
+          // wake emitted while the broker was unavailable cannot be lost.
+          return "ready";
+        }
+
+        const result = await wakeBrokerClient.wait({
+          cursor: wakeBrokerCursor,
+          signal: controller.signal,
+        });
+        wakeBrokerCursor = result.cursor;
+        if (stopping || controller.signal.aborted) {
+          return "stopped";
+        }
+        if (result.outcome === "reset") {
+          process.stdout.write(
+            JSON.stringify({
+              at: new Date().toISOString(),
+              outcome: "wake_broker_reset",
+              claudeTransport: claudeTransportKind,
+            }) + "\n",
+          );
+          return "ready";
+        }
+        return result.outcome;
+      } catch (error) {
+        if (stopping || controller.signal.aborted) {
+          return "stopped";
+        }
+        process.stderr.write(
+          JSON.stringify({
+            at: new Date().toISOString(),
+            outcome: "wake_broker_retry",
+            errorName:
+              error instanceof Error
+                ? error.name
+                : "UnknownError",
+            errorMessage:
+              error instanceof Error
+                ? error.message
+                : String(error),
+          }) + "\n",
+        );
+        return "retry";
+      }
+    }
+
     const outcome = await relay.waitForWork({
       listenerInstanceId,
       dispatchTarget: "claude_code",
@@ -270,6 +353,12 @@ while (!stopping) {
     }
 
     if (outcome.outcome === "idle") {
+      if (wakeBrokerClient) {
+        // Piggyback bounded background maintenance while the real API is
+        // already awake. Never wake the main service on an idle timer.
+        await companionScheduler.offer();
+      }
+
       while (!stopping) {
         const wake = await waitForWork();
         if (wake === "stopped") break;
@@ -279,16 +368,26 @@ while (!stopping) {
               at: new Date().toISOString(),
               outcome: "work_wake",
               claudeTransport: claudeTransportKind,
+              wakeSource:
+                wakeBrokerClient
+                  ? "tiny_broker"
+                  : "relay",
             }) + "\n",
           );
           break;
+        }
+        if (wake === "retry") {
+          await sleep(5_000);
+          continue;
         }
         if (wake === "busy") {
           await sleep(5_000);
           break;
         }
 
-        await companionScheduler.offer();
+        if (!wakeBrokerClient) {
+          await companionScheduler.offer();
+        }
       }
       continue;
     }

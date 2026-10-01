@@ -1141,6 +1141,57 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func recoverActiveNativeLiveTurn() async {
+        guard isAuthenticated,
+              !chatSendInFlight,
+              chatSendState != .sending,
+              nativeLiveRuntimeSurface == nil,
+              let conversationID = activeNativeLiveConversationID else {
+            return
+        }
+
+        do {
+            guard let turn =
+                    try await api.nativeLiveActiveTurn(
+                        conversationID: conversationID
+                    ),
+                  turn.canonicalStatus == "prepared" else {
+                return
+            }
+
+            chatSendState = .sending
+            beginNativeLiveRuntimeObservation(
+                prepareID: turn.prepareId,
+                conversationID: conversationID
+            )
+            defer {
+                stopNativeLiveRuntimeObservation(
+                    prepareID: turn.prepareId
+                )
+            }
+
+            do {
+                try await waitForNativeLiveTurn(
+                    prepareID: turn.prepareId,
+                    conversationID: conversationID
+                )
+                await refreshNativeLiveCurrentPath(force: true)
+                scheduleCurrentHeadMindWriteRefresh()
+                chatSendState = .idle
+            } catch is CancellationError {
+                chatSendState = .idle
+            } catch {
+                chatSendState = .failed
+            }
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            // Recovery is fail-soft; normal conversation reads still work.
+        }
+    }
+
     private func completePreparedNativeLiveTurn(
         _ prepared: NativeLivePrepareResult,
         conversationID: UUID

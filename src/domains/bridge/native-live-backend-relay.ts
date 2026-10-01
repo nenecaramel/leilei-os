@@ -101,6 +101,7 @@ const preparationSelection = {
   expectedWorkspaceRoot:
     nativeLiveTurnPreparations.expectedWorkspaceRoot,
   executionSelection: nativeLiveTurnPreparations.executionSelection,
+  attachments: nativeLiveTurnPreparations.attachments,
   prompt: nativeLiveTurnPreparations.prompt,
   mindPrepared: nativeLiveTurnPreparations.mindPrepared,
   dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
@@ -119,6 +120,7 @@ type SelectedRelayPreparationRow = {
   workspaceId: string | null;
   expectedWorkspaceRoot: string | null;
   executionSelection: Record<string, unknown> | null;
+  attachments: Array<Record<string, unknown>>;
   prompt: string;
   mindPrepared: boolean;
   dispatchStatus: RelayPreparationRow["dispatchStatus"];
@@ -133,7 +135,46 @@ function mapPreparation(
     executionSelection: row.executionSelection === null
       ? null
       : parseNativeLiveExecutionSelection(row.executionSelection),
+    attachments: parseRelayAttachments(row.attachments),
   };
+}
+
+function parseRelayAttachments(
+  value: Array<Record<string, unknown>>,
+): NonNullable<NativeLivePreparedTurn["attachments"]> {
+  return value.map((item) => {
+    const attachmentId = item.attachment_id;
+    const filename = item.filename;
+    const mimeType = item.mime_type;
+    const sizeBytes = item.size_bytes;
+    const sha256 = item.sha256;
+    const kind = item.kind;
+
+    if (
+      typeof attachmentId !== "string"
+      || typeof filename !== "string"
+      || typeof mimeType !== "string"
+      || typeof sizeBytes !== "number"
+      || !Number.isSafeInteger(sizeBytes)
+      || sizeBytes <= 0
+      || typeof sha256 !== "string"
+      || !/^[0-9a-f]{64}$/u.test(sha256)
+      || (kind !== "image" && kind !== "file")
+    ) {
+      throw new Error(
+        "Stored Native Live relay attachment descriptor is invalid.",
+      );
+    }
+
+    return {
+      attachment_id: attachmentId,
+      filename,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
+      sha256,
+      kind,
+    };
+  });
 }
 
 export class NativeLiveBackendRelayError extends Error {

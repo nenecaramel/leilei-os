@@ -1,0 +1,12 @@
+FROM golang:1.25-alpine AS build
+
+WORKDIR /src
+COPY cmd/native-live-wake-broker/go.mod ./go.mod
+COPY cmd/native-live-wake-broker/main.go ./main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/wake-broker .
+
+FROM scratch
+COPY --from=build /out/wake-broker /wake-broker
+
+EXPOSE 3000
+ENTRYPOINT ["/wake-broker"]

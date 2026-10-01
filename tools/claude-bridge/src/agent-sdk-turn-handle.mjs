@@ -219,6 +219,7 @@ export async function createAgentSdkTurnHandle({
   streaming = false,
   midTurnInput = false,
   executionReadback = false,
+  mcpStartupTimeoutMs = 30_000,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -236,6 +237,12 @@ export async function createAgentSdkTurnHandle({
   }
   if (typeof executionReadback !== "boolean") {
     throw new Error("Agent SDK turn executionReadback must be boolean.");
+  }
+  if (
+    !Number.isFinite(mcpStartupTimeoutMs)
+    || mcpStartupTimeoutMs <= 0
+  ) {
+    throw new Error("Agent SDK MCP startup timeout must be positive.");
   }
   if (
     streaming
@@ -348,7 +355,12 @@ export async function createAgentSdkTurnHandle({
   try {
     query = resolvedQuery({
       prompt:
-        inputQueue ?? promptStream(),
+        inputQueue
+        ?? (
+          queryOptions.verbatimPrompts === false
+            ? prompt
+            : promptStream()
+        ),
       options,
     });
   } catch (cause) {
@@ -368,7 +380,20 @@ export async function createAgentSdkTurnHandle({
   }
 
   if (queryOptions.mcpServers?.leileios) {
-    await waitForAgentSdkMcpServer(query, "leileios");
+    try {
+      await waitForAgentSdkMcpServer(
+        query,
+        "leileios",
+        { timeoutMs: mcpStartupTimeoutMs },
+      );
+    } catch (cause) {
+      try {
+        await query.close?.();
+      } catch {
+        // Preserve the MCP startup failure; close is best-effort cleanup.
+      }
+      throw cause;
+    }
   }
 
   return new AgentSdkTurnHandle({

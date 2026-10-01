@@ -53,7 +53,8 @@ struct ChatView: View {
                             && appModel.activeNativeLiveConversationID != nil,
                     isTurnInFlight:
                         appModel.chatSendState == .sending
-                            || pendingOperation != nil,
+                            || pendingOperation != nil
+                            || visibleRuntimeSurface != nil,
                     pendingOperation: pendingOperation,
                     runtimeSurface: visibleRuntimeSurface,
                     onResolveRuntimeInteraction: {
@@ -87,6 +88,7 @@ struct ChatView: View {
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
+            await appModel.recoverActiveNativeLiveTurn()
         }
         .task(id: appModel.isAuthenticated) {
             guard appModel.isAuthenticated else { return }
@@ -94,9 +96,6 @@ struct ChatView: View {
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
-        }
-        .task(id: foregroundSyncTaskID) {
-            await observeForegroundConversationChanges()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -129,10 +128,10 @@ struct ChatView: View {
                 isSending:
                     appModel.chatSendState == .sending
                         || isDraftCommitInFlight
-                        || pendingOperation != nil,
+                        || pendingOperation != nil
+                        || visibleRuntimeSurface != nil,
                 isRuntimeTurnActive:
-                    visibleRuntimeSurface != nil
-                        && pendingOperation != nil,
+                    visibleRuntimeSurface != nil,
                 isRuntimeControlInFlight:
                     isRuntimeControlInFlight,
                 interruptRequested:
@@ -238,54 +237,6 @@ struct ChatView: View {
                     )
                     .ignoresSafeArea()
             }
-        }
-    }
-
-    private var foregroundSyncTaskID: String {
-        let conversation =
-            appModel.activeNativeLiveConversationID?
-                .uuidString.lowercased()
-            ?? "none"
-        let phase =
-            scenePhase == .active
-                ? "active"
-                : "inactive"
-        return "\(conversation):\(phase):\(isDraftConversation)"
-    }
-
-    @MainActor
-    private func observeForegroundConversationChanges() async {
-        guard scenePhase == .active,
-              !isDraftConversation,
-              appModel.isAuthenticated,
-              let conversationID =
-                appModel.activeNativeLiveConversationID
-        else {
-            return
-        }
-
-        while !Task.isCancelled,
-              scenePhase == .active,
-              !isDraftConversation,
-              appModel.isAuthenticated,
-              appModel.activeNativeLiveConversationID
-                == conversationID {
-            try? await Task.sleep(
-                for: .seconds(12)
-            )
-            guard !Task.isCancelled else {
-                return
-            }
-
-            guard pendingOperation == nil,
-                  appModel.chatSendState != .sending,
-                  visibleRuntimeSurface == nil else {
-                continue
-            }
-
-            await appModel.refreshNativeLiveCurrentPath(
-                surfaceTransientFailure: false
-            )
         }
     }
 

@@ -848,7 +848,22 @@ final class LeileiAPIClient {
                 body: body,
                 authenticated: true
             )
-        return envelope.data
+        let result = envelope.data
+        guard let transferURL = URL(
+            string: result.upload.url,
+            relativeTo: baseURL
+        )?.absoluteURL else {
+            throw LeileiAPIError.invalidResponse
+        }
+        return NativeLiveAttachmentUploadSlot(
+            attachment: result.attachment,
+            upload: NativeLiveAttachmentTransferSlot(
+                url: transferURL.absoluteString,
+                method: result.upload.method,
+                headers: result.upload.headers,
+                expiresAt: result.upload.expiresAt
+            )
+        )
     }
 
     func uploadNativeLiveAttachmentBytes(
@@ -903,7 +918,22 @@ final class LeileiAPIClient {
                 method: "POST",
                 authenticated: true
             )
-        return envelope.data
+        let result = envelope.data
+        guard let transferURL = URL(
+            string: result.download.url,
+            relativeTo: baseURL
+        )?.absoluteURL else {
+            throw LeileiAPIError.invalidResponse
+        }
+        return NativeLiveAttachmentDownloadSlot(
+            attachment: result.attachment,
+            download: NativeLiveAttachmentTransferSlot(
+                url: transferURL.absoluteString,
+                method: result.download.method,
+                headers: result.download.headers,
+                expiresAt: result.download.expiresAt
+            )
+        )
     }
 
     func prepareNativeLiveSend(
@@ -989,6 +1019,19 @@ final class LeileiAPIClient {
             authenticated: true
         )
         return envelope.data
+    }
+
+    func nativeLiveActiveTurn(
+        conversationID: UUID
+    ) async throws -> NativeLiveTurnSnapshot? {
+        let envelope: NativeLiveActiveTurnEnvelope = try await request(
+            path:
+                "/api/v1/native-live/conversations/"
+                + conversationID.uuidString.lowercased()
+                + "/active-turn",
+            authenticated: true
+        )
+        return envelope.data.turn
     }
 
     func waitNativeLiveTurn(
@@ -2123,6 +2166,15 @@ private struct RenameNativeLiveConversationBody: Encodable, Sendable {
 private struct NativeLivePrepareEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLivePrepareResult
+}
+
+private struct NativeLiveActiveTurnEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: ActiveTurnData
+
+    struct ActiveTurnData: Decodable, Sendable {
+        let turn: NativeLiveTurnSnapshot?
+    }
 }
 
 private struct NativeLiveTurnWaitEnvelope: Decodable, Sendable {

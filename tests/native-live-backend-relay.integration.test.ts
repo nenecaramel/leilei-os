@@ -114,6 +114,27 @@ test(
     });
     assert.equal(first.ok, true);
     if (!first.ok) throw new Error("expected first prepare success");
+
+    const persistedAttachment = {
+      attachment_id: crypto.randomUUID(),
+      filename: "relay-image.png",
+      mime_type: "image/png",
+      size_bytes: 4,
+      sha256: "a".repeat(64),
+      kind: "image" as const,
+    };
+    await database.db
+      .update(nativeLiveTurnPreparations)
+      .set({
+        attachments: [persistedAttachment],
+      })
+      .where(
+        eq(
+          nativeLiveTurnPreparations.id,
+          first.command.prepare_id,
+        ),
+      );
+
     assert.equal(
       await relay.reserveNext({
         userId: user.id,
@@ -137,7 +158,10 @@ test(
       firstReservation.reservationId,
       first.command.prepare_id,
     );
-    assert.deepEqual(firstReservation.command, first.command);
+    assert.deepEqual(firstReservation.command, {
+      ...first.command,
+      attachments: [persistedAttachment],
+    });
 
     await relay.markExecutionStarted({
       userId: user.id,

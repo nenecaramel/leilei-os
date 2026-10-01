@@ -7,6 +7,7 @@ import {
 test("attachment retention deletes object before durable metadata row", async () => {
   const order: string[] = [];
   const db = {
+    async transaction(operation: (tx: any) => Promise<any>) { return operation(db); },
     async execute() {
       return [{
         id: "11111111-1111-4111-8111-111111111111",
@@ -52,6 +53,7 @@ test("attachment retention deletes object before durable metadata row", async ()
 test("attachment retention fails closed when object deletion fails", async () => {
   let databaseDeleteCalls = 0;
   const db = {
+    async transaction(operation: (tx: any) => Promise<any>) { return operation(db); },
     async execute() {
       return [{
         id: "11111111-1111-4111-8111-111111111111",
@@ -81,3 +83,20 @@ test("attachment retention fails closed when object deletion fails", async () =>
   assert.equal(deleted, 0);
   assert.equal(databaseDeleteCalls, 0);
 });
+
+
+for (const hasInlineContent of [true, false]) {
+  test(`cutover retention deletes ${hasInlineContent ? "inline and any staged Bucket" : "Bucket"} bytes before metadata`, async () => {
+    const order: string[] = [];
+    const db = {
+      async transaction(operation: (tx: any) => Promise<any>) { return operation(db); },
+      async execute() { return [{ id: "id", userId: "user", objectKey: "native-live/user/attachment", hasInlineContent }]; },
+      delete() { order.push("metadata"); return { where() { return { async returning() { return [{ id: "id" }]; } }; } }; },
+    };
+    const primary = { async deleteObject() { order.push("bucket"); } };
+    const legacy = { async deleteObject() { order.push("inline"); } };
+    const fn = deleteExpiredNativeLiveAttachmentsBatch as (...args: any[]) => Promise<number>;
+    assert.equal(await fn(db, primary, new Date(), 10, legacy), 1);
+    assert.deepEqual(order, hasInlineContent ? ["bucket", "inline", "metadata"] : ["bucket", "metadata"]);
+  });
+}
