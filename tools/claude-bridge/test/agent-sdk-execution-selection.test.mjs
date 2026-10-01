@@ -6,14 +6,65 @@ import {
   normalizeAgentSdkExecutionSelection,
 } from "../src/agent-sdk-execution-selection.mjs";
 
-test("LeileiOS exposes the five approved Claude model ids", () => {
+test("LeileiOS exposes the six approved Claude model ids", () => {
   assert.deepEqual(LEILEIOS_CLAUDE_MODELS, [
     "claude-opus-5-5",
+    "claude-sonnet-5-5",
     "claude-opus-5",
     "claude-opus-4-6",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
   ]);
+});
+
+test("Sonnet 5.5 supports adaptive at all effort levels and between_tools through high", () => {
+  assert.deepEqual(
+    normalizeAgentSdkExecutionSelection({
+      model: "claude-sonnet-5-5",
+      thinking: "adaptive",
+      effort: "max",
+    }),
+    {
+      model: "claude-sonnet-5-5",
+      thinking: { type: "adaptive" },
+      effort: "max",
+    },
+  );
+
+  assert.deepEqual(
+    normalizeAgentSdkExecutionSelection({
+      model: "claude-sonnet-5-5",
+      thinking: "between_tools",
+      effort: "high",
+    }),
+    {
+      model: "claude-sonnet-5-5",
+      thinking: { type: "between_tools" },
+      effort: "high",
+    },
+  );
+
+  assert.throws(
+    () =>
+      normalizeAgentSdkExecutionSelection({
+        model: "claude-sonnet-5-5",
+        thinking: "disabled",
+        effort: "high",
+      }),
+    /not supported by claude-sonnet-5-5/i,
+  );
+
+  for (const effort of ["xhigh", "max"]) {
+    assert.throws(
+      () =>
+        normalizeAgentSdkExecutionSelection({
+          model: "claude-sonnet-5-5",
+          thinking: "between_tools",
+          effort,
+        }),
+      /only supported up to effort=high/i,
+    );
+  }
 });
 
 test("Opus 5.5 requires adaptive thinking and accepts xhigh", () => {

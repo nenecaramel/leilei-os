@@ -1,5 +1,6 @@
 export const NATIVE_LIVE_CLAUDE_MODELS = [
   "claude-opus-5-5",
+  "claude-sonnet-5-5",
   "claude-opus-5",
   "claude-opus-4-6",
   "claude-sonnet-5",
@@ -8,6 +9,7 @@ export const NATIVE_LIVE_CLAUDE_MODELS = [
 
 export const NATIVE_LIVE_THINKING_MODES = [
   "adaptive",
+  "between_tools",
   "disabled",
 ] as const;
 
@@ -41,6 +43,10 @@ const CAPABILITIES: Record<
 > = {
   "claude-opus-5-5": {
     thinking: ["adaptive"],
+    effort: ["low", "medium", "high", "xhigh", "max"],
+  },
+  "claude-sonnet-5-5": {
+    thinking: ["adaptive", "between_tools"],
     effort: ["low", "medium", "high", "xhigh", "max"],
   },
   "claude-opus-5": {
@@ -131,6 +137,16 @@ export function parseNativeLiveExecutionSelection(
   ) {
     throw new NativeLiveExecutionSelectionError(
       "execution.effort is not supported by the selected model.",
+    );
+  }
+
+  if (
+    model === "claude-sonnet-5-5"
+    && thinking === "between_tools"
+    && (effort === "xhigh" || effort === "max")
+  ) {
+    throw new NativeLiveExecutionSelectionError(
+      "execution.thinking=between_tools is only supported up to effort=high by claude-sonnet-5-5.",
     );
   }
 

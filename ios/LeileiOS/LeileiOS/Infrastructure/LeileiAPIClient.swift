@@ -349,6 +349,7 @@ enum NativeLiveTurnWaitResult: Sendable, Equatable {
 
 enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
     case opus55 = "claude-opus-5-5"
+    case sonnet55 = "claude-sonnet-5-5"
     case opus5 = "claude-opus-5"
     case sonnet5 = "claude-sonnet-5"
     case opus46 = "claude-opus-4-6"
@@ -360,6 +361,8 @@ enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, 
         switch self {
         case .opus55:
             return "Opus 5.5"
+        case .sonnet55:
+            return "Sonnet 5.5"
         case .opus5:
             return "Opus 5"
         case .sonnet5:
@@ -375,6 +378,8 @@ enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, 
         switch self {
         case .opus55:
             return [.adaptive]
+        case .sonnet55:
+            return [.adaptive, .betweenTools]
         case .opus5, .sonnet5, .opus46, .sonnet46:
             return [.adaptive, .disabled]
         }
@@ -386,6 +391,10 @@ enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, 
         switch self {
         case .opus55, .sonnet5:
             return [.low, .medium, .high, .xhigh, .max]
+        case .sonnet55:
+            return thinking == .betweenTools
+                ? [.low, .medium, .high]
+                : [.low, .medium, .high, .xhigh, .max]
         case .opus5:
             return thinking == .disabled
                 ? [.low, .medium, .high]
@@ -398,6 +407,7 @@ enum NativeLiveClaudeModel: String, CaseIterable, Codable, Sendable, Equatable, 
 
 enum NativeLiveThinkingMode: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
     case adaptive
+    case betweenTools = "between_tools"
     case disabled
 
     var id: String { rawValue }
@@ -406,6 +416,8 @@ enum NativeLiveThinkingMode: String, CaseIterable, Codable, Sendable, Equatable,
         switch self {
         case .adaptive:
             return "Adaptive"
+        case .betweenTools:
+            return "Between tools"
         case .disabled:
             return "Off"
         }
