@@ -23,10 +23,11 @@ const (
 )
 
 type broker struct {
-	mu         sync.Mutex
-	generation string
-	version    uint64
-	changed    chan struct{}
+	mu               sync.Mutex
+	generation       string
+	version          uint64
+	changed          chan struct{}
+	lastListenerSeen time.Time
 }
 
 type cursor struct {
@@ -52,6 +53,20 @@ func (b *broker) snapshot() cursor {
 		generation: b.generation,
 		version:    b.version,
 	}
+}
+
+func (b *broker) markListenerSeen() {
+	b.mu.Lock()
+	b.lastListenerSeen = time.Now()
+	b.mu.Unlock()
+}
+
+func (b *broker) listenerOnline() bool {
+	b.mu.Lock()
+	lastSeen := b.lastListenerSeen
+	b.mu.Unlock()
+	return !lastSeen.IsZero() &&
+		time.Since(lastSeen) <= 45*time.Second
 }
 
 func (b *broker) wake() cursor {
@@ -133,8 +148,20 @@ func main() {
 			response http.ResponseWriter,
 			_ *http.Request,
 		) {
+			instance.markListenerSeen()
 			current := instance.snapshot()
 			writeCursor(response, http.StatusOK, "", current)
+		})),
+	)
+	mux.Handle(
+		"GET /presence",
+		requireBearer(token, http.HandlerFunc(func(
+			response http.ResponseWriter,
+			_ *http.Request,
+		) {
+			writeJSON(response, http.StatusOK, map[string]any{
+				"online": instance.listenerOnline(),
+			})
 		})),
 	)
 	mux.Handle(
@@ -173,6 +200,8 @@ func main() {
 				})
 				return
 			}
+
+			instance.markListenerSeen()
 
 			generation, _ := payload["generation"].(string)
 			generation = strings.TrimSpace(generation)
