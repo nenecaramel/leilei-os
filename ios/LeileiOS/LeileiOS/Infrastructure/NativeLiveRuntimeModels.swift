@@ -613,6 +613,20 @@ struct NativeLiveRuntimeSurfaceState:
                     }
                     return "Claude retrying"
                 }
+                if payload["kind"]?.stringValue
+                    == "command_lifecycle" {
+                    switch payload["state"]?.stringValue {
+                    case "queued":
+                        return "Message queued"
+                    case "started":
+                        return "Claude received message"
+                    case "cancelled", "discarded", "refused",
+                         "completed":
+                        return nil
+                    default:
+                        continue
+                    }
+                }
                 continue
 
             case "tool_result":
