@@ -109,6 +109,67 @@ test("system connections and data routes use server-owned identity", async () =>
   ]);
 });
 
+test("system Claude usage returns the latest account-level snapshot", async () => {
+  await withServer({
+    async readClaudeUsage(userId: string) {
+      assert.equal(userId, USER_ID);
+      return {
+        provider: "claude_code",
+        windows: [
+          {
+            kind: "five_hour",
+            utilization: 0.14,
+            resets_at: "2026-09-01T17:40:00.000Z",
+          },
+          {
+            kind: "seven_day",
+            utilization: 0.79,
+            resets_at: "2026-09-05T06:00:00.000Z",
+          },
+        ],
+        overage: {
+          status: "allowed",
+          resets_at: "2026-10-01T00:00:00.000Z",
+          disabled_reason: null,
+          is_using: false,
+        },
+        observed_at: "2026-10-01T10:15:00.000Z",
+      };
+    },
+  }, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/system/claude-usage`,
+      { headers: { "x-test-user": "authenticated" } },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      success: true,
+      data: {
+        provider: "claude_code",
+        windows: [
+          {
+            kind: "five_hour",
+            utilization: 0.14,
+            resets_at: "2026-09-01T17:40:00.000Z",
+          },
+          {
+            kind: "seven_day",
+            utilization: 0.79,
+            resets_at: "2026-09-05T06:00:00.000Z",
+          },
+        ],
+        overage: {
+          status: "allowed",
+          resets_at: "2026-10-01T00:00:00.000Z",
+          disabled_reason: null,
+          is_using: false,
+        },
+        observed_at: "2026-10-01T10:15:00.000Z",
+      },
+    });
+  });
+});
+
 test("system activity returns bounded data and maps service failures safely", async () => {
   await withServer({
     async readActivity(userId: string) {

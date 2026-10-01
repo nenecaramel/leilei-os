@@ -8,6 +8,10 @@ import {
   ActiveUserAuthorizationError,
   requireActiveUser,
 } from "../require-active-user.js";
+import type {
+  ClaudeAccountUsageReader,
+  ClaudeAccountUsageSnapshot,
+} from "../runtime/claude-account-usage.js";
 
 export type {
   SystemDataSummary,
@@ -15,6 +19,9 @@ export type {
   SystemRepository,
   SystemToolActivityRecord,
 } from "./system-repository.js";
+export type {
+  ClaudeAccountUsageSnapshot,
+} from "../runtime/claude-account-usage.js";
 
 export type SystemConnections = {
   web_api: "online";
@@ -45,7 +52,10 @@ const FINAL_ACTIVITY_LIMIT = 50;
 export class SystemService {
   constructor(
     private readonly repository: SystemRepository,
-    private readonly options: { internalMcpEnabled?: boolean } = {},
+    private readonly options: {
+      internalMcpEnabled?: boolean;
+      claudeUsageReader?: ClaudeAccountUsageReader;
+    } = {},
   ) {}
 
   async readConnections(userId: string): Promise<SystemConnections> {
@@ -62,6 +72,13 @@ export class SystemService {
   async readDataSummary(userId: string): Promise<SystemDataSummary> {
     await this.requireActiveUser(userId);
     return this.repository.readDataSummary(userId);
+  }
+
+  async readClaudeUsage(
+    userId: string,
+  ): Promise<ClaudeAccountUsageSnapshot | null> {
+    await this.requireActiveUser(userId);
+    return this.options.claudeUsageReader?.readLatest(userId) ?? null;
   }
 
   async readActivity(userId: string): Promise<SystemActivityItem[]> {

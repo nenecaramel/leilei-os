@@ -253,10 +253,19 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "rate_limit_event") {
+      emit(
+        "runtime",
+        this.sessionId,
+        normalizeClaudeAccountUsage(raw.rate_limit_info),
+      );
+      return output;
+    }
+
     emit("runtime", this.sessionId, {
       raw_event_type: raw.type ?? null,
       raw_event_subtype: raw.subtype ?? null,
-      metadata: raw.type === "rate_limit_event" ? { rate_limit: true } : null,
+      metadata: null,
     });
     return output;
   }
@@ -274,6 +283,153 @@ export function normalizeClaudeEvents(
   return rawEvents.flatMap((raw) => normalizer.normalize(raw));
 }
 
+
+function normalizeClaudeAccountUsage(value) {
+  const info =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+
+  const unifiedWindows =
+    info.unifiedWindows ?? info.unified_windows ?? null;
+  const windows = normalizeRateLimitWindows(unifiedWindows);
+
+  const activeWindow =
+    safeString(info.rateLimitType)
+    ?? safeString(info.rate_limit_type);
+
+  if (windows.length === 0 && activeWindow) {
+    windows.push({
+      kind: activeWindow,
+      utilization: finiteNumber(
+        info.utilization,
+      ),
+      resets_at: isoTimestamp(
+        info.resetsAt ?? info.resets_at,
+      ),
+    });
+  }
+
+  const overageStatus =
+    safeString(info.overageStatus)
+    ?? safeString(info.overage_status);
+  const overageResetsAt = isoTimestamp(
+    info.overageResetsAt ?? info.overage_resets_at,
+  );
+  const overageDisabledReason =
+    safeString(info.overageDisabledReason)
+    ?? safeString(info.overage_disabled_reason);
+  const overageIsUsing =
+    typeof info.isUsingOverage === "boolean"
+      ? info.isUsingOverage
+      : typeof info.is_using_overage === "boolean"
+        ? info.is_using_overage
+        : null;
+
+  return {
+    kind: "claude_account_usage",
+    provider: "claude_code",
+    status: safeString(info.status),
+    active_window: activeWindow,
+    windows,
+    overage:
+      overageStatus
+      || overageResetsAt
+      || overageDisabledReason
+      || overageIsUsing !== null
+        ? {
+            status: overageStatus,
+            resets_at: overageResetsAt,
+            disabled_reason: overageDisabledReason,
+            is_using: overageIsUsing,
+          }
+        : null,
+    surpassed_threshold: finiteNumber(
+      info.surpassedThreshold
+      ?? info.surpassed_threshold,
+    ),
+  };
+}
+
+function normalizeRateLimitWindows(value) {
+  if (Array.isArray(value)) {
+    return value.slice(0, 32).flatMap((window) => {
+      if (
+        !window
+        || typeof window !== "object"
+        || Array.isArray(window)
+      ) {
+        return [];
+      }
+      const kind =
+        safeString(window.kind)
+        ?? safeString(window.type)
+        ?? safeString(window.rateLimitType)
+        ?? safeString(window.rate_limit_type);
+      if (!kind) return [];
+      return [{
+        kind,
+        utilization: finiteNumber(window.utilization),
+        resets_at: isoTimestamp(
+          window.resetsAt ?? window.resets_at,
+        ),
+      }];
+    });
+  }
+
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+  ) {
+    return [];
+  }
+
+  return Object.entries(value)
+    .slice(0, 32)
+    .flatMap(([kind, window]) => {
+      if (
+        !window
+        || typeof window !== "object"
+        || Array.isArray(window)
+      ) {
+        return [];
+      }
+      return [{
+        kind,
+        utilization: finiteNumber(window.utilization),
+        resets_at: isoTimestamp(
+          window.resetsAt ?? window.resets_at,
+        ),
+      }];
+    });
+}
+
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function isoTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const millis =
+      Math.abs(value) < 10_000_000_000
+        ? value * 1_000
+        : value;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toISOString();
+  }
+  if (typeof value === "string" && value.length > 0) {
+    const millis = Date.parse(value);
+    return Number.isNaN(millis)
+      ? null
+      : new Date(millis).toISOString();
+  }
+  return null;
+}
 
 function safeString(value) {
   return typeof value === "string" && value.length > 0

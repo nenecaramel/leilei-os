@@ -527,6 +527,48 @@ struct NativeLiveRuntimeExecutionApplied: Decodable, Sendable, Equatable {
     let effort: String?
 }
 
+struct SystemClaudeUsageWindowSnapshot: Decodable, Sendable, Equatable, Identifiable {
+    let kind: String
+    let utilization: Double?
+    let resetsAt: String?
+
+    var id: String { kind }
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case utilization
+        case resetsAt = "resets_at"
+    }
+}
+
+struct SystemClaudeUsageOverageSnapshot: Decodable, Sendable, Equatable {
+    let status: String?
+    let resetsAt: String?
+    let disabledReason: String?
+    let isUsing: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case resetsAt = "resets_at"
+        case disabledReason = "disabled_reason"
+        case isUsing = "is_using"
+    }
+}
+
+struct SystemClaudeUsageSnapshot: Decodable, Sendable, Equatable {
+    let provider: String
+    let windows: [SystemClaudeUsageWindowSnapshot]
+    let overage: SystemClaudeUsageOverageSnapshot?
+    let observedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case windows
+        case overage
+        case observedAt = "observed_at"
+    }
+}
+
 struct SystemConnectionsSnapshot: Decodable, Sendable, Equatable {
     let webAPI: String
     let publicMCP: String
@@ -1740,6 +1782,14 @@ final class LeileiAPIClient {
         return envelope.data.applied
     }
 
+    func systemClaudeUsage() async throws -> SystemClaudeUsageSnapshot? {
+        let envelope: SystemClaudeUsageEnvelope = try await request(
+            path: "/api/v1/system/claude-usage",
+            authenticated: true
+        )
+        return envelope.data
+    }
+
     func systemConnections() async throws -> SystemConnectionsSnapshot {
         let envelope: SystemConnectionsEnvelope = try await request(
             path: "/api/v1/system/connections",
@@ -2088,6 +2138,11 @@ private struct WorkspaceConversationMutationEnvelope: Decodable, Sendable {
 
     let success: Bool
     let data: MutationData
+}
+
+private struct SystemClaudeUsageEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: SystemClaudeUsageSnapshot?
 }
 
 private struct SystemConnectionsEnvelope: Decodable, Sendable {

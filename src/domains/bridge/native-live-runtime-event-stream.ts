@@ -15,6 +15,9 @@ import type {
   NativeLiveNormalizedEvent,
   NativeLiveNormalizedEventType,
 } from "../conversation/native-live-conversation-orchestrator.js";
+import type {
+  ClaudeAccountUsageWriter,
+} from "../runtime/claude-account-usage.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -273,20 +276,32 @@ export class DrizzleNativeLiveRuntimeEventRepository {
 
 export class NativeLiveRuntimeEventService {
   constructor(
-    private readonly repository: DrizzleNativeLiveRuntimeEventRepository,
+    private readonly repository: Pick<
+      DrizzleNativeLiveRuntimeEventRepository,
+      "append" | "appendBatch" | "list"
+    >,
+    private readonly claudeAccountUsage: ClaudeAccountUsageWriter | null = null,
   ) {}
 
-  append(input: {
+  async append(input: {
     userId: string;
     listenerInstanceId: string;
     reservationId: string;
     sequence: number;
     event: NativeLiveNormalizedEvent;
   }): Promise<NativeLiveRuntimeEventAppendOutcome> {
-    return this.repository.append(input);
+    const outcome = await this.repository.append(input);
+    await this.claudeAccountUsage?.observeRuntimeEvents({
+      userId: input.userId,
+      events: [{
+        sequence: input.sequence,
+        event: input.event,
+      }],
+    });
+    return outcome;
   }
 
-  appendBatch(input: {
+  async appendBatch(input: {
     userId: string;
     listenerInstanceId: string;
     reservationId: string;
@@ -295,7 +310,12 @@ export class NativeLiveRuntimeEventService {
       event: NativeLiveNormalizedEvent;
     }>;
   }): Promise<NativeLiveRuntimeEventBatchAppendOutcome> {
-    return this.repository.appendBatch(input);
+    const outcome = await this.repository.appendBatch(input);
+    await this.claudeAccountUsage?.observeRuntimeEvents({
+      userId: input.userId,
+      events: input.events,
+    });
+    return outcome;
   }
 
   list(input: {
