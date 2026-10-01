@@ -7,6 +7,7 @@ import {
   nativeLiveMindFollowUps,
   nativeLiveRuntimeListenerLeases,
   runtimeContextManifests,
+  runtimeContextLineageStates,
   runtimeSubjectStates,
   users,
 } from "../src/database/schema.js";
@@ -177,6 +178,32 @@ test(
     assert.equal(finalized.ok, true);
     if (!finalized.ok) throw new Error("expected canonical success");
 
+    const expectedStateId = nativeLiveMindFollowUpStateId(
+      prepared.command.prepare_id,
+      0,
+    );
+    const [lineageAfterCanonical] = await database.db
+      .select({
+        seenStateIds: runtimeContextLineageStates.seenStateIds,
+      })
+      .from(runtimeContextLineageStates)
+      .where(
+        and(
+          eq(runtimeContextLineageStates.userId, userId),
+          eq(
+            runtimeContextLineageStates.canonicalMessageId,
+            finalized.assistantMessageId,
+          ),
+        ),
+      )
+      .limit(1);
+    assert.ok(lineageAfterCanonical);
+    assert.deepEqual(
+      lineageAfterCanonical.seenStateIds,
+      [expectedStateId],
+      "a Memory written by Claude is already seen before its durable follow-up materializes",
+    );
+
     assert.equal(
       await relay.markCompleted({
         userId,
@@ -256,10 +283,6 @@ test(
       "processed",
     );
 
-    const expectedStateId = nativeLiveMindFollowUpStateId(
-      prepared.command.prepare_id,
-      0,
-    );
     const afterRecovery = await database.db
       .select({
         id: runtimeSubjectStates.id,
@@ -271,6 +294,28 @@ test(
       id: expectedStateId,
       text: "durable outbox memory",
     }]);
+
+    const nextRequestId = crypto.randomUUID();
+    const nextPrepared = await coordinator.prepare(userId, {
+      dispatch_target: "claude_code",
+      request_id: nextRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: finalized.assistantMessageId,
+      text: "durable outbox memory",
+    });
+    assert.equal(nextPrepared.ok, true);
+    if (!nextPrepared.ok) throw new Error("expected next prepare success");
+    assert.equal(
+      nextPrepared.command.prompt.includes("durable outbox memory"),
+      true,
+      "the current user message itself stays present",
+    );
+    assert.equal(
+      nextPrepared.command.prompt.includes("Relevant memories:"),
+      false,
+      "the just-written Memory must not be immediately handed back by Breath",
+    );
 
     const [completed] = await database.db
       .select({
