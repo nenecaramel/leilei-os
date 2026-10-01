@@ -1315,18 +1315,20 @@ test("interactive foreground control pump can queue a mid-turn user message on t
       async *[Symbol.asyncIterator]() {
         const iterator = prompt[Symbol.asyncIterator]();
         const first = await iterator.next();
-        seenUserMessages.push(
-          first.value.message.content[0].text,
-        );
+        seenUserMessages.push({
+          text: first.value.message.content[0].text,
+          uuid: first.value.uuid,
+        });
         yield {
           type: "system",
           subtype: "init",
           session_id: "provider-controlled",
         };
         const second = await iterator.next();
-        seenUserMessages.push(
-          second.value.message.content[0].text,
-        );
+        seenUserMessages.push({
+          text: second.value.message.content[0].text,
+          uuid: second.value.uuid,
+        });
         yield {
           type: "result",
           subtype: "success",
@@ -1343,10 +1345,18 @@ test("interactive foreground control pump can queue a mid-turn user message on t
       mode: "new",
       parentProviderSessionId: null,
       streaming: true,
+      userMessageUuid:
+        "44444444-4444-4444-8444-444444444444",
       controlPump: async (controller) => {
         await new Promise((resolve) => setImmediate(resolve));
         receipts.push(
-          controller.sendUserMessage("mid-turn update"),
+          controller.sendUserMessage(
+            "mid-turn update",
+            {
+              uuid:
+                "55555555-5555-4555-8555-555555555555",
+            },
+          ),
         );
       },
     },
@@ -1354,10 +1364,22 @@ test("interactive foreground control pump can queue a mid-turn user message on t
 
   assert.equal(result.providerSessionId, "provider-controlled");
   assert.deepEqual(seenUserMessages, [
-    "initial",
-    "mid-turn update",
+    {
+      text: "initial",
+      uuid:
+        "44444444-4444-4444-8444-444444444444",
+    },
+    {
+      text: "mid-turn update",
+      uuid:
+        "55555555-5555-4555-8555-555555555555",
+    },
   ]);
-  assert.deepEqual(receipts, [{ status: "queued" }]);
+  assert.deepEqual(receipts, [{
+    status: "queued",
+    command_uuid:
+      "55555555-5555-4555-8555-555555555555",
+  }]);
 });
 
 test("interactive foreground control pump projects graceful interrupt as INTERRUPTED", async () => {

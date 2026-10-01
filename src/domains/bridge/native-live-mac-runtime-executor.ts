@@ -37,6 +37,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
       mode: "new" | "fork";
       parentProviderSessionId: string | null;
       streaming: boolean;
+      userMessageUuid?: string | null;
       execution?: NativeLiveExecutionSelection | null;
       onNormalizedEvent?: (
         event: NativeLiveNormalizedEvent,
@@ -189,6 +190,8 @@ export class NativeLiveMacRuntimeExecutor {
           parentProviderSessionId:
             command.parent_provider_session_id,
           streaming: true,
+          userMessageUuid:
+            command.canonical_user_message_id,
           ...(command.execution_selection
             ? { execution: command.execution_selection }
             : {}),

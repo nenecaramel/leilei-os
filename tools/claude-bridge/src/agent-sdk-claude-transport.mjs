@@ -362,6 +362,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       mode = "new",
       parentProviderSessionId = null,
       streaming = true,
+      userMessageUuid = null,
       execution = null,
       onNormalizedEvent = null,
       permissionHandler = null,
@@ -458,6 +459,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           : {}),
       },
       streaming,
+      userMessageUuid,
       permissionHandler,
       questionHandler,
       midTurnInput:
@@ -497,8 +499,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         controlPumpPromise = Promise.resolve(
           controlPump(
             {
-              sendUserMessage: (text) =>
-                handle.sendUserMessage(text),
+              sendUserMessage: (text, options = {}) =>
+                handle.sendUserMessage(text, options),
               interrupt: () => handle.interrupt(),
             },
             { signal: controlAbort.signal },

@@ -288,6 +288,16 @@ struct NativeLiveRuntimeControlSnapshot:
 
     var id: String { controlID }
 
+    var providerCommandUUID: String? {
+        receipt?["command_uuid"]?.stringValue
+    }
+
+    var providerQueueAccepted: Bool {
+        status == "applied"
+            && receipt?["status"]?.stringValue == "queued"
+            && providerCommandUUID == controlID
+    }
+
     enum CodingKeys: String, CodingKey {
         case controlID = "controlId"
         case prepareID = "prepareId"
@@ -489,6 +499,50 @@ struct NativeLiveRuntimeSurfaceState:
         }
     }
 
+    func commandLifecycleState(
+        for commandUUID: String
+    ) -> String? {
+        for event in events.reversed() {
+            let payload = event.event.payload ?? [:]
+            guard event.event.type == "runtime",
+                  payload["kind"]?.stringValue
+                    == "command_lifecycle",
+                  payload["command_uuid"]?.stringValue
+                    == commandUUID else {
+                continue
+            }
+            return payload["state"]?.stringValue
+        }
+        return nil
+    }
+
+    func hasUserMessageAttribution(
+        _ uuid: String
+    ) -> Bool {
+        for event in events.reversed() {
+            let payload = event.event.payload ?? [:]
+            guard event.event.type == "runtime",
+                  payload["kind"]?.stringValue
+                    == "user_message_attribution" else {
+                continue
+            }
+
+            if payload["user_message_uuid"]?.stringValue
+                == uuid {
+                return true
+            }
+
+            if let values =
+                payload["user_message_uuids"]?.arrayValue,
+               values.contains(where: {
+                   $0.stringValue == uuid
+               }) {
+                return true
+            }
+        }
+        return false
+    }
+
     var activityText: String? {
         for event in events.reversed() {
             let payload = event.event.payload ?? [:]
@@ -558,6 +612,20 @@ struct NativeLiveRuntimeSurfaceState:
                         return "Claude retrying · \(Int(attempt))/\(Int(maxRetries))"
                     }
                     return "Claude retrying"
+                }
+                if payload["kind"]?.stringValue
+                    == "command_lifecycle" {
+                    switch payload["state"]?.stringValue {
+                    case "queued":
+                        return "Message queued"
+                    case "started":
+                        return "Claude received message"
+                    case "cancelled", "discarded", "refused",
+                         "completed":
+                        return nil
+                    default:
+                        continue
+                    }
                 }
                 continue
 

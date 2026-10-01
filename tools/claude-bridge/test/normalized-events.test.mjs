@@ -207,6 +207,101 @@ test("normalizes Agent SDK session state changes as runtime-only provider author
   );
 });
 
+test("normalizes command lifecycle and provider user-message attribution as runtime-only identity", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "command_lifecycle",
+        session_id: "identity-session",
+        command_uuid:
+          "44444444-4444-4444-8444-444444444444",
+        state: "queued",
+        uuid: "lifecycle-queued",
+      },
+      {
+        type: "command_lifecycle",
+        session_id: "identity-session",
+        command_uuid:
+          "44444444-4444-4444-8444-444444444444",
+        state: "started",
+        uuid: "lifecycle-started",
+      },
+      {
+        type: "assistant",
+        session_id: "identity-session",
+        user_message_uuid:
+          "44444444-4444-4444-8444-444444444444",
+        user_message_uuids: [
+          "44444444-4444-4444-8444-444444444444",
+          "55555555-5555-4555-8555-555555555555",
+        ],
+        message: {
+          content: [{ type: "text", text: "READY" }],
+        },
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "identity-session",
+        user_message_uuid:
+          "55555555-5555-4555-8555-555555555555",
+        user_message_uuids: [
+          "44444444-4444-4444-8444-444444444444",
+          "55555555-5555-4555-8555-555555555555",
+        ],
+        result: "READY",
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [
+      "runtime",
+      "runtime",
+      "runtime",
+      "text",
+      "runtime",
+      "result",
+    ],
+  );
+  assert.deepEqual(events[0].payload, {
+    kind: "command_lifecycle",
+    command_uuid:
+      "44444444-4444-4444-8444-444444444444",
+    state: "queued",
+    event_uuid: "lifecycle-queued",
+  });
+  assert.deepEqual(events[1].payload, {
+    kind: "command_lifecycle",
+    command_uuid:
+      "44444444-4444-4444-8444-444444444444",
+    state: "started",
+    event_uuid: "lifecycle-started",
+  });
+  assert.deepEqual(events[2].payload, {
+    kind: "user_message_attribution",
+    source_type: "assistant",
+    user_message_uuid:
+      "44444444-4444-4444-8444-444444444444",
+    user_message_uuids: [
+      "44444444-4444-4444-8444-444444444444",
+      "55555555-5555-4555-8555-555555555555",
+    ],
+  });
+  assert.deepEqual(events[4].payload, {
+    kind: "user_message_attribution",
+    source_type: "result",
+    user_message_uuid:
+      "55555555-5555-4555-8555-555555555555",
+    user_message_uuids: [
+      "55555555-5555-4555-8555-555555555555",
+      "44444444-4444-4444-8444-444444444444",
+    ],
+  });
+});
+
 test("normalizes Agent SDK compact boundaries for runtime observability", () => {
   const events = normalizeClaudeEvents(
     [

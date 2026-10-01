@@ -1375,7 +1375,7 @@ final class AppModel: ObservableObject {
 
     func sendNativeLiveMidTurnInput(
         _ text: String
-    ) async throws {
+    ) async throws -> String {
         let normalized = text.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
@@ -1384,16 +1384,18 @@ final class AppModel: ObservableObject {
             throw NativeLiveRuntimeControlClientError.invalidMidTurnInput
         }
 
-        try await createNativeLiveRuntimeControl(
-            kind: "mid_turn_input",
-            payload: [
-                "text": .string(normalized),
-            ]
-        )
+        let control =
+            try await createNativeLiveRuntimeControl(
+                kind: "mid_turn_input",
+                payload: [
+                    "text": .string(normalized),
+                ]
+            )
+        return control.controlID
     }
 
     func interruptNativeLiveTurn() async throws {
-        try await createNativeLiveRuntimeControl(
+        _ = try await createNativeLiveRuntimeControl(
             kind: "interrupt",
             payload: [:]
         )
@@ -1402,7 +1404,7 @@ final class AppModel: ObservableObject {
     private func createNativeLiveRuntimeControl(
         kind: String,
         payload: [String: NativeLiveJSONValue]
-    ) async throws {
+    ) async throws -> NativeLiveRuntimeControlSnapshot {
         guard var surface = nativeLiveRuntimeSurface else {
             throw NativeLiveRuntimeControlClientError.notReady
         }
@@ -1420,7 +1422,7 @@ final class AppModel: ObservableObject {
 
             guard nativeLiveRuntimeSurface?.prepareID
                     == surface.prepareID else {
-                return
+                return created
             }
 
             if let index = surface.controls.firstIndex(where: {
@@ -1431,6 +1433,7 @@ final class AppModel: ObservableObject {
                 surface.controls.append(created)
             }
             nativeLiveRuntimeSurface = surface
+            return created
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
             throw LeileiAPIError.missingAccessToken

@@ -920,7 +920,9 @@ export class NativeLiveMacDaemonLoop {
               { controlCode: "INVALID_CONTROL_PAYLOAD" },
             );
           }
-          receipt = controller.sendUserMessage(text);
+          receipt = controller.sendUserMessage(text, {
+            uuid: control.controlId,
+          });
         } else {
           receipt = await controller.interrupt();
         }

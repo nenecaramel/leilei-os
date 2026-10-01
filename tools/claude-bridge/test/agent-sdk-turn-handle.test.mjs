@@ -32,6 +32,8 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
   const handle = await createAgentSdkTurnHandle({
     prompt: "hello",
     environment: {},
+    userMessageUuid:
+      "44444444-4444-4444-8444-444444444444",
     queryImpl: (input) => {
       call = input;
       return {
@@ -56,6 +58,8 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
       done: false,
       value: {
         type: "user",
+        uuid:
+          "44444444-4444-4444-8444-444444444444",
         parent_tool_use_id: null,
         message: {
           role: "user",
@@ -547,6 +551,8 @@ test("turn handle can queue a second user message while the SDK turn is active",
     prompt: "initial instruction",
     environment: {},
     midTurnInput: true,
+    userMessageUuid:
+      "44444444-4444-4444-8444-444444444444",
     queryImpl: (input) => {
       call = input;
       return {
@@ -566,18 +572,22 @@ test("turn handle can queue a second user message while the SDK turn is active",
 
           const first =
             await iterator.next();
-          observed.push(
-            first.value.message.content[0]
-              .text,
-          );
+          observed.push({
+            text:
+              first.value.message.content[0]
+                .text,
+            uuid: first.value.uuid,
+          });
           firstConsumed();
 
           const second =
             await iterator.next();
-          observed.push(
-            second.value.message.content[0]
-              .text,
-          );
+          observed.push({
+            text:
+              second.value.message.content[0]
+                .text,
+            uuid: second.value.uuid,
+          });
 
           yield {
             type: "result",
@@ -607,14 +617,30 @@ test("turn handle can queue a second user message while the SDK turn is active",
   assert.deepEqual(
     handle.sendUserMessage(
       "updated instruction",
+      {
+        uuid:
+          "55555555-5555-4555-8555-555555555555",
+      },
     ),
-    { status: "queued" },
+    {
+      status: "queued",
+      command_uuid:
+        "55555555-5555-4555-8555-555555555555",
+    },
   );
 
   const result = await completion;
   assert.deepEqual(observed, [
-    "initial instruction",
-    "updated instruction",
+    {
+      text: "initial instruction",
+      uuid:
+        "44444444-4444-4444-8444-444444444444",
+    },
+    {
+      text: "updated instruction",
+      uuid:
+        "55555555-5555-4555-8555-555555555555",
+    },
   ]);
   assert.equal(
     result.result.result,

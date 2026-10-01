@@ -19,7 +19,10 @@ export type NativeLiveMacMcpServerConfig = {
 };
 
 export type NativeLiveMacActiveTurnController = {
-  sendUserMessage(text: string): Record<string, unknown>;
+  sendUserMessage(
+    text: string,
+    options?: { uuid?: string | null },
+  ): Record<string, unknown>;
   interrupt(): Promise<Record<string, unknown>>;
 };
 
@@ -27,6 +30,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
   mode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
   streaming: boolean;
+  userMessageUuid?: string | null;
   execution?: NativeLiveExecutionSelection | null;
   onNormalizedEvent?: (
     event: NativeLiveNormalizedEvent,
