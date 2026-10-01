@@ -65,9 +65,10 @@ does not emit an empty `<leileios_context>` wrapper; the provider receives only 
 timestamped `<user_message>` for that turn.
 
 The fixed `<leileios_mind_write>` authoring protocol is not part of the user message.
-Foreground Agent SDK turns append that byte-stable protocol to the Claude Code system
-prompt instead, so it does not become another user-history block every turn. Native
-`/schedule` and `/routines` commands keep the base Claude Code system prompt.
+Agent SDK turns append that byte-stable protocol to the Claude Code system prompt
+instead, so it does not become another user-history block every turn. The same exact
+system-prompt append is kept for native `/schedule` and `/routines` turns as well;
+those commands still bypass Mind Context Assembly and keep slash-command parsing enabled.
 
 The model never sees a database id. `T1..T3` refer to the latest authoritative Thought
 snapshot. The turn's Context Manifest (`runtime_context_manifests`, keyed by the
