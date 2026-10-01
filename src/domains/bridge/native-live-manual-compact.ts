@@ -566,7 +566,7 @@ export class NativeLiveManualCompactService {
           user_id,
           conversation_id,
           epoch,
-          seen_state_ids,
+          seen_state_ids_delta,
           thought_revision,
           thought_fingerprint
         ) VALUES (
@@ -581,7 +581,7 @@ export class NativeLiveManualCompactService {
         ON CONFLICT (canonical_message_id)
         DO UPDATE SET
           epoch = runtime_context_lineage_states.epoch + 1,
-          seen_state_ids = '[]'::jsonb,
+          seen_state_ids_delta = '[]'::jsonb,
           thought_fingerprint = NULL,
           updated_at = now()
         WHERE runtime_context_lineage_states.user_id =
