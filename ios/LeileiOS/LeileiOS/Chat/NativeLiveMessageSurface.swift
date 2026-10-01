@@ -1884,7 +1884,8 @@ private struct NativeLiveRuntimeToolCallRow: View {
     var body: some View {
         NativeLiveToolCallCard(
             toolName:
-                toolUse.event.payload?["tool_name"]?.stringValue
+                toolUse.event.payload?["display_name"]?.stringValue
+                ?? toolUse.event.payload?["tool_name"]?.stringValue
                 ?? "Tool",
             detail: nativeLiveJSONDetail(
                 toolUse.event.payload?["input"]

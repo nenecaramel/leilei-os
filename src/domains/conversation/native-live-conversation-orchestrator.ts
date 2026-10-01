@@ -87,7 +87,7 @@ export function canonicalizeNativeLiveEvents(
       blocks.push({
         kind: "tool_use",
         rawType: "tool_use",
-        payload,
+        payload: stripToolUseDisplayMetadata(payload),
       });
       continue;
     }
@@ -119,6 +119,18 @@ export function canonicalizeNativeLiveEvents(
   }
 
   return { blocks, error };
+}
+
+function stripToolUseDisplayMetadata(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const {
+    display_name: _displayName,
+    server_display_name: _serverDisplayName,
+    icon_url: _iconUrl,
+    ...canonicalPayload
+  } = payload;
+  return canonicalPayload;
 }
 
 function stringValue(value: unknown): string | null {
