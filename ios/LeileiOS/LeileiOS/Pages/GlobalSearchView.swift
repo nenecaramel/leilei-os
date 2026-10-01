@@ -26,6 +26,7 @@ struct GlobalSearchView: View {
     @State private var draftCustomEndDate = Date.now
     @State private var scope: GlobalSearchScope = .active
     @State private var mode: GlobalSearchMode = .normal
+    @State private var author: GlobalSearchAuthorFilter = .all
     @State private var state: SearchState = .idle
     @State private var searchTask: Task<Void, Never>?
     @State private var loadMoreTask: Task<Void, Never>?
@@ -98,13 +99,15 @@ struct GlobalSearchView: View {
         .onChange(of: timePreset) { _, _ in scheduleSearch() }
         .onChange(of: scope) { _, _ in scheduleSearch() }
         .onChange(of: mode) { _, _ in scheduleSearch() }
+        .onChange(of: author) { _, _ in scheduleSearch() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 GlobalSearchFiltersMenu(
                     modules: $modules,
                     timePreset: timeSelection,
                     scope: $scope,
-                    mode: $mode
+                    mode: $mode,
+                    author: $author
                 )
             }
 
@@ -201,7 +204,8 @@ struct GlobalSearchView: View {
                         hasMore: next.hasMore,
                         nextCursor: next.nextCursor,
                         searchedModules: next.searchedModules,
-                        searchedScope: next.searchedScope
+                        searchedScope: next.searchedScope,
+                        searchedAuthor: next.searchedAuthor
                     )
                 )
                 isLoadingMore = false
@@ -233,6 +237,7 @@ struct GlobalSearchView: View {
             modules: modules,
             scope: scope,
             mode: mode,
+            author: author,
             dateFrom: dateRange.dateFrom,
             dateTo: dateRange.dateTo
         )
