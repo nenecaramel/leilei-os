@@ -182,75 +182,89 @@ export class NativeLiveMacRuntimeExecutor {
 
       binding = await this.resolveRuntime(command);
       const runtime = binding.runtime;
-      runtimeResult = runtime.executeTurn
-        ? await runtime.executeTurn(
+      if (runtime.executeTurn) {
+        const turnOptions = {
+          mode: command.runtime_mode,
+          parentProviderSessionId:
+            command.parent_provider_session_id,
+          streaming: true,
+          ...(command.execution_selection
+            ? { execution: command.execution_selection }
+            : {}),
+          ...(options.onNormalizedEvent
+            ? {
+                onNormalizedEvent:
+                  options.onNormalizedEvent,
+              }
+            : {}),
+          ...(options.permissionHandler
+            ? {
+                permissionHandler:
+                  options.permissionHandler,
+              }
+            : {}),
+          ...(options.questionHandler
+            ? {
+                questionHandler:
+                  options.questionHandler,
+              }
+            : {}),
+          ...(this.outputAttachmentSender
+            && command.protocol_version
+              === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+            ? {
+                sendFileHandler: async (input: {
+                  path: string;
+                  displayName: string | null;
+                }) => {
+                  if (outputAttachmentIds.length >= 8) {
+                    throw new Error(
+                      "send_file may send at most 8 files in one turn.",
+                    );
+                  }
+                  const attachment =
+                    await this.outputAttachmentSender!.sendFile({
+                      path: input.path,
+                      displayName: input.displayName,
+                      workspaceRoot: binding.workspaceRoot,
+                    });
+                  outputAttachmentIds.push(
+                    attachment.attachmentId,
+                  );
+                  return attachment;
+                },
+              }
+            : {}),
+          ...(options.controlPump
+            ? {
+                controlPump:
+                  options.controlPump,
+              }
+            : {}),
+        };
+
+        try {
+          runtimeResult = await runtime.executeTurn(
             runtimePrompt,
-            {
-              mode: command.runtime_mode,
-              parentProviderSessionId:
-                command.parent_provider_session_id,
-              streaming: true,
-              ...(command.execution_selection
-                ? { execution: command.execution_selection }
-                : {}),
-              ...(options.onNormalizedEvent
-                ? {
-                    onNormalizedEvent:
-                      options.onNormalizedEvent,
-                  }
-                : {}),
-              ...(options.permissionHandler
-                ? {
-                    permissionHandler:
-                      options.permissionHandler,
-                  }
-                : {}),
-              ...(options.questionHandler
-                ? {
-                    questionHandler:
-                      options.questionHandler,
-                  }
-                : {}),
-              ...(this.outputAttachmentSender
-                && command.protocol_version
-                  === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
-                ? {
-                    sendFileHandler: async (input: {
-                      path: string;
-                      displayName: string | null;
-                    }) => {
-                      if (outputAttachmentIds.length >= 8) {
-                        throw new Error(
-                          "send_file may send at most 8 files in one turn.",
-                        );
-                      }
-                      const attachment =
-                        await this.outputAttachmentSender!.sendFile({
-                          path: input.path,
-                          displayName: input.displayName,
-                          workspaceRoot: binding.workspaceRoot,
-                        });
-                      outputAttachmentIds.push(
-                        attachment.attachmentId,
-                      );
-                      return attachment;
-                    },
-                  }
-                : {}),
-              ...(options.controlPump
-                ? {
-                    controlPump:
-                      options.controlPump,
-                  }
-                : {}),
-            },
-          )
-        : command.runtime_mode === "new"
+            turnOptions,
+          );
+        } catch (error) {
+          if (!isRetryableLeileiosMcpStartupFailure(error)) {
+            throw error;
+          }
+          runtimeResult = await runtime.executeTurn(
+            runtimePrompt,
+            turnOptions,
+          );
+        }
+      } else {
+        runtimeResult = command.runtime_mode === "new"
           ? await runtime.sendNew(runtimePrompt)
           : await runtime.fork(
               command.parent_provider_session_id!,
               runtimePrompt,
             );
+      }
     } catch (error) {
       const errorCode = runtimeFailureCode(error);
       if (this.onRuntimeFailure) {
@@ -375,6 +389,42 @@ export class NativeLiveMacRuntimeExecutor {
       workspaceRoot: this.fallbackWorkspaceRoot,
     };
   }
+}
+
+const LEILEIOS_MCP_STARTUP_ERROR =
+  "LeileiOS MCP did not connect before the Claude turn started.";
+
+function isRetryableLeileiosMcpStartupFailure(
+  error: unknown,
+): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message !== LEILEIOS_MCP_STARTUP_ERROR) return false;
+  const record = error as unknown as Record<string, unknown>;
+  if (
+    record.runtimeCode !== undefined
+    && record.runtimeCode !== "RUNTIME_UNAVAILABLE"
+  ) {
+    return false;
+  }
+  if (
+    typeof record.providerSessionId === "string"
+    && record.providerSessionId.trim()
+  ) {
+    return false;
+  }
+  if (
+    Array.isArray(record.events)
+    && record.events.length > 0
+  ) {
+    return false;
+  }
+  if (
+    Array.isArray(record.normalizedEvents)
+    && record.normalizedEvents.length > 0
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function runtimeFailureDiagnostics(
