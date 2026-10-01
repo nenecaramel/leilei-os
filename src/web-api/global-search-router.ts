@@ -23,7 +23,7 @@ export function createGlobalSearchApiHandler(dependencies: GlobalSearchApiDepend
   };
 }
 
-const ALLOWED_QUERY_KEYS = new Set(["query", "modules", "scope", "mode", "date_from", "date_to", "limit", "cursor"]);
+const ALLOWED_QUERY_KEYS = new Set(["query", "modules", "scope", "mode", "author", "date_from", "date_to", "limit", "cursor"]);
 
 function parseGlobalSearchQuery(query: Record<string, unknown>): Omit<GlobalSearchInput, "userId"> {
   if (Object.keys(query).some((key) => !ALLOWED_QUERY_KEYS.has(key))) invalidQuery();
@@ -51,6 +51,7 @@ function parseGlobalSearchQuery(query: Record<string, unknown>): Omit<GlobalSear
     modules,
     scope: scalar("scope"),
     mode: scalar("mode"),
+    author: scalar("author"),
     date_from: scalar("date_from"),
     date_to: scalar("date_to"),
     limit: limitText === undefined ? undefined : Number(limitText),
