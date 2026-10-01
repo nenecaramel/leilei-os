@@ -14,7 +14,7 @@ test("attachment bucket migration uploads, verifies, then clears inline bytes", 
 
   const content = Buffer.from("legacy attachment");
   const sha256 =
-    "4d8d18e42a75c5f538adf3f5a05f88e99f3dc09126c8a49c0904600294db9176";
+    "ab0abec23a813de8b92bea070d3375ce06a7260e47ec8167377ae2c15a21ba3a";
   const records = [{
     id: "11111111-1111-4111-8111-111111111111",
     objectKey: "native-live/user/attachment",
@@ -98,7 +98,7 @@ test("attachment bucket migration never clears inline bytes before verification"
         mimeType: "text/plain",
         sizeBytes: content.byteLength,
         sha256:
-          "4d8d18e42a75c5f538adf3f5a05f88e99f3dc09126c8a49c0904600294db9176",
+          "ab0abec23a813de8b92bea070d3375ce06a7260e47ec8167377ae2c15a21ba3a",
       }];
     },
     async clearInlineContent() {
