@@ -130,6 +130,15 @@ struct ChatView: View {
         .onChange(of: pendingMidTurnDeliverySignal) { _, signal in
             reconcilePendingMidTurnDelivery(signal)
         }
+        .onChange(of: visibleRuntimeSurface?.prepareID) { oldID, newID in
+            guard pendingMidTurnDelivery != nil,
+                  oldID != newID else {
+                return
+            }
+            // If the active turn disappears or changes before exact provider
+            // acceptance is observed, keep the typed text and unlock retry.
+            pendingMidTurnDelivery = nil
+        }
         .safeAreaInset(edge: .bottom) {
             ChatComposer(
                 text: $messageText,
