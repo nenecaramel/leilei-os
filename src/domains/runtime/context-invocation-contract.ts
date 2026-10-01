@@ -100,7 +100,41 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
     throw new Error("Context manifest exceeds its declared budget.");
   }
   if (manifest.lineage) {
-    parseContextLineageManifest(manifest.lineage);
+    const lineage = parseContextLineageManifest(manifest.lineage);
+    if (!lineage) {
+      throw new Error("Context manifest lineage metadata is invalid.");
+    }
+    const thoughtItems = manifest.items.filter(
+      (item) => item.type === "thought",
+    );
+    if (
+      lineage.thoughtSnapshotEmitted
+        ? thoughtItems.length !== lineage.activeThoughtCount
+        : thoughtItems.length !== 0
+    ) {
+      throw new Error(
+        "Context manifest Thought snapshot does not match lineage metadata.",
+      );
+    }
+    if (lineage.thoughtSnapshotEmitted) {
+      const expected = new Map(
+        lineage.thoughtRefs.map((value) => [
+          value.alias,
+          value.stateId,
+        ]),
+      );
+      if (
+        thoughtItems.some(
+          (item) =>
+            !item.alias
+            || expected.get(item.alias) !== item.sourceId,
+        )
+      ) {
+        throw new Error(
+          "Context manifest Thought aliases do not match lineage metadata.",
+        );
+      }
+    }
   }
   for (const item of manifest.items) {
     if (
