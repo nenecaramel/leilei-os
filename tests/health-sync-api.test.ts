@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import type { HealthSyncResult } from "../src/domains/health-v2/health-types.js";
+import { HealthService } from "../src/domains/health-v2/health-service.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000081";
 const HEALTH_KEY = "h".repeat(64);
@@ -190,6 +191,50 @@ test("Health Shortcut sync validates a strict body and returns normalized create
     assert.equal(updated.status, 200);
     assert.equal((await updated.json() as { success: boolean }).success, true);
     assert.equal(calls.length, 2);
+  });
+});
+
+test("Health Shortcut sync accepts the exact 60-day menstruation boundary and rejects older dates", async () => {
+  const now = new Date("2026-10-01T04:00:00.000Z");
+  const service = new HealthService({
+    async upsertDaily(_userId: string, summary) {
+      return {
+        created: true,
+        summary: {
+          ...summary,
+          updatedAt: now,
+        },
+      };
+    },
+  } as never, () => now);
+
+  await withApp({
+    healthSyncService: service,
+  }, async (baseUrl) => {
+    const boundary = await syncRequest(baseUrl, {
+      date: "2026-10-01",
+      steps: 319,
+      menstruation_dates: ["2026-08-02"],
+    });
+    assert.equal(boundary.status, 200);
+    assert.equal(
+      (await boundary.json() as { success: boolean }).success,
+      true,
+    );
+
+    const tooOld = await syncRequest(baseUrl, {
+      date: "2026-10-01",
+      steps: 319,
+      menstruation_dates: ["2026-08-01"],
+    });
+    assert.equal(tooOld.status, 400);
+    assert.deepEqual(await tooOld.json(), {
+      success: false,
+      error: {
+        code: "INVALID_HEALTH_REQUEST",
+        message: "The Health sync request is invalid.",
+      },
+    });
   });
 });
 

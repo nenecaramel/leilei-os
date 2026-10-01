@@ -13,9 +13,13 @@ Git, logs, or this document.
 Build a Shortcut with only the following data flow:
 
 1. Query today's Apple Health Steps and sum the result.
-2. Query Apple Health Menstruation records for the trailing 60 calendar days.
+2. Query Apple Health Menstruation records using the Shortcut's trailing
+   60-day lookback. The server accepts dates from `request date - 60 days`
+   through `request date`, inclusive, so a boundary record exactly 60 days
+   earlier remains valid.
 3. Format each sample date as `yyyy-MM-dd`, deduplicate the strings, and use
-   them as `menstruation_dates`.
+   them as `menstruation_dates`. The request still accepts at most 60 entries;
+   the inclusive date boundary does not raise that item-count limit.
 4. Format the current China business date as `yyyy-MM-dd`.
 5. Use **Get Contents of URL** to `POST`
    `${LEILEI_OS_BASE_URL}/api/v1/health-sync`.
