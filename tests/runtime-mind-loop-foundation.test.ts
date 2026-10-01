@@ -730,6 +730,35 @@ test("unchanged thoughts are not reinjected, while a changed snapshot advances r
   );
 });
 
+test("dropping the last Thought emits an explicit empty superseding snapshot", () => {
+  const first = assembleWith([
+    thoughtState("th-last", "最后一个念头"),
+  ]);
+  const firstLineage = first.manifest.lineage;
+  assert.ok(firstLineage);
+
+  const cleared = assembleWith(
+    [],
+    "放下了",
+    {
+      epoch: firstLineage.epoch,
+      seenStateIds: [],
+      thoughtRevision: firstLineage.thoughtRevision,
+      thoughtFingerprint: firstLineage.thoughtFingerprint,
+    },
+  );
+
+  assert.equal(cleared.manifest.lineage?.thoughtRevision, 2);
+  assert.equal(cleared.manifest.lineage?.thoughtSnapshotEmitted, true);
+  assert.equal(
+    cleared.prompt.includes(
+      "Current thoughts (rev 2, supersedes all earlier snapshots):\n- none",
+    ),
+    true,
+  );
+  assert.deepEqual(cleared.manifest.lineage?.thoughtRefs, []);
+});
+
 test("changed Thought snapshots fail closed instead of rendering a partial revision", () => {
   assert.throws(
     () => assembleTurnContext({
