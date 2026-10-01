@@ -969,7 +969,7 @@ test("a turn with no new Mind context emits only the user message", () => {
   assert.equal(assembled.contextData, "");
   assert.equal(
     assembled.prompt,
-    "<user_message>[09-24 周四 15:47 · +5h 15m] 嗯</user_message>",
+    "<user_message>[09-22 周二 08:00] 嗯</user_message>",
   );
   assert.equal(assembled.prompt.includes("<leileios_context>"), false);
 });
