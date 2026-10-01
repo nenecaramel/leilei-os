@@ -86,7 +86,7 @@ The checked-in migration source of truth is:
 drizzle/meta/_journal.json
 ```
 
-Do not copy a migration-head value from an old plan, milestone, or runbook. Read the final journal entry directly; current documentation intentionally does not duplicate the head value.
+Do not copy a migration-head value from an old plan, milestone, or runbook. Read the final journal entry directly. The current checked-in head on this branch is `0094_runtime_context_lineage`.
 
 ## Railway deployment does not start immediately
 
