@@ -253,6 +253,47 @@ test("Mind preparation inherits context lineage from the canonical parent messag
   assert.deepEqual(mind.contextLineages, [lineage.value]);
 });
 
+test("bootstrap fork with no canonical parent forces one authoritative Thought snapshot", async () => {
+  const reader = new Reader();
+  const bootstrapUser = {
+    ...userMessage(),
+    parentMessageId: null,
+  };
+  reader.value = {
+    ...conversation(null),
+    currentHeadMessageId: null,
+    messages: [bootstrapUser],
+  };
+  const mind = new Mind();
+  const lineage = new LineageReader();
+  lineage.value = {
+    epoch: 0,
+    seenStateIds: [],
+    thoughtRevision: 0,
+    thoughtFingerprint: null,
+  };
+  const runtime = new DefaultNativeLiveBackendMindRuntime(
+    reader,
+    mind,
+    lineage,
+  );
+
+  await runtime.preparePrompt({
+    userId,
+    preparation: prepared("send"),
+  });
+
+  assert.deepEqual(lineage.calls, [{
+    userId,
+    conversationId,
+    canonicalMessageId: null,
+  }]);
+  assert.deepEqual(mind.contextLineages, [{
+    ...lineage.value,
+    forceThoughtSnapshot: true,
+  }]);
+});
+
 test("native Claude schedule command bypasses Mind prompt assembly but still settles the current path", async () => {
   const reader = new Reader();
   const mind = new Mind();
