@@ -1,0 +1,477 @@
+{
+  "version": 1,
+  "comparison": "merge-base(origin/main, HEAD) plus staged, unstaged and untracked files; no automatic fetch",
+  "node_versions": {
+    "railway_server": {
+      "major": 22,
+      "source": "Dockerfile"
+    },
+    "mac_daemon": {
+      "major": 22,
+      "source": ".node-version",
+      "note": "Preferred local server/runtime tooling version."
+    },
+    "web": {
+      "major": 24,
+      "source": "web/package.json engines.node"
+    },
+    "claude_bridge": {
+      "minimum": 20,
+      "source": "tools/claude-bridge/package.json engines.node"
+    },
+    "ci": {
+      "major": 24,
+      "source": ".github/workflows/ci.yml"
+    }
+  },
+  "conflict_hotspots": [
+    "src/app/process-runtime.ts",
+    "src/database/schema.ts",
+    "drizzle/meta/_journal.json",
+    "package.json",
+    "pnpm-lock.yaml",
+    ".github/workflows/ci.yml",
+    "ios/LeileiOS/LeileiOS.xcodeproj/project.pbxproj"
+  ],
+  "common_verification": [
+    "diff-check",
+    "diff-check-index"
+  ],
+  "gates": {
+    "diff-check": {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "{mergeBase}"
+      ],
+      "cwd": "."
+    },
+    "root-typecheck": {
+      "command": [
+        "pnpm",
+        "typecheck"
+      ],
+      "cwd": "."
+    },
+    "root-build": {
+      "command": [
+        "pnpm",
+        "build"
+      ],
+      "cwd": "."
+    },
+    "production-runtime": {
+      "command": [
+        "pnpm",
+        "test:production-runtime-gate"
+      ],
+      "cwd": "."
+    },
+    "mcp-surface": {
+      "command": [
+        "pnpm",
+        "test:mcp-tool-surface"
+      ],
+      "cwd": "."
+    },
+    "web-typecheck": {
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "cwd": "web",
+      "node_major": 24
+    },
+    "web-build": {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "cwd": "web",
+      "node_major": 24
+    },
+    "ios-contract": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/ios-native-live-current-path-idle.test.ts",
+        "tests/ios-settings-export-restore-v4.test.ts"
+      ],
+      "cwd": "."
+    },
+    "migration-ledger": {
+      "command": [
+        "pnpm",
+        "db:check"
+      ],
+      "cwd": "."
+    },
+    "claude-bridge": {
+      "command": [
+        "pnpm",
+        "--dir",
+        "tools/claude-bridge",
+        "test"
+      ],
+      "cwd": "."
+    },
+    "wake-broker": {
+      "command": [
+        "go",
+        "test",
+        "./..."
+      ],
+      "cwd": "cmd/native-live-wake-broker"
+    },
+    "agent-workflow": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "tests/agent-workflow.test.ts",
+        "tests/native-live-mac-daemon-fresh.test.ts"
+      ],
+      "cwd": "."
+    },
+    "diff-check-index": {
+      "command": [
+        "git",
+        "diff",
+        "--cached",
+        "--check",
+        "{mergeBase}"
+      ],
+      "cwd": "."
+    },
+    "workspace-policy": {
+      "command": [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "--test-name-pattern",
+        "coding-agent workspace policy is enforced by closeout commands",
+        "tests/repository-hygiene.test.ts"
+      ],
+      "cwd": "."
+    }
+  },
+  "surfaces": [
+    {
+      "id": "native-live",
+      "name": "Native Live / Mac runtime",
+      "paths": [
+        "src/domains/bridge/native-live-*",
+        "src/web-api/native-live-*",
+        "scripts/native-live-mac-*.ts",
+        "tests/native-live-*.test.ts",
+        "cmd/native-live-wake-broker/**",
+        "src/app/process-runtime.ts",
+        "src/domains/conversation/native-live-*"
+      ],
+      "exclude_paths": [
+        "tests/native-live-mac-daemon-fresh.test.ts"
+      ],
+      "verification": [
+        "production-runtime",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Railway",
+        "Mac",
+        "iPhone"
+      ],
+      "local_refresh": {
+        "mac_daemon": true,
+        "ios_rebuild": false,
+        "instructions": "After merge, refresh the canonical main Mac daemon; use fresh-current explicitly for development acceptance."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Verify a real authenticated Native Live turn and the changed contract across Railway/Mac/iPhone. Production mutations require explicit authorization."
+      },
+      "conflict_hotspots": [
+        "src/app/process-runtime.ts",
+        "package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "id": "mind-runtime",
+      "name": "Mind / Runtime",
+      "paths": [
+        "src/domains/runtime/**",
+        "src/domains/retention/**",
+        "src/domains/bridge/native-live-*mind*",
+        "src/web-api/mind-*",
+        "tests/runtime-*.test.ts",
+        "tests/mind-*.test.ts",
+        "src/app/process-runtime.ts"
+      ],
+      "verification": [
+        "production-runtime",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Railway",
+        "Mac",
+        "Postgres"
+      ],
+      "local_refresh": {
+        "mac_daemon": true,
+        "ios_rebuild": false,
+        "instructions": "Refresh the Mac daemon after changes to local Mind context/execution; Railway runs server writers."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Authenticated Mind readback and relevant writer/effect evidence; use read-only DB checks unless mutation is explicitly authorized."
+      },
+      "conflict_hotspots": [
+        "src/app/process-runtime.ts",
+        "src/database/schema.ts"
+      ]
+    },
+    {
+      "id": "mcp",
+      "name": "MCP",
+      "paths": [
+        "src/mcp/**",
+        "src/domains/mcp-write/**",
+        "tests/mcp-*.test.ts",
+        "scripts/mcp-*",
+        "src/app/process-runtime.ts"
+      ],
+      "verification": [
+        "mcp-surface",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Railway"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": false,
+        "instructions": "Reconnect the MCP client if session/tool capabilities changed."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Authenticated MCP tool/resource/session contract readback after deployment; do not invoke writes without authorization."
+      },
+      "conflict_hotspots": [
+        "src/app/process-runtime.ts",
+        "package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "id": "web",
+      "name": "Web",
+      "paths": [
+        "web/**",
+        "src/web-api/**",
+        "tests/*web*.test.ts",
+        "tests/pwa-*.test.ts"
+      ],
+      "verification": [
+        "web-typecheck",
+        "web-build",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Web",
+        "Railway"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": false,
+        "instructions": "Use Node 24 in web/, npm ci, then a local preview/browser check. Refresh the browser/service worker after deployment."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Check the deployed authenticated browser/API flow; merging alone does not publish Web assets."
+      },
+      "conflict_hotspots": [
+        "web/package.json",
+        "web/package-lock.json",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "id": "ios",
+      "name": "iOS",
+      "paths": [
+        "ios/**",
+        "tests/ios-*.test.ts"
+      ],
+      "verification": [
+        "ios-contract"
+      ],
+      "runtime_locations": [
+        "iPhone"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": true,
+        "instructions": "Sync the intended branch before the next Xcode Run; preserve local signing settings and rebuild/run on the device."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Verify the changed flow on an authenticated iPhone against production. Node contract tests do not replace Xcode build/device acceptance."
+      },
+      "conflict_hotspots": [
+        "ios/LeileiOS/LeileiOS.xcodeproj/project.pbxproj"
+      ]
+    },
+    {
+      "id": "database",
+      "name": "Database / migrations",
+      "paths": [
+        "src/database/**",
+        "drizzle/**",
+        "drizzle.config.*",
+        "tests/*migration*.test.ts",
+        "scripts/*postgres*"
+      ],
+      "verification": [
+        "migration-ledger",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Postgres",
+        "Railway"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": false,
+        "instructions": "Test migrations/repository changes only against an explicitly isolated local test DB; never reuse production DATABASE_URL."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Read-only production schema/data verification. Applying migrations or any production DB mutation requires explicit authorization; agent:verify never runs db:migrate."
+      },
+      "conflict_hotspots": [
+        "src/database/schema.ts",
+        "drizzle/meta/_journal.json",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "id": "claude-bridge",
+      "name": "Claude bridge",
+      "paths": [
+        "tools/claude-bridge/**",
+        "src/domains/bridge/claude-*",
+        "tests/claude-*.test.ts"
+      ],
+      "verification": [
+        "claude-bridge",
+        "production-runtime",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Mac"
+      ],
+      "local_refresh": {
+        "mac_daemon": true,
+        "ios_rebuild": false,
+        "instructions": "Install bridge dependencies if changed and refresh the Mac daemon after merge; SDK processes already running retain old code."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Verify SDK execution/result completion and any permission/attachment change using the existing authenticated Native Live path."
+      },
+      "conflict_hotspots": [
+        "tools/claude-bridge/package.json",
+        "tools/claude-bridge/pnpm-lock.yaml",
+        "src/app/process-runtime.ts"
+      ]
+    },
+    {
+      "id": "server-core",
+      "name": "Shared server / configuration",
+      "paths": [
+        "src/app/**",
+        "src/config/**",
+        "src/domains/**",
+        "Dockerfile*",
+        "pnpm-lock.yaml",
+        ".github/workflows/**"
+      ],
+      "verification": [
+        "root-typecheck",
+        "root-build"
+      ],
+      "runtime_locations": [
+        "Railway"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": false,
+        "instructions": "Inspect the other matched surfaces and hotspots before changing shared wiring or dependencies."
+      },
+      "production_acceptance": {
+        "required": true,
+        "instructions": "Check deployment readiness and the affected authenticated server contract. Server Docker remains Node 22."
+      },
+      "conflict_hotspots": [
+        "src/app/process-runtime.ts",
+        "package.json",
+        "pnpm-lock.yaml",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "id": "agent-workflow",
+      "name": "Agent workflow / repository tooling",
+      "paths": [
+        "AGENTS.md",
+        ".agent/**",
+        "scripts/agent-*.mjs",
+        "scripts/native-live-mac-daemon-fresh.sh",
+        "tests/agent-*.test.ts",
+        "tests/native-live-mac-daemon-fresh.test.ts",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        ".node-version",
+        "package.json"
+      ],
+      "verification": [
+        "agent-workflow",
+        "workspace-policy",
+        "root-typecheck"
+      ],
+      "runtime_locations": [
+        "Mac"
+      ],
+      "local_refresh": {
+        "mac_daemon": false,
+        "ios_rebuild": false,
+        "instructions": "Run status and verify --plan. Fresh guard tests must stub process control, never restart the owner's daemon."
+      },
+      "production_acceptance": {
+        "required": false,
+        "instructions": "No production operations for workflow-only changes. package.json dependency changes require manually reviewing all consumers, beyond this scripts-only tooling plan."
+      },
+      "conflict_hotspots": [
+        "package.json",
+        "pnpm-lock.yaml",
+        ".github/workflows/ci.yml"
+      ]
+    }
+  ],
+  "additional_verification": [
+    {
+      "paths": [
+        "cmd/native-live-wake-broker/**"
+      ],
+      "gates": [
+        "wake-broker"
+      ]
+    }
+  ]
+}

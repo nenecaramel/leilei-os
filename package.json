@@ -62,7 +62,11 @@
     "hygiene:finish": "pnpm hygiene:clean && pnpm hygiene:check",
     "runtime:native-live-workspace": "tsx scripts/native-live-mac-workspace.ts",
     "test:native-live-workspace-config-real": "pnpm --dir tools/claude-bridge smoke:workspace-config",
-    "runtime:native-live-mac-daemon:fresh": "bash scripts/native-live-mac-daemon-fresh.sh"
+    "runtime:native-live-mac-daemon:fresh": "bash scripts/native-live-mac-daemon-fresh.sh",
+    "agent:status": "node scripts/agent-status.mjs",
+    "agent:verify": "node scripts/agent-verify.mjs",
+    "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts",
+    "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
