@@ -81,7 +81,7 @@ test("Todo detail pointers use the raw business date instead of UTC conversion",
 test("MCP global_search exposes Todo in its module schema", async (t) => {
   const result: GlobalSearchResult = {
     results: [],
-    metadata: { count: 0, has_more: false, next_cursor: null, searched_modules: ["todo"], searched_scope: "active" },
+    metadata: { count: 0, has_more: false, next_cursor: null, searched_modules: ["todo"], searched_scope: "active", searched_author: null },
   };
   const server = createMcpServer({ globalSearch: { globalSearchService: { async search() { return result; } }, getAuthenticatedUserId: () => USER_ID } });
   const client = new Client({ name: "todo-global-search", version: "1.0.0" }, { capabilities: {} });
