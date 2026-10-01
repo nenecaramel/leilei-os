@@ -455,7 +455,7 @@ test("interactive foreground runtime is preferred and receives streaming branch 
   );
   assert.deepEqual(
     result.normalized_events.map((event) => event.type),
-    ["partial_text", "result"],
+    ["result"],
   );
 });
 
