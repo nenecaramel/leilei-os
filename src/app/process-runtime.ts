@@ -125,6 +125,10 @@ import {
   PostgresInlineAttachmentObjectStore,
 } from "../domains/bridge/native-live-attachment-postgres-storage.js";
 import {
+  DrizzleNativeLiveInlineAttachmentMigrationRepository,
+  migrateNativeLiveAttachmentInlineContentUntilIdle,
+} from "../domains/bridge/native-live-attachment-migration.js";
+import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
 } from "../domains/bridge/native-live-provider-session-store.js";
@@ -283,26 +287,27 @@ export function createProcessRuntime(
   const nativeLiveAttachmentStorageConfig =
     getNativeLiveAttachmentStorageConfig(runtimeEnv);
   const nativeLivePostgresAttachmentObjectStore =
-    nativeLiveAttachmentStorageConfig
-      ? undefined
-      : new PostgresInlineAttachmentObjectStore(
-          db,
-          {
-            signingSecret: runtimeEnv.DATABASE_URL,
-            transferTtlSeconds:
-              runtimeEnv.NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS,
-            maxFileBytes:
-              runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
-            maxTotalBytes:
-              runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_TOTAL_BYTES,
-          },
-        );
-  const nativeLiveAttachmentObjectStore =
+    new PostgresInlineAttachmentObjectStore(
+      db,
+      {
+        signingSecret: runtimeEnv.DATABASE_URL,
+        transferTtlSeconds:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_PRESIGN_TTL_SECONDS,
+        maxFileBytes:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
+        maxTotalBytes:
+          runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_TOTAL_BYTES,
+      },
+    );
+  const nativeLiveS3AttachmentObjectStore =
     nativeLiveAttachmentStorageConfig
       ? new S3PresignedAttachmentObjectStore(
           nativeLiveAttachmentStorageConfig,
         )
-      : nativeLivePostgresAttachmentObjectStore!;
+      : null;
+  const nativeLiveAttachmentObjectStore =
+    nativeLiveS3AttachmentObjectStore
+    ?? nativeLivePostgresAttachmentObjectStore;
   const nativeLiveAttachmentService =
     new NativeLiveAttachmentService(
       db,
@@ -313,7 +318,18 @@ export function createProcessRuntime(
         unboundTtlSeconds:
           runtimeEnv.NATIVE_LIVE_ATTACHMENT_UNBOUND_TTL_SECONDS,
       },
+      undefined,
+      undefined,
+      nativeLiveS3AttachmentObjectStore
+        ? nativeLivePostgresAttachmentObjectStore
+        : undefined,
     );
+  const nativeLiveAttachmentMigrationRepository =
+    nativeLiveS3AttachmentObjectStore
+      ? new DrizzleNativeLiveInlineAttachmentMigrationRepository(db)
+      : null;
+  let nativeLiveAttachmentMigration:
+    Promise<void> | null = null;
   const nativeLiveWakeBrokerConfig =
     getNativeLiveWakeBrokerConfig(runtimeEnv);
   const nativeLiveExternalWakeSignal =
@@ -714,12 +730,8 @@ export function createProcessRuntime(
     logger,
     appDependencies: {
       logger,
-      ...(nativeLivePostgresAttachmentObjectStore
-        ? {
-            nativeLiveAttachmentTransferStore:
-              nativeLivePostgresAttachmentObjectStore,
-          }
-        : {}),
+      nativeLiveAttachmentTransferStore:
+        nativeLivePostgresAttachmentObjectStore,
       webDiaryService: diaryService,
       webDiaryCommentService: diaryCommentService,
       webSystemService: systemService,
@@ -808,6 +820,37 @@ export function createProcessRuntime(
       // the cloud runtime owns its bounded cadence while this process is awake.
       // start() also runs once immediately, which catches up after sleep/restart.
       retentionCoordinator.start();
+      if (
+        nativeLiveS3AttachmentObjectStore
+        && nativeLiveAttachmentMigrationRepository
+        && !nativeLiveAttachmentMigration
+      ) {
+        nativeLiveAttachmentMigration =
+          migrateNativeLiveAttachmentInlineContentUntilIdle(
+            nativeLiveAttachmentMigrationRepository,
+            nativeLiveS3AttachmentObjectStore,
+          )
+            .then((result) => {
+              logger.info(
+                "native_live_attachment_bucket_migration",
+                result,
+              );
+            })
+            .catch((error) => {
+              logger.warn(
+                "native_live_attachment_bucket_migration_failed",
+                {
+                  errorName:
+                    error instanceof Error
+                      ? error.name
+                      : "UnknownError",
+                },
+              );
+            })
+            .finally(() => {
+              nativeLiveAttachmentMigration = null;
+            });
+      }
       const mindFollowUpStartupRecovery =
         nativeLiveMindFollowUpRecovery.runNow().catch(() => 0);
       void mindFollowUpStartupRecovery;
@@ -823,6 +866,7 @@ export function createProcessRuntime(
         retentionCoordinator.drain(),
         nativeLiveMindFollowUpRecovery.drain(),
         nativeLiveSemanticRecovery.drain(),
+        nativeLiveAttachmentMigration ?? Promise.resolve(),
       ]);
       // Event-driven finalization can still offer bounded orchestrator work.
       // Wait for that cycle before closing the shared database resource.
