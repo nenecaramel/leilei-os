@@ -1133,10 +1133,19 @@ implements NativeLiveBackendTurnPort {
 
     const manifestLineage =
       parseContextLineageManifest(manifestRow?.lineage ?? null);
-    if (!manifestLineage) {
-      // Native schedule turns and legacy preparations have no lineage-aware
-      // Context Manifest. Leaving no row makes the lineage reader carry the
-      // nearest canonical ancestor forward without fabricating new state.
+
+    const selfWrittenStateIds = (mindFollowUp?.intents ?? []).flatMap(
+      (intent, index) =>
+        intent.kind === "memory" || intent.kind === "feel"
+          ? [nativeLiveMindFollowUpStateId(row.id, index)]
+          : [],
+    );
+
+    if (!manifestLineage && selfWrittenStateIds.length === 0) {
+      // Native schedule turns and legacy preparations normally have no
+      // lineage-aware Context Manifest. With no authored Memory/Feel to
+      // reserve, leaving no row makes the reader carry the nearest canonical
+      // ancestor forward transparently.
       return;
     }
 
@@ -1215,45 +1224,45 @@ implements NativeLiveBackendTurnPort {
       );
     }
 
-    if (manifestLineage.epoch !== parentLineage.epoch) {
+    if (
+      manifestLineage
+      && manifestLineage.epoch !== parentLineage.epoch
+    ) {
       throw new Error(
         "Prepared context lineage no longer matches its parent checkpoint.",
       );
     }
 
-    const injectedStateIds = (manifestRow?.items ?? []).flatMap(
-      (item) => {
-        if (
-          !item
-          || typeof item !== "object"
-          || Array.isArray(item)
-        ) {
-          throw new Error("Persisted Context Manifest item is invalid.");
-        }
-        const record = item as Record<string, unknown>;
-        const selection = record.selection;
-        if (
-          (record.type !== "memory" && record.type !== "feel")
-          || typeof record.sourceId !== "string"
-          || !selection
-          || typeof selection !== "object"
-          || Array.isArray(selection)
-          || !String(
-            (selection as Record<string, unknown>).reason ?? "",
-          ).startsWith("breath_")
-        ) {
-          return [];
-        }
-        return [record.sourceId];
-      },
-    );
-
-    const selfWrittenStateIds = (mindFollowUp?.intents ?? []).flatMap(
-      (intent, index) =>
-        intent.kind === "memory" || intent.kind === "feel"
-          ? [nativeLiveMindFollowUpStateId(row.id, index)]
-          : [],
-    );
+    const injectedStateIds = manifestLineage
+      ? (manifestRow?.items ?? []).flatMap(
+          (item) => {
+            if (
+              !item
+              || typeof item !== "object"
+              || Array.isArray(item)
+            ) {
+              throw new Error(
+                "Persisted Context Manifest item is invalid.",
+              );
+            }
+            const record = item as Record<string, unknown>;
+            const selection = record.selection;
+            if (
+              (record.type !== "memory" && record.type !== "feel")
+              || typeof record.sourceId !== "string"
+              || !selection
+              || typeof selection !== "object"
+              || Array.isArray(selection)
+              || !String(
+                (selection as Record<string, unknown>).reason ?? "",
+              ).startsWith("breath_")
+            ) {
+              return [];
+            }
+            return [record.sourceId];
+          },
+        )
+      : [];
 
     const seenStateIds = [
       ...new Set([
@@ -1267,10 +1276,14 @@ implements NativeLiveBackendTurnPort {
       canonicalMessageId: assistantMessageId,
       userId: row.userId,
       conversationId: row.conversationId,
-      epoch: manifestLineage.epoch,
+      epoch: manifestLineage?.epoch ?? parentLineage.epoch,
       seenStateIds,
-      thoughtRevision: manifestLineage.thoughtRevision,
-      thoughtFingerprint: manifestLineage.thoughtFingerprint,
+      thoughtRevision:
+        manifestLineage?.thoughtRevision
+        ?? parentLineage.thoughtRevision,
+      thoughtFingerprint:
+        manifestLineage?.thoughtFingerprint
+        ?? parentLineage.thoughtFingerprint,
     });
   }
 
