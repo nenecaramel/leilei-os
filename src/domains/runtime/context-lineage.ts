@@ -5,6 +5,11 @@ export type ContextLineageState = {
   seenStateIds: string[];
   thoughtRevision: number;
   thoughtFingerprint: string | null;
+  /**
+   * Transient bootstrap hint for a provider checkpoint that predates lineage
+   * persistence. It is never stored in runtime_context_lineage_states.
+   */
+  forceThoughtSnapshot?: boolean;
 };
 
 export type ContextLineageManifest = {
@@ -57,6 +62,7 @@ export function normalizeContextLineageState(
     seenStateIds: [...new Set(value.seenStateIds)],
     thoughtRevision: value.thoughtRevision,
     thoughtFingerprint: value.thoughtFingerprint,
+    ...(value.forceThoughtSnapshot ? { forceThoughtSnapshot: true } : {}),
   };
 }
 
