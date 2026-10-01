@@ -10,6 +10,7 @@ struct PageContainer: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
     @State private var showingContext = false
+    @State private var showingClaudeUsage = false
     @State private var showingClaudeSessions = false
     @State private var workspaces: [WorkspaceSummary] = []
     @State private var selectedWorkspaceID: String?
@@ -58,6 +59,9 @@ struct PageContainer: View {
         .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingContext) {
             ContextOverviewSheet()
+        }
+        .sheet(isPresented: $showingClaudeUsage) {
+            ClaudeUsageSheet(api: appModel.api)
         }
         .sheet(isPresented: $showingClaudeSessions) {
             ClaudeSessionForkSheet {
@@ -182,6 +186,12 @@ struct PageContainer: View {
 
     @ViewBuilder
     private var conversationMenuContent: some View {
+        Button {
+            showingClaudeUsage = true
+        } label: {
+            Label("Claude Usage", systemImage: "gauge.with.dots.needle.50percent")
+        }
+
         Button {
             showingContext = true
         } label: {
