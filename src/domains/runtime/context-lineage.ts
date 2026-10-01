@@ -13,6 +13,10 @@ export type ContextLineageManifest = {
   thoughtFingerprint: string;
   thoughtSnapshotEmitted: boolean;
   activeThoughtCount: number;
+  thoughtRefs: Array<{
+    alias: string;
+    stateId: string;
+  }>;
 };
 
 export const EMPTY_CONTEXT_LINEAGE_STATE: ContextLineageState = {
@@ -75,6 +79,19 @@ export function parseContextLineageManifest(
     || typeof record.thoughtSnapshotEmitted !== "boolean"
     || !Number.isInteger(record.activeThoughtCount)
     || (record.activeThoughtCount as number) < 0
+    || !Array.isArray(record.thoughtRefs)
+    || record.thoughtRefs.some((value) =>
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || typeof (value as Record<string, unknown>).alias !== "string"
+      || !/^T[1-9][0-9]?$/u.test(
+        (value as Record<string, unknown>).alias as string,
+      )
+      || typeof (value as Record<string, unknown>).stateId !== "string"
+      || !((value as Record<string, unknown>).stateId as string).trim()
+    )
+    || record.thoughtRefs.length !== record.activeThoughtCount
   ) {
     throw new Error("Context lineage manifest metadata is invalid.");
   }
@@ -85,6 +102,11 @@ export function parseContextLineageManifest(
     thoughtFingerprint: record.thoughtFingerprint,
     thoughtSnapshotEmitted: record.thoughtSnapshotEmitted,
     activeThoughtCount: record.activeThoughtCount as number,
+    thoughtRefs: (record.thoughtRefs as Array<Record<string, unknown>>)
+      .map((value) => ({
+        alias: value.alias as string,
+        stateId: value.stateId as string,
+      })),
   };
 }
 
