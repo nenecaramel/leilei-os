@@ -811,7 +811,7 @@ test("system/init environment is persisted with terminal runtime metadata", asyn
     model: "claude-sonnet-5-5",
     cwd: "/workspace",
     tools: ["Read", "Bash"],
-    mcp_servers: [{ name: "leileios", status: "connected" }],
+    mcp_servers: [{ name: "leileios", status: "connected", source: null }],
     permission_mode: "default",
     slash_commands: ["/compact"],
     terminal_slash_commands: [],
@@ -824,7 +824,9 @@ test("system/init environment is persisted with terminal runtime metadata", asyn
     skills: ["pdfs"],
     plugins: [],
     plugin_errors: [],
-    fast_mode: { enabled: false, state: "off" },
+    effort: "high",
+    capabilities: ["interrupt_receipt_v1"],
+    fast_mode: { state: "off", disabled_reason: null },
   };
   const runtime = {
     async sendNew() { throw new Error("unused"); },

@@ -191,6 +191,7 @@ test("system/init preserves bounded authoritative environment and never becomes 
         {
           name: "leileios",
           status: "connected",
+          source: "project",
           url: "https://private.invalid/mcp",
           headers: { Authorization: "Bearer should-not-persist" },
         },
@@ -210,14 +211,15 @@ test("system/init preserves bounded authoritative environment and never becomes 
         path: "/Users/Admin1/.claude/plugins/superpowers",
       }],
       plugin_errors: [{
-        name: "broken-plugin",
+        plugin: "broken-plugin",
+        type: "load_error",
+        message: "failed to load",
         path: "/Users/Admin1/.claude/plugins/broken",
-        error: "failed to load",
       }],
-      fast_mode_state: {
-        enabled: true,
-        state: "on",
-      },
+      effort: "high",
+      capabilities: ["interrupt_receipt_v1"],
+      fast_mode_state: "on",
+      fast_mode_disabled_reason: null,
       arbitrary_secret: "must-not-persist",
     }],
     base,
@@ -231,6 +233,7 @@ test("system/init preserves bounded authoritative environment and never becomes 
     mcp_servers: [{
       name: "leileios",
       status: "connected",
+      source: "project",
     }],
     permission_mode: "default",
     slash_commands: ["/compact", "/schedule"],
@@ -247,13 +250,16 @@ test("system/init preserves bounded authoritative environment and never becomes 
       path: "/Users/Admin1/.claude/plugins/superpowers",
     }],
     plugin_errors: [{
-      name: "broken-plugin",
-      path: "/Users/Admin1/.claude/plugins/broken",
+      plugin: "broken-plugin",
+      type: "load_error",
       message: "failed to load",
+      path: "/Users/Admin1/.claude/plugins/broken",
     }],
+    effort: "high",
+    capabilities: ["interrupt_receipt_v1"],
     fast_mode: {
-      enabled: true,
       state: "on",
+      disabled_reason: null,
     },
   });
 

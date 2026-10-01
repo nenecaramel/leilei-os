@@ -94,9 +94,10 @@ export type NativeLiveRuntimeExecutionMetadata = {
   readback_error: "READBACK_UNAVAILABLE" | null;
 };
 
-export type NativeLiveRuntimeEnvironmentNamedStatus = {
+export type NativeLiveRuntimeEnvironmentMcpServer = {
   name: string | null;
   status: string | null;
+  source: string | null;
 };
 
 export type NativeLiveRuntimeEnvironmentPlugin = {
@@ -105,21 +106,22 @@ export type NativeLiveRuntimeEnvironmentPlugin = {
 };
 
 export type NativeLiveRuntimeEnvironmentPluginError = {
-  name: string | null;
-  path: string | null;
+  plugin: string | null;
+  type: string | null;
   message: string | null;
+  path: string | null;
 };
 
 export type NativeLiveRuntimeEnvironmentFastMode = {
-  enabled: boolean | null;
   state: string | null;
+  disabled_reason: string | null;
 };
 
 export type NativeLiveRuntimeEnvironment = {
   model: string | null;
   cwd: string | null;
   tools: string[];
-  mcp_servers: NativeLiveRuntimeEnvironmentNamedStatus[];
+  mcp_servers: NativeLiveRuntimeEnvironmentMcpServer[];
   permission_mode: string | null;
   slash_commands: string[];
   terminal_slash_commands: string[];
@@ -132,6 +134,8 @@ export type NativeLiveRuntimeEnvironment = {
   skills: string[];
   plugins: NativeLiveRuntimeEnvironmentPlugin[];
   plugin_errors: NativeLiveRuntimeEnvironmentPluginError[];
+  effort: string | null;
+  capabilities: string[];
   fast_mode: NativeLiveRuntimeEnvironmentFastMode | null;
 };
 
@@ -617,6 +621,8 @@ export function parseNativeLiveRuntimeEnvironment(
     "skills",
     "plugins",
     "plugin_errors",
+    "effort",
+    "capabilities",
     "fast_mode",
   ]);
 
@@ -686,6 +692,17 @@ export function parseNativeLiveRuntimeEnvironment(
     ),
     plugins: parsePluginList(body.plugins),
     plugin_errors: parsePluginErrorList(body.plugin_errors),
+    effort: boundedNullableString(
+      body.effort,
+      "environment.effort",
+      64,
+    ),
+    capabilities: boundedStringList(
+      body.capabilities,
+      "environment.capabilities",
+      128,
+      256,
+    ),
     fast_mode:
       body.fast_mode === null
         ? null
@@ -732,7 +749,7 @@ function parseNamedStatusList(
   value: unknown,
   field: string,
   maxItems: number,
-): NativeLiveRuntimeEnvironmentNamedStatus[] {
+): NativeLiveRuntimeEnvironmentMcpServer[] {
   if (!Array.isArray(value) || value.length > maxItems) {
     throw new NativeLiveRuntimeProtocolError(
       `${field} must contain at most ${maxItems} items.`,
@@ -740,7 +757,7 @@ function parseNamedStatusList(
   }
   return value.map((item, index) => {
     const body = requireRecord(item);
-    requireExactKeys(body, ["name", "status"]);
+    requireExactKeys(body, ["name", "status", "source"]);
     return {
       name: boundedNullableString(
         body.name,
@@ -751,6 +768,11 @@ function parseNamedStatusList(
         body.status,
         `${field}[${index}].status`,
         256,
+      ),
+      source: boundedNullableString(
+        body.source,
+        `${field}[${index}].source`,
+        512,
       ),
     };
   });
@@ -792,22 +814,27 @@ function parsePluginErrorList(
   }
   return value.map((item, index) => {
     const body = requireRecord(item);
-    requireExactKeys(body, ["name", "path", "message"]);
+    requireExactKeys(body, ["plugin", "type", "message", "path"]);
     return {
-      name: boundedNullableString(
-        body.name,
-        `environment.plugin_errors[${index}].name`,
+      plugin: boundedNullableString(
+        body.plugin,
+        `environment.plugin_errors[${index}].plugin`,
         512,
       ),
-      path: boundedNullableString(
-        body.path,
-        `environment.plugin_errors[${index}].path`,
-        2_048,
+      type: boundedNullableString(
+        body.type,
+        `environment.plugin_errors[${index}].type`,
+        256,
       ),
       message: boundedNullableString(
         body.message,
         `environment.plugin_errors[${index}].message`,
         2_000,
+      ),
+      path: boundedNullableString(
+        body.path,
+        `environment.plugin_errors[${index}].path`,
+        2_048,
       ),
     };
   });
@@ -817,16 +844,17 @@ function parseFastMode(
   value: unknown,
 ): NativeLiveRuntimeEnvironmentFastMode {
   const body = requireRecord(value);
-  requireExactKeys(body, ["enabled", "state"]);
+  requireExactKeys(body, ["state", "disabled_reason"]);
   return {
-    enabled: nullableBoolean(
-      body.enabled,
-      "environment.fast_mode.enabled",
-    ),
     state: boundedNullableString(
       body.state,
       "environment.fast_mode.state",
       128,
+    ),
+    disabled_reason: boundedNullableString(
+      body.disabled_reason,
+      "environment.fast_mode.disabled_reason",
+      512,
     ),
   };
 }

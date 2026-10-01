@@ -1312,7 +1312,8 @@ struct ContextOverviewSheet: View {
                                         .map { server in
                                             [
                                                 normalized(server.name),
-                                                normalized(server.status)
+                                                normalized(server.status),
+                                                normalized(server.source)
                                             ]
                                             .compactMap { $0 }
                                             .joined(separator: " · ")
@@ -1343,6 +1344,14 @@ struct ContextOverviewSheet: View {
                                 "Betas",
                                 environment.betas
                             )
+                            environmentListRow(
+                                "Capabilities",
+                                environment.capabilities
+                            )
+                            environmentRow(
+                                "Init Effort",
+                                environment.effort
+                            )
 
                             if !environment.plugins.isEmpty {
                                 environmentRow(
@@ -1363,8 +1372,9 @@ struct ContextOverviewSheet: View {
                                     environment.pluginErrors
                                         .map { error in
                                             [
-                                                normalized(error.name)
+                                                normalized(error.plugin)
                                                     ?? normalized(error.path),
+                                                normalized(error.type),
                                                 normalized(error.message)
                                             ]
                                             .compactMap { $0 }
@@ -1642,13 +1652,13 @@ struct ContextOverviewSheet: View {
         _ fastMode: NativeLiveRuntimeEnvironmentFastMode?
     ) -> String? {
         guard let fastMode else { return nil }
-        if let state = normalized(fastMode.state) {
-            return state
+        let state = normalized(fastMode.state)
+        let disabledReason =
+            normalized(fastMode.disabledReason)
+        if let state, let disabledReason {
+            return "\(state) · \(disabledReason)"
         }
-        if let enabled = fastMode.enabled {
-            return enabled ? "On" : "Off"
-        }
-        return nil
+        return state ?? disabledReason
     }
 
     private func clampedProgress(

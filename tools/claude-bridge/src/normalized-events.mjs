@@ -462,12 +462,8 @@ function normalizeSystemInitEnvironment(raw) {
     model: clippedString(raw.model, 512),
     cwd: clippedString(raw.cwd, 2_048),
     tools: boundedStringArray(raw.tools, 256, 512),
-    mcp_servers: boundedNamedRecords(
+    mcp_servers: boundedMcpServers(
       raw.mcp_servers ?? raw.mcpServers,
-      64,
-      ["name", "server_name", "serverName"],
-      ["status", "state"],
-      256,
     ),
     permission_mode: clippedString(
       raw.permissionMode ?? raw.permission_mode,
@@ -506,11 +502,19 @@ function normalizeSystemInitEnvironment(raw) {
     plugin_errors: boundedPluginErrors(
       raw.plugin_errors ?? raw.pluginErrors,
     ),
+    effort: clippedString(raw.effort, 64),
+    capabilities: boundedStringArray(
+      raw.capabilities,
+      128,
+      256,
+    ),
     fast_mode: normalizedFastMode(
       raw.fast_mode_state
       ?? raw.fastModeState
       ?? raw.fast_mode
       ?? raw.fastMode,
+      raw.fast_mode_disabled_reason
+      ?? raw.fastModeDisabledReason,
     ),
   };
 }
@@ -523,22 +527,21 @@ function boundedStringArray(value, maxItems, maxChars) {
   });
 }
 
-function boundedNamedRecords(
-  value,
-  maxItems,
-  nameKeys,
-  statusKeys,
-  maxChars,
-) {
+function boundedMcpServers(value) {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, maxItems).flatMap((item) => {
+  return value.slice(0, 64).flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       return [];
     }
-    const name = firstClipped(item, nameKeys, maxChars);
-    const status = firstClipped(item, statusKeys, maxChars);
-    if (!name && !status) return [];
-    return [{ name, status }];
+    const name = firstClipped(
+      item,
+      ["name", "server_name", "serverName"],
+      256,
+    );
+    const status = firstClipped(item, ["status", "state"], 256);
+    const source = firstClipped(item, ["source"], 512);
+    if (!name && !status && !source) return [];
+    return [{ name, status, source }];
   });
 }
 
@@ -561,38 +564,39 @@ function boundedPluginErrors(value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       return [];
     }
-    const name = firstClipped(item, ["name", "plugin_name", "pluginName"], 512);
+    const plugin = firstClipped(
+      item,
+      ["plugin", "name", "plugin_name", "pluginName"],
+      512,
+    );
+    const type = firstClipped(item, ["type"], 256);
     const path = firstClipped(item, ["path"], 2_048);
     const message = firstClipped(
       item,
-      ["error", "message", "reason"],
+      ["message", "error", "reason"],
       2_000,
     );
-    if (!name && !path && !message) return [];
-    return [{ name, path, message }];
+    if (!plugin && !type && !path && !message) return [];
+    return [{ plugin, type, message, path }];
   });
 }
 
-function normalizedFastMode(value) {
-  if (typeof value === "boolean") {
-    return { enabled: value, state: null };
-  }
+function normalizedFastMode(value, disabledReasonValue) {
+  let state = null;
   if (typeof value === "string") {
-    return { enabled: null, state: clippedString(value, 128) };
+    state = clippedString(value, 128);
+  } else if (typeof value === "boolean") {
+    state = value ? "on" : "off";
+  } else if (value && typeof value === "object" && !Array.isArray(value)) {
+    state = firstClipped(value, ["state", "status"], 128);
+    if (!state && typeof value.enabled === "boolean") {
+      state = value.enabled ? "on" : "off";
+    }
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const enabled =
-    typeof value.enabled === "boolean"
-      ? value.enabled
-      : typeof value.isEnabled === "boolean"
-        ? value.isEnabled
-        : null;
-  const state = firstClipped(value, ["state", "status"], 128);
-  return enabled === null && !state
+  const disabledReason = clippedString(disabledReasonValue, 512);
+  return !state && !disabledReason
     ? null
-    : { enabled, state };
+    : { state, disabled_reason: disabledReason };
 }
 
 function firstClipped(value, keys, maxChars) {

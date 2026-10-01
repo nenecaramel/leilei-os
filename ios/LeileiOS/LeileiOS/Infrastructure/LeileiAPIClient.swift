@@ -511,6 +511,8 @@ struct NativeLiveRuntimeEnvironment: Decodable, Sendable, Equatable {
     let skills: [String]
     let plugins: [NativeLiveRuntimeEnvironmentPlugin]
     let pluginErrors: [NativeLiveRuntimeEnvironmentPluginError]
+    let effort: String?
+    let capabilities: [String]
     let fastMode: NativeLiveRuntimeEnvironmentFastMode?
 
     enum CodingKeys: String, CodingKey {
@@ -530,6 +532,8 @@ struct NativeLiveRuntimeEnvironment: Decodable, Sendable, Equatable {
         case skills
         case plugins
         case pluginErrors = "plugin_errors"
+        case effort
+        case capabilities
         case fastMode = "fast_mode"
     }
 }
@@ -540,6 +544,7 @@ struct NativeLiveRuntimeEnvironmentNamedStatus:
     Equatable {
     let name: String?
     let status: String?
+    let source: String?
 }
 
 struct NativeLiveRuntimeEnvironmentPlugin:
@@ -554,17 +559,23 @@ struct NativeLiveRuntimeEnvironmentPluginError:
     Decodable,
     Sendable,
     Equatable {
-    let name: String?
-    let path: String?
+    let plugin: String?
+    let type: String?
     let message: String?
+    let path: String?
 }
 
 struct NativeLiveRuntimeEnvironmentFastMode:
     Decodable,
     Sendable,
     Equatable {
-    let enabled: Bool?
     let state: String?
+    let disabledReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case disabledReason = "disabled_reason"
+    }
 }
 
 struct NativeLiveRuntimeContextUsage: Decodable, Sendable, Equatable {
