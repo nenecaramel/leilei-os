@@ -386,10 +386,19 @@ test(
       status: "success",
       provider_session_id: "followup-provider-schedule",
       normalized_events: [
-        { type: "text", payload: { text: "scheduled" } },
+        {
+          type: "text",
+          payload: {
+            text: "scheduled <memory>schedule-side memory</memory>",
+          },
+        },
         {
           type: "result",
-          payload: { status: "success", final_text: "scheduled" },
+          payload: {
+            status: "success",
+            final_text:
+              "scheduled <memory>schedule-side memory</memory>",
+          },
         },
       ],
     });
@@ -398,6 +407,10 @@ test(
       throw new Error("expected schedule canonical success");
     }
 
+    const scheduleStateId = nativeLiveMindFollowUpStateId(
+      schedulePrepared.command.prepare_id,
+      0,
+    );
     assert.deepEqual(
       await lineageReader.readForMessage({
         userId,
@@ -406,11 +419,11 @@ test(
       }),
       {
         epoch: 0,
-        seenStateIds: [expectedStateId],
+        seenStateIds: [expectedStateId, scheduleStateId],
         thoughtRevision: 0,
         thoughtFingerprint: fingerprintThoughtSnapshot([]),
       },
-      "a non-Mind schedule turn must transparently carry the nearest lineage checkpoint",
+      "a non-Mind turn carries its parent lineage and still reserves any self-authored Memory/Feel",
     );
 
     const nextRequestId = crypto.randomUUID();
