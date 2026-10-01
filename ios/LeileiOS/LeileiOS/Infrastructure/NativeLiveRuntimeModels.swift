@@ -519,11 +519,24 @@ struct NativeLiveRuntimeSurfaceState:
                 return "Task updated"
 
             case "tool_use":
-                if let tool = payload["tool_name"]?.stringValue,
+                if let tool =
+                    payload["display_name"]?.stringValue
+                    ?? payload["tool_name"]?.stringValue,
                    !tool.isEmpty {
                     return "Using \(tool)"
                 }
                 return "Using a tool"
+
+            case "runtime":
+                if payload["kind"]?.stringValue == "api_retry" {
+                    let attempt = payload["attempt"]?.numberValue
+                    let maxRetries = payload["max_retries"]?.numberValue
+                    if let attempt, let maxRetries {
+                        return "Claude retrying · \(Int(attempt))/\(Int(maxRetries))"
+                    }
+                    return "Claude retrying"
+                }
+                continue
 
             case "tool_result":
                 if payload["is_error"]?.boolValue == true {
