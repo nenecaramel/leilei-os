@@ -97,9 +97,6 @@ struct ChatView: View {
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
         }
-        .task(id: foregroundSyncTaskID) {
-            await observeForegroundConversationChanges()
-        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
@@ -251,54 +248,6 @@ struct ChatView: View {
                     )
                     .ignoresSafeArea()
             }
-        }
-    }
-
-    private var foregroundSyncTaskID: String {
-        let conversation =
-            appModel.activeNativeLiveConversationID?
-                .uuidString.lowercased()
-            ?? "none"
-        let phase =
-            scenePhase == .active
-                ? "active"
-                : "inactive"
-        return "\(conversation):\(phase):\(isDraftConversation)"
-    }
-
-    @MainActor
-    private func observeForegroundConversationChanges() async {
-        guard scenePhase == .active,
-              !isDraftConversation,
-              appModel.isAuthenticated,
-              let conversationID =
-                appModel.activeNativeLiveConversationID
-        else {
-            return
-        }
-
-        while !Task.isCancelled,
-              scenePhase == .active,
-              !isDraftConversation,
-              appModel.isAuthenticated,
-              appModel.activeNativeLiveConversationID
-                == conversationID {
-            try? await Task.sleep(
-                for: .seconds(12)
-            )
-            guard !Task.isCancelled else {
-                return
-            }
-
-            guard pendingOperation == nil,
-                  appModel.chatSendState != .sending,
-                  visibleRuntimeSurface == nil else {
-                continue
-            }
-
-            await appModel.refreshNativeLiveCurrentPath(
-                surfaceTransientFailure: false
-            )
         }
     }
 
