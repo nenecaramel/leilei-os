@@ -683,9 +683,3 @@ test("runtime context metadata is handed to durable finalization", async () => {
     Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0];
   assert.deepEqual(call.runtimeMetadata, metadata);
 });
-
-  assert.equal(result.ok, true);
-  const call = port.finalizeSuccessCalls[0] as
-    Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0];
-  assert.deepEqual(call.runtimeMetadata, metadata);
-});
