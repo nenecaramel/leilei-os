@@ -136,9 +136,7 @@ extension NativeLiveTurnActivityProjection {
                 task.description =
                     object["description"]?.stringValue
                     ?? task.description
-                if task.isBackgrounded == nil {
-                    task.isBackgrounded = true
-                }
+                task.isBackgrounded = true
                 if object["ambient"]?.boolValue == true {
                     task.isAmbient = true
                 }
