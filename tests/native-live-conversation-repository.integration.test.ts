@@ -361,6 +361,10 @@ test(
         message.blocks.map((block) => block.text)),
       [["hello"], ["first"]],
     );
+    assert.equal(
+      firstBranchPath.messages[1]?.activity ?? null,
+      null,
+    );
 
     const narrowFirstBranchPath = await currentPathReader.readCurrentPath({
       userId: userA,
