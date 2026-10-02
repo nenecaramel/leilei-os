@@ -50,6 +50,10 @@ test("background task observation outlives the foreground turn only while user-v
     /task\["ambient"\]\?\.boolValue != true/,
   );
   assert.match(
+    runtimeModels,
+    /event\.sequence > activeSetSequence/,
+  );
+  assert.match(
     runtimeStore,
     /continueNativeLiveRuntimeObservationForBackgroundTasks/,
   );
