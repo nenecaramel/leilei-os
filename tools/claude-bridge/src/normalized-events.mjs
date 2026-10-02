@@ -325,11 +325,19 @@ export class ClaudeEventNormalizer {
     }
 
     if (raw.type === "result") {
+      const telemetry = normalizeResultTelemetry(raw);
       emit("result", this.sessionId, {
         status: raw.is_error ? "error" : "success",
-        final_text: raw.result ?? null,
-        exit_code: raw.exit_code ?? 0,
-        duration_ms: raw.duration_ms ?? null,
+        final_text:
+          typeof raw.result === "string"
+            ? raw.result
+            : null,
+        exit_code:
+          Number.isFinite(raw.exit_code)
+            ? raw.exit_code
+            : 0,
+        duration_ms: telemetry.duration_ms,
+        telemetry,
       });
       return output;
     }
@@ -394,6 +402,127 @@ function normalizeUserMessageAttribution(raw) {
     user_message_uuid: primary ?? ordered[0] ?? null,
     user_message_uuids: ordered,
   };
+}
+
+const RESULT_TELEMETRY_JSON_MAX_CHARS = 64_000;
+const RESULT_TELEMETRY_MAX_ERRORS = 16;
+const RESULT_TELEMETRY_MAX_DENIALS = 64;
+
+function normalizeResultTelemetry(raw) {
+  return {
+    subtype: clippedString(raw?.subtype, 128),
+    is_error:
+      typeof raw?.is_error === "boolean"
+        ? raw.is_error
+        : null,
+    duration_ms: finiteNonNegative(raw?.duration_ms),
+    duration_api_ms:
+      finiteNonNegative(raw?.duration_api_ms),
+    num_turns: finiteNonNegative(raw?.num_turns),
+    stop_reason: clippedString(raw?.stop_reason, 128),
+    terminal_reason:
+      clippedString(raw?.terminal_reason, 128),
+    api_error_status:
+      finiteNonNegative(raw?.api_error_status),
+    startup_failure_reason:
+      clippedString(raw?.startup_failure_reason, 256),
+    total_cost_usd:
+      finiteNonNegative(raw?.total_cost_usd),
+    usage: boundedResultJsonRecord(raw?.usage),
+    modelUsage:
+      boundedResultJsonRecord(raw?.modelUsage),
+    permission_denials:
+      normalizePermissionDenials(raw?.permission_denials),
+    errors: Array.isArray(raw?.errors)
+      ? raw.errors
+          .map((value) => clippedString(value, 2_000))
+          .filter(Boolean)
+          .slice(0, RESULT_TELEMETRY_MAX_ERRORS)
+      : [],
+    structured_output_present:
+      raw?.structured_output !== undefined,
+    deferred_tool_use_present:
+      raw?.deferred_tool_use !== undefined,
+    latency: {
+      ttft_ms: finiteNonNegative(raw?.ttft_ms),
+      ttft_stream_ms:
+        finiteNonNegative(raw?.ttft_stream_ms),
+      time_to_request_ms:
+        finiteNonNegative(raw?.time_to_request_ms),
+      time_to_request_from_spawn_ms:
+        finiteNonNegative(
+          raw?.time_to_request_from_spawn_ms,
+        ),
+      time_origin_ms:
+        finiteNonNegative(raw?.time_origin_ms),
+      warm_spare_claimed:
+        typeof raw?.warm_spare_claimed === "boolean"
+          ? raw.warm_spare_claimed
+          : null,
+      first_content_frame_ms:
+        finiteNonNegative(raw?.first_content_frame_ms),
+      first_stream_post_ms:
+        finiteNonNegative(raw?.first_stream_post_ms),
+      first_stream_post_ack_ms:
+        finiteNonNegative(raw?.first_stream_post_ack_ms),
+      first_stream_post_wall_ms:
+        finiteNonNegative(raw?.first_stream_post_wall_ms),
+      first_text_post_ms:
+        finiteNonNegative(raw?.first_text_post_ms),
+      first_text_post_wall_ms:
+        finiteNonNegative(raw?.first_text_post_wall_ms),
+      first_stream_post_queue_wait_ms:
+        finiteNonNegative(
+          raw?.first_stream_post_queue_wait_ms,
+        ),
+      first_stream_post_queued_behind:
+        finiteNonNegative(
+          raw?.first_stream_post_queued_behind,
+        ),
+    },
+  };
+}
+
+function normalizePermissionDenials(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, RESULT_TELEMETRY_MAX_DENIALS)
+    .map((item) => {
+      const row =
+        item
+        && typeof item === "object"
+        && !Array.isArray(item)
+          ? item
+          : {};
+      return {
+        tool_name: clippedString(row.tool_name, 256),
+        tool_use_id: clippedString(row.tool_use_id, 256),
+        tool_input:
+          boundedResultJsonRecord(row.tool_input),
+      };
+    });
+}
+
+function boundedResultJsonRecord(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+  ) {
+    return null;
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    if (
+      typeof serialized !== "string"
+      || serialized.length > RESULT_TELEMETRY_JSON_MAX_CHARS
+    ) {
+      return null;
+    }
+    return JSON.parse(serialized);
+  } catch {
+    return null;
+  }
 }
 
 const TOOL_RESULT_TEXT_BUDGET_CHARS = 48_000;
