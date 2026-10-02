@@ -1743,7 +1743,7 @@ private struct NativeLiveAttachmentGroupView: View {
     @State private var gallerySelection:
         NativeLiveAttachmentGallerySelection?
 
-    private let width: CGFloat = 286
+    private let width: CGFloat = 280
     private let gap: CGFloat = 4
 
     private var imageBlocks: [NativeLiveCurrentPathBlock] {
@@ -1812,13 +1812,23 @@ private struct NativeLiveAttachmentGroupView: View {
         case 3:
             HStack(spacing: gap) {
                 imageTile(imageBlocks[0])
-                    .frame(width: 190, height: 188)
+                    .frame(
+                        width:
+                            (width - gap)
+                            * 2 / 3,
+                        height: 188
+                    )
 
                 VStack(spacing: gap) {
                     imageTile(imageBlocks[1])
                     imageTile(imageBlocks[2])
                 }
-                .frame(width: 92, height: 188)
+                .frame(
+                    width:
+                        (width - gap)
+                        / 3,
+                    height: 188
+                )
             }
             .frame(width: width, height: 188)
 
