@@ -149,6 +149,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(toolProjection, /parent_tool_use_id/);
   assert.match(toolProjection, /parent_agent_id/);
   assert.match(toolProjection, /hidden_from_transcript/);
+  assert.match(toolProjection, /resource_links/);
 
   assert.match(taskProjection, /task_id/);
   assert.match(taskProjection, /subagent_type/);
@@ -160,6 +161,8 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
+  assert.match(runtime, /tertiarySectionTitle/);
+  assert.match(runtime, /"Resources"/);
   assert.match(runtime, /task\.isCurrentlyActive/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
