@@ -1676,33 +1676,35 @@ private struct NativeLiveOptimisticAttachmentGroupView: View {
         }
     }
 
-    @ViewBuilder
     private func draftImage(
         _ attachment:
             NativeLiveComposerAttachmentDraft
     ) -> some View {
-        if let data = attachment.data,
-           let image =
-                nativeLiveAttachmentDecodedImage(
-                    data,
-                    maxPixelSize: 640
-                ) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity
-                )
-                .clipped()
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 13,
-                        style: .continuous
+        NativeLiveOptimisticDraftImage(
+            attachment: attachment
+        )
+    }
+}
+
+
+private struct NativeLiveOptimisticDraftImage: View {
+    let attachment:
+        NativeLiveComposerAttachmentDraft
+
+    @State private var thumbnail: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
                     )
-                )
-        } else {
-            ZStack {
+                    .clipped()
+            } else {
                 RoundedRectangle(
                     cornerRadius: 13,
                     style: .continuous
@@ -1713,6 +1715,23 @@ private struct NativeLiveOptimisticAttachmentGroupView: View {
                     .font(.system(size: 20))
                     .foregroundStyle(.secondary)
             }
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 13,
+                style: .continuous
+            )
+        )
+        .task(id: attachment.id) {
+            guard thumbnail == nil,
+                  let data = attachment.data else {
+                return
+            }
+            thumbnail =
+                nativeLiveAttachmentDecodedImage(
+                    data,
+                    maxPixelSize: 640
+                )
         }
     }
 }
