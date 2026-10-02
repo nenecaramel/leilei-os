@@ -168,11 +168,15 @@ export type NativeLiveRuntimeResultTelemetry = {
   duration_ms: number | null;
   duration_api_ms: number | null;
   num_turns: number | null;
+  queued_turn_count: number | null;
   stop_reason: string | null;
   terminal_reason: string | null;
   api_error_status: number | null;
   startup_failure_reason: string | null;
+  fast_mode_state: string | null;
+  fast_mode_disabled_reason: string | null;
   total_cost_usd: number | null;
+  origin: Record<string, unknown> | null;
   usage: Record<string, unknown> | null;
   modelUsage: Record<string, unknown> | null;
   permission_denials: NativeLiveRuntimeResultPermissionDenial[];
@@ -675,11 +679,15 @@ export function parseNativeLiveRuntimeResultTelemetry(
     "duration_ms",
     "duration_api_ms",
     "num_turns",
+    "queued_turn_count",
     "stop_reason",
     "terminal_reason",
     "api_error_status",
     "startup_failure_reason",
+    "fast_mode_state",
+    "fast_mode_disabled_reason",
     "total_cost_usd",
+    "origin",
     "usage",
     "modelUsage",
     "permission_denials",
@@ -735,6 +743,10 @@ export function parseNativeLiveRuntimeResultTelemetry(
       body.num_turns,
       "result.num_turns",
     ),
+    queued_turn_count: nullableFiniteNumber(
+      body.queued_turn_count,
+      "result.queued_turn_count",
+    ),
     stop_reason: boundedNullableString(
       body.stop_reason,
       "result.stop_reason",
@@ -754,9 +766,24 @@ export function parseNativeLiveRuntimeResultTelemetry(
       "result.startup_failure_reason",
       256,
     ),
+    fast_mode_state: boundedNullableString(
+      body.fast_mode_state,
+      "result.fast_mode_state",
+      128,
+    ),
+    fast_mode_disabled_reason: boundedNullableString(
+      body.fast_mode_disabled_reason,
+      "result.fast_mode_disabled_reason",
+      512,
+    ),
     total_cost_usd: nullableFiniteNumber(
       body.total_cost_usd,
       "result.total_cost_usd",
+    ),
+    origin: parseBoundedJsonRecord(
+      body.origin,
+      "result.origin",
+      16_000,
     ),
     usage: parseBoundedJsonRecord(
       body.usage,
