@@ -1888,6 +1888,21 @@ private struct NativeLiveAttachmentGallery: View {
         } ?? 0
     }
 
+    private var selectedFilename: String {
+        guard !blocks.isEmpty else {
+            return "Attachment"
+        }
+
+        return nativeLiveAttachmentFilename(
+            blocks[
+                min(
+                    selectedIndex,
+                    blocks.count - 1
+                )
+            ]
+        )
+    }
+
     var body: some View {
         ZStack {
             Color.black
@@ -1954,16 +1969,7 @@ private struct NativeLiveAttachmentGallery: View {
 
                 Spacer()
 
-                Text(
-                    nativeLiveAttachmentFilename(
-                        blocks[
-                            min(
-                                selectedIndex,
-                                max(blocks.count - 1, 0)
-                            )
-                        ]
-                    )
-                )
+                Text(selectedFilename)
                 .font(.caption)
                 .foregroundStyle(
                     .white.opacity(0.68)
