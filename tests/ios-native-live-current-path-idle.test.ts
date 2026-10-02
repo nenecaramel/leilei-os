@@ -63,7 +63,7 @@ test("background task observation outlives the foreground turn only while user-v
   );
   assert.match(
     runtimeStore,
-    /refreshNativeLiveCurrentPath\([\s\S]*force: true/,
+    /activeNativeLiveConversationID[\s\S]*== conversationID[\s\S]*refreshNativeLiveCurrentPath\([\s\S]*force: true/,
   );
   assert.match(
     turnController,
