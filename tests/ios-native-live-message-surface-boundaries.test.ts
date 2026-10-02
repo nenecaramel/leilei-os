@@ -143,6 +143,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
+  assert.match(runtime, /task\.isCurrentlyActive/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
 
