@@ -165,6 +165,8 @@ export class ClaudeEventNormalizer {
         status: safeString(raw.status),
         summary: clippedString(raw.summary, 4_000),
         usage: normalizedTaskUsage(raw.usage),
+        resource_links:
+          normalizeResourceLinks(raw.resource_links),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
         has_output_file:
@@ -311,15 +313,45 @@ export class ClaudeEventNormalizer {
 
     if (raw.type === "user") {
       let emittedToolResult = false;
-      for (const block of raw.message?.content ?? []) {
-        if (block.type === "tool_result") {
-          emittedToolResult = true;
-          emit(
-            "tool_result",
-            this.sessionId,
-            normalizeToolResultPayload(block),
+      const toolResultBlocks =
+        Array.isArray(raw.message?.content)
+          ? raw.message.content.filter(
+              (block) => block?.type === "tool_result",
+            )
+          : [];
+      const resourceLinks =
+        normalizeResourceLinks(
+          raw.tool_use_result?.resourceLinks
+          ?? raw.tool_use_result?.resource_links,
+        );
+      const resourceToolUseId =
+        safeString(
+          raw.tool_use_result?.tool_use_id
+          ?? raw.tool_use_result?.toolUseId
+          ?? raw.tool_use_result?.toolUseID,
+        );
+
+      for (const block of toolResultBlocks) {
+        emittedToolResult = true;
+        const attachesResourceLinks =
+          resourceLinks.length > 0
+          && (
+            resourceToolUseId === block.tool_use_id
+            || (
+              resourceToolUseId === null
+              && toolResultBlocks.length === 1
+            )
           );
-        }
+        emit(
+          "tool_result",
+          this.sessionId,
+          normalizeToolResultPayload(
+            block,
+            attachesResourceLinks
+              ? resourceLinks
+              : [],
+          ),
+        );
       }
       if (emittedToolResult) return output;
     }
@@ -532,13 +564,100 @@ function boundedResultJsonRecord(value) {
   }
 }
 
+const RESOURCE_LINK_MAX_ITEMS = 64;
+const RESOURCE_LINK_URI_MAX_CHARS = 4_096;
+const RESOURCE_LINK_NAME_MAX_CHARS = 512;
+const RESOURCE_LINK_DESCRIPTION_MAX_CHARS = 2_000;
+const RESOURCE_LINK_MIME_MAX_CHARS = 256;
+const RESOURCE_LINK_META_MAX_CHARS = 8_000;
+
+function normalizeResourceLinks(value) {
+  if (!Array.isArray(value)) return [];
+
+  const links = [];
+  const seen = new Set();
+  for (const item of value.slice(0, RESOURCE_LINK_MAX_ITEMS)) {
+    if (
+      !item
+      || typeof item !== "object"
+      || Array.isArray(item)
+    ) {
+      continue;
+    }
+
+    const uri = clippedString(
+      item.uri,
+      RESOURCE_LINK_URI_MAX_CHARS,
+    );
+    if (!uri || seen.has(uri)) continue;
+    seen.add(uri);
+
+    const type = clippedString(item.type, 64);
+    if (type && type !== "resource_link") continue;
+
+    links.push({
+      type: "resource_link",
+      uri,
+      name: clippedString(
+        item.name,
+        RESOURCE_LINK_NAME_MAX_CHARS,
+      ),
+      title: clippedString(
+        item.title,
+        RESOURCE_LINK_NAME_MAX_CHARS,
+      ),
+      description: clippedString(
+        item.description,
+        RESOURCE_LINK_DESCRIPTION_MAX_CHARS,
+      ),
+      mime_type: clippedString(
+        item.mimeType ?? item.mime_type,
+        RESOURCE_LINK_MIME_MAX_CHARS,
+      ),
+      size: finiteNonNegative(item.size),
+      annotations:
+        boundedResourceLinkMetadata(item.annotations),
+      metadata:
+        boundedResourceLinkMetadata(
+          item._meta ?? item.meta,
+        ),
+    });
+  }
+  return links;
+}
+
+function boundedResourceLinkMetadata(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+  ) {
+    return null;
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    if (
+      typeof serialized !== "string"
+      || serialized.length > RESOURCE_LINK_META_MAX_CHARS
+    ) {
+      return null;
+    }
+    return JSON.parse(serialized);
+  } catch {
+    return null;
+  }
+}
+
 const TOOL_RESULT_TEXT_BUDGET_CHARS = 48_000;
 const TOOL_RESULT_MAX_STRING_CHARS = 24_000;
 const TOOL_RESULT_MAX_ARRAY_ITEMS = 32;
 const TOOL_RESULT_MAX_OBJECT_KEYS = 48;
 const TOOL_RESULT_MAX_DEPTH = 6;
 
-function normalizeToolResultPayload(block) {
+function normalizeToolResultPayload(
+  block,
+  resourceLinks = [],
+) {
   const stats = {
     truncated: false,
     omittedBinaryItems: 0,
@@ -558,6 +677,9 @@ function normalizeToolResultPayload(block) {
     tool_use_id: block.tool_use_id,
     output,
     is_error: Boolean(block.is_error),
+    ...(resourceLinks.length > 0
+      ? { resource_links: resourceLinks }
+      : {}),
     ...(stats.truncated
       ? { output_truncated: true }
       : {}),
