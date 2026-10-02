@@ -495,12 +495,45 @@ struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
     let execution: NativeLiveRuntimeExecutionMetadata?
     let environment: NativeLiveRuntimeEnvironment?
     let result: NativeLiveRuntimeResultTelemetry?
+    let outputResources: [NativeLiveRuntimeOutputResource]?
 
     enum CodingKeys: String, CodingKey {
         case contextUsage = "context_usage"
         case execution
         case environment
         case result
+        case outputResources = "output_resources"
+    }
+}
+
+struct NativeLiveRuntimeOutputResource:
+    Decodable,
+    Sendable,
+    Equatable {
+    let source: String
+    let toolUseId: String?
+    let taskId: String?
+    let uri: String
+    let name: String?
+    let title: String?
+    let description: String?
+    let mimeType: String?
+    let size: Double?
+    let annotations: [String: NativeLiveJSONValue]?
+    let metadata: [String: NativeLiveJSONValue]?
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case toolUseId = "tool_use_id"
+        case taskId = "task_id"
+        case uri
+        case name
+        case title
+        case description
+        case mimeType = "mime_type"
+        case size
+        case annotations
+        case metadata
     }
 }
 
