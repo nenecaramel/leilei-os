@@ -204,8 +204,14 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     $0.request["toolUseId"]?.stringValue
                 }
         )
+        let sawTerminalEvent =
+            runtimeSurface.events.contains { event in
+                event.event.type == "result"
+                    || event.event.type == "error"
+            }
         let projectedTurnIsActive =
-            runtimeSurface.providerTurnActive ?? true
+            runtimeSurface.providerTurnActive
+            ?? !sawTerminalEvent
         tasks = projectedTasks.filter {
             !$0.hiddenFromTranscript
         }
