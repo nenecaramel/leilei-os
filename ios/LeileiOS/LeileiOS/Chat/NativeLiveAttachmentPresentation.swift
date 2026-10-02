@@ -554,7 +554,7 @@ private struct NativeLiveAttachmentGallery: View {
             return "Attachment"
         }
 
-        return nativeLiveAttachmentFilename(
+        return nativeLiveAttachmentGalleryTitle(
             blocks[
                 min(
                     selectedIndex,
@@ -638,6 +638,7 @@ private struct NativeLiveAttachmentGallery: View {
                 .padding(.bottom, 12)
             }
         }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -987,6 +988,21 @@ private func nativeLiveAttachmentID(
     block.payload?[
         "attachment_id"
     ]?.stringValue
+}
+
+
+private func nativeLiveAttachmentGalleryTitle(
+    _ block: NativeLiveCurrentPathBlock
+) -> String {
+    let filename =
+        nativeLiveAttachmentFilename(block)
+
+    if filename.hasPrefix("Photo-")
+        || filename.hasPrefix("Camera-") {
+        return "Photo"
+    }
+
+    return filename
 }
 
 
