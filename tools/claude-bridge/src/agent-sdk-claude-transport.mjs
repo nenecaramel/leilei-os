@@ -438,6 +438,94 @@ function sdkMirrorFailed(message) {
   return message?.subtype === "mirror_error";
 }
 
+function clippedSessionStoreReason(value) {
+  const text =
+    value instanceof Error
+      ? value.message
+      : typeof value === "string"
+        ? value
+        : value == null
+          ? null
+          : String(value);
+  if (!text || !text.trim()) return null;
+  return text.length <= 2_000 ? text : text.slice(0, 2_000);
+}
+
+function sdkMirrorFailureReason(events) {
+  if (!Array.isArray(events)) return null;
+  const failure = [...events].reverse().find(sdkMirrorFailed);
+  if (!failure) return null;
+  return (
+    clippedSessionStoreReason(failure.error)
+    ?? clippedSessionStoreReason(failure.message)
+    ?? clippedSessionStoreReason(failure.code)
+    ?? "Claude Agent SDK reported SessionStore mirror_error."
+  );
+}
+
+function sessionIdFromEvents(events) {
+  if (!Array.isArray(events)) return null;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    const id =
+      nonblankString(event?.session_id)
+      ?? nonblankString(event?.sessionId);
+    if (id) return id;
+  }
+  return null;
+}
+
+function sessionStoreHealthSnapshot({
+  configured,
+  mode,
+  cwd,
+  sessionId = null,
+  parentSessionId = null,
+  portability,
+  completion,
+  mirrorFailureReason = null,
+}) {
+  const statusAfter = completion?.statusAfter ?? null;
+  return {
+    provider: "claude_agent_sdk",
+    configured,
+    mode,
+    session_id: nonblankString(sessionId),
+    parent_session_id: nonblankString(parentSessionId),
+    project_key: cwd,
+    cwd,
+    parent_local_available:
+      portability?.parentLocalAvailable ?? null,
+    parent_status_before:
+      portability?.parentStatusBefore ?? null,
+    backfill_status:
+      portability?.backfillStatus ?? "not_needed",
+    backfill_failure_reason:
+      portability?.backfillFailureReason ?? null,
+    mirror_status:
+      mirrorFailureReason
+        ? "error"
+        : statusAfter === "complete"
+          ? "ok"
+          : "not_observed",
+    mirror_failure_reason: mirrorFailureReason,
+    status_after: statusAfter,
+    status_failure_reason:
+      completion?.statusFailureReason ?? null,
+  };
+}
+
+function attachSessionStoreHealth(error, health) {
+  if (error && typeof error === "object") {
+    error.sessionStoreObservability = health;
+    return error;
+  }
+  return runtimeError(String(error), {
+    runtimeCode: "RUNTIME_UNAVAILABLE",
+    sessionStoreObservability: health,
+  });
+}
+
 function sdkFailureMessage(message) {
   const errors = Array.isArray(message?.errors)
     ? message.errors.filter((value) => typeof value === "string" && value.trim())
@@ -655,13 +743,37 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
-    const portability =
-      mode === "new"
-        ? { canComplete: true }
-        : await this.#prepareSessionForTurn(
-            parentProviderSessionId,
+    let portability = {
+      canComplete: true,
+      parentLocalAvailable: null,
+      parentStatusBefore: null,
+      backfillStatus: "not_needed",
+      backfillFailureReason: null,
+    };
+    if (mode !== "new") {
+      try {
+        portability = await this.#prepareSessionForTurn(
+          parentProviderSessionId,
+          mode,
+        );
+      } catch (cause) {
+        throw attachSessionStoreHealth(
+          cause,
+          sessionStoreHealthSnapshot({
+            configured: Boolean(this.sessionStore),
             mode,
-          );
+            cwd: this.cwd,
+            parentSessionId: parentProviderSessionId,
+            portability,
+            completion: {
+              statusAfter: null,
+              statusFailureReason:
+                clippedSessionStoreReason(cause),
+            },
+          }),
+        );
+      }
+    }
 
     this.abortRequested = false;
     const queryImpl = await this.#resolveQuery();
@@ -771,7 +883,37 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         });
       }
 
-      const handleResult = await completion;
+      let handleResult;
+      try {
+        handleResult = await completion;
+      } catch (cause) {
+        const events =
+          Array.isArray(cause?.events) ? cause.events : [];
+        const providerSessionId =
+          nonblankString(cause?.providerSessionId)
+          ?? sessionIdFromEvents(events);
+        const mirrorFailureReason =
+          sdkMirrorFailureReason(events);
+        const completionState =
+          await this.#completePortability(
+            providerSessionId,
+            false,
+            mirrorFailureReason,
+          );
+        throw attachSessionStoreHealth(
+          cause,
+          sessionStoreHealthSnapshot({
+            configured: Boolean(this.sessionStore),
+            mode,
+            cwd: this.cwd,
+            sessionId: providerSessionId,
+            parentSessionId: parentProviderSessionId,
+            portability,
+            completion: completionState,
+            mirrorFailureReason,
+          }),
+        );
+      }
       const contextUsage =
         normalizeAgentSdkContextUsage(handleResult.rawContextUsage);
       const executionReadback =
@@ -814,12 +956,25 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           },
         );
       }
-      await this.#completePortability(
-        result.providerSessionId,
-        portability.canComplete,
-        Array.isArray(result.events)
-          && result.events.some(sdkMirrorFailed),
-      );
+      const mirrorFailureReason =
+        sdkMirrorFailureReason(result.events);
+      const completionState =
+        await this.#completePortability(
+          result.providerSessionId,
+          portability.canComplete,
+          mirrorFailureReason,
+        );
+      const sessionStoreObservability =
+        sessionStoreHealthSnapshot({
+          configured: Boolean(this.sessionStore),
+          mode,
+          cwd: this.cwd,
+          sessionId: result.providerSessionId,
+          parentSessionId: parentProviderSessionId,
+          portability,
+          completion: completionState,
+          mirrorFailureReason,
+        });
       this.events.emit("exit", {
         code: 0,
         signal: null,
@@ -830,6 +985,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         contextUsageError,
         executionReadback,
         executionReadbackError,
+        sessionStoreObservability,
         stdout: "",
         stderr: "",
         exitCode: 0,
