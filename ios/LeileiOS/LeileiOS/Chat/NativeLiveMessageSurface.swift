@@ -2151,12 +2151,32 @@ private struct NativeLiveAttachmentRemoteImage: View {
                     continue
                 }
 
+                let pixelWidth =
+                    loaded.size.width
+                    * loaded.scale
+                let pixelHeight =
+                    loaded.size.height
+                    * loaded.scale
+                let decodedCost =
+                    Int(
+                        min(
+                            pixelWidth
+                            * pixelHeight
+                            * 4,
+                            Double(Int.max)
+                        )
+                    )
+
                 NativeLiveAttachmentImageCache
                     .shared
                     .insert(
                         loaded,
                         for: cacheKey,
-                        cost: data.count
+                        cost:
+                            max(
+                                data.count,
+                                decodedCost
+                            )
                     )
                 image = loaded
                 didFail = false
