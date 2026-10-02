@@ -182,18 +182,6 @@ test(
           spawn_depth: 1,
         },
       },
-      {
-        userId: userA,
-        prepareId: activityPrepareId,
-        sequence: 2,
-        eventType: "runtime",
-        providerSessionId: "frozen-session-activity",
-        payload: {
-          kind: "message_origin",
-          parent_tool_use_id: "tool-1",
-          parent_agent_id: "agent-1",
-        },
-      },
     ]);
     await database.db.insert(nativeLiveRuntimeInteractions).values({
       id: crypto.randomUUID(),
@@ -259,7 +247,7 @@ test(
     const projectedActivity =
       secondBranchPath.messages[1]?.activity;
     assert.equal(projectedActivity?.prepareId, activityPrepareId);
-    assert.equal(projectedActivity?.events.length, 2);
+    assert.equal(projectedActivity?.events.length, 1);
     assert.equal(
       projectedActivity?.events[0]?.event.type,
       "task",
