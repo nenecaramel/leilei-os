@@ -51,6 +51,9 @@ extension NativeLiveTurnActivityProjection {
                 hiddenFromTranscript:
                     payload["hidden_from_transcript"]?.boolValue
                         == true,
+                hiddenFromActivity:
+                    payload["hidden_from_activity"]?.boolValue
+                        == true,
                 state:
                     result == nil
                         ? .running
@@ -83,6 +86,7 @@ extension NativeLiveTurnActivityProjection {
                     parentToolUseID: nil,
                     parentAgentID: nil,
                     hiddenFromTranscript: false,
+                    hiddenFromActivity: false,
                     state:
                         payload["is_error"]?.boolValue == true
                             ? .failed
@@ -150,6 +154,9 @@ extension NativeLiveTurnActivityProjection {
                 hiddenFromTranscript:
                     payload["hidden_from_transcript"]?.boolValue
                         == true,
+                hiddenFromActivity:
+                    payload["hidden_from_activity"]?.boolValue
+                        == true,
                 state:
                     result == nil
                         ? .unknown
@@ -182,6 +189,7 @@ extension NativeLiveTurnActivityProjection {
                     parentToolUseID: nil,
                     parentAgentID: nil,
                     hiddenFromTranscript: false,
+                    hiddenFromActivity: false,
                     state:
                         payload["is_error"]?.boolValue == true
                             ? .failed
