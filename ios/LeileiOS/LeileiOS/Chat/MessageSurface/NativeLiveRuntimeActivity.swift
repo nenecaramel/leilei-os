@@ -444,11 +444,17 @@ struct NativeLiveTurnActivityView: View {
         ) async throws -> Void)?
 
     @State private var isExpanded = false
+    @State private var expandedForPendingInteraction = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                isExpanded.toggle()
+                if projection.hasPendingInteraction {
+                    isExpanded = true
+                } else {
+                    isExpanded.toggle()
+                    expandedForPendingInteraction = false
+                }
             } label: {
                 HStack(spacing: 9) {
                     stateIcon
@@ -498,7 +504,10 @@ struct NativeLiveTurnActivityView: View {
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {
                     ForEach(projection.tasks) { task in
-                        NativeLiveTaskActivityRow(task: task)
+                        NativeLiveTaskActivityRow(
+                            task: task,
+                            turnIsActive: projection.turnIsActive
+                        )
                     }
 
                     ForEach(projection.tools) { tool in
@@ -553,15 +562,23 @@ struct NativeLiveTurnActivityView: View {
             )
         )
         .onAppear {
-            if projection.hasPendingInteraction {
+            if projection.hasPendingInteraction,
+               !isExpanded {
                 isExpanded = true
+                expandedForPendingInteraction = true
             }
         }
         .onChange(
             of: projection.pendingInteractionIDs
         ) { _, ids in
             if !ids.isEmpty {
-                isExpanded = true
+                if !isExpanded {
+                    isExpanded = true
+                    expandedForPendingInteraction = true
+                }
+            } else if expandedForPendingInteraction {
+                isExpanded = false
+                expandedForPendingInteraction = false
             }
         }
     }
@@ -593,6 +610,7 @@ struct NativeLiveTurnActivityView: View {
 
 private struct NativeLiveTaskActivityRow: View {
     let task: NativeLiveTurnActivityProjection.TaskActivity
+    let turnIsActive: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -647,9 +665,13 @@ private struct NativeLiveTaskActivityRow: View {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
-        } else {
+        } else if turnIsActive {
             ProgressView()
                 .controlSize(.mini)
+        } else {
+            Image(systemName: "circle")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
         }
     }
 }
