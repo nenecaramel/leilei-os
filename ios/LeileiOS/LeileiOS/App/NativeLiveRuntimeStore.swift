@@ -56,6 +56,7 @@ extension AppModel {
             guard let self else { return }
 
             var cycle = 0
+            var sawBackgroundDrainCandidate = false
 
             while !Task.isCancelled,
                   self.nativeLiveRuntimeSurface?.prepareID == prepareID {
@@ -66,11 +67,52 @@ extension AppModel {
                 )
                 cycle += 1
 
+                if let surface = self.nativeLiveRuntimeSurface,
+                   surface.prepareID == prepareID,
+                   surface.foregroundTurnCompleted {
+                    if surface.hasVisibleBackgroundTasks {
+                        sawBackgroundDrainCandidate = false
+                    } else if sawBackgroundDrainCandidate {
+                        await self.refreshNativeLiveCurrentPath(
+                            force: true,
+                            surfaceTransientFailure: false
+                        )
+                        self.stopNativeLiveRuntimeObservation(
+                            prepareID: prepareID
+                        )
+                        return
+                    } else {
+                        sawBackgroundDrainCandidate = true
+                    }
+                }
+
                 try? await Task.sleep(
                     for: .milliseconds(500)
                 )
             }
         }
+    }
+
+    func continueNativeLiveRuntimeObservationForBackgroundTasks(
+        prepareID: String,
+        conversationID: UUID
+    ) async -> Bool {
+        await refreshNativeLiveRuntimeSurface(
+            prepareID: prepareID,
+            conversationID: conversationID,
+            includeInteractions: true
+        )
+
+        guard var surface = nativeLiveRuntimeSurface,
+              surface.prepareID == prepareID,
+              surface.conversationID == conversationID,
+              surface.hasVisibleBackgroundTasks else {
+            return false
+        }
+
+        surface.foregroundTurnCompleted = true
+        nativeLiveRuntimeSurface = surface
+        return true
     }
 
     func stopNativeLiveRuntimeObservation(
