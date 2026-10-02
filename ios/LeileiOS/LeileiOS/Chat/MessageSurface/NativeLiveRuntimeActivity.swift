@@ -192,18 +192,30 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
     init(runtimeSurface: NativeLiveRuntimeSurfaceState) {
         prepareID = runtimeSurface.prepareID
+        let projectedTasks = Self.tasks(
+            from: runtimeSurface.events
+        )
+        let taskToolUseIDs = Set(
+            projectedTasks.compactMap(\.toolUseID)
+        )
+        tasks = projectedTasks
         tools = Self.tools(from: runtimeSurface.events)
-        tasks = Self.tasks(from: runtimeSurface.events)
+            .filter { !taskToolUseIDs.contains($0.id) }
         interactions = runtimeSurface.interactions
         turnIsActive = runtimeSurface.providerTurnActive ?? true
     }
 
     init(message: NativeLiveCurrentPathMessage) {
         prepareID = message.activity?.prepareId
-        tools = Self.tools(from: message.blocks)
-        tasks = Self.tasks(
+        let projectedTasks = Self.tasks(
             from: message.activity?.events ?? []
         )
+        let taskToolUseIDs = Set(
+            projectedTasks.compactMap(\.toolUseID)
+        )
+        tasks = projectedTasks
+        tools = Self.tools(from: message.blocks)
+            .filter { !taskToolUseIDs.contains($0.id) }
         interactions = message.activity?.interactions ?? []
         turnIsActive = false
     }
