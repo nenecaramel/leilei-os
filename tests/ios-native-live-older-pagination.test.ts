@@ -41,11 +41,15 @@ test("pull to refresh does not silently mean load older history", () => {
 test("forced current-path refresh replaces the recent suffix without dropping loaded older history", () => {
   assert.match(
     conversationCoordination,
-    /let deltaAnchor =[\s\S]*force[\s\S]*\? nil[\s\S]*existingSnapshot\?\.currentHeadMessageId/,
+    /let deltaAnchor =[\s\S]*requireForceRefresh[\s\S]*\? nil[\s\S]*existingSnapshot\?\.currentHeadMessageId/,
   );
   assert.match(
     conversationCoordination,
     /mergeNativeLiveRefresh\([\s\S]*preservedPrefix \+ refreshed\.messages/,
+  );
+  assert.match(
+    conversationCoordination,
+    /chatRefreshPendingForce = false[\s\S]*requireForceRefresh = true/,
   );
   assert.match(
     conversationCoordination,
