@@ -59,7 +59,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let output: NativeLiveJSONValue?
         let parentToolUseID: String?
         let parentAgentID: String?
-        let state: NativeLiveToolCallState
+        var state: NativeLiveToolCallState
         let order: Int
     }
 
@@ -255,19 +255,29 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     $0.request["toolUseId"]?.stringValue
                 }
         )
+        let projectedTurnIsActive =
+            runtimeSurface.providerTurnActive ?? true
         tasks = projectedTasks.filter {
             !$0.hiddenFromTranscript
         }
-        tools = Self.tools(from: runtimeSurface.events)
-            .filter {
-                !taskToolUseIDs.contains($0.id)
-                    && !questionToolUseIDs.contains($0.id)
-                    && !hiddenTaskToolUseIDs.contains(
-                        $0.parentToolUseID ?? ""
-                    )
+        var projectedTools = Self.tools(
+            from: runtimeSurface.events
+        )
+        if !projectedTurnIsActive {
+            for index in projectedTools.indices
+            where projectedTools[index].state == .running {
+                projectedTools[index].state = .unknown
             }
+        }
+        tools = projectedTools.filter {
+            !taskToolUseIDs.contains($0.id)
+                && !questionToolUseIDs.contains($0.id)
+                && !hiddenTaskToolUseIDs.contains(
+                    $0.parentToolUseID ?? ""
+                )
+        }
         interactions = runtimeSurface.interactions
-        turnIsActive = runtimeSurface.providerTurnActive ?? true
+        turnIsActive = projectedTurnIsActive
         turnFailed = runtimeSurface.events.contains { event in
             event.event.type == "error"
                 || (
@@ -319,11 +329,16 @@ struct NativeLiveTurnActivityProjection: Equatable {
     private static func tools(
         from events: [NativeLiveRuntimeEventSnapshot]
     ) -> [ToolActivity] {
+        let toolUseEvents = events.filter {
+            $0.event.type == "tool_use"
+        }
+        let resultEvents = events.filter {
+            $0.event.type == "tool_result"
+        }
+
         var results:
             [String: NativeLiveRuntimeEventSnapshot] = [:]
-
-        for event in events
-        where event.event.type == "tool_result" {
+        for event in resultEvents {
             guard let toolUseID =
                 event.event.payload?["tool_use_id"]?.stringValue else {
                 continue
@@ -331,10 +346,13 @@ struct NativeLiveTurnActivityProjection: Equatable {
             results[toolUseID] = event
         }
 
-        return events.compactMap { event in
-            guard event.event.type == "tool_use" else {
-                return nil
+        let knownToolUseIDs = Set(
+            toolUseEvents.compactMap {
+                $0.event.payload?["tool_use_id"]?.stringValue
             }
+        )
+
+        var activities = toolUseEvents.map { event in
             let payload = event.event.payload ?? [:]
             let toolUseID =
                 payload["tool_use_id"]?.stringValue
@@ -364,7 +382,35 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 order: event.sequence
             )
         }
-        .sorted { $0.order < $1.order }
+
+        activities.append(
+            contentsOf: resultEvents.compactMap { event in
+                let payload = event.event.payload ?? [:]
+                if let toolUseID =
+                    payload["tool_use_id"]?.stringValue,
+                   knownToolUseIDs.contains(toolUseID) {
+                    return nil
+                }
+
+                return ToolActivity(
+                    id: "result-\(event.sequence)",
+                    toolName: "Tool result",
+                    input: nil,
+                    output: payload["output"],
+                    parentToolUseID: nil,
+                    parentAgentID: nil,
+                    state:
+                        payload["is_error"]?.boolValue == true
+                            ? .failed
+                            : .completed,
+                    order: event.sequence
+                )
+            }
+        )
+
+        return activities.sorted {
+            $0.order < $1.order
+        }
     }
 
     private static func tools(
