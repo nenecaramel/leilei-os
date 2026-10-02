@@ -1435,18 +1435,43 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ) {
         this.sessionStore.discardPendingAppends(id);
       }
-      if (typeof this.sessionStore.markIncomplete === "function") {
+
+      if (typeof this.sessionStore.getStatus === "function") {
         try {
-          await this.sessionStore.markIncomplete(id);
-          statusAfter = "incomplete";
+          const observed =
+            await this.sessionStore.getStatus(id);
+          if (
+            observed === null
+            || observed === "complete"
+            || observed === "incomplete"
+          ) {
+            statusAfter = observed;
+          } else {
+            throw new Error(
+              "SessionStore returned an invalid portability status.",
+            );
+          }
         } catch (cause) {
           statusFailureReason =
             clippedSessionStoreReason(cause);
           this.events.emit("session-store-status-error", cause);
         }
-      } else {
-        statusFailureReason =
-          "SessionStore markIncomplete() is unavailable.";
+      }
+
+      if (statusAfter !== "incomplete") {
+        if (typeof this.sessionStore.markIncomplete === "function") {
+          try {
+            await this.sessionStore.markIncomplete(id);
+            statusAfter = "incomplete";
+          } catch (cause) {
+            statusFailureReason ??=
+              clippedSessionStoreReason(cause);
+            this.events.emit("session-store-status-error", cause);
+          }
+        } else {
+          statusFailureReason ??=
+            "SessionStore markIncomplete() is unavailable.";
+        }
       }
     } else if (
       canComplete
