@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   NativeLiveMacHttpRelayClient,
@@ -75,7 +76,6 @@ test("Native Live album relay binds save to the canonical user message", async (
 
 test("Native Live album relay previews and verifies photo bytes locally", async () => {
   const bytes = Buffer.from("preview-bytes");
-  const { createHash } = await import("node:crypto");
   const sha256 = createHash("sha256")
     .update(bytes)
     .digest("hex");
