@@ -139,6 +139,9 @@ extension NativeLiveTurnActivityProjection {
                     payload["parent_tool_use_id"]?.stringValue,
                 parentAgentID:
                     payload["parent_agent_id"]?.stringValue,
+                hiddenFromTranscript:
+                    payload["hidden_from_transcript"]?.boolValue
+                        == true,
                 state:
                     result == nil
                         ? .unknown
@@ -168,6 +171,7 @@ extension NativeLiveTurnActivityProjection {
                     output: payload["output"],
                     parentToolUseID: nil,
                     parentAgentID: nil,
+                    hiddenFromTranscript: false,
                     state:
                         payload["is_error"]?.boolValue == true
                             ? .failed
