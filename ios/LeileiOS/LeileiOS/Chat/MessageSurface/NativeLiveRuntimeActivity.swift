@@ -130,15 +130,28 @@ struct NativeLiveTurnActivityView: View {
                             task: task,
                             childTools:
                                 projection.childTools(for: task),
-                            turnIsActive: projection.turnIsActive
+                            permissionInteractions: { tool in
+                                projection.permissionInteractions(
+                                    for: tool
+                                )
+                            },
+                            turnIsActive: projection.turnIsActive,
+                            onResolveInteraction: onResolveInteraction
                         )
                     }
 
                     ForEach(projection.topLevelTools) { tool in
-                        NativeLiveToolActivityRow(tool: tool)
+                        NativeLiveToolActivityRow(
+                            tool: tool,
+                            permissionInteractions:
+                                projection.permissionInteractions(
+                                    for: tool
+                                ),
+                            onResolveInteraction: onResolveInteraction
+                        )
                     }
 
-                    ForEach(projection.interactions) { interaction in
+                    ForEach(projection.topLevelInteractions) { interaction in
                         if interaction.isPending,
                            let onResolveInteraction {
                             switch interaction.kind {
@@ -260,7 +273,15 @@ private struct NativeLiveTaskActivityRow: View {
     let task: NativeLiveTurnActivityProjection.TaskActivity
     let childTools:
         [NativeLiveTurnActivityProjection.ToolActivity]
+    let permissionInteractions:
+        (NativeLiveTurnActivityProjection.ToolActivity)
+            -> [NativeLiveRuntimeInteractionSnapshot]
     let turnIsActive: Bool
+    let onResolveInteraction:
+        ((
+            NativeLiveRuntimeInteractionSnapshot,
+            [String: NativeLiveJSONValue]
+        ) async throws -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -306,8 +327,13 @@ private struct NativeLiveTaskActivityRow: View {
             }
 
             ForEach(childTools) { tool in
-                NativeLiveToolActivityRow(tool: tool)
-                    .padding(.leading, 23)
+                NativeLiveToolActivityRow(
+                    tool: tool,
+                    permissionInteractions:
+                        permissionInteractions(tool),
+                    onResolveInteraction: onResolveInteraction
+                )
+                .padding(.leading, 23)
             }
         }
         .padding(.leading, CGFloat(
@@ -342,14 +368,39 @@ private struct NativeLiveTaskActivityRow: View {
 
 private struct NativeLiveToolActivityRow: View {
     let tool: NativeLiveTurnActivityProjection.ToolActivity
+    let permissionInteractions:
+        [NativeLiveRuntimeInteractionSnapshot]
+    let onResolveInteraction:
+        ((
+            NativeLiveRuntimeInteractionSnapshot,
+            [String: NativeLiveJSONValue]
+        ) async throws -> Void)?
 
     var body: some View {
-        NativeLiveToolCallCard(
-            toolName: tool.toolName,
-            detail: nativeLiveJSONDetail(tool.input),
-            resultDetail: nativeLiveJSONDetail(tool.output),
-            state: tool.state
-        )
+        VStack(alignment: .leading, spacing: 8) {
+            NativeLiveToolCallCard(
+                toolName: tool.toolName,
+                detail: nativeLiveJSONDetail(tool.input),
+                resultDetail: nativeLiveJSONDetail(tool.output),
+                state: tool.state
+            )
+
+            ForEach(permissionInteractions) { interaction in
+                if interaction.isPending,
+                   let onResolveInteraction {
+                    NativeLivePermissionInteractionCard(
+                        interaction: interaction,
+                        onResolve: onResolveInteraction
+                    )
+                    .padding(.leading, 18)
+                } else {
+                    NativeLiveInteractionHistoryRow(
+                        interaction: interaction
+                    )
+                    .padding(.leading, 18)
+                }
+            }
+        }
     }
 }
 
