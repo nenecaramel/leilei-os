@@ -92,6 +92,7 @@ test("runtime activity and tool presentation are extracted from the message surf
     "struct NativeLiveTurnActivityProjection",
     "struct NativeLiveTurnActivityView",
     "struct NativeLiveTaskActivityRow",
+    "struct NativeLiveToolActivityRow",
     "struct AssistantTypingIndicatorRow",
     "enum NativeLiveToolCallState",
     "struct NativeLiveToolCallCard",
@@ -107,6 +108,11 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /subagent_type/);
   assert.match(runtime, /is_backgrounded/);
   assert.match(runtime, /spawn_depth/);
+  assert.match(runtime, /hidden_from_transcript/);
+  assert.match(runtime, /parent_tool_use_id/);
+  assert.match(runtime, /parent_agent_id/);
+  assert.match(runtime, /childTools/);
+  assert.match(runtime, /topLevelTools/);
   assert.match(runtime, /pendingInteractionIDs/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
