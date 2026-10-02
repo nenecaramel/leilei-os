@@ -60,6 +60,9 @@ extension NativeLiveTurnActivityProjection {
             } else if payload["ambient"]?.boolValue == true {
                 task.isBackgrounded = true
             }
+            if payload["ambient"]?.boolValue == true {
+                task.isAmbient = true
+            }
             if payload["hidden_from_transcript"]?.boolValue == true {
                 task.hiddenFromTranscript = true
             }
@@ -136,6 +139,9 @@ extension NativeLiveTurnActivityProjection {
                 if task.isBackgrounded == nil {
                     task.isBackgrounded = true
                 }
+                if object["ambient"]?.boolValue == true {
+                    task.isAmbient = true
+                }
                 task.isActiveInBackgroundSet = true
                 task.order = min(
                     task.order,
@@ -169,6 +175,7 @@ private extension NativeLiveTurnActivityProjection.TaskActivity {
             subagentType: nil,
             taskType: nil,
             isBackgrounded: nil,
+            isAmbient: false,
             isActiveInBackgroundSet: nil,
             hiddenFromTranscript: false,
             spawnDepth: nil,
