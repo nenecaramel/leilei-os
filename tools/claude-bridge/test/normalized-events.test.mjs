@@ -1090,7 +1090,7 @@ test("preserves bounded Agent SDK background task provenance", () => {
   });
   assert.doesNotMatch(
     JSON.stringify(events),
-    /Users\\/private|private_path/,
+    /Users\/private|private_path/,
   );
 });
 
