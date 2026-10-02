@@ -111,7 +111,8 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
       asc(nativeLiveRuntimeEvents.sequence),
     );
 
-  const compactedEventRows = [];
+  const compactedEventRows:
+    Array<(typeof eventRows)[number]> = [];
   const latestProgressByTask = new Map<
     string,
     (typeof eventRows)[number]
