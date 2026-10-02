@@ -44,6 +44,8 @@ export function canonicalizeNativeLiveEvents(
   error: string | null;
 } {
   const blocks: NativeLiveContentBlockInput[] = [];
+  const hiddenToolUseIds =
+    collectHiddenTranscriptToolUseIds(events);
   let finalText: string | null = null;
   let error: string | null = null;
   let sawText = false;
@@ -84,10 +86,18 @@ export function canonicalizeNativeLiveEvents(
     }
 
     if (event.type === "tool_use") {
+      const canonicalPayload =
+        stripToolUseDisplayMetadata(payload);
+      const toolUseId =
+        stringValue(canonicalPayload.tool_use_id);
+      if (toolUseId && hiddenToolUseIds.has(toolUseId)) {
+        canonicalPayload.hidden_from_transcript = true;
+      }
+
       blocks.push({
         kind: "tool_use",
         rawType: "tool_use",
-        payload: stripToolUseDisplayMetadata(payload),
+        payload: canonicalPayload,
       });
       continue;
     }
@@ -119,6 +129,47 @@ export function canonicalizeNativeLiveEvents(
   }
 
   return { blocks, error };
+}
+
+function collectHiddenTranscriptToolUseIds(
+  events: readonly NativeLiveNormalizedEvent[],
+): Set<string> {
+  const hidden = new Set<string>();
+
+  for (const event of events) {
+    if (event.type !== "task") continue;
+    const payload = event.payload ?? {};
+    if (payload.hidden_from_transcript !== true) {
+      continue;
+    }
+    const toolUseId = stringValue(payload.tool_use_id);
+    if (toolUseId) {
+      hidden.add(toolUseId);
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const event of events) {
+      if (event.type !== "tool_use") continue;
+      const payload = event.payload ?? {};
+      const toolUseId = stringValue(payload.tool_use_id);
+      const parentToolUseId =
+        stringValue(payload.parent_tool_use_id);
+      if (
+        toolUseId
+        && parentToolUseId
+        && hidden.has(parentToolUseId)
+        && !hidden.has(toolUseId)
+      ) {
+        hidden.add(toolUseId);
+        changed = true;
+      }
+    }
+  }
+
+  return hidden;
 }
 
 function stripToolUseDisplayMetadata(
