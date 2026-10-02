@@ -1374,39 +1374,18 @@ private struct NativeLiveAttachmentBlockView: View {
                             )
                     )
 
-                let directory =
-                    FileManager
-                        .default
-                        .temporaryDirectory
-                        .appendingPathComponent(
-                            "LeileiOS-AttachmentPreview",
-                            isDirectory: true
-                        )
-                        .appendingPathComponent(
-                            block.id,
-                            isDirectory: true
-                        )
-                try FileManager.default
-                    .createDirectory(
-                        at: directory,
-                        withIntermediateDirectories:
-                            true
+                let materialized =
+                    try await nativeLiveMaterializeAttachmentPreview(
+                        data: data,
+                        blockID: block.id,
+                        filename: filename
                     )
-
-                let localURL =
-                    directory.appendingPathComponent(
-                        nativeLiveSafePreviewFilename(
-                            filename
-                        )
-                    )
-                try data.write(
-                    to: localURL,
-                    options: [.atomic]
-                )
-                previewDirectoryURL = directory
+                previewDirectoryURL =
+                    materialized.directoryURL
                 preview =
                     NativeLiveAttachmentPreview(
-                        fileURL: localURL
+                        fileURL:
+                            materialized.fileURL
                     )
             } catch {
                 previewError =
@@ -1425,6 +1404,58 @@ private struct NativeLiveAttachmentBlockView: View {
         previewDirectoryURL = nil
         preview = nil
     }
+}
+
+
+private struct NativeLiveMaterializedAttachmentPreview:
+    Sendable {
+    let directoryURL: URL
+    let fileURL: URL
+}
+
+
+private func nativeLiveMaterializeAttachmentPreview(
+    data: Data,
+    blockID: String,
+    filename: String
+) async throws
+    -> NativeLiveMaterializedAttachmentPreview {
+    try await Task.detached(
+        priority: .utility
+    ) {
+        let directory =
+            FileManager
+                .default
+                .temporaryDirectory
+                .appendingPathComponent(
+                    "LeileiOS-AttachmentPreview",
+                    isDirectory: true
+                )
+                .appendingPathComponent(
+                    blockID,
+                    isDirectory: true
+                )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+
+        let localURL =
+            directory.appendingPathComponent(
+                nativeLiveSafePreviewFilename(
+                    filename
+                )
+            )
+        try data.write(
+            to: localURL,
+            options: [.atomic]
+        )
+
+        return NativeLiveMaterializedAttachmentPreview(
+            directoryURL: directory,
+            fileURL: localURL
+        )
+    }.value
 }
 
 
