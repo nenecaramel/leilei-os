@@ -593,8 +593,6 @@ function runtimeMetadataFromFailure(
             ),
         )
       : [];
-  if (normalizedEvents.length === 0) return null;
-
   const result =
     runtimeResultTelemetryFromNormalizedEvents(
       normalizedEvents,
