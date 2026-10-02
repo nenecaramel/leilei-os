@@ -240,5 +240,8 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.match(root, /"还有更早消息"/);
   assert.match(root, /await onLoadOlder\(\)/);
   assert.match(root, /NativeLiveRuntimeAssistantRow/);
+  assert.match(root, /activityRuntimeSurface:/);
+  assert.match(root, /runtimeSurface\?[\s\S]*foregroundTurnCompleted == true/);
+  assert.match(root, /!runtimeSurface\.foregroundTurnCompleted[\s\S]*\|\| !hasCanonicalAssistantHead/);
   assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
 });
