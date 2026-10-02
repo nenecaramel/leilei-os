@@ -34,3 +34,57 @@ test("canonical tool blocks preserve provider parent provenance", () => {
     },
   ]);
 });
+
+
+test("canonical tool blocks preserve hidden task lineage after runtime retention", () => {
+  const result = canonicalizeNativeLiveEvents([
+    {
+      type: "task",
+      payload: {
+        phase: "started",
+        task_id: "task-hidden",
+        tool_use_id: "tool-hidden-root",
+        hidden_from_transcript: true,
+      },
+    },
+    {
+      type: "tool_use",
+      payload: {
+        tool_use_id: "tool-hidden-root",
+        tool_name: "Task",
+        input: {},
+      },
+    },
+    {
+      type: "tool_use",
+      payload: {
+        tool_use_id: "tool-hidden-child",
+        tool_name: "Read",
+        input: { path: "src/private.ts" },
+        parent_tool_use_id: "tool-hidden-root",
+      },
+    },
+    {
+      type: "tool_use",
+      payload: {
+        tool_use_id: "tool-visible",
+        tool_name: "Read",
+        input: { path: "src/public.ts" },
+      },
+    },
+  ]);
+
+  assert.equal(result.error, null);
+  assert.equal(
+    result.blocks[0]?.payload?.hidden_from_transcript,
+    true,
+  );
+  assert.equal(
+    result.blocks[1]?.payload?.hidden_from_transcript,
+    true,
+  );
+  assert.equal(
+    result.blocks[2]?.payload?.hidden_from_transcript,
+    undefined,
+  );
+});
