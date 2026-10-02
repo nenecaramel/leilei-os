@@ -578,7 +578,6 @@ function normalizeResourceLinks(value) {
   if (!Array.isArray(value)) return [];
 
   const links = [];
-  const seen = new Set();
   for (const item of value.slice(0, RESOURCE_LINK_MAX_ITEMS)) {
     if (
       !item
@@ -592,8 +591,7 @@ function normalizeResourceLinks(value) {
       item.uri,
       RESOURCE_LINK_URI_MAX_CHARS,
     );
-    if (!uri || seen.has(uri)) continue;
-    seen.add(uri);
+    if (!uri) continue;
 
     const type = clippedString(item.type, 64);
     if (type && type !== "resource_link") continue;
