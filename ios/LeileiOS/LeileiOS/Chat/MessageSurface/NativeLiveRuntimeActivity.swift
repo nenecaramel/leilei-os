@@ -355,7 +355,8 @@ private struct NativeLiveTaskActivityRow: View {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
-        } else if turnIsActive {
+        } else if turnIsActive,
+                  task.isCurrentlyActive {
             ProgressView()
                 .controlSize(.mini)
         } else {
