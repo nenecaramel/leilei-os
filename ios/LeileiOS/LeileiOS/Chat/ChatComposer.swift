@@ -61,7 +61,8 @@ struct ChatComposer: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(attachments) { attachment in
-                            if attachment.kind == .image {
+                            if attachment.kind == .image,
+                               attachment.data != nil {
                                 NativeLiveComposerImageAttachmentTile(
                                     attachment: attachment,
                                     onRemove: {
