@@ -2189,7 +2189,7 @@ private func nativeLiveAttachmentExpectedSHA256(
 ) -> String? {
     block.payload?[
         "sha256"
-    ]?.stringValue?
+    ]?.stringValue
         .lowercased()
 }
 
@@ -2417,7 +2417,10 @@ private struct NativeLiveAttachmentBlockView: View {
                             mode: .fit,
                             cornerRadius: 13
                         )
-                        .frame(maxHeight: 260)
+                        .frame(
+                            minHeight: 120,
+                            maxHeight: 260
+                        )
 
                     case .imageTile:
                         NativeLiveAttachmentRemoteImage(
