@@ -1094,28 +1094,29 @@ test("preserves bounded Agent SDK background task provenance", () => {
   );
 });
 
-test("preserves bounded injected-message origin as provider provenance", () => {
-  const rawOrigin = {
-    kind: "task-notification",
-    subkind: "peer-send-message",
-    server: "team-mcp",
-    from: "peer://researcher",
-    name: "Researcher",
-    fromSession: "peer-session",
-    fromMode: "default",
-    senderTaskId: "task-peer",
-    verifiedPeerPid: 4321,
-    fireReason: "schedule_due",
-    body: "peer update body",
-    futureProviderField: {
-      coordinator: "alpha",
-    },
-  };
+test("preserves structural injected-message provenance without duplicating peer content", () => {
   const events = normalizeClaudeEvents(
     [{
       type: "user",
       session_id: "s",
-      origin: rawOrigin,
+      origin: {
+        kind: "task-notification",
+        subkind: "peer-send-message",
+        server: "team-mcp",
+        from: "peer://researcher",
+        name: "Researcher",
+        fromSession: "peer-session",
+        fromMode: "default",
+        senderTaskId: "task-peer",
+        verifiedPeerPid: 4321,
+        fireReason: "schedule_due",
+        body: "peer update body",
+        futureProviderField: {
+          coordinator: "alpha",
+        },
+      },
+      parent_tool_use_id: "tool-parent",
+      parent_agent_id: "agent-parent",
       message: {
         content: "peer update",
       },
@@ -1131,8 +1132,25 @@ test("preserves bounded injected-message origin as provider provenance", () => {
   assert.deepEqual(provenance?.payload, {
     kind: "message_origin",
     source_type: "user",
-    origin: rawOrigin,
+    origin: {
+      kind: "task-notification",
+      subkind: "peer-send-message",
+      server: "team-mcp",
+      from: "peer://researcher",
+      name: "Researcher",
+      from_session: "peer-session",
+      from_mode: "default",
+      sender_task_id: "task-peer",
+      verified_peer_pid: 4321,
+      fire_reason: "schedule_due",
+    },
+    parent_tool_use_id: "tool-parent",
+    parent_agent_id: "agent-parent",
   });
+  assert.doesNotMatch(
+    JSON.stringify(provenance),
+    /peer update body|futureProviderField/,
+  );
 });
 
 test("drops malformed message origin instead of treating it as provenance", () => {
@@ -1161,13 +1179,14 @@ test("drops malformed message origin instead of treating it as provenance", () =
   );
 });
 
-test("drops oversized injected-message origin instead of persisting unbounded provenance", () => {
+test("keeps structural provenance when peer body is oversized", () => {
   const events = normalizeClaudeEvents(
     [{
       type: "user",
       session_id: "s",
       origin: {
         kind: "peer",
+        from: "peer://worker",
         body: "x".repeat(70_000),
       },
       message: {
@@ -1177,41 +1196,87 @@ test("drops oversized injected-message origin instead of persisting unbounded pr
     base,
   );
 
-  assert.equal(
-    events.some(
-      (event) =>
-        event.type === "runtime"
-        && event.payload?.kind === "message_origin",
-    ),
-    false,
+  const provenance = events.find(
+    (event) =>
+      event.type === "runtime"
+      && event.payload?.kind === "message_origin",
+  );
+  assert.deepEqual(provenance?.payload.origin, {
+    kind: "peer",
+    from: "peer://worker",
+  });
+  assert.doesNotMatch(
+    JSON.stringify(provenance),
+    /xxxxxxxxxxxxxxxx/,
   );
 });
 
 
-test("result telemetry keeps bounded raw provider origin compatible", () => {
-  const rawOrigin = {
-    kind: "peer",
-    from: "peer://worker",
-    name: "Worker",
-    fromSession: "peer-session",
-    senderTaskId: "task-result",
-    verifiedPeerPid: 99,
-    body: "provider peer body",
-    futureProviderField: "kept",
-  };
+test("result telemetry keeps structural provider origin only", () => {
   const events = normalizeClaudeEvents(
     [{
       type: "result",
       subtype: "success",
       session_id: "s",
       result: "done",
-      origin: rawOrigin,
+      origin: {
+        kind: "peer",
+        from: "peer://worker",
+        name: "Worker",
+        fromSession: "peer-session",
+        senderTaskId: "task-result",
+        verifiedPeerPid: 99,
+        body: "provider peer body",
+        futureProviderField: "kept",
+      },
     }],
     base,
   );
 
   assert.deepEqual(
     events[0].payload.telemetry.origin,
-    rawOrigin,
+    {
+      kind: "peer",
+      from: "peer://worker",
+      name: "Worker",
+      from_session: "peer-session",
+      sender_task_id: "task-result",
+      verified_peer_pid: 99,
+    },
   );
+  assert.doesNotMatch(
+    JSON.stringify(events[0].payload.telemetry.origin),
+    /provider peer body|futureProviderField/,
+  );
+});
+
+test("preserves assistant subagent parent linkage as runtime-only provenance", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "assistant",
+      session_id: "s",
+      parent_tool_use_id: "tool-subagent",
+      parent_agent_id: "agent-parent",
+      message: {
+        content: [{
+          type: "text",
+          text: "nested answer",
+        }],
+      },
+    }],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["runtime", "text"],
+  );
+  assert.deepEqual(events[0].payload, {
+    kind: "message_origin",
+    source_type: "assistant",
+    origin: null,
+    parent_tool_use_id: "tool-subagent",
+    parent_agent_id: "agent-parent",
+  });
+  assert.equal(events[1].payload.text, "nested answer");
 });
