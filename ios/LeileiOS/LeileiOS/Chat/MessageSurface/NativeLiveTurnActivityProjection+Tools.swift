@@ -41,6 +41,9 @@ extension NativeLiveTurnActivityProjection {
                     ?? "Tool",
                 input: payload["input"],
                 output: result?.event.payload?["output"],
+                resourceLinks:
+                    result?.event.payload?["resource_links"]?.arrayValue
+                    ?? [],
                 parentToolUseID:
                     payload["parent_tool_use_id"]?.stringValue,
                 parentAgentID:
@@ -75,6 +78,8 @@ extension NativeLiveTurnActivityProjection {
                     toolName: "Tool result",
                     input: nil,
                     output: payload["output"],
+                    resourceLinks:
+                        payload["resource_links"]?.arrayValue ?? [],
                     parentToolUseID: nil,
                     parentAgentID: nil,
                     hiddenFromTranscript: false,
@@ -135,6 +140,9 @@ extension NativeLiveTurnActivityProjection {
                     ?? "Tool",
                 input: payload["input"],
                 output: result?.payload?["output"],
+                resourceLinks:
+                    result?.payload?["resource_links"]?.arrayValue
+                    ?? [],
                 parentToolUseID:
                     payload["parent_tool_use_id"]?.stringValue,
                 parentAgentID:
@@ -169,6 +177,8 @@ extension NativeLiveTurnActivityProjection {
                     toolName: "Tool result",
                     input: nil,
                     output: payload["output"],
+                    resourceLinks:
+                        payload["resource_links"]?.arrayValue ?? [],
                     parentToolUseID: nil,
                     parentAgentID: nil,
                     hiddenFromTranscript: false,
