@@ -170,8 +170,9 @@ implements NativeLiveMacDaemonRelayClient {
     photo: ClaudeAlbumToolPhoto;
     created: boolean;
   }> {
-    const data = readRecord(
-      await this.post(
+    let payload: unknown;
+    try {
+      payload = await this.post(
         "/album/photos/save",
         {
           source_attachment_id:
@@ -182,8 +183,31 @@ implements NativeLiveMacDaemonRelayClient {
           why_saved: input.whySaved,
           tags: input.tags,
         },
-      ),
-    );
+      );
+    } catch (error) {
+      if (
+        error
+        && typeof error === "object"
+        && "relayCode" in error
+        && error.relayCode === "SOURCE_ATTACHMENT_UNAVAILABLE"
+        && "relayMessage" in error
+        && typeof error.relayMessage === "string"
+        && error.relayMessage.trim()
+      ) {
+        throw Object.assign(
+          new Error(error.relayMessage),
+          {
+            relayCode: error.relayCode,
+            httpStatus:
+              "httpStatus" in error
+                ? error.httpStatus
+                : null,
+          },
+        );
+      }
+      throw error;
+    }
+    const data = readRecord(payload);
     return {
       photo: parseAlbumPhoto(data.photo),
       created: data.created === true,
@@ -1073,20 +1097,17 @@ implements NativeLiveMacDaemonRelayClient {
         && !Array.isArray(record.error)
           ? record.error as Record<string, unknown>
           : {};
-      const message =
-        typeof error.message === "string"
-        && error.message.trim()
-          ? error.message
-          : typeof error.code === "string"
-            && error.code.trim()
-              ? error.code
-              : "Native live relay request failed.";
       throw Object.assign(
-        new Error(message),
+        new Error("Native live relay request failed."),
         {
           relayCode:
             typeof error.code === "string"
               ? error.code
+              : null,
+          relayMessage:
+            typeof error.message === "string"
+            && error.message.trim()
+              ? error.message
               : null,
           finalizeCode:
             typeof error.finalizeCode === "string"

@@ -158,11 +158,34 @@ export function projectLeileiPermissionDecisionToSdk(
   };
 }
 
-export function isTrustedLeileiosTool(toolName) {
-  return (
+const TRUSTED_LOCAL_ALBUM_TOOLS = new Set([
+  "mcp__leileios_album__save_photo",
+  "mcp__leileios_album__search_photos",
+  "mcp__leileios_album__view_photo",
+  "mcp__leileios_album__send_photo",
+]);
+
+export function trustedNativeLiveToolPolicy(toolName) {
+  if (
     typeof toolName === "string"
     && toolName.startsWith("mcp__leileios__")
-  );
+  ) {
+    return "leileios_all";
+  }
+
+  if (TRUSTED_LOCAL_ALBUM_TOOLS.has(toolName)) {
+    return "leileios_album";
+  }
+
+  if (toolName === "mcp__leileios_local__send_file") {
+    return "leileios_local_send_file";
+  }
+
+  return null;
+}
+
+export function isTrustedLeileiosTool(toolName) {
+  return trustedNativeLiveToolPolicy(toolName) !== null;
 }
 
 export function createAgentSdkPermissionCallback({
@@ -188,12 +211,14 @@ export function createAgentSdkPermissionCallback({
         context,
       );
 
-    if (isTrustedLeileiosTool(toolName)) {
+    const trustedPolicy =
+      trustedNativeLiveToolPolicy(toolName);
+    if (trustedPolicy) {
       const decision = { decision: "allow" };
       events?.emit?.("permission-decision", {
         request,
         decision,
-        trustedPolicy: "leileios_all",
+        trustedPolicy,
       });
       return { behavior: "allow" };
     }

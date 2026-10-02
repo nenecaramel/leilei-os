@@ -5,6 +5,7 @@ import {
   assertPermissionCallbackQueryOptions,
   createAgentSdkPermissionCallback,
   isTrustedLeileiosTool,
+  trustedNativeLiveToolPolicy,
   normalizeAgentSdkPermissionRequest,
   normalizeLeileiPermissionDecision,
   projectLeileiPermissionDecisionToSdk,
@@ -312,7 +313,7 @@ test("permission contract rejects invalid decisions", () => {
 });
 
 
-test("all LeileiOS MCP tools bypass interactive permission", async () => {
+test("trusted LeileiOS and local Native Live tools bypass interactive permission", async () => {
   let permissionCalls = 0;
   const callback = createAgentSdkPermissionCallback({
     permissionHandler: async () => {
@@ -321,14 +322,42 @@ test("all LeileiOS MCP tools bypass interactive permission", async () => {
     },
   });
 
-  for (const toolName of [
-    "mcp__leileios__get_current_time",
-    "mcp__leileios__read_todo_day",
-    "mcp__leileios__append_todo_entry",
-    "mcp__leileios__replace_todo_paper",
-    "mcp__leileios__create_universe_node",
-    "mcp__leileios__update_universe_node",
-  ]) {
+  const trusted = [
+    [
+      "mcp__leileios__get_current_time",
+      "leileios_all",
+    ],
+    [
+      "mcp__leileios__append_todo_entry",
+      "leileios_all",
+    ],
+    [
+      "mcp__leileios_album__save_photo",
+      "leileios_album",
+    ],
+    [
+      "mcp__leileios_album__search_photos",
+      "leileios_album",
+    ],
+    [
+      "mcp__leileios_album__view_photo",
+      "leileios_album",
+    ],
+    [
+      "mcp__leileios_album__send_photo",
+      "leileios_album",
+    ],
+    [
+      "mcp__leileios_local__send_file",
+      "leileios_local_send_file",
+    ],
+  ];
+
+  for (const [toolName, policy] of trusted) {
+    assert.equal(
+      trustedNativeLiveToolPolicy(toolName),
+      policy,
+    );
     assert.equal(isTrustedLeileiosTool(toolName), true);
     assert.deepEqual(
       await callback(toolName, {}, {}),
@@ -337,6 +366,33 @@ test("all LeileiOS MCP tools bypass interactive permission", async () => {
   }
 
   assert.equal(permissionCalls, 0);
+});
+
+test("future unknown local tools do not inherit trust automatically", async () => {
+  let permissionCalls = 0;
+  const callback = createAgentSdkPermissionCallback({
+    permissionHandler: async () => {
+      permissionCalls += 1;
+      return { decision: "allow" };
+    },
+  });
+
+  for (const toolName of [
+    "mcp__leileios_album__delete_photo",
+    "mcp__leileios_local__arbitrary_file_action",
+  ]) {
+    assert.equal(
+      trustedNativeLiveToolPolicy(toolName),
+      null,
+    );
+    assert.equal(isTrustedLeileiosTool(toolName), false);
+    assert.deepEqual(
+      await callback(toolName, {}, {}),
+      { behavior: "allow" },
+    );
+  }
+
+  assert.equal(permissionCalls, 2);
 });
 
 test("non-LeileiOS tools remain on the interactive permission path", async () => {
