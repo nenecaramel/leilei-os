@@ -139,6 +139,27 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
     }
 
+    func permissionInteractions(
+        for tool: ToolActivity
+    ) -> [NativeLiveRuntimeInteractionSnapshot] {
+        interactions.filter {
+            $0.kind == "permission"
+                && $0.toolUseID == tool.id
+        }
+    }
+
+    var topLevelInteractions:
+        [NativeLiveRuntimeInteractionSnapshot] {
+        let nestedInteractionIDs = Set(
+            tools.flatMap { tool in
+                permissionInteractions(for: tool).map(\.id)
+            }
+        )
+        return interactions.filter {
+            !nestedInteractionIDs.contains($0.id)
+        }
+    }
+
     var headerTitle: String {
         if let pending = pendingInteractions.first {
             if pending.kind == "permission" {
