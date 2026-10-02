@@ -548,9 +548,10 @@ test("failure result accepts bounded result telemetry without exposing arbitrary
     withTelemetry.runtime_metadata?.result?.terminal_reason,
     "api_error",
   );
-  assert.equal(
-    withTelemetry.runtime_metadata?.result?.modelUsage
-      ?["claude-opus-5-5"],
+  assert.deepEqual(
+    withTelemetry.runtime_metadata?.result?.modelUsage?.[
+      "claude-opus-5-5"
+    ],
     resultTelemetry.modelUsage["claude-opus-5-5"],
   );
 
