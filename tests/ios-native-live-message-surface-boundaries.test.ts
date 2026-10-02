@@ -241,6 +241,11 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.match(root, /await onLoadOlder\(\)/);
   assert.match(root, /NativeLiveRuntimeAssistantRow/);
   assert.match(root, /activityRuntimeSurface:/);
+  assert.match(root, /matchingRuntimeSurface\(for: snapshot\)/);
+  assert.match(
+    root,
+    /UUID\(uuidString: snapshot\.conversationId\)[\s\S]*== runtimeSurface\.conversationID/,
+  );
   assert.match(root, /runtimeSurface\?[\s\S]*foregroundTurnCompleted == true/);
   assert.match(root, /!runtimeSurface\.foregroundTurnCompleted[\s\S]*\|\| !hasCanonicalAssistantHead/);
   assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
