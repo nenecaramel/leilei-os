@@ -1833,25 +1833,49 @@ private struct NativeLiveAttachmentGroupView: View {
             .frame(width: width, height: 188)
 
         default:
-            LazyVGrid(
-                columns: [
-                    GridItem(
-                        .fixed((width - gap) / 2),
-                        spacing: gap
-                    ),
-                    GridItem(
-                        .fixed((width - gap) / 2),
-                        spacing: gap
-                    ),
-                ],
-                spacing: gap
-            ) {
-                ForEach(imageBlocks) { block in
-                    imageTile(block)
-                        .frame(height: 141)
+            let visible =
+                Array(imageBlocks.prefix(4))
+            let extra =
+                imageBlocks.count
+                - visible.count
+
+            VStack(spacing: gap) {
+                HStack(spacing: gap) {
+                    imageTile(visible[0])
+                    imageTile(visible[1])
+                }
+
+                HStack(spacing: gap) {
+                    imageTile(visible[2])
+
+                    ZStack {
+                        imageTile(visible[3])
+
+                        if extra > 0 {
+                            RoundedRectangle(
+                                cornerRadius: 13,
+                                style: .continuous
+                            )
+                            .fill(
+                                .black.opacity(0.38)
+                            )
+                            .allowsHitTesting(false)
+
+                            Text("+\(extra)")
+                                .font(.system(
+                                    size: 24,
+                                    weight: .semibold
+                                ))
+                                .foregroundStyle(.white)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 }
             }
-            .frame(width: width)
+            .frame(
+                width: width,
+                height: width
+            )
         }
     }
 
