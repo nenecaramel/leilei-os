@@ -360,11 +360,14 @@ export function assembleTurnContext(input: {
     : parentLineage.thoughtRevision;
   const thoughts = thoughtSnapshotEmitted ? thoughtCandidates : [];
 
+  const seenStateIds = new Set(parentLineage.seenStateIds);
   const breath = recallBreath(input.userText, input.subjectStates, {
     userId: input.userId,
     subjectId: input.subjectId,
     conversationId: input.conversation.id,
     currentPathMessageIds,
+    excludedStateIds: seenStateIds,
+    contextEpoch: parentLineage.epoch,
     limit: input.breathLimit,
     now: input.assembledAt,
     cooldownHours: input.breathCooldownHours ?? 0,
@@ -378,22 +381,19 @@ export function assembleTurnContext(input: {
     diversityMaxTokenOverlap:
       input.breathDiversityMaxTokenOverlap ?? 1,
   });
-  const seenStateIds = new Set(parentLineage.seenStateIds);
-  const breathItems = breath.flatMap((hit, index) =>
-    seenStateIds.has(hit.state.id)
-      ? []
-      : [subjectStateToContextItem(
-          hit.state,
-          selection(
-            hit.channel === "hybrid"
-              ? "breath_hybrid_match"
-              : hit.channel === "semantic"
-                ? "breath_semantic_match"
-                : "breath_lexical_match",
-            BREATH_RANK_BASE + index,
-            hit.score,
-          ),
-        )],
+  const breathItems = breath.map((hit, index) =>
+    subjectStateToContextItem(
+      hit.state,
+      selection(
+        hit.channel === "hybrid"
+          ? "breath_hybrid_match"
+          : hit.channel === "semantic"
+            ? "breath_semantic_match"
+            : "breath_lexical_match",
+        BREATH_RANK_BASE + index,
+        hit.score,
+      ),
+    ),
   );
 
   const selected = selectWithinBudget(
