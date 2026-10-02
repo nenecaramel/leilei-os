@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct ChatComposer: View {
     @Binding var text: String
@@ -408,6 +409,41 @@ private struct ComposerPrimaryActionButtonStyle: ButtonStyle {
 }
 
 
+private func nativeLiveComposerThumbnail(
+    _ data: Data
+) -> UIImage? {
+    guard let source =
+            CGImageSourceCreateWithData(
+                data as CFData,
+                nil
+            ) else {
+        return nil
+    }
+
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways:
+            true,
+        kCGImageSourceCreateThumbnailWithTransform:
+            true,
+        kCGImageSourceThumbnailMaxPixelSize:
+            320,
+        kCGImageSourceShouldCacheImmediately:
+            true,
+    ]
+
+    guard let image =
+            CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                options as CFDictionary
+            ) else {
+        return nil
+    }
+
+    return UIImage(cgImage: image)
+}
+
+
 private struct NativeLiveComposerImageAttachmentTile: View {
     let attachment: NativeLiveComposerAttachmentDraft
     let onRemove: () -> Void
@@ -417,7 +453,9 @@ private struct NativeLiveComposerImageAttachmentTile: View {
         guard let data = attachment.data else {
             return nil
         }
-        return UIImage(data: data)
+        return nativeLiveComposerThumbnail(
+            data
+        )
     }
 
     var body: some View {
