@@ -419,6 +419,8 @@ function normalizeResultTelemetry(raw) {
     duration_api_ms:
       finiteNonNegative(raw?.duration_api_ms),
     num_turns: finiteNonNegative(raw?.num_turns),
+    queued_turn_count:
+      finiteNonNegative(raw?.queued_turn_count),
     stop_reason: clippedString(raw?.stop_reason, 128),
     terminal_reason:
       clippedString(raw?.terminal_reason, 128),
@@ -426,8 +428,13 @@ function normalizeResultTelemetry(raw) {
       finiteNonNegative(raw?.api_error_status),
     startup_failure_reason:
       clippedString(raw?.startup_failure_reason, 256),
+    fast_mode_state:
+      clippedString(raw?.fast_mode_state, 128),
+    fast_mode_disabled_reason:
+      clippedString(raw?.fast_mode_disabled_reason, 512),
     total_cost_usd:
       finiteNonNegative(raw?.total_cost_usd),
+    origin: boundedResultJsonRecord(raw?.origin),
     usage: boundedResultJsonRecord(raw?.usage),
     modelUsage:
       boundedResultJsonRecord(raw?.modelUsage),
