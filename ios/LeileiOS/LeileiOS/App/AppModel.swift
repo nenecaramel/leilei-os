@@ -592,7 +592,7 @@ final class AppModel: ObservableObject {
             try await api.nativeLiveAttachmentDownloadSlot(
                 attachmentID: attachmentID
             )
-        guard slot.download.method == "GET",
+        guard slot.download.method.uppercased() == "GET",
               let url = URL(string: slot.download.url) else {
             throw NativeLiveAttachmentLoadError.invalidTransfer
         }
