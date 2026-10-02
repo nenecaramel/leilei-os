@@ -88,3 +88,57 @@ test("canonical tool blocks preserve hidden task lineage after runtime retention
     undefined,
   );
 });
+
+
+test("canonical tool blocks preserve ambient activity suppression lineage", () => {
+  const result = canonicalizeNativeLiveEvents([
+    {
+      type: "task",
+      payload: {
+        phase: "started",
+        task_id: "task-ambient",
+        tool_use_id: "tool-ambient-root",
+        ambient: true,
+      },
+    },
+    {
+      type: "tool_use",
+      payload: {
+        tool_use_id: "tool-ambient-root",
+        tool_name: "Task",
+        input: {},
+      },
+    },
+    {
+      type: "tool_use",
+      payload: {
+        tool_use_id: "tool-ambient-child",
+        tool_name: "Read",
+        input: { path: "src/housekeeping.ts" },
+        parent_tool_use_id: "tool-ambient-root",
+      },
+    },
+    {
+      type: "tool_use",
+      payload: {
+        tool_use_id: "tool-visible",
+        tool_name: "Read",
+        input: { path: "src/user-visible.ts" },
+      },
+    },
+  ]);
+
+  assert.equal(result.error, null);
+  assert.equal(
+    result.blocks[0]?.payload?.hidden_from_activity,
+    true,
+  );
+  assert.equal(
+    result.blocks[1]?.payload?.hidden_from_activity,
+    true,
+  );
+  assert.equal(
+    result.blocks[2]?.payload?.hidden_from_activity,
+    undefined,
+  );
+});
