@@ -50,6 +50,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         request: Record<string, unknown>,
         context: { signal: AbortSignal | null },
       ) => Promise<Record<string, unknown>>;
+      trustedReadPaths?: readonly string[];
       sendFileHandler?: (input: {
         path: string;
         displayName: string | null;
@@ -219,6 +220,15 @@ export class NativeLiveMacRuntimeExecutor {
             ? {
                 questionHandler:
                   options.questionHandler,
+              }
+            : {}),
+          ...(localAttachments.length > 0
+            ? {
+                trustedReadPaths:
+                  localAttachments.map(
+                    (attachment) =>
+                      attachment.localPath,
+                  ),
               }
             : {}),
           ...(this.outputAttachmentSender

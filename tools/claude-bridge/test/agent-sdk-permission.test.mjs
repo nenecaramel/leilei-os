@@ -368,6 +368,65 @@ test("trusted LeileiOS and local Native Live tools bypass interactive permission
   assert.equal(permissionCalls, 0);
 });
 
+test("Read bypasses permission only for exact materialized attachment paths", async () => {
+  const attachmentPath =
+    "/tmp/leileios-native-live-inbox/c/p/a/photo.webp";
+  let permissionCalls = 0;
+  const callback = createAgentSdkPermissionCallback({
+    trustedReadPaths: [attachmentPath],
+    permissionHandler: async () => {
+      permissionCalls += 1;
+      return { decision: "allow" };
+    },
+  });
+
+  assert.equal(
+    trustedNativeLiveToolPolicy(
+      "Read",
+      { file_path: attachmentPath },
+      { trustedReadPaths: [attachmentPath] },
+    ),
+    "native_live_attachment_read",
+  );
+  assert.deepEqual(
+    await callback(
+      "Read",
+      {
+        file_path: attachmentPath,
+        offset: 1,
+        limit: 10,
+      },
+      {},
+    ),
+    { behavior: "allow" },
+  );
+  assert.equal(permissionCalls, 0);
+
+  assert.equal(
+    trustedNativeLiveToolPolicy(
+      "Read",
+      {
+        file_path:
+          attachmentPath + ".neighbor",
+      },
+      { trustedReadPaths: [attachmentPath] },
+    ),
+    null,
+  );
+  assert.deepEqual(
+    await callback(
+      "Read",
+      {
+        file_path:
+          attachmentPath + ".neighbor",
+      },
+      {},
+    ),
+    { behavior: "allow" },
+  );
+  assert.equal(permissionCalls, 1);
+});
+
 test("future unknown local tools do not inherit trust automatically", async () => {
   let permissionCalls = 0;
   const callback = createAgentSdkPermissionCallback({

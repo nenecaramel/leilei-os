@@ -1900,6 +1900,58 @@ test("interactive foreground turn injects the local album MCP only when handlers
   });
 });
 
+test("interactive foreground turn trusts exact materialized attachment Read paths", async () => {
+  const attachmentPath =
+    "/tmp/leileios-native-live-inbox/c/p/a/photo.webp";
+  let permissionCalls = 0;
+  let sdkDecision = null;
+
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    queryImpl: (input) => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        sdkDecision =
+          await input.options.canUseTool(
+            "Read",
+            { file_path: attachmentPath },
+            {
+              toolUseID:
+                "toolu_transport_attachment_read",
+            },
+          );
+        for (const message of successFixture("provider-attachment-read")) {
+          yield message;
+        }
+      },
+    }),
+  });
+
+  const result = await transport.executeTurn(
+    "look at the attachment",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      trustedReadPaths: [attachmentPath],
+      permissionHandler: async () => {
+        permissionCalls += 1;
+        throw new Error("attachment Read must not prompt");
+      },
+    },
+  );
+
+  assert.equal(
+    result.providerSessionId,
+    "provider-attachment-read",
+  );
+  assert.deepEqual(
+    sdkDecision,
+    { behavior: "allow" },
+  );
+  assert.equal(permissionCalls, 0);
+});
+
 test("interactive foreground turn does not inject local send_file MCP without a handler", async () => {
   let call;
   let localFactoryCalls = 0;

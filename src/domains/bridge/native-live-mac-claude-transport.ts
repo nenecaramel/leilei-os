@@ -49,6 +49,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
     request: Record<string, unknown>,
     context: { signal: AbortSignal | null },
   ) => Promise<Record<string, unknown>>;
+  trustedReadPaths?: readonly string[];
   sendFileHandler?: (input: {
     path: string;
     displayName: string | null;

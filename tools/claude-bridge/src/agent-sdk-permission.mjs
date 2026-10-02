@@ -165,7 +165,13 @@ const TRUSTED_LOCAL_ALBUM_TOOLS = new Set([
   "mcp__leileios_album__send_photo",
 ]);
 
-export function trustedNativeLiveToolPolicy(toolName) {
+export function trustedNativeLiveToolPolicy(
+  toolName,
+  input = {},
+  {
+    trustedReadPaths = [],
+  } = {},
+) {
   if (
     typeof toolName === "string"
     && toolName.startsWith("mcp__leileios__")
@@ -181,16 +187,59 @@ export function trustedNativeLiveToolPolicy(toolName) {
     return "leileios_local_send_file";
   }
 
+  if (
+    toolName === "Read"
+    && isTrustedAttachmentRead(
+      input,
+      trustedReadPaths,
+    )
+  ) {
+    return "native_live_attachment_read";
+  }
+
   return null;
 }
 
-export function isTrustedLeileiosTool(toolName) {
-  return trustedNativeLiveToolPolicy(toolName) !== null;
+function isTrustedAttachmentRead(
+  input,
+  trustedReadPaths,
+) {
+  if (
+    !input
+    || typeof input !== "object"
+    || Array.isArray(input)
+    || !Array.isArray(trustedReadPaths)
+  ) {
+    return false;
+  }
+
+  const requestedPath =
+    nonblankString(input.file_path)
+    ?? nonblankString(input.path);
+  if (!requestedPath) return false;
+
+  return trustedReadPaths.some(
+    (path) =>
+      nonblankString(path) === requestedPath,
+  );
+}
+
+export function isTrustedLeileiosTool(
+  toolName,
+  input = {},
+  options = {},
+) {
+  return trustedNativeLiveToolPolicy(
+    toolName,
+    input,
+    options,
+  ) !== null;
 }
 
 export function createAgentSdkPermissionCallback({
   permissionHandler,
   events = null,
+  trustedReadPaths = [],
 } = {}) {
   if (typeof permissionHandler !== "function") {
     throw runtimeError(
@@ -212,7 +261,11 @@ export function createAgentSdkPermissionCallback({
       );
 
     const trustedPolicy =
-      trustedNativeLiveToolPolicy(toolName);
+      trustedNativeLiveToolPolicy(
+        toolName,
+        input,
+        { trustedReadPaths },
+      );
     if (trustedPolicy) {
       const decision = { decision: "allow" };
       events?.emit?.("permission-decision", {

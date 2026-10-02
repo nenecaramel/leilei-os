@@ -312,6 +312,52 @@ test("turn handle wires the stable permission handler before explicit start", as
   );
 });
 
+test("turn handle auto-allows exact Native Live attachment reads", async () => {
+  let call;
+  let permissionCalls = 0;
+  const attachmentPath =
+    "/tmp/leileios-native-live-inbox/c/p/a/photo.webp";
+
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "look at my attachment",
+    environment: {},
+    trustedReadPaths: [attachmentPath],
+    permissionHandler: async () => {
+      permissionCalls += 1;
+      throw new Error("attachment read must not prompt");
+    },
+    queryImpl: (input) => {
+      call = input;
+      return {
+        close() {},
+        async *[Symbol.asyncIterator]() {
+          for (const message of successMessages("provider-attachment-read")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  assert.deepEqual(
+    await call.options.canUseTool(
+      "Read",
+      { file_path: attachmentPath },
+      {
+        toolUseID: "toolu_attachment_read",
+      },
+    ),
+    { behavior: "allow" },
+  );
+  assert.equal(permissionCalls, 0);
+
+  const result = await handle.start();
+  assert.equal(
+    result.providerSessionId,
+    "provider-attachment-read",
+  );
+});
+
 test("turn handle routes AskUserQuestion to questionHandler ahead of permissionHandler", async () => {
   let call;
   const questions = [];

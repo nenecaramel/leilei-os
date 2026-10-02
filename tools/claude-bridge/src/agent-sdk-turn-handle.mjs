@@ -218,6 +218,7 @@ export async function createAgentSdkTurnHandle({
   queryOptions = {},
   permissionHandler = null,
   questionHandler = null,
+  trustedReadPaths = [],
   streaming = false,
   midTurnInput = false,
   userMessageUuid = null,
@@ -280,6 +281,7 @@ export async function createAgentSdkTurnHandle({
       createAgentSdkPermissionCallback({
         permissionHandler,
         events,
+        trustedReadPaths,
       });
   }
 
