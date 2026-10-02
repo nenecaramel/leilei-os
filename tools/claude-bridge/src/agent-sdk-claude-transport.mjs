@@ -1494,7 +1494,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       }
     }
 
-    if (typeof this.sessionStore.getStatus === "function") {
+    if (
+      statusAfter === null
+      && typeof this.sessionStore.getStatus === "function"
+    ) {
       try {
         const observed =
           await this.sessionStore.getStatus(id);
