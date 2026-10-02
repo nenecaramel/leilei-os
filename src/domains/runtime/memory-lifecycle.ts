@@ -64,6 +64,13 @@ export type MemoryRecallReinforcementContribution = {
   currentValue: number;
 };
 
+export type MemoryRecallContext = {
+  conversationId: string;
+  epoch: number;
+  sourceMessageId: string;
+  recalledAt: string;
+};
+
 export type MemoryRecallReinforcementUpdate = {
   stateId: string;
   nextPayload: Record<string, unknown>;
@@ -131,6 +138,7 @@ export type MemoryLifecycleRunResult = {
 
 const LIFECYCLE_KEY = "lifecycle_v1";
 const RECALL_REINFORCEMENT_KEY = "recall_reinforcement_v1";
+const RECALL_CONTEXT_KEY = "recall_context_v1";
 export class MemoryLifecycleService {
   constructor(
     private readonly port: MemoryLifecycleRuntimePort,
@@ -318,6 +326,10 @@ export function evaluateRecallReinforcement(
   salienceBoost: number,
   sourceMessageId: string,
   policy?: MemoryLifecyclePolicy,
+  context?: {
+    conversationId: string;
+    epoch: number;
+  },
 ): MemoryRecallReinforcementUpdate | null {
   const recalledAt = normalizeIso(recalledAtIso, "recalledAt");
   const sourceId = sourceMessageId.trim();
@@ -332,6 +344,17 @@ export function evaluateRecallReinforcement(
     throw new Error("Recall salienceBoost must be between 0 and 1.");
   }
   if (policy) validatePolicy(policy);
+  const conversationId = context?.conversationId.trim() ?? null;
+  if (
+    context
+    && (
+      !conversationId
+      || !Number.isInteger(context.epoch)
+      || context.epoch < 0
+    )
+  ) {
+    throw new Error("Recall context must contain a conversation and nonnegative epoch.");
+  }
 
   const current = readSubjectStateLifecycle(candidate.payload);
   if (
@@ -436,13 +459,23 @@ export function evaluateRecallReinforcement(
     forgottenAt: null,
   };
 
+  const nextPayload = writeLifecycleAndRecallReinforcement(
+    candidate.payload,
+    lifecycle,
+    contributions,
+  );
+  if (context && conversationId) {
+    nextPayload[RECALL_CONTEXT_KEY] = {
+      conversationId,
+      epoch: context.epoch,
+      sourceMessageId: sourceId,
+      recalledAt,
+    };
+  }
+
   return {
     stateId: candidate.stateId,
-    nextPayload: writeLifecycleAndRecallReinforcement(
-      candidate.payload,
-      lifecycle,
-      contributions,
-    ),
+    nextPayload,
     lifecycle,
   };
 }
@@ -462,10 +495,15 @@ export function removeRecallReinforcementSources(
   if (!current || current.status === "forgotten") return null;
 
   const contributions = readRecallReinforcementContributions(payload);
+  const recallContext = readSubjectStateRecallContext(payload);
   const removed = contributions.filter((contribution) =>
     sourceMessageIds.has(contribution.sourceMessageId)
   );
-  if (removed.length === 0) return null;
+  const removeRecallContext = Boolean(
+    recallContext
+    && sourceMessageIds.has(recallContext.sourceMessageId),
+  );
+  if (removed.length === 0 && !removeRecallContext) return null;
 
   const surviving = contributions.filter((contribution) =>
     !sourceMessageIds.has(contribution.sourceMessageId)
@@ -483,6 +521,9 @@ export function removeRecallReinforcementSources(
     : current.lastDecayedAt;
   const removedLatestRecall = removed.some(
     (contribution) => contribution.recalledAt === current.lastRecalledAt,
+  ) || Boolean(
+    removeRecallContext
+    && recallContext?.recalledAt === current.lastRecalledAt,
   );
   const lastRecalledAt = removedLatestRecall
     ? (
@@ -505,12 +546,17 @@ export function removeRecallReinforcementSources(
     forgottenAt: null,
   };
 
+  const nextPayload = writeLifecycleAndRecallReinforcement(
+    payload,
+    lifecycle,
+    surviving,
+  );
+  if (removeRecallContext) {
+    delete nextPayload[RECALL_CONTEXT_KEY];
+  }
+
   return {
-    nextPayload: writeLifecycleAndRecallReinforcement(
-      payload,
-      lifecycle,
-      surviving,
-    ),
+    nextPayload,
     lifecycle,
   };
 }
@@ -648,6 +694,39 @@ export function writeSubjectStateLifecycle(
   return {
     ...(payload ?? {}),
     [LIFECYCLE_KEY]: lifecycle,
+  };
+}
+
+export function readSubjectStateRecallContext(
+  payload: Record<string, unknown> | null | undefined,
+): MemoryRecallContext | null {
+  if (!payload || !(RECALL_CONTEXT_KEY in payload)) return null;
+  const value = payload[RECALL_CONTEXT_KEY];
+  if (!isRecord(value)) {
+    throw new Error("Recall context payload must be an object.");
+  }
+  const conversationId =
+    typeof value.conversationId === "string"
+      ? value.conversationId.trim()
+      : "";
+  const sourceMessageId =
+    typeof value.sourceMessageId === "string"
+      ? value.sourceMessageId.trim()
+      : "";
+  if (
+    !conversationId
+    || !sourceMessageId
+    || !Number.isInteger(value.epoch)
+    || (value.epoch as number) < 0
+  ) {
+    throw new Error("Recall context payload is invalid.");
+  }
+
+  return {
+    conversationId,
+    epoch: value.epoch as number,
+    sourceMessageId,
+    recalledAt: normalizeIso(value.recalledAt, "recalledAt"),
   };
 }
 
