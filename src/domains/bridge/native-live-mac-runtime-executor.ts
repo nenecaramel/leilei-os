@@ -287,6 +287,12 @@ export class NativeLiveMacRuntimeExecutor {
                     this.albumToolClient!.searchPhotos(
                       input,
                     ),
+                  viewPhoto: (input: {
+                    photoId: string;
+                  }) =>
+                    this.albumToolClient!.viewPhoto(
+                      input,
+                    ),
                   sendPhoto: async (input: {
                     photoId: string;
                   }) => {

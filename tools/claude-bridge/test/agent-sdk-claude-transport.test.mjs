@@ -1871,6 +1871,9 @@ test("interactive foreground turn injects the local album MCP only when handlers
     async searchPhotos() {
       return [];
     },
+    async viewPhoto() {
+      throw new Error("unused");
+    },
     async sendPhoto() {
       throw new Error("unused");
     },

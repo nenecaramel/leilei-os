@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import type {
-  NativeLiveChatAttachment,
+import {
+  NativeLiveAttachmentError,
+  type NativeLiveChatAttachment,
 } from "../bridge/native-live-attachment-service.js";
 import type {
   NativeLiveAttachmentDownloadSlot,
@@ -25,7 +26,7 @@ export class ClaudeAlbumPhotoPromotionError extends Error {
   constructor(
     readonly code:
       | "SOURCE_ATTACHMENT_NOT_IMAGE"
-      | "SOURCE_ATTACHMENT_NOT_CURRENT_MESSAGE"
+      | "SOURCE_ATTACHMENT_UNAVAILABLE"
       | "SOURCE_ATTACHMENT_TOO_LARGE"
       | "SOURCE_DOWNLOAD_FAILED"
       | "ALBUM_UPLOAD_FAILED"
@@ -72,20 +73,29 @@ implements ClaudeAlbumPhotoPromoter {
     sourceAttachmentId: string;
     triggerUserMessageId: string;
   }): Promise<PromotedClaudeAlbumPhoto> {
-    const source = await this.source.createDownloadSlot({
-      userId: input.userId,
-      attachmentId: input.sourceAttachmentId,
-    });
-    const attachment = source.attachment;
-    if (
-      attachment.boundMessageId
-        !== input.triggerUserMessageId
-    ) {
-      throw new ClaudeAlbumPhotoPromotionError(
-        "SOURCE_ATTACHMENT_NOT_CURRENT_MESSAGE",
-        "The image attachment does not belong to the active user message.",
-      );
+    let source: {
+      attachment: NativeLiveChatAttachment;
+      download: NativeLiveAttachmentDownloadSlot;
+    };
+    try {
+      source = await this.source.createDownloadSlot({
+        userId: input.userId,
+        attachmentId: input.sourceAttachmentId,
+      });
+    } catch (error) {
+      if (error instanceof NativeLiveAttachmentError) {
+        throw new ClaudeAlbumPhotoPromotionError(
+          "SOURCE_ATTACHMENT_UNAVAILABLE",
+          error.code === "ATTACHMENT_NOT_READY"
+            ? "That attachment is no longer available or has expired. Re-send the image if you still want to save it."
+            : error.code === "ATTACHMENT_NOT_FOUND"
+              ? "That attachment is no longer available. Re-send the image if you still want to save it."
+              : error.message,
+        );
+      }
+      throw error;
     }
+    const attachment = source.attachment;
     if (
       attachment.kind !== "image"
       || !attachment.mimeType
@@ -118,6 +128,12 @@ implements ClaudeAlbumPhotoPromoter {
       headers: source.download.headers,
     });
     if (!download.ok) {
+      if (download.status === 404) {
+        throw new ClaudeAlbumPhotoPromotionError(
+          "SOURCE_ATTACHMENT_UNAVAILABLE",
+          "That attachment is no longer available. Re-send the image if you still want to save it.",
+        );
+      }
       throw new ClaudeAlbumPhotoPromotionError(
         "SOURCE_DOWNLOAD_FAILED",
         "Source attachment download failed with HTTP "

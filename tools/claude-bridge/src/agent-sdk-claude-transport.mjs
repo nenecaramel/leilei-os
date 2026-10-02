@@ -198,9 +198,10 @@ async function createDefaultAlbumMcpServer(
   const savePhotoTool = sdk.tool(
     "save_photo",
     [
-      "Save one user-attached image into your private photo album.",
+      "Save one available user-owned image attachment into your private photo album.",
+      "The attachment may come from the current turn or an earlier turn if it is still available.",
       "Use this when you genuinely want to keep a photo; do not save every image.",
-      "Pass the exact attachment_id shown in <leileios_attachments>.",
+      "Pass an exact attachment_id that LeileiOS previously exposed to you.",
       "why_saved must be your own reason for keeping it at the time you save it.",
     ].join(" "),
     {
@@ -256,6 +257,7 @@ async function createDefaultAlbumMcpServer(
     [
       "Search your private photo album.",
       "Use this when you want to recall or choose a photo you previously saved.",
+      "Omit query to browse the most recent photos, newest first.",
       "Search returns compact metadata only, never image bytes.",
     ].join(" "),
     {
@@ -283,6 +285,56 @@ async function createDefaultAlbumMcpServer(
             type: "text",
             text:
               "search_photos failed: "
+              + (
+                cause instanceof Error
+                  ? cause.message
+                  : "unknown error"
+              ),
+          }],
+        };
+      }
+    },
+  );
+
+  const viewPhotoTool = sdk.tool(
+    "view_photo",
+    [
+      "Open one photo from your private album so you can visually inspect it again.",
+      "Use a photo id from search_photos.",
+      "This previews the image to you without sending it to the user.",
+    ].join(" "),
+    {
+      photo_id: z.string().min(1),
+    },
+    async ({ photo_id }) => {
+      try {
+        const result = await albumHandlers.viewPhoto({
+          photoId: photo_id,
+        });
+        return {
+          content: [
+            {
+              type: "image",
+              data: result.image.data,
+              mimeType: result.image.mimeType,
+            },
+            {
+              type: "text",
+              text: JSON.stringify({
+                photo: projectAlbumSearchPhoto(
+                  result.photo,
+                ),
+              }),
+            },
+          ],
+        };
+      } catch (cause) {
+        return {
+          isError: true,
+          content: [{
+            type: "text",
+            text:
+              "view_photo failed: "
               + (
                 cause instanceof Error
                   ? cause.message
@@ -341,6 +393,7 @@ async function createDefaultAlbumMcpServer(
     tools: [
       savePhotoTool,
       searchPhotosTool,
+      viewPhotoTool,
       sendPhotoTool,
     ],
   });

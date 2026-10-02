@@ -849,6 +849,9 @@ test("protocol v3 album save is bound to canonical user identity and emits album
     async searchPhotos() {
       return [];
     },
+    async viewPhoto() {
+      throw new Error("unused");
+    },
     async sendPhoto() {
       throw new Error("unused");
     },
@@ -970,6 +973,9 @@ test("protocol v3 album save retry does not emit a duplicate album_saved event",
     },
     async searchPhotos() {
       return [];
+    },
+    async viewPhoto() {
+      throw new Error("unused");
     },
     async sendPhoto() {
       throw new Error("unused");

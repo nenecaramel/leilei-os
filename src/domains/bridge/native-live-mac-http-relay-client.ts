@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   NativeLiveDaemonLeaseState,
   NativeLiveDaemonRejectCode,
@@ -209,6 +209,78 @@ implements NativeLiveMacDaemonRelayClient {
       );
     }
     return data.photos.map(parseAlbumPhoto);
+  }
+
+  async viewPhoto(input: {
+    photoId: string;
+  }): Promise<{
+    photo: ClaudeAlbumToolPhoto;
+    image: {
+      data: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+    };
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/album/photos/"
+          + encodeURIComponent(input.photoId)
+          + "/view",
+        {},
+      ),
+    );
+    const photo = parseAlbumPhoto(data.photo);
+    const download = readRecord(data.download);
+    if (
+      typeof download.url !== "string"
+      || download.method !== "GET"
+    ) {
+      throw new Error(
+        "Native live album preview response is invalid.",
+      );
+    }
+
+    const response = await this.fetchImpl(
+      new URL(
+        download.url,
+        this.baseUrl + "/",
+      ).toString(),
+      {
+        method: "GET",
+        headers: readStringRecord(download.headers),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        "Album photo preview download failed with HTTP "
+          + response.status
+          + ".",
+      );
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const sha256 = createHash("sha256")
+      .update(bytes)
+      .digest("hex");
+    if (
+      bytes.byteLength !== photo.sizeBytes
+      || sha256 !== photo.sha256.toLowerCase()
+    ) {
+      throw new Error(
+        "Album photo preview bytes did not match stored metadata.",
+      );
+    }
+
+    return {
+      photo,
+      image: {
+        data: bytes.toString("base64"),
+        mimeType: photo.mimeType,
+        sizeBytes: bytes.byteLength,
+        sha256,
+      },
+    };
   }
 
   async sendPhoto(input: {
@@ -1001,8 +1073,16 @@ implements NativeLiveMacDaemonRelayClient {
         && !Array.isArray(record.error)
           ? record.error as Record<string, unknown>
           : {};
+      const message =
+        typeof error.message === "string"
+        && error.message.trim()
+          ? error.message
+          : typeof error.code === "string"
+            && error.code.trim()
+              ? error.code
+              : "Native live relay request failed.";
       throw Object.assign(
-        new Error("Native live relay request failed."),
+        new Error(message),
         {
           relayCode:
             typeof error.code === "string"

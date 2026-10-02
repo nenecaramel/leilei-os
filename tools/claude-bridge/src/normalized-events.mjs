@@ -503,11 +503,11 @@ function projectToolResultValue(
         safeString(record.type)
         ?? "binary_omitted",
       ...(safeString(
-        record.media_type ?? record.mime_type,
+        record.media_type ?? record.mime_type ?? record.mimeType,
       )
         ? {
             media_type: clippedString(
-              record.media_type ?? record.mime_type,
+              record.media_type ?? record.mime_type ?? record.mimeType,
               256,
             ),
           }
@@ -579,7 +579,7 @@ function isBase64BinaryRecord(value) {
   if (encoding === "base64") return true;
 
   const mediaType = safeString(
-    value.media_type ?? value.mime_type,
+    value.media_type ?? value.mime_type ?? value.mimeType,
   );
   return Boolean(
     mediaType
