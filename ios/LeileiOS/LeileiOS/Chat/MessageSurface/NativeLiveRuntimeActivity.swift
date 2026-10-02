@@ -226,7 +226,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     $0.request["toolUseId"]?.stringValue
                 }
         )
-        tasks = projectedTasks
+        tasks = projectedTasks.filter {
+            !$0.hiddenFromTranscript
+        }
         tools = Self.tools(from: runtimeSurface.events)
             .filter {
                 !taskToolUseIDs.contains($0.id)
@@ -261,7 +263,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     $0.request["toolUseId"]?.stringValue
                 }
         )
-        tasks = projectedTasks
+        tasks = projectedTasks.filter {
+            !$0.hiddenFromTranscript
+        }
         tools = Self.tools(from: message.blocks)
             .filter {
                 !taskToolUseIDs.contains($0.id)
@@ -521,7 +525,6 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
 
         return values.values
-            .filter { !$0.hiddenFromTranscript }
             .sorted {
             if $0.order == $1.order {
                 return $0.id < $1.id
