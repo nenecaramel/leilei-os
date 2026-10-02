@@ -445,9 +445,14 @@ private func nativeLiveComposerThumbnail(
 
 
 private struct NativeLiveComposerImageAttachmentTile: View {
+    @EnvironmentObject private var appModel: AppModel
+
     let attachment: NativeLiveComposerAttachmentDraft
     let onRemove: () -> Void
     let onRetry: () -> Void
+
+    @State private var remotePreviewImage: UIImage?
+    @State private var isLoadingRemotePreview = false
 
     private var previewImage: UIImage? {
         guard let data = attachment.data else {
@@ -461,17 +466,24 @@ private struct NativeLiveComposerImageAttachmentTile: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
-                if let previewImage {
-                    Image(uiImage: previewImage)
+                if let image =
+                        previewImage
+                        ?? remotePreviewImage {
+                    Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
                 } else {
                     ZStack {
                         Color.chatSoftFill
 
-                        Image(systemName: "photo")
-                            .font(.system(size: 19))
-                            .foregroundStyle(.secondary)
+                        if isLoadingRemotePreview {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "photo")
+                                .font(.system(size: 19))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -506,6 +518,41 @@ private struct NativeLiveComposerImageAttachmentTile: View {
             .accessibilityLabel("Remove attachment")
         }
         .frame(width: 72, height: 72)
+        .task(
+            id: attachment.remoteAttachmentID
+        ) {
+            await loadRemotePreviewIfNeeded()
+        }
+    }
+
+    @MainActor
+    private func loadRemotePreviewIfNeeded() async {
+        guard previewImage == nil,
+              remotePreviewImage == nil,
+              let attachmentID =
+                attachment.remoteAttachmentID else {
+            return
+        }
+
+        isLoadingRemotePreview = true
+        defer {
+            isLoadingRemotePreview = false
+        }
+
+        do {
+            let data =
+                try await appModel.nativeLiveAttachmentData(
+                    attachmentID: attachmentID,
+                    expectedSize:
+                        attachment.sizeBytes,
+                    expectedSHA256:
+                        attachment.sha256
+                )
+            remotePreviewImage =
+                nativeLiveComposerThumbnail(data)
+        } catch {
+            return
+        }
     }
 
     @ViewBuilder
@@ -591,7 +638,9 @@ private struct NativeLiveComposerAttachmentChip: View {
     }
 
     private var sizeText: String? {
-        guard let count = attachment.data?.count else {
+        guard let count =
+                attachment.sizeBytes
+                ?? attachment.data?.count else {
             return nil
         }
 
