@@ -715,7 +715,7 @@ private struct NativeLiveToolDetailSheet: View {
 }
 
 
-private func nativeLiveToolDisplayName(
+func nativeLiveToolDisplayName(
     _ raw: String
 ) -> String {
     let prefix = "mcp__leileios__"
