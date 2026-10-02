@@ -1,6 +1,5 @@
 import SwiftUI
 import QuickLook
-import CryptoKit
 import ImageIO
 import UIKit
 
@@ -1640,7 +1639,11 @@ private struct NativeLiveOptimisticAttachmentGroupView: View {
             NativeLiveComposerAttachmentDraft
     ) -> some View {
         if let data = attachment.data,
-           let image = UIImage(data: data) {
+           let image =
+                nativeLiveAttachmentDecodedImage(
+                    data,
+                    maxPixelSize: 640
+                ) {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
@@ -2532,35 +2535,6 @@ private func nativeLiveAttachmentExpectedSize(
         return nil
     }
     return Int(value)
-}
-
-
-private func nativeLiveAttachmentDataIsValid(
-    _ data: Data,
-    for block: NativeLiveCurrentPathBlock
-) -> Bool {
-    if let expectedSize =
-        nativeLiveAttachmentExpectedSize(block),
-       data.count != expectedSize {
-        return false
-    }
-
-    if let expectedSHA256 =
-        nativeLiveAttachmentExpectedSHA256(block) {
-        let digest = SHA256.hash(data: data)
-        let actual = digest.map {
-            String(
-                format: "%02x",
-                $0
-            )
-        }.joined()
-
-        if actual != expectedSHA256 {
-            return false
-        }
-    }
-
-    return true
 }
 
 
