@@ -579,7 +579,7 @@ function isBase64BinaryRecord(value) {
   if (encoding === "base64") return true;
 
   const mediaType = safeString(
-    value.media_type ?? value.mime_type,
+    value.media_type ?? value.mime_type ?? value.mimeType,
   );
   return Boolean(
     mediaType
