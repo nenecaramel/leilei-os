@@ -77,6 +77,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 && isActiveInBackgroundSet != false
         }
 
+        var isActiveBackgroundTask: Bool {
+            isBackgrounded == true
+                && isCurrentlyActive
+        }
+
         private func normalized(_ value: String?) -> String? {
             guard let value else { return nil }
             let trimmed = value.trimmingCharacters(
@@ -111,6 +116,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
     var pendingInteractionIDs: [String] {
         pendingInteractions.map(\.interactionID)
+    }
+
+    var hasActiveBackgroundTask: Bool {
+        tasks.contains(where: \.isActiveBackgroundTask)
     }
 
     var hasFailure: Bool {
@@ -230,6 +239,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
         if turnIsActive {
             return "Running"
+        }
+        if hasActiveBackgroundTask {
+            return "Background"
         }
         return "Done"
     }
