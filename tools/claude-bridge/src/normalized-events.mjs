@@ -489,6 +489,10 @@ function normalizeMessageOrigin(value) {
       value.fromSession ?? value.from_session,
       256,
     ),
+    from_mode: clippedString(
+      value.fromMode ?? value.from_mode,
+      128,
+    ),
     sender_task_id: clippedString(
       value.senderTaskId ?? value.sender_task_id,
       256,
