@@ -111,7 +111,54 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
       asc(nativeLiveRuntimeEvents.sequence),
     );
 
+  const compactedEventRows = [];
+  const latestProgressByTask = new Map<
+    string,
+    (typeof eventRows)[number]
+  >();
+  const latestActiveSetByPrepare = new Map<
+    string,
+    (typeof eventRows)[number]
+  >();
+
   for (const row of eventRows) {
+    const phase =
+      typeof row.payload?.phase === "string"
+        ? row.payload.phase
+        : null;
+    const taskId =
+      typeof row.payload?.task_id === "string"
+        ? row.payload.task_id
+        : null;
+
+    if (phase === "progress" && taskId) {
+      latestProgressByTask.set(
+        `${row.prepareId}:${taskId}`,
+        row,
+      );
+      continue;
+    }
+
+    if (phase === "active_set") {
+      latestActiveSetByPrepare.set(row.prepareId, row);
+      continue;
+    }
+
+    compactedEventRows.push(row);
+  }
+
+  compactedEventRows.push(
+    ...latestProgressByTask.values(),
+    ...latestActiveSetByPrepare.values(),
+  );
+  compactedEventRows.sort((left, right) => {
+    if (left.prepareId === right.prepareId) {
+      return left.sequence - right.sequence;
+    }
+    return left.prepareId.localeCompare(right.prepareId);
+  });
+
+  for (const row of compactedEventRows) {
     const messageId = prepareToMessage.get(row.prepareId);
     const activity = messageId
       ? activityByMessage.get(messageId)
