@@ -2189,7 +2189,7 @@ private func nativeLiveAttachmentExpectedSHA256(
 ) -> String? {
     block.payload?[
         "sha256"
-    ]?.stringValue
+    ]?.stringValue?
         .lowercased()
 }
 
