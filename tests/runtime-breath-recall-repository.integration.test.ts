@@ -14,7 +14,10 @@ import {
   NativeLiveConversationService,
 } from "../src/domains/conversation/native-live-conversation-service.js";
 import { recallBreath } from "../src/domains/runtime/breath-recall.js";
-import { readSubjectStateLifecycle } from "../src/domains/runtime/memory-lifecycle.js";
+import {
+  readSubjectStateLifecycle,
+  readSubjectStateRecallContext,
+} from "../src/domains/runtime/memory-lifecycle.js";
 import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
 
@@ -128,6 +131,8 @@ test(
     await port.recordBreathRecall({
       userId,
       subjectId: "G",
+      conversationId: conversation.id,
+      contextEpoch: 0,
       stateIds: [stateId],
       recalledAt,
       salienceBoost: 0.08,
@@ -136,6 +141,8 @@ test(
     await port.recordBreathRecall({
       userId,
       subjectId: "G",
+      conversationId: conversation.id,
+      contextEpoch: 0,
       stateIds: [stateId],
       recalledAt,
       salienceBoost: 0.08,
@@ -152,6 +159,15 @@ test(
     assert.ok(lifecycle);
     assert.equal(lifecycle.lastRecalledAt, recalledAt);
     assert.equal(lifecycle.salience, 0.58);
+    assert.deepEqual(
+      readSubjectStateRecallContext(stored.payload),
+      {
+        conversationId: conversation.id,
+        epoch: 0,
+        sourceMessageId: canonicalUserTurn.id,
+        recalledAt,
+      },
+    );
 
     const legacyStateId = crypto.randomUUID();
     const legacyState: SubjectStateWrite = {
@@ -211,6 +227,8 @@ test(
     await port.recordBreathRecall({
       userId,
       subjectId: "G",
+      conversationId: conversation.id,
+      contextEpoch: 0,
       stateIds: [legacyStateId],
       recalledAt: newRecallAt,
       salienceBoost: 0.08,
@@ -256,7 +274,8 @@ test(
       {
         userId,
         subjectId: "G",
-        conversationId: crypto.randomUUID(),
+        conversationId: conversation.id,
+        contextEpoch: 0,
         currentPathMessageIds: new Set(),
         limit: 3,
         now: "2026-09-22T11:00:00.000Z",
@@ -265,5 +284,25 @@ test(
       },
     );
     assert.deepEqual(hits, []);
+
+    const afterCompact = recallBreath(
+      "柠檬黄",
+      [stored],
+      {
+        userId,
+        subjectId: "G",
+        conversationId: conversation.id,
+        contextEpoch: 1,
+        currentPathMessageIds: new Set(),
+        limit: 3,
+        now: "2026-09-22T11:00:00.000Z",
+        cooldownHours: 2,
+        salienceWeight: 0.5,
+      },
+    );
+    assert.deepEqual(
+      afterCompact.map((hit) => hit.state.id),
+      [stateId],
+    );
   },
 );
