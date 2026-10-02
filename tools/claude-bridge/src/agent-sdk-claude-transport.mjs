@@ -899,6 +899,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             providerSessionId,
             false,
             mirrorFailureReason,
+            mode === "resume" && portability.canComplete,
           );
         throw attachSessionStoreHealth(
           cause,
