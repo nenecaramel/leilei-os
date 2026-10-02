@@ -490,6 +490,44 @@ test("omits base64 image/blob bytes from tool_result while preserving useful met
   assert.ok(serialized.length < 8_000);
 });
 
+test("omits MCP image blocks that use camelCase mimeType", () => {
+  const binary = Buffer.alloc(8_192, 6).toString("base64");
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "user",
+        session_id: "s",
+        message: {
+          content: [{
+            type: "tool_result",
+            tool_use_id: "tu-view-photo",
+            is_error: false,
+            content: [{
+              type: "image",
+              data: binary,
+              mimeType: "image/webp",
+            }],
+          }],
+        },
+      },
+    ],
+    base,
+  );
+
+  const payload = events[1].payload;
+  const serialized = JSON.stringify(payload);
+  assert.equal(serialized.includes(binary.slice(0, 64)), false);
+  assert.equal(payload.output_binary_omitted, true);
+  assert.deepEqual(payload.output[0], {
+    type: "image",
+    media_type: "image/webp",
+    encoding: "base64",
+    omitted: true,
+    byte_length: 8_192,
+  });
+});
+
 test("omits base64 data URLs from tool_result projections", () => {
   const binary = Buffer.alloc(4_096, 4).toString("base64");
   const events = normalizeClaudeEvents(
