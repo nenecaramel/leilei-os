@@ -299,7 +299,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 && !$0.hiddenFromActivity
                 && !taskToolUseIDs.contains($0.id)
                 && !questionToolUseIDs.contains($0.id)
-                && !hiddenTaskToolUseIDs.contains(
+                && !suppressedTaskToolUseIDs.contains(
                     $0.parentToolUseID ?? ""
                 )
         }
