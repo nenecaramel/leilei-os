@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ChatComposer: View {
     @Binding var text: String
@@ -60,15 +61,27 @@ struct ChatComposer: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(attachments) { attachment in
-                            NativeLiveComposerAttachmentChip(
-                                attachment: attachment,
-                                onRemove: {
-                                    onRemoveAttachment?(attachment.id)
-                                },
-                                onRetry: {
-                                    onRetryAttachment?(attachment.id)
-                                }
-                            )
+                            if attachment.kind == .image {
+                                NativeLiveComposerImageAttachmentTile(
+                                    attachment: attachment,
+                                    onRemove: {
+                                        onRemoveAttachment?(attachment.id)
+                                    },
+                                    onRetry: {
+                                        onRetryAttachment?(attachment.id)
+                                    }
+                                )
+                            } else {
+                                NativeLiveComposerAttachmentChip(
+                                    attachment: attachment,
+                                    onRemove: {
+                                        onRemoveAttachment?(attachment.id)
+                                    },
+                                    onRetry: {
+                                        onRetryAttachment?(attachment.id)
+                                    }
+                                )
+                            }
                         }
                     }
                     .padding(.horizontal, 1)
@@ -390,6 +403,118 @@ private struct ComposerPrimaryActionButtonStyle: ButtonStyle {
                             : 1
                     )
             )
+    }
+}
+
+
+private struct NativeLiveComposerImageAttachmentTile: View {
+    let attachment: NativeLiveComposerAttachmentDraft
+    let onRemove: () -> Void
+    let onRetry: () -> Void
+
+    private var previewImage: UIImage? {
+        guard let data = attachment.data else {
+            return nil
+        }
+        return UIImage(data: data)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let previewImage {
+                    Image(uiImage: previewImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    ZStack {
+                        Color.chatSoftFill
+
+                        Image(systemName: "photo")
+                            .font(.system(size: 19))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: 72, height: 72)
+            .clipped()
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 13,
+                    style: .continuous
+                )
+            )
+
+            attachmentStateOverlay
+
+            Button {
+                onRemove()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(
+                        size: 9,
+                        weight: .bold
+                    ))
+                    .foregroundStyle(.primary)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        .ultraThinMaterial,
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .accessibilityLabel("Remove attachment")
+        }
+        .frame(width: 72, height: 72)
+    }
+
+    @ViewBuilder
+    private var attachmentStateOverlay: some View {
+        switch attachment.state {
+        case .uploading:
+            ZStack {
+                Color.black.opacity(0.16)
+
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+            }
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 13,
+                    style: .continuous
+                )
+            )
+            .allowsHitTesting(false)
+
+        case .ready:
+            EmptyView()
+
+        case .failed:
+            Button {
+                onRetry()
+            } label: {
+                ZStack {
+                    Color.black.opacity(0.34)
+
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(
+                            size: 16,
+                            weight: .semibold
+                        ))
+                        .foregroundStyle(.white)
+                }
+            }
+            .buttonStyle(.plain)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 13,
+                    style: .continuous
+                )
+            )
+            .accessibilityLabel("Retry upload")
+        }
     }
 }
 
