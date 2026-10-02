@@ -291,7 +291,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 output: result?.payload?["output"],
                 state:
                     result == nil
-                        ? .running
+                        ? .unknown
                         : (
                             result?.payload?["is_error"]?.boolValue
                                 == true
@@ -770,6 +770,7 @@ enum NativeLiveToolCallState: Equatable {
     case running
     case completed
     case failed
+    case unknown
 }
 
 
@@ -797,6 +798,10 @@ struct NativeLiveToolCallCard: View {
                 case .failed:
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                case .unknown:
+                    Image(systemName: "circle")
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
 
@@ -852,6 +857,8 @@ struct NativeLiveToolCallCard: View {
             return "Done"
         case .failed:
             return "Failed"
+        case .unknown:
+            return "No result"
         }
     }
 }
