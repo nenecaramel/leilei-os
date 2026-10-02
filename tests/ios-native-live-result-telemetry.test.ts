@@ -33,3 +33,27 @@ test("iOS decodes durable Native Live result telemetry", () => {
     /case firstStreamPostQueueWaitMs =[\s\S]*"first_stream_post_queue_wait_ms"/,
   );
 });
+
+
+test("iOS decodes durable Native Live output resource candidates", () => {
+  assert.match(
+    apiClient,
+    /struct NativeLiveRuntimeMetadata:[\s\S]*let outputResources: \[NativeLiveRuntimeOutputResource\]\?/,
+  );
+  assert.match(
+    apiClient,
+    /struct NativeLiveRuntimeOutputResource:[\s\S]*let source: String[\s\S]*let toolUseId: String\?[\s\S]*let taskId: String\?[\s\S]*let uri: String[\s\S]*let mimeType: String\?/,
+  );
+  assert.match(
+    apiClient,
+    /case outputResources = "output_resources"/,
+  );
+  assert.match(
+    apiClient,
+    /case toolUseId = "tool_use_id"/,
+  );
+  assert.match(
+    apiClient,
+    /case mimeType = "mime_type"/,
+  );
+});
