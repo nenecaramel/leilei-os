@@ -1,6 +1,6 @@
-import assert from "node:assert/strict";
-import test from "node:test";
-import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
+import {
+  createOwnerFingerprint,
+} from "../../src/domains/export/owner-fingerprint.js";
 import type {
   ExportConversationAttachmentRecord,
   ExportConversationContentBlockRecord,
@@ -23,26 +23,21 @@ import type {
   ExportProjectWorkspaceRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
-} from "../src/domains/export/export-types.js";
-import {
-  ImportService,
-} from "../src/domains/import/import-service.js";
+} from "../../src/domains/export/export-types.js";
 import type {
   ImportAuditRun,
   ImportRepository,
-} from "../src/domains/import/import-repository.js";
+} from "../../src/domains/import/import-repository.js";
 import type {
   ImportCurrentState,
   ImportModule,
-} from "../src/domains/import/import-planner.js";
-import {
-  ImportValidationError,
-} from "../src/domains/import/import-schema.js";
+} from "../../src/domains/import/import-planner.js";
 
-const USER_ID = "00000000-0000-4000-8000-000000000099";
-const NOW = "2026-08-14T00:00:00.000Z";
+export const USER_ID = "00000000-0000-4000-8000-000000000099";
 
-const diary: ExportDiaryRecord = {
+export const NOW = "2026-08-14T00:00:00.000Z";
+
+export const diary: ExportDiaryRecord = {
   id: "00000000-0000-4000-8000-000000000031",
   title: "Diary",
   content: "Canonical diary content",
@@ -56,7 +51,7 @@ const diary: ExportDiaryRecord = {
   updated_at: NOW,
 };
 
-const diaryComment: ExportDiaryCommentRecord = {
+export const diaryComment: ExportDiaryCommentRecord = {
   id: "00000000-0000-4000-8000-000000000072",
   diary_id: diary.id,
   author: "G",
@@ -66,7 +61,7 @@ const diaryComment: ExportDiaryCommentRecord = {
   updated_at: NOW,
 };
 
-const todo: ExportTodoPaper = {
+export const todo: ExportTodoPaper = {
   date: "2026-08-13",
   author: "C",
   revision: 2,
@@ -77,7 +72,7 @@ const todo: ExportTodoPaper = {
   ],
 };
 
-const universeBundle: ExportUniverseBundle = {
+export const universeBundle: ExportUniverseBundle = {
   version: 7,
   snapshot: {
     schemaVersion: 2,
@@ -114,9 +109,10 @@ const universeBundle: ExportUniverseBundle = {
   }],
 };
 
-const CONVERSATION_ID =
+export const CONVERSATION_ID =
   "00000000-0000-4000-8000-000000000041";
-const mindState: ExportMindStateRecord = {
+
+export const mindState: ExportMindStateRecord = {
   id: "00000000-0000-4000-8000-000000000061",
   subject_id: "claude",
   kind: "memory",
@@ -143,8 +139,7 @@ const mindState: ExportMindStateRecord = {
   updated_at: NOW,
 };
 
-
-const driveState: ExportMindStateRecord = {
+export const driveState: ExportMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000064",
   kind: "drive",
@@ -152,7 +147,7 @@ const driveState: ExportMindStateRecord = {
   payload: { drive_v1: { phase: "active" } },
 };
 
-const driveCandidateState: ExportMindStateRecord = {
+export const driveCandidateState: ExportMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000068",
   kind: "drive",
@@ -160,7 +155,7 @@ const driveCandidateState: ExportMindStateRecord = {
   payload: { drive_v1: { phase: "active" } },
 };
 
-const curiosityState: ExportMindStateRecord = {
+export const curiosityState: ExportMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000065",
   kind: "curiosity",
@@ -168,7 +163,7 @@ const curiosityState: ExportMindStateRecord = {
   payload: { curiosity_v1: { phase: "resolved" } },
 };
 
-const conversationBundle: ExportConversationsBundle = {
+export const conversationBundle: ExportConversationsBundle = {
   conversations: [{
     id: CONVERSATION_ID,
     title: "Native conversation",
@@ -257,7 +252,7 @@ const conversationBundle: ExportConversationsBundle = {
   }],
 };
 
-const mindContinuity: ExportMindContinuityBundle = {
+export const mindContinuity: ExportMindContinuityBundle = {
   drive_satisfaction_events: [{
     id: "00000000-0000-4000-8000-000000000066",
     subject_id: "claude",
@@ -311,7 +306,7 @@ const mindContinuity: ExportMindContinuityBundle = {
   }],
 };
 
-const projectBundle: ExportProjectsBundle = {
+export const projectBundle: ExportProjectsBundle = {
   workspaces: [{
     id: "00000000-0000-4000-8000-000000000051",
     name: "Workspace",
@@ -351,7 +346,7 @@ const projectBundle: ExportProjectsBundle = {
   }],
 };
 
-const canonicalProjectBundle: ExportProjectsBundle = {
+export const canonicalProjectBundle: ExportProjectsBundle = {
   workspaces: projectBundle.projects.map((record) => ({
     id: record.id,
     name: record.name,
@@ -368,7 +363,7 @@ const canonicalProjectBundle: ExportProjectsBundle = {
   conversations: structuredClone(projectBundle.conversations),
 };
 
-const workspaceBundle = {
+export const workspaceBundle = {
   items: canonicalProjectBundle.workspaces.map((record) => ({
     ...record,
   })),
@@ -391,7 +386,7 @@ const workspaceBundle = {
   })),
 };
 
-function packageBytes(
+export function packageBytes(
   data: Record<string, unknown> = {
     diary: [diary],
     todo: [todo],
@@ -408,7 +403,7 @@ function packageBytes(
   );
 }
 
-function v3PackageBytes(
+export function v3PackageBytes(
   data: Record<string, unknown> = {
     projects: projectBundle,
   },
@@ -424,7 +419,7 @@ function v3PackageBytes(
   );
 }
 
-function v4PackageBytes(
+export function v4PackageBytes(
   data: Record<string, unknown> = {
     workspaces: workspaceBundle,
   },
@@ -442,7 +437,7 @@ function v4PackageBytes(
   );
 }
 
-function cloneState(
+export function cloneState(
   state: ImportCurrentState,
 ): ImportCurrentState {
   return {
@@ -534,7 +529,7 @@ function cloneState(
   };
 }
 
-class FakeImportRepository implements ImportRepository {
+export class FakeImportRepository implements ImportRepository {
   state: ImportCurrentState;
   audits: ImportAuditRun[] = [];
   writes = 0;
@@ -916,679 +911,14 @@ class FakeImportRepository implements ImportRepository {
   }
 }
 
-test("preview reports active Diary and Todo creates", async () => {
-  const repository =
-    new FakeImportRepository();
-  const service =
-    new ImportService(repository);
-
-  const preview = await service.preview(
-    packageBytes(),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.diary.create, 1);
-  assert.equal(preview.summary.todo.create, 1);
-  assert.equal(preview.can_execute, true);
-  assert.equal(repository.writes, 0);
-});
-
-test("execute restores active modules and records safe audit metadata", async () => {
-  const repository =
-    new FakeImportRepository();
-  const service =
-    new ImportService(repository);
-  const raw = packageBytes();
-
-  const preview = await service.preview(
-    raw,
-    USER_ID,
-  );
-  const result = await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.equal(result.summary.diary.create, 1);
-  assert.equal(result.summary.todo.create, 1);
-  assert.deepEqual(repository.state.diary, [diary]);
-  assert.deepEqual(repository.state.todo, [todo]);
-  assert.equal(repository.writes, 2);
-  assert.equal(repository.audits.length, 1);
-  assert.equal(
-    JSON.stringify(repository.audits[0]).includes(
-      diary.content,
-    ),
-    false,
-  );
-});
-
-test("execute preserves C author values", async () => {
-  const repository =
-    new FakeImportRepository();
-  const service =
-    new ImportService(repository);
-  const raw = packageBytes();
-
-  const preview = await service.preview(
-    raw,
-    USER_ID,
-  );
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.equal(
-    repository.state.diary[0]?.author,
-    "C",
-  );
-  assert.equal(
-    repository.state.todo[0]?.author,
-    "C",
-  );
-});
-
-test("execute rejects a stale preview and rolls back", async () => {
-  const repository =
-    new FakeImportRepository();
-  const service =
-    new ImportService(repository);
-  const raw = packageBytes();
-
-  const preview = await service.preview(
-    raw,
-    USER_ID,
-  );
-  repository.state.diary.push({
-    ...diary,
-    content: "Concurrent replacement",
-  });
-
-  await assert.rejects(
-    service.execute(
-      raw,
-      USER_ID,
-      preview.preview_fingerprint,
-    ),
-    (error: unknown) =>
-      error instanceof ImportValidationError
-      && error.code === "IMPORT_PREVIEW_STALE",
-  );
-  assert.equal(repository.writes, 0);
-});
-
-test("execute keeps a preview valid across unrelated concurrent records", async () => {
-  const repository = new FakeImportRepository();
-  const service = new ImportService(repository);
-  const raw = packageBytes();
-
-  const preview = await service.preview(
-    raw,
-    USER_ID,
-  );
-  repository.state.diary.push({
-    ...diary,
-    id: "00000000-0000-4000-8000-000000000032",
-    title: "Unrelated",
-  });
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.equal(
-    repository.state.diary.some(
-      (record) =>
-        record.id
-        === "00000000-0000-4000-8000-000000000032",
-    ),
-    true,
-  );
-  assert.equal(
-    repository.state.diary.some(
-      (record) => record.id === diary.id,
-    ),
-    true,
-  );
-});
-
-test("execute rejects duplicate-only packages", async () => {
-  const repository =
-    new FakeImportRepository({
-      diary: [diary],
-      todo: [todo],
-    });
-  const service =
-    new ImportService(repository);
-  const raw = packageBytes();
-
-  const preview = await service.preview(
-    raw,
-    USER_ID,
-  );
-  assert.equal(preview.can_execute, false);
-
-  await assert.rejects(
-    service.execute(
-      raw,
-      USER_ID,
-      preview.preview_fingerprint,
-    ),
-    (error: unknown) =>
-      error instanceof ImportValidationError
-      && error.code
-        === "IMPORT_NOTHING_TO_RESTORE",
-  );
-});
-
-test("retired module records are rejected during preview", async () => {
-  const repository =
-    new FakeImportRepository();
-  const service =
-    new ImportService(repository);
-
-  for (const data of [
-    { memory: [] },
-    { task: [] },
-    { shared_paper: [] },
-  ]) {
-    await assert.rejects(
-      service.preview(
-        packageBytes(data),
-        USER_ID,
-      ),
-      (error: unknown) =>
-        error instanceof ImportValidationError
-        && error.code === "INVALID_IMPORT_FILE",
-    );
-  }
-
-  assert.equal(repository.writes, 0);
-});
-
-test("disabled users cannot preview imports", async () => {
-  const repository =
-    new FakeImportRepository();
-  repository.status = "disabled";
-  const service =
-    new ImportService(repository);
-
-  await assert.rejects(
-    service.preview(
-      packageBytes(),
-      USER_ID,
-    ),
-  );
-});
-
-
-test("v4 preview exposes file metadata and restores single-layer Workspaces", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    projects: {
-      workspaces: [],
-      projects: [],
-      resources: [],
-      conversations: [],
-    },
-    native_live_conversation_ids:
-      new Set([CONVERSATION_ID]),
-  });
-  const service = new ImportService(repository);
-  const raw = v4PackageBytes();
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.equal(preview.schema_version, 4);
-  assert.equal(preview.exported_at, NOW);
-  assert.equal(preview.raw_bytes, raw.length);
-  assert.deepEqual(preview.included_modules, ["workspaces"]);
-  assert.equal(preview.audit_included, false);
-  assert.deepEqual(preview.summary.workspaces, {
-    create: 3,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-  assert.equal(preview.can_execute, true);
-
-  const result = await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-  assert.equal(result.schema_version, 4);
-  assert.equal(result.exported_at, NOW);
-  assert.equal(result.raw_bytes, raw.length);
-  assert.deepEqual(result.included_modules, ["workspaces"]);
-  assert.equal(result.audit_included, false);
-  assert.equal(result.summary.workspaces?.create, 3);
-  assert.deepEqual(repository.state.projects, canonicalProjectBundle);
-  assert.equal(repository.writes, 3);
-  assert.equal(repository.audits[0]?.schema_version, 4);
-});
-
-test("v3 preview and execute restore Projects atomically with exact product state", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    projects: {
-      workspaces: [],
-      projects: [],
-      resources: [],
-      conversations: [],
-    },
-    native_live_conversation_ids:
-      new Set([CONVERSATION_ID]),
-  });
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes();
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.deepEqual(preview.summary.workspaces, {
-    create: 3,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-  assert.equal(preview.can_execute, true);
-
-  const result = await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.equal(result.summary.workspaces?.create, 3);
-  assert.deepEqual(repository.state.projects, canonicalProjectBundle);
-  assert.equal(repository.writes, 3);
-  assert.equal(repository.audits[0]?.schema_version, 3);
-});
-
-test("v3 Projects preview rejects cross-user ids before any write", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    projects: {
-      workspaces: [],
-      projects: [],
-      resources: [],
-      conversations: [],
-    },
-    foreign_workspace_ids:
-      new Set([projectBundle.projects[0]!.id]),
-    native_live_conversation_ids:
-      new Set([CONVERSATION_ID]),
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes(),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.workspaces?.conflict, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
-
-
-test("v3 Mind restore preserves durable state semantics exactly", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [],
-  });
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes({
-    mind: [mindState],
-  });
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.deepEqual(preview.summary.mind, {
-    create: 1,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.deepEqual(repository.state.mind, [mindState]);
-  assert.equal(repository.writes, 1);
-});
-
-test("v3 Mind restore rejects a state id owned by another user", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [],
-    foreign_mind_ids: new Set([mindState.id]),
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({ mind: [mindState] }),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.mind?.conflict, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
-
-
-test("v3 all-state restore creates canonical conversations before Project membership", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    projects: {
-      workspaces: [],
-      projects: [],
-      resources: [],
-      conversations: [],
-    },
-    mind: [],
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
-    native_live_conversation_ids: new Set(),
-  });
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes({
-    conversations: conversationBundle,
-    projects: projectBundle,
-    mind: [mindState],
-    diary: [diary],
-    universe: universeBundle,
-  });
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.deepEqual(preview.summary.conversations, {
-    create: 6,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-  assert.deepEqual(preview.summary.workspaces, {
-    create: 3,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-  assert.equal(preview.can_execute, true);
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.deepEqual(
-    repository.state.conversations,
-    conversationBundle,
-  );
-  assert.deepEqual(
-    repository.state.projects,
-    canonicalProjectBundle,
-  );
-  assert.deepEqual(repository.state.mind, [mindState]);
-  assert.deepEqual(repository.state.universe, universeBundle);
-  assert.equal(repository.writes, 12);
-});
-
-test("v3 conversation preview rejects a parent cycle before execute", async () => {
-  const cyclic: ExportConversationsBundle = {
-    ...conversationBundle,
-    messages: conversationBundle.messages.map((message, index) => ({
-      ...message,
-      parent_message_id:
-        index === 0
-          ? conversationBundle.messages[1]!.id
-          : conversationBundle.messages[0]!.id,
-    })),
-  };
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({ conversations: cyclic }),
-    USER_ID,
-  );
-
-  assert.ok((preview.summary.conversations?.invalid ?? 0) > 0);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
-
-
-test("v3 Diary scope restores comments after their parent Diary", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    diary_comments: [],
-    todo: [],
-  });
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes({
-    diary: [diary],
-    diary_comments: [diaryComment],
-  });
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.equal(preview.summary.diary.create, 1);
-  assert.equal(preview.summary.diary_comments?.create, 1);
-  assert.equal(preview.can_execute, true);
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.deepEqual(repository.state.diary, [diary]);
-  assert.deepEqual(
-    repository.state.diary_comments,
-    [diaryComment],
-  );
-  assert.equal(repository.writes, 2);
-});
-
-test("v3 Diary comment without an available parent is invalid", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    diary_comments: [],
-    todo: [],
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({
-      diary_comments: [diaryComment],
-    }),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.diary_comments?.invalid, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
-
-
-test("v3 scoped Mind restore preserves historical scope even after source deletion", async () => {
-  const historical: ExportMindStateRecord = {
-    ...mindState,
-    id: "00000000-0000-4000-8000-000000000063",
-    scope_applicability: "path",
-    scope_conversation_id:
-      "00000000-0000-4000-8000-000000000097",
-    scope_path_head_message_id:
-      "00000000-0000-4000-8000-000000000098",
-  };
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [],
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
-  });
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes({
-    mind: [historical],
-  });
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.equal(preview.summary.mind?.create, 1);
-  assert.equal(preview.summary.mind?.invalid, 0);
-  assert.equal(preview.can_execute, true);
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-  assert.deepEqual(repository.state.mind, [historical]);
-});
-
-test("v3 Universe restore is atomic no-overwrite product state", async () => {
-  const emptyRepository = new FakeImportRepository({
-    diary: [diary],
-    todo: [],
-    universe: null,
-  });
-  const emptyService = new ImportService(emptyRepository);
-  const raw = v3PackageBytes({
-    universe: universeBundle,
-  });
-
-  const preview = await emptyService.preview(raw, USER_ID);
-  assert.deepEqual(preview.summary.universe, {
-    create: 1,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-  assert.equal(preview.can_execute, true);
-
-  await emptyService.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-  assert.deepEqual(
-    emptyRepository.state.universe,
-    universeBundle,
-  );
-
-  const duplicateRepository = new FakeImportRepository({
-    diary: [diary],
-    todo: [],
-    universe: universeBundle,
-  });
-  const duplicatePreview = await new ImportService(
-    duplicateRepository,
-  ).preview(raw, USER_ID);
-  assert.equal(
-    duplicatePreview.summary.universe?.duplicate,
-    1,
-  );
-  assert.equal(duplicatePreview.can_execute, false);
-
-  const conflictRepository = new FakeImportRepository({
-    diary: [diary],
-    todo: [],
-    universe: {
-      ...universeBundle,
-      version: universeBundle.version + 1,
-    },
-  });
-  const conflictPreview = await new ImportService(
-    conflictRepository,
-  ).preview(raw, USER_ID);
-  assert.equal(
-    conflictPreview.summary.universe?.conflict,
-    1,
-  );
-  assert.equal(conflictPreview.can_execute, false);
-});
-
-test("v3 Universe provenance rejects a missing Diary parent", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    universe: null,
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({
-      universe: universeBundle,
-    }),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.universe?.invalid, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
-
-
-test("v3 packages carrying a retired Mind kind are rejected at preview", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [],
-  });
-  const service = new ImportService(repository);
-
-  await assert.rejects(
-    service.preview(
-      v3PackageBytes({ mind: [driveState] }),
-      USER_ID,
-    ),
-    (error: unknown) =>
-      error instanceof Error
-      && "code" in error
-      && (error as { code: string }).code === "INVALID_IMPORT_FILE",
-  );
-  assert.equal(repository.writes, 0);
-});
-
-const watermarkOnlyContinuity: ExportMindContinuityBundle = {
+export const watermarkOnlyContinuity: ExportMindContinuityBundle = {
   drive_satisfaction_events: [],
   curiosity_resolution_events: [],
   distillation_watermarks: mindContinuity.distillation_watermarks,
   semantic_grouping_results: [],
 };
 
-function emptyContinuityRepository() {
+export function emptyContinuityRepository() {
   return new FakeImportRepository({
     diary: [],
     todo: [],
@@ -1608,137 +938,3 @@ function emptyContinuityRepository() {
     },
   });
 }
-
-// Distillation no longer runs, but existing watermarks are still exported, so
-// a backup must keep restoring them after (and only after) canonical state.
-test("v3 Mind continuity still restores a historical watermark after its canonical conversation", async () => {
-  const repository = emptyContinuityRepository();
-  const service = new ImportService(repository);
-  const raw = v3PackageBytes({
-    conversations: conversationBundle,
-    mind_continuity: watermarkOnlyContinuity,
-  });
-
-  const preview = await service.preview(raw, USER_ID);
-  assert.equal(preview.can_execute, true);
-  await service.execute(raw, USER_ID, preview.preview_fingerprint);
-
-  assert.deepEqual(
-    repository.state.mind_continuity?.distillation_watermarks,
-    watermarkOnlyContinuity.distillation_watermarks,
-  );
-});
-
-test("v3 Mind continuity rejects a historical watermark without canonical evidence", async () => {
-  const repository = emptyContinuityRepository();
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({ mind_continuity: watermarkOnlyContinuity }),
-    USER_ID,
-  );
-
-  assert.equal(preview.can_execute, false);
-  assert.ok((preview.summary.mind?.invalid ?? 0) >= 1);
-  assert.equal(repository.writes, 0);
-});
-
-test("v3 conversation checkpoint restore preserves continuation handle", async () => {
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
-  });
-  const service = new ImportService(repository);
-
-  const raw = v3PackageBytes({
-    conversations: conversationBundle,
-  });
-  const preview = await service.preview(raw, USER_ID);
-
-  assert.equal(preview.summary.conversations?.create, 6);
-  assert.equal(preview.can_execute, true);
-
-  await service.execute(
-    raw,
-    USER_ID,
-    preview.preview_fingerprint,
-  );
-
-  assert.deepEqual(
-    repository.state.conversations?.provider_checkpoints,
-    conversationBundle.provider_checkpoints,
-  );
-});
-
-test("v3 conversation checkpoint preview rejects a foreign checkpoint id", async () => {
-  const checkpoint = conversationBundle.provider_checkpoints[0]!;
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    conversations: {
-      conversations: [],
-      messages: [],
-      content_blocks: [],
-      attachments: [],
-      provider_checkpoints: [],
-    },
-    foreign_conversation_checkpoint_ids:
-      new Set([checkpoint.id]),
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({
-      conversations: conversationBundle,
-    }),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.conversations?.conflict, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
-
-
-test("v3 semantic grouping restore conflicts with an occupied nonterminal grouping key", async () => {
-  const grouping =
-    mindContinuity.semantic_grouping_results[0]!;
-  const repository = new FakeImportRepository({
-    diary: [],
-    todo: [],
-    mind: [driveCandidateState, driveState],
-    mind_continuity: {
-      drive_satisfaction_events: [],
-      curiosity_resolution_events: [],
-      distillation_watermarks: [],
-      semantic_grouping_results: [],
-    },
-    occupied_semantic_grouping_keys: new Set([
-      `${grouping.subject_id}:${grouping.kind}:${grouping.query_state_id}`,
-    ]),
-  });
-  const service = new ImportService(repository);
-
-  const preview = await service.preview(
-    v3PackageBytes({
-      mind_continuity: {
-        drive_satisfaction_events: [],
-        curiosity_resolution_events: [],
-        distillation_watermarks: [],
-        semantic_grouping_results: [grouping],
-      },
-    }),
-    USER_ID,
-  );
-
-  assert.equal(preview.summary.mind?.conflict, 1);
-  assert.equal(preview.can_execute, false);
-  assert.equal(repository.writes, 0);
-});
