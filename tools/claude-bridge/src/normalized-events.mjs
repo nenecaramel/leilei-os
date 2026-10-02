@@ -75,6 +75,17 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "system" && raw.subtype === "mirror_error") {
+      emit("runtime", this.sessionId, {
+        kind: "session_store_mirror_error",
+        error:
+          clippedString(raw.error, 2_000)
+          ?? clippedString(raw.message, 2_000),
+        code: clippedString(raw.code, 128),
+      });
+      return output;
+    }
+
     if (raw.type === "system" && raw.subtype === "compact_boundary") {
       const metadata =
         raw.compact_metadata && typeof raw.compact_metadata === "object"
