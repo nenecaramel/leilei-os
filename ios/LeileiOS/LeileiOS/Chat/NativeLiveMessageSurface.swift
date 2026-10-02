@@ -2256,7 +2256,7 @@ private struct NativeLiveAttachmentGallery: View {
 }
 
 
-private enum NativeLiveRemoteImageMode {
+private enum NativeLiveRemoteImageMode: Equatable {
     case fit
     case fill
 }
@@ -2308,6 +2308,7 @@ private struct NativeLiveAttachmentRemoteImage: View {
 
     @State private var image: UIImage?
     @State private var didFail = false
+    @State private var retryGeneration = 0
 
     private var cacheKey: String {
         nativeLiveAttachmentCacheKey(block)
@@ -2349,11 +2350,21 @@ private struct NativeLiveAttachmentRemoteImage: View {
                 )
 
                 if didFail {
-                    Image(
-                        systemName:
-                            "photo.badge.exclamationmark"
-                    )
-                    .font(.system(size: 20))
+                    VStack(spacing: 7) {
+                        Image(
+                            systemName:
+                                "arrow.clockwise"
+                        )
+                        .font(.system(
+                            size: 18,
+                            weight: .semibold
+                        ))
+
+                        if mode == .fit {
+                            Text("Retry")
+                                .font(.caption)
+                        }
+                    }
                     .foregroundStyle(.secondary)
                 } else {
                     ProgressView()
@@ -2367,7 +2378,19 @@ private struct NativeLiveAttachmentRemoteImage: View {
                 style: .continuous
             )
         )
-        .task(id: cacheKey) {
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard didFail else {
+                return
+            }
+            retryGeneration += 1
+        }
+        .task(
+            id:
+                cacheKey
+                + ":"
+                + String(retryGeneration)
+        ) {
             await loadImage()
         }
     }
@@ -2588,6 +2611,7 @@ private struct NativeLiveAttachmentBlockView: View {
         NativeLiveAttachmentPreview?
     @State private var previewDirectoryURL: URL?
     @State private var isPreparingPreview = false
+    @State private var previewError: String?
 
     private var attachmentID: String? {
         nativeLiveAttachmentID(block)
@@ -2755,6 +2779,23 @@ private struct NativeLiveAttachmentBlockView: View {
                 Color(.systemBackground)
             )
         }
+        .alert(
+            "Couldn’t open attachment",
+            isPresented: Binding(
+                get: { previewError != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        previewError = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                previewError = nil
+            }
+        } message: {
+            Text(previewError ?? "")
+        }
     }
 
     private var attachmentRowContent: some View {
@@ -2873,7 +2914,8 @@ private struct NativeLiveAttachmentBlockView: View {
                         fileURL: localURL
                     )
             } catch {
-                return
+                previewError =
+                    "The attachment could not be downloaded or verified."
             }
         }
     }
