@@ -1,7 +1,7 @@
 import Foundation
 
 extension NativeLiveTurnActivityProjection {
-private static func lifecycle(
+static func lifecycle(
         from events: [NativeLiveRuntimeEventSnapshot]
     ) -> [LifecycleActivity] {
         var candidates: [LifecycleActivity] = []
