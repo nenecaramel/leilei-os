@@ -6,6 +6,10 @@ const surface = fs.readFileSync(
   "ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift",
   "utf8",
 );
+const conversationCoordination = fs.readFileSync(
+  "ios/LeileiOS/LeileiOS/App/ConversationCoordination.swift",
+  "utf8",
+);
 
 test("iOS chat makes truncated Native Live history explicit", () => {
   assert.match(
@@ -30,5 +34,25 @@ test("pull to refresh does not silently mean load older history", () => {
   assert.doesNotMatch(
     surface,
     /\.refreshable \{[\s\S]{0,240}await onLoadOlder\(\)/,
+  );
+});
+
+
+test("forced current-path refresh replaces the recent suffix without dropping loaded older history", () => {
+  assert.match(
+    conversationCoordination,
+    /let deltaAnchor =[\s\S]*force[\s\S]*\? nil[\s\S]*existingSnapshot\?\.currentHeadMessageId/,
+  );
+  assert.match(
+    conversationCoordination,
+    /mergeNativeLiveRefresh\([\s\S]*preservedPrefix \+ refreshed\.messages/,
+  );
+  assert.match(
+    conversationCoordination,
+    /truncated: existing\.truncated/,
+  );
+  assert.match(
+    conversationCoordination,
+    /olderCursor: existing\.olderCursor/,
   );
 });
