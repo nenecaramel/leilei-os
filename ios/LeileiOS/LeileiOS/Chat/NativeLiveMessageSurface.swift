@@ -143,6 +143,8 @@ struct NativeLiveMessageSurface: View {
     private func messageList(
         _ snapshot: NativeLiveCurrentPathSnapshot?
     ) -> some View {
+        let runtimeSurface =
+            matchingRuntimeSurface(for: snapshot)
         let messages = snapshot?.messages ?? []
         let pendingIsActive = pendingPresentationIsActive(snapshot)
         let replacementAssistantID =
@@ -454,6 +456,18 @@ struct NativeLiveMessageSurface: View {
                 }
             }
         }
+    }
+
+    private func matchingRuntimeSurface(
+        for snapshot: NativeLiveCurrentPathSnapshot?
+    ) -> NativeLiveRuntimeSurfaceState? {
+        guard let runtimeSurface,
+              let snapshot,
+              UUID(uuidString: snapshot.conversationId)
+                == runtimeSurface.conversationID else {
+            return nil
+        }
+        return runtimeSurface
     }
 
     private var hasCanonicalAssistantHead: Bool {
