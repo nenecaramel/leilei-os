@@ -596,14 +596,25 @@ final class AppModel: ObservableObject {
             throw NativeLiveAttachmentLoadError.invalidTransfer
         }
 
+        let authoritativeSize =
+            slot.attachment.sizeBytes
+        let authoritativeSHA256 =
+            slot.attachment.sha256.lowercased()
+
+        if let expectedSize,
+           expectedSize != authoritativeSize {
+            throw NativeLiveAttachmentLoadError.integrityMismatch
+        }
+        if let expectedSHA256,
+           expectedSHA256.lowercased()
+                != authoritativeSHA256 {
+            throw NativeLiveAttachmentLoadError.integrityMismatch
+        }
+
         return try await Self.downloadNativeLiveAttachment(
             slot.download,
-            verifiedSize:
-                expectedSize
-                ?? slot.attachment.sizeBytes,
-            verifiedSHA256:
-                expectedSHA256
-                ?? slot.attachment.sha256
+            verifiedSize: authoritativeSize,
+            verifiedSHA256: authoritativeSHA256
         )
     }
 
