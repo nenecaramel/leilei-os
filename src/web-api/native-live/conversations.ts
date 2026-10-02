@@ -733,7 +733,13 @@ function nativeLiveCurrentPathActivityRevision(
     const latestEventSequence =
       activity.events.at(-1)?.sequence ?? 0;
     const latestInteractionUpdatedAt =
-      activity.interactions.at(-1)?.updatedAt ?? "-";
+      activity.interactions.reduce(
+        (latest, interaction) =>
+          interaction.updatedAt > latest
+            ? interaction.updatedAt
+            : latest,
+        "-",
+      );
 
     return [
       [
