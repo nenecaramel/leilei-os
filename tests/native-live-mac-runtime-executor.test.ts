@@ -1530,6 +1530,98 @@ test("MCP startup retry is never used after any runtime event was observed", asy
 
 
 
+test("SessionStore health is persisted as durable runtime metadata", async () => {
+  const sessionStore = {
+    provider: "claude_agent_sdk" as const,
+    configured: true,
+    mode: "new" as const,
+    session_id: "provider-session-store",
+    parent_session_id: null,
+    project_key: "/workspace",
+    cwd: "/workspace",
+    parent_local_available: null,
+    parent_status_before: null,
+    backfill_status: "not_needed" as const,
+    backfill_failure_reason: null,
+    mirror_status: "ok" as const,
+    mirror_failure_reason: null,
+    status_after: "complete" as const,
+    status_failure_reason: null,
+  };
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      return {
+        providerSessionId: "provider-session-store",
+        normalizedEvents: [],
+        sessionStoreObservability: sessionStore,
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(
+    runtime,
+    "/workspace",
+  ).execute(command());
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    session_store: sessionStore,
+  });
+});
+
+test("provider terminal failure retains SessionStore mirror health", async () => {
+  const sessionStore = {
+    provider: "claude_agent_sdk" as const,
+    configured: true,
+    mode: "new" as const,
+    session_id: "provider-failed-store",
+    parent_session_id: null,
+    project_key: "/workspace",
+    cwd: "/workspace",
+    parent_local_available: null,
+    parent_status_before: null,
+    backfill_status: "not_needed" as const,
+    backfill_failure_reason: null,
+    mirror_status: "error" as const,
+    mirror_failure_reason: "remote append failed",
+    status_after: "incomplete" as const,
+    status_failure_reason: null,
+  };
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      throw Object.assign(
+        new Error("provider failed"),
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          normalizedEvents: [],
+          sessionStoreObservability: sessionStore,
+        },
+      );
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(
+    runtime,
+    "/workspace",
+  ).execute(command());
+
+  assert.equal(result.status, "failure");
+  if (result.status !== "failure") throw new Error("expected failure");
+  assert.equal(result.error_code, "CLAUDE_PROCESS_FAILED");
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    session_store: sessionStore,
+  });
+});
+
 test("system/init environment is persisted with terminal runtime metadata", async () => {
   const environment = {
     model: "claude-sonnet-5-5",
