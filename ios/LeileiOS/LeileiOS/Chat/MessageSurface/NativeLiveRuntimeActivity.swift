@@ -144,7 +144,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     var hasFailure: Bool {
         turnFailed
             || tools.contains { $0.state == .failed }
-            || tasks.contains(\.isFailed)
+            || tasks.contains(where: \.isFailed)
     }
 
     var activityCount: Int {
