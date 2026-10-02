@@ -707,6 +707,17 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
 
         if let latestActiveSet {
+            let activeTaskIDs = Set(
+                latestActiveSet.tasks.compactMap { value in
+                    value.objectValue?["task_id"]?.stringValue
+                }
+            )
+
+            values = values.filter { taskID, task in
+                task.phase != "active_set"
+                    || activeTaskIDs.contains(taskID)
+            }
+
             for value in latestActiveSet.tasks {
                 guard let object = value.objectValue,
                       let taskID =
