@@ -7,7 +7,7 @@ const pageContainer = readFileSync(
   "utf8",
 );
 const apiClient = readFileSync(
-  new URL("../ios/LeileiOS/LeileiOS/Infrastructure/LeileiAPIClient.swift", import.meta.url),
+  new URL("../ios/LeileiOS/LeileiOS/Infrastructure/API/System/SystemAPI.swift", import.meta.url),
   "utf8",
 );
 

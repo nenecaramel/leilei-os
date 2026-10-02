@@ -434,7 +434,7 @@ test("system/init preserves bounded authoritative environment and never becomes 
 
 test("iOS Context reads durable system/init environment from runtime metadata", () => {
   const api = readFileSync(
-    new URL("../ios/LeileiOS/LeileiOS/Infrastructure/LeileiAPIClient.swift", import.meta.url),
+    new URL("../ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift", import.meta.url),
     "utf8",
   );
   const context = readFileSync(
