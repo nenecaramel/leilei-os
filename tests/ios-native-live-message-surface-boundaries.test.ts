@@ -78,3 +78,34 @@ test("runtime interactions are extracted from the message surface", () => {
   assert.doesNotMatch(root, /struct NativeLiveQuestionInteractionCard/);
 });
 
+const runtimeActivityPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift";
+
+test("runtime activity and tool presentation are extracted from the message surface", () => {
+  const root = fs.readFileSync(rootPath, "utf8");
+
+  assert.equal(fs.existsSync(runtimeActivityPath), true);
+  const runtime = readExisting(runtimeActivityPath);
+
+  for (const symbol of [
+    "struct NativeLiveRuntimeAssistantRow",
+    "struct AssistantTypingIndicatorRow",
+    "struct NativeLiveRuntimeToolCallRow",
+    "enum NativeLiveToolCallState",
+    "struct NativeLiveToolCallCard",
+    "struct NativeLiveToolResultCard",
+    "struct NativeLiveToolDetailSheet",
+  ]) {
+    assert.match(runtime, new RegExp(symbol));
+    assert.doesNotMatch(root, new RegExp(symbol));
+  }
+
+  assert.match(runtime, /tool_use_id/);
+  assert.match(runtime, /event\.type == "tool_result"/);
+  assert.match(runtime, /case \.running:/);
+  assert.match(runtime, /case \.completed:/);
+  assert.match(runtime, /case \.failed:/);
+  assert.match(runtime, /runtimeSurface\?\.activityText/);
+  assert.match(runtime, /runtimeSurface\?\.interactions\.first/);
+});
+
