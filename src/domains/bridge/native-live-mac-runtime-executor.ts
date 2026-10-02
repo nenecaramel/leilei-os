@@ -607,7 +607,6 @@ function runtimeOutputResourcesFromNormalizedEvents(
   events: readonly NativeLiveNormalizedEvent[],
 ) {
   const candidates: unknown[] = [];
-  const seen = new Set<string>();
 
   for (const event of events) {
     const payload = event.payload ?? {};
@@ -646,11 +645,6 @@ function runtimeOutputResourcesFromNormalizedEvents(
           ? record.uri
           : null;
       if (!uri) continue;
-
-      const dedupeKey =
-        `${source}\u0000${toolUseId ?? ""}\u0000${taskId ?? ""}\u0000${uri}`;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
 
       candidates.push({
         source,
