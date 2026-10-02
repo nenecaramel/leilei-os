@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { NativeLiveRuntimeEventError } from "../../domains/bridge/native-live-runtime-event-stream.js";
+import { NativeLiveRuntimeEventError } from "../../domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 import type { NativeLiveNormalizedEvent } from "../../domains/conversation/native-live-conversation-orchestrator.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {

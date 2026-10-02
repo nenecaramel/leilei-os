@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 const migrationPath = new URL(
   "../drizzle/0085_retire_legacy_sentinel_bridge.sql",
-  import.meta.url,
-);
-const schemaPath = new URL(
-  "../src/database/schema.ts",
   import.meta.url,
 );
 const retentionPath = new URL(
@@ -36,7 +33,7 @@ test("0085 retires only the legacy Sentinel and Bridge persistence chain", async
 
 test("current schema and retention no longer depend on retired legacy tables", async () => {
   const [schema, retention] = await Promise.all([
-    readFile(schemaPath, "utf8"),
+    readSchemaSource(),
     readFile(retentionPath, "utf8"),
   ]);
 

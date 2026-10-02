@@ -4,10 +4,10 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import postgres from "postgres";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const migrationPath = `${root}/drizzle/0020_weighted_galaxy_expand.sql`;
-const schemaPath = `${root}/src/database/schema.ts`;
 const runIntegration = process.env.RUN_UNIVERSE_WEIGHTED_EXPAND_DATABASE_TEST === "1"
   && Boolean(process.env.DATABASE_URL)
   && ["localhost", "127.0.0.1"].includes(new URL(process.env.DATABASE_URL!).hostname);
@@ -75,7 +75,7 @@ async function cleanupOwner(client: postgres.Sql<{}>, userId: string): Promise<v
 
 test("0020 expand migration is additive and fail-closed for every legacy membership source", () => {
   const migration = readFileSync(migrationPath, "utf8");
-  const schema = readFileSync(schemaPath, "utf8");
+  const schema = readSchemaSource();
   const fixtureSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
   const statements = migrationStatements();
   assert.equal(statements.length, 1, "guard and DDL must be one migration operation");

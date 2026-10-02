@@ -3,14 +3,14 @@ import test from "node:test";
 import {
   CURRENT_SUBJECT_STATE_KINDS,
   SUBJECT_STATE_KINDS,
-} from "../src/domains/runtime/subject-state-contract.js";
+} from "../src/domains/runtime/subject-state/subject-state-contract.js";
 import {
   MIND_LIFECYCLE_PROFILES,
   assertMindLifecycleTransition,
   canPurgeMindState,
   isMindLifecycleTransitionAllowed,
   mindLifecycleProfile,
-} from "../src/domains/runtime/mind-lifecycle-contract.js";
+} from "../src/domains/runtime/mind/mind-lifecycle-contract.js";
 
 test("Mind lifecycle contract covers every persisted Subject State kind", () => {
   assert.deepEqual(

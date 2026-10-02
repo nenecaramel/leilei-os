@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { recallBreath } from "../src/domains/runtime/breath-recall.js";
+import { recallBreath } from "../src/domains/runtime/breath/breath-recall.js";
 import {
   NativeLiveMindLoopService,
   type SubjectStateRuntimePort,
-} from "../src/domains/runtime/native-live-mind-loop-service.js";
+} from "../src/domains/runtime/mind/native-live-mind-loop-service.js";
 import type {
   InitialContextManifest,
-} from "../src/domains/runtime/context-assembly-contract.js";
-import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+} from "../src/domains/runtime/context/context-assembly-contract.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
 function state(
   id: string,

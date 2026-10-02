@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 test("Diary comments schema and migration preserve canonical ownership and lifecycle cascade", () => {
-  const schema = readFileSync("src/database/schema.ts", "utf8");
+  const schema = readSchemaSource();
   const migration = readFileSync("drizzle/0037_diary_comments.sql", "utf8");
   const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")) as {
     entries: Array<{ idx: number; tag: string }>;

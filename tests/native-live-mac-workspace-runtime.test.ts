@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacWorkspaceRuntimePool,
-} from "../src/domains/bridge/native-live-mac-workspace-runtime.js";
+} from "../src/domains/bridge/mac/native-live-mac-workspace-runtime.js";
 
 const workspaceId = "55555555-5555-4555-8555-555555555555";
 const workspaceRoot = "/Users/leilei/Projects/demo";

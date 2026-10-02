@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CompanionBackgroundOpportunityService,
-} from "../src/domains/runtime/companion-background-opportunity.js";
+} from "../src/domains/runtime/background/companion-background-opportunity.js";
 
 const decayPlan = {
   opportunity: "companion_due" as const,

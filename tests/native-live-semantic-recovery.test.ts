@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   NativeLiveSemanticHandshakeService,
   createNativeLiveSemanticRecoveryRunner,
-} from "../src/domains/bridge/native-live-semantic-handshake.js";
+} from "../src/domains/bridge/mind/native-live-semantic-handshake.js";
 
 const request = (prepareId: string) => ({
   prepareId,

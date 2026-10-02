@@ -6,7 +6,7 @@ import {
   planReplacementMessagePurge,
   planSubjectStateRepairs,
   stateReferencesAnyId,
-} from "../src/domains/bridge/native-live-replacement-purge.js";
+} from "../src/domains/bridge/turn/native-live-replacement-purge.js";
 import type {
   NativeLiveConversation,
   NativeLiveMessage,

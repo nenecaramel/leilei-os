@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   acquireNativeLiveMacDaemonLock,
-} from "../src/domains/bridge/native-live-mac-daemon-lock.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-lock.js";
 
 test("Mac daemon lock rejects a second live process", () => {
   const baseDir = mkdtempSync(

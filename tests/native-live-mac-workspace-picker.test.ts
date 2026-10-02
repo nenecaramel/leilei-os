@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   pickNativeLiveMacWorkspaceRoot,
   type NativeLiveMacWorkspacePickerCommandResult,
-} from "../src/domains/bridge/native-live-mac-workspace-picker.js";
+} from "../src/domains/bridge/mac/native-live-mac-workspace-picker.js";
 
 test("Workspace picker uses the native macOS folder dialog and returns its POSIX path", () => {
   const calls: Array<{ command: string; args: readonly string[] }> = [];

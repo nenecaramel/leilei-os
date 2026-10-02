@@ -2,7 +2,7 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import { NativeLiveManualCompactError } from "../../domains/bridge/native-live-manual-compact.js";
+import { NativeLiveManualCompactError } from "../../domains/bridge/turn/native-live-manual-compact.js";
 import type { NativeLiveApiDependencies } from "./dependencies.js";
 import {
   requireWebUser,

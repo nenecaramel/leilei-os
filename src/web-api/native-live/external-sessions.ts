@@ -5,7 +5,7 @@ import type {
 import {
   NativeLiveExternalSessionBridgeError,
   type NativeLiveConversationHistoryUpload,
-} from "../../domains/bridge/native-live-external-session-bridge.js";
+} from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
 import type { NativeLiveApiDependencies } from "./dependencies.js";
 import {
   requireWebUser,

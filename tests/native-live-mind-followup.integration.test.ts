@@ -13,24 +13,24 @@ import {
 } from "../src/database/schema.js";
 import {
   NativeLiveBackendTurnCoordinator,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   DrizzleNativeLiveBackendTurnPort,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   DrizzleNativeLiveContextLineageReader,
-} from "../src/domains/bridge/native-live-context-lineage-repository.js";
+} from "../src/domains/bridge/turn/native-live-context-lineage-repository.js";
 import {
   NativeLiveManualCompactService,
-} from "../src/domains/bridge/native-live-manual-compact.js";
+} from "../src/domains/bridge/turn/native-live-manual-compact.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
-} from "../src/domains/bridge/native-live-backend-relay.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
   nativeLiveMindFollowUpStateId,
-} from "../src/domains/bridge/native-live-mind-followup.js";
+} from "../src/domains/bridge/mind/native-live-mind-followup.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -39,10 +39,10 @@ import {
 } from "../src/domains/conversation/native-live-conversation-service.js";
 import {
   createDefaultBackendMindRuntime,
-} from "../src/domains/runtime/default-backend-mind-runtime.js";
+} from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
 import {
   fingerprintThoughtSnapshot,
-} from "../src/domains/runtime/context-lineage.js";
+} from "../src/domains/runtime/context/context-lineage.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST === "1";

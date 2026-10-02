@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveBackgroundWorkflowCoordinator,
-} from "../src/domains/bridge/native-live-background-workflow-coordinator.js";
+} from "../src/domains/bridge/background/native-live-background-workflow-coordinator.js";
 
 test("background workflow coordinator advances durable workflows independently", async () => {
   const calls: string[] = [];

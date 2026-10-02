@@ -11,7 +11,7 @@ import {
 import type {
   ClaudeAccountUsageReader,
   ClaudeAccountUsageSnapshot,
-} from "../runtime/claude-account-usage.js";
+} from "../runtime/shared/claude-account-usage.js";
 
 export type {
   SystemDataSummary,
@@ -21,7 +21,7 @@ export type {
 } from "./system-repository.js";
 export type {
   ClaudeAccountUsageSnapshot,
-} from "../runtime/claude-account-usage.js";
+} from "../runtime/shared/claude-account-usage.js";
 
 export type SystemConnections = {
   web_api: "online";

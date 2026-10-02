@@ -2,11 +2,11 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import { NativeLiveBackgroundModelQueueError } from "../../domains/bridge/native-live-background-model-queue.js";
+import { NativeLiveBackgroundModelQueueError } from "../../domains/bridge/background/native-live-background-model-queue.js";
 import {
   parseNativeLiveBackgroundModelExecutionResult,
   type NativeLiveBackgroundModelExecutionResult,
-} from "../../domains/bridge/native-live-background-model-protocol.js";
+} from "../../domains/bridge/background/native-live-background-model-protocol.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,

@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   NativeLiveBackendMindRuntime,
-} from "../src/domains/bridge/native-live-backend-mind-runtime.js";
+} from "../src/domains/bridge/mind/native-live-backend-mind-runtime.js";
 import {
   NativeLiveBackendRelayPrepareCoordinator,
-} from "../src/domains/bridge/native-live-backend-relay-prepare.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay-prepare.js";
 import type {
   NativeLiveBackendTurnPort,
   NativeLivePreparedTurn,
   NativeLivePreparePortResult,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import type {
   NativeLiveSemanticPreparationStager,
-} from "../src/domains/bridge/native-live-semantic-handshake.js";
+} from "../src/domains/bridge/mind/native-live-semantic-handshake.js";
 import type {
   NativeLiveContentBlockInput,
 } from "../src/domains/conversation/native-live-conversation-types.js";

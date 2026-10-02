@@ -3,7 +3,7 @@ import type { createDatabase } from "../../database/client.js";
 import { RETENTION_BATCH_SIZE } from "./retention-policy.js";
 import {
   validateRuntimeRetentionSpec,
-} from "../runtime/runtime-data-lifecycle-contract.js";
+} from "../runtime/lifecycle/runtime-data-lifecycle-contract.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 

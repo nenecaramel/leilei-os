@@ -12,21 +12,21 @@ import {
 } from "../src/database/schema.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
-import type { InitialContextManifest } from "../src/domains/runtime/context-invocation-contract.js";
-import { createMindState } from "../src/domains/runtime/mind-writer.js";
-import { DrizzleMindProductRepository } from "../src/domains/runtime/mind-product-repository.js";
-import { MindProductService } from "../src/domains/runtime/mind-product-service.js";
-import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
+import type { InitialContextManifest } from "../src/domains/runtime/context/context-invocation-contract.js";
+import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
+import { DrizzleMindProductRepository } from "../src/domains/runtime/mind/mind-product-repository.js";
+import { MindProductService } from "../src/domains/runtime/mind/mind-product-service.js";
+import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
 import {
   THOUGHT_ACTIVE_LIMIT,
   readThoughtLifecycle,
   writeThoughtActive,
   writeThoughtDropped,
-} from "../src/domains/runtime/thought.js";
+} from "../src/domains/runtime/thought/thought.js";
 import {
   DrizzleThoughtDropPort,
   enforceThoughtCapacity,
-} from "../src/domains/runtime/thought-runtime-repository.js";
+} from "../src/domains/runtime/thought/thought-runtime-repository.js";
 
 const enabled = process.env.RUN_RUNTIME_THOUGHT_DATABASE_TEST === "1";
 const SUBJECT = "G";

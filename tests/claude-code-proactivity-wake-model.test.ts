@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   buildClaudeCodeProactivityWakePrompt,
   parseClaudeCodeProactivityWakeOutput,
-} from "../src/domains/runtime/claude-code-proactivity-wake-model.js";
+} from "../src/domains/runtime/proactivity/claude-code-proactivity-wake-model.js";
 
 test("Proactivity wake prompt treats context as untrusted data and never grants effect authority", () => {
   const prompt = buildClaudeCodeProactivityWakePrompt({

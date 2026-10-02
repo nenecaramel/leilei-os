@@ -27,6 +27,7 @@
   "conflict_hotspots": [
     "src/app/process-runtime.ts",
     "src/database/schema.ts",
+    "src/database/schema/**",
     "drizzle/meta/_journal.json",
     "package.json",
     "pnpm-lock.yaml",
@@ -234,7 +235,8 @@
       },
       "conflict_hotspots": [
         "src/app/process-runtime.ts",
-        "src/database/schema.ts"
+        "src/database/schema.ts",
+        "src/database/schema/**"
       ]
     },
     {
@@ -357,6 +359,7 @@
       },
       "conflict_hotspots": [
         "src/database/schema.ts",
+        "src/database/schema/**",
         "drizzle/meta/_journal.json",
         ".github/workflows/ci.yml"
       ]

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import {
   NativeLiveMacAttachmentMaterializer,
-} from "../src/domains/bridge/native-live-mac-attachment-materializer.js";
+} from "../src/domains/bridge/mac/native-live-mac-attachment-materializer.js";
 
 const bytes = Buffer.from("attachment payload", "utf8");
 const sha256 = createHash("sha256").update(bytes).digest("hex");

@@ -6,11 +6,11 @@ import type {
 } from "../src/domains/conversation/native-live-conversation-types.js";
 import {
   DefaultNativeLiveMindRuntime,
-} from "../src/domains/runtime/native-live-mind-runtime.js";
+} from "../src/domains/runtime/mind/native-live-mind-runtime.js";
 import {
   NativeLiveMindLoopService,
   type SubjectStateRuntimePort,
-} from "../src/domains/runtime/native-live-mind-loop-service.js";
+} from "../src/domains/runtime/mind/native-live-mind-loop-service.js";
 
 const now = "2026-09-22T15:30:00.000Z";
 
@@ -131,7 +131,7 @@ test("semantic planning remains independent from Background Loop maintenance", a
 
 test("Retry/Edit context treats a thought dropped by the replaced turn as still active", async () => {
   const { writeThoughtActive, writeThoughtDropped } = await import(
-    "../src/domains/runtime/thought.js"
+    "../src/domains/runtime/thought/thought.js"
   );
   const droppedBy = "a-replaced";
   const thought = (

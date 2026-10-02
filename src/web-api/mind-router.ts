@@ -1,9 +1,9 @@
 import { Router, type RequestHandler, type Response } from "express";
-import type { CurrentSubjectStateKind } from "../domains/runtime/subject-state-contract.js";
+import type { CurrentSubjectStateKind } from "../domains/runtime/subject-state/subject-state-contract.js";
 import {
   MindProductServiceError,
   type MindProductService,
-} from "../domains/runtime/mind-product-service.js";
+} from "../domains/runtime/mind/mind-product-service.js";
 
 export type MindApiDependencies = {
   mindService: Pick<

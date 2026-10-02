@@ -27,10 +27,10 @@ import type {
 } from "./native-live-conversation-types.js";
 import {
   workflowReferencesAnyId,
-} from "../bridge/native-live-replacement-purge.js";
+} from "../bridge/turn/native-live-replacement-purge.js";
 import {
   structuredValueReferencesAnyId,
-} from "../runtime/persistent-reference-scan.js";
+} from "../runtime/lifecycle/persistent-reference-scan.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Database["transaction"]>[0] extends (

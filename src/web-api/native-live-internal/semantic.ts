@@ -5,7 +5,7 @@ import type {
 import {
   NativeLiveSemanticHandshakeError,
   type NativeLiveSemanticFallbackCode,
-} from "../../domains/bridge/native-live-semantic-handshake.js";
+} from "../../domains/bridge/mind/native-live-semantic-handshake.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,

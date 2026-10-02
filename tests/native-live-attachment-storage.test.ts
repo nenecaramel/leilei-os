@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   S3PresignedAttachmentObjectStore,
-} from "../src/domains/bridge/native-live-attachment-storage.js";
+} from "../src/domains/bridge/attachment/native-live-attachment-storage.js";
 import {
   PostgresInlineAttachmentObjectStore,
   PostgresAttachmentTransferError,
-} from "../src/domains/bridge/native-live-attachment-postgres-storage.js";
+} from "../src/domains/bridge/attachment/native-live-attachment-postgres-storage.js";
 import {
   NativeLiveAttachmentService,
-} from "../src/domains/bridge/native-live-attachment-service.js";
+} from "../src/domains/bridge/attachment/native-live-attachment-service.js";
 
 const config = {
   bucket: "leilei-files-test",

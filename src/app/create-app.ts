@@ -63,7 +63,7 @@ import {
 } from "../web-api/native-live-provider-session-store-internal-router.js";
 import type {
   NativeLiveProviderSessionStoreService,
-} from "../domains/bridge/native-live-provider-session-store.js";
+} from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 import {
   createHealthSyncRouter,
   type HealthSyncApiDependencies,
@@ -74,7 +74,7 @@ import {
 } from "../web-api/native-live-attachment-transfer-router.js";
 import type {
   PostgresInlineAttachmentObjectStore,
-} from "../domains/bridge/native-live-attachment-postgres-storage.js";
+} from "../domains/bridge/attachment/native-live-attachment-postgres-storage.js";
 
 export type NativeLiveProductionDependencies = {
   web:

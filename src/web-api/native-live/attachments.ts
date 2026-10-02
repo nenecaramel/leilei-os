@@ -2,7 +2,7 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import { NativeLiveAttachmentError } from "../../domains/bridge/native-live-attachment-service.js";
+import { NativeLiveAttachmentError } from "../../domains/bridge/attachment/native-live-attachment-service.js";
 import type { NativeLiveApiDependencies } from "./dependencies.js";
 import {
   requireWebUser,

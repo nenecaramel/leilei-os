@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import {
   NativeLiveAttachmentError,
   type NativeLiveChatAttachment,
-} from "../bridge/native-live-attachment-service.js";
+} from "../bridge/attachment/native-live-attachment-service.js";
 import type {
   NativeLiveAttachmentDownloadSlot,
   NativeLiveAttachmentObjectStore,
-} from "../bridge/native-live-attachment-storage.js";
+} from "../bridge/attachment/native-live-attachment-storage.js";
 import type {
   ClaudeAlbumPhotoPromoter,
   PromotedClaudeAlbumPhoto,

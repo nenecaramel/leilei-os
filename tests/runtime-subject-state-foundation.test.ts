@@ -1,22 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateCanonicalEvent } from "../src/domains/runtime/canonical-event-contract.js";
+import { validateCanonicalEvent } from "../src/domains/runtime/shared/canonical-event-contract.js";
 import {
   assertContextManifestSafe,
   subjectStateToContextItem,
-} from "../src/domains/runtime/context-assembly-contract.js";
+} from "../src/domains/runtime/context/context-assembly-contract.js";
 import {
   assertEffectDispatchAllowed,
   assertEffectTransition,
   type DurableEffect,
-} from "../src/domains/runtime/effect-protocol.js";
-import { isConsolidationEligible } from "../src/domains/runtime/runtime-status-axes.js";
+} from "../src/domains/runtime/effects/effect-protocol.js";
+import { isConsolidationEligible } from "../src/domains/runtime/subject-state/runtime-status-axes.js";
 import {
   SubjectStateContractError,
   validateSubjectStateWrite,
   type SubjectStateWrite,
-} from "../src/domains/runtime/subject-state-contract.js";
-import { assertTurnTransition } from "../src/domains/runtime/turn-lifecycle-contract.js";
+} from "../src/domains/runtime/subject-state/subject-state-contract.js";
+import { assertTurnTransition } from "../src/domains/runtime/lifecycle/turn-lifecycle-contract.js";
 
 const settledStatus = {
   generationStatus: "committed",

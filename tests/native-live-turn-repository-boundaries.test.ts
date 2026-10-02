@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const root = "src/domains/bridge/turn-repository/";
+const root = "src/domains/bridge/turn/turn-repository/";
 
 test("turn repository has explicit operation boundaries behind the existing entrypoint", () => {
   for (const [file, symbol] of [
@@ -17,7 +17,7 @@ test("turn repository has explicit operation boundaries behind the existing entr
   const repository = fs.readFileSync(`${root}repository.ts`, "utf8");
   assert.match(repository, /export class DrizzleNativeLiveBackendTurnPort/);
   assert.doesNotMatch(repository, /\.transaction\(|isolationLevel|\.update\(/);
-  assert.doesNotMatch(fs.readFileSync("src/domains/bridge/native-live-backend-turn-repository.ts", "utf8"), /export class|\.transaction\(/);
+  assert.doesNotMatch(fs.readFileSync("src/domains/bridge/turn/native-live-backend-turn-repository.ts", "utf8"), /export class|\.transaction\(/);
 });
 
 test("turn transaction owners keep serializable prepare and terminal commit boundaries", () => {

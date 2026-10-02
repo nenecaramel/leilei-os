@@ -13,13 +13,13 @@ import {
 import {
   NativeLiveConversationService,
 } from "../src/domains/conversation/native-live-conversation-service.js";
-import { recallBreath } from "../src/domains/runtime/breath-recall.js";
+import { recallBreath } from "../src/domains/runtime/breath/breath-recall.js";
 import {
   readSubjectStateLifecycle,
   readSubjectStateRecallContext,
-} from "../src/domains/runtime/memory-lifecycle.js";
-import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
-import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+} from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
+import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
 const enabled = process.env.RUN_RUNTIME_BREATH_DATABASE_TEST === "1";
 

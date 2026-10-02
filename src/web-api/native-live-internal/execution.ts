@@ -2,9 +2,9 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import { NativeLiveBackendRelayError } from "../../domains/bridge/native-live-backend-relay.js";
-import type { NativeLiveDaemonRejectCode } from "../../domains/bridge/native-live-mac-daemon-loop.js";
-import type { NativeLiveRuntimeExecutionResult } from "../../domains/bridge/native-live-runtime-protocol.js";
+import { NativeLiveBackendRelayError } from "../../domains/bridge/relay/native-live-backend-relay.js";
+import type { NativeLiveDaemonRejectCode } from "../../domains/bridge/mac/native-live-mac-daemon-loop.js";
+import type { NativeLiveRuntimeExecutionResult } from "../../domains/bridge/protocol/native-live-runtime-protocol.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,

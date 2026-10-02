@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveRuntimeEventService,
-} from "../src/domains/bridge/native-live-runtime-event-stream.js";
+} from "../src/domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000099";
 const LISTENER_ID = "00000000-0000-4000-8000-000000000098";

@@ -5,7 +5,7 @@ import {
   requiresFullSubjectStatePayload,
   subjectStateRetentionPolicy,
   validateRuntimeRetentionSpec,
-} from "../src/domains/runtime/runtime-data-lifecycle-contract.js";
+} from "../src/domains/runtime/lifecycle/runtime-data-lifecycle-contract.js";
 
 test("Runtime retention contract separates canonical, subject-state and operational lifetimes", () => {
   assert.deepEqual(

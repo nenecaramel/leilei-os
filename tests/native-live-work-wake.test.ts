@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   NativeLiveHttpWakeSignal,
   NativeLiveWorkWakeBroker,
-} from "../src/domains/bridge/native-live-work-wake.js";
+} from "../src/domains/bridge/relay/native-live-work-wake.js";
 
 type FakeClientState = {
   listenCalls: number;
@@ -118,7 +118,7 @@ test("wake broker reuses a listener when the next lease arrives inside the idle 
 
 test("durable work availability includes pending Mind semantic grouping requests", () => {
   const source = readFileSync(
-    new URL("../src/domains/bridge/native-live-work-wake.ts", import.meta.url),
+    new URL("../src/domains/bridge/relay/native-live-work-wake.ts", import.meta.url),
     "utf8",
   );
   assert.match(

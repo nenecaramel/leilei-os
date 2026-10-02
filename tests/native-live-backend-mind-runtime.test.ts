@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DefaultNativeLiveBackendMindRuntime,
-} from "../src/domains/bridge/native-live-backend-mind-runtime.js";
-import type { NativeLivePreparedTurn } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/mind/native-live-backend-mind-runtime.js";
+import type { NativeLivePreparedTurn } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import type {
   NativeLiveContentBlockInput,
   NativeLiveConversation,
   NativeLiveMessage,
 } from "../src/domains/conversation/native-live-conversation-types.js";
-import type { NativeLiveMindRuntime } from "../src/domains/runtime/native-live-mind-runtime.js";
-import type { ContextLineageState } from "../src/domains/runtime/context-lineage.js";
+import type { NativeLiveMindRuntime } from "../src/domains/runtime/mind/native-live-mind-runtime.js";
+import type { ContextLineageState } from "../src/domains/runtime/context/context-lineage.js";
 
 const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const conversationId = "33333333-3333-4333-8333-333333333333";

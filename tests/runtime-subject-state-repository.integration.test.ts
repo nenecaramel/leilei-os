@@ -11,8 +11,8 @@ import {
 } from "../src/database/schema.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
-import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
-import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
 const enabled = process.env.RUN_RUNTIME_MIND_DATABASE_TEST === "1";
 

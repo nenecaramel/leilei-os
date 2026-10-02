@@ -3,11 +3,11 @@ import test from "node:test";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import { runtimeSubjectStates, users } from "../src/database/schema.js";
-import { recallBreath } from "../src/domains/runtime/breath-recall.js";
-import { DrizzleMemoryLifecycleRuntimePort } from "../src/domains/runtime/memory-lifecycle-runtime-repository.js";
-import { MemoryLifecycleService } from "../src/domains/runtime/memory-lifecycle.js";
-import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
-import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+import { recallBreath } from "../src/domains/runtime/breath/breath-recall.js";
+import { DrizzleMemoryLifecycleRuntimePort } from "../src/domains/runtime/lifecycle/memory-lifecycle-runtime-repository.js";
+import { MemoryLifecycleService } from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
+import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
 const enabled = process.env.RUN_RUNTIME_LIFECYCLE_DATABASE_TEST === "1";
 

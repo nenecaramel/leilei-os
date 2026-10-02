@@ -2,9 +2,9 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import { NativeLiveProviderSessionCleanupError } from "../../domains/bridge/native-live-provider-session-cleanup.js";
-import { NativeLiveManualCompactError } from "../../domains/bridge/native-live-manual-compact.js";
-import { NativeLiveExternalSessionBridgeError } from "../../domains/bridge/native-live-external-session-bridge.js";
+import { NativeLiveProviderSessionCleanupError } from "../../domains/bridge/provider-session/native-live-provider-session-cleanup.js";
+import { NativeLiveManualCompactError } from "../../domains/bridge/turn/native-live-manual-compact.js";
+import { NativeLiveExternalSessionBridgeError } from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,
@@ -379,7 +379,7 @@ function parseManualCompactResultBody(
         status: "success";
         result: {
           providerSessionId: string;
-          contextUsage: import("../../domains/bridge/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
+          contextUsage: import("../../domains/bridge/protocol/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
           boundary: Record<string, unknown> | null;
           summary: string | null;
         };
@@ -460,7 +460,7 @@ function parseManualCompactResultBody(
 
 function parseManualCompactContextUsage(
   value: unknown,
-): import("../../domains/bridge/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null {
+): import("../../domains/bridge/protocol/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const numberOrNull = (input: unknown): number | null | undefined =>

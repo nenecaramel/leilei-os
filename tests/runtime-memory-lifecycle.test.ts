@@ -10,7 +10,7 @@ import {
   forgottenSubjectStatePayload,
   MemoryLifecycleService,
   type MemoryLifecyclePolicy,
-} from "../src/domains/runtime/memory-lifecycle.js";
+} from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
 
 const policy: MemoryLifecyclePolicy = {
   halfLifeHours: { memory: 24, feel: 12 },

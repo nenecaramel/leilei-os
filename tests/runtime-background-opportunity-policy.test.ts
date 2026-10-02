@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   BackgroundOpportunityPolicy,
   DEFAULT_BACKGROUND_TARGET_PLANS,
-} from "../src/domains/runtime/background-opportunity-policy.js";
+} from "../src/domains/runtime/background/background-opportunity-policy.js";
 
 test("background opportunity policy owns only Companion timed maintenance", () => {
   const disabled = new BackgroundOpportunityPolicy({ decayEnabled: false });

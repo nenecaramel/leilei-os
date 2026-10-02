@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   RuntimeMessageEffectDeliveryAdapter,
-} from "../src/domains/runtime/runtime-message-effect-delivery-adapter.js";
+} from "../src/domains/runtime/effects/runtime-message-effect-delivery-adapter.js";
 import type {
   RuntimeEffectRecord,
-} from "../src/domains/runtime/runtime-effect-repository.js";
+} from "../src/domains/runtime/effects/runtime-effect-repository.js";
 
 function effect(
   overrides: Partial<RuntimeEffectRecord> = {},

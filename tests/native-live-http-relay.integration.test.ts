@@ -14,25 +14,25 @@ import {
 import {
   DrizzleNativeLiveBackendRelayRepository,
   NativeLiveBackendRelayService,
-} from "../src/domains/bridge/native-live-backend-relay.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
-} from "../src/domains/bridge/native-live-mind-followup.js";
+} from "../src/domains/bridge/mind/native-live-mind-followup.js";
 import {
   NativeLiveBackendTurnCoordinator,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   NativeLiveBackendRelayPrepareCoordinator,
-} from "../src/domains/bridge/native-live-backend-relay-prepare.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
-} from "../src/domains/bridge/native-live-semantic-handshake.js";
+} from "../src/domains/bridge/mind/native-live-semantic-handshake.js";
 import {
   DrizzleNativeLiveBackendTurnPort,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
-import { createDefaultBackendMindRuntime } from "../src/domains/runtime/default-backend-mind-runtime.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
+import { createDefaultBackendMindRuntime } from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { createNativeLiveApiRouter } from "../src/web-api/native-live-router.js";

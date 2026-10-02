@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   NativeLiveRuntimeInteractionService,
   type NativeLiveRuntimeInteractionRecord,
-} from "../src/domains/bridge/native-live-runtime-interaction.js";
+} from "../src/domains/bridge/runtime-interaction/native-live-runtime-interaction.js";
 
 function pendingInteraction(): NativeLiveRuntimeInteractionRecord {
   return {

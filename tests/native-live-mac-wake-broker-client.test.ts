@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacWakeBrokerClient,
-} from "../src/domains/bridge/native-live-mac-wake-broker-client.js";
+} from "../src/domains/bridge/mac/native-live-mac-wake-broker-client.js";
 
 test("Mac wake broker client snapshots and waits with a durable cursor", async () => {
   const requests: Array<{

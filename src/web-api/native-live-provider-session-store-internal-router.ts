@@ -4,7 +4,7 @@ import {
   type NativeLiveProviderSessionStoreEntry,
   type NativeLiveProviderSessionStoreKey,
   type NativeLiveProviderSessionStoreService,
-} from "../domains/bridge/native-live-provider-session-store.js";
+} from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 
 export type NativeLiveProviderSessionStoreInternalDependencies = {
   providerSessionStoreService: Pick<

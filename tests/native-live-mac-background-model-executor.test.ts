@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacBackgroundModelExecutor,
-} from "../src/domains/bridge/native-live-mac-background-model-executor.js";
+} from "../src/domains/bridge/mac/native-live-mac-background-model-executor.js";
 
 const taskId = "11111111-1111-4111-8111-111111111111";
 

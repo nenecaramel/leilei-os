@@ -4,7 +4,7 @@ import {
   assertBackgroundModelResultMatchesCommand,
   parseNativeLiveBackgroundModelCommand,
   parseNativeLiveBackgroundModelExecutionResult,
-} from "../src/domains/bridge/native-live-background-model-protocol.js";
+} from "../src/domains/bridge/background/native-live-background-model-protocol.js";
 
 const taskId = "11111111-1111-4111-8111-111111111111";
 

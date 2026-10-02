@@ -13,17 +13,17 @@ import {
 } from "../src/database/schema.js";
 import {
   NativeLiveBackendTurnCoordinator,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   DrizzleNativeLiveBackendTurnPort,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
-} from "../src/domains/bridge/native-live-mind-followup.js";
+} from "../src/domains/bridge/mind/native-live-mind-followup.js";
 import {
   NativeLiveMindSemanticActionExecutor,
-} from "../src/domains/bridge/native-live-mind-semantic-action.js";
+} from "../src/domains/bridge/mind/native-live-mind-semantic-action.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -33,10 +33,10 @@ import {
 import {
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
   createDefaultBackendMindRuntime,
-} from "../src/domains/runtime/default-backend-mind-runtime.js";
-import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
-import { readThoughtLifecycle } from "../src/domains/runtime/thought.js";
-import { DrizzleThoughtDropPort } from "../src/domains/runtime/thought-runtime-repository.js";
+} from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
+import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
+import { readThoughtLifecycle } from "../src/domains/runtime/thought/thought.js";
+import { DrizzleThoughtDropPort } from "../src/domains/runtime/thought/thought-runtime-repository.js";
 
 const enabled = process.env.RUN_RUNTIME_THOUGHT_DATABASE_TEST === "1";
 

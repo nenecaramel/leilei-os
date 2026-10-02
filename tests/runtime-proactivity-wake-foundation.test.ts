@@ -4,7 +4,7 @@ import {
   evaluateProactivityWakeGate,
   evaluateProactivityWakeGateAt,
   type ProactivityWakeGateInput,
-} from "../src/domains/runtime/proactivity-wake-contract.js";
+} from "../src/domains/runtime/proactivity/proactivity-wake-contract.js";
 
 const offeredAt = "2026-09-23T09:30:00.000Z";
 

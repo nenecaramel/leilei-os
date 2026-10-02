@@ -23,7 +23,7 @@ import { DrizzleSystemRepository } from "../domains/system/system-repository.js"
 import { SystemService } from "../domains/system/system-service.js";
 import {
   DrizzleClaudeAccountUsageRepository,
-} from "../domains/runtime/claude-account-usage.js";
+} from "../domains/runtime/shared/claude-account-usage.js";
 import { DrizzleTodoRepository } from "../domains/todo/todo-repository.js";
 import { TodoService } from "../domains/todo/todo-service.js";
 import { DrizzleExportRepository } from "../domains/export/export-repository.js";
@@ -42,52 +42,52 @@ import {
   createDefaultBackendMindRuntime,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-} from "../domains/runtime/default-backend-mind-runtime.js";
+} from "../domains/runtime/mind/default-backend-mind-runtime.js";
 import {
   deleteExpiredNativeLiveBackgroundModelJobsBatch,
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueService,
-} from "../domains/bridge/native-live-background-model-queue.js";
+} from "../domains/bridge/background/native-live-background-model-queue.js";
 import {
   BackgroundLoopOrchestrator,
-} from "../domains/runtime/background-loop-orchestrator.js";
+} from "../domains/runtime/background/background-loop-orchestrator.js";
 import {
   CompanionBackgroundOpportunityService,
-} from "../domains/runtime/companion-background-opportunity.js";
+} from "../domains/runtime/background/companion-background-opportunity.js";
 import {
   BackgroundOpportunityPolicy,
   DEFAULT_BACKGROUND_TARGET_PLANS,
-} from "../domains/runtime/background-opportunity-policy.js";
+} from "../domains/runtime/background/background-opportunity-policy.js";
 import {
   NativeLiveBackgroundWorkflowCoordinator,
   type NativeLiveBackgroundWorkflowAdvancer,
-} from "../domains/bridge/native-live-background-workflow-coordinator.js";
+} from "../domains/bridge/background/native-live-background-workflow-coordinator.js";
 import {
   ProactivityWakeCrossDeviceCoordinator,
-} from "../domains/runtime/proactivity-wake-cross-device-coordinator.js";
+} from "../domains/runtime/proactivity/proactivity-wake-cross-device-coordinator.js";
 import {
   DrizzleProactivityWakeRepository,
-} from "../domains/runtime/proactivity-wake-repository.js";
+} from "../domains/runtime/proactivity/proactivity-wake-repository.js";
 import {
   DrizzleRuntimeEffectRepository,
-} from "../domains/runtime/runtime-effect-repository.js";
+} from "../domains/runtime/effects/runtime-effect-repository.js";
 import {
   ProactivityEffectMaterializer,
-} from "../domains/runtime/proactivity-effect-materializer.js";
+} from "../domains/runtime/effects/proactivity-effect-materializer.js";
 import {
   DrizzleRuntimeEffectForegroundGuard,
   RuntimeEffectDeliveryCoordinator,
-} from "../domains/runtime/runtime-effect-delivery-coordinator.js";
+} from "../domains/runtime/effects/runtime-effect-delivery-coordinator.js";
 import {
   RuntimeMessageEffectDeliveryAdapter,
-} from "../domains/runtime/runtime-message-effect-delivery-adapter.js";
+} from "../domains/runtime/effects/runtime-message-effect-delivery-adapter.js";
 import {
   RuntimeEffectDeliveryWorker,
-} from "../domains/runtime/runtime-effect-delivery-worker.js";
+} from "../domains/runtime/effects/runtime-effect-delivery-worker.js";
 import {
   DrizzleProactivityWakeOpportunitySource,
   ProactivityWakeOpportunityProducer,
-} from "../domains/runtime/proactivity-wake-opportunity.js";
+} from "../domains/runtime/proactivity/proactivity-wake-opportunity.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../domains/conversation/native-live-conversation-repository.js";
@@ -100,33 +100,33 @@ import {
 import {
   DrizzleNativeLiveConversationRuntimeMetadataReader,
 } from "../domains/conversation/native-live-conversation-runtime-metadata.js";
-import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/native-live-backend-turn-repository.js";
-import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/native-live-backend-turn-coordinator.js";
-import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/native-live-backend-relay-prepare.js";
+import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/turn/native-live-backend-turn-repository.js";
+import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/turn/native-live-backend-turn-coordinator.js";
+import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
   NativeLiveBackendRelayService,
-} from "../domains/bridge/native-live-backend-relay.js";
+} from "../domains/bridge/relay/native-live-backend-relay.js";
 import {
   DrizzleNativeLiveProviderSessionCleanupRepository,
   NativeLiveProviderSessionCleanupService,
-} from "../domains/bridge/native-live-provider-session-cleanup.js";
+} from "../domains/bridge/provider-session/native-live-provider-session-cleanup.js";
 import {
   NativeLiveManualCompactService,
-} from "../domains/bridge/native-live-manual-compact.js";
+} from "../domains/bridge/turn/native-live-manual-compact.js";
 import {
   NativeLiveExternalSessionBridgeService,
-} from "../domains/bridge/native-live-external-session-bridge.js";
+} from "../domains/bridge/provider-session/native-live-external-session-bridge.js";
 import {
   NativeLiveAttachmentService,
   deleteExpiredNativeLiveAttachmentsBatch,
-} from "../domains/bridge/native-live-attachment-service.js";
+} from "../domains/bridge/attachment/native-live-attachment-service.js";
 import {
   S3PresignedAttachmentObjectStore,
-} from "../domains/bridge/native-live-attachment-storage.js";
+} from "../domains/bridge/attachment/native-live-attachment-storage.js";
 import {
   PostgresInlineAttachmentObjectStore,
-} from "../domains/bridge/native-live-attachment-postgres-storage.js";
+} from "../domains/bridge/attachment/native-live-attachment-postgres-storage.js";
 import {
   DrizzleClaudeAlbumPhotoRepository,
 } from "../domains/album/claude-photo-album-repository.js";
@@ -142,48 +142,48 @@ import {
 import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
-} from "../domains/bridge/native-live-provider-session-store.js";
+} from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 import {
   DrizzleNativeLiveWorkAvailability,
   DrizzleNativeLiveWorkWakePublisher,
   NativeLiveHttpWakeSignal,
   NativeLiveWorkWakeBroker,
   NativeLiveWorkWaitService,
-} from "../domains/bridge/native-live-work-wake.js";
+} from "../domains/bridge/relay/native-live-work-wake.js";
 import {
   NativeLiveTurnWaitService,
-} from "../domains/bridge/native-live-turn-wait.js";
+} from "../domains/bridge/relay/native-live-turn-wait.js";
 import {
   DrizzleNativeLiveRuntimeEventRepository,
   NativeLiveRuntimeEventService,
-} from "../domains/bridge/native-live-runtime-event-stream.js";
+} from "../domains/bridge/runtime-interaction/native-live-runtime-event-stream.js";
 import {
   DrizzleNativeLiveRuntimeInteractionRepository,
   NativeLiveRuntimeInteractionService,
-} from "../domains/bridge/native-live-runtime-interaction.js";
+} from "../domains/bridge/runtime-interaction/native-live-runtime-interaction.js";
 import {
   DrizzleNativeLiveRuntimeControlRepository,
   NativeLiveRuntimeControlService,
-} from "../domains/bridge/native-live-runtime-control.js";
+} from "../domains/bridge/runtime-interaction/native-live-runtime-control.js";
 import {
   DrizzleNativeLiveMindFollowUpRepository,
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpRecoveryRunner,
-} from "../domains/bridge/native-live-mind-followup.js";
-import { NativeLiveMindSemanticActionExecutor } from "../domains/bridge/native-live-mind-semantic-action.js";
-import { DrizzleThoughtDropPort } from "../domains/runtime/thought-runtime-repository.js";
-import { DrizzleSubjectStateRuntimePort } from "../domains/runtime/subject-state-runtime-repository.js";
+} from "../domains/bridge/mind/native-live-mind-followup.js";
+import { NativeLiveMindSemanticActionExecutor } from "../domains/bridge/mind/native-live-mind-semantic-action.js";
+import { DrizzleThoughtDropPort } from "../domains/runtime/thought/thought-runtime-repository.js";
+import { DrizzleSubjectStateRuntimePort } from "../domains/runtime/subject-state/subject-state-runtime-repository.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
   createNativeLiveSemanticRecoveryRunner,
-} from "../domains/bridge/native-live-semantic-handshake.js";
+} from "../domains/bridge/mind/native-live-semantic-handshake.js";
 import {
   MindProductService,
-} from "../domains/runtime/mind-product-service.js";
+} from "../domains/runtime/mind/mind-product-service.js";
 import {
   DrizzleMindProductRepository,
-} from "../domains/runtime/mind-product-repository.js";
+} from "../domains/runtime/mind/mind-product-repository.js";
 import {
   deleteExpiredMcpIdempotencyBatch,
 } from "../mcp/server/idempotency-retention.js";

@@ -3,7 +3,7 @@ import test from "node:test";
 
 test("attachment bucket migration uploads, verifies, then clears inline bytes", async () => {
   const migrationModule = await import(
-    "../src/domains/bridge/native-live-attachment-migration.js"
+    "../src/domains/bridge/attachment/native-live-attachment-migration.js"
   ).catch(() => null);
 
   assert.ok(migrationModule);
@@ -87,7 +87,7 @@ test("attachment bucket migration uploads, verifies, then clears inline bytes", 
 
 test("attachment bucket migration never clears inline bytes before verification", async () => {
   const migrationModule = await import(
-    "../src/domains/bridge/native-live-attachment-migration.js"
+    "../src/domains/bridge/attachment/native-live-attachment-migration.js"
   ).catch(() => null);
   assert.ok(migrationModule);
 
@@ -149,7 +149,7 @@ test("attachment bucket migration never clears inline bytes before verification"
 
 
 test("migration repository selects stable inline rows and reports conditional clear misses", async () => {
-  const { DrizzleNativeLiveInlineAttachmentMigrationRepository } = await import("../src/domains/bridge/native-live-attachment-migration.js");
+  const { DrizzleNativeLiveInlineAttachmentMigrationRepository } = await import("../src/domains/bridge/attachment/native-live-attachment-migration.js");
   const { PgDialect } = await import("drizzle-orm/pg-core");
   const filters: { sql: string; params: unknown[] }[] = [];
   const dialect = new PgDialect();
@@ -176,8 +176,8 @@ test("migration repository selects stable inline rows and reports conditional cl
 
 
 import { createHash } from "node:crypto";
-import { S3PresignedAttachmentObjectStore } from "../src/domains/bridge/native-live-attachment-storage.js";
-import { migrateNativeLiveAttachmentInlineContentBatch } from "../src/domains/bridge/native-live-attachment-migration.js";
+import { S3PresignedAttachmentObjectStore } from "../src/domains/bridge/attachment/native-live-attachment-storage.js";
+import { migrateNativeLiveAttachmentInlineContentBatch } from "../src/domains/bridge/attachment/native-live-attachment-migration.js";
 
 function migrationFixture(options: {
   size?: number; sha?: string; key?: string; mime?: string;

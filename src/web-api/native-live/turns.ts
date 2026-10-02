@@ -2,8 +2,8 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import type { NativeLiveRelayPrepareResult } from "../../domains/bridge/native-live-backend-relay-prepare.js";
-import type { NativeLiveBackendTurnReadModel } from "../../domains/bridge/native-live-backend-turn-repository.js";
+import type { NativeLiveRelayPrepareResult } from "../../domains/bridge/relay/native-live-backend-relay-prepare.js";
+import type { NativeLiveBackendTurnReadModel } from "../../domains/bridge/turn/native-live-backend-turn-repository.js";
 import type { NativeLiveApiDependencies } from "./dependencies.js";
 import {
   requireWebUser,

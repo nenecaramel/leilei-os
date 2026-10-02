@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 const readRepoFile = (path: string): string =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -25,7 +26,7 @@ test("three-kind Mind migration preserves historical rows but fences future writ
 });
 
 test("runtime schema advertises only the current three Mind kinds", () => {
-  const schema = readRepoFile("src/database/schema.ts");
+  const schema = readSchemaSource();
   const constraint = schema.match(
     /check\("runtime_subject_states_kind_allowed"[\s\S]*?\),/,
   )?.[0];

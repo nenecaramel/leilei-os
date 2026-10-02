@@ -9,7 +9,7 @@ import {
 import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
-} from "../src/domains/bridge/native-live-provider-session-store.js";
+} from "../src/domains/bridge/provider-session/native-live-provider-session-store.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST === "1";

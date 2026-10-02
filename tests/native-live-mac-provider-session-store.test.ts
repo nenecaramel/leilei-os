@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacProviderSessionStore,
-} from "../src/domains/bridge/native-live-mac-provider-session-store.js";
+} from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
 
 const workspaceId = "55555555-5555-4555-8555-555555555555";
 

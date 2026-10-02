@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   NativeLiveMacCompanionScheduler,
   type NativeLiveMacCompanionBackgroundClient,
-} from "../src/domains/bridge/native-live-mac-companion-scheduler.js";
+} from "../src/domains/bridge/mac/native-live-mac-companion-scheduler.js";
 
 const listenerInstanceId =
   "11111111-1111-4111-8111-111111111111";

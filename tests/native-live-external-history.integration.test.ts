@@ -9,7 +9,7 @@ import {
 } from "../src/database/schema.js";
 import {
   NativeLiveExternalSessionBridgeService,
-} from "../src/domains/bridge/native-live-external-session-bridge.js";
+} from "../src/domains/bridge/provider-session/native-live-external-session-bridge.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_EXTERNAL_HISTORY_DATABASE_TEST === "1";

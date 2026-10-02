@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   NativeLiveBackendTurnReadModel,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   NativeLiveTurnWaitService,
-} from "../src/domains/bridge/native-live-turn-wait.js";
+} from "../src/domains/bridge/relay/native-live-turn-wait.js";
 
 function turn(
   overrides: Partial<NativeLiveBackendTurnReadModel> = {},

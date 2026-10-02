@@ -6,7 +6,7 @@ import {
 import {
   PostgresAttachmentTransferError,
   type PostgresInlineAttachmentObjectStore,
-} from "../domains/bridge/native-live-attachment-postgres-storage.js";
+} from "../domains/bridge/attachment/native-live-attachment-postgres-storage.js";
 
 export function createNativeLiveAttachmentTransferRouter(
   store: Pick<

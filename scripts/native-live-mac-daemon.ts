@@ -1,47 +1,47 @@
 import "dotenv/config";
 import {
   NativeLiveMacDaemonLoop,
-} from "../src/domains/bridge/native-live-mac-daemon-loop.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
 import {
   NativeLiveMacHttpRelayClient,
-} from "../src/domains/bridge/native-live-mac-http-relay-client.js";
+} from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 import {
   NativeLiveMacRuntimeExecutor,
-} from "../src/domains/bridge/native-live-mac-runtime-executor.js";
+} from "../src/domains/bridge/mac/native-live-mac-runtime-executor.js";
 import {
   NativeLiveMacBackgroundModelExecutor,
-} from "../src/domains/bridge/native-live-mac-background-model-executor.js";
+} from "../src/domains/bridge/mac/native-live-mac-background-model-executor.js";
 import {
   LocalE5BreathSemanticScorer,
-} from "../src/domains/runtime/local-e5-embedding.js";
+} from "../src/domains/runtime/breath/local-e5-embedding.js";
 import {
   resolveNativeLiveMacDaemonConfig,
-} from "../src/domains/bridge/native-live-mac-daemon-config.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
 import {
   resolveNativeLiveMacClaudeTransportKind,
-} from "../src/domains/bridge/native-live-mac-claude-transport.js";
+} from "../src/domains/bridge/mac/native-live-mac-claude-transport.js";
 import {
   NativeLiveMacWorkspaceRuntimePool,
-} from "../src/domains/bridge/native-live-mac-workspace-runtime.js";
+} from "../src/domains/bridge/mac/native-live-mac-workspace-runtime.js";
 import {
   NativeLiveMacProviderSessionStore,
-} from "../src/domains/bridge/native-live-mac-provider-session-store.js";
+} from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
 import {
   NativeLiveMacCompanionScheduler,
-} from "../src/domains/bridge/native-live-mac-companion-scheduler.js";
+} from "../src/domains/bridge/mac/native-live-mac-companion-scheduler.js";
 import {
   acquireNativeLiveMacDaemonLock,
-} from "../src/domains/bridge/native-live-mac-daemon-lock.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-lock.js";
 import {
   NativeLiveMacAttachmentMaterializer,
-} from "../src/domains/bridge/native-live-mac-attachment-materializer.js";
+} from "../src/domains/bridge/mac/native-live-mac-attachment-materializer.js";
 import {
   NativeLiveMacOutputAttachmentSender,
-} from "../src/domains/bridge/native-live-mac-output-attachment-sender.js";
+} from "../src/domains/bridge/mac/native-live-mac-output-attachment-sender.js";
 import {
   NativeLiveMacWakeBrokerClient,
   type NativeLiveWakeBrokerCursor,
-} from "../src/domains/bridge/native-live-mac-wake-broker-client.js";
+} from "../src/domains/bridge/mac/native-live-mac-wake-broker-client.js";
 
 const daemonLock = acquireNativeLiveMacDaemonLock();
 

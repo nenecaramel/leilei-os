@@ -5,13 +5,13 @@ import type {
   NativeLiveConversation,
   NativeLiveMessage,
 } from "../src/domains/conversation/native-live-conversation-types.js";
-import type { InitialContextManifest } from "../src/domains/runtime/context-assembly-contract.js";
+import type { InitialContextManifest } from "../src/domains/runtime/context/context-assembly-contract.js";
 import {
   NativeLiveMindLoopService,
   type SubjectStateRuntimePort,
   type SubjectStateTransition,
-} from "../src/domains/runtime/native-live-mind-loop-service.js";
-import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+} from "../src/domains/runtime/mind/native-live-mind-loop-service.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 
 const now = "2026-09-22T08:30:00.000Z";
 
