@@ -438,6 +438,8 @@ extension AppModel {
             return
         }
 
+        var requireForceRefresh = force
+
         while isAuthenticated,
               let conversationID = activeNativeLiveConversationID {
             chatRefreshInFlight = true
@@ -448,7 +450,7 @@ extension AppModel {
 
             do {
                 let deltaAnchor =
-                    force
+                    requireForceRefresh
                         ? nil
                         : existingSnapshot?.currentHeadMessageId
                 let result = try await api.nativeLiveCurrentPath(
@@ -467,7 +469,7 @@ extension AppModel {
 
                 case .modified(let snapshot, _):
                     if let existingSnapshot,
-                       force,
+                       requireForceRefresh,
                        !snapshot.resetRequired {
                         nativeLiveCurrentPath = mergeNativeLiveRefresh(
                             existing: existingSnapshot,
@@ -515,6 +517,7 @@ extension AppModel {
             }
 
             chatRefreshPendingForce = false
+            requireForceRefresh = true
         }
 
         chatRefreshInFlight = false
