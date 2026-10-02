@@ -802,7 +802,20 @@ struct ChatView: View {
             existingAttachmentID: attachmentID,
             filename: filename,
             mimeType: mimeType,
-            kind: kind
+            kind: kind,
+            sizeBytes:
+                payload["size_bytes"]?.numberValue
+                    .flatMap { value in
+                        guard value >= 0,
+                              value.rounded() == value,
+                              value <= Double(Int.max) else {
+                            return nil
+                        }
+                        return Int(value)
+                    },
+            sha256:
+                payload["sha256"]?.stringValue?
+                    .lowercased()
         )
     }
 
