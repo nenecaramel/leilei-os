@@ -525,48 +525,122 @@ private struct NativeLiveComposerAttachmentChip: View {
     let onRemove: () -> Void
     let onRetry: () -> Void
 
+    private var fileTypeLabel: String {
+        let ext = (attachment.filename as NSString)
+            .pathExtension
+            .uppercased()
+
+        if !ext.isEmpty {
+            return ext
+        }
+
+        switch attachment.mimeType {
+        case "application/pdf":
+            return "PDF"
+        case "text/plain":
+            return "TXT"
+        case "text/markdown":
+            return "MD"
+        case "application/json":
+            return "JSON"
+        case "application/zip":
+            return "ZIP"
+        default:
+            return attachment.kind == .image
+                ? "Image"
+                : "File"
+        }
+    }
+
+    private var sizeText: String? {
+        guard let count = attachment.data?.count else {
+            return nil
+        }
+
+        return ByteCountFormatter.string(
+            fromByteCount: Int64(count),
+            countStyle: .file
+        )
+    }
+
+    private var fileSymbol: String {
+        let ext = (attachment.filename as NSString)
+            .pathExtension
+            .lowercased()
+
+        if attachment.kind == .image {
+            return "photo"
+        }
+
+        if attachment.mimeType == "application/pdf"
+            || ext == "pdf" {
+            return "doc.richtext"
+        }
+
+        if [
+            "zip", "tar", "gz", "7z", "rar",
+        ].contains(ext) {
+            return "archivebox"
+        }
+
+        if [
+            "csv", "xls", "xlsx", "numbers",
+        ].contains(ext) {
+            return "tablecells"
+        }
+
+        if attachment.mimeType.hasPrefix("video/") {
+            return "play.rectangle"
+        }
+
+        if attachment.mimeType.hasPrefix("audio/") {
+            return "waveform"
+        }
+
+        return "doc"
+    }
+
     var body: some View {
-        HStack(spacing: 7) {
-            Image(
-                systemName:
-                    attachment.kind == .image
-                    ? "photo"
-                    : "doc"
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
+        HStack(spacing: 9) {
+            Image(systemName: fileSymbol)
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
 
-            Text(attachment.filename)
-                .font(.system(size: 12.5, weight: .medium))
-                .lineLimit(1)
-                .frame(maxWidth: 150, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(attachment.filename)
+                    .font(.system(
+                        size: 12.5,
+                        weight: .medium
+                    ))
+                    .lineLimit(1)
 
-            switch attachment.state {
-            case .uploading:
-                ProgressView()
-                    .controlSize(.mini)
+                HStack(spacing: 5) {
+                    Text(fileTypeLabel)
 
-            case .ready:
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-
-            case .failed:
-                Button {
-                    onRetry()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .semibold))
+                    if let sizeText {
+                        Text("·")
+                        Text(sizeText)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Retry upload")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
             }
+            .frame(
+                maxWidth: 158,
+                alignment: .leading
+            )
+
+            attachmentState
 
             Button {
                 onRemove()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .font(.system(
+                        size: 9.5,
+                        weight: .semibold
+                    ))
                     .foregroundStyle(.secondary)
                     .frame(width: 18, height: 18)
             }
@@ -574,14 +648,41 @@ private struct NativeLiveComposerAttachmentChip: View {
             .accessibilityLabel("Remove attachment")
         }
         .padding(.leading, 10)
-        .padding(.trailing, 5)
-        .frame(height: 32)
+        .padding(.trailing, 6)
+        .frame(height: 46)
         .background(
             Color.chatSoftFill,
             in: RoundedRectangle(
-                cornerRadius: 11,
+                cornerRadius: 13,
                 style: .continuous
             )
         )
+    }
+
+    @ViewBuilder
+    private var attachmentState: some View {
+        switch attachment.state {
+        case .uploading:
+            ProgressView()
+                .controlSize(.mini)
+
+        case .ready:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+        case .failed:
+            Button {
+                onRetry()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(
+                        size: 11,
+                        weight: .semibold
+                    ))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Retry upload")
+        }
     }
 }
