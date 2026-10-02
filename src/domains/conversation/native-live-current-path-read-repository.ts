@@ -447,10 +447,13 @@ export function nativeLiveCurrentPathEtag(
     beforeMessageId?: string | null;
     afterMessageId?: string | null;
   } = {},
+  activityRevision?: string | null,
 ): string {
   const before = cursor.beforeMessageId ?? "-";
   const after = cursor.afterMessageId ?? "-";
-  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}"`;
+  const activity =
+    activityRevision ? `:activity:${activityRevision}` : "";
+  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}${activity}"`;
 }
 
 function headSyncToken(headMessageId: string): string {
