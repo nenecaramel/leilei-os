@@ -628,6 +628,66 @@ test("new session stays incomplete when mirror_error is emitted", async () => {
   );
 });
 
+test("mirror health stays fail-soft when the durable status store is unavailable", async () => {
+  let markIncompleteCalls = 0;
+  let getStatusCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionStore: {
+      async append() {},
+      async getStatus() {
+        getStatusCalls += 1;
+        throw new Error("status endpoint unavailable");
+      },
+      async markIncomplete() {
+        markIncompleteCalls += 1;
+        throw new Error("status endpoint unavailable");
+      },
+    },
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-store-outage",
+      },
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "provider-store-outage",
+        error: "remote append failed",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "provider-store-outage",
+        result: "READY",
+      },
+    ]),
+  });
+
+  const result = await transport.sendNew("hello");
+
+  assert.equal(result.providerSessionId, "provider-store-outage");
+  assert.equal(markIncompleteCalls, 1);
+  assert.equal(
+    getStatusCalls,
+    0,
+    "mirror observability must not amplify a known SessionStore outage",
+  );
+  assert.equal(
+    result.sessionStoreObservability.mirror_status,
+    "error",
+  );
+  assert.equal(
+    result.sessionStoreObservability.status_after,
+    null,
+  );
+  assert.equal(
+    result.sessionStoreObservability.status_failure_reason,
+    "status endpoint unavailable",
+  );
+});
+
 test("fork keeps a complete parent readable and marks only the mirrored child complete", async () => {
   const statusCalls = [];
   const durableStore = {
