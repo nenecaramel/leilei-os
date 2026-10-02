@@ -61,6 +61,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 "failed",
                 "cancelled",
                 "stopped",
+                "killed",
             ].contains(status)
         }
 
@@ -69,7 +70,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
 
         var isCancelled: Bool {
-            status == "cancelled" || status == "stopped"
+            status == "cancelled"
+                || status == "stopped"
+                || status == "killed"
         }
 
         var isCurrentlyActive: Bool {
