@@ -88,7 +88,7 @@ private static func tools(
         }
     }
 
-    private static func tools(
+    static func tools(
         from blocks: [NativeLiveCurrentPathBlock]
     ) -> [ToolActivity] {
         let sorted = blocks.sorted {
