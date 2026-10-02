@@ -119,6 +119,12 @@ struct NativeLiveTurnActivityView: View {
 
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {
+                    ForEach(projection.lifecycle) { lifecycle in
+                        NativeLiveLifecycleActivityRow(
+                            lifecycle: lifecycle
+                        )
+                    }
+
                     ForEach(projection.tasks) { task in
                         NativeLiveTaskActivityRow(
                             task: task,
@@ -214,6 +220,39 @@ struct NativeLiveTurnActivityView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+private struct NativeLiveLifecycleActivityRow: View {
+    let lifecycle:
+        NativeLiveTurnActivityProjection.LifecycleActivity
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if lifecycle.kind == "api_retry" {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Image(systemName: "clock")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(lifecycle.title)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let detail = lifecycle.detail,
+               !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 5)
     }
 }
 
