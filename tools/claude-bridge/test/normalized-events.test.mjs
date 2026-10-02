@@ -153,6 +153,28 @@ test("normalizes real Agent SDK stream_event text deltas", () => {
   );
 });
 
+test("normalizes SessionStore mirror errors as runtime-only observability", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "mirror-session",
+        error: "remote append failed",
+        code: "STORE_UNAVAILABLE",
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(events.map((event) => event.type), ["runtime"]);
+  assert.deepEqual(events[0].payload, {
+    kind: "session_store_mirror_error",
+    error: "remote append failed",
+    code: "STORE_UNAVAILABLE",
+  });
+});
+
 test("normalizes Agent SDK session state changes as runtime-only provider authority", () => {
   const events = normalizeClaudeEvents(
     [
