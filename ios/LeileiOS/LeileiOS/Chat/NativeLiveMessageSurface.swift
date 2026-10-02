@@ -1,6 +1,7 @@
 import SwiftUI
 import QuickLook
 import CryptoKit
+import ImageIO
 import UIKit
 
 struct NativeLivePendingOperation: Equatable {
@@ -2147,7 +2148,9 @@ private struct NativeLiveAttachmentRemoteImage: View {
                         for: block
                       ),
                       let loaded =
-                        UIImage(data: data) else {
+                        nativeLiveAttachmentDecodedImage(
+                            data
+                        ) else {
                     continue
                 }
 
@@ -2188,6 +2191,41 @@ private struct NativeLiveAttachmentRemoteImage: View {
 
         didFail = true
     }
+}
+
+
+private func nativeLiveAttachmentDecodedImage(
+    _ data: Data
+) -> UIImage? {
+    guard let source =
+            CGImageSourceCreateWithData(
+                data as CFData,
+                nil
+            ) else {
+        return nil
+    }
+
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways:
+            true,
+        kCGImageSourceCreateThumbnailWithTransform:
+            true,
+        kCGImageSourceThumbnailMaxPixelSize:
+            2_400,
+        kCGImageSourceShouldCacheImmediately:
+            true,
+    ]
+
+    guard let image =
+            CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                options as CFDictionary
+            ) else {
+        return nil
+    }
+
+    return UIImage(cgImage: image)
 }
 
 
