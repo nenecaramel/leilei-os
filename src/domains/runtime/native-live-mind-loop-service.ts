@@ -256,21 +256,20 @@ export class NativeLiveMindLoopService {
       this.config.breathSemanticWeight ?? 0;
     let effectiveSemanticWeight = 0;
     let semanticScores: ReadonlyMap<string, number> | undefined;
-    const semanticPlan = input.semanticCandidates
+    const currentSemanticPlan = this.semanticPlanFromStates({
+      ...input,
+      states,
+      excludedStateIds: seenStateIds,
+      contextEpoch: contextLineage.epoch,
+    });
+    const suppliedSemanticPlan = input.semanticCandidates
       ? {
           query: input.userText,
           candidates: [...input.semanticCandidates],
         }
-      : this.semanticPlanFromStates({
-          ...input,
-          states,
-          excludedStateIds: seenStateIds,
-          contextEpoch: contextLineage.epoch,
-        });
-
-    if (
-      semanticPlan
-      && input.semanticScores
+      : null;
+    const suppliedSemanticPlanIsCurrent = Boolean(
+      suppliedSemanticPlan
       && this.semanticSnapshotStillCurrent({
         userId: input.userId,
         subjectId: input.subjectId,
@@ -279,28 +278,39 @@ export class NativeLiveMindLoopService {
         assembledAt: input.assembledAt,
         surfaceHeadMessageId: input.surfaceHeadMessageId,
         states,
-        candidates: semanticPlan.candidates,
+        candidates: suppliedSemanticPlan.candidates,
         excludedStateIds: seenStateIds,
         contextEpoch: contextLineage.epoch,
-      })
+      }),
+    );
+
+    if (
+      suppliedSemanticPlan
+      && suppliedSemanticPlanIsCurrent
+      && input.semanticScores
       && hasCompleteSemanticScores(
         input.semanticScores,
-        semanticPlan.candidates,
+        suppliedSemanticPlan.candidates,
       )
     ) {
       semanticScores = input.semanticScores;
       effectiveSemanticWeight = configuredSemanticWeight;
     } else if (
-      semanticPlan
+      currentSemanticPlan
       && this.semanticScorer
       && configuredSemanticWeight > 0
     ) {
       try {
         const scored = await this.semanticScorer.score({
-          query: semanticPlan.query,
-          candidates: semanticPlan.candidates,
+          query: currentSemanticPlan.query,
+          candidates: currentSemanticPlan.candidates,
         });
-        if (hasCompleteSemanticScores(scored, semanticPlan.candidates)) {
+        if (
+          hasCompleteSemanticScores(
+            scored,
+            currentSemanticPlan.candidates,
+          )
+        ) {
           semanticScores = scored;
           effectiveSemanticWeight = configuredSemanticWeight;
         }
