@@ -1094,25 +1094,28 @@ test("preserves bounded Agent SDK background task provenance", () => {
   );
 });
 
-test("preserves bounded injected-message origin without duplicating peer body", () => {
+test("preserves bounded injected-message origin as provider provenance", () => {
+  const rawOrigin = {
+    kind: "task-notification",
+    subkind: "peer-send-message",
+    server: "team-mcp",
+    from: "peer://researcher",
+    name: "Researcher",
+    fromSession: "peer-session",
+    fromMode: "default",
+    senderTaskId: "task-peer",
+    verifiedPeerPid: 4321,
+    fireReason: "schedule_due",
+    body: "peer update body",
+    futureProviderField: {
+      coordinator: "alpha",
+    },
+  };
   const events = normalizeClaudeEvents(
     [{
       type: "user",
       session_id: "s",
-      origin: {
-        kind: "task-notification",
-        subkind: "peer-send-message",
-        server: "team-mcp",
-        from: "peer://researcher",
-        name: "Researcher",
-        fromSession: "peer-session",
-        fromMode: "default",
-        senderTaskId: "task-peer",
-        verifiedPeerPid: 4321,
-        fireReason: "schedule_due",
-        body: "SECRET BODY MUST NOT BE COPIED",
-        unknownPrivateField: "/Users/private",
-      },
+      origin: rawOrigin,
       message: {
         content: "peer update",
       },
@@ -1128,23 +1131,8 @@ test("preserves bounded injected-message origin without duplicating peer body", 
   assert.deepEqual(provenance?.payload, {
     kind: "message_origin",
     source_type: "user",
-    origin: {
-      kind: "task-notification",
-      subkind: "peer-send-message",
-      server: "team-mcp",
-      from: "peer://researcher",
-      name: "Researcher",
-      from_session: "peer-session",
-      from_mode: "default",
-      sender_task_id: "task-peer",
-      verified_peer_pid: 4321,
-      fire_reason: "schedule_due",
-    },
+    origin: rawOrigin,
   });
-  assert.doesNotMatch(
-    JSON.stringify(events),
-    /SECRET BODY|unknownPrivateField|Users\\/private/,
-  );
 });
 
 test("drops malformed message origin instead of treating it as provenance", () => {
@@ -1173,38 +1161,57 @@ test("drops malformed message origin instead of treating it as provenance", () =
   );
 });
 
+test("drops oversized injected-message origin instead of persisting unbounded provenance", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      origin: {
+        kind: "peer",
+        body: "x".repeat(70_000),
+      },
+      message: {
+        content: "peer update",
+      },
+    }],
+    base,
+  );
 
-test("result telemetry uses the same bounded message-origin projection", () => {
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === "runtime"
+        && event.payload?.kind === "message_origin",
+    ),
+    false,
+  );
+});
+
+
+test("result telemetry keeps bounded raw provider origin compatible", () => {
+  const rawOrigin = {
+    kind: "peer",
+    from: "peer://worker",
+    name: "Worker",
+    fromSession: "peer-session",
+    senderTaskId: "task-result",
+    verifiedPeerPid: 99,
+    body: "provider peer body",
+    futureProviderField: "kept",
+  };
   const events = normalizeClaudeEvents(
     [{
       type: "result",
       subtype: "success",
       session_id: "s",
       result: "done",
-      origin: {
-        kind: "peer",
-        from: "peer://worker",
-        name: "Worker",
-        fromSession: "peer-session",
-        senderTaskId: "task-result",
-        verifiedPeerPid: 99,
-        body: "RESULT PEER BODY MUST NOT BE COPIED",
-        unknownPrivateField: "/Users/private/result",
-      },
+      origin: rawOrigin,
     }],
     base,
   );
 
-  assert.deepEqual(events[0].payload.telemetry.origin, {
-    kind: "peer",
-    from: "peer://worker",
-    name: "Worker",
-    from_session: "peer-session",
-    sender_task_id: "task-result",
-    verified_peer_pid: 99,
-  });
-  assert.doesNotMatch(
-    JSON.stringify(events),
-    /RESULT PEER BODY|unknownPrivateField|Users\\/private/,
+  assert.deepEqual(
+    events[0].payload.telemetry.origin,
+    rawOrigin,
   );
 });
