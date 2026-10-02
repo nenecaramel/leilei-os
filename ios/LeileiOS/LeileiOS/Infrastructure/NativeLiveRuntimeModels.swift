@@ -505,10 +505,15 @@ struct NativeLiveRuntimeSurfaceState:
                 }
 
             case "updated":
-                if let patch = payload["patch"]?.objectValue,
-                   let status = patch["status"]?.stringValue,
-                   terminalStatuses.contains(status) {
-                    active.remove(taskID)
+                if let patch = payload["patch"]?.objectValue {
+                    if let status = patch["status"]?.stringValue,
+                       terminalStatuses.contains(status) {
+                        active.remove(taskID)
+                    } else if patch["is_backgrounded"]?.boolValue == true {
+                        active.insert(taskID)
+                    } else if patch["is_backgrounded"]?.boolValue == false {
+                        active.remove(taskID)
+                    }
                 }
 
             case "notification":
