@@ -930,9 +930,9 @@ private struct NativeLiveInteractionHistoryRow: View {
                         ? nil
                         : "Response",
                 secondaryDetail:
-                    interaction.response.map {
+                    interaction.response.flatMap {
                         nativeLiveJSONDetail(.object($0))
-                    } ?? nil
+                    }
             )
         }
     }
