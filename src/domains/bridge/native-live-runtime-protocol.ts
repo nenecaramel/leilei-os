@@ -186,11 +186,26 @@ export type NativeLiveRuntimeResultTelemetry = {
   latency: NativeLiveRuntimeResultLatency;
 };
 
+export type NativeLiveRuntimeOutputResource = {
+  source: "tool_result" | "task_notification";
+  tool_use_id: string | null;
+  task_id: string | null;
+  uri: string;
+  name: string | null;
+  title: string | null;
+  description: string | null;
+  mime_type: string | null;
+  size: number | null;
+  annotations: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+};
+
 export type NativeLiveRuntimeMetadata = {
   context_usage: NativeLiveRuntimeContextUsage | null;
   execution?: NativeLiveRuntimeExecutionMetadata | null;
   environment?: NativeLiveRuntimeEnvironment | null;
   result?: NativeLiveRuntimeResultTelemetry | null;
+  output_resources?: NativeLiveRuntimeOutputResource[];
 };
 
 export type NativeLiveRuntimeExecutionResult =
@@ -634,7 +649,7 @@ function parseRuntimeMetadata(
   requireExactKeys(
     body,
     ["context_usage"],
-    ["execution", "environment", "result"],
+    ["execution", "environment", "result", "output_resources"],
   );
 
   return {
@@ -666,7 +681,121 @@ function parseRuntimeMetadata(
               ? null
               : parseNativeLiveRuntimeResultTelemetry(body.result),
         }),
+    ...(body.output_resources === undefined
+      ? {}
+      : {
+          output_resources:
+            parseNativeLiveRuntimeOutputResources(
+              body.output_resources,
+            ),
+        }),
   };
+}
+
+export function parseNativeLiveRuntimeOutputResources(
+  value: unknown,
+): NativeLiveRuntimeOutputResource[] {
+  if (!Array.isArray(value) || value.length > 128) {
+    throw new NativeLiveRuntimeProtocolError(
+      "output_resources must contain at most 128 items.",
+    );
+  }
+
+  return value.map((item, index) => {
+    const body = requireRecord(item);
+    requireExactKeys(body, [
+      "source",
+      "tool_use_id",
+      "task_id",
+      "uri",
+      "name",
+      "title",
+      "description",
+      "mime_type",
+      "size",
+      "annotations",
+      "metadata",
+    ]);
+
+    if (
+      body.source !== "tool_result"
+      && body.source !== "task_notification"
+    ) {
+      throw new NativeLiveRuntimeProtocolError(
+        `output_resources[${index}].source is invalid.`,
+      );
+    }
+
+    return {
+      source: body.source,
+      tool_use_id: boundedNullableString(
+        body.tool_use_id,
+        `output_resources[${index}].tool_use_id`,
+        256,
+      ),
+      task_id: boundedNullableString(
+        body.task_id,
+        `output_resources[${index}].task_id`,
+        256,
+      ),
+      uri: requireBoundedNonblank(
+        body.uri,
+        `output_resources[${index}].uri`,
+        4_096,
+      ),
+      name: boundedNullableString(
+        body.name,
+        `output_resources[${index}].name`,
+        512,
+      ),
+      title: boundedNullableString(
+        body.title,
+        `output_resources[${index}].title`,
+        512,
+      ),
+      description: boundedNullableString(
+        body.description,
+        `output_resources[${index}].description`,
+        2_000,
+      ),
+      mime_type: boundedNullableString(
+        body.mime_type,
+        `output_resources[${index}].mime_type`,
+        256,
+      ),
+      size: nullableFiniteNumber(
+        body.size,
+        `output_resources[${index}].size`,
+      ),
+      annotations: parseBoundedJsonRecord(
+        body.annotations,
+        `output_resources[${index}].annotations`,
+        8_000,
+      ),
+      metadata: parseBoundedJsonRecord(
+        body.metadata,
+        `output_resources[${index}].metadata`,
+        8_000,
+      ),
+    };
+  });
+}
+
+function requireBoundedNonblank(
+  value: unknown,
+  field: string,
+  maxChars: number,
+): string {
+  if (
+    typeof value !== "string"
+    || !value.trim()
+    || value.length > maxChars
+  ) {
+    throw new NativeLiveRuntimeProtocolError(
+      `${field} must be a nonblank string of at most ${maxChars} characters.`,
+    );
+  }
+  return value;
 }
 
 export function parseNativeLiveRuntimeResultTelemetry(
