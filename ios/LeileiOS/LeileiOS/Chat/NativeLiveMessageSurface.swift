@@ -1652,7 +1652,7 @@ private struct NativeLiveBlockView: View {
 }
 
 
-private enum NativeLiveAttachmentPresentation {
+private enum NativeLiveAttachmentPresentation: Equatable {
     case standalone
     case imageTile
 }
