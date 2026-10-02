@@ -543,113 +543,18 @@ struct NativeLiveRuntimeSurfaceState:
         return false
     }
 
-    var activityText: String? {
-        for event in events.reversed() {
-            let payload = event.event.payload ?? [:]
-
-            switch event.event.type {
-            case "partial_text", "text", "result", "error":
-                return nil
-
-            case "task":
-                let phase = payload["phase"]?.stringValue
-                let summary =
-                    payload["summary"]?.stringValue
-                    ?? payload["description"]?.stringValue
-                let tool = payload["last_tool_name"]?.stringValue
-
-                if phase == "updated",
-                   let patch = payload["patch"]?.objectValue,
-                   let status = patch["status"]?.stringValue,
-                   ["completed", "failed", "cancelled"].contains(status) {
-                    return nil
-                }
-
-                if phase == "notification",
-                   let status = payload["status"]?.stringValue,
-                   ["completed", "failed", "cancelled"].contains(status) {
-                    return nil
-                }
-
-                if phase == "active_set",
-                   let tasks = payload["tasks"]?.arrayValue {
-                    if tasks.isEmpty {
-                        return nil
-                    }
-                    return tasks.count == 1
-                        ? "1 task active"
-                        : "\(tasks.count) tasks active"
-                }
-
-                if let summary, !summary.isEmpty {
-                    return summary
-                }
-                if let tool, !tool.isEmpty {
-                    return "Using \(tool)"
-                }
-                if phase == "started" {
-                    return "Working on a task"
-                }
-                if phase == "progress" {
-                    return "Task in progress"
-                }
-                return "Task updated"
-
-            case "tool_use":
-                if let tool =
-                    payload["display_name"]?.stringValue
-                    ?? payload["tool_name"]?.stringValue,
-                   !tool.isEmpty {
-                    return "Using \(tool)"
-                }
-                return "Using a tool"
-
-            case "runtime":
-                if payload["kind"]?.stringValue == "album_saved" {
-                    return "Saved a photo to Album"
-                }
-                if payload["kind"]?.stringValue == "api_retry" {
-                    let attempt = payload["attempt"]?.numberValue
-                    let maxRetries = payload["max_retries"]?.numberValue
-                    if let attempt, let maxRetries {
-                        return "Claude retrying · \(Int(attempt))/\(Int(maxRetries))"
-                    }
-                    return "Claude retrying"
-                }
-                if payload["kind"]?.stringValue
-                    == "command_lifecycle" {
-                    switch payload["state"]?.stringValue {
-                    case "queued":
-                        return "Message queued"
-                    case "started":
-                        return "Claude received message"
-                    case "cancelled", "discarded", "refused",
-                         "completed":
-                        return nil
-                    default:
-                        continue
-                    }
-                }
-                continue
-
-            case "tool_result":
-                if payload["is_error"]?.boolValue == true {
-                    return "Tool failed"
-                }
-                return "Tool finished"
-
-            default:
-                continue
-            }
-        }
-
-        return nil
-    }
-
     var hasVisibleRuntimeContent: Bool {
         !streamingText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
-            || activityText != nil
+            || events.contains { event in
+                [
+                    "tool_use",
+                    "tool_result",
+                    "task",
+                    "error",
+                ].contains(event.event.type)
+            }
+            || !interactions.isEmpty
     }
 }
