@@ -80,6 +80,8 @@ test("runtime interactions are extracted from the message surface", () => {
 
 const runtimeActivityPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift";
+const runtimeModelsPath =
+  "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift";
 
 test("runtime activity and tool presentation are extracted from the message surface", () => {
   const root = fs.readFileSync(rootPath, "utf8");
@@ -119,6 +121,12 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /case \.failed:/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
+
+  const runtimeModels = readExisting(runtimeModelsPath);
+  assert.doesNotMatch(runtimeModels, /var activityText:/);
+  assert.doesNotMatch(runtimeModels, /Working on a task/);
+  assert.doesNotMatch(runtimeModels, /Task in progress/);
+  assert.doesNotMatch(runtimeModels, /Using a tool/);
 });
 
 const attachmentPresentationPath =
