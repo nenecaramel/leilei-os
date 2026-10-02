@@ -13,24 +13,32 @@ struct NativeLivePendingOperation: Equatable {
 
     let id: UUID
     let kind: Kind
+    let attachments:
+        [NativeLiveComposerAttachmentDraft]
     let baselineSyncToken: String?
 
     init(
         kind: Kind,
+        attachments:
+            [NativeLiveComposerAttachmentDraft] = [],
         baselineSyncToken: String?
     ) {
         self.id = UUID()
         self.kind = kind
+        self.attachments = attachments
         self.baselineSyncToken = baselineSyncToken
     }
 
     private init(
         id: UUID,
         kind: Kind,
+        attachments:
+            [NativeLiveComposerAttachmentDraft],
         baselineSyncToken: String?
     ) {
         self.id = id
         self.kind = kind
+        self.attachments = attachments
         self.baselineSyncToken = baselineSyncToken
     }
 
@@ -40,6 +48,7 @@ struct NativeLivePendingOperation: Equatable {
         NativeLivePendingOperation(
             id: id,
             kind: kind,
+            attachments: attachments,
             baselineSyncToken: syncToken
         )
     }
@@ -268,7 +277,9 @@ struct NativeLiveMessageSurface: View {
                        let pendingOperation,
                        let sendText = pendingOperation.sendText {
                         NativeLiveOptimisticUserRow(
-                            text: sendText
+                            text: sendText,
+                            attachments:
+                                pendingOperation.attachments
                         )
                         .id(
                             "pending-user-"
@@ -936,26 +947,45 @@ private struct NativeLiveHistoryForkDivider: View {
 
 private struct NativeLiveOptimisticUserRow: View {
     let text: String
+    let attachments:
+        [NativeLiveComposerAttachmentDraft]
+
+    private var normalizedText: String? {
+        let value = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return value.isEmpty ? nil : value
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             Spacer(minLength: 48)
 
-            ChatMarkdownView(
-                text: text,
-                fillsAvailableWidth: false,
-                lineSpacing: 5,
-                paragraphSpacing: 19
-            )
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                Color.chatSoftFill,
-                in: RoundedRectangle(
-                    cornerRadius: 18,
-                    style: .continuous
-                )
-            )
+            VStack(alignment: .trailing, spacing: 8) {
+                if !attachments.isEmpty {
+                    NativeLiveOptimisticAttachmentGroupView(
+                        attachments: attachments
+                    )
+                }
+
+                if let normalizedText {
+                    ChatMarkdownView(
+                        text: normalizedText,
+                        fillsAvailableWidth: false,
+                        lineSpacing: 5,
+                        paragraphSpacing: 19
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        Color.chatSoftFill,
+                        in: RoundedRectangle(
+                            cornerRadius: 18,
+                            style: .continuous
+                        )
+                    )
+                }
+            }
         }
     }
 }
@@ -1461,6 +1491,211 @@ private struct AssistantTypingIndicatorRow: View {
             .frame(height: 22)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+
+private struct NativeLiveOptimisticAttachmentGroupView: View {
+    let attachments:
+        [NativeLiveComposerAttachmentDraft]
+
+    private let width: CGFloat = 280
+    private let gap: CGFloat = 4
+
+    private var images:
+        [NativeLiveComposerAttachmentDraft] {
+        attachments.filter {
+            $0.kind == .image
+        }
+    }
+
+    private var files:
+        [NativeLiveComposerAttachmentDraft] {
+        attachments.filter {
+            $0.kind != .image
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            if !images.isEmpty {
+                imageLayout
+            }
+
+            ForEach(files) { attachment in
+                HStack(spacing: 10) {
+                    Image(systemName: "doc")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22)
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: 2
+                    ) {
+                        Text(attachment.filename)
+                            .font(.system(
+                                size: 14,
+                                weight: .medium
+                            ))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+
+                        Text(
+                            nativeLiveDraftFileTypeLabel(
+                                attachment
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 10)
+                .frame(width: width)
+                .background(
+                    Color.primary.opacity(0.045),
+                    in: RoundedRectangle(
+                        cornerRadius: 11,
+                        style: .continuous
+                    )
+                )
+            }
+        }
+        .frame(width: width, alignment: .trailing)
+        .opacity(0.92)
+    }
+
+    @ViewBuilder
+    private var imageLayout: some View {
+        switch images.count {
+        case 1:
+            draftImage(images[0])
+                .frame(
+                    width: width,
+                    height: 220
+                )
+
+        case 2:
+            HStack(spacing: gap) {
+                draftImage(images[0])
+                draftImage(images[1])
+            }
+            .frame(width: width, height: 150)
+
+        case 3:
+            HStack(spacing: gap) {
+                draftImage(images[0])
+                    .frame(
+                        width:
+                            (width - gap)
+                            * 2 / 3,
+                        height: 188
+                    )
+
+                VStack(spacing: gap) {
+                    draftImage(images[1])
+                    draftImage(images[2])
+                }
+                .frame(
+                    width:
+                        (width - gap)
+                        / 3,
+                    height: 188
+                )
+            }
+            .frame(width: width, height: 188)
+
+        default:
+            LazyVGrid(
+                columns: [
+                    GridItem(
+                        .fixed((width - gap) / 2),
+                        spacing: gap
+                    ),
+                    GridItem(
+                        .fixed((width - gap) / 2),
+                        spacing: gap
+                    ),
+                ],
+                spacing: gap
+            ) {
+                ForEach(images) { attachment in
+                    draftImage(attachment)
+                        .frame(height: 138)
+                }
+            }
+            .frame(width: width)
+        }
+    }
+
+    @ViewBuilder
+    private func draftImage(
+        _ attachment:
+            NativeLiveComposerAttachmentDraft
+    ) -> some View {
+        if let data = attachment.data,
+           let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
+                .clipped()
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: 13,
+                        style: .continuous
+                    )
+                )
+        } else {
+            ZStack {
+                RoundedRectangle(
+                    cornerRadius: 13,
+                    style: .continuous
+                )
+                .fill(Color.primary.opacity(0.045))
+
+                Image(systemName: "photo")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+
+private func nativeLiveDraftFileTypeLabel(
+    _ attachment:
+        NativeLiveComposerAttachmentDraft
+) -> String {
+    let ext = (attachment.filename as NSString)
+        .pathExtension
+        .uppercased()
+    if !ext.isEmpty {
+        return ext
+    }
+
+    switch attachment.mimeType {
+    case "application/pdf":
+        return "PDF"
+    case "text/plain":
+        return "TXT"
+    case "text/markdown":
+        return "MD"
+    case "application/json":
+        return "JSON"
+    case "application/zip":
+        return "ZIP"
+    default:
+        return "File"
     }
 }
 
