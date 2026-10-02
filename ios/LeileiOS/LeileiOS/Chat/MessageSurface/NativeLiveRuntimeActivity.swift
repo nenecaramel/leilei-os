@@ -286,6 +286,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let taskToolUseIDs = Set(
             projectedTasks.compactMap(\.toolUseID)
         )
+        let hiddenTaskToolUseIDs = Set(
+            projectedTasks
+                .filter(\.hiddenFromTranscript)
+                .compactMap(\.toolUseID)
+        )
         let projectedInteractions =
             message.activity?.interactions ?? []
         let questionToolUseIDs = Set(
@@ -302,6 +307,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
             .filter {
                 !taskToolUseIDs.contains($0.id)
                     && !questionToolUseIDs.contains($0.id)
+                    && !hiddenTaskToolUseIDs.contains(
+                        $0.parentToolUseID ?? ""
+                    )
             }
         interactions = projectedInteractions
         turnIsActive = false
