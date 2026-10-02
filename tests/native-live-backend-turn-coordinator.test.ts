@@ -423,11 +423,22 @@ test("runtime failure finalizes only the failed preparation and never creates an
     conversation_id: conversationId,
     status: "failure",
     error_code: "CLAUDE_PROCESS_FAILED",
+    runtime_metadata: {
+      context_usage: null,
+    },
   });
 
   assert.equal(result.ok, false);
   assert.equal(port.finalizeSuccessCalls.length, 0);
   assert.equal(port.finalizeFailureCalls.length, 1);
+  assert.deepEqual(
+    (
+      port.finalizeFailureCalls[0] as {
+        runtimeMetadata: unknown;
+      }
+    ).runtimeMetadata,
+    { context_usage: null },
+  );
   assert.deepEqual(result, {
     ok: false,
     prepareId,
