@@ -486,11 +486,12 @@ function sessionStoreHealthSnapshot({
   mirrorFailureReason = null,
 }) {
   const statusAfter = completion?.statusAfter ?? null;
+  const normalizedSessionId = nonblankString(sessionId);
   return {
     provider: "claude_agent_sdk",
     configured,
     mode,
-    session_id: nonblankString(sessionId),
+    session_id: normalizedSessionId,
     parent_session_id: nonblankString(parentSessionId),
     project_key: cwd,
     cwd,
@@ -505,7 +506,7 @@ function sessionStoreHealthSnapshot({
     mirror_status:
       mirrorFailureReason
         ? "error"
-        : statusAfter === "complete"
+        : configured && normalizedSessionId
           ? "ok"
           : "not_observed",
     mirror_failure_reason: mirrorFailureReason,
