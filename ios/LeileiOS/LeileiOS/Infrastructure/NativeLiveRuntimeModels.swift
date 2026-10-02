@@ -482,7 +482,47 @@ struct NativeLiveRuntimeSurfaceState:
             )
         }
 
-        return []
+        var active = Set<String>()
+        let terminalStatuses = Set([
+            "completed",
+            "failed",
+            "cancelled",
+            "stopped",
+            "killed",
+        ])
+
+        for event in events where event.event.type == "task" {
+            let payload = event.event.payload ?? [:]
+            guard let taskID = payload["task_id"]?.stringValue else {
+                continue
+            }
+
+            switch payload["phase"]?.stringValue {
+            case "started":
+                if payload["ambient"]?.boolValue != true,
+                   payload["is_backgrounded"]?.boolValue == true {
+                    active.insert(taskID)
+                }
+
+            case "updated":
+                if let patch = payload["patch"]?.objectValue,
+                   let status = patch["status"]?.stringValue,
+                   terminalStatuses.contains(status) {
+                    active.remove(taskID)
+                }
+
+            case "notification":
+                if let status = payload["status"]?.stringValue,
+                   terminalStatuses.contains(status) {
+                    active.remove(taskID)
+                }
+
+            default:
+                break
+            }
+        }
+
+        return active
     }
 
     var hasVisibleBackgroundTasks: Bool {
