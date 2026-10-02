@@ -43,6 +43,10 @@ extension NativeLiveTurnActivityProjection {
             task.summary =
                 payload["summary"]?.stringValue
                 ?? task.summary
+            if let resourceLinks =
+                payload["resource_links"]?.arrayValue {
+                task.resourceLinks = resourceLinks
+            }
             task.subagentType =
                 payload["subagent_type"]?.stringValue
                 ?? task.subagentType
@@ -161,6 +165,7 @@ private extension NativeLiveTurnActivityProjection.TaskActivity {
             toolUseID: nil,
             description: nil,
             summary: nil,
+            resourceLinks: [],
             subagentType: nil,
             taskType: nil,
             isBackgrounded: nil,
