@@ -54,6 +54,17 @@ export class ClaudeEventNormalizer {
       emit("runtime", this.sessionId, attribution);
     }
 
+    if (raw.type === "user") {
+      const origin = boundedMessageOrigin(raw.origin);
+      if (origin) {
+        emit("runtime", this.sessionId, {
+          kind: "message_origin",
+          source_type: "user",
+          origin,
+        });
+      }
+    }
+
     if (raw.type === "command_lifecycle") {
       emit("runtime", this.sessionId, {
         kind: "command_lifecycle",
@@ -122,6 +133,11 @@ export class ClaudeEventNormalizer {
         workflow_name: safeString(raw.workflow_name),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
+        is_backgrounded:
+          typeof raw.is_backgrounded === "boolean"
+            ? raw.is_backgrounded
+            : null,
+        spawn_depth: finiteNonNegative(raw.spawn_depth),
       });
       return output;
     }
@@ -183,6 +199,7 @@ export class ClaudeEventNormalizer {
           : {}),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
+        reason: clippedString(raw.reason, 1_000),
         has_output_file:
           typeof raw.output_file === "string" && raw.output_file.length > 0,
       });
@@ -448,6 +465,18 @@ function normalizeUserMessageAttribution(raw) {
     user_message_uuid: primary ?? ordered[0] ?? null,
     user_message_uuids: ordered,
   };
+}
+
+function boundedMessageOrigin(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || !clippedString(value.kind, 64)
+  ) {
+    return null;
+  }
+  return boundedResultJsonRecord(value);
 }
 
 const RESULT_TELEMETRY_JSON_MAX_CHARS = 64_000;
