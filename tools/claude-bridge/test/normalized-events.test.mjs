@@ -1170,3 +1170,42 @@ test("drops malformed message origin instead of treating it as provenance", () =
     false,
   );
 });
+
+
+test("result telemetry uses the same bounded message-origin projection", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "result",
+      subtype: "success",
+      session_id: "s",
+      result: "done",
+      origin: {
+        kind: "peer",
+        from: "peer://worker",
+        name: "Worker",
+        fromSession: "peer-session",
+        senderTaskId: "task-result",
+        verifiedPeerPid: 99,
+        body: "RESULT PEER BODY MUST NOT BE COPIED",
+        unknownPrivateField: "/Users/private/result",
+      },
+    }],
+    base,
+  );
+
+  assert.deepEqual(events[0].payload.telemetry.origin, {
+    kind: "peer",
+    subkind: null,
+    server: null,
+    from: "peer://worker",
+    name: "Worker",
+    from_session: "peer-session",
+    sender_task_id: "task-result",
+    verified_peer_pid: 99,
+    fire_reason: null,
+  });
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /RESULT PEER BODY|unknownPrivateField|Users\\/private/,
+  );
+});
