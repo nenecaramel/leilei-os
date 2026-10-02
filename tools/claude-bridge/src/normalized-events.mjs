@@ -54,15 +54,17 @@ export class ClaudeEventNormalizer {
       emit("runtime", this.sessionId, attribution);
     }
 
-    if (raw.type === "user") {
-      const origin = boundedMessageOrigin(raw.origin);
-      if (origin) {
-        emit("runtime", this.sessionId, {
-          kind: "message_origin",
-          source_type: "user",
-          origin,
-        });
-      }
+    const messageProvenance =
+      normalizeMessageProvenance(raw);
+    if (
+      (raw.type === "user" || raw.type === "assistant")
+      && messageProvenance
+    ) {
+      emit("runtime", this.sessionId, {
+        kind: "message_origin",
+        source_type: raw.type,
+        ...messageProvenance,
+      });
     }
 
     if (raw.type === "command_lifecycle") {
@@ -384,7 +386,7 @@ export class ClaudeEventNormalizer {
           ),
         );
       }
-      if (emittedToolResult) return output;
+      if (emittedToolResult || messageProvenance) return output;
     }
 
     if (raw.type === "result") {
@@ -467,16 +469,84 @@ function normalizeUserMessageAttribution(raw) {
   };
 }
 
+function normalizeMessageProvenance(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const origin = boundedMessageOrigin(raw.origin);
+  const parentToolUseId =
+    clippedString(raw.parent_tool_use_id, 256);
+  const parentAgentId =
+    clippedString(raw.parent_agent_id, 256);
+
+  if (!origin && !parentToolUseId && !parentAgentId) {
+    return null;
+  }
+
+  return {
+    origin,
+    ...(parentToolUseId
+      ? { parent_tool_use_id: parentToolUseId }
+      : {}),
+    ...(parentAgentId
+      ? { parent_agent_id: parentAgentId }
+      : {}),
+  };
+}
+
 function boundedMessageOrigin(value) {
   if (
     !value
     || typeof value !== "object"
     || Array.isArray(value)
-    || !clippedString(value.kind, 64)
   ) {
     return null;
   }
-  return boundedResultJsonRecord(value);
+
+  const kind = clippedString(value.kind, 64);
+  if (!kind) return null;
+
+  const origin = { kind };
+  const appendString = (key, rawValue, maxChars = 256) => {
+    const normalized = clippedString(rawValue, maxChars);
+    if (normalized) origin[key] = normalized;
+  };
+
+  appendString("subkind", value.subkind, 128);
+  appendString("server", value.server, 256);
+  appendString("from", value.from, 256);
+  appendString("name", value.name, 256);
+  appendString(
+    "from_session",
+    value.fromSession ?? value.from_session,
+    256,
+  );
+  appendString(
+    "from_mode",
+    value.fromMode ?? value.from_mode,
+    128,
+  );
+  appendString(
+    "sender_task_id",
+    value.senderTaskId ?? value.sender_task_id,
+    256,
+  );
+
+  const verifiedPeerPid =
+    value.verifiedPeerPid ?? value.verified_peer_pid;
+  if (
+    Number.isInteger(verifiedPeerPid)
+    && verifiedPeerPid >= 0
+  ) {
+    origin.verified_peer_pid = verifiedPeerPid;
+  }
+
+  appendString(
+    "fire_reason",
+    value.fireReason ?? value.fire_reason,
+    512,
+  );
+
+  return origin;
 }
 
 const RESULT_TELEMETRY_JSON_MAX_CHARS = 64_000;
@@ -509,7 +579,7 @@ function normalizeResultTelemetry(raw) {
       clippedString(raw?.fast_mode_disabled_reason, 512),
     total_cost_usd:
       finiteNonNegative(raw?.total_cost_usd),
-    origin: boundedResultJsonRecord(raw?.origin),
+    origin: boundedMessageOrigin(raw?.origin),
     usage: boundedResultJsonRecord(raw?.usage),
     modelUsage:
       boundedResultJsonRecord(raw?.modelUsage),
