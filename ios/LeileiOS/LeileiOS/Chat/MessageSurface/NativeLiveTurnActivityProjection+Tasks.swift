@@ -105,7 +105,7 @@ extension NativeLiveTurnActivityProjection {
                     || activeTaskIDs.contains(taskID)
             }
 
-            for taskID in values.keys {
+            for taskID in Array(values.keys) {
                 guard var task = values[taskID],
                       task.isBackgrounded == true,
                       !task.isTerminal else {
