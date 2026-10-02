@@ -19,7 +19,7 @@ const settingsView = fs.readFileSync(
   "utf8",
 );
 const apiClient = fs.readFileSync(
-  "ios/LeileiOS/LeileiOS/Infrastructure/LeileiAPIClient.swift",
+  "ios/LeileiOS/LeileiOS/Infrastructure/API/Import/ImportModels.swift",
   "utf8",
 );
 

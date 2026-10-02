@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const apiClient = fs.readFileSync(
-  "ios/LeileiOS/LeileiOS/Infrastructure/LeileiAPIClient.swift",
+  "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift",
   "utf8",
 );
 
