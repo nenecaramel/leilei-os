@@ -482,6 +482,65 @@ test("runtime metadata preserves Agent SDK result usage, thinking, permission an
   );
 });
 
+test("runtime metadata preserves bounded VCS mutation hints", () => {
+  const vcsChanges = [
+    {
+      mutation_kind: "commit",
+      cwd: "/workspace/repo",
+      branch: "main",
+    },
+    {
+      mutation_kind: "push",
+      cwd: "/workspace/repo/subdir",
+      branch: null,
+    },
+  ];
+
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-vcs",
+    workspace_id: null,
+    effective_workspace_root: "/workspace/repo",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      vcs_changes: vcsChanges,
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(
+    result.runtime_metadata?.vcs_changes,
+    vcsChanges,
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeExecutionResult({
+        protocol_version: 3,
+        prepare_id: prepareId,
+        request_id: requestId,
+        conversation_id: conversationId,
+        status: "failure",
+        error_code: "CLAUDE_PROCESS_FAILED",
+        runtime_metadata: {
+          context_usage: null,
+          vcs_changes: [{
+            mutation_kind: "",
+            cwd: "/workspace/repo",
+            branch: null,
+          }],
+        },
+      }),
+    /vcs_changes\[0\]\.mutation_kind/,
+  );
+});
+
 test("runtime metadata preserves bounded SessionStore mirror health", () => {
   const sessionStore = {
     provider: "claude_agent_sdk" as const,
