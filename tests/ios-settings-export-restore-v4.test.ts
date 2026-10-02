@@ -120,6 +120,12 @@ test("iOS no longer calls retired partial export scopes", () => {
       "ios/LeileiOS/LeileiOS/Pages/UniverseNodeSheet.swift",
       "utf8",
     ),
+    ...fs.readdirSync("ios/LeileiOS/LeileiOS/Pages/Universe", { recursive: true })
+      .filter((name) => String(name).endsWith(".swift"))
+      .map((name) => fs.readFileSync(
+        `ios/LeileiOS/LeileiOS/Pages/Universe/${String(name)}`,
+        "utf8",
+      )),
     fs.readFileSync(
       "ios/LeileiOS/LeileiOS/Pages/DaySpaceView.swift",
       "utf8",
