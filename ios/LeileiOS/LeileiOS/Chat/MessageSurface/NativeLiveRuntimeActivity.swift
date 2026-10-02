@@ -217,9 +217,19 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let taskToolUseIDs = Set(
             projectedTasks.compactMap(\.toolUseID)
         )
+        let questionToolUseIDs = Set(
+            runtimeSurface.interactions
+                .filter { $0.kind == "question" }
+                .compactMap {
+                    $0.request["toolUseId"]?.stringValue
+                }
+        )
         tasks = projectedTasks
         tools = Self.tools(from: runtimeSurface.events)
-            .filter { !taskToolUseIDs.contains($0.id) }
+            .filter {
+                !taskToolUseIDs.contains($0.id)
+                    && !questionToolUseIDs.contains($0.id)
+            }
         interactions = runtimeSurface.interactions
         turnIsActive = runtimeSurface.providerTurnActive ?? true
         turnFailed = runtimeSurface.events.contains { event in
@@ -240,10 +250,22 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let taskToolUseIDs = Set(
             projectedTasks.compactMap(\.toolUseID)
         )
+        let projectedInteractions =
+            message.activity?.interactions ?? []
+        let questionToolUseIDs = Set(
+            projectedInteractions
+                .filter { $0.kind == "question" }
+                .compactMap {
+                    $0.request["toolUseId"]?.stringValue
+                }
+        )
         tasks = projectedTasks
         tools = Self.tools(from: message.blocks)
-            .filter { !taskToolUseIDs.contains($0.id) }
-        interactions = message.activity?.interactions ?? []
+            .filter {
+                !taskToolUseIDs.contains($0.id)
+                    && !questionToolUseIDs.contains($0.id)
+            }
+        interactions = projectedInteractions
         turnIsActive = false
         turnFailed = message.status == "error"
     }
