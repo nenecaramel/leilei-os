@@ -532,6 +532,7 @@ struct ChatView: View {
                     targetUserMessageID: draft.targetUserMessageID,
                     text: pendingText
                 ),
+                attachments: pendingAttachments,
                 baselineSyncToken:
                     appModel.nativeLiveCurrentPath?.syncToken
             )
@@ -570,6 +571,7 @@ struct ChatView: View {
         let shouldCreateConversation = isDraftConversation
         pendingOperation = NativeLivePendingOperation(
             kind: .send(text: pendingText),
+            attachments: pendingAttachments,
             baselineSyncToken:
                 appModel.nativeLiveCurrentPath?.syncToken
         )
