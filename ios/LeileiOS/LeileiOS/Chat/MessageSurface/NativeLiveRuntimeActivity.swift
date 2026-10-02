@@ -103,6 +103,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
             status == "failed"
         }
 
+        var isCancelled: Bool {
+            status == "cancelled"
+        }
+
         private func normalized(_ value: String?) -> String? {
             guard let value else { return nil }
             let trimmed = value.trimmingCharacters(
@@ -172,6 +176,19 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
         if let task = tasks.sorted(by: { $0.order < $1.order }).last {
             return task.displayTitle
+        }
+
+        if let tool = tools.sorted(by: { $0.order < $1.order }).last {
+            return nativeLiveToolDisplayName(tool.toolName)
+        }
+
+        if let interaction = interactions.last {
+            if interaction.kind == "permission" {
+                return interaction.permissionTitle
+            }
+            if let question = interaction.questions.first {
+                return question.header ?? question.text
+            }
         }
 
         return "Activity"
@@ -671,6 +688,10 @@ private struct NativeLiveTaskActivityRow: View {
     private var taskIcon: some View {
         if task.isFailed {
             Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+        } else if task.isCancelled {
+            Image(systemName: "xmark.circle")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
         } else if task.isTerminal {
