@@ -73,7 +73,10 @@ implements ClaudeAlbumPhotoPromoter {
     sourceAttachmentId: string;
     triggerUserMessageId: string;
   }): Promise<PromotedClaudeAlbumPhoto> {
-    let source;
+    let source: {
+      attachment: NativeLiveChatAttachment;
+      download: NativeLiveAttachmentDownloadSlot;
+    };
     try {
       source = await this.source.createDownloadSlot({
         userId: input.userId,
@@ -125,6 +128,12 @@ implements ClaudeAlbumPhotoPromoter {
       headers: source.download.headers,
     });
     if (!download.ok) {
+      if (download.status === 404) {
+        throw new ClaudeAlbumPhotoPromotionError(
+          "SOURCE_ATTACHMENT_UNAVAILABLE",
+          "That attachment is no longer available. Re-send the image if you still want to save it.",
+        );
+      }
       throw new ClaudeAlbumPhotoPromotionError(
         "SOURCE_DOWNLOAD_FAILED",
         "Source attachment download failed with HTTP "
