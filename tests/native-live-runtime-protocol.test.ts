@@ -12,6 +12,58 @@ const requestId = "22222222-2222-4222-8222-222222222222";
 const conversationId = "33333333-3333-4333-8333-333333333333";
 const userMessageId = "44444444-4444-4444-8444-444444444444";
 
+const resultTelemetry = {
+  subtype: "error_during_execution",
+  is_error: true,
+  duration_ms: 3210,
+  duration_api_ms: 2100,
+  num_turns: 3,
+  stop_reason: "end_turn",
+  terminal_reason: "api_error",
+  api_error_status: 529,
+  startup_failure_reason: null,
+  total_cost_usd: 0.42,
+  usage: {
+    input_tokens: 12,
+    output_tokens: 7,
+    output_tokens_details: {
+      thinking_tokens: 5,
+    },
+  },
+  modelUsage: {
+    "claude-opus-5-5": {
+      inputTokens: 12,
+      outputTokens: 7,
+      thinkingTokens: 5,
+      costUSD: 0.42,
+    },
+  },
+  permission_denials: [{
+    tool_name: "Write",
+    tool_use_id: "tool-denied",
+    tool_input: { file_path: "/tmp/nope" },
+  }],
+  errors: ["overloaded"],
+  structured_output_present: false,
+  deferred_tool_use_present: false,
+  latency: {
+    ttft_ms: 400,
+    ttft_stream_ms: 450,
+    time_to_request_ms: 120,
+    time_to_request_from_spawn_ms: 140,
+    time_origin_ms: 123456,
+    warm_spare_claimed: true,
+    first_content_frame_ms: 390,
+    first_stream_post_ms: 430,
+    first_stream_post_ack_ms: 440,
+    first_stream_post_wall_ms: 445,
+    first_text_post_ms: 460,
+    first_text_post_wall_ms: 470,
+    first_stream_post_queue_wait_ms: 11,
+    first_stream_post_queued_behind: 2,
+  },
+};
+
 test("new runtime command carries no parent provider session", () => {
   const command = parseNativeLiveRuntimeCommand({
     protocol_version: 1,
@@ -375,6 +427,57 @@ test("runtime metadata accepts bounded execution readback while remaining backwa
   );
 });
 
+test("runtime metadata preserves Agent SDK result usage, thinking, permission and latency telemetry", () => {
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    workspace_id: null,
+    effective_workspace_root: null,
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      result: resultTelemetry,
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") {
+    throw new Error("expected success");
+  }
+  assert.deepEqual(
+    result.runtime_metadata?.result,
+    resultTelemetry,
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeExecutionResult({
+        protocol_version: 3,
+        prepare_id: prepareId,
+        request_id: requestId,
+        conversation_id: conversationId,
+        status: "success",
+        provider_session_id: "provider-child",
+        normalized_events: [],
+        runtime_metadata: {
+          context_usage: null,
+          result: {
+            ...resultTelemetry,
+            permission_denials:
+              Array.from({ length: 65 }, () =>
+                resultTelemetry.permission_denials[0]
+              ),
+          },
+        },
+      }),
+    /permission_denials must contain at most 64 items/,
+  );
+});
+
 test("runtime metadata rejects unbounded execution readback errors", () => {
   assert.throws(
     () =>
@@ -405,7 +508,7 @@ test("runtime metadata rejects unbounded execution readback errors", () => {
   );
 });
 
-test("failure result exposes only a bounded safe error code", () => {
+test("failure result accepts bounded result telemetry without exposing arbitrary fields", () => {
   assert.deepEqual(
     parseNativeLiveRuntimeExecutionResult({
       protocol_version: 1,
@@ -423,6 +526,32 @@ test("failure result exposes only a bounded safe error code", () => {
       status: "failure",
       error_code: "CLAUDE_PROCESS_FAILED",
     },
+  );
+
+  const withTelemetry = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure",
+    error_code: "CLAUDE_PROCESS_FAILED",
+    runtime_metadata: {
+      context_usage: null,
+      result: resultTelemetry,
+    },
+  });
+  assert.equal(withTelemetry.status, "failure");
+  if (withTelemetry.status !== "failure") {
+    throw new Error("expected failure");
+  }
+  assert.equal(
+    withTelemetry.runtime_metadata?.result?.terminal_reason,
+    "api_error",
+  );
+  assert.equal(
+    withTelemetry.runtime_metadata?.result?.modelUsage
+      ?["claude-opus-5-5"],
+    resultTelemetry.modelUsage["claude-opus-5-5"],
   );
 
   assert.throws(
