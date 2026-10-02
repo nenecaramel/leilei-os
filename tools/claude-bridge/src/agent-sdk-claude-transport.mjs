@@ -1275,12 +1275,17 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     const id = nonblankString(sessionId);
     const preflight = await this.#requireSession(id);
     let status = preflight.status;
+    let backfillStatus = "not_needed";
+    let backfillFailureReason = null;
 
     if (
       preflight.localAvailable
       && status === null
     ) {
-      status = await this.#tryBackfillLocalSession(id);
+      const backfill = await this.#tryBackfillLocalSession(id);
+      status = backfill.status;
+      backfillStatus = backfill.backfillStatus;
+      backfillFailureReason = backfill.failureReason;
     }
 
     const canComplete = status === "complete";
@@ -1305,7 +1310,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       }
     }
 
-    return { canComplete };
+    return {
+      canComplete,
+      parentLocalAvailable: preflight.localAvailable,
+      parentStatusBefore: preflight.status,
+      backfillStatus,
+      backfillFailureReason,
+    };
   }
 
   async #tryBackfillLocalSession(sessionId) {
@@ -1314,7 +1325,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       || typeof this.sessionStore.load !== "function"
       || typeof this.sessionStore.markComplete !== "function"
     ) {
-      return null;
+      return {
+        status: null,
+        backfillStatus: "unavailable",
+        failureReason:
+          "Durable SessionStore backfill helpers are unavailable.",
+      };
     }
 
     let importSessionToStore;
@@ -1324,7 +1340,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         ?? await this.loadImportSessionToStore();
     } catch (cause) {
       this.events.emit("session-store-backfill-error", cause);
-      return null;
+      return {
+        status: null,
+        backfillStatus: "unavailable",
+        failureReason: clippedSessionStoreReason(cause),
+      };
     }
 
     try {
@@ -1342,13 +1362,29 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         sessionId,
       });
       if (!Array.isArray(entries) || entries.length === 0) {
-        return null;
+        const cause = new Error(
+          "SessionStore backfill produced no readable transcript.",
+        );
+        this.events.emit("session-store-backfill-error", cause);
+        return {
+          status: null,
+          backfillStatus: "failed",
+          failureReason: cause.message,
+        };
       }
       await this.sessionStore.markComplete(sessionId);
-      return "complete";
+      return {
+        status: "complete",
+        backfillStatus: "complete",
+        failureReason: null,
+      };
     } catch (cause) {
       this.events.emit("session-store-backfill-error", cause);
-      return null;
+      return {
+        status: null,
+        backfillStatus: "failed",
+        failureReason: clippedSessionStoreReason(cause),
+      };
     }
   }
 
@@ -1380,38 +1416,85 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   async #completePortability(
     sessionId,
     canComplete,
-    mirrorFailed,
+    mirrorFailureReason,
   ) {
     const id = nonblankString(sessionId);
-    if (
-      mirrorFailed
-      && id
-      && this.sessionStore
-      && typeof this.sessionStore.discardPendingAppends === "function"
-    ) {
-      this.sessionStore.discardPendingAppends(id);
-    }
-    if (
-      !id
-      || !canComplete
-      || mirrorFailed
-      || !this.sessionStore
-      || typeof this.sessionStore.load !== "function"
-      || typeof this.sessionStore.markComplete !== "function"
-    ) {
-      return;
+    if (!id || !this.sessionStore) {
+      return {
+        statusAfter: null,
+        statusFailureReason: null,
+      };
     }
 
-    try {
-      const entries = await this.sessionStore.load({
-        projectKey: this.cwd,
-        sessionId: id,
-      });
-      if (!Array.isArray(entries) || entries.length === 0) return;
-      await this.sessionStore.markComplete(id);
-    } catch (cause) {
-      this.events.emit("session-store-status-error", cause);
+    let statusAfter = null;
+    let statusFailureReason = null;
+
+    if (mirrorFailureReason) {
+      if (
+        typeof this.sessionStore.discardPendingAppends === "function"
+      ) {
+        this.sessionStore.discardPendingAppends(id);
+      }
+      if (typeof this.sessionStore.markIncomplete === "function") {
+        try {
+          await this.sessionStore.markIncomplete(id);
+          statusAfter = "incomplete";
+        } catch (cause) {
+          statusFailureReason =
+            clippedSessionStoreReason(cause);
+          this.events.emit("session-store-status-error", cause);
+        }
+      } else {
+        statusFailureReason =
+          "SessionStore markIncomplete() is unavailable.";
+      }
+    } else if (
+      canComplete
+      && typeof this.sessionStore.load === "function"
+      && typeof this.sessionStore.markComplete === "function"
+    ) {
+      try {
+        const entries = await this.sessionStore.load({
+          projectKey: this.cwd,
+          sessionId: id,
+        });
+        if (Array.isArray(entries) && entries.length > 0) {
+          await this.sessionStore.markComplete(id);
+          statusAfter = "complete";
+        }
+      } catch (cause) {
+        statusFailureReason =
+          clippedSessionStoreReason(cause);
+        this.events.emit("session-store-status-error", cause);
+      }
     }
+
+    if (typeof this.sessionStore.getStatus === "function") {
+      try {
+        const observed =
+          await this.sessionStore.getStatus(id);
+        if (
+          observed === null
+          || observed === "complete"
+          || observed === "incomplete"
+        ) {
+          statusAfter = observed;
+        } else {
+          throw new Error(
+            "SessionStore returned an invalid portability status.",
+          );
+        }
+      } catch (cause) {
+        statusFailureReason ??=
+          clippedSessionStoreReason(cause);
+        this.events.emit("session-store-status-error", cause);
+      }
+    }
+
+    return {
+      statusAfter,
+      statusFailureReason,
+    };
   }
 
   async #resolveListSessions() {
