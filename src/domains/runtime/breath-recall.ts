@@ -423,17 +423,19 @@ export function recallBreath(
         ? rawSemanticScore
         : null;
 
+    const candidateSemanticWeight =
+      semanticScore === null ? 0 : semanticWeight;
     const semanticStrength =
-      semanticWeight > 0
+      candidateSemanticWeight > 0
         ? semanticEvidence(semanticScore, semanticFloor)
         : 0;
     const semanticEligible = semanticStrength > 0;
     if (lexicalScore <= 0 && !semanticEligible) continue;
 
-    const lexicalWeight = 1 - semanticWeight;
+    const lexicalWeight = 1 - candidateSemanticWeight;
     const baseScore =
       lexicalWeight * lexicalScore
-      + semanticWeight * semanticStrength;
+      + candidateSemanticWeight * semanticStrength;
     const salience = lifecycle?.salience ?? 1;
     const salienceFactor =
       (1 - salienceWeight) + salienceWeight * salience;
