@@ -2193,9 +2193,8 @@ private func nativeLiveAttachmentMIMEType(
 private func nativeLiveAttachmentExpectedSHA256(
     _ block: NativeLiveCurrentPathBlock
 ) -> String? {
-    block.payload?[
-        "sha256"
-    ]?.stringValue?
+    block.payload?["sha256"]?
+        .stringValue?
         .lowercased()
 }
 
