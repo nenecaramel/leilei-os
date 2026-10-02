@@ -336,6 +336,11 @@ struct NativeLiveRuntimeQuestion:
 }
 
 extension NativeLiveRuntimeInteractionSnapshot {
+    var toolUseID: String? {
+        request["toolUseId"]?.stringValue
+            ?? request["tool_use_id"]?.stringValue
+    }
+
     var isPending: Bool {
         status == "pending"
     }
