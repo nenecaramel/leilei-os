@@ -147,6 +147,57 @@ extension NativeLiveTurnActivityProjection {
                 )
                 values[taskID] = task
             }
+
+            let terminalStatuses = Set([
+                "completed",
+                "failed",
+                "cancelled",
+                "stopped",
+                "killed",
+            ])
+            for event in events
+            where event.event.type == "task"
+                && event.sequence > latestActiveSet.sequence {
+                let payload = event.event.payload ?? [:]
+                guard let taskID =
+                    payload["task_id"]?.stringValue,
+                      var task = values[taskID] else {
+                    continue
+                }
+
+                switch payload["phase"]?.stringValue {
+                case "started":
+                    if payload["is_backgrounded"]?.boolValue == true {
+                        task.isBackgrounded = true
+                        task.isActiveInBackgroundSet = true
+                    }
+
+                case "updated":
+                    if let patch = payload["patch"]?.objectValue {
+                        if let status = patch["status"]?.stringValue,
+                           terminalStatuses.contains(status) {
+                            task.isActiveInBackgroundSet = false
+                        } else if patch["is_backgrounded"]?.boolValue == true {
+                            task.isBackgrounded = true
+                            task.isActiveInBackgroundSet = true
+                        } else if patch["is_backgrounded"]?.boolValue == false {
+                            task.isBackgrounded = false
+                            task.isActiveInBackgroundSet = false
+                        }
+                    }
+
+                case "notification":
+                    if let status = payload["status"]?.stringValue,
+                       terminalStatuses.contains(status) {
+                        task.isActiveInBackgroundSet = false
+                    }
+
+                default:
+                    break
+                }
+
+                values[taskID] = task
+            }
         }
 
         return values.values
