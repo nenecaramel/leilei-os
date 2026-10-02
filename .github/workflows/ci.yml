@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - "ios/**"
       - "docs/**"
+      - "*.md"
       - "**/*.md"
   push:
     branches:
@@ -13,6 +14,7 @@ on:
     paths-ignore:
       - "ios/**"
       - "docs/**"
+      - "*.md"
       - "**/*.md"
 
 concurrency:
@@ -114,9 +116,6 @@ jobs:
           echo "wake=$wake" >> "$GITHUB_OUTPUT"
           echo "postgres=$postgres" >> "$GITHUB_OUTPUT"
 
-      - name: Check whitespace
-        run: git diff --check
-
       - uses: pnpm/action-setup@v4
         if: steps.scope.outputs.core == 'true'
         with:
@@ -151,6 +150,10 @@ jobs:
       - name: Build root
         if: steps.scope.outputs.core == 'true'
         run: pnpm build
+
+      - name: Check whitespace
+        if: steps.scope.outputs.core == 'true'
+        run: git diff --check
 
       - uses: actions/setup-node@v4
         if: steps.scope.outputs.web == 'true' && steps.scope.outputs.core != 'true'
