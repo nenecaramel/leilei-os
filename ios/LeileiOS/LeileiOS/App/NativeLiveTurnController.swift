@@ -229,10 +229,13 @@ extension AppModel {
                 prepareID: turn.prepareId,
                 conversationID: conversationID
             )
+            var shouldStopRuntimeObservation = true
             defer {
-                stopNativeLiveRuntimeObservation(
-                    prepareID: turn.prepareId
-                )
+                if shouldStopRuntimeObservation {
+                    stopNativeLiveRuntimeObservation(
+                        prepareID: turn.prepareId
+                    )
+                }
             }
 
             do {
@@ -240,6 +243,11 @@ extension AppModel {
                     prepareID: turn.prepareId,
                     conversationID: conversationID
                 )
+                shouldStopRuntimeObservation =
+                    !await continueNativeLiveRuntimeObservationForBackgroundTasks(
+                        prepareID: turn.prepareId,
+                        conversationID: conversationID
+                    )
                 await refreshNativeLiveCurrentPath(force: true)
                 scheduleCurrentHeadMindWriteRefresh()
                 chatSendState = .idle
@@ -271,16 +279,24 @@ extension AppModel {
             prepareID: prepared.prepareId,
             conversationID: conversationID
         )
+        var shouldStopRuntimeObservation = true
         defer {
-            stopNativeLiveRuntimeObservation(
-                prepareID: prepared.prepareId
-            )
+            if shouldStopRuntimeObservation {
+                stopNativeLiveRuntimeObservation(
+                    prepareID: prepared.prepareId
+                )
+            }
         }
 
         try await waitForNativeLiveTurn(
             prepareID: prepared.prepareId,
             conversationID: conversationID
         )
+        shouldStopRuntimeObservation =
+            !await continueNativeLiveRuntimeObservationForBackgroundTasks(
+                prepareID: prepared.prepareId,
+                conversationID: conversationID
+            )
         await refreshNativeLiveCurrentPath(force: true)
         scheduleCurrentHeadMindWriteRefresh()
     }
