@@ -135,6 +135,8 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(projection, /topLevelTools/);
   assert.match(projection, /permissionInteractions/);
   assert.match(projection, /topLevelInteractions/);
+  assert.match(projection, /activeTaskIDs/);
+  assert.match(projection, /task\.phase != "active_set"/);
   assert.match(projection, /pendingInteractionIDs/);
   assert.match(projection, /api_retry/);
   assert.match(projection, /command_lifecycle/);
