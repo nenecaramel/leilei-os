@@ -528,6 +528,62 @@ test("semantic snapshot is rejected when the bounded candidate set changed", asy
   assert.deepEqual(assembled.breathStateIds, []);
 });
 
+test("a stale staged plan is rescored from the current candidate snapshot", async () => {
+  const scoredCandidateIds: string[][] = [];
+  const port = new Port([
+    state("planned-rescore", "那趟独自旅行让我长大了"),
+    state("added-rescore", "后来又出现了一条新的长期记忆"),
+  ]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 8,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    {
+      async score(input) {
+        scoredCandidateIds.push(
+          input.candidates.map((candidate) => candidate.stateId),
+        );
+        return new Map(
+          input.candidates.map((candidate) => [candidate.stateId, 0.95]),
+        );
+      },
+    },
+  );
+
+  await mind.prepareTurn({
+    manifestId: "stale-semantic-plan-rescore",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "韩国海边",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+    semanticCandidates: [{
+      stateId: "planned-rescore",
+      kind: "memory",
+      text: "那趟独自旅行让我长大了",
+    }],
+    semanticScores: new Map([["planned-rescore", 0.95]]),
+  });
+
+  assert.equal(scoredCandidateIds.length, 1);
+  assert.deepEqual(
+    [...(scoredCandidateIds[0] ?? [])].sort(),
+    ["added-rescore", "planned-rescore"],
+  );
+});
+
 test("semantic-only candidate can enter Breath when lexical overlap is zero", () => {
   const semantic = state("semantic", "那趟独自旅行让我长大了");
   const hits = recallBreath(
