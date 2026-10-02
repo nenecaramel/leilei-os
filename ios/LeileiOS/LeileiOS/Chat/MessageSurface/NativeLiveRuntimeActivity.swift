@@ -57,6 +57,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let toolName: String
         let input: NativeLiveJSONValue?
         let output: NativeLiveJSONValue?
+        let parentToolUseID: String?
+        let parentAgentID: String?
         let state: NativeLiveToolCallState
         let order: Int
     }
@@ -153,6 +155,28 @@ struct NativeLiveTurnActivityProjection: Equatable {
         tools.count + tasks.count + interactions.count
     }
 
+    func childTools(
+        for task: TaskActivity
+    ) -> [ToolActivity] {
+        guard let toolUseID = task.toolUseID else {
+            return []
+        }
+        return tools.filter {
+            $0.parentToolUseID == toolUseID
+        }
+    }
+
+    var topLevelTools: [ToolActivity] {
+        let nestedToolIDs = Set(
+            tasks.flatMap { task in
+                childTools(for: task).map(\.id)
+            }
+        )
+        return tools.filter {
+            !nestedToolIDs.contains($0.id)
+        }
+    }
+
     var headerTitle: String {
         if let pending = pendingInteractions.first {
             if pending.kind == "permission" {
@@ -219,6 +243,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let taskToolUseIDs = Set(
             projectedTasks.compactMap(\.toolUseID)
         )
+        let hiddenTaskToolUseIDs = Set(
+            projectedTasks
+                .filter(\.hiddenFromTranscript)
+                .compactMap(\.toolUseID)
+        )
         let questionToolUseIDs = Set(
             runtimeSurface.interactions
                 .filter { $0.kind == "question" }
@@ -233,6 +262,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
             .filter {
                 !taskToolUseIDs.contains($0.id)
                     && !questionToolUseIDs.contains($0.id)
+                    && !hiddenTaskToolUseIDs.contains(
+                        $0.parentToolUseID ?? ""
+                    )
             }
         interactions = runtimeSurface.interactions
         turnIsActive = runtimeSurface.providerTurnActive ?? true
@@ -308,6 +340,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     ?? "Tool",
                 input: payload["input"],
                 output: result?.event.payload?["output"],
+                parentToolUseID:
+                    payload["parent_tool_use_id"]?.stringValue,
+                parentAgentID:
+                    payload["parent_agent_id"]?.stringValue,
                 state:
                     result == nil
                         ? .running
@@ -366,6 +402,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     ?? "Tool",
                 input: payload["input"],
                 output: result?.payload?["output"],
+                parentToolUseID:
+                    payload["parent_tool_use_id"]?.stringValue,
+                parentAgentID:
+                    payload["parent_agent_id"]?.stringValue,
                 state:
                     result == nil
                         ? .unknown
@@ -393,6 +433,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     toolName: "Tool result",
                     input: nil,
                     output: payload["output"],
+                    parentToolUseID: nil,
+                    parentAgentID: nil,
                     state:
                         payload["is_error"]?.boolValue == true
                             ? .failed
@@ -627,21 +669,14 @@ struct NativeLiveTurnActivityView: View {
                     ForEach(projection.tasks) { task in
                         NativeLiveTaskActivityRow(
                             task: task,
+                            childTools:
+                                projection.childTools(for: task),
                             turnIsActive: projection.turnIsActive
                         )
                     }
 
-                    ForEach(projection.tools) { tool in
-                        NativeLiveToolCallCard(
-                            toolName: tool.toolName,
-                            detail: nativeLiveJSONDetail(
-                                tool.input
-                            ),
-                            resultDetail: nativeLiveJSONDetail(
-                                tool.output
-                            ),
-                            state: tool.state
-                        )
+                    ForEach(projection.topLevelTools) { tool in
+                        NativeLiveToolActivityRow(tool: tool)
                     }
 
                     ForEach(projection.interactions) { interaction in
@@ -731,45 +766,57 @@ struct NativeLiveTurnActivityView: View {
 
 private struct NativeLiveTaskActivityRow: View {
     let task: NativeLiveTurnActivityProjection.TaskActivity
+    let childTools:
+        [NativeLiveTurnActivityProjection.ToolActivity]
     let turnIsActive: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            taskIcon
-                .frame(width: 15, height: 18)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                taskIcon
+                    .frame(width: 15, height: 18)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(task.displayTitle)
-                    .font(.system(size: 13.5, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.displayTitle)
+                        .font(.system(
+                            size: 13.5,
+                            weight: .medium
+                        ))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
 
-                HStack(spacing: 6) {
-                    if let subagentType = task.subagentType,
-                       !subagentType.isEmpty {
-                        Text(subagentType)
+                    HStack(spacing: 6) {
+                        if let subagentType = task.subagentType,
+                           !subagentType.isEmpty {
+                            Text(subagentType)
+                        }
+
+                        if task.isBackgrounded == true {
+                            Text("Background")
+                        }
+
+                        if let status = task.status,
+                           !status.isEmpty {
+                            Text(status.capitalized)
+                        } else if let phase = task.phase,
+                                  !phase.isEmpty {
+                            Text(phase.replacingOccurrences(
+                                of: "_",
+                                with: " "
+                            ).capitalized)
+                        }
                     }
-
-                    if task.isBackgrounded == true {
-                        Text("Background")
-                    }
-
-                    if let status = task.status,
-                       !status.isEmpty {
-                        Text(status.capitalized)
-                    } else if let phase = task.phase,
-                              !phase.isEmpty {
-                        Text(phase.replacingOccurrences(
-                            of: "_",
-                            with: " "
-                        ).capitalized)
-                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
             }
 
-            Spacer(minLength: 0)
+            ForEach(childTools) { tool in
+                NativeLiveToolActivityRow(tool: tool)
+                    .padding(.leading, 23)
+            }
         }
         .padding(.leading, CGFloat(
             min(max(task.spawnDepth ?? 0, 0), 4)
@@ -798,6 +845,19 @@ private struct NativeLiveTaskActivityRow: View {
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+private struct NativeLiveToolActivityRow: View {
+    let tool: NativeLiveTurnActivityProjection.ToolActivity
+
+    var body: some View {
+        NativeLiveToolCallCard(
+            toolName: tool.toolName,
+            detail: nativeLiveJSONDetail(tool.input),
+            resultDetail: nativeLiveJSONDetail(tool.output),
+            state: tool.state
+        )
     }
 }
 
