@@ -105,11 +105,14 @@ extension AppModel {
 
         guard var surface = nativeLiveRuntimeSurface,
               surface.prepareID == prepareID,
-              surface.conversationID == conversationID,
-              surface.hasVisibleBackgroundTasks else {
+              surface.conversationID == conversationID else {
             return false
         }
 
+        // Keep the observer alive for a short settle window even when the
+        // first post-result read has not received background_tasks_changed
+        // yet. The observation loop requires two consecutive empty cycles
+        // before it refreshes canonical history and stops.
         surface.foregroundTurnCompleted = true
         nativeLiveRuntimeSurface = surface
         return true
