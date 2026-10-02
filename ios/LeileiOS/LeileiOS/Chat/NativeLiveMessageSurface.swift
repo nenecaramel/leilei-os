@@ -298,8 +298,12 @@ struct NativeLiveMessageSurface: View {
 
                     if pendingOperation == nil,
                        let runtimeSurface,
-                       !runtimeSurface.foregroundTurnCompleted
-                        || !hasCanonicalAssistantHead {
+                       (
+                           !runtimeSurface.foregroundTurnCompleted
+                               || !hasCanonicalAssistantHead(
+                                   in: snapshot
+                               )
+                       ) {
                         NativeLiveRuntimeAssistantRow(
                             runtimeSurface: runtimeSurface,
                             onResolveInteraction:
@@ -470,7 +474,9 @@ struct NativeLiveMessageSurface: View {
         return runtimeSurface
     }
 
-    private var hasCanonicalAssistantHead: Bool {
+    private func hasCanonicalAssistantHead(
+        in snapshot: NativeLiveCurrentPathSnapshot?
+    ) -> Bool {
         guard let snapshot,
               let headID = snapshot.currentHeadMessageId else {
             return false
