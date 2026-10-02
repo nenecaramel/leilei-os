@@ -452,11 +452,8 @@ private struct NativeLiveAttachmentGallery: View {
 
             TabView(selection: $selection) {
                 ForEach(blocks) { block in
-                    NativeLiveAttachmentRemoteImage(
-                        block: block,
-                        mode: .fit,
-                        cornerRadius: 0,
-                        maxPixelSize: 1_600
+                    NativeLiveAttachmentGalleryPage(
+                        block: block
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 64)
@@ -522,6 +519,88 @@ private struct NativeLiveAttachmentGallery: View {
                 .padding(.bottom, 12)
             }
         }
+    }
+}
+
+
+private struct NativeLiveAttachmentGalleryPage: View {
+    let block: NativeLiveCurrentPathBlock
+
+    @State private var scale: CGFloat = 1
+    @State private var baseScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var baseOffset: CGSize = .zero
+
+    var body: some View {
+        NativeLiveAttachmentRemoteImage(
+            block: block,
+            mode: .fit,
+            cornerRadius: 0,
+            maxPixelSize: 2_048
+        )
+        .scaleEffect(scale)
+        .offset(offset)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            withAnimation(
+                .easeInOut(duration: 0.18)
+            ) {
+                if scale > 1.01 {
+                    resetZoom()
+                } else {
+                    scale = 2
+                    baseScale = 2
+                }
+            }
+        }
+        .simultaneousGesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    scale = min(
+                        max(
+                            baseScale * value,
+                            1
+                        ),
+                        4
+                    )
+                }
+                .onEnded { _ in
+                    baseScale = scale
+                    if scale <= 1.01 {
+                        resetZoom()
+                    }
+                }
+        )
+        .simultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    guard scale > 1.01 else {
+                        return
+                    }
+                    offset = CGSize(
+                        width:
+                            baseOffset.width
+                            + value.translation.width,
+                        height:
+                            baseOffset.height
+                            + value.translation.height
+                    )
+                }
+                .onEnded { _ in
+                    guard scale > 1.01 else {
+                        resetZoom()
+                        return
+                    }
+                    baseOffset = offset
+                }
+        )
+    }
+
+    private func resetZoom() {
+        scale = 1
+        baseScale = 1
+        offset = .zero
+        baseOffset = .zero
     }
 }
 
