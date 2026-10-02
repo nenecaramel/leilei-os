@@ -244,10 +244,10 @@ extension AppModel {
                     conversationID: conversationID
                 )
                 shouldStopRuntimeObservation =
-                    !await continueNativeLiveRuntimeObservationForBackgroundTasks(
+                    !(await continueNativeLiveRuntimeObservationForBackgroundTasks(
                         prepareID: turn.prepareId,
                         conversationID: conversationID
-                    )
+                    ))
                 await refreshNativeLiveCurrentPath(force: true)
                 scheduleCurrentHeadMindWriteRefresh()
                 chatSendState = .idle
@@ -293,10 +293,10 @@ extension AppModel {
             conversationID: conversationID
         )
         shouldStopRuntimeObservation =
-            !await continueNativeLiveRuntimeObservationForBackgroundTasks(
+            !(await continueNativeLiveRuntimeObservationForBackgroundTasks(
                 prepareID: prepared.prepareId,
                 conversationID: conversationID
-            )
+            ))
         await refreshNativeLiveCurrentPath(force: true)
         scheduleCurrentHeadMindWriteRefresh()
     }
