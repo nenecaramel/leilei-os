@@ -584,12 +584,11 @@ export class NativeLiveMindLoopService {
 
     const priority = [...ranked].sort(priorityCompare);
     if (!input.applyLimit || priority.length <= candidateLimit) {
-      return priority.map(({
-        lexicalScore: _lexicalScore,
-        salience: _salience,
-        originalIndex: _originalIndex,
-        ...candidate
-      }) => candidate);
+      return priority.map((candidate) => ({
+        stateId: candidate.stateId,
+        kind: candidate.kind,
+        text: candidate.text,
+      }));
     }
 
     // Keep E5 cost bounded while preventing lexical preselection from owning
@@ -652,12 +651,11 @@ export class NativeLiveMindLoopService {
 
     return selected
       .sort(priorityCompare)
-      .map(({
-        lexicalScore: _lexicalScore,
-        salience: _salience,
-        originalIndex: _originalIndex,
-        ...candidate
-      }) => candidate);
+      .map((candidate) => ({
+        stateId: candidate.stateId,
+        kind: candidate.kind,
+        text: candidate.text,
+      }));
   }
 
   parseAssistantBlocks(
