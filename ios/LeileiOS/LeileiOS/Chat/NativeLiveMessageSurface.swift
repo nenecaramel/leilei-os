@@ -234,6 +234,11 @@ struct NativeLiveMessageSurface: View {
                                     for: message,
                                     pendingIsActive: pendingIsActive
                                 ),
+                            displayAttachmentOverride:
+                                editedAttachmentOverride(
+                                    for: message,
+                                    pendingIsActive: pendingIsActive
+                                ),
                             showPendingReplacement:
                                 message.id == replacementAssistantID,
                             replacementRuntimeSurface:
@@ -493,6 +498,23 @@ struct NativeLiveMessageSurface: View {
         return text
     }
 
+    private func editedAttachmentOverride(
+        for message: NativeLiveCurrentPathMessage,
+        pendingIsActive: Bool
+    ) -> [NativeLiveComposerAttachmentDraft]? {
+        guard pendingIsActive,
+              let pendingOperation,
+              case .edit(
+                  let targetUserMessageID,
+                  _
+              ) = pendingOperation.kind,
+              message.id == targetUserMessageID else {
+            return nil
+        }
+
+        return pendingOperation.attachments
+    }
+
     private func copyMessage(
         _ text: String,
         messageID: String
@@ -534,6 +556,8 @@ private struct NativeLiveMessageRow: View {
     let message: NativeLiveCurrentPathMessage
     let isCurrentHead: Bool
     let displayTextOverride: String?
+    let displayAttachmentOverride:
+        [NativeLiveComposerAttachmentDraft]?
     let showPendingReplacement: Bool
     let replacementRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
@@ -581,7 +605,26 @@ private struct NativeLiveMessageRow: View {
                 )
 
                 VStack(alignment: .trailing, spacing: 8) {
-                    if !userAttachmentBlocks.isEmpty {
+                    if let displayAttachmentOverride {
+                        if !displayAttachmentOverride.isEmpty {
+                            NativeLiveOptimisticAttachmentGroupView(
+                                attachments:
+                                    displayAttachmentOverride
+                            )
+                            .contextMenu {
+                                if let copyText {
+                                    Button("Copy") {
+                                        onCopyMessage(copyText)
+                                    }
+                                }
+
+                                Button("Edit") {
+                                    onEditMessage(message)
+                                }
+                                .disabled(isTurnInFlight)
+                            }
+                        }
+                    } else if !userAttachmentBlocks.isEmpty {
                         NativeLiveAttachmentGroupView(
                             blocks: userAttachmentBlocks,
                             isUserMessage: true
