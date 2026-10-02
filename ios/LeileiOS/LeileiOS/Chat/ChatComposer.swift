@@ -451,23 +451,15 @@ private struct NativeLiveComposerImageAttachmentTile: View {
     let onRemove: () -> Void
     let onRetry: () -> Void
 
+    @State private var localPreviewImage: UIImage?
     @State private var remotePreviewImage: UIImage?
     @State private var isLoadingRemotePreview = false
-
-    private var previewImage: UIImage? {
-        guard let data = attachment.data else {
-            return nil
-        }
-        return nativeLiveComposerThumbnail(
-            data
-        )
-    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
                 if let image =
-                        previewImage
+                        localPreviewImage
                         ?? remotePreviewImage {
                     Image(uiImage: image)
                         .resizable()
@@ -518,6 +510,9 @@ private struct NativeLiveComposerImageAttachmentTile: View {
             .accessibilityLabel("Remove attachment")
         }
         .frame(width: 72, height: 72)
+        .task(id: attachment.id) {
+            loadLocalPreviewIfNeeded()
+        }
         .task(
             id: attachment.remoteAttachmentID
         ) {
@@ -526,8 +521,18 @@ private struct NativeLiveComposerImageAttachmentTile: View {
     }
 
     @MainActor
+    private func loadLocalPreviewIfNeeded() {
+        guard localPreviewImage == nil,
+              let data = attachment.data else {
+            return
+        }
+        localPreviewImage =
+            nativeLiveComposerThumbnail(data)
+    }
+
+    @MainActor
     private func loadRemotePreviewIfNeeded() async {
-        guard previewImage == nil,
+        guard localPreviewImage == nil,
               remotePreviewImage == nil,
               let attachmentID =
                 attachment.remoteAttachmentID else {
