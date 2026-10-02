@@ -1530,6 +1530,104 @@ test("MCP startup retry is never used after any runtime event was observed", asy
 
 
 
+test("VCS mutation hints are persisted as durable runtime metadata", async () => {
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      return {
+        providerSessionId: "provider-vcs",
+        normalizedEvents: [
+          {
+            type: "runtime",
+            payload: {
+              kind: "vcs_state_changed",
+              mutation_kind: "commit",
+              cwd: "/workspace/repo",
+              branch: "main",
+            },
+          },
+          {
+            type: "runtime",
+            payload: {
+              kind: "vcs_state_changed",
+              mutation_kind: "push",
+              cwd: "/workspace/repo/subdir",
+              branch: null,
+            },
+          },
+        ],
+      };
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(
+    runtime,
+    "/workspace/repo",
+  ).execute(command());
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(result.normalized_events, []);
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    vcs_changes: [
+      {
+        mutation_kind: "commit",
+        cwd: "/workspace/repo",
+        branch: "main",
+      },
+      {
+        mutation_kind: "push",
+        cwd: "/workspace/repo/subdir",
+        branch: null,
+      },
+    ],
+  });
+});
+
+test("provider terminal failure retains VCS mutation hints", async () => {
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn() {
+      throw Object.assign(
+        new Error("provider failed after commit"),
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          normalizedEvents: [{
+            type: "runtime",
+            payload: {
+              kind: "vcs_state_changed",
+              mutation_kind: "commit",
+              cwd: "/workspace/repo",
+              branch: "feature/test",
+            },
+          }],
+        },
+      );
+    },
+  };
+
+  const result = await new NativeLiveMacRuntimeExecutor(
+    runtime,
+    "/workspace/repo",
+  ).execute(command());
+
+  assert.equal(result.status, "failure");
+  if (result.status !== "failure") throw new Error("expected failure");
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    vcs_changes: [{
+      mutation_kind: "commit",
+      cwd: "/workspace/repo",
+      branch: "feature/test",
+    }],
+  });
+});
+
 test("SessionStore health is persisted as durable runtime metadata", async () => {
   const sessionStore = {
     provider: "claude_agent_sdk" as const,

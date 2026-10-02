@@ -54,6 +54,19 @@ export class ClaudeEventNormalizer {
       emit("runtime", this.sessionId, attribution);
     }
 
+    const messageProvenance =
+      normalizeMessageProvenance(raw);
+    if (
+      (raw.type === "user" || raw.type === "assistant")
+      && messageProvenance
+    ) {
+      emit("runtime", this.sessionId, {
+        kind: "message_origin",
+        source_type: raw.type,
+        ...messageProvenance,
+      });
+    }
+
     if (raw.type === "command_lifecycle") {
       emit("runtime", this.sessionId, {
         kind: "command_lifecycle",
@@ -84,6 +97,20 @@ export class ClaudeEventNormalizer {
         code: clippedString(raw.code, 128),
       });
       return output;
+    }
+
+    if (raw.type === "system" && raw.subtype === "vcs_state_changed") {
+      const mutationKind = clippedString(raw.kind, 128);
+      const cwd = clippedString(raw.cwd, 4_096);
+      if (mutationKind && cwd) {
+        emit("runtime", this.sessionId, {
+          kind: "vcs_state_changed",
+          mutation_kind: mutationKind,
+          cwd,
+          branch: clippedString(raw.branch, 512),
+        });
+        return output;
+      }
     }
 
     if (raw.type === "system" && raw.subtype === "compact_boundary") {
@@ -122,6 +149,11 @@ export class ClaudeEventNormalizer {
         workflow_name: safeString(raw.workflow_name),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
+        is_backgrounded:
+          typeof raw.is_backgrounded === "boolean"
+            ? raw.is_backgrounded
+            : null,
+        spawn_depth: finiteNonNegative(raw.spawn_depth),
       });
       return output;
     }
@@ -183,6 +215,7 @@ export class ClaudeEventNormalizer {
           : {}),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
+        reason: clippedString(raw.reason, 1_000),
         has_output_file:
           typeof raw.output_file === "string" && raw.output_file.length > 0,
       });
@@ -367,7 +400,7 @@ export class ClaudeEventNormalizer {
           ),
         );
       }
-      if (emittedToolResult) return output;
+      if (emittedToolResult || messageProvenance) return output;
     }
 
     if (raw.type === "result") {
@@ -450,6 +483,86 @@ function normalizeUserMessageAttribution(raw) {
   };
 }
 
+function normalizeMessageProvenance(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const origin = boundedMessageOrigin(raw.origin);
+  const parentToolUseId =
+    clippedString(raw.parent_tool_use_id, 256);
+  const parentAgentId =
+    clippedString(raw.parent_agent_id, 256);
+
+  if (!origin && !parentToolUseId && !parentAgentId) {
+    return null;
+  }
+
+  return {
+    origin,
+    ...(parentToolUseId
+      ? { parent_tool_use_id: parentToolUseId }
+      : {}),
+    ...(parentAgentId
+      ? { parent_agent_id: parentAgentId }
+      : {}),
+  };
+}
+
+function boundedMessageOrigin(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+  ) {
+    return null;
+  }
+
+  const kind = clippedString(value.kind, 64);
+  if (!kind) return null;
+
+  const origin = { kind };
+  const appendString = (key, rawValue, maxChars = 256) => {
+    const normalized = clippedString(rawValue, maxChars);
+    if (normalized) origin[key] = normalized;
+  };
+
+  appendString("subkind", value.subkind, 128);
+  appendString("server", value.server, 256);
+  appendString("from", value.from, 256);
+  appendString("name", value.name, 256);
+  appendString(
+    "from_session",
+    value.fromSession ?? value.from_session,
+    256,
+  );
+  appendString(
+    "from_mode",
+    value.fromMode ?? value.from_mode,
+    128,
+  );
+  appendString(
+    "sender_task_id",
+    value.senderTaskId ?? value.sender_task_id,
+    256,
+  );
+
+  const verifiedPeerPid =
+    value.verifiedPeerPid ?? value.verified_peer_pid;
+  if (
+    Number.isInteger(verifiedPeerPid)
+    && verifiedPeerPid >= 0
+  ) {
+    origin.verified_peer_pid = verifiedPeerPid;
+  }
+
+  appendString(
+    "fire_reason",
+    value.fireReason ?? value.fire_reason,
+    512,
+  );
+
+  return origin;
+}
+
 const RESULT_TELEMETRY_JSON_MAX_CHARS = 64_000;
 const RESULT_TELEMETRY_MAX_ERRORS = 16;
 const RESULT_TELEMETRY_MAX_DENIALS = 64;
@@ -480,7 +593,7 @@ function normalizeResultTelemetry(raw) {
       clippedString(raw?.fast_mode_disabled_reason, 512),
     total_cost_usd:
       finiteNonNegative(raw?.total_cost_usd),
-    origin: boundedResultJsonRecord(raw?.origin),
+    origin: boundedMessageOrigin(raw?.origin),
     usage: boundedResultJsonRecord(raw?.usage),
     modelUsage:
       boundedResultJsonRecord(raw?.modelUsage),

@@ -143,8 +143,6 @@ struct NativeLiveComposerAttachmentDraft:
     let mimeType: String
     let kind: NativeLiveComposerAttachmentKind
     let data: Data?
-    let sizeBytes: Int?
-    let sha256: String?
     var state: NativeLiveComposerAttachmentUploadState
 
     init(
@@ -153,8 +151,6 @@ struct NativeLiveComposerAttachmentDraft:
         mimeType: String,
         kind: NativeLiveComposerAttachmentKind,
         data: Data?,
-        sizeBytes: Int? = nil,
-        sha256: String? = nil,
         state: NativeLiveComposerAttachmentUploadState = .uploading
     ) {
         self.id = id
@@ -162,10 +158,6 @@ struct NativeLiveComposerAttachmentDraft:
         self.mimeType = mimeType
         self.kind = kind
         self.data = data
-        self.sizeBytes =
-            sizeBytes
-            ?? data?.count
-        self.sha256 = sha256
         self.state = state
     }
 
@@ -173,17 +165,13 @@ struct NativeLiveComposerAttachmentDraft:
         existingAttachmentID: String,
         filename: String,
         mimeType: String,
-        kind: NativeLiveComposerAttachmentKind,
-        sizeBytes: Int? = nil,
-        sha256: String? = nil
+        kind: NativeLiveComposerAttachmentKind
     ) {
         self.id = UUID()
         self.filename = filename
         self.mimeType = mimeType
         self.kind = kind
         self.data = nil
-        self.sizeBytes = sizeBytes
-        self.sha256 = sha256
         self.state = .ready(existingAttachmentID)
     }
 

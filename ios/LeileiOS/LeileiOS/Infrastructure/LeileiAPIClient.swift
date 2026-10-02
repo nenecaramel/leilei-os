@@ -496,6 +496,7 @@ struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
     let environment: NativeLiveRuntimeEnvironment?
     let result: NativeLiveRuntimeResultTelemetry?
     let outputResources: [NativeLiveRuntimeOutputResource]?
+    let vcsChanges: [NativeLiveRuntimeVcsChange]?
     let sessionStore: NativeLiveRuntimeSessionStoreHealth?
 
     enum CodingKeys: String, CodingKey {
@@ -504,7 +505,23 @@ struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
         case environment
         case result
         case outputResources = "output_resources"
+        case vcsChanges = "vcs_changes"
         case sessionStore = "session_store"
+    }
+}
+
+struct NativeLiveRuntimeVcsChange:
+    Decodable,
+    Sendable,
+    Equatable {
+    let mutationKind: String
+    let cwd: String
+    let branch: String?
+
+    enum CodingKeys: String, CodingKey {
+        case mutationKind = "mutation_kind"
+        case cwd
+        case branch
     }
 }
 

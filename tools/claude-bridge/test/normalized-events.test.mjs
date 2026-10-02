@@ -858,6 +858,53 @@ test("omits base64 data URLs from tool_result projections", () => {
   assert.equal(events[1].payload.omitted_binary_bytes, 4_096);
 });
 
+test("normalizes Agent SDK vcs_state_changed as bounded runtime-only mutation hints", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "vcs_state_changed",
+        session_id: "s",
+        kind: "commit",
+        cwd: "/workspace/repo",
+        branch: "main",
+        uuid: "vcs-1",
+        private_detail: "must not survive",
+      },
+      {
+        type: "system",
+        subtype: "vcs_state_changed",
+        session_id: "s",
+        kind: "push",
+        cwd: "/workspace/repo/subdir",
+        branch: null,
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["runtime", "runtime"],
+  );
+  assert.deepEqual(events[0].payload, {
+    kind: "vcs_state_changed",
+    mutation_kind: "commit",
+    cwd: "/workspace/repo",
+    branch: "main",
+  });
+  assert.deepEqual(events[1].payload, {
+    kind: "vcs_state_changed",
+    mutation_kind: "push",
+    cwd: "/workspace/repo/subdir",
+    branch: null,
+  });
+  assert.equal(
+    JSON.stringify(events).includes("private_detail"),
+    false,
+  );
+});
+
 test("unknown and conflicting-session events are surfaced without crashing", () => {
   const events = normalizeClaudeEvents([{ type: "system", subtype: "init", session_id: "s" }, { type: "future", subtype: "x", session_id: "s" }, { type: "assistant", session_id: "other", message: { content: [] } }], base);
   assert.equal(events[1].type, "runtime"); assert.equal(events[2].type, "error");
@@ -1028,4 +1075,255 @@ test("normalizes Agent SDK task lifecycle and background task level signals with
   });
   assert.equal(events[5].payload.has_output_file, true);
   assert.equal("output_file" in events[5].payload, false);
+});
+
+
+test("preserves bounded Agent SDK background task provenance", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "task_started",
+        session_id: "s",
+        task_id: "task-depth",
+        tool_use_id: "tool-depth",
+        description: "nested research",
+        task_type: "local_agent",
+        is_backgrounded: true,
+        spawn_depth: 2,
+        ambient: true,
+        private_path: "/Users/private/should-not-survive",
+      },
+      {
+        type: "system",
+        subtype: "task_notification",
+        session_id: "s",
+        task_id: "task-depth",
+        tool_use_id: "tool-depth",
+        status: "stopped",
+        summary: "Worker stopped",
+        reason: "worker_restart",
+        ambient: true,
+        output_file: "/Users/private/output.txt",
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(events[0].payload, {
+    phase: "started",
+    task_id: "task-depth",
+    tool_use_id: "tool-depth",
+    description: "nested research",
+    subagent_type: null,
+    task_type: "local_agent",
+    workflow_name: null,
+    hidden_from_transcript: false,
+    ambient: true,
+    is_backgrounded: true,
+    spawn_depth: 2,
+  });
+  assert.deepEqual(events[1].payload, {
+    phase: "notification",
+    task_id: "task-depth",
+    tool_use_id: "tool-depth",
+    status: "stopped",
+    summary: "Worker stopped",
+    usage: null,
+    hidden_from_transcript: false,
+    ambient: true,
+    reason: "worker_restart",
+    has_output_file: true,
+  });
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /Users\/private|private_path/,
+  );
+});
+
+test("preserves structural injected-message provenance without duplicating peer content", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      origin: {
+        kind: "task-notification",
+        subkind: "peer-send-message",
+        server: "team-mcp",
+        from: "peer://researcher",
+        name: "Researcher",
+        fromSession: "peer-session",
+        fromMode: "default",
+        senderTaskId: "task-peer",
+        verifiedPeerPid: 4321,
+        fireReason: "schedule_due",
+        body: "peer update body",
+        futureProviderField: {
+          coordinator: "alpha",
+        },
+      },
+      parent_tool_use_id: "tool-parent",
+      parent_agent_id: "agent-parent",
+      message: {
+        content: "peer update",
+      },
+    }],
+    base,
+  );
+
+  const provenance = events.find(
+    (event) =>
+      event.type === "runtime"
+      && event.payload?.kind === "message_origin",
+  );
+  assert.deepEqual(provenance?.payload, {
+    kind: "message_origin",
+    source_type: "user",
+    origin: {
+      kind: "task-notification",
+      subkind: "peer-send-message",
+      server: "team-mcp",
+      from: "peer://researcher",
+      name: "Researcher",
+      from_session: "peer-session",
+      from_mode: "default",
+      sender_task_id: "task-peer",
+      verified_peer_pid: 4321,
+      fire_reason: "schedule_due",
+    },
+    parent_tool_use_id: "tool-parent",
+    parent_agent_id: "agent-parent",
+  });
+  assert.doesNotMatch(
+    JSON.stringify(provenance),
+    /peer update body|futureProviderField/,
+  );
+});
+
+test("drops malformed message origin instead of treating it as provenance", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      origin: {
+        kind: 123,
+        from: "peer://bad",
+      },
+      message: {
+        content: "not attributed",
+      },
+    }],
+    base,
+  );
+
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === "runtime"
+        && event.payload?.kind === "message_origin",
+    ),
+    false,
+  );
+});
+
+test("keeps structural provenance when peer body is oversized", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      origin: {
+        kind: "peer",
+        from: "peer://worker",
+        body: "x".repeat(70_000),
+      },
+      message: {
+        content: "peer update",
+      },
+    }],
+    base,
+  );
+
+  const provenance = events.find(
+    (event) =>
+      event.type === "runtime"
+      && event.payload?.kind === "message_origin",
+  );
+  assert.deepEqual(provenance?.payload.origin, {
+    kind: "peer",
+    from: "peer://worker",
+  });
+  assert.doesNotMatch(
+    JSON.stringify(provenance),
+    /xxxxxxxxxxxxxxxx/,
+  );
+});
+
+
+test("result telemetry keeps structural provider origin only", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "result",
+      subtype: "success",
+      session_id: "s",
+      result: "done",
+      origin: {
+        kind: "peer",
+        from: "peer://worker",
+        name: "Worker",
+        fromSession: "peer-session",
+        senderTaskId: "task-result",
+        verifiedPeerPid: 99,
+        body: "provider peer body",
+        futureProviderField: "kept",
+      },
+    }],
+    base,
+  );
+
+  assert.deepEqual(
+    events[0].payload.telemetry.origin,
+    {
+      kind: "peer",
+      from: "peer://worker",
+      name: "Worker",
+      from_session: "peer-session",
+      sender_task_id: "task-result",
+      verified_peer_pid: 99,
+    },
+  );
+  assert.doesNotMatch(
+    JSON.stringify(events[0].payload.telemetry.origin),
+    /provider peer body|futureProviderField/,
+  );
+});
+
+test("preserves assistant subagent parent linkage as runtime-only provenance", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "assistant",
+      session_id: "s",
+      parent_tool_use_id: "tool-subagent",
+      parent_agent_id: "agent-parent",
+      message: {
+        content: [{
+          type: "text",
+          text: "nested answer",
+        }],
+      },
+    }],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["runtime", "text"],
+  );
+  assert.deepEqual(events[0].payload, {
+    kind: "message_origin",
+    source_type: "assistant",
+    origin: null,
+    parent_tool_use_id: "tool-subagent",
+    parent_agent_id: "agent-parent",
+  });
+  assert.equal(events[1].payload.text, "nested answer");
 });
