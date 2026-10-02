@@ -33,10 +33,15 @@ struct NativeLiveOptimisticAttachmentGroupView: View {
 
             ForEach(files) { attachment in
                 HStack(spacing: 10) {
-                    Image(systemName: "doc")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22)
+                    Image(
+                        systemName:
+                            nativeLiveDraftFileSymbol(
+                                attachment
+                            )
+                    )
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22)
 
                     VStack(
                         alignment: .leading,
@@ -50,11 +55,21 @@ struct NativeLiveOptimisticAttachmentGroupView: View {
                             .foregroundStyle(.primary)
                             .lineLimit(2)
 
-                        Text(
-                            nativeLiveDraftFileTypeLabel(
-                                attachment
+                        HStack(spacing: 5) {
+                            Text(
+                                nativeLiveDraftFileTypeLabel(
+                                    attachment
+                                )
                             )
-                        )
+
+                            if let sizeText =
+                                    nativeLiveDraftSizeText(
+                                        attachment
+                                    ) {
+                                Text("·")
+                                Text(sizeText)
+                            }
+                        }
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     }
@@ -229,6 +244,70 @@ private func nativeLiveDraftFileTypeLabel(
     default:
         return "File"
     }
+}
+
+
+private func nativeLiveDraftFileSymbol(
+    _ attachment:
+        NativeLiveComposerAttachmentDraft
+) -> String {
+    let ext = (attachment.filename as NSString)
+        .pathExtension
+        .lowercased()
+
+    if attachment.mimeType == "application/pdf"
+        || ext == "pdf" {
+        return "doc.richtext"
+    }
+
+    if [
+        "zip", "tar", "gz", "7z", "rar",
+    ].contains(ext) {
+        return "archivebox"
+    }
+
+    if [
+        "csv", "xls", "xlsx", "numbers",
+    ].contains(ext) {
+        return "tablecells"
+    }
+
+    if [
+        "ppt", "pptx", "key",
+    ].contains(ext) {
+        return "rectangle.on.rectangle"
+    }
+
+    if attachment.mimeType.hasPrefix("video/") {
+        return "play.rectangle"
+    }
+
+    if attachment.mimeType.hasPrefix("audio/") {
+        return "waveform"
+    }
+
+    if attachment.mimeType.hasPrefix("text/") {
+        return "doc.text"
+    }
+
+    return "doc"
+}
+
+
+private func nativeLiveDraftSizeText(
+    _ attachment:
+        NativeLiveComposerAttachmentDraft
+) -> String? {
+    guard let sizeBytes =
+            attachment.sizeBytes
+            ?? attachment.data?.count else {
+        return nil
+    }
+
+    return ByteCountFormatter.string(
+        fromByteCount: Int64(sizeBytes),
+        countStyle: .file
+    )
 }
 
 
