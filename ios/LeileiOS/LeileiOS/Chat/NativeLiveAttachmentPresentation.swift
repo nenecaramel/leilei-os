@@ -75,9 +75,6 @@ struct NativeLiveOptimisticAttachmentGroupView: View {
                     }
 
                     Spacer(minLength: 0)
-
-                    ProgressView()
-                        .controlSize(.small)
                 }
                 .padding(.horizontal, 11)
                 .padding(.vertical, 10)
