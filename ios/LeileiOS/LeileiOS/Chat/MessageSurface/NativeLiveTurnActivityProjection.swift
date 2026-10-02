@@ -28,6 +28,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         var subagentType: String?
         var taskType: String?
         var isBackgrounded: Bool?
+        var isActiveInBackgroundSet: Bool?
         var hiddenFromTranscript: Bool
         var spawnDepth: Int?
         var phase: String?
@@ -66,6 +67,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
         var isCancelled: Bool {
             status == "cancelled" || status == "stopped"
+        }
+
+        var isCurrentlyActive: Bool {
+            !isTerminal
+                && isActiveInBackgroundSet != false
         }
 
         private func normalized(_ value: String?) -> String? {
@@ -175,7 +181,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
 
         if let task = tasks
-            .filter({ !$0.isTerminal })
+            .filter(\.isCurrentlyActive)
             .sorted(by: { $0.order < $1.order })
             .last {
             return task.displayTitle
@@ -718,6 +724,17 @@ struct NativeLiveTurnActivityProjection: Equatable {
                     || activeTaskIDs.contains(taskID)
             }
 
+            for taskID in values.keys {
+                guard var task = values[taskID],
+                      task.isBackgrounded == true,
+                      !task.isTerminal else {
+                    continue
+                }
+                task.isActiveInBackgroundSet =
+                    activeTaskIDs.contains(taskID)
+                values[taskID] = task
+            }
+
             for value in latestActiveSet.tasks {
                 guard let object = value.objectValue,
                       let taskID =
@@ -741,6 +758,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 if task.isBackgrounded == nil {
                     task.isBackgrounded = true
                 }
+                task.isActiveInBackgroundSet = true
                 task.order = min(
                     task.order,
                     latestActiveSet.sequence
@@ -772,6 +790,7 @@ private extension NativeLiveTurnActivityProjection.TaskActivity {
             subagentType: nil,
             taskType: nil,
             isBackgrounded: nil,
+            isActiveInBackgroundSet: nil,
             hiddenFromTranscript: false,
             spawnDepth: nil,
             phase: nil,
