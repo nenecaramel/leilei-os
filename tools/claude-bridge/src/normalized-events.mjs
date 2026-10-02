@@ -99,6 +99,20 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    if (raw.type === "system" && raw.subtype === "vcs_state_changed") {
+      const mutationKind = clippedString(raw.kind, 128);
+      const cwd = clippedString(raw.cwd, 4_096);
+      if (mutationKind && cwd) {
+        emit("runtime", this.sessionId, {
+          kind: "vcs_state_changed",
+          mutation_kind: mutationKind,
+          cwd,
+          branch: clippedString(raw.branch, 512),
+        });
+        return output;
+      }
+    }
+
     if (raw.type === "system" && raw.subtype === "compact_boundary") {
       const metadata =
         raw.compact_metadata && typeof raw.compact_metadata === "object"

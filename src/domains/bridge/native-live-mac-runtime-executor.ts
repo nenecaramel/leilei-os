@@ -108,6 +108,7 @@ import {
   parseNativeLiveRuntimeEnvironment,
   parseNativeLiveRuntimeOutputResources,
   parseNativeLiveRuntimeResultTelemetry,
+  parseNativeLiveRuntimeVcsChanges,
   parseNativeLiveRuntimeSessionStoreHealth,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeContextUsage,
@@ -459,6 +460,10 @@ export class NativeLiveMacRuntimeExecutor {
       runtimeOutputResourcesFromNormalizedEvents(
         runtimeResult.normalizedEvents,
       );
+    const vcsChanges =
+      runtimeVcsChangesFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
     const sessionStore =
       runtimeResult.sessionStoreObservability
         ? (() => {
@@ -478,6 +483,7 @@ export class NativeLiveMacRuntimeExecutor {
       && !environment
       && !result
       && outputResources.length === 0
+      && vcsChanges.length === 0
       && !sessionStore
     ) return null;
 
@@ -488,6 +494,9 @@ export class NativeLiveMacRuntimeExecutor {
       ...(result ? { result } : {}),
       ...(outputResources.length > 0
         ? { output_resources: outputResources }
+        : {}),
+      ...(vcsChanges.length > 0
+        ? { vcs_changes: vcsChanges }
         : {}),
       ...(sessionStore
         ? { session_store: sessionStore }
@@ -605,6 +614,10 @@ function runtimeMetadataFromFailure(
     runtimeOutputResourcesFromNormalizedEvents(
       normalizedEvents,
     );
+  const vcsChanges =
+    runtimeVcsChangesFromNormalizedEvents(
+      normalizedEvents,
+    );
   const sessionStore =
     runtimeSessionStoreHealthFromFailure(record);
 
@@ -612,6 +625,7 @@ function runtimeMetadataFromFailure(
     !result
     && !environment
     && outputResources.length === 0
+    && vcsChanges.length === 0
     && !sessionStore
   ) return null;
   return {
@@ -620,6 +634,9 @@ function runtimeMetadataFromFailure(
     ...(result ? { result } : {}),
     ...(outputResources.length > 0
       ? { output_resources: outputResources }
+      : {}),
+    ...(vcsChanges.length > 0
+      ? { vcs_changes: vcsChanges }
       : {}),
     ...(sessionStore
       ? { session_store: sessionStore }
@@ -639,6 +656,46 @@ function runtimeSessionStoreHealthFromFailure(
     // SessionStore health is auxiliary observability. Malformed diagnostics
     // must not change the canonical provider failure.
     return null;
+  }
+}
+
+function runtimeVcsChangesFromNormalizedEvents(
+  events: readonly NativeLiveNormalizedEvent[],
+) {
+  const candidates: unknown[] = [];
+
+  for (const event of events) {
+    if (event.type !== "runtime") continue;
+    const payload = event.payload ?? {};
+    if (payload.kind !== "vcs_state_changed") continue;
+
+    const mutationKind =
+      typeof payload.mutation_kind === "string"
+        ? payload.mutation_kind
+        : null;
+    const cwd =
+      typeof payload.cwd === "string"
+        ? payload.cwd
+        : null;
+    if (!mutationKind?.trim() || !cwd?.trim()) continue;
+
+    candidates.push({
+      mutation_kind: mutationKind,
+      cwd,
+      branch:
+        typeof payload.branch === "string"
+          ? payload.branch
+          : null,
+    });
+    if (candidates.length >= 64) break;
+  }
+
+  try {
+    return parseNativeLiveRuntimeVcsChanges(candidates);
+  } catch {
+    // VCS mutation hints are auxiliary observability. Malformed provider
+    // telemetry must never rewrite the canonical turn outcome.
+    return [];
   }
 }
 

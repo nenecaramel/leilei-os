@@ -200,6 +200,12 @@ export type NativeLiveRuntimeOutputResource = {
   metadata: Record<string, unknown> | null;
 };
 
+export type NativeLiveRuntimeVcsChange = {
+  mutation_kind: string;
+  cwd: string;
+  branch: string | null;
+};
+
 export type NativeLiveRuntimeSessionStoreHealth = {
   provider: "claude_agent_sdk";
   configured: boolean;
@@ -228,6 +234,7 @@ export type NativeLiveRuntimeMetadata = {
   environment?: NativeLiveRuntimeEnvironment | null;
   result?: NativeLiveRuntimeResultTelemetry | null;
   output_resources?: NativeLiveRuntimeOutputResource[];
+  vcs_changes?: NativeLiveRuntimeVcsChange[];
   session_store?: NativeLiveRuntimeSessionStoreHealth | null;
 };
 
@@ -677,6 +684,7 @@ function parseRuntimeMetadata(
       "environment",
       "result",
       "output_resources",
+      "vcs_changes",
       "session_store",
     ],
   );
@@ -718,6 +726,14 @@ function parseRuntimeMetadata(
               body.output_resources,
             ),
         }),
+    ...(body.vcs_changes === undefined
+      ? {}
+      : {
+          vcs_changes:
+            parseNativeLiveRuntimeVcsChanges(
+              body.vcs_changes,
+            ),
+        }),
     ...(body.session_store === undefined
       ? {}
       : {
@@ -729,6 +745,43 @@ function parseRuntimeMetadata(
                 ),
         }),
   };
+}
+
+export function parseNativeLiveRuntimeVcsChanges(
+  value: unknown,
+): NativeLiveRuntimeVcsChange[] {
+  if (!Array.isArray(value) || value.length > 64) {
+    throw new NativeLiveRuntimeProtocolError(
+      "vcs_changes must contain at most 64 items.",
+    );
+  }
+
+  return value.map((item, index) => {
+    const body = requireRecord(item);
+    requireExactKeys(body, [
+      "mutation_kind",
+      "cwd",
+      "branch",
+    ]);
+
+    return {
+      mutation_kind: requireBoundedNonblank(
+        body.mutation_kind,
+        `vcs_changes[${index}].mutation_kind`,
+        128,
+      ),
+      cwd: requireBoundedNonblank(
+        body.cwd,
+        `vcs_changes[${index}].cwd`,
+        4_096,
+      ),
+      branch: boundedNullableString(
+        body.branch,
+        `vcs_changes[${index}].branch`,
+        512,
+      ),
+    };
+  });
 }
 
 export function parseNativeLiveRuntimeSessionStoreHealth(
