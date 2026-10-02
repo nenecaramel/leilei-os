@@ -42,3 +42,21 @@ test("message timestamp formatting is extracted from the message surface", () =>
   assert.match(timestamp, /enum MessageTimestampFormatter/);
   assert.doesNotMatch(root, /enum MessageTimestampFormatter/);
 });
+
+const actionsPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageActions.swift";
+
+test("message actions are extracted from the message surface", () => {
+  const root = fs.readFileSync(rootPath, "utf8");
+
+  assert.equal(fs.existsSync(actionsPath), true);
+  const actions = readExisting(actionsPath);
+
+  assert.match(actions, /struct LightweightContextMenuInteraction/);
+  assert.match(actions, /final class Coordinator/);
+  assert.match(actions, /title: "Copy"/);
+  assert.match(actions, /title: self\.title/);
+
+  assert.doesNotMatch(root, /struct LightweightContextMenuInteraction/);
+});
+
