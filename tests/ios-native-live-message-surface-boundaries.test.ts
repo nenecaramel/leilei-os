@@ -132,3 +132,38 @@ test("current attachment presentation is extracted from the message surface", ()
   assert.doesNotMatch(root, /struct NativeLiveAttachmentQuickLook/);
 });
 
+const messageRowsPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageRows.swift";
+const messageBlocksPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageBlocks.swift";
+
+test("message rows and canonical block rendering are extracted while root composition stays put", () => {
+  const root = fs.readFileSync(rootPath, "utf8");
+
+  assert.equal(fs.existsSync(messageRowsPath), true);
+  assert.equal(fs.existsSync(messageBlocksPath), true);
+
+  const rows = readExisting(messageRowsPath);
+  const blocks = readExisting(messageBlocksPath);
+
+  for (const symbol of [
+    "struct NativeLiveMessageRow",
+    "struct NativeLiveHistorySnapshotRow",
+    "struct NativeLiveHistoryForkDivider",
+    "struct NativeLiveOptimisticUserRow",
+  ]) {
+    assert.match(rows, new RegExp(symbol));
+    assert.doesNotMatch(root, new RegExp(symbol));
+  }
+
+  assert.match(blocks, /struct NativeLiveBlockView/);
+  assert.doesNotMatch(root, /struct NativeLiveBlockView/);
+
+  assert.match(root, /struct NativeLivePendingOperation/);
+  assert.match(root, /struct NativeLiveMessageSurface: View/);
+  assert.match(root, /"还有更早消息"/);
+  assert.match(root, /await onLoadOlder\(\)/);
+  assert.match(root, /NativeLiveRuntimeAssistantRow/);
+  assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
+});
+
