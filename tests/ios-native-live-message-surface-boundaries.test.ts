@@ -110,6 +110,7 @@ test("runtime activity and tool presentation are extracted from the message surf
     "struct NativeLiveTurnActivityView",
     "struct NativeLiveLifecycleActivityRow",
     "struct NativeLiveTaskActivityRow",
+    "struct NativeLiveTaskResourceRow",
     "struct NativeLiveToolActivityRow",
     "struct AssistantTypingIndicatorRow",
     "enum NativeLiveToolCallState",
@@ -156,6 +157,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(taskProjection, /is_backgrounded/);
   assert.match(taskProjection, /spawn_depth/);
   assert.match(taskProjection, /hidden_from_transcript/);
+  assert.match(taskProjection, /resource_links/);
   assert.match(taskProjection, /activeTaskIDs/);
   assert.match(taskProjection, /task\.phase != "active_set"/);
   assert.match(runtime, /case \.running:/);
@@ -163,6 +165,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /case \.failed:/);
   assert.match(runtime, /tertiarySectionTitle/);
   assert.match(runtime, /"Resources"/);
+  assert.match(runtime, /task\.resourceLinks/);
   assert.match(runtime, /task\.isCurrentlyActive/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
