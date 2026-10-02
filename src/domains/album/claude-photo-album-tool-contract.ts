@@ -54,12 +54,6 @@ export type NativeLiveClaudeAlbumRuntimeHandlers = {
     photo: ClaudeAlbumToolPhoto;
     image: ClaudeAlbumToolImage;
   }>;
-  viewPhoto(input: {
-    photoId: string;
-  }): Promise<{
-    photo: ClaudeAlbumToolPhoto;
-    image: ClaudeAlbumToolImage;
-  }>;
   sendPhoto(input: {
     photoId: string;
   }): Promise<{
@@ -79,6 +73,12 @@ export interface NativeLiveClaudeAlbumToolClient {
     query: string | null;
     limit: number;
   }): Promise<ClaudeAlbumToolPhoto[]>;
+  viewPhoto(input: {
+    photoId: string;
+  }): Promise<{
+    photo: ClaudeAlbumToolPhoto;
+    image: ClaudeAlbumToolImage;
+  }>;
   sendPhoto(input: {
     photoId: string;
   }): Promise<{
