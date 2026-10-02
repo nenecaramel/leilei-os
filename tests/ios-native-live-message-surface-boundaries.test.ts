@@ -80,17 +80,25 @@ test("runtime interactions are extracted from the message surface", () => {
 
 const runtimeActivityPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift";
+const runtimeActivityProjectionPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection.swift";
+const runtimeModelsPath =
+  "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift";
 
 test("runtime activity and tool presentation are extracted from the message surface", () => {
   const root = fs.readFileSync(rootPath, "utf8");
 
   assert.equal(fs.existsSync(runtimeActivityPath), true);
+  assert.equal(fs.existsSync(runtimeActivityProjectionPath), true);
   const runtime = readExisting(runtimeActivityPath);
+  const projection = readExisting(runtimeActivityProjectionPath);
 
   for (const symbol of [
     "struct NativeLiveRuntimeAssistantRow",
+    "struct NativeLiveTurnActivityView",
+    "struct NativeLiveTaskActivityRow",
+    "struct NativeLiveToolActivityRow",
     "struct AssistantTypingIndicatorRow",
-    "struct NativeLiveRuntimeToolCallRow",
     "enum NativeLiveToolCallState",
     "struct NativeLiveToolCallCard",
     "struct NativeLiveToolResultCard",
@@ -100,13 +108,41 @@ test("runtime activity and tool presentation are extracted from the message surf
     assert.doesNotMatch(root, new RegExp(symbol));
   }
 
-  assert.match(runtime, /tool_use_id/);
-  assert.match(runtime, /event\.type == "tool_result"/);
+  assert.match(
+    projection,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+  assert.doesNotMatch(
+    runtime,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+  assert.doesNotMatch(
+    root,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+
+  assert.match(projection, /task_id/);
+  assert.match(projection, /tool_use_id/);
+  assert.match(projection, /subagent_type/);
+  assert.match(projection, /is_backgrounded/);
+  assert.match(projection, /spawn_depth/);
+  assert.match(projection, /hidden_from_transcript/);
+  assert.match(projection, /parent_tool_use_id/);
+  assert.match(projection, /parent_agent_id/);
+  assert.match(projection, /childTools/);
+  assert.match(projection, /topLevelTools/);
+  assert.match(projection, /pendingInteractionIDs/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
-  assert.match(runtime, /runtimeSurface\?\.activityText/);
-  assert.match(runtime, /runtimeSurface\?\.interactions\.first/);
+  assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
+  assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
+
+  const runtimeModels = readExisting(runtimeModelsPath);
+  assert.doesNotMatch(runtimeModels, /var activityText:/);
+  assert.doesNotMatch(runtimeModels, /Working on a task/);
+  assert.doesNotMatch(runtimeModels, /Task in progress/);
+  assert.doesNotMatch(runtimeModels, /Using a tool/);
 });
 
 const attachmentPresentationPath =

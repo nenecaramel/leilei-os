@@ -1297,7 +1297,7 @@ test("result telemetry keeps structural provider origin only", () => {
   );
 });
 
-test("preserves assistant subagent parent linkage as runtime-only provenance", () => {
+test("preserves assistant subagent parent linkage on provenance and tool use", () => {
   const events = normalizeClaudeEvents(
     [{
       type: "assistant",
@@ -1305,10 +1305,18 @@ test("preserves assistant subagent parent linkage as runtime-only provenance", (
       parent_tool_use_id: "tool-subagent",
       parent_agent_id: "agent-parent",
       message: {
-        content: [{
-          type: "text",
-          text: "nested answer",
-        }],
+        content: [
+          {
+            type: "text",
+            text: "nested answer",
+          },
+          {
+            type: "tool_use",
+            id: "tool-child",
+            name: "Read",
+            input: { path: "src/example.ts" },
+          },
+        ],
       },
     }],
     base,
@@ -1316,7 +1324,7 @@ test("preserves assistant subagent parent linkage as runtime-only provenance", (
 
   assert.deepEqual(
     events.map((event) => event.type),
-    ["runtime", "text"],
+    ["runtime", "text", "tool_use"],
   );
   assert.deepEqual(events[0].payload, {
     kind: "message_origin",
@@ -1326,4 +1334,11 @@ test("preserves assistant subagent parent linkage as runtime-only provenance", (
     parent_agent_id: "agent-parent",
   });
   assert.equal(events[1].payload.text, "nested answer");
+  assert.deepEqual(events[2].payload, {
+    tool_use_id: "tool-child",
+    tool_name: "Read",
+    input: { path: "src/example.ts" },
+    parent_tool_use_id: "tool-subagent",
+    parent_agent_id: "agent-parent",
+  });
 });

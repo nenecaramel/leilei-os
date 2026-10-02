@@ -14,11 +14,11 @@ struct NativeLiveRuntimeAssistantRow: View {
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
-        let activity = runtimeSurface?.activityText
-        let pendingInteraction =
-            runtimeSurface?.interactions.first {
-                $0.isPending
-            }
+        let projection = runtimeSurface.map {
+            NativeLiveTurnActivityProjection(
+                runtimeSurface: $0
+            )
+        }
 
         VStack(alignment: .leading, spacing: 12) {
             if let text,
@@ -31,59 +31,16 @@ struct NativeLiveRuntimeAssistantRow: View {
                 )
             }
 
-            if let activity,
-               !activity.isEmpty {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-
-                    Text(activity)
-                        .font(.system(
-                            size: 13.5,
-                            weight: .regular
-                        ))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .transition(.opacity)
-            }
-
-            if let runtimeSurface {
-                let toolUses = runtimeSurface.events.filter {
-                    $0.event.type == "tool_use"
-                }
-                ForEach(toolUses) { toolUse in
-                    NativeLiveRuntimeToolCallRow(
-                        toolUse: toolUse,
-                        events: runtimeSurface.events
-                    )
-                }
-            }
-
-            if let pendingInteraction {
-                switch pendingInteraction.kind {
-                case "permission":
-                    NativeLivePermissionInteractionCard(
-                        interaction: pendingInteraction,
-                        onResolve: onResolveInteraction
-                    )
-                    .id(pendingInteraction.interactionID)
-
-                case "question":
-                    NativeLiveQuestionInteractionCard(
-                        interaction: pendingInteraction,
-                        onResolve: onResolveInteraction
-                    )
-                    .id(pendingInteraction.interactionID)
-
-                default:
-                    EmptyView()
-                }
+            if let projection,
+               projection.hasContent {
+                NativeLiveTurnActivityView(
+                    projection: projection,
+                    onResolveInteraction: onResolveInteraction
+                )
             }
 
             if (text?.isEmpty ?? true)
-                && activity == nil
-                && pendingInteraction == nil {
+                && !(projection?.hasContent ?? false) {
                 AssistantTypingIndicatorRow()
             }
         }
@@ -93,6 +50,388 @@ struct NativeLiveRuntimeAssistantRow: View {
         )
     }
 }
+
+struct NativeLiveTurnActivityView: View {
+    let projection: NativeLiveTurnActivityProjection
+    let onResolveInteraction:
+        ((
+            NativeLiveRuntimeInteractionSnapshot,
+            [String: NativeLiveJSONValue]
+        ) async throws -> Void)?
+
+    @State private var isExpanded = false
+    @State private var expandedForPendingInteraction = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                if projection.hasPendingInteraction {
+                    isExpanded = true
+                } else {
+                    isExpanded.toggle()
+                    expandedForPendingInteraction = false
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    stateIcon
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(projection.headerTitle)
+                            .font(.system(
+                                size: 14,
+                                weight: .medium
+                            ))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        HStack(spacing: 6) {
+                            Text(projection.stateLabel)
+
+                            Text("·")
+
+                            Text(
+                                projection.activityCount == 1
+                                    ? "1 activity"
+                                    : "\(projection.activityCount) activities"
+                            )
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(
+                        systemName:
+                            effectiveExpanded
+                                ? "chevron.up"
+                                : "chevron.down"
+                    )
+                    .font(.system(
+                        size: 10.5,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if effectiveExpanded {
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(projection.lifecycle) { lifecycle in
+                        NativeLiveLifecycleActivityRow(
+                            lifecycle: lifecycle
+                        )
+                    }
+
+                    ForEach(projection.tasks) { task in
+                        NativeLiveTaskActivityRow(
+                            task: task,
+                            childTools:
+                                projection.childTools(for: task),
+                            turnIsActive: projection.turnIsActive
+                        )
+                    }
+
+                    ForEach(projection.topLevelTools) { tool in
+                        NativeLiveToolActivityRow(tool: tool)
+                    }
+
+                    ForEach(projection.interactions) { interaction in
+                        if interaction.isPending,
+                           let onResolveInteraction {
+                            switch interaction.kind {
+                            case "permission":
+                                NativeLivePermissionInteractionCard(
+                                    interaction: interaction,
+                                    onResolve: onResolveInteraction
+                                )
+                            case "question":
+                                NativeLiveQuestionInteractionCard(
+                                    interaction: interaction,
+                                    onResolve: onResolveInteraction
+                                )
+                            default:
+                                NativeLiveInteractionHistoryRow(
+                                    interaction: interaction
+                                )
+                            }
+                        } else {
+                            NativeLiveInteractionHistoryRow(
+                                interaction: interaction
+                            )
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 10)
+        .background(
+            Color.primary.opacity(0.035),
+            in: RoundedRectangle(
+                cornerRadius: 12,
+                style: .continuous
+            )
+        )
+        .onAppear {
+            if projection.hasPendingInteraction,
+               !isExpanded {
+                isExpanded = true
+                expandedForPendingInteraction = true
+            }
+        }
+        .onChange(
+            of: projection.pendingInteractionIDs
+        ) { _, ids in
+            if !ids.isEmpty {
+                if !isExpanded {
+                    isExpanded = true
+                    expandedForPendingInteraction = true
+                }
+            } else if expandedForPendingInteraction {
+                isExpanded = false
+                expandedForPendingInteraction = false
+            }
+        }
+    }
+
+    private var effectiveExpanded: Bool {
+        isExpanded || projection.hasPendingInteraction
+    }
+
+    @ViewBuilder
+    private var stateIcon: some View {
+        if projection.hasPendingInteraction {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        } else if projection.hasFailure {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        } else if projection.turnIsActive {
+            ProgressView()
+                .controlSize(.small)
+        } else {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct NativeLiveLifecycleActivityRow: View {
+    let lifecycle:
+        NativeLiveTurnActivityProjection.LifecycleActivity
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if lifecycle.kind == "api_retry" {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Image(systemName: "clock")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(lifecycle.title)
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let detail = lifecycle.detail,
+               !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 5)
+    }
+}
+
+private struct NativeLiveTaskActivityRow: View {
+    let task: NativeLiveTurnActivityProjection.TaskActivity
+    let childTools:
+        [NativeLiveTurnActivityProjection.ToolActivity]
+    let turnIsActive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                taskIcon
+                    .frame(width: 15, height: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.displayTitle)
+                        .font(.system(
+                            size: 13.5,
+                            weight: .medium
+                        ))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        if let subagentType = task.subagentType,
+                           !subagentType.isEmpty {
+                            Text(subagentType)
+                        }
+
+                        if task.isBackgrounded == true {
+                            Text("Background")
+                        }
+
+                        if let status = task.status,
+                           !status.isEmpty {
+                            Text(status.capitalized)
+                        } else if let phase = task.phase,
+                                  !phase.isEmpty {
+                            Text(phase.replacingOccurrences(
+                                of: "_",
+                                with: " "
+                            ).capitalized)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            ForEach(childTools) { tool in
+                NativeLiveToolActivityRow(tool: tool)
+                    .padding(.leading, 23)
+            }
+        }
+        .padding(.leading, CGFloat(
+            min(max(task.spawnDepth ?? 0, 0), 4)
+        ) * 10)
+    }
+
+    @ViewBuilder
+    private var taskIcon: some View {
+        if task.isFailed {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+        } else if task.isCancelled {
+            Image(systemName: "xmark.circle")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+        } else if task.isTerminal {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+        } else if turnIsActive {
+            ProgressView()
+                .controlSize(.mini)
+        } else {
+            Image(systemName: "circle")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct NativeLiveToolActivityRow: View {
+    let tool: NativeLiveTurnActivityProjection.ToolActivity
+
+    var body: some View {
+        NativeLiveToolCallCard(
+            toolName: tool.toolName,
+            detail: nativeLiveJSONDetail(tool.input),
+            resultDetail: nativeLiveJSONDetail(tool.output),
+            state: tool.state
+        )
+    }
+}
+
+private struct NativeLiveInteractionHistoryRow: View {
+    let interaction: NativeLiveRuntimeInteractionSnapshot
+
+    @State private var isShowingDetails = false
+
+    var body: some View {
+        Button {
+            isShowingDetails = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(
+                    systemName:
+                        interaction.status == "resolved"
+                            ? "checkmark.circle"
+                            : (
+                                interaction.status == "cancelled"
+                                    ? "xmark.circle"
+                                    : "exclamationmark.circle"
+                            )
+                )
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+
+                Text(title)
+                    .font(.system(
+                        size: 13.5,
+                        weight: .medium
+                    ))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(interaction.status.capitalized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(
+                        size: 10.5,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 5)
+        .sheet(isPresented: $isShowingDetails) {
+            NativeLiveToolDetailSheet(
+                title: title,
+                status: interaction.status.capitalized,
+                sectionTitle: "Request",
+                detail: nativeLiveJSONDetail(
+                    .object(interaction.request)
+                ),
+                secondarySectionTitle:
+                    interaction.response == nil
+                        ? nil
+                        : "Response",
+                secondaryDetail:
+                    interaction.response.flatMap {
+                        nativeLiveJSONDetail(.object($0))
+                    }
+            )
+        }
+    }
+
+    private var title: String {
+        if interaction.kind == "permission" {
+            return interaction.permissionTitle
+        }
+        if let question = interaction.questions.first {
+            return question.header ?? question.text
+        }
+        return interaction.kind.capitalized
+    }
+}
+
 
 struct AssistantTypingIndicatorRow: View {
     var body: some View {
@@ -123,56 +462,18 @@ struct AssistantTypingIndicatorRow: View {
     }
 }
 
-private struct NativeLiveRuntimeToolCallRow: View {
-    let toolUse: NativeLiveRuntimeEventSnapshot
-    let events: [NativeLiveRuntimeEventSnapshot]
-
-    private var toolUseID: String? {
-        toolUse.event.payload?["tool_use_id"]?.stringValue
-    }
-
-    private var result: NativeLiveRuntimeEventSnapshot? {
-        guard let toolUseID else { return nil }
-        return events.last(where: { event in
-            event.event.type == "tool_result"
-                && event.event.payload?["tool_use_id"]?.stringValue
-                    == toolUseID
-        })
-    }
-
-    var body: some View {
-        NativeLiveToolCallCard(
-            toolName:
-                toolUse.event.payload?["display_name"]?.stringValue
-                ?? toolUse.event.payload?["tool_name"]?.stringValue
-                ?? "Tool",
-            detail: nativeLiveJSONDetail(
-                toolUse.event.payload?["input"]
-            ),
-            state:
-                result == nil
-                    ? .running
-                    : (
-                        result?.event.payload?["is_error"]?.boolValue
-                            == true
-                        ? .failed
-                        : .completed
-                    )
-        )
-    }
-}
-
-
-enum NativeLiveToolCallState {
+enum NativeLiveToolCallState: Equatable {
     case running
     case completed
     case failed
+    case unknown
 }
 
 
 struct NativeLiveToolCallCard: View {
     let toolName: String
     let detail: String?
+    var resultDetail: String? = nil
     let state: NativeLiveToolCallState
 
     @State private var isShowingDetails = false
@@ -193,6 +494,10 @@ struct NativeLiveToolCallCard: View {
                 case .failed:
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                case .unknown:
+                    Image(systemName: "circle")
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
 
@@ -232,7 +537,10 @@ struct NativeLiveToolCallCard: View {
                 title: nativeLiveToolDisplayName(toolName),
                 status: stateLabel,
                 sectionTitle: "Input",
-                detail: detail
+                detail: detail,
+                secondarySectionTitle:
+                    resultDetail == nil ? nil : "Output",
+                secondaryDetail: resultDetail
             )
         }
     }
@@ -245,6 +553,8 @@ struct NativeLiveToolCallCard: View {
             return "Done"
         case .failed:
             return "Failed"
+        case .unknown:
+            return "No result"
         }
     }
 }
@@ -310,6 +620,8 @@ private struct NativeLiveToolDetailSheet: View {
     let status: String
     let sectionTitle: String
     let detail: String?
+    var secondarySectionTitle: String? = nil
+    var secondaryDetail: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -348,6 +660,31 @@ private struct NativeLiveToolDetailSheet: View {
                             Text("No details")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let secondarySectionTitle,
+                       let secondaryDetail,
+                       !secondaryDetail.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(secondarySectionTitle)
+                                .font(.headline)
+
+                            Text(secondaryDetail)
+                                .font(.system(
+                                    size: 13,
+                                    design: .monospaced
+                                ))
+                                .foregroundStyle(.primary)
+                                .textSelection(.enabled)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                                .frame(
+                                    maxWidth: .infinity,
+                                    alignment: .leading
+                                )
                         }
                     }
                 }

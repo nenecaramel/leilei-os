@@ -108,6 +108,13 @@ struct NativeLiveMessageRow: View {
             messageContent
                 .textSelection(.enabled)
 
+            if historicalActivityProjection.hasContent {
+                NativeLiveTurnActivityView(
+                    projection: historicalActivityProjection,
+                    onResolveInteraction: nil
+                )
+            }
+
             messageStatus
 
             MindWriteIndicator(
@@ -171,10 +178,12 @@ struct NativeLiveMessageRow: View {
                 $0.ordinal < $1.ordinal
             }
             let visibleBlocks = blocks.filter { block in
-                if block.kind == "tool_use"
-                    || block.kind == "tool_result"
-                    || block.kind == "attachment" {
+                if block.kind == "attachment" {
                     return true
+                }
+                if block.kind == "tool_use"
+                    || block.kind == "tool_result" {
+                    return message.role == "user"
                 }
                 return normalizedText(block.text) != nil
             }
@@ -199,6 +208,11 @@ struct NativeLiveMessageRow: View {
                 }
             }
         }
+    }
+
+    private var historicalActivityProjection:
+        NativeLiveTurnActivityProjection {
+        NativeLiveTurnActivityProjection(message: message)
     }
 
     @ViewBuilder
