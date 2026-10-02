@@ -16,6 +16,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let output: NativeLiveJSONValue?
         let parentToolUseID: String?
         let parentAgentID: String?
+        let hiddenFromTranscript: Bool
         var state: NativeLiveToolCallState
         let order: Int
     }
@@ -275,7 +276,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
             }
         }
         tools = projectedTools.filter {
-            !taskToolUseIDs.contains($0.id)
+            !$0.hiddenFromTranscript
+                && !taskToolUseIDs.contains($0.id)
                 && !questionToolUseIDs.contains($0.id)
                 && !hiddenTaskToolUseIDs.contains(
                     $0.parentToolUseID ?? ""
@@ -321,7 +323,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
         tools = Self.tools(from: message.blocks)
             .filter {
-                !taskToolUseIDs.contains($0.id)
+                !$0.hiddenFromTranscript
+                    && !taskToolUseIDs.contains($0.id)
                     && !questionToolUseIDs.contains($0.id)
                     && !hiddenTaskToolUseIDs.contains(
                         $0.parentToolUseID ?? ""
