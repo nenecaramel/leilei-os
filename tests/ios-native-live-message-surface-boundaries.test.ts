@@ -60,3 +60,21 @@ test("message actions are extracted from the message surface", () => {
   assert.doesNotMatch(root, /struct LightweightContextMenuInteraction/);
 });
 
+const interactionsPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveInteractions.swift";
+
+test("runtime interactions are extracted from the message surface", () => {
+  const root = fs.readFileSync(rootPath, "utf8");
+
+  assert.equal(fs.existsSync(interactionsPath), true);
+  const interactions = readExisting(interactionsPath);
+
+  assert.match(interactions, /struct NativeLivePermissionInteractionCard/);
+  assert.match(interactions, /struct NativeLiveQuestionInteractionCard/);
+  assert.match(interactions, /try await onResolve\(\s*interaction,\s*response\s*\)/);
+  assert.match(interactions, /@State private var isSubmitting = false/);
+
+  assert.doesNotMatch(root, /struct NativeLivePermissionInteractionCard/);
+  assert.doesNotMatch(root, /struct NativeLiveQuestionInteractionCard/);
+});
+
