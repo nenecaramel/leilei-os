@@ -337,41 +337,20 @@ struct NativeLiveTurnActivityProjection: Equatable {
         from events: [NativeLiveRuntimeEventSnapshot]
     ) -> [TaskActivity] {
         var values: [String: TaskActivity] = [:]
+        var latestActiveSet:
+            (sequence: Int, tasks: [NativeLiveJSONValue])?
 
         for event in events
         where event.event.type == "task" {
             let payload = event.event.payload ?? [:]
             let phase = payload["phase"]?.stringValue
 
-            if phase == "active_set",
-               let activeTasks = payload["tasks"]?.arrayValue {
-                for value in activeTasks {
-                    guard let object = value.objectValue,
-                          let taskID =
-                            object["task_id"]?.stringValue else {
-                        continue
-                    }
-                    var task = values[taskID]
-                        ?? TaskActivity(
-                            id: taskID,
-                            order: event.sequence
-                        )
-                    task.phase = phase
-                    task.taskType =
-                        object["task_type"]?.stringValue
-                        ?? task.taskType
-                    task.description =
-                        object["description"]?.stringValue
-                        ?? task.description
-                    if let ambient =
-                        object["ambient"]?.boolValue {
-                        task.isBackgrounded = ambient
-                    }
-                    task.order = min(
-                        task.order,
-                        event.sequence
+            if phase == "active_set" {
+                if let activeTasks = payload["tasks"]?.arrayValue {
+                    latestActiveSet = (
+                        sequence: event.sequence,
+                        tasks: activeTasks
                     )
-                    values[taskID] = task
                 }
                 continue
             }
@@ -432,6 +411,39 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
             task.order = min(task.order, event.sequence)
             values[taskID] = task
+        }
+
+        if let latestActiveSet {
+            for value in latestActiveSet.tasks {
+                guard let object = value.objectValue,
+                      let taskID =
+                        object["task_id"]?.stringValue else {
+                    continue
+                }
+                var task = values[taskID]
+                    ?? TaskActivity(
+                        id: taskID,
+                        order: latestActiveSet.sequence
+                    )
+                if task.phase == nil {
+                    task.phase = "active_set"
+                }
+                task.taskType =
+                    object["task_type"]?.stringValue
+                    ?? task.taskType
+                task.description =
+                    object["description"]?.stringValue
+                    ?? task.description
+                if let ambient =
+                    object["ambient"]?.boolValue {
+                    task.isBackgrounded = ambient
+                }
+                task.order = min(
+                    task.order,
+                    latestActiveSet.sequence
+                )
+                values[taskID] = task
+            }
         }
 
         return values.values.sorted {
