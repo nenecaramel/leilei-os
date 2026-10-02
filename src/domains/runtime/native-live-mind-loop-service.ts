@@ -8,7 +8,10 @@ import {
   type AssembledTurnContext,
 } from "./context-assembler.js";
 import type { InitialContextManifest } from "./context-assembly-contract.js";
-import type { ContextLineageState } from "./context-lineage.js";
+import {
+  normalizeContextLineageState,
+  type ContextLineageState,
+} from "./context-lineage.js";
 import {
   materializeMindWrites,
   type MaterializeMindWritesInput,
@@ -88,6 +91,8 @@ export interface SubjectStateRuntimePort {
   recordBreathRecall?(input: {
     userId: string;
     subjectId: string;
+    conversationId: string;
+    contextEpoch: number;
     stateIds: readonly string[];
     recalledAt: string;
     salienceBoost: number;
@@ -242,6 +247,10 @@ export class NativeLiveMindLoopService {
       listedStates,
       input.excludedReferenceIds,
     );
+    const contextLineage = normalizeContextLineageState(
+      input.contextLineage,
+    );
+    const seenStateIds = new Set(contextLineage.seenStateIds);
 
     const configuredSemanticWeight =
       this.config.breathSemanticWeight ?? 0;
@@ -255,6 +264,7 @@ export class NativeLiveMindLoopService {
       : this.semanticPlanFromStates({
           ...input,
           states,
+          excludedStateIds: seenStateIds,
         });
 
     if (
@@ -269,6 +279,7 @@ export class NativeLiveMindLoopService {
         surfaceHeadMessageId: input.surfaceHeadMessageId,
         states,
         candidates: semanticPlan.candidates,
+        excludedStateIds: seenStateIds,
       })
       && hasCompleteSemanticScores(
         input.semanticScores,
@@ -329,7 +340,7 @@ export class NativeLiveMindLoopService {
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
-      contextLineage: input.contextLineage,
+      contextLineage,
     });
 
     await this.port.saveContextManifest({ manifest: assembled.manifest });
@@ -372,6 +383,8 @@ export class NativeLiveMindLoopService {
     await this.port.recordBreathRecall({
       userId: input.userId,
       subjectId: input.subjectId,
+      conversationId: manifest.conversationId,
+      contextEpoch: manifest.lineage?.epoch ?? 0,
       stateIds,
       recalledAt: manifest.createdAt,
       salienceBoost: this.config.breathRecallSalienceBoost ?? 0,
@@ -391,6 +404,7 @@ export class NativeLiveMindLoopService {
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
     excludedReferenceIds?: ReadonlySet<string>;
+    contextLineage?: ContextLineageState | null;
   }): Promise<{
     query: string;
     candidates: BreathSemanticCandidate[];
@@ -406,10 +420,14 @@ export class NativeLiveMindLoopService {
       listedStates,
       input.excludedReferenceIds,
     );
+    const contextLineage = normalizeContextLineageState(
+      input.contextLineage,
+    );
 
     return this.semanticPlanFromStates({
       ...input,
       states,
+      excludedStateIds: new Set(contextLineage.seenStateIds),
     });
   }
 
@@ -422,6 +440,7 @@ export class NativeLiveMindLoopService {
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
     candidates: readonly BreathSemanticCandidate[];
+    excludedStateIds?: ReadonlySet<string>;
   }): boolean {
     const current = this.semanticCandidatesFromStates({
       userId: input.userId,
@@ -431,16 +450,16 @@ export class NativeLiveMindLoopService {
       assembledAt: input.assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
       states: input.states,
-      applyLimit: false,
+      excludedStateIds: input.excludedStateIds,
+      applyLimit: true,
     });
-    const byId = new Map(
-      current.map((candidate) => [candidate.stateId, candidate] as const),
-    );
+    if (current.length !== input.candidates.length) return false;
 
-    return input.candidates.every((candidate) => {
-      const actual = byId.get(candidate.stateId);
+    return input.candidates.every((candidate, index) => {
+      const actual = current[index];
       return (
-        actual?.kind === candidate.kind
+        actual?.stateId === candidate.stateId
+        && actual.kind === candidate.kind
         && actual.text === candidate.text
       );
     });
@@ -454,6 +473,7 @@ export class NativeLiveMindLoopService {
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
+    excludedStateIds?: ReadonlySet<string>;
   }): {
     query: string;
     candidates: BreathSemanticCandidate[];
@@ -480,6 +500,7 @@ export class NativeLiveMindLoopService {
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
+    excludedStateIds?: ReadonlySet<string>;
     applyLimit: boolean;
   }): BreathSemanticCandidate[] {
     const surfaceHeadMessageId =
@@ -518,6 +539,7 @@ export class NativeLiveMindLoopService {
         subjectId: input.subjectId,
         conversationId: input.conversation.id,
         currentPathMessageIds,
+        excludedStateIds: input.excludedStateIds,
         now: input.assembledAt,
         cooldownHours: this.config.breathCooldownHours ?? 0,
       },
