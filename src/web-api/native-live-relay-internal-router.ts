@@ -142,7 +142,7 @@ export type NativeLiveRelayInternalDependencies = {
   >;
   photoAlbumService?: Pick<
     ClaudePhotoAlbumService,
-    "savePhoto" | "searchPhotos"
+    "savePhoto" | "searchPhotos" | "createPhotoDownload"
   >;
   photoAlbumSender?: Pick<
     ClaudeAlbumPhotoAttachmentSender,
@@ -237,6 +237,10 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/album/photos/search",
       searchAlbumPhotosHandler(dependencies),
+    );
+    router.post(
+      "/album/photos/:photoId/view",
+      viewAlbumPhotoHandler(dependencies),
     );
   }
   if (dependencies.photoAlbumSender) {
@@ -482,6 +486,40 @@ function searchAlbumPhotosHandler(
         success: true,
         data: {
           photos: photos.map(projectClaudeAlbumToolPhoto),
+        },
+      });
+    } catch (error) {
+      sendAlbumError(response, error);
+    }
+  };
+}
+
+function viewAlbumPhotoHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId =
+      requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.photoAlbumService) return;
+    const photoId =
+      typeof request.params.photoId === "string"
+        ? request.params.photoId
+        : "";
+    if (!UUID_PATTERN.test(photoId)) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const result =
+        await dependencies.photoAlbumService.createPhotoDownload({
+          userId,
+          photoId,
+        });
+      response.json({
+        success: true,
+        data: {
+          photo: projectClaudeAlbumToolPhoto(result.photo),
+          download: result.download,
         },
       });
     } catch (error) {
@@ -2363,11 +2401,12 @@ function sendAlbumError(
   }
   if (error instanceof ClaudeAlbumPhotoPromotionError) {
     const status =
-      error.code === "SOURCE_ATTACHMENT_NOT_IMAGE"
-      || error.code === "SOURCE_ATTACHMENT_NOT_CURRENT_MESSAGE"
-      || error.code === "SOURCE_ATTACHMENT_TOO_LARGE"
-        ? 400
-        : 502;
+      error.code === "SOURCE_ATTACHMENT_UNAVAILABLE"
+        ? 404
+        : error.code === "SOURCE_ATTACHMENT_NOT_IMAGE"
+          || error.code === "SOURCE_ATTACHMENT_TOO_LARGE"
+          ? 400
+          : 502;
     response.status(status).json({
       success: false,
       error: {
