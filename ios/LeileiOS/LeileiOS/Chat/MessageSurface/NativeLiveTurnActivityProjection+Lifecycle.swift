@@ -12,17 +12,6 @@ extension NativeLiveTurnActivityProjection {
         where event.event.type == "runtime" {
             let payload = event.event.payload ?? [:]
             switch payload["kind"]?.stringValue {
-            case "album_saved":
-                candidates.append(
-                    LifecycleActivity(
-                        id: "album-saved-\(event.sequence)",
-                        kind: "album_saved",
-                        title: "Saved a photo to Album",
-                        detail: nil,
-                        order: event.sequence
-                    )
-                )
-
             case "api_retry":
                 let attempt = payload["attempt"]?.numberValue
                 let maxRetries =
