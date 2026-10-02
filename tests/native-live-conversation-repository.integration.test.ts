@@ -182,6 +182,66 @@ test(
           spawn_depth: 1,
         },
       },
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 2,
+        eventType: "task",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          phase: "progress",
+          task_id: "task-1",
+          summary: "older progress",
+        },
+      },
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 3,
+        eventType: "task",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          phase: "progress",
+          task_id: "task-1",
+          summary: "latest progress",
+        },
+      },
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 4,
+        eventType: "task",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          phase: "active_set",
+          replace: true,
+          tasks: [{ task_id: "task-old" }],
+        },
+      },
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 5,
+        eventType: "task",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          phase: "active_set",
+          replace: true,
+          tasks: [{ task_id: "task-1" }],
+        },
+      },
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 6,
+        eventType: "task",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          phase: "updated",
+          task_id: "task-1",
+          patch: { status: "completed" },
+        },
+      },
     ]);
     await database.db.insert(nativeLiveRuntimeInteractions).values({
       id: crypto.randomUUID(),
@@ -247,10 +307,14 @@ test(
     const projectedActivity =
       secondBranchPath.messages[1]?.activity;
     assert.equal(projectedActivity?.prepareId, activityPrepareId);
-    assert.equal(projectedActivity?.events.length, 1);
+    assert.equal(projectedActivity?.events.length, 4);
+    assert.deepEqual(
+      projectedActivity?.events.map((event) => event.sequence),
+      [1, 3, 5, 6],
+    );
     assert.equal(
-      projectedActivity?.events[0]?.event.type,
-      "task",
+      projectedActivity?.events[1]?.event.payload?.summary,
+      "latest progress",
     );
     assert.equal(projectedActivity?.interactions.length, 1);
     assert.equal(
