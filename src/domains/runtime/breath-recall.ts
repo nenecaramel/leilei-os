@@ -1,6 +1,9 @@
 import type { SubjectStateKind, SubjectStateWrite } from "./subject-state-contract.js";
 import { isConsolidationEligible } from "./runtime-status-axes.js";
-import { readSubjectStateLifecycle } from "./memory-lifecycle.js";
+import {
+  readSubjectStateLifecycle,
+  readSubjectStateRecallContext,
+} from "./memory-lifecycle.js";
 
 export const BREATH_RECALL_KINDS = ["memory", "feel"] as const satisfies readonly SubjectStateKind[];
 
@@ -19,6 +22,8 @@ export type BreathEligibilityInput = {
   subjectId: string;
   conversationId: string;
   currentPathMessageIds: ReadonlySet<string>;
+  excludedStateIds?: ReadonlySet<string>;
+  contextEpoch?: number;
   now?: string;
   cooldownHours?: number;
 };
@@ -132,14 +137,40 @@ function semanticEvidence(
   return Math.min(1, (score - floor) / (1 - floor));
 }
 
+function readRecallContextSafely(
+  payload: Record<string, unknown> | null | undefined,
+) {
+  try {
+    return readSubjectStateRecallContext(payload);
+  } catch {
+    return null;
+  }
+}
+
+function recallContextMatches(
+  state: SubjectStateWrite,
+  input: Pick<BreathEligibilityInput, "conversationId" | "contextEpoch">,
+): boolean {
+  if (input.contextEpoch === undefined) return false;
+  const context = readRecallContextSafely(state.payload);
+  return Boolean(
+    context
+    && context.conversationId === input.conversationId
+    && context.epoch === input.contextEpoch,
+  );
+}
+
 function recentRecallFactor(
-  lastRecalledAt: string | null | undefined,
+  state: SubjectStateWrite,
   now: string | undefined,
   enabled: boolean,
+  input: Pick<BreathEligibilityInput, "conversationId" | "contextEpoch">,
 ): number {
-  if (!enabled || !lastRecalledAt || !now) return 1;
+  if (!enabled || !now || !recallContextMatches(state, input)) return 1;
+  const context = readRecallContextSafely(state.payload);
+  if (!context) return 1;
   const nowMs = Date.parse(now);
-  const recalledMs = Date.parse(lastRecalledAt);
+  const recalledMs = Date.parse(context.recalledAt);
   if (!Number.isFinite(nowMs) || !Number.isFinite(recalledMs)) return 1;
   const ageHours = (nowMs - recalledMs) / 3_600_000;
   if (ageHours < 0) return 1;
@@ -240,6 +271,7 @@ function eligibleBreathEntries(
       || !isConsolidationEligible(state.envelope.status)
       || lifecycle?.status === "archived"
       || !scopeApplies(state, input)
+      || input.excludedStateIds?.has(state.id)
       || !state.text
     ) {
       continue;
@@ -248,7 +280,9 @@ function eligibleBreathEntries(
     if (
       nowMs !== null
       && lifecycle?.lastRecalledAt
-      && nowMs - Date.parse(lifecycle.lastRecalledAt) < cooldownHours * 3_600_000
+      && recallContextMatches(state, input)
+      && nowMs - Date.parse(lifecycle.lastRecalledAt)
+        < cooldownHours * 3_600_000
     ) {
       continue;
     }
@@ -300,6 +334,8 @@ export function recallBreath(
     subjectId: string;
     conversationId: string;
     currentPathMessageIds: ReadonlySet<string>;
+    excludedStateIds?: ReadonlySet<string>;
+    contextEpoch?: number;
     limit: number;
     now?: string;
     cooldownHours?: number;
@@ -338,26 +374,40 @@ export function recallBreath(
   });
 
   const queryTokens = tokens(query);
-  if (queryTokens.size === 0) return [];
+  const hasSemanticChannel = Boolean(
+    semanticWeight > 0
+    && input.semanticScores
+    && input.semanticScores.size > 0,
+  );
+  if (queryTokens.size === 0 && !hasSemanticChannel) return [];
 
   const hits: BreathRecallHit[] = [];
-  const semanticFloor = effectiveSemanticFloor(
-    input.semanticScores,
-    semanticMinScore,
-    semanticMedianMargin,
-  );
   const eligible = eligibleBreathEntries(candidates, {
     userId: input.userId,
     subjectId: input.subjectId,
     conversationId: input.conversationId,
     currentPathMessageIds: input.currentPathMessageIds,
+    excludedStateIds: input.excludedStateIds,
+    contextEpoch: input.contextEpoch,
     now: input.now,
     cooldownHours,
   });
+  const eligibleStateIds = new Set(eligible.map(({ state }) => state.id));
+  const eligibleSemanticScores = input.semanticScores
+    ? new Map(
+        [...input.semanticScores].filter(([stateId]) =>
+          eligibleStateIds.has(stateId)
+        ),
+      )
+    : undefined;
+  const semanticFloor = effectiveSemanticFloor(
+    eligibleSemanticScores,
+    semanticMinScore,
+    semanticMedianMargin,
+  );
 
   for (const { state, lifecycle } of eligible) {
     const candidateTokens = tokens(state.text!);
-    if (candidateTokens.size === 0) continue;
 
     const matchedTokens = [...queryTokens].filter((token) =>
       candidateTokens.has(token),
@@ -388,9 +438,13 @@ export function recallBreath(
     const salienceFactor =
       (1 - salienceWeight) + salienceWeight * salience;
     const recallFactor = recentRecallFactor(
-      lifecycle?.lastRecalledAt,
+      state,
       input.now,
       recentRecallPenalty,
+      {
+        conversationId: input.conversationId,
+        contextEpoch: input.contextEpoch,
+      },
     );
     const score = baseScore * salienceFactor * recallFactor;
     if (score < minimumScore) continue;
