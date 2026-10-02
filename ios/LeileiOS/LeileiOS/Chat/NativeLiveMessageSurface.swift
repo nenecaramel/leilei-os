@@ -1947,7 +1947,8 @@ private struct NativeLiveAttachmentGallery: View {
                     NativeLiveAttachmentRemoteImage(
                         block: block,
                         mode: .fit,
-                        cornerRadius: 0
+                        cornerRadius: 0,
+                        maxPixelSize: 1_600
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 64)
@@ -2065,12 +2066,15 @@ private struct NativeLiveAttachmentRemoteImage: View {
     let block: NativeLiveCurrentPathBlock
     let mode: NativeLiveRemoteImageMode
     let cornerRadius: CGFloat
+    let maxPixelSize: Int
 
     @State private var image: UIImage?
     @State private var didFail = false
 
     private var cacheKey: String {
         nativeLiveAttachmentCacheKey(block)
+            + ":"
+            + String(maxPixelSize)
     }
 
     var body: some View {
@@ -2173,7 +2177,9 @@ private struct NativeLiveAttachmentRemoteImage: View {
                       ),
                       let loaded =
                         nativeLiveAttachmentDecodedImage(
-                            data
+                            data,
+                            maxPixelSize:
+                                maxPixelSize
                         ) else {
                     continue
                 }
@@ -2219,7 +2225,8 @@ private struct NativeLiveAttachmentRemoteImage: View {
 
 
 private func nativeLiveAttachmentDecodedImage(
-    _ data: Data
+    _ data: Data,
+    maxPixelSize: Int
 ) -> UIImage? {
     guard let source =
             CGImageSourceCreateWithData(
@@ -2235,7 +2242,7 @@ private func nativeLiveAttachmentDecodedImage(
         kCGImageSourceCreateThumbnailWithTransform:
             true,
         kCGImageSourceThumbnailMaxPixelSize:
-            2_400,
+            maxPixelSize,
         kCGImageSourceShouldCacheImmediately:
             true,
     ]
@@ -2512,7 +2519,8 @@ private struct NativeLiveAttachmentBlockView: View {
                         NativeLiveAttachmentRemoteImage(
                             block: block,
                             mode: .fit,
-                            cornerRadius: 13
+                            cornerRadius: 13,
+                            maxPixelSize: 1_200
                         )
                         .frame(
                             minHeight: 120,
@@ -2523,7 +2531,8 @@ private struct NativeLiveAttachmentBlockView: View {
                         NativeLiveAttachmentRemoteImage(
                             block: block,
                             mode: .fill,
-                            cornerRadius: 13
+                            cornerRadius: 13,
+                            maxPixelSize: 640
                         )
                     }
                 }
