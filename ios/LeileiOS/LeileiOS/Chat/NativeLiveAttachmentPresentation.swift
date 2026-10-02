@@ -170,10 +170,13 @@ struct NativeLiveOptimisticAttachmentGroupView: View {
 
 
 private struct NativeLiveOptimisticDraftImage: View {
+    @EnvironmentObject private var appModel: AppModel
+
     let attachment:
         NativeLiveComposerAttachmentDraft
 
     @State private var thumbnail: UIImage?
+    @State private var isLoading = false
 
     var body: some View {
         ZStack {
@@ -193,9 +196,14 @@ private struct NativeLiveOptimisticDraftImage: View {
                 )
                 .fill(Color.primary.opacity(0.045))
 
-                Image(systemName: "photo")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.secondary)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .clipShape(
@@ -204,16 +212,51 @@ private struct NativeLiveOptimisticDraftImage: View {
                 style: .continuous
             )
         )
-        .task(id: attachment.id) {
-            guard thumbnail == nil,
-                  let data = attachment.data else {
+        .task(
+            id:
+                attachment.remoteAttachmentID
+                ?? attachment.id.uuidString
+        ) {
+            guard thumbnail == nil else {
                 return
             }
-            thumbnail =
-                nativeLiveAttachmentDecodedImage(
-                    data,
-                    maxPixelSize: 640
-                )
+
+            if let data = attachment.data {
+                thumbnail =
+                    nativeLiveAttachmentDecodedImage(
+                        data,
+                        maxPixelSize: 640
+                    )
+                return
+            }
+
+            guard let attachmentID =
+                    attachment.remoteAttachmentID else {
+                return
+            }
+
+            isLoading = true
+            defer {
+                isLoading = false
+            }
+
+            do {
+                let data =
+                    try await appModel.nativeLiveAttachmentData(
+                        attachmentID: attachmentID,
+                        expectedSize:
+                            attachment.sizeBytes,
+                        expectedSHA256:
+                            attachment.sha256
+                    )
+                thumbnail =
+                    nativeLiveAttachmentDecodedImage(
+                        data,
+                        maxPixelSize: 640
+                    )
+            } catch {
+                return
+            }
         }
     }
 }
