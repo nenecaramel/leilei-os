@@ -10,6 +10,8 @@ struct NativeLiveMessageRow: View {
     let showPendingReplacement: Bool
     let replacementRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
+    let activityRuntimeSurface:
+        NativeLiveRuntimeSurfaceState?
     let onResolveReplacementInteraction:
         (
             NativeLiveRuntimeInteractionSnapshot,
@@ -108,10 +110,13 @@ struct NativeLiveMessageRow: View {
             messageContent
                 .textSelection(.enabled)
 
-            if historicalActivityProjection.hasContent {
+            if displayedActivityProjection.hasContent {
                 NativeLiveTurnActivityView(
-                    projection: historicalActivityProjection,
-                    onResolveInteraction: nil
+                    projection: displayedActivityProjection,
+                    onResolveInteraction:
+                        activityRuntimeSurface == nil
+                            ? nil
+                            : onResolveReplacementInteraction
                 )
             }
 
@@ -213,6 +218,16 @@ struct NativeLiveMessageRow: View {
     private var historicalActivityProjection:
         NativeLiveTurnActivityProjection {
         NativeLiveTurnActivityProjection(message: message)
+    }
+
+    private var displayedActivityProjection:
+        NativeLiveTurnActivityProjection {
+        if let activityRuntimeSurface {
+            return NativeLiveTurnActivityProjection(
+                runtimeSurface: activityRuntimeSurface
+            )
+        }
+        return historicalActivityProjection
     }
 
     @ViewBuilder
