@@ -109,3 +109,26 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /runtimeSurface\?\.interactions\.first/);
 });
 
+const attachmentPresentationPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAttachmentPresentation.swift";
+
+test("current attachment presentation is extracted from the message surface", () => {
+  const root = fs.readFileSync(rootPath, "utf8");
+
+  assert.equal(fs.existsSync(attachmentPresentationPath), true);
+  const attachment = readExisting(attachmentPresentationPath);
+
+  assert.match(attachment, /struct NativeLiveAttachmentBlockView/);
+  assert.match(attachment, /struct NativeLiveAttachmentPreview/);
+  assert.match(attachment, /struct NativeLiveAttachmentQuickLook/);
+  assert.match(attachment, /func nativeLiveSafePreviewFilename/);
+
+  assert.match(attachment, /data\.count != expectedSize/);
+  assert.match(attachment, /SHA256\.hash\(data: data\)/);
+  assert.match(attachment, /actual == expectedSHA256/);
+  assert.match(attachment, /removeItem\(\s*at: previewDirectoryURL\s*\)/);
+
+  assert.doesNotMatch(root, /struct NativeLiveAttachmentBlockView/);
+  assert.doesNotMatch(root, /struct NativeLiveAttachmentQuickLook/);
+});
+
