@@ -69,6 +69,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         var subagentType: String?
         var taskType: String?
         var isBackgrounded: Bool?
+        var hiddenFromTranscript: Bool
         var spawnDepth: Int?
         var phase: String?
         var status: String?
@@ -457,6 +458,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
             } else if payload["ambient"]?.boolValue == true {
                 task.isBackgrounded = true
             }
+            if payload["hidden_from_transcript"]?.boolValue == true {
+                task.hiddenFromTranscript = true
+            }
             if let depth =
                 payload["spawn_depth"]?.numberValue {
                 task.spawnDepth = Int(depth)
@@ -516,7 +520,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
             }
         }
 
-        return values.values.sorted {
+        return values.values
+            .filter { !$0.hiddenFromTranscript }
+            .sorted {
             if $0.order == $1.order {
                 return $0.id < $1.id
             }
@@ -538,6 +544,7 @@ private extension NativeLiveTurnActivityProjection.TaskActivity {
             subagentType: nil,
             taskType: nil,
             isBackgrounded: nil,
+            hiddenFromTranscript: false,
             spawnDepth: nil,
             phase: nil,
             status: nil,
