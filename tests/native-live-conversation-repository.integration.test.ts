@@ -9,6 +9,8 @@ import {
   conversations,
   nativeLiveBackgroundModelJobs,
   nativeLiveProviderSessionCleanups,
+  nativeLiveRuntimeEvents,
+  nativeLiveRuntimeInteractions,
   nativeLiveTurnPreparations,
   runtimeEffects,
   runtimeProactivityWakes,
@@ -136,6 +138,79 @@ test(
       },
     });
 
+    const activityPrepareId = crypto.randomUUID();
+    const activityListenerId = crypto.randomUUID();
+    const activityTime = new Date();
+    await database.db.insert(nativeLiveTurnPreparations).values({
+      id: activityPrepareId,
+      userId: userA,
+      requestId: crypto.randomUUID(),
+      conversationId: conversation.id,
+      operation: "send",
+      requestHash: "c".repeat(64),
+      canonicalUserMessageId: userMessage.id,
+      runtimeMode: "new",
+      parentProviderSessionId: null,
+      prompt: "hello",
+      status: "finalized_success",
+      resultHash: "d".repeat(64),
+      providerSessionId: "frozen-session-activity",
+      assistantMessageId: second.message.id,
+      dispatchStatus: "completed",
+      reservedBy: activityListenerId,
+      reservedAt: activityTime,
+      reservationExpiresAt: new Date(
+        activityTime.getTime() + 60_000,
+      ),
+      executionStartedAt: activityTime,
+      finalizedAt: activityTime,
+    });
+    await database.db.insert(nativeLiveRuntimeEvents).values([
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 1,
+        eventType: "task",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          phase: "started",
+          task_id: "task-1",
+          tool_use_id: "tool-1",
+          description: "Inspect activity",
+          subagent_type: "Explore",
+          is_backgrounded: false,
+          spawn_depth: 1,
+        },
+      },
+      {
+        userId: userA,
+        prepareId: activityPrepareId,
+        sequence: 2,
+        eventType: "runtime",
+        providerSessionId: "frozen-session-activity",
+        payload: {
+          kind: "message_origin",
+          parent_tool_use_id: "tool-1",
+          parent_agent_id: "agent-1",
+        },
+      },
+    ]);
+    await database.db.insert(nativeLiveRuntimeInteractions).values({
+      id: crypto.randomUUID(),
+      userId: userA,
+      prepareId: activityPrepareId,
+      listenerInstanceId: activityListenerId,
+      kind: "permission",
+      request: {
+        toolName: "Bash",
+        toolUseId: "tool-1",
+        input: { command: "pwd" },
+      },
+      status: "resolved",
+      response: { decision: "allow" },
+      resolvedAt: activityTime,
+    });
+
     const stored = await service.getConversation({
       userId: userA,
       conversationId: conversation.id,
@@ -180,6 +255,19 @@ test(
       secondBranchPath.messages.map((message) =>
         message.blocks.map((block) => block.text)),
       [["hello"], ["retry sibling"]],
+    );
+    const projectedActivity =
+      secondBranchPath.messages[1]?.activity;
+    assert.equal(projectedActivity?.prepareId, activityPrepareId);
+    assert.equal(projectedActivity?.events.length, 2);
+    assert.equal(
+      projectedActivity?.events[0]?.event.type,
+      "task",
+    );
+    assert.equal(projectedActivity?.interactions.length, 1);
+    assert.equal(
+      projectedActivity?.interactions[0]?.status,
+      "resolved",
     );
 
     await service.setCurrentHead({
