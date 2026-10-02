@@ -963,6 +963,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           result.providerSessionId,
           portability.canComplete,
           mirrorFailureReason,
+          mode === "resume" && portability.canComplete,
         );
       const sessionStoreObservability =
         sessionStoreHealthSnapshot({
@@ -1417,6 +1418,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     sessionId,
     canComplete,
     mirrorFailureReason,
+    alreadyIncomplete = false,
   ) {
     const id = nonblankString(sessionId);
     if (!id || !this.sessionStore) {
@@ -1436,42 +1438,22 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         this.sessionStore.discardPendingAppends(id);
       }
 
-      if (typeof this.sessionStore.getStatus === "function") {
+      if (alreadyIncomplete) {
+        statusAfter = "incomplete";
+      } else if (
+        typeof this.sessionStore.markIncomplete === "function"
+      ) {
         try {
-          const observed =
-            await this.sessionStore.getStatus(id);
-          if (
-            observed === null
-            || observed === "complete"
-            || observed === "incomplete"
-          ) {
-            statusAfter = observed;
-          } else {
-            throw new Error(
-              "SessionStore returned an invalid portability status.",
-            );
-          }
+          await this.sessionStore.markIncomplete(id);
+          statusAfter = "incomplete";
         } catch (cause) {
           statusFailureReason =
             clippedSessionStoreReason(cause);
           this.events.emit("session-store-status-error", cause);
         }
-      }
-
-      if (statusAfter !== "incomplete") {
-        if (typeof this.sessionStore.markIncomplete === "function") {
-          try {
-            await this.sessionStore.markIncomplete(id);
-            statusAfter = "incomplete";
-          } catch (cause) {
-            statusFailureReason ??=
-              clippedSessionStoreReason(cause);
-            this.events.emit("session-store-status-error", cause);
-          }
-        } else {
-          statusFailureReason ??=
-            "SessionStore markIncomplete() is unavailable.";
-        }
+      } else {
+        statusFailureReason =
+          "SessionStore markIncomplete() is unavailable.";
       }
     } else if (
       canComplete
@@ -1496,6 +1478,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     if (
       statusAfter === null
+      && statusFailureReason === null
       && typeof this.sessionStore.getStatus === "function"
     ) {
       try {
@@ -1791,6 +1774,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           providerSessionId,
           false,
           mirrorFailureReason,
+          mode === "resume" && portability.canComplete,
         );
       const health = sessionStoreHealthSnapshot({
         configured: Boolean(this.sessionStore),
@@ -1836,6 +1820,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           providerSessionId,
           false,
           mirrorFailureReason,
+          mode === "resume" && portability.canComplete,
         );
       const health = sessionStoreHealthSnapshot({
         configured: Boolean(this.sessionStore),
@@ -1875,6 +1860,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         providerSessionId,
         portability.canComplete,
         mirrorFailureReason,
+        mode === "resume" && portability.canComplete,
       );
     const sessionStoreObservability =
       sessionStoreHealthSnapshot({
