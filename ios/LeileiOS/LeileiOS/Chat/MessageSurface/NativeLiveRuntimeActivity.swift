@@ -872,33 +872,69 @@ private struct NativeLiveToolActivityRow: View {
 private struct NativeLiveInteractionHistoryRow: View {
     let interaction: NativeLiveRuntimeInteractionSnapshot
 
+    @State private var isShowingDetails = false
+
     var body: some View {
-        HStack(spacing: 8) {
-            Image(
-                systemName:
-                    interaction.status == "resolved"
-                        ? "checkmark.circle"
-                        : (
-                            interaction.status == "cancelled"
-                                ? "xmark.circle"
-                                : "exclamationmark.circle"
-                        )
-            )
-            .font(.system(size: 12.5))
-            .foregroundStyle(.secondary)
-
-            Text(title)
-                .font(.system(size: 13.5, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            Text(interaction.status.capitalized)
-                .font(.caption)
+        Button {
+            isShowingDetails = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(
+                    systemName:
+                        interaction.status == "resolved"
+                            ? "checkmark.circle"
+                            : (
+                                interaction.status == "cancelled"
+                                    ? "xmark.circle"
+                                    : "exclamationmark.circle"
+                            )
+                )
+                .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
+
+                Text(title)
+                    .font(.system(
+                        size: 13.5,
+                        weight: .medium
+                    ))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(interaction.status.capitalized)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(
+                        size: 10.5,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 5)
+        .sheet(isPresented: $isShowingDetails) {
+            NativeLiveToolDetailSheet(
+                title: title,
+                status: interaction.status.capitalized,
+                sectionTitle: "Request",
+                detail: nativeLiveJSONDetail(
+                    .object(interaction.request)
+                ),
+                secondarySectionTitle:
+                    interaction.response == nil
+                        ? nil
+                        : "Response",
+                secondaryDetail:
+                    interaction.response.map {
+                        nativeLiveJSONDetail(.object($0))
+                    } ?? nil
+            )
+        }
     }
 
     private var title: String {
@@ -911,6 +947,7 @@ private struct NativeLiveInteractionHistoryRow: View {
         return interaction.kind.capitalized
     }
 }
+
 
 struct AssistantTypingIndicatorRow: View {
     var body: some View {
