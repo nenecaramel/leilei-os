@@ -82,6 +82,12 @@ const runtimeActivityPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift";
 const runtimeActivityProjectionPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection.swift";
+const runtimeActivityLifecyclePath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Lifecycle.swift";
+const runtimeActivityToolsPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tools.swift";
+const runtimeActivityTasksPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tasks.swift";
 const runtimeModelsPath =
   "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift";
 
@@ -90,13 +96,18 @@ test("runtime activity and tool presentation are extracted from the message surf
 
   assert.equal(fs.existsSync(runtimeActivityPath), true);
   assert.equal(fs.existsSync(runtimeActivityProjectionPath), true);
+  assert.equal(fs.existsSync(runtimeActivityLifecyclePath), true);
+  assert.equal(fs.existsSync(runtimeActivityToolsPath), true);
+  assert.equal(fs.existsSync(runtimeActivityTasksPath), true);
   const runtime = readExisting(runtimeActivityPath);
   const projection = readExisting(runtimeActivityProjectionPath);
+  const lifecycleProjection = readExisting(runtimeActivityLifecyclePath);
+  const toolProjection = readExisting(runtimeActivityToolsPath);
+  const taskProjection = readExisting(runtimeActivityTasksPath);
 
   for (const symbol of [
     "struct NativeLiveRuntimeAssistantRow",
     "struct NativeLiveTurnActivityView",
-    "struct NativeLiveLifecycleActivityRow",
     "struct NativeLiveLifecycleActivityRow",
     "struct NativeLiveTaskActivityRow",
     "struct NativeLiveToolActivityRow",
@@ -123,23 +134,26 @@ test("runtime activity and tool presentation are extracted from the message surf
     /struct NativeLiveTurnActivityProjection/,
   );
 
-  assert.match(projection, /task_id/);
-  assert.match(projection, /tool_use_id/);
-  assert.match(projection, /subagent_type/);
-  assert.match(projection, /is_backgrounded/);
-  assert.match(projection, /spawn_depth/);
-  assert.match(projection, /hidden_from_transcript/);
-  assert.match(projection, /parent_tool_use_id/);
-  assert.match(projection, /parent_agent_id/);
   assert.match(projection, /childTools/);
   assert.match(projection, /topLevelTools/);
   assert.match(projection, /permissionInteractions/);
   assert.match(projection, /topLevelInteractions/);
-  assert.match(projection, /activeTaskIDs/);
-  assert.match(projection, /task\.phase != "active_set"/);
   assert.match(projection, /pendingInteractionIDs/);
-  assert.match(projection, /api_retry/);
-  assert.match(projection, /command_lifecycle/);
+
+  assert.match(lifecycleProjection, /api_retry/);
+  assert.match(lifecycleProjection, /command_lifecycle/);
+
+  assert.match(toolProjection, /tool_use_id/);
+  assert.match(toolProjection, /parent_tool_use_id/);
+  assert.match(toolProjection, /parent_agent_id/);
+
+  assert.match(taskProjection, /task_id/);
+  assert.match(taskProjection, /subagent_type/);
+  assert.match(taskProjection, /is_backgrounded/);
+  assert.match(taskProjection, /spawn_depth/);
+  assert.match(taskProjection, /hidden_from_transcript/);
+  assert.match(taskProjection, /activeTaskIDs/);
+  assert.match(taskProjection, /task\.phase != "active_set"/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
