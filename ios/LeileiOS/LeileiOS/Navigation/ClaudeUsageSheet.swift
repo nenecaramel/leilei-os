@@ -107,6 +107,9 @@ struct ClaudeUsageSheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
             .navigationTitle("Claude Usage")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
