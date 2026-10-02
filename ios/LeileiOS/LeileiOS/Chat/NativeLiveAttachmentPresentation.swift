@@ -1073,6 +1073,11 @@ private func nativeLiveAttachmentIsImage(
     let mimeType =
         payload["mime_type"]?.stringValue
         ?? "application/octet-stream"
+
+    if mimeType == "image/svg+xml" {
+        return false
+    }
+
     return payload["kind"]?.stringValue == "image"
         || mimeType.hasPrefix("image/")
 }
