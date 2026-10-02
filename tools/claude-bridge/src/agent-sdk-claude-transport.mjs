@@ -618,6 +618,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       onNormalizedEvent = null,
       permissionHandler = null,
       questionHandler = null,
+      trustedReadPaths = [],
       sendFileHandler = null,
       albumHandlers = null,
       controlPump = null,
@@ -721,6 +722,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       userMessageUuid,
       permissionHandler,
       questionHandler,
+      trustedReadPaths,
       midTurnInput:
         Boolean(controlPump) && !nativeScheduleCommand,
       executionReadback: Boolean(execution),
