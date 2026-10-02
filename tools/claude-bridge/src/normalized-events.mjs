@@ -55,7 +55,7 @@ export class ClaudeEventNormalizer {
     }
 
     if (raw.type === "user") {
-      const origin = normalizeMessageOrigin(raw.origin);
+      const origin = boundedMessageOrigin(raw.origin);
       if (origin) {
         emit("runtime", this.sessionId, {
           kind: "message_origin",
@@ -467,57 +467,16 @@ function normalizeUserMessageAttribution(raw) {
   };
 }
 
-function normalizeMessageOrigin(value) {
+function boundedMessageOrigin(value) {
   if (
     !value
     || typeof value !== "object"
     || Array.isArray(value)
+    || !clippedString(value.kind, 64)
   ) {
     return null;
   }
-
-  const kind = clippedString(value.kind, 64);
-  if (!kind) return null;
-
-  const fields = {
-    kind,
-    subkind: clippedString(value.subkind, 64),
-    server: clippedString(value.server, 256),
-    from: clippedString(value.from, 512),
-    name: clippedString(value.name, 256),
-    from_session: clippedString(
-      value.fromSession ?? value.from_session,
-      256,
-    ),
-    from_mode: clippedString(
-      value.fromMode ?? value.from_mode,
-      128,
-    ),
-    sender_task_id: clippedString(
-      value.senderTaskId ?? value.sender_task_id,
-      256,
-    ),
-    verified_peer_pid:
-      Number.isInteger(
-        value.verifiedPeerPid ?? value.verified_peer_pid,
-      )
-      && (
-        value.verifiedPeerPid ?? value.verified_peer_pid
-      ) >= 0
-        ? (
-            value.verifiedPeerPid
-            ?? value.verified_peer_pid
-          )
-        : null,
-    fire_reason: clippedString(
-      value.fireReason ?? value.fire_reason,
-      512,
-    ),
-  };
-
-  return Object.fromEntries(
-    Object.entries(fields).filter(([, field]) => field !== null),
-  );
+  return boundedResultJsonRecord(value);
 }
 
 const RESULT_TELEMETRY_JSON_MAX_CHARS = 64_000;
@@ -550,7 +509,7 @@ function normalizeResultTelemetry(raw) {
       clippedString(raw?.fast_mode_disabled_reason, 512),
     total_cost_usd:
       finiteNonNegative(raw?.total_cost_usd),
-    origin: normalizeMessageOrigin(raw?.origin),
+    origin: boundedResultJsonRecord(raw?.origin),
     usage: boundedResultJsonRecord(raw?.usage),
     modelUsage:
       boundedResultJsonRecord(raw?.modelUsage),
