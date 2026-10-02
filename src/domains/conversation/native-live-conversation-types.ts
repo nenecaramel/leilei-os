@@ -64,7 +64,7 @@ export type NativeLiveMessage = {
   createdAt: string;
   completedAt: string | null;
   blocks: NativeLiveContentBlock[];
-  activity: NativeLiveMessageActivity | null;
+  activity?: NativeLiveMessageActivity | null;
 };
 
 export type NativeLiveConversationSummary = {
