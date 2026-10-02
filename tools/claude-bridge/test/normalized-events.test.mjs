@@ -1195,14 +1195,11 @@ test("result telemetry uses the same bounded message-origin projection", () => {
 
   assert.deepEqual(events[0].payload.telemetry.origin, {
     kind: "peer",
-    subkind: null,
-    server: null,
     from: "peer://worker",
     name: "Worker",
     from_session: "peer-session",
     sender_task_id: "task-result",
     verified_peer_pid: 99,
-    fire_reason: null,
   });
   assert.doesNotMatch(
     JSON.stringify(events),
