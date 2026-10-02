@@ -554,7 +554,9 @@ test("a stale staged plan is rescored from the current candidate snapshot", asyn
           input.candidates.map((candidate) => candidate.stateId),
         );
         return new Map(
-          input.candidates.map((candidate) => [candidate.stateId, 0.95]),
+          input.candidates.map(
+            (candidate) => [candidate.stateId, 0.95] as const,
+          ),
         );
       },
     },
