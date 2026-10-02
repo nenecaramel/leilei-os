@@ -616,6 +616,8 @@ test("native live current-path ETag changes when activity changes under the same
   const service = new FakeConversationService();
   const headMessageId = "77777777-7777-4777-8777-777777777777";
   let sequence = 1;
+  let interactionUpdatedAt =
+    "2026-09-26T08:00:00.750Z";
 
   const reader = {
     async readCurrentPath() {
@@ -652,7 +654,20 @@ test("native live current-path ETag changes when activity changes under the same
               },
               createdAt: "2026-09-26T08:00:00.500Z",
             }],
-            interactions: [],
+            interactions: [{
+              interactionId:
+                "99999999-9999-4999-8999-999999999999",
+              prepareId:
+                "88888888-8888-4888-8888-888888888888",
+              kind: "permission",
+              request: { toolName: "Bash" },
+              status: "pending",
+              response: null,
+              createdAt: "2026-09-26T08:00:00.700Z",
+              updatedAt: interactionUpdatedAt,
+              resolvedAt: null,
+              cancelledAt: null,
+            }],
           },
         }],
       };
@@ -681,9 +696,22 @@ test("native live current-path ETag changes when activity changes under the same
       assert.ok(changedEtag);
       assert.notEqual(changedEtag, firstEtag);
 
-      const unchanged = await fetch(url, {
+      interactionUpdatedAt =
+        "2026-09-26T08:00:02.000Z";
+      const interactionChanged = await fetch(url, {
         headers: {
           "If-None-Match": changedEtag,
+        },
+      });
+      assert.equal(interactionChanged.status, 200);
+      const interactionChangedEtag =
+        interactionChanged.headers.get("etag");
+      assert.ok(interactionChangedEtag);
+      assert.notEqual(interactionChangedEtag, changedEtag);
+
+      const unchanged = await fetch(url, {
+        headers: {
+          "If-None-Match": interactionChangedEtag,
         },
       });
       assert.equal(unchanged.status, 304);
