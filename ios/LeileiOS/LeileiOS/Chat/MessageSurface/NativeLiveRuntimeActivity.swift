@@ -290,10 +290,16 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let sorted = blocks.sorted {
             $0.ordinal < $1.ordinal
         }
+        let toolUseBlocks = sorted.filter {
+            $0.kind == "tool_use"
+        }
+        let resultBlocks = sorted.filter {
+            $0.kind == "tool_result"
+        }
+
         var results:
             [String: NativeLiveCurrentPathBlock] = [:]
-
-        for block in sorted where block.kind == "tool_result" {
+        for block in resultBlocks {
             guard let toolUseID =
                 block.payload?["tool_use_id"]?.stringValue else {
                 continue
@@ -301,10 +307,13 @@ struct NativeLiveTurnActivityProjection: Equatable {
             results[toolUseID] = block
         }
 
-        return sorted.compactMap { block in
-            guard block.kind == "tool_use" else {
-                return nil
+        let knownToolUseIDs = Set(
+            toolUseBlocks.compactMap {
+                $0.payload?["tool_use_id"]?.stringValue
             }
+        )
+
+        var activities = toolUseBlocks.map { block in
             let payload = block.payload ?? [:]
             let toolUseID =
                 payload["tool_use_id"]?.stringValue
@@ -330,7 +339,33 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 order: block.ordinal
             )
         }
-        .sorted { $0.order < $1.order }
+
+        activities.append(
+            contentsOf: resultBlocks.compactMap { block in
+                let payload = block.payload ?? [:]
+                if let toolUseID =
+                    payload["tool_use_id"]?.stringValue,
+                   knownToolUseIDs.contains(toolUseID) {
+                    return nil
+                }
+
+                return ToolActivity(
+                    id: "result-\(block.id)",
+                    toolName: "Tool result",
+                    input: nil,
+                    output: payload["output"],
+                    state:
+                        payload["is_error"]?.boolValue == true
+                            ? .failed
+                            : .completed,
+                    order: block.ordinal
+                )
+            }
+        )
+
+        return activities.sorted {
+            $0.order < $1.order
+        }
     }
 
     private static func tasks(
