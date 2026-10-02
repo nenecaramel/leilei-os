@@ -80,6 +80,8 @@ test("runtime interactions are extracted from the message surface", () => {
 
 const runtimeActivityPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift";
+const runtimeActivityProjectionPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection.swift";
 const runtimeModelsPath =
   "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift";
 
@@ -87,11 +89,12 @@ test("runtime activity and tool presentation are extracted from the message surf
   const root = fs.readFileSync(rootPath, "utf8");
 
   assert.equal(fs.existsSync(runtimeActivityPath), true);
+  assert.equal(fs.existsSync(runtimeActivityProjectionPath), true);
   const runtime = readExisting(runtimeActivityPath);
+  const projection = readExisting(runtimeActivityProjectionPath);
 
   for (const symbol of [
     "struct NativeLiveRuntimeAssistantRow",
-    "struct NativeLiveTurnActivityProjection",
     "struct NativeLiveTurnActivityView",
     "struct NativeLiveTaskActivityRow",
     "struct NativeLiveToolActivityRow",
@@ -105,17 +108,30 @@ test("runtime activity and tool presentation are extracted from the message surf
     assert.doesNotMatch(root, new RegExp(symbol));
   }
 
-  assert.match(runtime, /task_id/);
-  assert.match(runtime, /tool_use_id/);
-  assert.match(runtime, /subagent_type/);
-  assert.match(runtime, /is_backgrounded/);
-  assert.match(runtime, /spawn_depth/);
-  assert.match(runtime, /hidden_from_transcript/);
-  assert.match(runtime, /parent_tool_use_id/);
-  assert.match(runtime, /parent_agent_id/);
-  assert.match(runtime, /childTools/);
-  assert.match(runtime, /topLevelTools/);
-  assert.match(runtime, /pendingInteractionIDs/);
+  assert.match(
+    projection,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+  assert.doesNotMatch(
+    runtime,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+  assert.doesNotMatch(
+    root,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+
+  assert.match(projection, /task_id/);
+  assert.match(projection, /tool_use_id/);
+  assert.match(projection, /subagent_type/);
+  assert.match(projection, /is_backgrounded/);
+  assert.match(projection, /spawn_depth/);
+  assert.match(projection, /hidden_from_transcript/);
+  assert.match(projection, /parent_tool_use_id/);
+  assert.match(projection, /parent_agent_id/);
+  assert.match(projection, /childTools/);
+  assert.match(projection, /topLevelTools/);
+  assert.match(projection, /pendingInteractionIDs/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
