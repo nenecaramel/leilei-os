@@ -1,6 +1,14 @@
 import Foundation
 
 struct NativeLiveTurnActivityProjection: Equatable {
+    struct LifecycleActivity: Equatable, Identifiable {
+        let id: String
+        let kind: String
+        let title: String
+        let detail: String?
+        let order: Int
+    }
+
     struct ToolActivity: Equatable, Identifiable {
         let id: String
         let toolName: String
@@ -70,6 +78,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     }
 
     let prepareID: String?
+    let lifecycle: [LifecycleActivity]
     let tools: [ToolActivity]
     let tasks: [TaskActivity]
     let interactions: [NativeLiveRuntimeInteractionSnapshot]
@@ -77,7 +86,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
     let turnFailed: Bool
 
     var hasContent: Bool {
-        !tools.isEmpty
+        !lifecycle.isEmpty
+            || !tools.isEmpty
             || !tasks.isEmpty
             || !interactions.isEmpty
     }
@@ -101,7 +111,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
     }
 
     var activityCount: Int {
-        tools.count + tasks.count + interactions.count
+        lifecycle.count
+            + tools.count
+            + tasks.count
+            + interactions.count
     }
 
     func childTools(
@@ -141,6 +154,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
             .sorted(by: { $0.order < $1.order })
             .last {
             return task.displayTitle
+        }
+
+        if let lifecycle = lifecycle.last {
+            return lifecycle.title
         }
 
         if turnIsActive,
@@ -186,6 +203,9 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
     init(runtimeSurface: NativeLiveRuntimeSurfaceState) {
         prepareID = runtimeSurface.prepareID
+        lifecycle = Self.lifecycle(
+            from: runtimeSurface.events
+        )
         let projectedTasks = Self.tasks(
             from: runtimeSurface.events
         )
@@ -245,6 +265,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
     init(message: NativeLiveCurrentPathMessage) {
         prepareID = message.activity?.prepareId
+        lifecycle = []
         let projectedTasks = Self.tasks(
             from: message.activity?.events ?? []
         )
@@ -279,6 +300,116 @@ struct NativeLiveTurnActivityProjection: Equatable {
         interactions = projectedInteractions
         turnIsActive = false
         turnFailed = message.status == "error"
+    }
+
+    private static func lifecycle(
+        from events: [NativeLiveRuntimeEventSnapshot]
+    ) -> [LifecycleActivity] {
+        var candidates: [LifecycleActivity] = []
+        var latestCommandEvents:
+            [String: NativeLiveRuntimeEventSnapshot] = [:]
+
+        for event in events
+        where event.event.type == "runtime" {
+            let payload = event.event.payload ?? [:]
+            switch payload["kind"]?.stringValue {
+            case "api_retry":
+                let attempt = payload["attempt"]?.numberValue
+                let maxRetries =
+                    payload["max_retries"]?.numberValue
+                let detail: String?
+                if let attempt, let maxRetries {
+                    detail =
+                        "\(Int(attempt)) / \(Int(maxRetries))"
+                } else {
+                    detail = nil
+                }
+                candidates.append(
+                    LifecycleActivity(
+                        id: "api-retry-\(event.sequence)",
+                        kind: "api_retry",
+                        title: "Retrying request",
+                        detail: detail,
+                        order: event.sequence
+                    )
+                )
+
+            case "command_lifecycle":
+                guard let commandUUID =
+                    payload["command_uuid"]?.stringValue else {
+                    continue
+                }
+                latestCommandEvents[commandUUID] = event
+
+            default:
+                continue
+            }
+        }
+
+        for event in latestCommandEvents.values {
+            let payload = event.event.payload ?? [:]
+            let state = payload["state"]?.stringValue
+            let title: String
+            switch state {
+            case "queued":
+                title = "Message queued"
+            case "started":
+                title = "Message started"
+            default:
+                continue
+            }
+            candidates.append(
+                LifecycleActivity(
+                    id: "command-\(payload["command_uuid"]?.stringValue ?? String(event.sequence))",
+                    kind: "command_lifecycle",
+                    title: title,
+                    detail: state,
+                    order: event.sequence
+                )
+            )
+        }
+
+        guard let latest = candidates.max(
+            by: { $0.order < $1.order }
+        ) else {
+            return []
+        }
+
+        let hasLaterExecutionActivity =
+            events.contains { event in
+                guard event.sequence > latest.order else {
+                    return false
+                }
+
+                if [
+                    "partial_text",
+                    "text",
+                    "tool_use",
+                    "tool_result",
+                    "task",
+                    "result",
+                    "error",
+                ].contains(event.event.type) {
+                    return true
+                }
+
+                guard event.event.type == "runtime",
+                      event.event.payload?["kind"]?.stringValue
+                        == "command_lifecycle" else {
+                    return false
+                }
+
+                let state =
+                    event.event.payload?["state"]?.stringValue
+                return [
+                    "cancelled",
+                    "discarded",
+                    "refused",
+                    "completed",
+                ].contains(state ?? "")
+            }
+
+        return hasLaterExecutionActivity ? [] : [latest]
     }
 
     private static func tools(
