@@ -13,6 +13,9 @@ import {
   ClaudeAlbumPhotoPromotionError,
   NativeLiveClaudeAlbumPhotoPromoter,
 } from "../src/domains/album/native-live-claude-photo-promoter.js";
+import {
+  NativeLiveAttachmentError,
+} from "../src/domains/bridge/native-live-attachment-service.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const attachmentId = "22222222-2222-4222-8222-222222222222";
@@ -240,7 +243,7 @@ test("photo download stays metadata-only until the attachment path asks for byte
   assert.match(result.download.url, /claude-album/u);
 });
 
-test("native-live promoter copies verified image bytes into the album prefix", async () => {
+test("native-live promoter accepts an older bound image attachment and copies verified bytes", async () => {
   const bytes = Buffer.from("photo-bytes");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const requests: Array<{ url: string; method: string }> = [];
@@ -338,7 +341,8 @@ test("native-live promoter copies verified image bytes into the album prefix", a
     userId,
     photoId,
     sourceAttachmentId: attachmentId,
-    triggerUserMessageId: messageId,
+    triggerUserMessageId:
+      "66666666-6666-4666-8666-666666666666",
   });
 
   assert.equal(promoted.sha256, sha256);
@@ -356,30 +360,13 @@ test("native-live promoter copies verified image bytes into the album prefix", a
   ]);
 });
 
-test("native-live promoter refuses an image attachment from another user message", async () => {
+test("native-live promoter reports a clear error for unavailable old attachments", async () => {
   const source = {
     async createDownloadSlot() {
-      return {
-        attachment: {
-          attachmentId,
-          filename: "photo.webp",
-          mimeType: "image/webp",
-          sizeBytes: 10,
-          sha256: "a".repeat(64),
-          kind: "image" as const,
-          status: "bound" as const,
-          objectKey: "native-live/source",
-          boundMessageId: messageId,
-          createdAt: "2026-10-02T03:00:00.000Z",
-          expiresAt: "2026-10-03T03:00:00.000Z",
-        },
-        download: {
-          url: "https://source.example/file",
-          method: "GET" as const,
-          headers: {},
-          expiresAt: "2026-10-02T04:00:00.000Z",
-        },
-      };
+      throw new NativeLiveAttachmentError(
+        "ATTACHMENT_NOT_FOUND",
+        "Attachment is not available.",
+      );
     },
   };
   const destination = {
@@ -397,10 +384,6 @@ test("native-live promoter refuses an image attachment from another user message
   const promoter = new NativeLiveClaudeAlbumPhotoPromoter(
     source,
     destination,
-    {},
-    async () => {
-      throw new Error("must not fetch");
-    },
   );
 
   await assert.rejects(
@@ -413,8 +396,8 @@ test("native-live promoter refuses an image attachment from another user message
     }),
     (error: unknown) =>
       error instanceof ClaudeAlbumPhotoPromotionError
-      && error.code ===
-        "SOURCE_ATTACHMENT_NOT_CURRENT_MESSAGE",
+      && error.code === "SOURCE_ATTACHMENT_UNAVAILABLE"
+      && /Re-send the image/u.test(error.message),
   );
 });
 
