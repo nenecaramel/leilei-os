@@ -760,46 +760,6 @@ struct AssistantTypingIndicatorRow: View {
     }
 }
 
-private struct NativeLiveRuntimeToolCallRow: View {
-    let toolUse: NativeLiveRuntimeEventSnapshot
-    let events: [NativeLiveRuntimeEventSnapshot]
-
-    private var toolUseID: String? {
-        toolUse.event.payload?["tool_use_id"]?.stringValue
-    }
-
-    private var result: NativeLiveRuntimeEventSnapshot? {
-        guard let toolUseID else { return nil }
-        return events.last(where: { event in
-            event.event.type == "tool_result"
-                && event.event.payload?["tool_use_id"]?.stringValue
-                    == toolUseID
-        })
-    }
-
-    var body: some View {
-        NativeLiveToolCallCard(
-            toolName:
-                toolUse.event.payload?["display_name"]?.stringValue
-                ?? toolUse.event.payload?["tool_name"]?.stringValue
-                ?? "Tool",
-            detail: nativeLiveJSONDetail(
-                toolUse.event.payload?["input"]
-            ),
-            state:
-                result == nil
-                    ? .running
-                    : (
-                        result?.event.payload?["is_error"]?.boolValue
-                            == true
-                        ? .failed
-                        : .completed
-                    )
-        )
-    }
-}
-
-
 enum NativeLiveToolCallState: Equatable {
     case running
     case completed
