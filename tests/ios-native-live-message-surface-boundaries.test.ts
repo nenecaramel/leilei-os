@@ -141,6 +141,9 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(projection, /topLevelInteractions/);
   assert.match(projection, /!\$0\.hiddenFromTranscript/);
   assert.match(projection, /pendingInteractionIDs/);
+  assert.match(projection, /isActiveBackgroundTask/);
+  assert.match(projection, /hasActiveBackgroundTask/);
+  assert.match(projection, /return "Background"/);
 
   assert.match(lifecycleProjection, /api_retry/);
   assert.match(lifecycleProjection, /command_lifecycle/);
@@ -167,6 +170,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /"Resources"/);
   assert.match(runtime, /task\.resourceLinks/);
   assert.match(runtime, /task\.isCurrentlyActive/);
+  assert.match(runtime, /projection\.hasActiveBackgroundTask/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
 
