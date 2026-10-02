@@ -592,10 +592,18 @@ final class AppModel: ObservableObject {
             try await api.nativeLiveAttachmentDownloadSlot(
                 attachmentID: attachmentID
             )
-        guard slot.download.method.uppercased() == "GET",
+        guard slot.attachment.attachmentId == attachmentID,
+              slot.download.method.uppercased() == "GET",
               let url = URL(string: slot.download.url) else {
             throw NativeLiveAttachmentLoadError.invalidTransfer
         }
+
+        let verifiedSize =
+            expectedSize
+            ?? slot.attachment.sizeBytes
+        let verifiedSHA256 =
+            expectedSHA256
+            ?? slot.attachment.sha256
 
         var request = URLRequest(url: url)
         request.httpMethod = slot.download.method
@@ -615,19 +623,16 @@ final class AppModel: ObservableObject {
             throw NativeLiveAttachmentLoadError.invalidTransfer
         }
 
-        if let expectedSize,
-           data.count != expectedSize {
+        if data.count != verifiedSize {
             throw NativeLiveAttachmentLoadError.integrityMismatch
         }
 
-        if let expectedSHA256 {
-            let digest = SHA256.hash(data: data)
-            let actual = digest.map {
-                String(format: "%02x", $0)
-            }.joined()
-            guard actual == expectedSHA256.lowercased() else {
-                throw NativeLiveAttachmentLoadError.integrityMismatch
-            }
+        let digest = SHA256.hash(data: data)
+        let actual = digest.map {
+            String(format: "%02x", $0)
+        }.joined()
+        guard actual == verifiedSHA256.lowercased() else {
+            throw NativeLiveAttachmentLoadError.integrityMismatch
         }
 
         return data
