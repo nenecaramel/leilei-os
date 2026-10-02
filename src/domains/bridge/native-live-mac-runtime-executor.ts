@@ -95,6 +95,7 @@ import type {
   NativeLiveMacOutputAttachmentSender,
 } from "./native-live-mac-output-attachment-sender.js";
 import type {
+  ClaudeAlbumRuntimeSaveInput,
   NativeLiveClaudeAlbumRuntimeHandlers,
   NativeLiveClaudeAlbumToolClient,
 } from "../album/claude-photo-album-tool-contract.js";
@@ -251,7 +252,9 @@ export class NativeLiveMacRuntimeExecutor {
               === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
             ? {
                 albumHandlers: {
-                  savePhoto: async (input) => {
+                  savePhoto: async (
+                    input: ClaudeAlbumRuntimeSaveInput,
+                  ) => {
                     const result =
                       await this.albumToolClient!.savePhoto({
                         ...input,
