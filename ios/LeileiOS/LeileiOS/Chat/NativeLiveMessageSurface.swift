@@ -564,10 +564,17 @@ private struct NativeLiveMessageRow: View {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 48)
 
-                VStack(alignment: .trailing, spacing: 8) {
+                VStack(
+            alignment:
+                isUserMessage
+                    ? .trailing
+                    : .leading,
+            spacing: 8
+        ) {
                     if !userAttachmentBlocks.isEmpty {
                         NativeLiveAttachmentGroupView(
-                            blocks: userAttachmentBlocks
+                            blocks: userAttachmentBlocks,
+                            isUserMessage: true
                         )
                         .contextMenu {
                             if let copyText {
@@ -769,12 +776,28 @@ private struct NativeLiveMessageRow: View {
                     alignment: .leading,
                     spacing: message.role == "user" ? 19 : 22
                 ) {
-                    ForEach(visibleBlocks) { block in
-                        NativeLiveBlockView(
-                            block: block,
-                            fillsAvailableWidth: message.role != "user",
-                            isUserMessage: message.role == "user"
+                    ForEach(
+                        nativeLiveContentSegments(
+                            visibleBlocks
                         )
+                    ) { segment in
+                        switch segment {
+                        case .block(let block):
+                            NativeLiveBlockView(
+                                block: block,
+                                fillsAvailableWidth:
+                                    message.role != "user",
+                                isUserMessage:
+                                    message.role == "user"
+                            )
+
+                        case .attachments(let blocks):
+                            NativeLiveAttachmentGroupView(
+                                blocks: blocks,
+                                isUserMessage:
+                                    message.role == "user"
+                            )
+                        }
                     }
                 }
             }
@@ -1595,6 +1618,55 @@ private struct LightweightContextMenuInteraction: UIViewRepresentable {
 }
 
 
+private enum NativeLiveContentSegment:
+    Identifiable {
+    case block(NativeLiveCurrentPathBlock)
+    case attachments([NativeLiveCurrentPathBlock])
+
+    var id: String {
+        switch self {
+        case .block(let block):
+            return "block:" + block.id
+        case .attachments(let blocks):
+            return "attachments:"
+                + (blocks.first?.id ?? UUID().uuidString)
+        }
+    }
+}
+
+
+private func nativeLiveContentSegments(
+    _ blocks: [NativeLiveCurrentPathBlock]
+) -> [NativeLiveContentSegment] {
+    var result: [NativeLiveContentSegment] = []
+    var pendingAttachments:
+        [NativeLiveCurrentPathBlock] = []
+
+    func flushAttachments() {
+        guard !pendingAttachments.isEmpty else {
+            return
+        }
+        result.append(
+            .attachments(pendingAttachments)
+        )
+        pendingAttachments = []
+    }
+
+    for block in blocks {
+        if block.kind == "attachment" {
+            pendingAttachments.append(block)
+            continue
+        }
+
+        flushAttachments()
+        result.append(.block(block))
+    }
+
+    flushAttachments()
+    return result
+}
+
+
 private struct NativeLiveBlockView: View {
     let block: NativeLiveCurrentPathBlock
     let fillsAvailableWidth: Bool
@@ -1660,6 +1732,7 @@ private enum NativeLiveAttachmentPresentation: Equatable {
 
 private struct NativeLiveAttachmentGroupView: View {
     let blocks: [NativeLiveCurrentPathBlock]
+    var isUserMessage = false
 
     private let width: CGFloat = 286
     private let gap: CGFloat = 4
@@ -1687,7 +1760,13 @@ private struct NativeLiveAttachmentGroupView: View {
                 .frame(width: width)
             }
         }
-        .frame(width: width, alignment: .trailing)
+        .frame(
+            width: width,
+            alignment:
+                isUserMessage
+                    ? .trailing
+                    : .leading
+        )
     }
 
     @ViewBuilder
