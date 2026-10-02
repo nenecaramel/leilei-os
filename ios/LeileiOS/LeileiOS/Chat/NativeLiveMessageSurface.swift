@@ -564,28 +564,48 @@ private struct NativeLiveMessageRow: View {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 48)
 
-                VStack(alignment: .trailing, spacing: 6) {
-                    messageContent
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            Color.chatSoftFill,
-                            in: RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
+                VStack(alignment: .trailing, spacing: 8) {
+                    if !userAttachmentBlocks.isEmpty {
+                        NativeLiveAttachmentGroupView(
+                            blocks: userAttachmentBlocks
                         )
-                        .overlay {
-                            LightweightContextMenuInteraction(
-                                title: "Edit",
-                                copyText: copyText,
-                                isDisabled: isTurnInFlight,
-                                cornerRadius: 18,
-                                onCopy: onCopyMessage
-                            ) {
+                        .contextMenu {
+                            if let copyText {
+                                Button("Copy") {
+                                    onCopyMessage(copyText)
+                                }
+                            }
+
+                            Button("Edit") {
                                 onEditMessage(message)
                             }
+                            .disabled(isTurnInFlight)
                         }
+                    }
+
+                    if hasUserBubbleContent {
+                        userBubbleContent
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(
+                                Color.chatSoftFill,
+                                in: RoundedRectangle(
+                                    cornerRadius: 18,
+                                    style: .continuous
+                                )
+                            )
+                            .overlay {
+                                LightweightContextMenuInteraction(
+                                    title: "Edit",
+                                    copyText: copyText,
+                                    isDisabled: isTurnInFlight,
+                                    cornerRadius: 18,
+                                    onCopy: onCopyMessage
+                                ) {
+                                    onEditMessage(message)
+                                }
+                            }
+                    }
 
                     messageStatus
                 }
@@ -673,6 +693,53 @@ private struct NativeLiveMessageRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var sortedMessageBlocks: [NativeLiveCurrentPathBlock] {
+        message.blocks.sorted {
+            $0.ordinal < $1.ordinal
+        }
+    }
+
+    private var userAttachmentBlocks: [NativeLiveCurrentPathBlock] {
+        sortedMessageBlocks.filter {
+            $0.kind == "attachment"
+        }
+    }
+
+    private var userTextBlocks: [NativeLiveCurrentPathBlock] {
+        sortedMessageBlocks.filter { block in
+            block.kind == "text"
+                && normalizedText(block.text) != nil
+        }
+    }
+
+    private var hasUserBubbleContent: Bool {
+        normalizedText(displayTextOverride) != nil
+            || !userTextBlocks.isEmpty
+    }
+
+    @ViewBuilder
+    private var userBubbleContent: some View {
+        if let override = normalizedText(displayTextOverride) {
+            ChatMarkdownView(
+                text: override,
+                fillsAvailableWidth: false,
+                lineSpacing: 5,
+                paragraphSpacing: 19
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 19) {
+                ForEach(userTextBlocks) { block in
+                    NativeLiveBlockView(
+                        block: block,
+                        fillsAvailableWidth: false,
+                        isUserMessage: true
+                    )
+                }
+            }
+        }
+    }
+
+
     @ViewBuilder
     private var messageContent: some View {
         if let override = normalizedText(displayTextOverride) {
@@ -683,10 +750,7 @@ private struct NativeLiveMessageRow: View {
                 paragraphSpacing: message.role == "user" ? 19 : 22
             )
         } else {
-            let blocks = message.blocks.sorted {
-                $0.ordinal < $1.ordinal
-            }
-            let visibleBlocks = blocks.filter { block in
+            let visibleBlocks = sortedMessageBlocks.filter { block in
                 if block.kind == "tool_use"
                     || block.kind == "tool_result"
                     || block.kind == "attachment" {
@@ -1588,10 +1652,150 @@ private struct NativeLiveBlockView: View {
 }
 
 
+private enum NativeLiveAttachmentPresentation {
+    case standalone
+    case imageTile
+}
+
+
+private struct NativeLiveAttachmentGroupView: View {
+    let blocks: [NativeLiveCurrentPathBlock]
+
+    private let width: CGFloat = 286
+    private let gap: CGFloat = 4
+
+    private var imageBlocks: [NativeLiveCurrentPathBlock] {
+        blocks.filter(nativeLiveAttachmentIsImage)
+    }
+
+    private var fileBlocks: [NativeLiveCurrentPathBlock] {
+        blocks.filter {
+            !nativeLiveAttachmentIsImage($0)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            if !imageBlocks.isEmpty {
+                imageLayout
+            }
+
+            ForEach(fileBlocks) { block in
+                NativeLiveAttachmentBlockView(
+                    block: block
+                )
+                .frame(width: width)
+            }
+        }
+        .frame(width: width, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private var imageLayout: some View {
+        switch imageBlocks.count {
+        case 1:
+            NativeLiveAttachmentBlockView(
+                block: imageBlocks[0]
+            )
+            .frame(maxWidth: width)
+
+        case 2:
+            HStack(spacing: gap) {
+                imageTile(imageBlocks[0])
+                imageTile(imageBlocks[1])
+            }
+            .frame(width: width, height: 150)
+
+        case 3:
+            HStack(spacing: gap) {
+                imageTile(imageBlocks[0])
+                    .frame(width: 190, height: 188)
+
+                VStack(spacing: gap) {
+                    imageTile(imageBlocks[1])
+                    imageTile(imageBlocks[2])
+                }
+                .frame(width: 92, height: 188)
+            }
+            .frame(width: width, height: 188)
+
+        default:
+            let visible = Array(imageBlocks.prefix(4))
+            let extra = imageBlocks.count - visible.count
+
+            VStack(spacing: gap) {
+                HStack(spacing: gap) {
+                    imageTile(visible[0])
+                    imageTile(visible[1])
+                }
+                HStack(spacing: gap) {
+                    imageTile(visible[2])
+                    ZStack {
+                        imageTile(visible[3])
+
+                        if extra > 0 {
+                            RoundedRectangle(
+                                cornerRadius: 13,
+                                style: .continuous
+                            )
+                            .fill(.black.opacity(0.38))
+                            .allowsHitTesting(false)
+
+                            Text("+\(extra)")
+                                .font(.system(
+                                    size: 24,
+                                    weight: .semibold
+                                ))
+                                .foregroundStyle(.white)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                }
+            }
+            .frame(width: width, height: width)
+        }
+    }
+
+    private func imageTile(
+        _ block: NativeLiveCurrentPathBlock
+    ) -> some View {
+        NativeLiveAttachmentBlockView(
+            block: block,
+            presentation: .imageTile
+        )
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
+    }
+}
+
+
+private func nativeLiveAttachmentIsImage(
+    _ block: NativeLiveCurrentPathBlock
+) -> Bool {
+    let payload = block.payload ?? [:]
+    let mimeType =
+        payload["mime_type"]?.stringValue
+        ?? "application/octet-stream"
+    return payload["kind"]?.stringValue == "image"
+        || mimeType.hasPrefix("image/")
+}
+
+
 private struct NativeLiveAttachmentBlockView: View {
     @EnvironmentObject private var appModel: AppModel
 
     let block: NativeLiveCurrentPathBlock
+    let presentation: NativeLiveAttachmentPresentation
+
+    init(
+        block: NativeLiveCurrentPathBlock,
+        presentation: NativeLiveAttachmentPresentation = .standalone
+    ) {
+        self.block = block
+        self.presentation = presentation
+    }
 
     @State private var downloadURL: URL?
     @State private var preview: NativeLiveAttachmentPreview?
@@ -1631,8 +1835,32 @@ private struct NativeLiveAttachmentBlockView: View {
     }
 
     private var isImage: Bool {
-        payload["kind"]?.stringValue == "image"
-            || mimeType.hasPrefix("image/")
+        nativeLiveAttachmentIsImage(block)
+    }
+
+    private var fileTypeLabel: String {
+        let ext = (filename as NSString)
+            .pathExtension
+            .uppercased()
+
+        if !ext.isEmpty {
+            return ext
+        }
+
+        switch mimeType {
+        case "application/pdf":
+            return "PDF"
+        case "text/plain":
+            return "TXT"
+        case "text/markdown":
+            return "MD"
+        case "application/json":
+            return "JSON"
+        case "application/zip":
+            return "ZIP"
+        default:
+            return isImage ? "Image" : "File"
+        }
     }
 
     private var sizeText: String? {
@@ -1653,32 +1881,13 @@ private struct NativeLiveAttachmentBlockView: View {
                     AsyncImage(url: downloadURL) { phase in
                         switch phase {
                         case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxHeight: 260)
-                                .clipShape(
-                                    RoundedRectangle(
-                                        cornerRadius: 12,
-                                        style: .continuous
-                                    )
-                                )
+                            attachmentImage(image)
                         case .failure:
-                            attachmentRowContent
+                            attachmentFallback
                         case .empty:
-                            ZStack {
-                                RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
-                                )
-                                .fill(
-                                    Color.primary.opacity(0.045)
-                                )
-                                ProgressView()
-                            }
-                            .frame(height: 120)
+                            attachmentPlaceholder
                         @unknown default:
-                            attachmentRowContent
+                            attachmentFallback
                         }
                     }
                 }
@@ -1709,6 +1918,84 @@ private struct NativeLiveAttachmentBlockView: View {
         }
     }
 
+    @ViewBuilder
+    private func attachmentImage(
+        _ image: Image
+    ) -> some View {
+        switch presentation {
+        case .standalone:
+            image
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 260)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: 13,
+                        style: .continuous
+                    )
+                )
+
+        case .imageTile:
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
+                .clipped()
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: 13,
+                        style: .continuous
+                    )
+                )
+        }
+    }
+
+    @ViewBuilder
+    private var attachmentPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(
+                cornerRadius: 13,
+                style: .continuous
+            )
+            .fill(Color.primary.opacity(0.045))
+
+            ProgressView()
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: presentation == .standalone
+                ? 120
+                : nil,
+            maxHeight: .infinity
+        )
+    }
+
+    @ViewBuilder
+    private var attachmentFallback: some View {
+        if presentation == .imageTile {
+            ZStack {
+                RoundedRectangle(
+                    cornerRadius: 13,
+                    style: .continuous
+                )
+                .fill(Color.primary.opacity(0.045))
+
+                Image(systemName: "photo")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
+        } else {
+            attachmentRowContent
+        }
+    }
+
     private var attachmentRowContent: some View {
         HStack(spacing: 10) {
             Image(
@@ -1727,7 +2014,7 @@ private struct NativeLiveAttachmentBlockView: View {
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
-                    Text(mimeType)
+                    Text(fileTypeLabel)
                     if let sizeText {
                         Text("·")
                         Text(sizeText)
