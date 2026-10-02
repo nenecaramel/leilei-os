@@ -93,7 +93,6 @@ test("runtime activity and tool presentation are extracted from the message surf
     "struct NativeLiveTurnActivityView",
     "struct NativeLiveTaskActivityRow",
     "struct AssistantTypingIndicatorRow",
-    "struct NativeLiveRuntimeToolCallRow",
     "enum NativeLiveToolCallState",
     "struct NativeLiveToolCallCard",
     "struct NativeLiveToolResultCard",
