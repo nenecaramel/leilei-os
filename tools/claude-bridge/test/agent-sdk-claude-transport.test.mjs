@@ -1209,6 +1209,74 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
   });
 });
 
+test("interactive provider failure retains SessionStore mirror health", async () => {
+  let state = null;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionStore: {
+      async append() {},
+      async getStatus() { return state; },
+      async markIncomplete() {
+        state = "incomplete";
+      },
+    },
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-failed-mirror",
+      },
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "provider-failed-mirror",
+        error: "remote append failed",
+      },
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        session_id: "provider-failed-mirror",
+        errors: ["provider failed"],
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () =>
+      transport.executeTurn(
+        "hello",
+        {
+          mode: "new",
+          parentProviderSessionId: null,
+          streaming: true,
+        },
+      ),
+    (error) => {
+      assert.equal(error.runtimeCode, "CLAUDE_PROCESS_FAILED");
+      assert.deepEqual(error.sessionStoreObservability, {
+        provider: "claude_agent_sdk",
+        configured: true,
+        mode: "new",
+        session_id: "provider-failed-mirror",
+        parent_session_id: null,
+        project_key: "/workspace/leilei-os",
+        cwd: "/workspace/leilei-os",
+        parent_local_available: null,
+        parent_status_before: null,
+        backfill_status: "not_needed",
+        backfill_failure_reason: null,
+        mirror_status: "error",
+        mirror_failure_reason: "remote append failed",
+        status_after: "incomplete",
+        status_failure_reason: null,
+      });
+      return true;
+    },
+  );
+  assert.equal(state, "incomplete");
+});
+
 test("interactive foreground event delivery failure is observability-only", async () => {
   const transport = new AgentSdkClaudeTransport({
     environment: {},
