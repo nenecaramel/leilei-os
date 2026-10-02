@@ -1291,10 +1291,12 @@ implements NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     errorCode: NativeLiveRuntimeFailureCode | "RUNTIME_PROTOCOL_ERROR";
+    runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult> {
     const resultHash = hashJson(RESULT_HASH_VERSION, {
       status: "failure",
       errorCode: input.errorCode,
+      runtimeMetadata: input.runtimeMetadata,
     });
 
     try {
@@ -1331,6 +1333,8 @@ implements NativeLiveBackendTurnPort {
               providerSessionId: null,
               assistantMessageId: null,
               failureCode: input.errorCode,
+              runtimeMetadata:
+                input.runtimeMetadata as Record<string, unknown> | null,
               finalizedAt,
               updatedAt: finalizedAt,
             })
