@@ -335,6 +335,13 @@ private struct NativeLiveTaskActivityRow: View {
                 )
                 .padding(.leading, 23)
             }
+
+            if !task.resourceLinks.isEmpty {
+                NativeLiveTaskResourceRow(
+                    task: task
+                )
+                .padding(.leading, 23)
+            }
         }
         .padding(.leading, CGFloat(
             min(max(task.spawnDepth ?? 0, 0), 4)
@@ -363,6 +370,62 @@ private struct NativeLiveTaskActivityRow: View {
             Image(systemName: "circle")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct NativeLiveTaskResourceRow: View {
+    let task: NativeLiveTurnActivityProjection.TaskActivity
+
+    @State private var isShowingResources = false
+
+    var body: some View {
+        Button {
+            isShowingResources = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+
+                Text("Resources")
+                    .font(.system(
+                        size: 13.5,
+                        weight: .medium
+                    ))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 8)
+
+                Text(String(task.resourceLinks.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(
+                        size: 10.5,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $isShowingResources) {
+            NativeLiveToolDetailSheet(
+                title: task.displayTitle,
+                status:
+                    task.status?.capitalized
+                    ?? task.phase?.replacingOccurrences(
+                        of: "_",
+                        with: " "
+                    ).capitalized
+                    ?? "Task",
+                sectionTitle: "Resources",
+                detail: nativeLiveJSONDetail(
+                    .array(task.resourceLinks)
+                )
+            )
         }
     }
 }
