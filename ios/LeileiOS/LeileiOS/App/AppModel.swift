@@ -73,11 +73,14 @@ final class AppModel: ObservableObject {
         NativeLiveRuntimeSurfaceState?
     @Published private(set) var mindWritesByMessageID:
         [String: MindProductMessageWriteProjection] = [:]
+    @Published private(set) var albumSavesByUserMessageID:
+        [String: ClaudeAlbumMessageSaveProjection] = [:]
 
     private var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
     private var nativeLiveRuntimeObservationTask: Task<Void, Never>?
     private var mindWriteRequestsInFlight: Set<String> = []
+    private var albumSaveRequestsInFlight: Set<String> = []
     private var currentHeadMindWriteRefreshTask: Task<Void, Never>?
     private var conversationBootstrapInFlight = false
     private var conversationPaginationInFlight = false
@@ -853,6 +856,46 @@ final class AppModel: ObservableObject {
             clearNativeLiveSessionData()
         } catch {
             // Message-level Mind projection is fail-soft.
+        }
+    }
+
+    func refreshAlbumSaves(
+        userMessageID: String,
+        force: Bool = false
+    ) async {
+        guard isAuthenticated,
+              !userMessageID.isEmpty else {
+            return
+        }
+
+        if !force,
+           albumSavesByUserMessageID[userMessageID] != nil {
+            return
+        }
+
+        guard !albumSaveRequestsInFlight.contains(
+            userMessageID
+        ) else {
+            return
+        }
+
+        albumSaveRequestsInFlight.insert(userMessageID)
+        defer {
+            albumSaveRequestsInFlight.remove(userMessageID)
+        }
+
+        do {
+            let projection = try await api.albumSaves(
+                userMessageID: userMessageID
+            )
+            albumSavesByUserMessageID[userMessageID] =
+                projection
+        } catch LeileiAPIError.missingAccessToken {
+            clearNativeLiveSessionData()
+        } catch LeileiAPIError.unauthorized {
+            clearNativeLiveSessionData()
+        } catch {
+            // Album save projection is fail-soft.
         }
     }
 
@@ -1657,6 +1700,8 @@ final class AppModel: ObservableObject {
         nativeLiveRuntimeMetadataByConversationID.removeAll()
         mindWritesByMessageID.removeAll()
         mindWriteRequestsInFlight.removeAll()
+        albumSavesByUserMessageID.removeAll()
+        albumSaveRequestsInFlight.removeAll()
         currentHeadMindWriteRefreshTask?.cancel()
         currentHeadMindWriteRefreshTask = nil
         nativeLiveRuntimeObservationTask?.cancel()

@@ -9,6 +9,9 @@ import type {
   NativeLiveRuntimeContextUsage,
   NativeLiveRuntimeExecutionReadback,
 } from "./native-live-runtime-protocol.js";
+import type {
+  NativeLiveClaudeAlbumRuntimeHandlers,
+} from "../album/claude-photo-album-tool-contract.js";
 
 export type NativeLiveMacClaudeTransportKind = "agent_sdk";
 
@@ -17,6 +20,9 @@ export type NativeLiveMacMcpServerConfig = {
   url: string;
   headers: Readonly<Record<string, string>>;
 };
+
+export type NativeLiveMacAlbumToolHandlers =
+  NativeLiveClaudeAlbumRuntimeHandlers;
 
 export type NativeLiveMacActiveTurnController = {
   sendUserMessage(
@@ -54,6 +60,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
     sha256: string;
     kind: "image" | "file";
   }>;
+  albumHandlers?: NativeLiveMacAlbumToolHandlers;
   controlPump?: (
     controller: NativeLiveMacActiveTurnController,
     context: { signal: AbortSignal },

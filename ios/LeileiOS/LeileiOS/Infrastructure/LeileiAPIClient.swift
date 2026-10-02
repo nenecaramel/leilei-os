@@ -96,6 +96,14 @@ struct MindProductPage: Decodable, Sendable, Equatable {
     let nextCursor: String?
 }
 
+struct ClaudeAlbumMessageSaveProjection:
+    Decodable,
+    Sendable,
+    Equatable {
+    let userMessageId: String
+    let total: Int
+}
+
 struct MindProductMessageWriteProjection:
     Decodable,
     Sendable,
@@ -1628,6 +1636,19 @@ final class LeileiAPIClient {
         return envelope.data
     }
 
+    func albumSaves(
+        userMessageID: String
+    ) async throws -> ClaudeAlbumMessageSaveProjection {
+        let envelope: ClaudeAlbumMessageSaveEnvelope =
+            try await request(
+                path:
+                    "/api/v1/album/saves/messages/"
+                    + userMessageID,
+                authenticated: true
+            )
+        return envelope.data
+    }
+
     func workspaces(
         conversationID: UUID? = nil
     ) async throws -> [WorkspaceSummary] {
@@ -2093,6 +2114,13 @@ private struct MindProductMessageWriteEnvelope:
     Sendable {
     let success: Bool
     let data: MindProductMessageWriteProjection
+}
+
+private struct ClaudeAlbumMessageSaveEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: ClaudeAlbumMessageSaveProjection
 }
 
 private struct MindDeleteEnvelope: Decodable, Sendable {

@@ -509,6 +509,12 @@ private struct NativeLiveMessageRow: View {
                 await appModel.refreshMindWrites(
                     messageID: message.id
                 )
+                if let userMessageID = message.parentMessageId {
+                    await appModel.refreshAlbumSaves(
+                        userMessageID: userMessageID,
+                        force: isCurrentHead
+                    )
+                }
             }
     }
 
@@ -582,6 +588,10 @@ private struct NativeLiveMessageRow: View {
 
             MindWriteIndicator(
                 items: mindWriteItems
+            )
+
+            AlbumSaveIndicator(
+                count: albumSaveCount
             )
 
             HStack(spacing: 12) {
@@ -687,6 +697,15 @@ private struct NativeLiveMessageRow: View {
             .joined(separator: "\n\n")
 
         return text.isEmpty ? nil : text
+    }
+
+    private var albumSaveCount: Int {
+        guard let userMessageID = message.parentMessageId else {
+            return 0
+        }
+        return appModel.albumSavesByUserMessageID[
+            userMessageID
+        ]?.total ?? 0
     }
 
     private var mindWriteItems: [MindWriteIndicatorItem] {

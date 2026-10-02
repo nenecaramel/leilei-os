@@ -17,6 +17,9 @@ import {
   parseNativeLiveBackgroundModelCommand,
   type NativeLiveBackgroundModelExecutionResult,
 } from "./native-live-background-model-protocol.js";
+import type {
+  ClaudeAlbumToolPhoto,
+} from "../album/claude-photo-album-tool-contract.js";
 
 type FetchLike = typeof fetch;
 
@@ -154,6 +157,95 @@ implements NativeLiveMacDaemonRelayClient {
       method: "GET",
       headers: readStringRecord(download.headers),
       attachment,
+    };
+  }
+
+  async savePhoto(input: {
+    sourceAttachmentId: string;
+    triggerUserMessageId: string;
+    description: string | null;
+    whySaved: string;
+    tags: string[];
+  }): Promise<{
+    photo: ClaudeAlbumToolPhoto;
+    created: boolean;
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/album/photos/save",
+        {
+          source_attachment_id:
+            input.sourceAttachmentId,
+          trigger_user_message_id:
+            input.triggerUserMessageId,
+          description: input.description,
+          why_saved: input.whySaved,
+          tags: input.tags,
+        },
+      ),
+    );
+    return {
+      photo: parseAlbumPhoto(data.photo),
+      created: data.created === true,
+    };
+  }
+
+  async searchPhotos(input: {
+    query: string | null;
+    limit: number;
+  }): Promise<ClaudeAlbumToolPhoto[]> {
+    const data = readRecord(
+      await this.post(
+        "/album/photos/search",
+        {
+          query: input.query,
+          limit: input.limit,
+        },
+      ),
+    );
+    if (!Array.isArray(data.photos)) {
+      throw new Error(
+        "Native live album search response is invalid.",
+      );
+    }
+    return data.photos.map(parseAlbumPhoto);
+  }
+
+  async sendPhoto(input: {
+    photoId: string;
+  }): Promise<{
+    photo: ClaudeAlbumToolPhoto;
+    attachment: {
+      attachmentId: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+      kind: "image";
+    };
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/album/photos/"
+          + encodeURIComponent(input.photoId)
+          + "/send",
+        {},
+      ),
+    );
+    const attachment = parseAttachmentDescriptor(
+      data.attachment,
+    );
+    if (attachment.kind !== "image") {
+      throw new Error(
+        "Native live album send response did not return an image.",
+      );
+    }
+    return {
+      photo: parseAlbumPhoto(data.photo),
+      attachment: {
+        ...attachment,
+        kind: "image",
+      },
     };
   }
 
@@ -961,6 +1053,51 @@ function parseAttachmentDescriptor(
     sizeBytes: attachment.sizeBytes,
     sha256: attachment.sha256,
     kind: attachment.kind,
+  };
+}
+
+function parseAlbumPhoto(
+  value: unknown,
+): ClaudeAlbumToolPhoto {
+  const photo = readRecord(value);
+  if (
+    typeof photo.id !== "string"
+    || typeof photo.filename !== "string"
+    || typeof photo.mimeType !== "string"
+    || typeof photo.sizeBytes !== "number"
+    || typeof photo.sha256 !== "string"
+    || (
+      photo.description !== null
+      && typeof photo.description !== "string"
+    )
+    || typeof photo.whySaved !== "string"
+    || !Array.isArray(photo.tags)
+    || !photo.tags.every(
+      (tag) => typeof tag === "string",
+    )
+    || typeof photo.sourceAttachmentId !== "string"
+    || (
+      photo.sourceMessageId !== null
+      && typeof photo.sourceMessageId !== "string"
+    )
+    || typeof photo.createdAt !== "string"
+  ) {
+    throw new Error(
+      "Native live album photo descriptor is invalid.",
+    );
+  }
+  return {
+    id: photo.id,
+    filename: photo.filename,
+    mimeType: photo.mimeType,
+    sizeBytes: photo.sizeBytes,
+    sha256: photo.sha256,
+    description: photo.description,
+    whySaved: photo.whySaved,
+    tags: [...photo.tags] as string[],
+    sourceAttachmentId: photo.sourceAttachmentId,
+    sourceMessageId: photo.sourceMessageId,
+    createdAt: photo.createdAt,
   };
 }
 

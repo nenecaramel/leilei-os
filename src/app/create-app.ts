@@ -51,6 +51,7 @@ import type { ExportApiDependencies } from "../web-api/export-router.js";
 import type { ImportApiDependencies } from "../web-api/import-router.js";
 import type { UniverseApiDependencies } from "../web-api/universe-router.js";
 import type { MindApiDependencies } from "../web-api/mind-router.js";
+import type { AlbumApiDependencies } from "../web-api/album-router.js";
 import type { ProjectWorkspaceApiDependencies } from "../web-api/project-workspace-router.js";
 import type { NativeLiveApiDependencies } from "../web-api/native-live-router.js";
 import {
@@ -95,6 +96,8 @@ export type NativeLiveProductionDependencies = {
         | "manualCompactService"
         | "externalSessionBridgeService"
         | "attachmentService"
+        | "photoAlbumService"
+        | "photoAlbumSender"
       >
     >
     & Pick<
@@ -103,6 +106,8 @@ export type NativeLiveProductionDependencies = {
       | "manualCompactService"
       | "externalSessionBridgeService"
       | "attachmentService"
+      | "photoAlbumService"
+      | "photoAlbumSender"
     >
     & {
       providerSessionStoreService:
@@ -129,6 +134,7 @@ export type AppDependencies = {
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
   webMindService?: MindApiDependencies["mindService"];
+  webAlbumService?: AlbumApiDependencies["albumService"];
   webProjectWorkspaceService?: ProjectWorkspaceApiDependencies["projectWorkspaceService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
@@ -392,6 +398,7 @@ export function createApp(
     const webImportService = dependencies.webImportService;
     const webUniverseService = dependencies.webUniverseService;
     const webMindService = dependencies.webMindService;
+    const webAlbumService = dependencies.webAlbumService;
     const webProjectWorkspaceService =
       dependencies.webProjectWorkspaceService;
 
@@ -452,6 +459,9 @@ export function createApp(
         universe: { universeService: webUniverseService },
         ...(webMindService
           ? { mind: { mindService: webMindService } }
+          : {}),
+        ...(webAlbumService
+          ? { album: { albumService: webAlbumService } }
           : {}),
         ...(webProjectWorkspaceService
           ? {

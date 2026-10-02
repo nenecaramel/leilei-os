@@ -605,6 +605,9 @@ struct NativeLiveRuntimeSurfaceState:
                 return "Using a tool"
 
             case "runtime":
+                if payload["kind"]?.stringValue == "album_saved" {
+                    return "Saved a photo to Album"
+                }
                 if payload["kind"]?.stringValue == "api_retry" {
                     let attempt = payload["attempt"]?.numberValue
                     let maxRetries = payload["max_retries"]?.numberValue

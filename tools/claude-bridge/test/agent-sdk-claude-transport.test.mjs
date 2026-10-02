@@ -1835,6 +1835,68 @@ test("interactive foreground turn injects the local send_file MCP only when a ha
   });
 });
 
+test("interactive foreground turn injects the local album MCP only when handlers are present", async () => {
+  let call;
+  let capturedHandlers = null;
+  const localAlbumServer = {
+    type: "sdk",
+    name: "local-album-test",
+  };
+  const remoteServer = {
+    type: "http",
+    url: "https://leilei-os.example/internal/native-live-mcp",
+    headers: {
+      Authorization: "Bearer relay-secret",
+    },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    mcpServerConfig: remoteServer,
+    createAlbumMcpServerImpl: async (handlers) => {
+      capturedHandlers = handlers;
+      return localAlbumServer;
+    },
+    queryImpl: (input) => {
+      call = input;
+      return fakeConnectedMcpQuery(
+        successFixture("provider-album-tools"),
+      );
+    },
+  });
+
+  const albumHandlers = {
+    async savePhoto() {
+      throw new Error("unused");
+    },
+    async searchPhotos() {
+      return [];
+    },
+    async sendPhoto() {
+      throw new Error("unused");
+    },
+  };
+
+  const result = await transport.executeTurn(
+    "remember this photo",
+    {
+      mode: "new",
+      parentProviderSessionId: null,
+      streaming: true,
+      albumHandlers,
+    },
+  );
+
+  assert.equal(
+    result.providerSessionId,
+    "provider-album-tools",
+  );
+  assert.equal(capturedHandlers, albumHandlers);
+  assert.deepEqual(call.options.mcpServers, {
+    leileios: remoteServer,
+    leileios_album: localAlbumServer,
+  });
+});
+
 test("interactive foreground turn does not inject local send_file MCP without a handler", async () => {
   let call;
   let localFactoryCalls = 0;
