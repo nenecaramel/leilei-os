@@ -149,7 +149,7 @@ test("runtime activity and tool presentation are extracted from the message surf
 
   assert.match(lifecycleProjection, /api_retry/);
   assert.match(lifecycleProjection, /command_lifecycle/);
-  assert.match(lifecycleProjection, /album_saved/);
+  assert.doesNotMatch(lifecycleProjection, /album_saved/);
 
   assert.match(toolProjection, /tool_use_id/);
   assert.match(toolProjection, /parent_tool_use_id/);
