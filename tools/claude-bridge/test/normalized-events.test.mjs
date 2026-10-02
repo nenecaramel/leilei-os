@@ -858,6 +858,53 @@ test("omits base64 data URLs from tool_result projections", () => {
   assert.equal(events[1].payload.omitted_binary_bytes, 4_096);
 });
 
+test("normalizes Agent SDK vcs_state_changed as bounded runtime-only mutation hints", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "vcs_state_changed",
+        session_id: "s",
+        kind: "commit",
+        cwd: "/workspace/repo",
+        branch: "main",
+        uuid: "vcs-1",
+        private_detail: "must not survive",
+      },
+      {
+        type: "system",
+        subtype: "vcs_state_changed",
+        session_id: "s",
+        kind: "push",
+        cwd: "/workspace/repo/subdir",
+        branch: null,
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["runtime", "runtime"],
+  );
+  assert.deepEqual(events[0].payload, {
+    kind: "vcs_state_changed",
+    mutation_kind: "commit",
+    cwd: "/workspace/repo",
+    branch: "main",
+  });
+  assert.deepEqual(events[1].payload, {
+    kind: "vcs_state_changed",
+    mutation_kind: "push",
+    cwd: "/workspace/repo/subdir",
+    branch: null,
+  });
+  assert.equal(
+    JSON.stringify(events).includes("private_detail"),
+    false,
+  );
+});
+
 test("unknown and conflicting-session events are surfaced without crashing", () => {
   const events = normalizeClaudeEvents([{ type: "system", subtype: "init", session_id: "s" }, { type: "future", subtype: "x", session_id: "s" }, { type: "assistant", session_id: "other", message: { content: [] } }], base);
   assert.equal(events[1].type, "runtime"); assert.equal(events[2].type, "error");
