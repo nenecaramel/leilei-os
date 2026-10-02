@@ -1,7 +1,7 @@
 import Foundation
 
 extension NativeLiveTurnActivityProjection {
-private static func tools(
+static func tools(
         from events: [NativeLiveRuntimeEventSnapshot]
     ) -> [ToolActivity] {
         let toolUseEvents = events.filter {
