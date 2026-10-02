@@ -89,6 +89,9 @@ test("runtime activity and tool presentation are extracted from the message surf
 
   for (const symbol of [
     "struct NativeLiveRuntimeAssistantRow",
+    "struct NativeLiveTurnActivityProjection",
+    "struct NativeLiveTurnActivityView",
+    "struct NativeLiveTaskActivityRow",
     "struct AssistantTypingIndicatorRow",
     "struct NativeLiveRuntimeToolCallRow",
     "enum NativeLiveToolCallState",
@@ -100,13 +103,17 @@ test("runtime activity and tool presentation are extracted from the message surf
     assert.doesNotMatch(root, new RegExp(symbol));
   }
 
+  assert.match(runtime, /task_id/);
   assert.match(runtime, /tool_use_id/);
-  assert.match(runtime, /event\.type == "tool_result"/);
+  assert.match(runtime, /subagent_type/);
+  assert.match(runtime, /is_backgrounded/);
+  assert.match(runtime, /spawn_depth/);
+  assert.match(runtime, /pendingInteractionIDs/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
-  assert.match(runtime, /runtimeSurface\?\.activityText/);
-  assert.match(runtime, /runtimeSurface\?\.interactions\.first/);
+  assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
+  assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
 });
 
 const attachmentPresentationPath =
