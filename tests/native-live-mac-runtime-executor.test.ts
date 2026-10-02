@@ -12,6 +12,58 @@ const requestId = "22222222-2222-4222-8222-222222222222";
 const conversationId = "33333333-3333-4333-8333-333333333333";
 const userMessageId = "44444444-4444-4444-8444-444444444444";
 
+const resultTelemetry = {
+  subtype: "success",
+  is_error: false,
+  duration_ms: 2500,
+  duration_api_ms: 1800,
+  num_turns: 2,
+  queued_turn_count: 0,
+  stop_reason: "end_turn",
+  terminal_reason: "completed",
+  api_error_status: null,
+  startup_failure_reason: null,
+  fast_mode_state: "off",
+  fast_mode_disabled_reason: null,
+  total_cost_usd: 0.25,
+  origin: { kind: "user" },
+  usage: {
+    input_tokens: 11,
+    output_tokens: 9,
+    output_tokens_details: {
+      thinking_tokens: 6,
+    },
+  },
+  modelUsage: {
+    "claude-opus-5-5": {
+      inputTokens: 11,
+      outputTokens: 9,
+      thinkingTokens: 6,
+      costUSD: 0.25,
+    },
+  },
+  permission_denials: [],
+  errors: [],
+  structured_output_present: false,
+  deferred_tool_use_present: false,
+  latency: {
+    ttft_ms: 300,
+    ttft_stream_ms: 320,
+    time_to_request_ms: 100,
+    time_to_request_from_spawn_ms: 120,
+    time_origin_ms: 123456,
+    warm_spare_claimed: false,
+    first_content_frame_ms: 290,
+    first_stream_post_ms: 310,
+    first_stream_post_ack_ms: 315,
+    first_stream_post_wall_ms: 318,
+    first_text_post_ms: 330,
+    first_text_post_wall_ms: 335,
+    first_stream_post_queue_wait_ms: 7,
+    first_stream_post_queued_behind: 1,
+  },
+};
+
 function command(
   input: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -136,6 +188,96 @@ test("terminal result excludes runtime-only duplicate events but preserves canon
   assert.deepEqual(
     result.normalized_events.map((event) => event.type),
     ["tool_use", "tool_result", "text", "result"],
+  );
+});
+
+test("durably projects Agent SDK result telemetry without changing canonical fallback events", async () => {
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() {
+      return {
+        providerSessionId: "provider-telemetry",
+        normalizedEvents: [{
+          type: "result",
+          payload: {
+            status: "success",
+            final_text: "READY",
+            duration_ms: 2500,
+            telemetry: resultTelemetry,
+          },
+        }],
+      };
+    },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(runtime).execute(
+      command({ protocol_version: 3 }),
+    );
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") {
+    throw new Error("expected success");
+  }
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    result: resultTelemetry,
+  });
+  assert.equal(
+    result.normalized_events[0]?.payload?.final_text,
+    "READY",
+  );
+});
+
+test("provider terminal failures retain bounded result telemetry in the failure envelope", async () => {
+  const failureTelemetry = {
+    ...resultTelemetry,
+    subtype: "error_max_budget_usd",
+    is_error: true,
+    terminal_reason: "budget_exhausted",
+    stop_reason: null,
+    errors: ["budget exhausted"],
+  };
+  const runtime: NativeLiveClaudeRuntime = {
+    async sendNew() {
+      throw Object.assign(
+        new Error("Claude Agent SDK turn failed."),
+        {
+          runtimeCode: "CLAUDE_PROCESS_FAILED",
+          normalizedEvents: [{
+            type: "result",
+            payload: {
+              status: "error",
+              final_text: "PRIVATE FINAL TEXT",
+              duration_ms: 2500,
+              telemetry: failureTelemetry,
+            },
+          }],
+        },
+      );
+    },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+  };
+
+  const result =
+    await new NativeLiveMacRuntimeExecutor(runtime).execute(
+      command({ protocol_version: 3 }),
+    );
+
+  assert.equal(result.status, "failure");
+  if (result.status !== "failure") {
+    throw new Error("expected failure");
+  }
+  assert.equal(result.error_code, "CLAUDE_PROCESS_FAILED");
+  assert.deepEqual(result.runtime_metadata, {
+    context_usage: null,
+    result: failureTelemetry,
+  });
+  assert.doesNotMatch(
+    JSON.stringify(result.runtime_metadata),
+    /PRIVATE FINAL TEXT/,
   );
 });
 

@@ -226,6 +226,7 @@ export interface NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     errorCode: NativeLiveRuntimeFailureCode | "RUNTIME_PROTOCOL_ERROR";
+    runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult>;
 }
 
@@ -417,6 +418,8 @@ export class NativeLiveBackendTurnCoordinator {
           userId,
           preparation,
           errorCode: result.error_code,
+          runtimeMetadata:
+            result.runtime_metadata ?? null,
         });
         if (!recorded.ok) {
           return failureForResult(result, recorded.code);
@@ -434,6 +437,8 @@ export class NativeLiveBackendTurnCoordinator {
           userId,
           preparation,
           errorCode: "RUNTIME_PROTOCOL_ERROR",
+          runtimeMetadata:
+            result.runtime_metadata ?? null,
         });
         if (!recorded.ok) {
           return failureForResult(result, recorded.code);

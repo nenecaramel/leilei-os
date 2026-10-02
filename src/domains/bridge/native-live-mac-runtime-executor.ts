@@ -104,6 +104,7 @@ import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
   parseNativeLiveRuntimeEnvironment,
+  parseNativeLiveRuntimeResultTelemetry,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeContextUsage,
   type NativeLiveRuntimeExecutionReadback,
@@ -368,7 +369,11 @@ export class NativeLiveMacRuntimeExecutor {
           // Diagnostics must never alter runtime failure semantics.
         }
       }
-      return failure(command, errorCode);
+      return failure(
+        command,
+        errorCode,
+        runtimeMetadataFromFailure(error),
+      );
     } finally {
       if (this.attachmentMaterializer) {
         await this.attachmentMaterializer
@@ -441,13 +446,23 @@ export class NativeLiveMacRuntimeExecutor {
       runtimeEnvironmentFromNormalizedEvents(
         runtimeResult.normalizedEvents,
       );
+    const result =
+      runtimeResultTelemetryFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
 
-    if (!contextUsage && !execution && !environment) return null;
+    if (
+      !contextUsage
+      && !execution
+      && !environment
+      && !result
+    ) return null;
 
     return {
       context_usage: contextUsage,
       ...(execution ? { execution } : {}),
       ...(environment ? { environment } : {}),
+      ...(result ? { result } : {}),
     };
   }
 
@@ -506,6 +521,66 @@ function terminalFallbackEvents(
         String(event.type),
       ),
   );
+}
+
+function runtimeResultTelemetryFromNormalizedEvents(
+  events: readonly NativeLiveNormalizedEvent[],
+) {
+  const result = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.type === "result"
+        && event.payload
+        && typeof event.payload.telemetry === "object"
+        && event.payload.telemetry !== null
+        && !Array.isArray(event.payload.telemetry),
+    );
+  if (!result?.payload?.telemetry) return null;
+  try {
+    return parseNativeLiveRuntimeResultTelemetry(
+      result.payload.telemetry,
+    );
+  } catch {
+    // Provider observability is auxiliary. A malformed telemetry projection
+    // must not rewrite the canonical turn outcome.
+    return null;
+  }
+}
+
+function runtimeMetadataFromFailure(
+  error: unknown,
+): NativeLiveRuntimeMetadata | null {
+  if (!error || typeof error !== "object") return null;
+  const record = error as Record<string, unknown>;
+  const normalizedEvents =
+    Array.isArray(record.normalizedEvents)
+      ? record.normalizedEvents.filter(
+          (event): event is NativeLiveNormalizedEvent =>
+            Boolean(
+              event
+              && typeof event === "object"
+              && typeof (event as Record<string, unknown>).type === "string",
+            ),
+        )
+      : [];
+  if (normalizedEvents.length === 0) return null;
+
+  const result =
+    runtimeResultTelemetryFromNormalizedEvents(
+      normalizedEvents,
+    );
+  const environment =
+    runtimeEnvironmentFromNormalizedEvents(
+      normalizedEvents,
+    );
+
+  if (!result && !environment) return null;
+  return {
+    context_usage: null,
+    ...(environment ? { environment } : {}),
+    ...(result ? { result } : {}),
+  };
 }
 
 function runtimeEnvironmentFromNormalizedEvents(
@@ -688,6 +763,7 @@ function boundedDiagnosticText(
 function failure(
   command: NativeLiveRuntimeCommand,
   errorCode: NativeLiveRuntimeFailureCode,
+  runtimeMetadata: NativeLiveRuntimeMetadata | null = null,
 ): NativeLiveRuntimeExecutionResult {
   return {
     protocol_version: command.protocol_version,
@@ -696,6 +772,9 @@ function failure(
     conversation_id: command.conversation_id,
     status: "failure",
     error_code: errorCode,
+    ...(runtimeMetadata
+      ? { runtime_metadata: runtimeMetadata }
+      : {}),
   };
 }
 

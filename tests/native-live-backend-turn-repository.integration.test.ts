@@ -933,6 +933,47 @@ test(
     assert.equal(failurePrepare.ok, true);
     if (!failurePrepare.ok) throw new Error("expected failure prepare success");
 
+    const failureRuntimeMetadata = {
+      context_usage: null,
+      result: {
+        subtype: "error_during_execution",
+        is_error: true,
+        duration_ms: 20,
+        duration_api_ms: 15,
+        num_turns: 1,
+        queued_turn_count: 0,
+        stop_reason: null,
+        terminal_reason: "api_error",
+        api_error_status: 529,
+        startup_failure_reason: null,
+        fast_mode_state: "off",
+        fast_mode_disabled_reason: "overload",
+        total_cost_usd: 0.01,
+        origin: { kind: "user" },
+        usage: { input_tokens: 1, output_tokens: 1 },
+        modelUsage: {},
+        permission_denials: [],
+        errors: ["overloaded"],
+        structured_output_present: false,
+        deferred_tool_use_present: false,
+        latency: {
+          ttft_ms: null,
+          ttft_stream_ms: null,
+          time_to_request_ms: null,
+          time_to_request_from_spawn_ms: null,
+          time_origin_ms: null,
+          warm_spare_claimed: null,
+          first_content_frame_ms: null,
+          first_stream_post_ms: null,
+          first_stream_post_ack_ms: null,
+          first_stream_post_wall_ms: null,
+          first_text_post_ms: null,
+          first_text_post_wall_ms: null,
+          first_stream_post_queue_wait_ms: null,
+          first_stream_post_queued_behind: null,
+        },
+      },
+    };
     const failure = await coordinator.finalize(user.id, {
       protocol_version: 3,
       prepare_id: failurePrepare.command.prepare_id,
@@ -940,6 +981,7 @@ test(
       conversation_id: conversation.id,
       status: "failure",
       error_code: "CLAUDE_PROCESS_FAILED",
+      runtime_metadata: failureRuntimeMetadata,
     });
     assert.equal(failure.ok, false);
     if (failure.ok) throw new Error("expected runtime failure result");
@@ -949,6 +991,8 @@ test(
       .select({
         operation: nativeLiveTurnPreparations.operation,
         status: nativeLiveTurnPreparations.status,
+        runtimeMetadata:
+          nativeLiveTurnPreparations.runtimeMetadata,
       })
       .from(nativeLiveTurnPreparations)
       .where(eq(nativeLiveTurnPreparations.userId, user.id));
@@ -969,6 +1013,12 @@ test(
     assert.equal(
       preparations.some((row) => row.status === "finalized_failure"),
       true,
+    );
+    assert.deepEqual(
+      preparations.find(
+        (row) => row.status === "finalized_failure",
+      )?.runtimeMetadata,
+      failureRuntimeMetadata,
     );
   },
 );

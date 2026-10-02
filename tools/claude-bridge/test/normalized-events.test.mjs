@@ -302,6 +302,142 @@ test("normalizes command lifecycle and provider user-message attribution as runt
   });
 });
 
+test("preserves bounded Agent SDK result telemetry including native terminal reason", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "result",
+      subtype: "error_during_execution",
+      session_id: "result-telemetry",
+      is_error: true,
+      result: null,
+      duration_ms: 3210,
+      duration_api_ms: 2100,
+      num_turns: 3,
+      queued_turn_count: 1,
+      stop_reason: "end_turn",
+      terminal_reason: "api_error",
+      api_error_status: 529,
+      startup_failure_reason: null,
+      fast_mode_state: "off",
+      fast_mode_disabled_reason: "policy",
+      total_cost_usd: 0.42,
+      origin: { kind: "user" },
+      usage: {
+        input_tokens: 12,
+        output_tokens: 7,
+        output_tokens_details: {
+          thinking_tokens: 5,
+        },
+      },
+      modelUsage: {
+        "claude-opus-5-5": {
+          inputTokens: 12,
+          outputTokens: 7,
+          thinkingTokens: 5,
+          cacheReadInputTokens: 100,
+          cacheCreationInputTokens: 20,
+          webSearchRequests: 0,
+          costUSD: 0.42,
+          contextWindow: 1000000,
+          maxOutputTokens: 64000,
+          canonicalModel: "claude-opus-5-5",
+          provider: "firstParty",
+          costBasis: "list",
+        },
+      },
+      permission_denials: [{
+        tool_name: "Write",
+        tool_use_id: "tool-denied",
+        tool_input: { file_path: "/tmp/nope" },
+      }],
+      errors: ["overloaded"],
+      ttft_ms: 400,
+      ttft_stream_ms: 450,
+      time_to_request_ms: 120,
+      time_to_request_from_spawn_ms: 140,
+      time_origin_ms: 123456,
+      warm_spare_claimed: true,
+      first_content_frame_ms: 390,
+      first_stream_post_ms: 430,
+      first_stream_post_ack_ms: 440,
+      first_stream_post_wall_ms: 445,
+      first_text_post_ms: 460,
+      first_text_post_wall_ms: 470,
+      first_stream_post_queue_wait_ms: 11,
+      first_stream_post_queued_behind: 2,
+    }],
+    base,
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "result");
+  assert.equal(events[0].payload.status, "error");
+  assert.equal(events[0].payload.duration_ms, 3210);
+  assert.deepEqual(events[0].payload.telemetry, {
+    subtype: "error_during_execution",
+    is_error: true,
+    duration_ms: 3210,
+    duration_api_ms: 2100,
+    num_turns: 3,
+    queued_turn_count: 1,
+    stop_reason: "end_turn",
+    terminal_reason: "api_error",
+    api_error_status: 529,
+    startup_failure_reason: null,
+    fast_mode_state: "off",
+    fast_mode_disabled_reason: "policy",
+    total_cost_usd: 0.42,
+    origin: { kind: "user" },
+    usage: {
+      input_tokens: 12,
+      output_tokens: 7,
+      output_tokens_details: {
+        thinking_tokens: 5,
+      },
+    },
+    modelUsage: {
+      "claude-opus-5-5": {
+        inputTokens: 12,
+        outputTokens: 7,
+        thinkingTokens: 5,
+        cacheReadInputTokens: 100,
+        cacheCreationInputTokens: 20,
+        webSearchRequests: 0,
+        costUSD: 0.42,
+        contextWindow: 1000000,
+        maxOutputTokens: 64000,
+        canonicalModel: "claude-opus-5-5",
+        provider: "firstParty",
+        costBasis: "list",
+      },
+    },
+    permission_denials: [{
+      tool_name: "Write",
+      tool_use_id: "tool-denied",
+      tool_input: { file_path: "/tmp/nope" },
+    }],
+    errors: ["overloaded"],
+    structured_output_present: false,
+    deferred_tool_use_present: false,
+    latency: {
+      ttft_ms: 400,
+      ttft_stream_ms: 450,
+      time_to_request_ms: 120,
+      time_to_request_from_spawn_ms: 140,
+      time_origin_ms: 123456,
+      warm_spare_claimed: true,
+      first_content_frame_ms: 390,
+      first_stream_post_ms: 430,
+      first_stream_post_ack_ms: 440,
+      first_stream_post_wall_ms: 445,
+      first_text_post_ms: 460,
+      first_text_post_wall_ms: 470,
+      first_stream_post_queue_wait_ms: 11,
+      first_stream_post_queued_behind: 2,
+    },
+  });
+});
+
 test("normalizes Agent SDK compact boundaries for runtime observability", () => {
   const events = normalizeClaudeEvents(
     [
