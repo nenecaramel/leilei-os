@@ -52,6 +52,18 @@ struct NativeLivePendingOperation: Equatable {
         )
     }
 
+    static func == (
+        lhs: NativeLivePendingOperation,
+        rhs: NativeLivePendingOperation
+    ) -> Bool {
+        lhs.id == rhs.id
+            && lhs.kind == rhs.kind
+            && lhs.baselineSyncToken
+                == rhs.baselineSyncToken
+            && lhs.attachments.map(\.id)
+                == rhs.attachments.map(\.id)
+    }
+
     var targetUserMessageID: String? {
         switch kind {
         case .send:
