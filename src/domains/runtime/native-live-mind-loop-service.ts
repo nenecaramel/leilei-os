@@ -265,6 +265,7 @@ export class NativeLiveMindLoopService {
           ...input,
           states,
           excludedStateIds: seenStateIds,
+          contextEpoch: contextLineage.epoch,
         });
 
     if (
@@ -280,6 +281,7 @@ export class NativeLiveMindLoopService {
         states,
         candidates: semanticPlan.candidates,
         excludedStateIds: seenStateIds,
+        contextEpoch: contextLineage.epoch,
       })
       && hasCompleteSemanticScores(
         input.semanticScores,
@@ -428,6 +430,7 @@ export class NativeLiveMindLoopService {
       ...input,
       states,
       excludedStateIds: new Set(contextLineage.seenStateIds),
+      contextEpoch: contextLineage.epoch,
     });
   }
 
@@ -441,6 +444,7 @@ export class NativeLiveMindLoopService {
     states: readonly SubjectStateWrite[];
     candidates: readonly BreathSemanticCandidate[];
     excludedStateIds?: ReadonlySet<string>;
+    contextEpoch?: number;
   }): boolean {
     const current = this.semanticCandidatesFromStates({
       userId: input.userId,
@@ -451,6 +455,7 @@ export class NativeLiveMindLoopService {
       surfaceHeadMessageId: input.surfaceHeadMessageId,
       states: input.states,
       excludedStateIds: input.excludedStateIds,
+      contextEpoch: input.contextEpoch,
       applyLimit: true,
     });
     if (current.length !== input.candidates.length) return false;
@@ -474,6 +479,7 @@ export class NativeLiveMindLoopService {
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
     excludedStateIds?: ReadonlySet<string>;
+    contextEpoch?: number;
   }): {
     query: string;
     candidates: BreathSemanticCandidate[];
@@ -501,6 +507,7 @@ export class NativeLiveMindLoopService {
     surfaceHeadMessageId?: string | null;
     states: readonly SubjectStateWrite[];
     excludedStateIds?: ReadonlySet<string>;
+    contextEpoch?: number;
     applyLimit: boolean;
   }): BreathSemanticCandidate[] {
     const surfaceHeadMessageId =
@@ -540,6 +547,7 @@ export class NativeLiveMindLoopService {
         conversationId: input.conversation.id,
         currentPathMessageIds,
         excludedStateIds: input.excludedStateIds,
+        contextEpoch: input.contextEpoch,
         now: input.assembledAt,
         cooldownHours: this.config.breathCooldownHours ?? 0,
       },
@@ -551,41 +559,105 @@ export class NativeLiveMindLoopService {
       input.states.map((state, index) => [state.id, index] as const),
     );
 
-    const candidates = semanticCandidatesFromStates(eligibleStates)
-      .sort((left, right) => {
-        const lexicalDelta = input.userText
-          ? (
-              breathLexicalScore(input.userText, right.text)
-              - breathLexicalScore(input.userText, left.text)
-            )
-          : 0;
-        if (lexicalDelta !== 0) return lexicalDelta;
-
-        const leftSalience =
-          readSubjectStateLifecycle(
-            stateById.get(left.stateId)?.payload,
-          )?.salience ?? 1;
-        const rightSalience =
-          readSubjectStateLifecycle(
-            stateById.get(right.stateId)?.payload,
-          )?.salience ?? 1;
-        if (rightSalience !== leftSalience) {
-          return rightSalience - leftSalience;
-        }
-
-        return (
-          (originalOrder.get(right.stateId) ?? -1)
-          - (originalOrder.get(left.stateId) ?? -1)
-        );
-      })
+    const ranked = semanticCandidatesFromStates(eligibleStates)
       .map((candidate) => ({
         ...candidate,
+        lexicalScore: input.userText
+          ? breathLexicalScore(input.userText, candidate.text)
+          : 0,
+        salience:
+          readSubjectStateLifecycle(
+            stateById.get(candidate.stateId)?.payload,
+          )?.salience ?? 1,
+        originalIndex: originalOrder.get(candidate.stateId) ?? -1,
         text: candidate.text.slice(0, candidateMaxChars),
       }));
 
-    return input.applyLimit
-      ? candidates.slice(0, candidateLimit)
-      : candidates;
+    const priorityCompare = (
+      left: (typeof ranked)[number],
+      right: (typeof ranked)[number],
+    ) =>
+      right.lexicalScore - left.lexicalScore
+      || right.salience - left.salience
+      || right.originalIndex - left.originalIndex
+      || left.stateId.localeCompare(right.stateId);
+
+    const priority = [...ranked].sort(priorityCompare);
+    if (!input.applyLimit || priority.length <= candidateLimit) {
+      return priority.map(({
+        lexicalScore: _lexicalScore,
+        salience: _salience,
+        originalIndex: _originalIndex,
+        ...candidate
+      }) => candidate);
+    }
+
+    // Keep E5 cost bounded while preventing lexical preselection from owning
+    // the entire semantic candidate pool. Half the budget is reserved for
+    // lexical evidence; the rest mixes lifecycle/recency with an even spread
+    // across the remaining history so older paraphrases still get a chance.
+    const selected: typeof ranked = [];
+    const selectedIds = new Set<string>();
+    const add = (candidate: (typeof ranked)[number] | undefined) => {
+      if (!candidate || selectedIds.has(candidate.stateId)) return;
+      selectedIds.add(candidate.stateId);
+      selected.push(candidate);
+    };
+
+    const lexicalBudget = Math.ceil(candidateLimit / 2);
+    for (const candidate of priority) {
+      if (candidate.lexicalScore <= 0 || selected.length >= lexicalBudget) {
+        break;
+      }
+      add(candidate);
+    }
+
+    let remainingSlots = candidateLimit - selected.length;
+    const lifecycleBudget = Math.floor(remainingSlots / 2);
+    const lifecycle = priority
+      .filter((candidate) => !selectedIds.has(candidate.stateId))
+      .sort((left, right) =>
+        right.salience - left.salience
+        || right.originalIndex - left.originalIndex
+        || left.stateId.localeCompare(right.stateId)
+      );
+    for (const candidate of lifecycle.slice(0, lifecycleBudget)) {
+      add(candidate);
+    }
+
+    remainingSlots = candidateLimit - selected.length;
+    const coverage = ranked
+      .filter((candidate) => !selectedIds.has(candidate.stateId))
+      .sort((left, right) =>
+        left.originalIndex - right.originalIndex
+        || left.stateId.localeCompare(right.stateId)
+      );
+    if (remainingSlots > 0 && coverage.length > 0) {
+      const take = Math.min(remainingSlots, coverage.length);
+      for (let index = 0; index < take; index += 1) {
+        const coverageIndex = Math.min(
+          coverage.length - 1,
+          Math.floor(((index + 0.5) * coverage.length) / take),
+        );
+        add(coverage[coverageIndex]);
+      }
+    }
+
+    if (selected.length < candidateLimit) {
+      for (const candidate of priority) {
+        add(candidate);
+        if (selected.length >= candidateLimit) break;
+      }
+    }
+
+    return selected
+      .sort(priorityCompare)
+      .map(({
+        lexicalScore: _lexicalScore,
+        salience: _salience,
+        originalIndex: _originalIndex,
+        ...candidate
+      }) => candidate);
   }
 
   parseAssistantBlocks(
