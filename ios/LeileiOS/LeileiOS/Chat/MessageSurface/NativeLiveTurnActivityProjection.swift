@@ -253,9 +253,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let questionToolUseIDs = Set(
             runtimeSurface.interactions
                 .filter { $0.kind == "question" }
-                .compactMap {
-                    $0.request["toolUseId"]?.stringValue
-                }
+                .compactMap(\.toolUseID)
         )
         let sawTerminalEvent =
             runtimeSurface.events.contains { event in
@@ -316,9 +314,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let questionToolUseIDs = Set(
             projectedInteractions
                 .filter { $0.kind == "question" }
-                .compactMap {
-                    $0.request["toolUseId"]?.stringValue
-                }
+                .compactMap(\.toolUseID)
         )
         tasks = projectedTasks.filter {
             !$0.hiddenFromTranscript
