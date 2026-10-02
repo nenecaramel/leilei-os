@@ -1730,9 +1730,18 @@ private enum NativeLiveAttachmentPresentation: Equatable {
 }
 
 
+private struct NativeLiveAttachmentGallerySelection:
+    Identifiable {
+    let id: String
+}
+
+
 private struct NativeLiveAttachmentGroupView: View {
     let blocks: [NativeLiveCurrentPathBlock]
     var isUserMessage = false
+
+    @State private var gallerySelection:
+        NativeLiveAttachmentGallerySelection?
 
     private let width: CGFloat = 286
     private let gap: CGFloat = 4
@@ -1748,7 +1757,13 @@ private struct NativeLiveAttachmentGroupView: View {
     }
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 8) {
+        VStack(
+            alignment:
+                isUserMessage
+                    ? .trailing
+                    : .leading,
+            spacing: 8
+        ) {
             if !imageBlocks.isEmpty {
                 imageLayout
             }
@@ -1767,14 +1782,23 @@ private struct NativeLiveAttachmentGroupView: View {
                     ? .trailing
                     : .leading
         )
+        .fullScreenCover(
+            item: $gallerySelection
+        ) { selection in
+            NativeLiveAttachmentGallery(
+                blocks: imageBlocks,
+                initialID: selection.id
+            )
+        }
     }
 
     @ViewBuilder
     private var imageLayout: some View {
         switch imageBlocks.count {
         case 1:
-            NativeLiveAttachmentBlockView(
-                block: imageBlocks[0]
+            imageTile(
+                imageBlocks[0],
+                presentation: .standalone
             )
             .frame(maxWidth: width)
 
@@ -1822,17 +1846,411 @@ private struct NativeLiveAttachmentGroupView: View {
     }
 
     private func imageTile(
-        _ block: NativeLiveCurrentPathBlock
+        _ block: NativeLiveCurrentPathBlock,
+        presentation:
+            NativeLiveAttachmentPresentation = .imageTile
     ) -> some View {
         NativeLiveAttachmentBlockView(
             block: block,
-            presentation: .imageTile
+            presentation: presentation,
+            onImageTap: {
+                gallerySelection =
+                    NativeLiveAttachmentGallerySelection(
+                        id: block.id
+                    )
+            }
         )
         .frame(
             maxWidth: .infinity,
             maxHeight: .infinity
         )
     }
+}
+
+
+private struct NativeLiveAttachmentGallery: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let blocks: [NativeLiveCurrentPathBlock]
+    @State private var selection: String
+
+    init(
+        blocks: [NativeLiveCurrentPathBlock],
+        initialID: String
+    ) {
+        self.blocks = blocks
+        _selection = State(initialValue: initialID)
+    }
+
+    private var selectedIndex: Int {
+        blocks.firstIndex {
+            $0.id == selection
+        } ?? 0
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            TabView(selection: $selection) {
+                ForEach(blocks) { block in
+                    NativeLiveAttachmentRemoteImage(
+                        block: block,
+                        mode: .fit,
+                        cornerRadius: 0
+                    )
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 64)
+                    .tag(block.id)
+                }
+            }
+            .tabViewStyle(
+                .page(indexDisplayMode: .never)
+            )
+
+            VStack {
+                HStack(spacing: 12) {
+                    if blocks.count > 1 {
+                        Text(
+                            "\(selectedIndex + 1) / \(blocks.count)"
+                        )
+                        .font(.system(
+                            size: 14,
+                            weight: .medium
+                        ))
+                        .foregroundStyle(
+                            .white.opacity(0.78)
+                        )
+                    }
+
+                    Spacer()
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(
+                                size: 14,
+                                weight: .semibold
+                            ))
+                            .foregroundStyle(.white)
+                            .frame(
+                                width: 36,
+                                height: 36
+                            )
+                            .background(
+                                .white.opacity(0.14),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        "Close attachment viewer"
+                    )
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+
+                Spacer()
+
+                Text(
+                    nativeLiveAttachmentFilename(
+                        blocks[
+                            min(
+                                selectedIndex,
+                                max(blocks.count - 1, 0)
+                            )
+                        ]
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    .white.opacity(0.68)
+                )
+                .lineLimit(1)
+                .padding(.horizontal, 22)
+                .padding(.bottom, 12)
+            }
+        }
+    }
+}
+
+
+private enum NativeLiveRemoteImageMode {
+    case fit
+    case fill
+}
+
+
+private final class NativeLiveAttachmentImageCache {
+    static let shared =
+        NativeLiveAttachmentImageCache()
+
+    private let cache =
+        NSCache<NSString, UIImage>()
+
+    private init() {
+        cache.countLimit = 80
+        cache.totalCostLimit =
+            48 * 1024 * 1024
+    }
+
+    func image(
+        for key: String
+    ) -> UIImage? {
+        cache.object(
+            forKey: key as NSString
+        )
+    }
+
+    func insert(
+        _ image: UIImage,
+        for key: String,
+        cost: Int
+    ) {
+        cache.setObject(
+            image,
+            forKey: key as NSString,
+            cost: cost
+        )
+    }
+}
+
+
+private struct NativeLiveAttachmentRemoteImage: View {
+    @EnvironmentObject private var appModel: AppModel
+
+    let block: NativeLiveCurrentPathBlock
+    let mode: NativeLiveRemoteImageMode
+    let cornerRadius: CGFloat
+
+    @State private var image: UIImage?
+    @State private var didFail = false
+
+    private var cacheKey: String {
+        nativeLiveAttachmentCacheKey(block)
+    }
+
+    var body: some View {
+        ZStack {
+            if let image {
+                switch mode {
+                case .fit:
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
+
+                case .fill:
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
+                        .clipped()
+                }
+            } else {
+                RoundedRectangle(
+                    cornerRadius:
+                        max(cornerRadius, 1),
+                    style: .continuous
+                )
+                .fill(
+                    Color.secondary.opacity(0.10)
+                )
+
+                if didFail {
+                    Image(
+                        systemName:
+                            "photo.badge.exclamationmark"
+                    )
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: cornerRadius,
+                style: .continuous
+            )
+        )
+        .task(id: cacheKey) {
+            await loadImage()
+        }
+    }
+
+    @MainActor
+    private func loadImage() async {
+        if let cached =
+            NativeLiveAttachmentImageCache
+                .shared
+                .image(for: cacheKey) {
+            image = cached
+            didFail = false
+            return
+        }
+
+        guard let attachmentID =
+            nativeLiveAttachmentID(block) else {
+            didFail = true
+            return
+        }
+
+        for _ in 0..<2 {
+            guard let url =
+                    await appModel
+                        .nativeLiveAttachmentDownloadURL(
+                            attachmentID:
+                                attachmentID
+                        ) else {
+                continue
+            }
+
+            do {
+                let (data, response) =
+                    try await URLSession.shared.data(
+                        from: url
+                    )
+                guard let http =
+                        response as? HTTPURLResponse,
+                      (200..<300).contains(
+                        http.statusCode
+                      ),
+                      nativeLiveAttachmentDataIsValid(
+                        data,
+                        for: block
+                      ),
+                      let loaded =
+                        UIImage(data: data) else {
+                    continue
+                }
+
+                NativeLiveAttachmentImageCache
+                    .shared
+                    .insert(
+                        loaded,
+                        for: cacheKey,
+                        cost: data.count
+                    )
+                image = loaded
+                didFail = false
+                return
+            } catch {
+                continue
+            }
+        }
+
+        didFail = true
+    }
+}
+
+
+private func nativeLiveAttachmentID(
+    _ block: NativeLiveCurrentPathBlock
+) -> String? {
+    block.payload?[
+        "attachment_id"
+    ]?.stringValue
+}
+
+
+private func nativeLiveAttachmentFilename(
+    _ block: NativeLiveCurrentPathBlock
+) -> String {
+    block.payload?[
+        "filename"
+    ]?.stringValue
+        ?? "Attachment"
+}
+
+
+private func nativeLiveAttachmentMIMEType(
+    _ block: NativeLiveCurrentPathBlock
+) -> String {
+    block.payload?[
+        "mime_type"
+    ]?.stringValue
+        ?? "application/octet-stream"
+}
+
+
+private func nativeLiveAttachmentExpectedSHA256(
+    _ block: NativeLiveCurrentPathBlock
+) -> String? {
+    block.payload?[
+        "sha256"
+    ]?.stringValue?
+        .lowercased()
+}
+
+
+private func nativeLiveAttachmentExpectedSize(
+    _ block: NativeLiveCurrentPathBlock
+) -> Int? {
+    guard let value =
+            block.payload?[
+                "size_bytes"
+            ]?.numberValue,
+          value >= 0,
+          value.rounded() == value,
+          value <= Double(Int.max) else {
+        return nil
+    }
+    return Int(value)
+}
+
+
+private func nativeLiveAttachmentDataIsValid(
+    _ data: Data,
+    for block: NativeLiveCurrentPathBlock
+) -> Bool {
+    if let expectedSize =
+        nativeLiveAttachmentExpectedSize(block),
+       data.count != expectedSize {
+        return false
+    }
+
+    if let expectedSHA256 =
+        nativeLiveAttachmentExpectedSHA256(block) {
+        let digest = SHA256.hash(data: data)
+        let actual = digest.map {
+            String(
+                format: "%02x",
+                $0
+            )
+        }.joined()
+
+        if actual != expectedSHA256 {
+            return false
+        }
+    }
+
+    return true
+}
+
+
+private func nativeLiveAttachmentCacheKey(
+    _ block: NativeLiveCurrentPathBlock
+) -> String {
+    let id =
+        nativeLiveAttachmentID(block)
+        ?? block.id
+    let sha =
+        nativeLiveAttachmentExpectedSHA256(
+            block
+        )
+        ?? "unknown"
+    return id + ":" + sha
 }
 
 
@@ -1852,51 +2270,42 @@ private struct NativeLiveAttachmentBlockView: View {
     @EnvironmentObject private var appModel: AppModel
 
     let block: NativeLiveCurrentPathBlock
-    let presentation: NativeLiveAttachmentPresentation
+    let presentation:
+        NativeLiveAttachmentPresentation
+    let onImageTap: (() -> Void)?
 
     init(
         block: NativeLiveCurrentPathBlock,
-        presentation: NativeLiveAttachmentPresentation = .standalone
+        presentation:
+            NativeLiveAttachmentPresentation = .standalone,
+        onImageTap: (() -> Void)? = nil
     ) {
         self.block = block
         self.presentation = presentation
+        self.onImageTap = onImageTap
     }
 
-    @State private var downloadURL: URL?
-    @State private var preview: NativeLiveAttachmentPreview?
+    @State private var preview:
+        NativeLiveAttachmentPreview?
     @State private var previewDirectoryURL: URL?
     @State private var isPreparingPreview = false
 
-    private var payload: [String: NativeLiveJSONValue] {
-        block.payload ?? [:]
-    }
-
     private var attachmentID: String? {
-        payload["attachment_id"]?.stringValue
+        nativeLiveAttachmentID(block)
     }
 
     private var filename: String {
-        payload["filename"]?.stringValue ?? "Attachment"
+        nativeLiveAttachmentFilename(block)
     }
 
     private var mimeType: String {
-        payload["mime_type"]?.stringValue
-            ?? "application/octet-stream"
-    }
-
-    private var expectedSHA256: String? {
-        payload["sha256"]?.stringValue?.lowercased()
+        nativeLiveAttachmentMIMEType(block)
     }
 
     private var expectedSize: Int? {
-        guard let value =
-                payload["size_bytes"]?.numberValue,
-              value >= 0,
-              value.rounded() == value,
-              value <= Double(Int.max) else {
-            return nil
-        }
-        return Int(value)
+        nativeLiveAttachmentExpectedSize(
+            block
+        )
     }
 
     private var isImage: Bool {
@@ -1924,36 +2333,98 @@ private struct NativeLiveAttachmentBlockView: View {
         case "application/zip":
             return "ZIP"
         default:
-            return isImage ? "Image" : "File"
+            return isImage
+                ? "Image"
+                : "File"
         }
     }
 
+    private var fileSymbol: String {
+        let ext = (filename as NSString)
+            .pathExtension
+            .lowercased()
+
+        if mimeType == "application/pdf"
+            || ext == "pdf" {
+            return "doc.richtext"
+        }
+
+        if [
+            "zip", "tar", "gz", "7z", "rar",
+        ].contains(ext) {
+            return "archivebox"
+        }
+
+        if [
+            "csv", "xls", "xlsx", "numbers",
+        ].contains(ext) {
+            return "tablecells"
+        }
+
+        if [
+            "ppt", "pptx", "key",
+        ].contains(ext) {
+            return "rectangle.on.rectangle"
+        }
+
+        if mimeType.hasPrefix("video/") {
+            return "play.rectangle"
+        }
+
+        if mimeType.hasPrefix("audio/") {
+            return "waveform"
+        }
+
+        if mimeType.hasPrefix("text/")
+            || [
+                "md", "txt", "json", "yaml",
+                "yml", "xml", "swift", "js",
+                "ts", "py", "html", "css",
+            ].contains(ext) {
+            return "doc.text"
+        }
+
+        return isImage
+            ? "photo"
+            : "doc"
+    }
+
     private var sizeText: String? {
-        guard let expectedSize else { return nil }
+        guard let expectedSize else {
+            return nil
+        }
         return ByteCountFormatter.string(
-            fromByteCount: Int64(expectedSize),
+            fromByteCount:
+                Int64(expectedSize),
             countStyle: .file
         )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if isImage,
-               let downloadURL {
+            if isImage {
                 Button {
-                    openPreview()
+                    if let onImageTap {
+                        onImageTap()
+                    } else {
+                        openPreview()
+                    }
                 } label: {
-                    AsyncImage(url: downloadURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            attachmentImage(image)
-                        case .failure:
-                            attachmentFallback
-                        case .empty:
-                            attachmentPlaceholder
-                        @unknown default:
-                            attachmentFallback
-                        }
+                    switch presentation {
+                    case .standalone:
+                        NativeLiveAttachmentRemoteImage(
+                            block: block,
+                            mode: .fit,
+                            cornerRadius: 13
+                        )
+                        .frame(maxHeight: 260)
+
+                    case .imageTile:
+                        NativeLiveAttachmentRemoteImage(
+                            block: block,
+                            mode: .fill,
+                            cornerRadius: 13
+                        )
                     }
                 }
                 .buttonStyle(.plain)
@@ -1966,14 +2437,10 @@ private struct NativeLiveAttachmentBlockView: View {
                 .buttonStyle(.plain)
             }
         }
-        .task(id: attachmentID) {
-            guard let attachmentID else { return }
-            downloadURL =
-                await appModel.nativeLiveAttachmentDownloadURL(
-                    attachmentID: attachmentID
-                )
-        }
-        .sheet(item: $preview, onDismiss: cleanupPreview) {
+        .sheet(
+            item: $preview,
+            onDismiss: cleanupPreview
+        ) {
             NativeLiveAttachmentQuickLook(
                 fileURL: $0.fileURL
             )
@@ -1983,98 +2450,19 @@ private struct NativeLiveAttachmentBlockView: View {
         }
     }
 
-    @ViewBuilder
-    private func attachmentImage(
-        _ image: Image
-    ) -> some View {
-        switch presentation {
-        case .standalone:
-            image
-                .resizable()
-                .scaledToFit()
-                .frame(maxHeight: 260)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 13,
-                        style: .continuous
-                    )
-                )
-
-        case .imageTile:
-            image
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity
-                )
-                .clipped()
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 13,
-                        style: .continuous
-                    )
-                )
-        }
-    }
-
-    @ViewBuilder
-    private var attachmentPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(
-                cornerRadius: 13,
-                style: .continuous
-            )
-            .fill(Color.primary.opacity(0.045))
-
-            ProgressView()
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: presentation == .standalone
-                ? 120
-                : nil,
-            maxHeight: .infinity
-        )
-    }
-
-    @ViewBuilder
-    private var attachmentFallback: some View {
-        if presentation == .imageTile {
-            ZStack {
-                RoundedRectangle(
-                    cornerRadius: 13,
-                    style: .continuous
-                )
-                .fill(Color.primary.opacity(0.045))
-
-                Image(systemName: "photo")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity
-            )
-        } else {
-            attachmentRowContent
-        }
-    }
-
     private var attachmentRowContent: some View {
         HStack(spacing: 10) {
-            Image(
-                systemName:
-                    isImage
-                        ? "photo"
-                        : "doc"
-            )
-            .font(.system(size: 15))
-            .foregroundStyle(.secondary)
+            Image(systemName: fileSymbol)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(filename)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(
+                        size: 14,
+                        weight: .medium
+                    ))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
 
@@ -2094,7 +2482,7 @@ private struct NativeLiveAttachmentBlockView: View {
             if isPreparingPreview {
                 ProgressView()
                     .controlSize(.small)
-            } else if downloadURL != nil {
+            } else if attachmentID != nil {
                 Image(systemName: "chevron.right")
                     .font(.system(
                         size: 11,
@@ -2116,89 +2504,95 @@ private struct NativeLiveAttachmentBlockView: View {
     }
 
     private func openPreview() {
-        guard !isPreparingPreview else { return }
-        if preview != nil { return }
+        guard !isPreparingPreview,
+              preview == nil,
+              let attachmentID else {
+            return
+        }
+
         isPreparingPreview = true
 
         Task { @MainActor in
-            defer { isPreparingPreview = false }
-            guard let attachmentID else { return }
-            let remoteURL: URL?
-            if let downloadURL {
-                remoteURL = downloadURL
-            } else {
-                remoteURL =
-                    await appModel.nativeLiveAttachmentDownloadURL(
-                        attachmentID: attachmentID
-                    )
+            defer {
+                isPreparingPreview = false
             }
-            guard let remoteURL else { return }
 
-            do {
-                let (data, response) =
-                    try await URLSession.shared.data(
-                        from: remoteURL
-                    )
-                guard let http =
-                        response as? HTTPURLResponse,
-                      (200..<300).contains(
-                        http.statusCode
-                      ) else {
-                    return
-                }
-                if let expectedSize,
-                   data.count != expectedSize {
-                    return
-                }
-                if let expectedSHA256 {
-                    let digest = SHA256.hash(data: data)
-                    let actual = digest.map {
-                        String(format: "%02x", $0)
-                    }.joined()
-                    guard actual == expectedSHA256 else {
-                        return
-                    }
+            for _ in 0..<2 {
+                guard let remoteURL =
+                        await appModel
+                            .nativeLiveAttachmentDownloadURL(
+                                attachmentID:
+                                    attachmentID
+                            ) else {
+                    continue
                 }
 
-                let directory =
-                    FileManager.default.temporaryDirectory
-                    .appendingPathComponent(
-                        "LeileiOS-AttachmentPreview",
-                        isDirectory: true
-                    )
-                    .appendingPathComponent(
-                        block.id,
-                        isDirectory: true
-                    )
-                try FileManager.default.createDirectory(
-                    at: directory,
-                    withIntermediateDirectories: true
-                )
-                let localURL =
-                    directory.appendingPathComponent(
-                        nativeLiveSafePreviewFilename(
-                            filename
+                do {
+                    let (data, response) =
+                        try await URLSession.shared.data(
+                            from: remoteURL
                         )
+                    guard let http =
+                            response
+                                as? HTTPURLResponse,
+                          (200..<300).contains(
+                            http.statusCode
+                          ),
+                          nativeLiveAttachmentDataIsValid(
+                            data,
+                            for: block
+                          ) else {
+                        continue
+                    }
+
+                    let directory =
+                        FileManager
+                            .default
+                            .temporaryDirectory
+                            .appendingPathComponent(
+                                "LeileiOS-AttachmentPreview",
+                                isDirectory: true
+                            )
+                            .appendingPathComponent(
+                                block.id,
+                                isDirectory: true
+                            )
+                    try FileManager.default
+                        .createDirectory(
+                            at: directory,
+                            withIntermediateDirectories:
+                                true
+                        )
+
+                    let localURL =
+                        directory.appendingPathComponent(
+                            nativeLiveSafePreviewFilename(
+                                filename
+                            )
+                        )
+                    try data.write(
+                        to: localURL,
+                        options: [.atomic]
                     )
-                try data.write(
-                    to: localURL,
-                    options: [.atomic]
-                )
-                previewDirectoryURL = directory
-                preview = NativeLiveAttachmentPreview(
-                    fileURL: localURL
-                )
-            } catch {
-                return
+                    previewDirectoryURL = directory
+                    preview =
+                        NativeLiveAttachmentPreview(
+                            fileURL: localURL
+                        )
+                    return
+                } catch {
+                    continue
+                }
             }
         }
     }
 
     private func cleanupPreview() {
         if let previewDirectoryURL {
-            try? FileManager.default.removeItem(
-                at: previewDirectoryURL
-            )
+            try? FileManager.default
+                .removeItem(
+                    at: previewDirectoryURL
+                )
         }
         previewDirectoryURL = nil
         preview = nil
