@@ -166,4 +166,3 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.match(root, /NativeLiveRuntimeAssistantRow/);
   assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
 });
-
