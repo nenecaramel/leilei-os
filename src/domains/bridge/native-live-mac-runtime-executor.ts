@@ -104,6 +104,7 @@ import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
   parseNativeLiveRuntimeEnvironment,
+  parseNativeLiveRuntimeOutputResources,
   parseNativeLiveRuntimeResultTelemetry,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeContextUsage,
@@ -450,12 +451,17 @@ export class NativeLiveMacRuntimeExecutor {
       runtimeResultTelemetryFromNormalizedEvents(
         runtimeResult.normalizedEvents,
       );
+    const outputResources =
+      runtimeOutputResourcesFromNormalizedEvents(
+        runtimeResult.normalizedEvents,
+      );
 
     if (
       !contextUsage
       && !execution
       && !environment
       && !result
+      && outputResources.length === 0
     ) return null;
 
     return {
@@ -463,6 +469,9 @@ export class NativeLiveMacRuntimeExecutor {
       ...(execution ? { execution } : {}),
       ...(environment ? { environment } : {}),
       ...(result ? { result } : {}),
+      ...(outputResources.length > 0
+        ? { output_resources: outputResources }
+        : {}),
     };
   }
 
@@ -574,13 +583,128 @@ function runtimeMetadataFromFailure(
     runtimeEnvironmentFromNormalizedEvents(
       normalizedEvents,
     );
+  const outputResources =
+    runtimeOutputResourcesFromNormalizedEvents(
+      normalizedEvents,
+    );
 
-  if (!result && !environment) return null;
+  if (
+    !result
+    && !environment
+    && outputResources.length === 0
+  ) return null;
   return {
     context_usage: null,
     ...(environment ? { environment } : {}),
     ...(result ? { result } : {}),
+    ...(outputResources.length > 0
+      ? { output_resources: outputResources }
+      : {}),
   };
+}
+
+function runtimeOutputResourcesFromNormalizedEvents(
+  events: readonly NativeLiveNormalizedEvent[],
+) {
+  const candidates: unknown[] = [];
+  const seen = new Set<string>();
+
+  for (const event of events) {
+    const payload = event.payload ?? {};
+    const source =
+      event.type === "tool_result"
+        ? "tool_result"
+        : event.type === "task"
+          && payload.phase === "notification"
+          ? "task_notification"
+          : null;
+    if (!source || !Array.isArray(payload.resource_links)) {
+      continue;
+    }
+
+    const toolUseId =
+      typeof payload.tool_use_id === "string"
+        ? payload.tool_use_id
+        : null;
+    const taskId =
+      source === "task_notification"
+      && typeof payload.task_id === "string"
+        ? payload.task_id
+        : null;
+
+    for (const link of payload.resource_links) {
+      if (
+        !link
+        || typeof link !== "object"
+        || Array.isArray(link)
+      ) {
+        continue;
+      }
+      const record = link as Record<string, unknown>;
+      const uri =
+        typeof record.uri === "string"
+          ? record.uri
+          : null;
+      if (!uri) continue;
+
+      const dedupeKey =
+        `${source}\u0000${toolUseId ?? ""}\u0000${taskId ?? ""}\u0000${uri}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      candidates.push({
+        source,
+        tool_use_id: toolUseId,
+        task_id: taskId,
+        uri,
+        name:
+          typeof record.name === "string"
+            ? record.name
+            : null,
+        title:
+          typeof record.title === "string"
+            ? record.title
+            : null,
+        description:
+          typeof record.description === "string"
+            ? record.description
+            : null,
+        mime_type:
+          typeof record.mime_type === "string"
+            ? record.mime_type
+            : null,
+        size:
+          typeof record.size === "number"
+            ? record.size
+            : null,
+        annotations:
+          record.annotations
+          && typeof record.annotations === "object"
+          && !Array.isArray(record.annotations)
+            ? record.annotations
+            : null,
+        metadata:
+          record.metadata
+          && typeof record.metadata === "object"
+          && !Array.isArray(record.metadata)
+            ? record.metadata
+            : null,
+      });
+
+      if (candidates.length >= 128) break;
+    }
+    if (candidates.length >= 128) break;
+  }
+
+  try {
+    return parseNativeLiveRuntimeOutputResources(
+      candidates,
+    );
+  } catch {
+    // Resource references are observability/provenance. Malformed provider
+    // metadata must not change the canonical turn outcome.
+    return [];
+  }
 }
 
 function runtimeEnvironmentFromNormalizedEvents(
