@@ -121,6 +121,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     let tasks: [TaskActivity]
     let interactions: [NativeLiveRuntimeInteractionSnapshot]
     let turnIsActive: Bool
+    let turnFailed: Bool
 
     var hasContent: Bool {
         !tools.isEmpty
@@ -141,7 +142,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
     }
 
     var hasFailure: Bool {
-        tools.contains { $0.state == .failed }
+        turnFailed
+            || tools.contains { $0.state == .failed }
             || tasks.contains(\.isFailed)
     }
 
@@ -220,6 +222,14 @@ struct NativeLiveTurnActivityProjection: Equatable {
             .filter { !taskToolUseIDs.contains($0.id) }
         interactions = runtimeSurface.interactions
         turnIsActive = runtimeSurface.providerTurnActive ?? true
+        turnFailed = runtimeSurface.events.contains { event in
+            event.event.type == "error"
+                || (
+                    event.event.type == "result"
+                    && event.event.payload?["status"]?.stringValue
+                        == "error"
+                )
+        }
     }
 
     init(message: NativeLiveCurrentPathMessage) {
@@ -235,6 +245,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
             .filter { !taskToolUseIDs.contains($0.id) }
         interactions = message.activity?.interactions ?? []
         turnIsActive = false
+        turnFailed = message.status == "error"
     }
 
     private static func tools(
