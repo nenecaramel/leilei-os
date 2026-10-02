@@ -14,6 +14,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let toolName: String
         let input: NativeLiveJSONValue?
         let output: NativeLiveJSONValue?
+        let resourceLinks: [NativeLiveJSONValue]
         let parentToolUseID: String?
         let parentAgentID: String?
         let hiddenFromTranscript: Bool
