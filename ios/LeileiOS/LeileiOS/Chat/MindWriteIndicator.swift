@@ -63,3 +63,36 @@ struct MindWriteIndicator: View {
             }
     }
 }
+
+
+struct AlbumSaveIndicator: View {
+    let count: Int
+
+    var body: some View {
+        if count > 0 {
+            HStack(spacing: 7) {
+                Text("Album")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 3) {
+                    Text("Photo")
+
+                    if count > 1 {
+                        Text("×\(count)")
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    Color.primary.opacity(0.045),
+                    in: Capsule()
+                )
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+}

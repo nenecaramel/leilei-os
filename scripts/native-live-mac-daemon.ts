@@ -154,6 +154,7 @@ const executor = new NativeLiveMacRuntimeExecutor(
       }) + "\n",
     );
   },
+  relay,
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);

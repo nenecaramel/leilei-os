@@ -128,6 +128,18 @@ import {
   PostgresInlineAttachmentObjectStore,
 } from "../domains/bridge/native-live-attachment-postgres-storage.js";
 import {
+  DrizzleClaudeAlbumPhotoRepository,
+} from "../domains/album/claude-photo-album-repository.js";
+import {
+  ClaudePhotoAlbumService,
+} from "../domains/album/claude-photo-album-service.js";
+import {
+  NativeLiveClaudeAlbumPhotoPromoter,
+} from "../domains/album/native-live-claude-photo-promoter.js";
+import {
+  ClaudeAlbumPhotoAttachmentSender,
+} from "../domains/album/claude-photo-album-output-sender.js";
+import {
   DrizzleNativeLiveProviderSessionStoreRepository,
   NativeLiveProviderSessionStoreService,
 } from "../domains/bridge/native-live-provider-session-store.js";
@@ -324,6 +336,33 @@ export function createProcessRuntime(
         ? nativeLivePostgresAttachmentObjectStore
         : undefined,
     );
+  const claudePhotoAlbumService =
+    nativeLiveS3AttachmentObjectStore
+      ? new ClaudePhotoAlbumService(
+          new DrizzleClaudeAlbumPhotoRepository(db),
+          new NativeLiveClaudeAlbumPhotoPromoter(
+            nativeLiveAttachmentService,
+            nativeLiveS3AttachmentObjectStore,
+            {
+              maxPhotoBytes:
+                runtimeEnv.NATIVE_LIVE_ATTACHMENT_MAX_FILE_BYTES,
+              transferBaseUrl:
+                runtimeEnv.MCP_SERVER_URL || null,
+            },
+          ),
+        )
+      : null;
+  const claudePhotoAlbumSender =
+    claudePhotoAlbumService
+      ? new ClaudeAlbumPhotoAttachmentSender(
+          claudePhotoAlbumService,
+          nativeLiveAttachmentService,
+          {
+            transferBaseUrl:
+              runtimeEnv.MCP_SERVER_URL || null,
+          },
+        )
+      : null;
   const nativeLiveWakeBrokerConfig =
     getNativeLiveWakeBrokerConfig(runtimeEnv);
   const nativeLiveExternalWakeSignal =
@@ -743,6 +782,9 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webMindService: mindProductService,
+      ...(claudePhotoAlbumService
+        ? { webAlbumService: claudePhotoAlbumService }
+        : {}),
       webProjectWorkspaceService: projectWorkspaceService,
       nativeLiveProduction: {
         web: {
@@ -788,6 +830,15 @@ export function createProcessRuntime(
             ? {
                 attachmentService:
                   nativeLiveAttachmentService,
+              }
+            : {}),
+          ...(claudePhotoAlbumService
+            && claudePhotoAlbumSender
+            ? {
+                photoAlbumService:
+                  claudePhotoAlbumService,
+                photoAlbumSender:
+                  claudePhotoAlbumSender,
               }
             : {}),
           semanticService: nativeLiveSemanticService,

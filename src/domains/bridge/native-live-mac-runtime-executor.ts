@@ -61,6 +61,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         sha256: string;
         kind: "image" | "file";
       }>;
+      albumHandlers?: NativeLiveClaudeAlbumRuntimeHandlers;
       controlPump?: (
         controller: NativeLiveMacActiveTurnController,
         context: { signal: AbortSignal },
@@ -93,6 +94,10 @@ import type {
 import type {
   NativeLiveMacOutputAttachmentSender,
 } from "./native-live-mac-output-attachment-sender.js";
+import type {
+  NativeLiveClaudeAlbumRuntimeHandlers,
+  NativeLiveClaudeAlbumToolClient,
+} from "../album/claude-photo-album-tool-contract.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -120,6 +125,8 @@ export class NativeLiveMacRuntimeExecutor {
       Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
     private readonly onRuntimeFailure:
       ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null = null,
+    private readonly albumToolClient:
+      NativeLiveClaudeAlbumToolClient | null = null,
   ) {
     if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
       this.runtime = null;
@@ -236,6 +243,64 @@ export class NativeLiveMacRuntimeExecutor {
                     attachment.attachmentId,
                   );
                   return attachment;
+                },
+              }
+            : {}),
+          ...(this.albumToolClient
+            && command.protocol_version
+              === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+            ? {
+                albumHandlers: {
+                  savePhoto: async (input) => {
+                    const result =
+                      await this.albumToolClient!.savePhoto({
+                        ...input,
+                        triggerUserMessageId:
+                          command.canonical_user_message_id,
+                      });
+                    if (
+                      result.created
+                      && options.onNormalizedEvent
+                    ) {
+                      await options.onNormalizedEvent({
+                        type: "runtime",
+                        payload: {
+                          kind: "album_saved",
+                          photo_id: result.photo.id,
+                          filename: result.photo.filename,
+                          source_attachment_id:
+                            result.photo.sourceAttachmentId,
+                          user_message_uuid:
+                            command.canonical_user_message_id,
+                        },
+                      });
+                    }
+                    return result;
+                  },
+                  searchPhotos: (input: {
+                    query: string | null;
+                    limit: number;
+                  }) =>
+                    this.albumToolClient!.searchPhotos(
+                      input,
+                    ),
+                  sendPhoto: async (input: {
+                    photoId: string;
+                  }) => {
+                    if (outputAttachmentIds.length >= 8) {
+                      throw new Error(
+                        "Album photo send would exceed the 8-file turn limit.",
+                      );
+                    }
+                    const result =
+                      await this.albumToolClient!.sendPhoto(
+                        input,
+                      );
+                    outputAttachmentIds.push(
+                      result.attachment.attachmentId,
+                    );
+                    return result;
+                  },
                 },
               }
             : {}),
