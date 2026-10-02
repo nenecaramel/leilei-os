@@ -195,7 +195,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
             return nativeLiveToolDisplayName(tool.toolName)
         }
 
-        if let task = tasks.sorted(by: { $0.order < $1.order }).last {
+        if !turnIsActive,
+           let task = tasks
+            .sorted(by: { $0.order < $1.order })
+            .last {
             return task.displayTitle
         }
 
