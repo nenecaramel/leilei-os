@@ -27,6 +27,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         var toolUseID: String?
         var description: String?
         var summary: String?
+        var resourceLinks: [NativeLiveJSONValue]
         var subagentType: String?
         var taskType: String?
         var isBackgrounded: Bool?
