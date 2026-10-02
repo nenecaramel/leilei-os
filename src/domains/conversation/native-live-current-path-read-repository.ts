@@ -510,10 +510,7 @@ implements NativeLiveCurrentPathReader {
         and(
           eq(nativeLiveRuntimeEvents.userId, input.userId),
           inArray(nativeLiveRuntimeEvents.prepareId, prepareIds),
-          inArray(nativeLiveRuntimeEvents.eventType, [
-            "task",
-            "runtime",
-          ]),
+          eq(nativeLiveRuntimeEvents.eventType, "task"),
         ),
       )
       .orderBy(
