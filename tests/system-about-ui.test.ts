@@ -5,7 +5,7 @@ import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
 import {
   SystemAboutPageContent,
-} from "../web/src/pages/SystemAboutPageContent..js";
+} from "../web/src/pages/SystemAboutPageContent.js";
 
 function installDom() {
   const dom = new JSDOM(

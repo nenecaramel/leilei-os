@@ -3,8 +3,8 @@ import { JSDOM } from "jsdom";
 import test from "node:test";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { UniverseNodePaper } from "../web/src/pages/universe/UniverseNodePaper..js";
-import { parseUniverseTags } from "../web/src/pages/universe/UniverseNodeMetadata..js";
+import { UniverseNodePaper } from "../web/src/pages/universe/UniverseNodePaper.js";
+import { parseUniverseTags } from "../web/src/pages/universe/UniverseNodeMetadata.js";
 import type { UniverseNode, UniverseRelation } from "../web/src/pages/universe/universe-types.js";
 
 const node: UniverseNode = {

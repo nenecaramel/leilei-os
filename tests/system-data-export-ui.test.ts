@@ -5,7 +5,7 @@ import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 import { WebApiError } from "../web/src/api/web-api-error.js";
-import { SystemDataPageContent } from "../web/src/pages/SystemDataPageContent..js";
+import { SystemDataPageContent } from "../web/src/pages/SystemDataPageContent.js";
 import type { WebExportDocument } from "../web/src/system/export-types.js";
 
 function installDom(url: string) {

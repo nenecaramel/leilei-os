@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
-import { toCanonicalMemberships } from "../web/src/pages/universe/UniverseNodeMetadata..js";
+import { toCanonicalMemberships } from "../web/src/pages/universe/UniverseNodeMetadata.js";
 
 const paperPath = new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url);
 const relationPaperPath = new URL("../web/src/pages/universe/UniverseRelationPaper.tsx", import.meta.url);

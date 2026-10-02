@@ -6,10 +6,10 @@ import test from "node:test";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
 import {
   SystemAccountPageContent,
-} from "../web/src/pages/SystemAccountPage..js";
+} from "../web/src/pages/SystemAccountPage.js";
 import {
   SystemConnectionsPageContent,
-} from "../web/src/pages/SystemConnectionsPageContent..js";
+} from "../web/src/pages/SystemConnectionsPageContent.js";
 
 function installDom() {
   const dom = new JSDOM(

@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import test from "node:test";
-import { DashboardPageContent } from "../web/src/pages/DashboardPage..js";
-import { CalendarPreview } from "../web/src/pages/CalendarPreview..js";
+import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
+import { CalendarPreview } from "../web/src/pages/CalendarPreview.js";
 import type { TodoEntry } from "../web/src/pages/todo-types.js";
 
 const L_TODO_ENTRIES: TodoEntry[] = [

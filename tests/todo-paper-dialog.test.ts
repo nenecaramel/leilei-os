@@ -26,9 +26,9 @@ const React = requireFromWeb("react");
 const { act, useState } = React;
 const { createRoot } = requireFromWeb("react-dom/client");
 type Root = ReturnType<typeof createRoot>;
-import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog..js";
-import { TodoPaperEditor } from "../web/src/pages/TodoPaperEditor..js";
-import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog..js";
+import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog.js";
+import { TodoPaperEditor } from "../web/src/pages/TodoPaperEditor.js";
+import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog.js";
 import type { TodoEntry, TodoPaper } from "../web/src/pages/todo-types.js";
 
 const todoPaperStylesSource = readFileSync(

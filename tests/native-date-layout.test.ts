@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { NativeDateInput } from "../web/src/components/NativeDateInput..js";
+import { NativeDateInput } from "../web/src/components/NativeDateInput.js";
 
 const webRequire = createRequire(
   new URL("../web/package.json", import.meta.url),

@@ -13,7 +13,7 @@ import {
   navigateWithinApp,
   ROUTE_SCROLL_STATE_KEY,
 } from "../web/src/pages/app-navigation.js";
-import { RouteScrollManager } from "../web/src/layout/RouteScrollManager..js";
+import { RouteScrollManager } from "../web/src/layout/RouteScrollManager.js";
 
 type TestWindow = Window & {
   requestAnimationFrame: (callback: FrameRequestCallback) => number;

@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
-import { DashboardPageContent } from "../web/src/pages/DashboardPage..js";
+import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
 import { formatTodoStorageDate } from "../web/src/pages/todo-paper-storage.js";
 
 test("Todo business dates use the device-local calendar date", () => {

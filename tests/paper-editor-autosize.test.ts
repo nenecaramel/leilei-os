@@ -3,7 +3,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { DiaryPaperEditor } from "../web/src/pages/DiaryPaperEditor..js";
+import { DiaryPaperEditor } from "../web/src/pages/DiaryPaperEditor.js";
 import { resizePaperTextarea } from "../web/src/pages/paper-editor-autosize.js";
 
 type EditorCase = {

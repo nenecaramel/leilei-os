@@ -3,7 +3,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
-import { UniverseImportFlow } from "../web/src/pages/universe/UniverseImportFlow..js";
+import { UniverseImportFlow } from "../web/src/pages/universe/UniverseImportFlow.js";
 import type { UniverseReadResult, UniverseSnapshot } from "../web/src/pages/universe/universe-types.js";
 import type { UniverseService } from "../web/src/pages/universe/universe-service.js";
 

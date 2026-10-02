@@ -3,8 +3,8 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { PaperAuthorSignature } from "../web/src/pages/PaperAuthorSignature..js";
-import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog..js";
+import { PaperAuthorSignature } from "../web/src/pages/PaperAuthorSignature.js";
+import { PaperDetailDialog } from "../web/src/pages/PaperDetailDialog.js";
 
 async function withDom(
   element: React.ReactElement,
