@@ -54,6 +54,17 @@ export class ClaudeEventNormalizer {
       emit("runtime", this.sessionId, attribution);
     }
 
+    if (raw.type === "user") {
+      const origin = normalizeMessageOrigin(raw.origin);
+      if (origin) {
+        emit("runtime", this.sessionId, {
+          kind: "message_origin",
+          source_type: "user",
+          origin,
+        });
+      }
+    }
+
     if (raw.type === "command_lifecycle") {
       emit("runtime", this.sessionId, {
         kind: "command_lifecycle",
@@ -122,6 +133,11 @@ export class ClaudeEventNormalizer {
         workflow_name: safeString(raw.workflow_name),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
+        is_backgrounded:
+          typeof raw.is_backgrounded === "boolean"
+            ? raw.is_backgrounded
+            : null,
+        spawn_depth: finiteNonNegative(raw.spawn_depth),
       });
       return output;
     }
@@ -183,6 +199,7 @@ export class ClaudeEventNormalizer {
           : {}),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
+        reason: clippedString(raw.reason, 1_000),
         has_output_file:
           typeof raw.output_file === "string" && raw.output_file.length > 0,
       });
@@ -450,6 +467,55 @@ function normalizeUserMessageAttribution(raw) {
   };
 }
 
+function normalizeMessageOrigin(value) {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+  ) {
+    return null;
+  }
+
+  const kind = clippedString(value.kind, 64);
+  if (!kind) return null;
+
+  const fields = {
+    kind,
+    subkind: clippedString(value.subkind, 64),
+    server: clippedString(value.server, 256),
+    from: clippedString(value.from, 512),
+    name: clippedString(value.name, 256),
+    from_session: clippedString(
+      value.fromSession ?? value.from_session,
+      256,
+    ),
+    sender_task_id: clippedString(
+      value.senderTaskId ?? value.sender_task_id,
+      256,
+    ),
+    verified_peer_pid:
+      Number.isInteger(
+        value.verifiedPeerPid ?? value.verified_peer_pid,
+      )
+      && (
+        value.verifiedPeerPid ?? value.verified_peer_pid
+      ) >= 0
+        ? (
+            value.verifiedPeerPid
+            ?? value.verified_peer_pid
+          )
+        : null,
+    fire_reason: clippedString(
+      value.fireReason ?? value.fire_reason,
+      512,
+    ),
+  };
+
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, field]) => field !== null),
+  );
+}
+
 const RESULT_TELEMETRY_JSON_MAX_CHARS = 64_000;
 const RESULT_TELEMETRY_MAX_ERRORS = 16;
 const RESULT_TELEMETRY_MAX_DENIALS = 64;
@@ -480,7 +546,7 @@ function normalizeResultTelemetry(raw) {
       clippedString(raw?.fast_mode_disabled_reason, 512),
     total_cost_usd:
       finiteNonNegative(raw?.total_cost_usd),
-    origin: boundedResultJsonRecord(raw?.origin),
+    origin: normalizeMessageOrigin(raw?.origin),
     usage: boundedResultJsonRecord(raw?.usage),
     modelUsage:
       boundedResultJsonRecord(raw?.modelUsage),
