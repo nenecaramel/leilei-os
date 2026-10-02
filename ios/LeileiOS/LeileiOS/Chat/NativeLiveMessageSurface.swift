@@ -1998,6 +1998,7 @@ private enum NativeLiveRemoteImageMode {
 }
 
 
+@MainActor
 private final class NativeLiveAttachmentImageCache {
     static let shared =
         NativeLiveAttachmentImageCache()
@@ -2445,6 +2446,8 @@ private struct NativeLiveAttachmentBlockView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(filename)
+                .accessibilityHint("Opens image viewer")
             } else {
                 Button {
                     openPreview()
@@ -2452,6 +2455,7 @@ private struct NativeLiveAttachmentBlockView: View {
                     attachmentRowContent
                 }
                 .buttonStyle(.plain)
+                .accessibilityHint("Opens file preview")
             }
         }
         .sheet(
