@@ -138,6 +138,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(projection, /topLevelTools/);
   assert.match(projection, /permissionInteractions/);
   assert.match(projection, /topLevelInteractions/);
+  assert.match(projection, /!\$0\.hiddenFromTranscript/);
   assert.match(projection, /pendingInteractionIDs/);
 
   assert.match(lifecycleProjection, /api_retry/);
@@ -146,6 +147,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(toolProjection, /tool_use_id/);
   assert.match(toolProjection, /parent_tool_use_id/);
   assert.match(toolProjection, /parent_agent_id/);
+  assert.match(toolProjection, /hidden_from_transcript/);
 
   assert.match(taskProjection, /task_id/);
   assert.match(taskProjection, /subagent_type/);
