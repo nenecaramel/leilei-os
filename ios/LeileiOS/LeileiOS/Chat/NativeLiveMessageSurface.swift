@@ -562,15 +562,14 @@ private struct NativeLiveMessageRow: View {
     private var rowContent: some View {
         if message.role == "user" {
             HStack(alignment: .top, spacing: 0) {
-                Spacer(minLength: 48)
+                Spacer(
+                    minLength:
+                        userAttachmentBlocks.isEmpty
+                            ? 48
+                            : 8
+                )
 
-                VStack(
-            alignment:
-                isUserMessage
-                    ? .trailing
-                    : .leading,
-            spacing: 8
-        ) {
+                VStack(alignment: .trailing, spacing: 8) {
                     if !userAttachmentBlocks.isEmpty {
                         NativeLiveAttachmentGroupView(
                             blocks: userAttachmentBlocks,
