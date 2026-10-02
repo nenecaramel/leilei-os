@@ -18,6 +18,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let parentToolUseID: String?
         let parentAgentID: String?
         let hiddenFromTranscript: Bool
+        let hiddenFromActivity: Bool
         var state: NativeLiveToolCallState
         let order: Int
     }
@@ -31,6 +32,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         var subagentType: String?
         var taskType: String?
         var isBackgrounded: Bool?
+        var isAmbient: Bool
         var isActiveInBackgroundSet: Bool?
         var hiddenFromTranscript: Bool
         var spawnDepth: Int?
@@ -260,9 +262,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let taskToolUseIDs = Set(
             projectedTasks.compactMap(\.toolUseID)
         )
-        let hiddenTaskToolUseIDs = Set(
+        let suppressedTaskToolUseIDs = Set(
             projectedTasks
-                .filter(\.hiddenFromTranscript)
+                .filter {
+                    $0.hiddenFromTranscript || $0.isAmbient
+                }
                 .compactMap(\.toolUseID)
         )
         let questionToolUseIDs = Set(
@@ -279,7 +283,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
             runtimeSurface.providerTurnActive
             ?? !sawTerminalEvent
         tasks = projectedTasks.filter {
-            !$0.hiddenFromTranscript
+            !$0.hiddenFromTranscript && !$0.isAmbient
         }
         var projectedTools = Self.tools(
             from: runtimeSurface.events
@@ -292,6 +296,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
         tools = projectedTools.filter {
             !$0.hiddenFromTranscript
+                && !$0.hiddenFromActivity
                 && !taskToolUseIDs.contains($0.id)
                 && !questionToolUseIDs.contains($0.id)
                 && !hiddenTaskToolUseIDs.contains(
@@ -319,9 +324,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
         let taskToolUseIDs = Set(
             projectedTasks.compactMap(\.toolUseID)
         )
-        let hiddenTaskToolUseIDs = Set(
+        let suppressedTaskToolUseIDs = Set(
             projectedTasks
-                .filter(\.hiddenFromTranscript)
+                .filter {
+                    $0.hiddenFromTranscript || $0.isAmbient
+                }
                 .compactMap(\.toolUseID)
         )
         let projectedInteractions =
@@ -332,14 +339,15 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 .compactMap(\.toolUseID)
         )
         tasks = projectedTasks.filter {
-            !$0.hiddenFromTranscript
+            !$0.hiddenFromTranscript && !$0.isAmbient
         }
         tools = Self.tools(from: message.blocks)
             .filter {
                 !$0.hiddenFromTranscript
+                    && !$0.hiddenFromActivity
                     && !taskToolUseIDs.contains($0.id)
                     && !questionToolUseIDs.contains($0.id)
-                    && !hiddenTaskToolUseIDs.contains(
+                    && !suppressedTaskToolUseIDs.contains(
                         $0.parentToolUseID ?? ""
                     )
             }
