@@ -225,7 +225,8 @@ struct NativeLiveTurnActivityView: View {
             Image(systemName: "exclamationmark.circle")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-        } else if projection.turnIsActive {
+        } else if projection.turnIsActive
+                    || projection.hasActiveBackgroundTask {
             ProgressView()
                 .controlSize(.small)
         } else {
@@ -362,8 +363,9 @@ private struct NativeLiveTaskActivityRow: View {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 12.5))
                 .foregroundStyle(.secondary)
-        } else if turnIsActive,
-                  task.isCurrentlyActive {
+        } else if task.isCurrentlyActive,
+                  turnIsActive
+                    || task.isBackgrounded == true {
             ProgressView()
                 .controlSize(.mini)
         } else {
