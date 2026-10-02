@@ -462,6 +462,9 @@ struct NativeLiveRuntimeSurfaceState:
     var foregroundTurnCompleted = false
 
     var visibleBackgroundTaskIDs: Set<String> {
+        var active = Set<String>()
+        var activeSetSequence = -1
+
         for event in events.reversed() {
             guard event.event.type == "task",
                   event.event.payload?["phase"]?.stringValue
@@ -471,7 +474,8 @@ struct NativeLiveRuntimeSurfaceState:
                 continue
             }
 
-            return Set(
+            activeSetSequence = event.sequence
+            active = Set(
                 tasks.compactMap { value in
                     guard let task = value.objectValue,
                           task["ambient"]?.boolValue != true else {
@@ -480,9 +484,9 @@ struct NativeLiveRuntimeSurfaceState:
                     return task["task_id"]?.stringValue
                 }
             )
+            break
         }
 
-        var active = Set<String>()
         let terminalStatuses = Set([
             "completed",
             "failed",
@@ -491,16 +495,18 @@ struct NativeLiveRuntimeSurfaceState:
             "killed",
         ])
 
-        for event in events where event.event.type == "task" {
+        for event in events
+        where event.event.type == "task"
+            && event.sequence > activeSetSequence {
             let payload = event.event.payload ?? [:]
-            guard let taskID = payload["task_id"]?.stringValue else {
+            guard let taskID = payload["task_id"]?.stringValue,
+                  payload["ambient"]?.boolValue != true else {
                 continue
             }
 
             switch payload["phase"]?.stringValue {
             case "started":
-                if payload["ambient"]?.boolValue != true,
-                   payload["is_backgrounded"]?.boolValue == true {
+                if payload["is_backgrounded"]?.boolValue == true {
                     active.insert(taskID)
                 }
 
