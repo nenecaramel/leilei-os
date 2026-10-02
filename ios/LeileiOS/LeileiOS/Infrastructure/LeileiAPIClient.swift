@@ -494,11 +494,123 @@ struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
     let contextUsage: NativeLiveRuntimeContextUsage?
     let execution: NativeLiveRuntimeExecutionMetadata?
     let environment: NativeLiveRuntimeEnvironment?
+    let result: NativeLiveRuntimeResultTelemetry?
 
     enum CodingKeys: String, CodingKey {
         case contextUsage = "context_usage"
         case execution
         case environment
+        case result
+    }
+}
+
+struct NativeLiveRuntimeResultTelemetry:
+    Decodable,
+    Sendable,
+    Equatable {
+    let subtype: String?
+    let isError: Bool?
+    let durationMs: Double?
+    let durationApiMs: Double?
+    let numTurns: Double?
+    let queuedTurnCount: Double?
+    let stopReason: String?
+    let terminalReason: String?
+    let apiErrorStatus: Double?
+    let startupFailureReason: String?
+    let fastModeState: String?
+    let fastModeDisabledReason: String?
+    let totalCostUsd: Double?
+    let origin: [String: NativeLiveJSONValue]?
+    let usage: [String: NativeLiveJSONValue]?
+    let modelUsage: [String: NativeLiveJSONValue]?
+    let permissionDenials:
+        [NativeLiveRuntimeResultPermissionDenial]
+    let errors: [String]
+    let structuredOutputPresent: Bool
+    let deferredToolUsePresent: Bool
+    let latency: NativeLiveRuntimeResultLatency
+
+    enum CodingKeys: String, CodingKey {
+        case subtype
+        case isError = "is_error"
+        case durationMs = "duration_ms"
+        case durationApiMs = "duration_api_ms"
+        case numTurns = "num_turns"
+        case queuedTurnCount = "queued_turn_count"
+        case stopReason = "stop_reason"
+        case terminalReason = "terminal_reason"
+        case apiErrorStatus = "api_error_status"
+        case startupFailureReason = "startup_failure_reason"
+        case fastModeState = "fast_mode_state"
+        case fastModeDisabledReason = "fast_mode_disabled_reason"
+        case totalCostUsd = "total_cost_usd"
+        case origin
+        case usage
+        case modelUsage
+        case permissionDenials = "permission_denials"
+        case errors
+        case structuredOutputPresent =
+            "structured_output_present"
+        case deferredToolUsePresent =
+            "deferred_tool_use_present"
+        case latency
+    }
+}
+
+struct NativeLiveRuntimeResultPermissionDenial:
+    Decodable,
+    Sendable,
+    Equatable {
+    let toolName: String?
+    let toolUseId: String?
+    let toolInput: [String: NativeLiveJSONValue]?
+
+    enum CodingKeys: String, CodingKey {
+        case toolName = "tool_name"
+        case toolUseId = "tool_use_id"
+        case toolInput = "tool_input"
+    }
+}
+
+struct NativeLiveRuntimeResultLatency:
+    Decodable,
+    Sendable,
+    Equatable {
+    let ttftMs: Double?
+    let ttftStreamMs: Double?
+    let timeToRequestMs: Double?
+    let timeToRequestFromSpawnMs: Double?
+    let timeOriginMs: Double?
+    let warmSpareClaimed: Bool?
+    let firstContentFrameMs: Double?
+    let firstStreamPostMs: Double?
+    let firstStreamPostAckMs: Double?
+    let firstStreamPostWallMs: Double?
+    let firstTextPostMs: Double?
+    let firstTextPostWallMs: Double?
+    let firstStreamPostQueueWaitMs: Double?
+    let firstStreamPostQueuedBehind: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case ttftMs = "ttft_ms"
+        case ttftStreamMs = "ttft_stream_ms"
+        case timeToRequestMs = "time_to_request_ms"
+        case timeToRequestFromSpawnMs =
+            "time_to_request_from_spawn_ms"
+        case timeOriginMs = "time_origin_ms"
+        case warmSpareClaimed = "warm_spare_claimed"
+        case firstContentFrameMs = "first_content_frame_ms"
+        case firstStreamPostMs = "first_stream_post_ms"
+        case firstStreamPostAckMs = "first_stream_post_ack_ms"
+        case firstStreamPostWallMs =
+            "first_stream_post_wall_ms"
+        case firstTextPostMs = "first_text_post_ms"
+        case firstTextPostWallMs = "first_text_post_wall_ms"
+        case firstStreamPostQueueWaitMs =
+            "first_stream_post_queue_wait_ms"
+        case firstStreamPostQueuedBehind =
+            "first_stream_post_queued_behind"
     }
 }
 
