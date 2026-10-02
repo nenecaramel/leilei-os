@@ -165,6 +165,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
       excludedReferenceIds: input.excludedReferenceIds,
+      contextLineage: input.contextLineage,
     });
     if (!semantic) return null;
 
