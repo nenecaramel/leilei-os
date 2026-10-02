@@ -548,12 +548,33 @@ struct NativeLiveRuntimeSurfaceState:
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
             || events.contains { event in
-                [
+                if [
                     "tool_use",
                     "tool_result",
                     "task",
                     "error",
-                ].contains(event.event.type)
+                ].contains(event.event.type) {
+                    return true
+                }
+
+                guard event.event.type == "runtime" else {
+                    return false
+                }
+
+                let payload = event.event.payload ?? [:]
+                switch payload["kind"]?.stringValue {
+                case "album_saved", "api_retry":
+                    return true
+                case "command_lifecycle":
+                    return [
+                        "queued",
+                        "started",
+                    ].contains(
+                        payload["state"]?.stringValue ?? ""
+                    )
+                default:
+                    return false
+                }
             }
             || !interactions.isEmpty
     }
