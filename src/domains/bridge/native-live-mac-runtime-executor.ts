@@ -460,7 +460,17 @@ export class NativeLiveMacRuntimeExecutor {
         runtimeResult.normalizedEvents,
       );
     const sessionStore =
-      runtimeResult.sessionStoreObservability ?? null;
+      runtimeResult.sessionStoreObservability
+        ? (() => {
+            try {
+              return parseNativeLiveRuntimeSessionStoreHealth(
+                runtimeResult.sessionStoreObservability,
+              );
+            } catch {
+              return null;
+            }
+          })()
+        : null;
 
     if (
       !contextUsage
