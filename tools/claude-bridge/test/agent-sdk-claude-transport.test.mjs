@@ -431,6 +431,23 @@ test("mirror_error leaves a previously complete session incomplete", async () =>
   assert.deepEqual(statusCalls, ["incomplete"]);
   assert.deepEqual(discarded, ["provider-root"]);
   assert.equal(state, "incomplete");
+  assert.deepEqual(result.sessionStoreObservability, {
+    provider: "claude_agent_sdk",
+    configured: true,
+    mode: "resume",
+    session_id: "provider-root",
+    parent_session_id: "provider-root",
+    project_key: process.cwd(),
+    cwd: process.cwd(),
+    parent_local_available: true,
+    parent_status_before: "complete",
+    backfill_status: "not_needed",
+    backfill_failure_reason: null,
+    mirror_status: "error",
+    mirror_failure_reason: "remote append failed",
+    status_after: "incomplete",
+    status_failure_reason: null,
+  });
 });
 
 test("legacy local session is backfilled before it becomes portable", async () => {
@@ -516,6 +533,23 @@ test("legacy local session keeps working if durable backfill fails", async () =>
   assert.equal(queryCalls, 1);
   assert.equal(completeCalls, 0);
   assert.deepEqual(errors, [backfillError]);
+  assert.deepEqual(result.sessionStoreObservability, {
+    provider: "claude_agent_sdk",
+    configured: true,
+    mode: "resume",
+    session_id: "legacy-local",
+    parent_session_id: "legacy-local",
+    project_key: process.cwd(),
+    cwd: process.cwd(),
+    parent_local_available: true,
+    parent_status_before: null,
+    backfill_status: "failed",
+    backfill_failure_reason: "remote store unavailable",
+    mirror_status: "ok",
+    mirror_failure_reason: null,
+    status_after: null,
+    status_failure_reason: null,
+  });
 });
 
 test("new session becomes portable only after a readable mirrored transcript exists", async () => {
@@ -541,15 +575,21 @@ test("new session becomes portable only after a readable mirrored transcript exi
   assert.equal(completeCalls, 1);
 });
 
-test("new session stays non-portable when mirror_error is emitted", async () => {
+test("new session stays incomplete when mirror_error is emitted", async () => {
   let completeCalls = 0;
+  let state = null;
   const durableStore = {
     async append() {},
+    async getStatus() { return state; },
     async load() {
       throw new Error("must not probe a failed mirror");
     },
+    async markIncomplete() {
+      state = "incomplete";
+    },
     async markComplete() {
       completeCalls += 1;
+      state = "complete";
     },
   };
   const transport = new AgentSdkClaudeTransport({
@@ -575,8 +615,77 @@ test("new session stays non-portable when mirror_error is emitted", async () => 
     ]),
   });
 
-  await transport.sendNew("hello");
+  const result = await transport.sendNew("hello");
   assert.equal(completeCalls, 0);
+  assert.equal(state, "incomplete");
+  assert.equal(
+    result.sessionStoreObservability.mirror_status,
+    "error",
+  );
+  assert.equal(
+    result.sessionStoreObservability.status_after,
+    "incomplete",
+  );
+});
+
+test("mirror health stays fail-soft when the durable status store is unavailable", async () => {
+  let markIncompleteCalls = 0;
+  let getStatusCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    sessionStore: {
+      async append() {},
+      async getStatus() {
+        getStatusCalls += 1;
+        throw new Error("status endpoint unavailable");
+      },
+      async markIncomplete() {
+        markIncompleteCalls += 1;
+        throw new Error("status endpoint unavailable");
+      },
+    },
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-store-outage",
+      },
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "provider-store-outage",
+        error: "remote append failed",
+      },
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "provider-store-outage",
+        result: "READY",
+      },
+    ]),
+  });
+
+  const result = await transport.sendNew("hello");
+
+  assert.equal(result.providerSessionId, "provider-store-outage");
+  assert.equal(markIncompleteCalls, 1);
+  assert.equal(
+    getStatusCalls,
+    0,
+    "mirror observability must not amplify a known SessionStore outage",
+  );
+  assert.equal(
+    result.sessionStoreObservability.mirror_status,
+    "error",
+  );
+  assert.equal(
+    result.sessionStoreObservability.status_after,
+    null,
+  );
+  assert.equal(
+    result.sessionStoreObservability.status_failure_reason,
+    "status endpoint unavailable",
+  );
 });
 
 test("fork keeps a complete parent readable and marks only the mirrored child complete", async () => {
@@ -1158,6 +1267,74 @@ test("ordinary interactive turns keep verbatim streaming input", async () => {
     preset: "claude_code",
     append: LEILEIOS_MIND_SYSTEM_PROMPT,
   });
+});
+
+test("interactive provider failure retains SessionStore mirror health", async () => {
+  let state = null;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionStore: {
+      async append() {},
+      async getStatus() { return state; },
+      async markIncomplete() {
+        state = "incomplete";
+      },
+    },
+    queryImpl: () => fakeQuery([
+      {
+        type: "system",
+        subtype: "init",
+        session_id: "provider-failed-mirror",
+      },
+      {
+        type: "system",
+        subtype: "mirror_error",
+        session_id: "provider-failed-mirror",
+        error: "remote append failed",
+      },
+      {
+        type: "result",
+        subtype: "error_during_execution",
+        session_id: "provider-failed-mirror",
+        errors: ["provider failed"],
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () =>
+      transport.executeTurn(
+        "hello",
+        {
+          mode: "new",
+          parentProviderSessionId: null,
+          streaming: true,
+        },
+      ),
+    (error) => {
+      assert.equal(error.runtimeCode, "CLAUDE_PROCESS_FAILED");
+      assert.deepEqual(error.sessionStoreObservability, {
+        provider: "claude_agent_sdk",
+        configured: true,
+        mode: "new",
+        session_id: "provider-failed-mirror",
+        parent_session_id: null,
+        project_key: "/workspace/leilei-os",
+        cwd: "/workspace/leilei-os",
+        parent_local_available: null,
+        parent_status_before: null,
+        backfill_status: "not_needed",
+        backfill_failure_reason: null,
+        mirror_status: "error",
+        mirror_failure_reason: "remote append failed",
+        status_after: "incomplete",
+        status_failure_reason: null,
+      });
+      return true;
+    },
+  );
+  assert.equal(state, "incomplete");
 });
 
 test("interactive foreground event delivery failure is observability-only", async () => {

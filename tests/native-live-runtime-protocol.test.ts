@@ -482,6 +482,68 @@ test("runtime metadata preserves Agent SDK result usage, thinking, permission an
   );
 });
 
+test("runtime metadata preserves bounded SessionStore mirror health", () => {
+  const sessionStore = {
+    provider: "claude_agent_sdk" as const,
+    configured: true,
+    mode: "fork" as const,
+    session_id: "provider-child",
+    parent_session_id: "provider-parent",
+    project_key: "/workspace/leilei-os",
+    cwd: "/workspace/leilei-os",
+    parent_local_available: false,
+    parent_status_before: "complete" as const,
+    backfill_status: "not_needed" as const,
+    backfill_failure_reason: null,
+    mirror_status: "error" as const,
+    mirror_failure_reason: "remote append failed",
+    status_after: "incomplete" as const,
+    status_failure_reason: null,
+  };
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    workspace_id: null,
+    effective_workspace_root: "/workspace/leilei-os",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      session_store: sessionStore,
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") throw new Error("expected success");
+  assert.deepEqual(
+    result.runtime_metadata?.session_store,
+    sessionStore,
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeExecutionResult({
+        protocol_version: 3,
+        prepare_id: prepareId,
+        request_id: requestId,
+        conversation_id: conversationId,
+        status: "failure",
+        error_code: "CLAUDE_PROCESS_FAILED",
+        runtime_metadata: {
+          context_usage: null,
+          session_store: {
+            ...sessionStore,
+            status_after: "maybe",
+          },
+        },
+      }),
+    /session_store\.status_after is invalid/,
+  );
+});
+
 test("runtime metadata accepts bounded durable MCP output resources", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
     protocol_version: 3,

@@ -496,6 +496,7 @@ struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
     let environment: NativeLiveRuntimeEnvironment?
     let result: NativeLiveRuntimeResultTelemetry?
     let outputResources: [NativeLiveRuntimeOutputResource]?
+    let sessionStore: NativeLiveRuntimeSessionStoreHealth?
 
     enum CodingKeys: String, CodingKey {
         case contextUsage = "context_usage"
@@ -503,6 +504,46 @@ struct NativeLiveRuntimeMetadata: Decodable, Sendable, Equatable {
         case environment
         case result
         case outputResources = "output_resources"
+        case sessionStore = "session_store"
+    }
+}
+
+struct NativeLiveRuntimeSessionStoreHealth:
+    Decodable,
+    Sendable,
+    Equatable {
+    let provider: String
+    let configured: Bool
+    let mode: String
+    let sessionId: String?
+    let parentSessionId: String?
+    let projectKey: String
+    let cwd: String
+    let parentLocalAvailable: Bool?
+    let parentStatusBefore: String?
+    let backfillStatus: String
+    let backfillFailureReason: String?
+    let mirrorStatus: String
+    let mirrorFailureReason: String?
+    let statusAfter: String?
+    let statusFailureReason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case configured
+        case mode
+        case sessionId = "session_id"
+        case parentSessionId = "parent_session_id"
+        case projectKey = "project_key"
+        case cwd
+        case parentLocalAvailable = "parent_local_available"
+        case parentStatusBefore = "parent_status_before"
+        case backfillStatus = "backfill_status"
+        case backfillFailureReason = "backfill_failure_reason"
+        case mirrorStatus = "mirror_status"
+        case mirrorFailureReason = "mirror_failure_reason"
+        case statusAfter = "status_after"
+        case statusFailureReason = "status_failure_reason"
     }
 }
 

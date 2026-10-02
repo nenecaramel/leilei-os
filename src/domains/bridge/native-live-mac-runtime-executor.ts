@@ -10,6 +10,8 @@ type NativeLiveForegroundRuntimeResult =
     executionReadback?:
       NativeLiveRuntimeExecutionReadback | null;
     executionReadbackError?: string | null;
+    sessionStoreObservability?:
+      NativeLiveRuntimeSessionStoreHealth | null;
   };
 
 export type NativeLiveMacRuntimeFailureDiagnostics = {
@@ -106,12 +108,14 @@ import {
   parseNativeLiveRuntimeEnvironment,
   parseNativeLiveRuntimeOutputResources,
   parseNativeLiveRuntimeResultTelemetry,
+  parseNativeLiveRuntimeSessionStoreHealth,
   type NativeLiveRuntimeCommand,
   type NativeLiveRuntimeContextUsage,
   type NativeLiveRuntimeExecutionReadback,
   type NativeLiveRuntimeExecutionResult,
   type NativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeMetadata,
+  type NativeLiveRuntimeSessionStoreHealth,
 } from "./native-live-runtime-protocol.js";
 
 export class NativeLiveMacRuntimeExecutor {
@@ -455,6 +459,18 @@ export class NativeLiveMacRuntimeExecutor {
       runtimeOutputResourcesFromNormalizedEvents(
         runtimeResult.normalizedEvents,
       );
+    const sessionStore =
+      runtimeResult.sessionStoreObservability
+        ? (() => {
+            try {
+              return parseNativeLiveRuntimeSessionStoreHealth(
+                runtimeResult.sessionStoreObservability,
+              );
+            } catch {
+              return null;
+            }
+          })()
+        : null;
 
     if (
       !contextUsage
@@ -462,6 +478,7 @@ export class NativeLiveMacRuntimeExecutor {
       && !environment
       && !result
       && outputResources.length === 0
+      && !sessionStore
     ) return null;
 
     return {
@@ -471,6 +488,9 @@ export class NativeLiveMacRuntimeExecutor {
       ...(result ? { result } : {}),
       ...(outputResources.length > 0
         ? { output_resources: outputResources }
+        : {}),
+      ...(sessionStore
+        ? { session_store: sessionStore }
         : {}),
     };
   }
@@ -587,11 +607,14 @@ function runtimeMetadataFromFailure(
     runtimeOutputResourcesFromNormalizedEvents(
       normalizedEvents,
     );
+  const sessionStore =
+    runtimeSessionStoreHealthFromFailure(record);
 
   if (
     !result
     && !environment
     && outputResources.length === 0
+    && !sessionStore
   ) return null;
   return {
     context_usage: null,
@@ -600,7 +623,25 @@ function runtimeMetadataFromFailure(
     ...(outputResources.length > 0
       ? { output_resources: outputResources }
       : {}),
+    ...(sessionStore
+      ? { session_store: sessionStore }
+      : {}),
   };
+}
+
+function runtimeSessionStoreHealthFromFailure(
+  record: Record<string, unknown>,
+): NativeLiveRuntimeSessionStoreHealth | null {
+  if (!record.sessionStoreObservability) return null;
+  try {
+    return parseNativeLiveRuntimeSessionStoreHealth(
+      record.sessionStoreObservability,
+    );
+  } catch {
+    // SessionStore health is auxiliary observability. Malformed diagnostics
+    // must not change the canonical provider failure.
+    return null;
+  }
 }
 
 function runtimeOutputResourcesFromNormalizedEvents(
