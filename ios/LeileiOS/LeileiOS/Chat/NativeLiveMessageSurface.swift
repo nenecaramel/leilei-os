@@ -231,6 +231,15 @@ struct NativeLiveMessageSurface: View {
                                 message.id == replacementAssistantID
                                     ? runtimeSurface
                                     : nil,
+                            activityRuntimeSurface:
+                                pendingOperation == nil
+                                    && runtimeSurface?
+                                        .foregroundTurnCompleted == true
+                                    && message.role == "assistant"
+                                    && message.id
+                                        == snapshot?.currentHeadMessageId
+                                    ? runtimeSurface
+                                    : nil,
                             onResolveReplacementInteraction:
                                 onResolveRuntimeInteraction,
                             isTurnInFlight: isTurnInFlight,
@@ -286,7 +295,9 @@ struct NativeLiveMessageSurface: View {
                     }
 
                     if pendingOperation == nil,
-                       runtimeSurface != nil {
+                       let runtimeSurface,
+                       !runtimeSurface.foregroundTurnCompleted
+                        || !hasCanonicalAssistantHead {
                         NativeLiveRuntimeAssistantRow(
                             runtimeSurface: runtimeSurface,
                             onResolveInteraction:
@@ -294,7 +305,7 @@ struct NativeLiveMessageSurface: View {
                         )
                         .id(
                             "recovered-runtime-assistant-"
-                                + (runtimeSurface?.prepareID ?? "")
+                                + runtimeSurface.prepareID
                         )
                     }
 
@@ -442,6 +453,16 @@ struct NativeLiveMessageSurface: View {
                     )
                 }
             }
+        }
+    }
+
+    private var hasCanonicalAssistantHead: Bool {
+        guard let snapshot,
+              let headID = snapshot.currentHeadMessageId else {
+            return false
+        }
+        return snapshot.messages.contains {
+            $0.id == headID && $0.role == "assistant"
         }
     }
 
