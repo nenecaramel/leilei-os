@@ -133,6 +133,28 @@ test("sub-threshold semantic similarity contributes zero to a lexical hit", () =
   );
 });
 
+test("an unscored lexical candidate keeps full lexical weight", () => {
+  const scored = state("scored", "different topic");
+  const lexical = state("lexical-unscored", "runtime memory");
+  const hits = recallBreath(
+    "runtime memory",
+    [scored, lexical],
+    {
+      ...base,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      semanticScores: new Map([["scored", 0.9]]),
+    },
+  );
+
+  const hit = hits.find((candidate) =>
+    candidate.state.id === "lexical-unscored"
+  );
+  assert.ok(hit);
+  assert.equal(hit.semanticScore, null);
+  assert.ok(Math.abs(hit.score - hit.lexicalScore) < 1e-12);
+});
+
 test("semantic median margin suppresses a uniformly high background", () => {
   const candidates = [
     state("background-1", "alpha memory"),
