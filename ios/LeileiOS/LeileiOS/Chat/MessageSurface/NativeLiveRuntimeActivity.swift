@@ -766,7 +766,7 @@ private struct NativeLiveRuntimeToolCallRow: View {
 }
 
 
-enum NativeLiveToolCallState {
+enum NativeLiveToolCallState: Equatable {
     case running
     case completed
     case failed
@@ -776,6 +776,7 @@ enum NativeLiveToolCallState {
 struct NativeLiveToolCallCard: View {
     let toolName: String
     let detail: String?
+    var resultDetail: String? = nil
     let state: NativeLiveToolCallState
 
     @State private var isShowingDetails = false
@@ -835,7 +836,10 @@ struct NativeLiveToolCallCard: View {
                 title: nativeLiveToolDisplayName(toolName),
                 status: stateLabel,
                 sectionTitle: "Input",
-                detail: detail
+                detail: detail,
+                secondarySectionTitle:
+                    resultDetail == nil ? nil : "Output",
+                secondaryDetail: resultDetail
             )
         }
     }
@@ -913,6 +917,8 @@ private struct NativeLiveToolDetailSheet: View {
     let status: String
     let sectionTitle: String
     let detail: String?
+    var secondarySectionTitle: String? = nil
+    var secondaryDetail: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -951,6 +957,31 @@ private struct NativeLiveToolDetailSheet: View {
                             Text("No details")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if let secondarySectionTitle,
+                       let secondaryDetail,
+                       !secondaryDetail.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(secondarySectionTitle)
+                                .font(.headline)
+
+                            Text(secondaryDetail)
+                                .font(.system(
+                                    size: 13,
+                                    design: .monospaced
+                                ))
+                                .foregroundStyle(.primary)
+                                .textSelection(.enabled)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                                .frame(
+                                    maxWidth: .infinity,
+                                    alignment: .leading
+                                )
                         }
                     }
                 }
