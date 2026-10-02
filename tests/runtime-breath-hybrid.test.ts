@@ -133,6 +133,28 @@ test("sub-threshold semantic similarity contributes zero to a lexical hit", () =
   );
 });
 
+test("an unscored lexical candidate keeps full lexical weight", () => {
+  const scored = state("scored", "different topic");
+  const lexical = state("lexical-unscored", "runtime memory");
+  const hits = recallBreath(
+    "runtime memory",
+    [scored, lexical],
+    {
+      ...base,
+      semanticWeight: 0.65,
+      semanticMinScore: 0.8,
+      semanticScores: new Map([["scored", 0.9]]),
+    },
+  );
+
+  const hit = hits.find((candidate) =>
+    candidate.state.id === "lexical-unscored"
+  );
+  assert.ok(hit);
+  assert.equal(hit.semanticScore, null);
+  assert.ok(Math.abs(hit.score - hit.lexicalScore) < 1e-12);
+});
+
 test("semantic median margin suppresses a uniformly high background", () => {
   const candidates = [
     state("background-1", "alpha memory"),
@@ -184,6 +206,12 @@ test("recent recall penalty prefers an equally relevant older memory", () => {
       archivedAt: null,
       forgottenAt: null,
     },
+    recall_context_v1: {
+      conversationId: "c1",
+      epoch: 3,
+      sourceMessageId: "u-recent",
+      recalledAt: "2026-09-22T09:30:00.000Z",
+    },
   };
   const older = state(
     "older-memory",
@@ -199,6 +227,12 @@ test("recent recall penalty prefers an equally relevant older memory", () => {
       archivedAt: null,
       forgottenAt: null,
     },
+    recall_context_v1: {
+      conversationId: "c1",
+      epoch: 3,
+      sourceMessageId: "u-older",
+      recalledAt: "2026-09-19T00:00:00.000Z",
+    },
   };
 
   const hits = recallBreath(
@@ -207,6 +241,7 @@ test("recent recall penalty prefers an equally relevant older memory", () => {
     {
       ...base,
       now: "2026-09-22T10:00:00.000Z",
+      contextEpoch: 3,
       semanticWeight: 0,
       recentRecallPenalty: true,
     },
@@ -292,6 +327,263 @@ test("semantic candidate preselection prefers lexical relevance over state id or
   assert.ok(plan);
   assert.equal(plan.candidates.length, 2);
   assert.equal(plan.candidates[0]?.stateId, "zzz-relevant");
+});
+
+test("semantic-only recall works when the query tokenizer has no lexical tokens", () => {
+  const semantic = state("semantic-short-query", "她难过的时候只想安静待一会");
+  const hits = recallBreath(
+    "嗯",
+    [semantic],
+    {
+      ...base,
+      semanticWeight: 0.8,
+      semanticMinScore: 0.6,
+      semanticScores: new Map([["semantic-short-query", 0.94]]),
+    },
+  );
+
+  assert.deepEqual(
+    hits.map((hit) => hit.state.id),
+    ["semantic-short-query"],
+  );
+  assert.equal(hits[0]?.channel, "semantic");
+  assert.equal(hits[0]?.lexicalScore, 0);
+});
+
+test("recent recall penalty is scoped to the same conversation epoch", () => {
+  const memory = state("epoch-memory", "lemon yellow hair memory");
+  memory.payload = {
+    lifecycle_v1: {
+      status: "active",
+      salience: 1,
+      protected: false,
+      lastDecayedAt: "2026-09-22T00:00:00.000Z",
+      lastRecalledAt: "2026-09-22T09:30:00.000Z",
+      archivedAt: null,
+      forgottenAt: null,
+    },
+    recall_context_v1: {
+      conversationId: "c1",
+      epoch: 3,
+      sourceMessageId: "u-before-compact",
+      recalledAt: "2026-09-22T09:30:00.000Z",
+    },
+  };
+
+  const afterCompact = recallBreath(
+    "lemon yellow hair",
+    [memory],
+    {
+      ...base,
+      contextEpoch: 4,
+      now: "2026-09-22T10:00:00.000Z",
+      semanticWeight: 0,
+      recentRecallPenalty: true,
+    },
+  );
+  const otherConversation = recallBreath(
+    "lemon yellow hair",
+    [memory],
+    {
+      ...base,
+      conversationId: "c2",
+      contextEpoch: 3,
+      now: "2026-09-22T10:00:00.000Z",
+      semanticWeight: 0,
+      recentRecallPenalty: true,
+    },
+  );
+
+  for (const hits of [afterCompact, otherConversation]) {
+    assert.equal(hits.length, 1);
+    assert.ok(hits[0]);
+    assert.ok(Math.abs(hits[0].score - hits[0].lexicalScore) < 1e-12);
+  }
+});
+
+test("seen states are excluded before semantic candidate limiting", async () => {
+  const port = new Port([
+    state("seen-a", "alpha beta gamma delta"),
+    state("seen-b", "alpha beta gamma"),
+    state("unseen-c", "alpha beta"),
+    state("unseen-d", "alpha"),
+  ]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      breathLimit: 2,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 2,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    null,
+  );
+
+  const plan = await mind.planSemanticRecall({
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userText: "alpha beta gamma delta",
+    assembledAt: "2026-09-22T10:00:00.000Z",
+    contextLineage: {
+      epoch: 0,
+      seenStateIds: ["seen-a", "seen-b"],
+      thoughtRevision: 0,
+      thoughtFingerprint: null,
+    },
+  });
+
+  assert.ok(plan);
+  assert.deepEqual(
+    plan.candidates.map((candidate) => candidate.stateId).sort(),
+    ["unseen-c", "unseen-d"],
+  );
+});
+
+test("bounded semantic preselection reserves coverage beyond lexical matches", async () => {
+  const port = new Port([
+    state("coverage-a", "桌上的杯子"),
+    state("coverage-b", "窗外下雨"),
+    state("lexical", "alpha beta gamma"),
+    state("semantic-history", "那次一个人旅行让我变得更勇敢"),
+    state("coverage-c", "今天换了床单"),
+  ]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      breathLimit: 2,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 2,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    null,
+  );
+
+  const plan = await mind.planSemanticRecall({
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userText: "alpha beta gamma",
+    assembledAt: "2026-09-22T10:00:00.000Z",
+  });
+
+  assert.ok(plan);
+  assert.deepEqual(
+    plan.candidates.map((candidate) => candidate.stateId).sort(),
+    ["lexical", "semantic-history"],
+  );
+});
+
+test("semantic snapshot is rejected when the bounded candidate set changed", async () => {
+  const port = new Port([
+    state("planned", "那趟独自旅行让我长大了"),
+    state("added-later", "后来又出现了一条新的长期记忆"),
+  ]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 8,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    null,
+  );
+
+  const assembled = await mind.prepareTurn({
+    manifestId: "stale-semantic-plan",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "韩国海边",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+    semanticCandidates: [{
+      stateId: "planned",
+      kind: "memory",
+      text: "那趟独自旅行让我长大了",
+    }],
+    semanticScores: new Map([["planned", 0.95]]),
+  });
+
+  assert.deepEqual(assembled.breathStateIds, []);
+});
+
+test("a stale staged plan is rescored from the current candidate snapshot", async () => {
+  const scoredCandidateIds: string[][] = [];
+  const port = new Port([
+    state("planned-rescore", "那趟独自旅行让我长大了"),
+    state("added-rescore", "后来又出现了一条新的长期记忆"),
+  ]);
+  const mind = new NativeLiveMindLoopService(
+    port,
+    {
+      assemblyVersion: "assembly-v1",
+      promptContractVersion: "prompt-v1",
+      ruleVersion: "mind-v1",
+      processVersion: "mind-v1",
+      breathLimit: 3,
+      breathSemanticWeight: 0.8,
+      breathSemanticMinScore: 0.6,
+      breathSemanticCandidateLimit: 8,
+      maxContextItems: 8,
+      maxContextChars: 4000,
+    },
+    {
+      async score(input) {
+        scoredCandidateIds.push(
+          input.candidates.map((candidate) => candidate.stateId),
+        );
+        return new Map(
+          input.candidates.map(
+            (candidate) => [candidate.stateId, 0.95] as const,
+          ),
+        );
+      },
+    },
+  );
+
+  await mind.prepareTurn({
+    manifestId: "stale-semantic-plan-rescore",
+    userId: "u1",
+    subjectId: "G",
+    conversation: conversation(),
+    userMessageId: "u-now",
+    userText: "韩国海边",
+    snapshotSequence: 1,
+    assembledAt: "2026-09-22T10:00:00.000Z",
+    semanticCandidates: [{
+      stateId: "planned-rescore",
+      kind: "memory",
+      text: "那趟独自旅行让我长大了",
+    }],
+    semanticScores: new Map([["planned-rescore", 0.95]]),
+  });
+
+  assert.equal(scoredCandidateIds.length, 1);
+  assert.deepEqual(
+    [...(scoredCandidateIds[0] ?? [])].sort(),
+    ["added-rescore", "planned-rescore"],
+  );
 });
 
 test("semantic-only candidate can enter Breath when lexical overlap is zero", () => {

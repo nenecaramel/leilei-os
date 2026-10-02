@@ -831,7 +831,7 @@ test("changed Thought snapshots fail closed instead of rendering a partial revis
   );
 });
 
-test("Breath filters seen top results without backfilling lower-ranked matches", () => {
+test("Breath excludes seen states before the limit and backfills lower-ranked matches", () => {
   const memories = [
     state("mem-a", "memory", "alpha beta gamma delta one"),
     state("mem-b", "memory", "alpha beta gamma delta two"),
@@ -856,11 +856,11 @@ test("Breath filters seen top results without backfilling lower-ranked matches",
   } as const;
 
   const baseline = assembleTurnContext(common);
-  assert.equal(baseline.breathStateIds.length, 2);
+  assert.deepEqual(baseline.breathStateIds, ["mem-a", "mem-b"]);
 
-  const deduped = assembleTurnContext({
+  const backfilled = assembleTurnContext({
     ...common,
-    manifestId: "manifest-breath-deduped",
+    manifestId: "manifest-breath-backfilled",
     contextLineage: {
       epoch: 0,
       seenStateIds: baseline.breathStateIds,
@@ -868,13 +868,7 @@ test("Breath filters seen top results without backfilling lower-ranked matches",
       thoughtFingerprint: null,
     },
   });
-  assert.deepEqual(deduped.breathStateIds, []);
-  assert.equal(
-    deduped.manifest.items.some(
-      (item) => item.type === "memory" || item.type === "feel",
-    ),
-    false,
-  );
+  assert.deepEqual(backfilled.breathStateIds, ["mem-c", "mem-d"]);
 });
 
 test("Thought injection is capped, and dropped, unsettled or foreign thoughts stay out", () => {

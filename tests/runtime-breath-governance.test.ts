@@ -81,25 +81,55 @@ const baseInput = {
   now: "2026-09-22T10:00:00.000Z",
 };
 
-test("Breath cooldown suppresses a recently surfaced state", () => {
-  const hits = recallBreath(
+test("Breath cooldown suppresses only a recall from the same conversation epoch", () => {
+  const recent = state("recent", "蕾蕾喜欢柠檬黄", {
+    status: "active",
+    salience: 1,
+    lastRecalledAt: "2026-09-22T09:30:00.000Z",
+  });
+  recent.payload = {
+    ...(recent.payload ?? {}),
+    recall_context_v1: {
+      conversationId: "c1",
+      epoch: 2,
+      sourceMessageId: "u-recent",
+      recalledAt: "2026-09-22T09:30:00.000Z",
+    },
+  };
+  const older = state("older", "柠檬黄让人想到很亮的头发", {
+    status: "active",
+    salience: 1,
+    lastRecalledAt: "2026-09-21T00:00:00.000Z",
+  });
+  older.payload = {
+    ...(older.payload ?? {}),
+    recall_context_v1: {
+      conversationId: "c1",
+      epoch: 2,
+      sourceMessageId: "u-older",
+      recalledAt: "2026-09-21T00:00:00.000Z",
+    },
+  };
+
+  const sameEpoch = recallBreath(
     "柠檬黄",
-    [
-      state("recent", "蕾蕾喜欢柠檬黄", {
-        status: "active",
-        salience: 1,
-        lastRecalledAt: "2026-09-22T09:30:00.000Z",
-      }),
-      state("older", "柠檬黄让人想到很亮的头发", {
-        status: "active",
-        salience: 1,
-        lastRecalledAt: "2026-09-21T00:00:00.000Z",
-      }),
-    ],
-    { ...baseInput, cooldownHours: 2 },
+    [recent, older],
+    { ...baseInput, contextEpoch: 2, cooldownHours: 2 },
+  );
+  assert.deepEqual(
+    sameEpoch.map((hit) => hit.state.id),
+    ["older"],
   );
 
-  assert.deepEqual(hits.map((hit) => hit.state.id), ["older"]);
+  const afterCompact = recallBreath(
+    "柠檬黄",
+    [recent, older],
+    { ...baseInput, contextEpoch: 3, cooldownHours: 2 },
+  );
+  assert.deepEqual(
+    afterCompact.map((hit) => hit.state.id),
+    ["recent", "older"],
+  );
 });
 
 test("Breath ranking can use lifecycle salience without turning recall into reinforcement evidence", () => {
@@ -326,6 +356,8 @@ test("finalized Breath reinforcement uses only manifest-selected breath items", 
   assert.deepEqual(recallCalls, [{
     userId: "u1",
     subjectId: "G",
+    conversationId: "c1",
+    contextEpoch: 0,
     stateIds: ["m-selected"],
     recalledAt: "2026-09-22T10:00:00.000Z",
     salienceBoost: 0.08,

@@ -5,6 +5,7 @@ import {
   evaluateLifecycle,
   evaluatePurge,
   evaluateRecallReinforcement,
+  readSubjectStateRecallContext,
   removeRecallReinforcementSources,
   forgottenSubjectStatePayload,
   MemoryLifecycleService,
@@ -475,6 +476,11 @@ test("zero recall boost records recency without creating reinforcement ledger", 
     "2026-09-20T01:00:00.000Z",
     0,
     "u-zero-boost",
+    undefined,
+    {
+      conversationId: "c-zero",
+      epoch: 4,
+    },
   );
 
   assert.ok(update);
@@ -486,6 +492,15 @@ test("zero recall boost records recency without creating reinforcement ledger", 
   assert.equal(
     "recall_reinforcement_v1" in update.nextPayload,
     false,
+  );
+  assert.deepEqual(
+    readSubjectStateRecallContext(update.nextPayload),
+    {
+      conversationId: "c-zero",
+      epoch: 4,
+      sourceMessageId: "u-zero-boost",
+      recalledAt: "2026-09-20T01:00:00.000Z",
+    },
   );
 });
 
@@ -609,6 +624,36 @@ test("the same canonical user turn cannot reinforce the same Memory twice", () =
       contributions: unknown[];
     }).contributions.length,
     1,
+  );
+});
+
+test("causal Edit removal clears zero-boost recall context sourced by the purged message", () => {
+  const repaired = removeRecallReinforcementSources(
+    {
+      lifecycle_v1: {
+        status: "active",
+        salience: 0.5,
+        protected: false,
+        lastDecayedAt: "2026-09-21T00:00:00.000Z",
+        lastRecalledAt: "2026-09-21T00:00:00.000Z",
+        archivedAt: null,
+        forgottenAt: null,
+      },
+      recall_context_v1: {
+        conversationId: "c1",
+        epoch: 2,
+        sourceMessageId: "u-purged",
+        recalledAt: "2026-09-21T00:00:00.000Z",
+      },
+    },
+    new Set(["u-purged"]),
+  );
+
+  assert.ok(repaired);
+  assert.equal(repaired.lifecycle.lastRecalledAt, null);
+  assert.equal(
+    readSubjectStateRecallContext(repaired.nextPayload),
+    null,
   );
 });
 
