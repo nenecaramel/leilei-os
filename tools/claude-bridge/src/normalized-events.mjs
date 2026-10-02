@@ -158,6 +158,8 @@ export class ClaudeEventNormalizer {
     }
 
     if (raw.type === "system" && raw.subtype === "task_notification") {
+      const resourceLinks =
+        normalizeResourceLinks(raw.resource_links);
       emit("task", this.sessionId, {
         phase: "notification",
         task_id: safeString(raw.task_id),
@@ -165,8 +167,9 @@ export class ClaudeEventNormalizer {
         status: safeString(raw.status),
         summary: clippedString(raw.summary, 4_000),
         usage: normalizedTaskUsage(raw.usage),
-        resource_links:
-          normalizeResourceLinks(raw.resource_links),
+        ...(resourceLinks.length > 0
+          ? { resource_links: resourceLinks }
+          : {}),
         hidden_from_transcript: raw.skip_transcript === true,
         ambient: raw.ambient === true,
         has_output_file:
