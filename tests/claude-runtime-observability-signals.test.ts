@@ -227,7 +227,7 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
     "utf8",
   );
   const surface = readFileSync(
-    new URL("../ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift", import.meta.url),
+    new URL("../ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift", import.meta.url),
     "utf8",
   );
 
