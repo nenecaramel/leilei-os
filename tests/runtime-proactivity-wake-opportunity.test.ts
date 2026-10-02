@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   BackgroundLoopOrchestrator,
-} from "../src/domains/runtime/background-loop-orchestrator.js";
+} from "../src/domains/runtime/background/background-loop-orchestrator.js";
 import {
   ProactivityWakeOpportunityProducer,
   proactivityWakeId,
-} from "../src/domains/runtime/proactivity-wake-opportunity.js";
+} from "../src/domains/runtime/proactivity/proactivity-wake-opportunity.js";
 
 test("Proactivity wake ids are stable for one backend activity/cooldown anchor", () => {
   const input = {
@@ -102,7 +102,7 @@ test("Proactivity producer reuses the shared orchestrator and schedules only eli
 test("Proactivity capsule excludes archived or forgotten Memory and Feel", () => {
   const source = readFileSync(
     new URL(
-      "../src/domains/runtime/proactivity-wake-opportunity.ts",
+      "../src/domains/runtime/proactivity/proactivity-wake-opportunity.ts",
       import.meta.url,
     ),
     "utf8",

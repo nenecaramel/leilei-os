@@ -4,9 +4,9 @@ import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { MemoryRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import test from "node:test";
-import { NavigationGroups } from "../web/src/layout/NavigationGroups.js";
-import { MobileNavigationDrawer } from "../web/src/layout/MobileNavigationDrawer.js";
-import { MobileTopBar } from "../web/src/layout/MobileTopBar.js";
+import { NavigationGroups } from "../web/src/layout/NavigationGroups..js";
+import { MobileNavigationDrawer } from "../web/src/layout/MobileNavigationDrawer..js";
+import { MobileTopBar } from "../web/src/layout/MobileTopBar..js";
 
 function installDom() {
   const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://leilei.test/" });

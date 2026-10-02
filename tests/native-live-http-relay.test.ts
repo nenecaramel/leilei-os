@@ -4,10 +4,10 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import type {
   NativeLiveFinalizeResult,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import type {
   NativeLiveRelayPrepareResult,
-} from "../src/domains/bridge/native-live-backend-relay-prepare.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   createNativeLiveApiRouter,
 } from "../src/web-api/native-live-router.js";

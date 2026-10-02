@@ -3,7 +3,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { DiaryPageHeader } from "../web/src/pages/DiaryPageHeader.js";
+import { DiaryPageHeader } from "../web/src/pages/DiaryPageHeader..js";
 
 async function renderHeader() {
   const dom = new JSDOM("<main id=\"root\"></main>");

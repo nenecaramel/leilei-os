@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BackgroundLoopOrchestrator,
-} from "../src/domains/runtime/background-loop-orchestrator.js";
+} from "../src/domains/runtime/background/background-loop-orchestrator.js";
 import {
   SubjectStateBackgroundMaintenance,
-} from "../src/domains/runtime/subject-state-background-maintenance.js";
+} from "../src/domains/runtime/background/subject-state-background-maintenance.js";
 
 const NOW = "2026-09-30T00:00:00.000Z";
 

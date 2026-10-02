@@ -15,7 +15,7 @@ import test from "node:test";
 import {
   NAV_GROUPS,
   NAV_ITEMS,
-} from "../web/src/layout/NavigationGroups.js";
+} from "../web/src/layout/NavigationGroups..js";
 
 const appSource = readFileSync(
   new URL("../web/src/App.tsx", import.meta.url),

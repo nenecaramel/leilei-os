@@ -6,7 +6,7 @@ import {
 } from "../../database/schema.js";
 import type {
   NativeLiveRuntimeMetadata,
-} from "../bridge/native-live-runtime-protocol.js";
+} from "../bridge/protocol/native-live-runtime-protocol.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 

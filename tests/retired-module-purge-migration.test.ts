@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 const migration = readFileSync(
   "drizzle/0061_retire_memory_task_shared_paper.sql",
   "utf8",
 );
-const schema = readFileSync(
-  "src/database/schema.ts",
-  "utf8",
-);
+const schema = readSchemaSource();
 
 test("retired module purge drops only legacy Memory Task and Shared Paper storage", () => {
   for (const table of [

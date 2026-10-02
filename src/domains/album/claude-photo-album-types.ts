@@ -1,6 +1,6 @@
 import type {
   NativeLiveAttachmentDownloadSlot,
-} from "../bridge/native-live-attachment-storage.js";
+} from "../bridge/attachment/native-live-attachment-storage.js";
 
 export type ClaudeAlbumPhoto = {
   id: string;

@@ -15,7 +15,7 @@ import {
 } from "../src/domains/album/native-live-claude-photo-promoter.js";
 import {
   NativeLiveAttachmentError,
-} from "../src/domains/bridge/native-live-attachment-service.js";
+} from "../src/domains/bridge/attachment/native-live-attachment-service.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const attachmentId = "22222222-2222-4222-8222-222222222222";

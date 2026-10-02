@@ -8,7 +8,7 @@ import {
 } from "../src/database/schema.js";
 import {
   DrizzleClaudeAccountUsageRepository,
-} from "../src/domains/runtime/claude-account-usage.js";
+} from "../src/domains/runtime/shared/claude-account-usage.js";
 
 const enabled =
   process.env.RUN_CLAUDE_ACCOUNT_USAGE_DATABASE_TEST === "1";

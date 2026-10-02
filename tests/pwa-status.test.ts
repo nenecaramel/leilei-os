@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import test from "node:test";
-import { PwaStatus } from "../web/src/pwa/PwaStatus.js";
+import { PwaStatus } from "../web/src/pwa/PwaStatus..js";
 import { createPwaStateStore } from "../web/src/pwa/pwa-state.js";
 
 function installDom() {

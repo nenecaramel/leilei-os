@@ -3,8 +3,8 @@ import { JSDOM } from "jsdom";
 import test from "node:test";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
-import { UniverseMobileMap } from "../web/src/pages/universe/UniverseMobileMap.js";
-import { UniverseFloatingPopover } from "../web/src/pages/universe/UniverseFloatingPopover.js";
+import { UniverseMobileMap } from "../web/src/pages/universe/UniverseMobileMap..js";
+import { UniverseFloatingPopover } from "../web/src/pages/universe/UniverseFloatingPopover..js";
 import type { UniverseGalaxy, UniverseNode, UniverseRelation } from "../web/src/pages/universe/universe-types.js";
 import type { UniverseMapMode } from "../web/src/pages/universe/universe-map-interaction.js";
 

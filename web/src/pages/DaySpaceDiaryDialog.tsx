@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { WebApiError } from "../api/web-api-error.js";
-import { DiaryPaperEditor } from "./DiaryPaperEditor.js";
-import { PaperAuthorSignature, type PaperAuthorValue } from "./PaperAuthorSignature.js";
-import { PaperDetailDialog } from "./PaperDetailDialog.js";
+import { DiaryPaperEditor } from "./DiaryPaperEditor..js";
+import { PaperAuthorSignature, type PaperAuthorValue } from "./PaperAuthorSignature..js";
+import { PaperDetailDialog } from "./PaperDetailDialog..js";
 import { formatDaySpaceDateLabel } from "./day-space-location.js";
 import type { DaySpaceApi, DaySpaceDiary } from "./day-space-api.js";
 

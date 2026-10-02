@@ -7,7 +7,7 @@ import {
   readThoughtLifecycle,
   writeThoughtActive,
   writeThoughtDropped,
-} from "../src/domains/runtime/thought.js";
+} from "../src/domains/runtime/thought/thought.js";
 
 test("a thought is active or dropped, with no strength or decay", () => {
   assert.equal(THOUGHT_ACTIVE_LIMIT, 3);

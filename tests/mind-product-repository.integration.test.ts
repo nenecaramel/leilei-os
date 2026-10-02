@@ -20,17 +20,17 @@ import {
 } from "../src/domains/conversation/native-live-conversation-service.js";
 import {
   DrizzleMindProductRepository,
-} from "../src/domains/runtime/mind-product-repository.js";
+} from "../src/domains/runtime/mind/mind-product-repository.js";
 import {
   MindProductService,
   MindProductServiceError,
-} from "../src/domains/runtime/mind-product-service.js";
+} from "../src/domains/runtime/mind/mind-product-service.js";
 
-import { DrizzleProactivityWakeOpportunitySource } from "../src/domains/runtime/proactivity-wake-opportunity.js";
-import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state-runtime-repository.js";
-import { createDefaultBackendMindRuntime } from "../src/domains/runtime/default-backend-mind-runtime.js";
-import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
-import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/native-live-backend-turn-repository.js";
+import { DrizzleProactivityWakeOpportunitySource } from "../src/domains/runtime/proactivity/proactivity-wake-opportunity.js";
+import { DrizzleSubjectStateRuntimePort } from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
+import { createDefaultBackendMindRuntime } from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
+import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
+import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 
 const enabled =
   process.env.RUN_RUNTIME_MIND_PRODUCT_DATABASE_TEST === "1";

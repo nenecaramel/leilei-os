@@ -135,7 +135,7 @@ test("Quick Search aborts stale work and never lets an older response replace th
     return;
   }
 
-  const { QuickSearchPanel } = await import("../web/src/layout/QuickSearchPanel.js");
+  const { QuickSearchPanel } = await import("../web/src/layout/QuickSearchPanel..js");
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;
   const root = createRoot(container);

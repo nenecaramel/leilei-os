@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
-const schemaPath = new URL("../src/database/schema.ts", import.meta.url);
 const migrationPath = new URL(
   "../drizzle/0033_health_v2_daily_summaries.sql",
   import.meta.url,
@@ -15,7 +15,7 @@ const historicalHealthMigrationPath = new URL(
 );
 
 test("Health v2 appends a daily-summary table without restoring the retired Health model", async () => {
-  const schema = await readFile(schemaPath, "utf8");
+  const schema = readSchemaSource();
   const migration = await readFile(migrationPath, "utf8");
   const snapshot = await readFile(snapshotPath, "utf8");
   const journal = JSON.parse(await readFile(journalPath, "utf8")) as {

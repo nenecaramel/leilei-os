@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseMindSemanticActions,
-} from "../src/domains/runtime/mind-semantic-action.js";
+} from "../src/domains/runtime/mind/mind-semantic-action.js";
 import {
   NativeLiveMindSemanticActionExecutor,
-} from "../src/domains/bridge/native-live-mind-semantic-action.js";
+} from "../src/domains/bridge/mind/native-live-mind-semantic-action.js";
 import type {
   InitialContextManifest,
-} from "../src/domains/runtime/context-invocation-contract.js";
+} from "../src/domains/runtime/context/context-invocation-contract.js";
 import type {
   ThoughtDropResult,
-} from "../src/domains/runtime/thought-runtime-repository.js";
+} from "../src/domains/runtime/thought/thought-runtime-repository.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const conversationId = "22222222-2222-4222-8222-222222222222";

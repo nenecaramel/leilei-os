@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMindState } from "../src/domains/runtime/mind-writer.js";
-import { materializeMindWrites } from "../src/domains/runtime/mind-write-materializer.js";
-import { readSubjectStateTemporal } from "../src/domains/runtime/subject-state-temporal.js";
-import { isActiveThought } from "../src/domains/runtime/thought.js";
+import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
+import { materializeMindWrites } from "../src/domains/runtime/mind/mind-write-materializer.js";
+import { readSubjectStateTemporal } from "../src/domains/runtime/subject-state/subject-state-temporal.js";
+import { isActiveThought } from "../src/domains/runtime/thought/thought.js";
 
 const unsettled = {
   generationStatus: "committed",

@@ -6,7 +6,7 @@ import {
   readThoughtLifecycle,
   writeThoughtActive,
   writeThoughtDropped,
-} from "../src/domains/runtime/thought.js";
+} from "../src/domains/runtime/thought/thought.js";
 import {
   nativeLiveBackgroundModelJobs,
   nativeLiveChatAttachments,
@@ -21,10 +21,10 @@ import {
 } from "../src/database/schema.js";
 import {
   NativeLiveBackendTurnCoordinator,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   DrizzleNativeLiveBackendTurnPort,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";

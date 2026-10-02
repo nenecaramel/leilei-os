@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 type SnapshotIndex = {
   columns: Array<{ asc: boolean; expression: string }>;
@@ -40,7 +41,7 @@ test("0027 retention migration adds only the two age-order indexes", async () =>
 
   const [sql, schema, snapshotText, journalText] = await Promise.all([
     readFile(migrationPath, "utf8"),
-    readFile("src/database/schema.ts", "utf8"),
+    readSchemaSource(),
     readFile("drizzle/meta/0027_snapshot.json", "utf8"),
     readFile("drizzle/meta/_journal.json", "utf8"),
   ]);

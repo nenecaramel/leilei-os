@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   deleteExpiredNativeLiveAttachmentsBatch,
-} from "../src/domains/bridge/native-live-attachment-service.js";
+} from "../src/domains/bridge/attachment/native-live-attachment-service.js";
 
 test("attachment retention deletes object before durable metadata row", async () => {
   const order: string[] = [];

@@ -7,7 +7,7 @@ import {
   DiaryPaperDateEditor,
   DiaryPaperEditor,
   DiaryPaperMetadataEditor,
-} from "../web/src/pages/DiaryPaperEditor.js";
+} from "../web/src/pages/DiaryPaperEditor..js";
 
 async function withDom(element: React.ReactElement, check: (root: Element, window: Window) => void | Promise<void>) {
   const dom = new JSDOM("<main id=\"root\"></main>");

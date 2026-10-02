@@ -11,7 +11,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   NativeLiveMacOutputAttachmentSender,
-} from "../src/domains/bridge/native-live-mac-output-attachment-sender.js";
+} from "../src/domains/bridge/mac/native-live-mac-output-attachment-sender.js";
 
 test("send_file uploads the exact explicit workspace file", async (t) => {
   const root = await mkdtemp(

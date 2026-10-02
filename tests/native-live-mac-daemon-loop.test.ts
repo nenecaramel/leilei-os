@@ -5,11 +5,11 @@ import {
   type NativeLiveBackgroundModelExecutor,
   type NativeLiveMacDaemonRelayClient,
   type NativeLivePreparedCommandExecutor,
-} from "../src/domains/bridge/native-live-mac-daemon-loop.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
 import type {
   NativeLiveRuntimeCommand,
   NativeLiveRuntimeExecutionResult,
-} from "../src/domains/bridge/native-live-runtime-protocol.js";
+} from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
 import type {
   NativeLiveNormalizedEvent,
 } from "../src/domains/conversation/native-live-conversation-orchestrator.js";

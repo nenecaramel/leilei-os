@@ -6,7 +6,7 @@ import {
   CLAUDE_CODE_BACKGROUND_MUTEX,
   subjectStateBackgroundMutexKey,
   type BackgroundLoopObserverEvent,
-} from "../src/domains/runtime/background-loop-orchestrator.js";
+} from "../src/domains/runtime/background/background-loop-orchestrator.js";
 
 test("Background Loop Orchestrator honors priority and coalesces pending keys", async () => {
   const order: string[] = [];

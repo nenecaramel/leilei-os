@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { NativeLiveBackendMindRuntime } from "../src/domains/bridge/native-live-backend-mind-runtime.js";
+import type { NativeLiveBackendMindRuntime } from "../src/domains/bridge/mind/native-live-backend-mind-runtime.js";
 import type { NativeLiveContentBlockInput } from "../src/domains/conversation/native-live-conversation-types.js";
 import type {
   NativeLiveBackendTurnPort,
   NativeLivePreparedTurn,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpRecoveryRunner,
   nativeLiveMindFollowUpStateId,
   type NativeLiveMindFollowUpJob,
   type NativeLiveMindFollowUpPort,
-} from "../src/domains/bridge/native-live-mind-followup.js";
+} from "../src/domains/bridge/mind/native-live-mind-followup.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const prepareId = "22222222-2222-4222-8222-222222222222";

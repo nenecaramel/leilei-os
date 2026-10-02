@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { createRequire } from "node:module";
-import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog.js";
+import { TodoPaperDialog } from "../web/src/pages/TodoPaperDialog..js";
 
 const requireFromWeb = createRequire(new URL("../web/package.json", import.meta.url));
 const React = requireFromWeb("react");

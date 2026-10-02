@@ -2,7 +2,7 @@ import type {
   RequestHandler,
   Response,
 } from "express";
-import { NativeLiveRuntimeControlError } from "../../domains/bridge/native-live-runtime-control.js";
+import { NativeLiveRuntimeControlError } from "../../domains/bridge/runtime-interaction/native-live-runtime-control.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,

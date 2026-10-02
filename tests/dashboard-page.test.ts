@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
-import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
+import { DashboardPageContent } from "../web/src/pages/DashboardPage..js";
 
 const dashboardSource = readFileSync(new URL("../web/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 test("Home keeps only the approved Todo panels and Calendar structure", () => {

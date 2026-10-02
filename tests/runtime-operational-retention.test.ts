@@ -5,6 +5,7 @@ import {
   RUNTIME_OPERATIONAL_RETENTION_DAYS,
   RUNTIME_OPERATIONAL_RETENTION_SPEC,
 } from "../src/domains/retention/runtime-operational-retention.js";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 const source = readFileSync(
   new URL(
@@ -14,13 +15,7 @@ const source = readFileSync(
   "utf8",
 );
 
-const schemaSource = readFileSync(
-  new URL(
-    "../src/database/schema.ts",
-    import.meta.url,
-  ),
-  "utf8",
-);
+const schemaSource = readSchemaSource();
 
 const processRuntimeSource = readFileSync(
   new URL(

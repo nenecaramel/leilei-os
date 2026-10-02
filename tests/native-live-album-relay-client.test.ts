@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   NativeLiveMacHttpRelayClient,
-} from "../src/domains/bridge/native-live-mac-http-relay-client.js";
+} from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 
 const triggerUserMessageId =
   "11111111-1111-4111-8111-111111111111";

@@ -5,15 +5,15 @@ import {
   assertEffectRequeueAllowed,
   assertEffectTransition,
   assertEffectUnknownReconciliationAllowed,
-} from "../src/domains/runtime/effect-protocol.js";
+} from "../src/domains/runtime/effects/effect-protocol.js";
 import {
   RuntimeEffectDeliveryCoordinator,
-} from "../src/domains/runtime/runtime-effect-delivery-coordinator.js";
+} from "../src/domains/runtime/effects/runtime-effect-delivery-coordinator.js";
 import type {
   RuntimeEffectDispatchOutcome,
   RuntimeEffectPort,
   RuntimeEffectRecord,
-} from "../src/domains/runtime/runtime-effect-repository.js";
+} from "../src/domains/runtime/effects/runtime-effect-repository.js";
 
 const userId = "22222222-2222-4222-8222-222222222222";
 const effectId = "11111111-1111-4111-8111-111111111111";

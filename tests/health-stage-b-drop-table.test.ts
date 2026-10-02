@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { readSchemaSource } from "./helpers/schema-source.js";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const retiredHealthRoutePattern = /\/api\/v1\/health(?=\/|["'])/u;
@@ -16,7 +17,7 @@ function numberedFile(directory: string, number: number, extension: string): str
 }
 
 test("current Drizzle schema no longer exports the retired Health table", () => {
-  const schema = read("src/database/schema.ts");
+  const schema = readSchemaSource();
   assert.doesNotMatch(schema, /healthRecords/);
   assert.doesNotMatch(schema, /health_records/);
 });

@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import type { WebApiClient } from "../web/src/api/useWebApiClient.js";
-import { DiaryPageContent } from "../web/src/pages/DiaryPage.js";
+import { DiaryPageContent } from "../web/src/pages/DiaryPage..js";
 import {
   createArchivedDiaryDetailLocation,
   createDiaryArchiveLocation,

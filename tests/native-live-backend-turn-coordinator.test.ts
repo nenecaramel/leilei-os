@@ -5,13 +5,13 @@ import {
   type NativeLiveBackendTurnPort,
   type NativeLivePreparedTurn,
   type NativeLivePreparePortResult,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import type {
   NativeLiveContentBlockInput,
   NativeLiveMessage,
   NativeLiveProviderCheckpoint,
 } from "../src/domains/conversation/native-live-conversation-types.js";
-import type { NativeLiveBackendMindRuntime } from "../src/domains/bridge/native-live-backend-mind-runtime.js";
+import type { NativeLiveBackendMindRuntime } from "../src/domains/bridge/mind/native-live-backend-mind-runtime.js";
 
 const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const prepareId = "11111111-1111-4111-8111-111111111111";

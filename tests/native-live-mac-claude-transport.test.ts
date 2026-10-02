@@ -4,7 +4,7 @@ import {
   createNativeLiveMacClaudeTransport,
   resolveNativeLiveMacClaudeTransportKind,
   sanitizeNativeLiveClaudeEnvironment,
-} from "../src/domains/bridge/native-live-mac-claude-transport.js";
+} from "../src/domains/bridge/mac/native-live-mac-claude-transport.js";
 
 test("Mac daemon Claude transport defaults to Agent SDK", () => {
   assert.equal(

@@ -18,7 +18,7 @@ it in a separate follow-up deployment only after writer shutdown is live.
 
 ## Thought
 
-A thought is `active` or `dropped` (`thought_v2` in the payload, `src/domains/runtime/thought.ts`).
+A thought is `active` or `dropped` (`thought_v2` in the payload, `src/domains/runtime/thought/thought.ts`).
 There is no strength, pressure, half-life or dormancy.
 
 - At most **3** thoughts are active (`THOUGHT_ACTIVE_LIMIT`). Claude gets a full versioned snapshot only when that active set changes; unchanged snapshots are not repeated.
@@ -31,7 +31,7 @@ The limit is a constant. Raising it needs no migration.
 
 ## What the model sees
 
-`src/domains/runtime/context-assembler.ts` renders:
+`src/domains/runtime/context/context-assembler.ts` renders:
 
 ```
 <leileios_context>
@@ -86,7 +86,7 @@ intents and actions skipped.
 
 ## One write path
 
-Every Mind write goes through `createMindState` (`src/domains/runtime/mind-writer.ts`), whether it
+Every Mind write goes through `createMindState` (`src/domains/runtime/mind/mind-writer.ts`), whether it
 comes from a tag in an assistant message or from the owner in the app. Time (`temporal_v1`), scope,
 provenance, status axes and the thought lifecycle are produced there and nowhere else.
 

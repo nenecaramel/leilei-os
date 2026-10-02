@@ -7,15 +7,15 @@ import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import {
   resolveNativeLiveMacWorkspaceRegistryPath,
-} from "../src/domains/bridge/native-live-mac-daemon-config.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
 import {
   loadNativeLiveMacWorkspaceRegistry,
   removeNativeLiveMacWorkspaceRegistryEntry,
   setNativeLiveMacWorkspaceRegistryEntry,
-} from "../src/domains/bridge/native-live-mac-workspace-registry.js";
+} from "../src/domains/bridge/mac/native-live-mac-workspace-registry.js";
 import {
   pickNativeLiveMacWorkspaceRoot,
-} from "../src/domains/bridge/native-live-mac-workspace-picker.js";
+} from "../src/domains/bridge/mac/native-live-mac-workspace-picker.js";
 
 const registryPath =
   resolveNativeLiveMacWorkspaceRegistryPath(

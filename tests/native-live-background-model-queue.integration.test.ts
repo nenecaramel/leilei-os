@@ -11,7 +11,7 @@ import {
 } from "../src/database/schema.js";
 import {
   DrizzleProactivityWakeRepository,
-} from "../src/domains/runtime/proactivity-wake-repository.js";
+} from "../src/domains/runtime/proactivity/proactivity-wake-repository.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -23,7 +23,7 @@ import {
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueError,
   NativeLiveBackgroundModelQueueService,
-} from "../src/domains/bridge/native-live-background-model-queue.js";
+} from "../src/domains/bridge/background/native-live-background-model-queue.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_RELAY_DATABASE_TEST === "1";

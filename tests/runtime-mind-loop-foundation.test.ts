@@ -5,25 +5,25 @@ import type {
   NativeLiveConversation,
   NativeLiveMessage,
 } from "../src/domains/conversation/native-live-conversation-types.js";
-import { recallBreath } from "../src/domains/runtime/breath-recall.js";
+import { recallBreath } from "../src/domains/runtime/breath/breath-recall.js";
 import {
   assembleTurnContext,
   assembledTurnContextFromManifest,
-} from "../src/domains/runtime/context-assembler.js";
-import { parseMindWriteIntents } from "../src/domains/runtime/mind-intent-parser.js";
-import type { ContextLineageState } from "../src/domains/runtime/context-lineage.js";
-import { parseMindWriteIntentsFromBlocks } from "../src/domains/runtime/mind-block-parser.js";
-import { materializeMindWrites } from "../src/domains/runtime/mind-write-materializer.js";
+} from "../src/domains/runtime/context/context-assembler.js";
+import { parseMindWriteIntents } from "../src/domains/runtime/mind/mind-intent-parser.js";
+import type { ContextLineageState } from "../src/domains/runtime/context/context-lineage.js";
+import { parseMindWriteIntentsFromBlocks } from "../src/domains/runtime/mind/mind-block-parser.js";
+import { materializeMindWrites } from "../src/domains/runtime/mind/mind-write-materializer.js";
 import {
   canonicalPathToHead,
   projectCanonicalSurface,
-} from "../src/domains/runtime/surface-projector.js";
-import { decideProvisionalSettlement } from "../src/domains/runtime/subject-state-settlement.js";
-import type { SubjectStateWrite } from "../src/domains/runtime/subject-state-contract.js";
+} from "../src/domains/runtime/shared/surface-projector.js";
+import { decideProvisionalSettlement } from "../src/domains/runtime/subject-state/subject-state-settlement.js";
+import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
 import {
   writeThoughtActive,
   writeThoughtDropped,
-} from "../src/domains/runtime/thought.js";
+} from "../src/domains/runtime/thought/thought.js";
 
 const now = "2026-09-22T08:00:00.000Z";
 const settledStatus = {

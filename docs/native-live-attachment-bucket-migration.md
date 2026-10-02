@@ -17,12 +17,12 @@ There is no startup migration. After deployment/configuration has been separatel
 ```ts
 import { createDatabase } from "../src/database/client.js";
 import { env, getNativeLiveAttachmentStorageConfig } from "../src/config/env.js";
-import { S3PresignedAttachmentObjectStore } from "../src/domains/bridge/native-live-attachment-storage.js";
+import { S3PresignedAttachmentObjectStore } from "../src/domains/bridge/attachment/native-live-attachment-storage.js";
 import {
   DrizzleNativeLiveInlineAttachmentMigrationRepository,
   migrateNativeLiveAttachmentInlineContentBatch,
   migrateNativeLiveAttachmentInlineContentUntilIdle,
-} from "../src/domains/bridge/native-live-attachment-migration.js";
+} from "../src/domains/bridge/attachment/native-live-attachment-migration.js";
 
 const config = getNativeLiveAttachmentStorageConfig(env);
 if (!config) throw new Error("Bucket configuration is required");

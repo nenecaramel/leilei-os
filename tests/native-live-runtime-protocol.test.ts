@@ -5,7 +5,7 @@ import {
   assertRuntimeResultMatchesCommand,
   parseNativeLiveRuntimeCommand,
   parseNativeLiveRuntimeExecutionResult,
-} from "../src/domains/bridge/native-live-runtime-protocol.js";
+} from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
 
 const prepareId = "11111111-1111-4111-8111-111111111111";
 const requestId = "22222222-2222-4222-8222-222222222222";

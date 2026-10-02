@@ -5,7 +5,7 @@ import {
   resolveNativeLiveMacDaemonConfig,
   resolveNativeLiveMacWorkspaceRoots,
   stableListenerInstanceId,
-} from "../src/domains/bridge/native-live-mac-daemon-config.js";
+} from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
 
 const fakeFilesystem = {
   realpath: (path: string) => path,

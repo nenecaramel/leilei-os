@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacHttpRelayClient,
-} from "../src/domains/bridge/native-live-mac-http-relay-client.js";
+} from "../src/domains/bridge/mac/native-live-mac-http-relay-client.js";
 import type {
   NativeLiveRuntimeExecutionResult,
-} from "../src/domains/bridge/native-live-runtime-protocol.js";
+} from "../src/domains/bridge/protocol/native-live-runtime-protocol.js";
 
 const listenerId = "11111111-1111-4111-8111-111111111111";
 const prepareId = "22222222-2222-4222-8222-222222222222";

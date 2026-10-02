@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NativeLiveMacRuntimeExecutor,
-} from "../src/domains/bridge/native-live-mac-runtime-executor.js";
+} from "../src/domains/bridge/mac/native-live-mac-runtime-executor.js";
 import type {
   NativeLiveClaudeRuntime,
 } from "../src/domains/conversation/native-live-conversation-orchestrator.js";

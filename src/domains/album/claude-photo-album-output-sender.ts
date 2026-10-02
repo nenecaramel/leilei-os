@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   NativeLiveAttachmentService,
-} from "../bridge/native-live-attachment-service.js";
+} from "../bridge/attachment/native-live-attachment-service.js";
 import type {
   ClaudePhotoAlbumService,
 } from "./claude-photo-album-service.js";

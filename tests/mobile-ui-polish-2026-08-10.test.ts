@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 import React from "../web/node_modules/react/index.js";
 import { createRoot } from "../web/node_modules/react-dom/client.js";
 import { BrowserRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
-import { DashboardPageContent } from "../web/src/pages/DashboardPage.js";
+import { DashboardPageContent } from "../web/src/pages/DashboardPage..js";
 
 const diaryHeader = readFileSync(
   new URL("../web/src/pages/DiaryPageHeader.tsx", import.meta.url),

@@ -3,10 +3,10 @@ import { randomUUID, createHash } from "node:crypto";
 import test from "node:test";
 import postgres from "postgres";
 import { createDatabase } from "../src/database/client.js";
-import { DrizzleNativeLiveInlineAttachmentMigrationRepository, migrateNativeLiveAttachmentInlineContentBatch } from "../src/domains/bridge/native-live-attachment-migration.js";
-import { deleteExpiredNativeLiveAttachmentsBatch } from "../src/domains/bridge/native-live-attachment-service.js";
-import { PostgresInlineAttachmentObjectStore } from "../src/domains/bridge/native-live-attachment-postgres-storage.js";
-import { S3PresignedAttachmentObjectStore } from "../src/domains/bridge/native-live-attachment-storage.js";
+import { DrizzleNativeLiveInlineAttachmentMigrationRepository, migrateNativeLiveAttachmentInlineContentBatch } from "../src/domains/bridge/attachment/native-live-attachment-migration.js";
+import { deleteExpiredNativeLiveAttachmentsBatch } from "../src/domains/bridge/attachment/native-live-attachment-service.js";
+import { PostgresInlineAttachmentObjectStore } from "../src/domains/bridge/attachment/native-live-attachment-postgres-storage.js";
+import { S3PresignedAttachmentObjectStore } from "../src/domains/bridge/attachment/native-live-attachment-storage.js";
 
 test("isolated Postgres: concurrent migration and retention preserve byte ownership", {
   skip: process.env.RUN_NATIVE_LIVE_ATTACHMENT_DATABASE_TEST !== "1",

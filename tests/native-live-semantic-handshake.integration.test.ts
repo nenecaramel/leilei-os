@@ -13,20 +13,20 @@ import {
 import {
   DrizzleNativeLiveBackendRelayRepository,
   NativeLiveBackendRelayService,
-} from "../src/domains/bridge/native-live-backend-relay.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import {
   NativeLiveBackendRelayPrepareCoordinator,
-} from "../src/domains/bridge/native-live-backend-relay-prepare.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   NativeLiveBackendTurnCoordinator,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   DrizzleNativeLiveBackendTurnPort,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
   NativeLiveSemanticHandshakeService,
-} from "../src/domains/bridge/native-live-semantic-handshake.js";
+} from "../src/domains/bridge/mind/native-live-semantic-handshake.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";
@@ -35,10 +35,10 @@ import {
 } from "../src/domains/conversation/native-live-conversation-service.js";
 import {
   createDefaultBackendMindRuntime,
-} from "../src/domains/runtime/default-backend-mind-runtime.js";
+} from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
 import {
   DrizzleSubjectStateRuntimePort,
-} from "../src/domains/runtime/subject-state-runtime-repository.js";
+} from "../src/domains/runtime/subject-state/subject-state-runtime-repository.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST === "1";

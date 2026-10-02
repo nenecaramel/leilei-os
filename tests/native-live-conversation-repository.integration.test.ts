@@ -21,9 +21,9 @@ import { NativeLiveConversationService } from "../src/domains/conversation/nativ
 import {
   DrizzleNativeLiveBackgroundModelQueueRepository,
   NativeLiveBackgroundModelQueueService,
-} from "../src/domains/bridge/native-live-background-model-queue.js";
-import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity-wake-repository.js";
-import { DrizzleRuntimeEffectRepository } from "../src/domains/runtime/runtime-effect-repository.js";
+} from "../src/domains/bridge/background/native-live-background-model-queue.js";
+import { DrizzleProactivityWakeRepository } from "../src/domains/runtime/proactivity/proactivity-wake-repository.js";
+import { DrizzleRuntimeEffectRepository } from "../src/domains/runtime/effects/runtime-effect-repository.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST === "1";

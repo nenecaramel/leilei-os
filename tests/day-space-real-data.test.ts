@@ -4,7 +4,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { MemoryRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
-import { DaySpacePageContent } from "../web/src/pages/DaySpacePage.js";
+import { DaySpacePageContent } from "../web/src/pages/DaySpacePage..js";
 import type { DaySpaceApi } from "../web/src/pages/day-space-api.js";
 
 async function render(api: DaySpaceApi) {

@@ -11,13 +11,13 @@ import {
 import {
   DrizzleNativeLiveBackendRelayRepository,
   NativeLiveBackendRelayService,
-} from "../src/domains/bridge/native-live-backend-relay.js";
+} from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import {
   NativeLiveBackendTurnCoordinator,
-} from "../src/domains/bridge/native-live-backend-turn-coordinator.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import {
   DrizzleNativeLiveBackendTurnPort,
-} from "../src/domains/bridge/native-live-backend-turn-repository.js";
+} from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
 import {
   DrizzleNativeLiveConversationRepository,
 } from "../src/domains/conversation/native-live-conversation-repository.js";

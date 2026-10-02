@@ -15,7 +15,7 @@ import {
   removeNativeLiveMacWorkspaceRegistryEntry,
   setNativeLiveMacWorkspaceRegistryEntry,
   writeNativeLiveMacWorkspaceRegistry,
-} from "../src/domains/bridge/native-live-mac-workspace-registry.js";
+} from "../src/domains/bridge/mac/native-live-mac-workspace-registry.js";
 
 const workspaceA = "11111111-1111-4111-8111-111111111111";
 const workspaceB = "22222222-2222-4222-8222-222222222222";

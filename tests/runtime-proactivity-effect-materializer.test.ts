@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ProactivityEffectMaterializer,
-} from "../src/domains/runtime/proactivity-effect-materializer.js";
+} from "../src/domains/runtime/effects/proactivity-effect-materializer.js";
 import {
   hashProactivityMessagePayload,
   type ProactivityWakeDecision,
-} from "../src/domains/runtime/proactivity-wake-contract.js";
+} from "../src/domains/runtime/proactivity/proactivity-wake-contract.js";
 import type {
   ProactivityWakeRecord,
-} from "../src/domains/runtime/proactivity-wake-state.js";
+} from "../src/domains/runtime/proactivity/proactivity-wake-state.js";
 import type {
   RuntimeEffectCreate,
   RuntimeEffectPort,
   RuntimeEffectRecord,
-} from "../src/domains/runtime/runtime-effect-repository.js";
+} from "../src/domains/runtime/effects/runtime-effect-repository.js";
 
 const userId = "22222222-2222-4222-8222-222222222222";
 const wakeId = "11111111-1111-4111-8111-111111111111";

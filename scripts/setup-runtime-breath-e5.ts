@@ -9,7 +9,7 @@ import {
   defaultLocalE5ModelCacheDir,
   localE5ModelId,
   localE5PackageVersion,
-} from "../src/domains/runtime/local-e5-embedding.js";
+} from "../src/domains/runtime/breath/local-e5-embedding.js";
 
 const EXPECTED_MODEL_BYTES = 118_308_185;
 const EXPECTED_MODEL_SHA256 =

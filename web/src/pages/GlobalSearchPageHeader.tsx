@@ -7,8 +7,8 @@ import {
   DashboardIcon,
   ScopeIcon,
   SearchIcon,
-} from "../components/icons.js";
-import { NativeDateInput } from "../components/NativeDateInput.js";
+} from "../components/icons..js";
+import { NativeDateInput } from "../components/NativeDateInput..js";
 import {
   SEARCH_MODULES,
   type GlobalSearchFilters,

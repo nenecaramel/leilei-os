@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
-import { NativeLiveRuntimeInteractionError } from "../../domains/bridge/native-live-runtime-interaction.js";
-import { NativeLiveRuntimeControlError } from "../../domains/bridge/native-live-runtime-control.js";
+import { NativeLiveRuntimeInteractionError } from "../../domains/bridge/runtime-interaction/native-live-runtime-interaction.js";
+import { NativeLiveRuntimeControlError } from "../../domains/bridge/runtime-interaction/native-live-runtime-control.js";
 import type { NativeLiveApiDependencies } from "./dependencies.js";
 import {
   requireWebUser,

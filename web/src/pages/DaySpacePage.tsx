@@ -16,9 +16,9 @@ import {
   parseExplicitDaySpaceDate,
   shiftBusinessDate,
 } from "./day-space-location.js";
-import { DaySpaceDatePicker } from "./DaySpaceDatePicker.js";
-import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog.js";
-import { TodoPaperDialog } from "./TodoPaperDialog.js";
+import { DaySpaceDatePicker } from "./DaySpaceDatePicker..js";
+import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog..js";
+import { TodoPaperDialog } from "./TodoPaperDialog..js";
 import { ModuleSearchButton, ModuleSearchField, ModuleStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
 import { ModuleState, PageState } from "../components/StateSurface";
 import { composeDaySpacePapers, resolveDaySpaceDefaultDate, type DaySpaceModuleState } from "./day-space-data.js";
