@@ -1,7 +1,7 @@
 import Foundation
 
 extension NativeLiveTurnActivityProjection {
-private static func tasks(
+static func tasks(
         from events: [NativeLiveRuntimeEventSnapshot]
     ) -> [TaskActivity] {
         var values: [String: TaskActivity] = [:]
