@@ -459,6 +459,35 @@ struct NativeLiveRuntimeSurfaceState:
     var interactions: [NativeLiveRuntimeInteractionSnapshot]
     var controls: [NativeLiveRuntimeControlSnapshot]
     var nextAfterSequence: Int
+    var foregroundTurnCompleted = false
+
+    var visibleBackgroundTaskIDs: Set<String> {
+        for event in events.reversed() {
+            guard event.event.type == "task",
+                  event.event.payload?["phase"]?.stringValue
+                    == "active_set",
+                  let tasks =
+                    event.event.payload?["tasks"]?.arrayValue else {
+                continue
+            }
+
+            return Set(
+                tasks.compactMap { value in
+                    guard let task = value.objectValue,
+                          task["ambient"]?.boolValue != true else {
+                        return nil
+                    }
+                    return task["task_id"]?.stringValue
+                }
+            )
+        }
+
+        return []
+    }
+
+    var hasVisibleBackgroundTasks: Bool {
+        !visibleBackgroundTaskIDs.isEmpty
+    }
 
     var streamingText: String {
         let deltas = events.compactMap { event -> String? in
