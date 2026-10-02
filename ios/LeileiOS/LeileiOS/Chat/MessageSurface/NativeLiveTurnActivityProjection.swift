@@ -170,15 +170,15 @@ struct NativeLiveTurnActivityProjection: Equatable {
             }
         }
 
+        if let lifecycle = lifecycle.last {
+            return lifecycle.title
+        }
+
         if let task = tasks
             .filter({ !$0.isTerminal })
             .sorted(by: { $0.order < $1.order })
             .last {
             return task.displayTitle
-        }
-
-        if let lifecycle = lifecycle.last {
-            return lifecycle.title
         }
 
         if turnIsActive,
