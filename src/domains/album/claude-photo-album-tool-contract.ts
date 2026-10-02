@@ -16,6 +16,13 @@ export type ClaudeAlbumToolPhoto = {
   createdAt: string;
 };
 
+export type ClaudeAlbumToolImage = {
+  data: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+};
+
 export type ClaudeAlbumToolAttachment = {
   attachmentId: string;
   filename: string;
@@ -41,6 +48,18 @@ export type NativeLiveClaudeAlbumRuntimeHandlers = {
     query: string | null;
     limit: number;
   }): Promise<ClaudeAlbumToolPhoto[]>;
+  viewPhoto(input: {
+    photoId: string;
+  }): Promise<{
+    photo: ClaudeAlbumToolPhoto;
+    image: ClaudeAlbumToolImage;
+  }>;
+  viewPhoto(input: {
+    photoId: string;
+  }): Promise<{
+    photo: ClaudeAlbumToolPhoto;
+    image: ClaudeAlbumToolImage;
+  }>;
   sendPhoto(input: {
     photoId: string;
   }): Promise<{
