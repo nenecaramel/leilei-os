@@ -341,6 +341,8 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
   async recordBreathRecall(input: {
     userId: string;
     subjectId: string;
+    conversationId: string;
+    contextEpoch: number;
     stateIds: readonly string[];
     recalledAt: string;
     salienceBoost: number;
@@ -405,6 +407,10 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
             input.salienceBoost,
             input.sourceMessageId,
             input.lifecyclePolicy,
+            {
+              conversationId: input.conversationId,
+              epoch: input.contextEpoch,
+            },
           );
         } catch {
           continue;
