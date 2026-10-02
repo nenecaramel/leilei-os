@@ -96,6 +96,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   for (const symbol of [
     "struct NativeLiveRuntimeAssistantRow",
     "struct NativeLiveTurnActivityView",
+    "struct NativeLiveLifecycleActivityRow",
     "struct NativeLiveTaskActivityRow",
     "struct NativeLiveToolActivityRow",
     "struct AssistantTypingIndicatorRow",
@@ -132,6 +133,8 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(projection, /childTools/);
   assert.match(projection, /topLevelTools/);
   assert.match(projection, /pendingInteractionIDs/);
+  assert.match(projection, /api_retry/);
+  assert.match(projection, /command_lifecycle/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
