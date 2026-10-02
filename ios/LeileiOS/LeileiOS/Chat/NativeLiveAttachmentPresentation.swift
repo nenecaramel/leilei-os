@@ -615,7 +615,8 @@ private struct NativeLiveAttachmentGalleryPage: View {
             block: block,
             mode: .fit,
             cornerRadius: 0,
-            maxPixelSize: 2_048
+            maxPixelSize: 2_048,
+            allowsRetry: true
         )
         .scaleEffect(scale)
         .offset(offset)
@@ -733,6 +734,7 @@ private struct NativeLiveAttachmentRemoteImage: View {
     let mode: NativeLiveRemoteImageMode
     let cornerRadius: CGFloat
     let maxPixelSize: Int
+    var allowsRetry = false
 
     @State private var image: UIImage?
     @State private var didFail = false
@@ -781,14 +783,17 @@ private struct NativeLiveAttachmentRemoteImage: View {
                     VStack(spacing: 7) {
                         Image(
                             systemName:
-                                "arrow.clockwise"
+                                allowsRetry
+                                    ? "arrow.clockwise"
+                                    : "photo.badge.exclamationmark"
                         )
                         .font(.system(
                             size: 18,
                             weight: .semibold
                         ))
 
-                        if mode == .fit {
+                        if allowsRetry
+                            && mode == .fit {
                             Text("Retry")
                                 .font(.caption)
                         }
@@ -808,7 +813,8 @@ private struct NativeLiveAttachmentRemoteImage: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            guard didFail else {
+            guard allowsRetry,
+                  didFail else {
                 return
             }
             retryGeneration += 1
