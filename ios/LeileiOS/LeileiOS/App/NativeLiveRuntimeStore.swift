@@ -73,10 +73,13 @@ extension AppModel {
                     if surface.hasVisibleBackgroundTasks {
                         sawBackgroundDrainCandidate = false
                     } else if sawBackgroundDrainCandidate {
-                        await self.refreshNativeLiveCurrentPath(
-                            force: true,
-                            surfaceTransientFailure: false
-                        )
+                        if self.activeNativeLiveConversationID
+                            == conversationID {
+                            await self.refreshNativeLiveCurrentPath(
+                                force: true,
+                                surfaceTransientFailure: false
+                            )
+                        }
                         self.stopNativeLiveRuntimeObservation(
                             prepareID: prepareID
                         )
