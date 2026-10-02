@@ -237,5 +237,14 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
     });
   }
 
+  for (const [messageId, activity] of activityByMessage) {
+    if (
+      activity.events.length === 0
+      && activity.interactions.length === 0
+    ) {
+      activityByMessage.delete(messageId);
+    }
+  }
+
   return activityByMessage;
 }
