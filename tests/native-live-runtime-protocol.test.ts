@@ -482,6 +482,93 @@ test("runtime metadata preserves Agent SDK result usage, thinking, permission an
   );
 });
 
+test("runtime metadata accepts bounded durable MCP output resources", () => {
+  const result = parseNativeLiveRuntimeExecutionResult({
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [],
+    runtime_metadata: {
+      context_usage: null,
+      output_resources: [{
+        source: "tool_result",
+        tool_use_id: "tool-resource",
+        task_id: null,
+        uri: "mcp://exports/report.pdf",
+        name: "report.pdf",
+        title: "Report",
+        description: "Generated report",
+        mime_type: "application/pdf",
+        size: 12345,
+        annotations: {
+          audience: ["user"],
+        },
+        metadata: {
+          source: "mcp",
+        },
+      }],
+    },
+  });
+
+  assert.equal(result.status, "success");
+  if (result.status !== "success") {
+    throw new Error("expected success");
+  }
+  assert.deepEqual(
+    result.runtime_metadata?.output_resources,
+    [{
+      source: "tool_result",
+      tool_use_id: "tool-resource",
+      task_id: null,
+      uri: "mcp://exports/report.pdf",
+      name: "report.pdf",
+      title: "Report",
+      description: "Generated report",
+      mime_type: "application/pdf",
+      size: 12345,
+      annotations: {
+        audience: ["user"],
+      },
+      metadata: {
+        source: "mcp",
+      },
+    }],
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeExecutionResult({
+        protocol_version: 3,
+        prepare_id: prepareId,
+        request_id: requestId,
+        conversation_id: conversationId,
+        status: "success",
+        provider_session_id: "provider-child",
+        normalized_events: [],
+        runtime_metadata: {
+          context_usage: null,
+          output_resources: [{
+            source: "unknown",
+            tool_use_id: null,
+            task_id: null,
+            uri: "mcp://exports/report.pdf",
+            name: null,
+            title: null,
+            description: null,
+            mime_type: null,
+            size: null,
+            annotations: null,
+            metadata: null,
+          }],
+        },
+      }),
+    /output_resources\[0\]\.source is invalid/,
+  );
+});
+
 test("runtime metadata rejects unbounded execution readback errors", () => {
   assert.throws(
     () =>

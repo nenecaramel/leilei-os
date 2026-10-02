@@ -524,6 +524,147 @@ test("normalizes Agent SDK tool_result blocks emitted on user messages", () => {
   assert.equal(events[2].payload.is_error, false);
 });
 
+test("preserves Agent SDK MCP resourceLinks on the matching foreground tool result", () => {
+  const events = normalizeClaudeEvents(
+    [
+      { type: "system", subtype: "init", session_id: "s" },
+      {
+        type: "user",
+        session_id: "s",
+        tool_use_result: {
+          resourceLinks: [
+            {
+              type: "resource_link",
+              uri: "file:///project/report.pdf",
+              name: "report.pdf",
+              title: "Generated report",
+              description: "Final generated report",
+              mimeType: "application/pdf",
+              size: 12345,
+              annotations: {
+                audience: ["user"],
+                priority: 0.9,
+              },
+              _meta: {
+                source: "mcp",
+              },
+            },
+          ],
+        },
+        message: {
+          content: [{
+            type: "tool_result",
+            tool_use_id: "tu-resource",
+            content: "Generated one file.",
+            is_error: false,
+          }],
+        },
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["session", "tool_result"],
+  );
+  assert.deepEqual(events[1].payload.resource_links, [{
+    type: "resource_link",
+    uri: "file:///project/report.pdf",
+    name: "report.pdf",
+    title: "Generated report",
+    description: "Final generated report",
+    mime_type: "application/pdf",
+    size: 12345,
+    annotations: {
+      audience: ["user"],
+      priority: 0.9,
+    },
+    metadata: {
+      source: "mcp",
+    },
+  }]);
+  assert.equal(events[1].payload.output, "Generated one file.");
+});
+
+test("does not attach ambiguous top-level resourceLinks to multiple tool results", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      tool_use_result: {
+        resourceLinks: [{
+          type: "resource_link",
+          uri: "file:///project/ambiguous.txt",
+          name: "ambiguous.txt",
+        }],
+      },
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tu-a",
+            content: "A",
+            is_error: false,
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "tu-b",
+            content: "B",
+            is_error: false,
+          },
+        ],
+      },
+    }],
+    base,
+  );
+
+  assert.equal(events.length, 2);
+  assert.equal("resource_links" in events[0].payload, false);
+  assert.equal("resource_links" in events[1].payload, false);
+});
+
+test("uses tool_use_result identity to bind resourceLinks when multiple results share a user message", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      tool_use_result: {
+        tool_use_id: "tu-b",
+        resourceLinks: [{
+          type: "resource_link",
+          uri: "artifact://generated/chart",
+          name: "chart",
+          mimeType: "image/svg+xml",
+        }],
+      },
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tu-a",
+            content: "A",
+            is_error: false,
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "tu-b",
+            content: "B",
+            is_error: false,
+          },
+        ],
+      },
+    }],
+    base,
+  );
+
+  assert.equal("resource_links" in events[0].payload, false);
+  assert.equal(
+    events[1].payload.resource_links[0].uri,
+    "artifact://generated/chart",
+  );
+});
+
 test("bounds oversized tool_result text without changing ordinary tool semantics", () => {
   const huge = "x".repeat(100_000);
   const events = normalizeClaudeEvents(
@@ -722,6 +863,46 @@ test("stateful normalizer preserves sequence and partial accumulation across str
   assert.deepEqual(events.map((event) => event.event_id), ["event-1", "event-2", "event-3", "event-4"]);
 });
 
+
+test("preserves background task_notification resource_links with tool provenance", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "system",
+      subtype: "task_notification",
+      session_id: "s",
+      task_id: "task-resource",
+      tool_use_id: "tool-resource",
+      status: "completed",
+      summary: "Generated export",
+      resource_links: [
+        {
+          type: "resource_link",
+          uri: "mcp://exports/final.csv",
+          name: "final.csv",
+          mimeType: "text/csv",
+          size: 4096,
+        },
+      ],
+    }],
+    base,
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "task");
+  assert.equal(events[0].payload.phase, "notification");
+  assert.equal(events[0].payload.tool_use_id, "tool-resource");
+  assert.deepEqual(events[0].payload.resource_links, [{
+    type: "resource_link",
+    uri: "mcp://exports/final.csv",
+    name: "final.csv",
+    title: null,
+    description: null,
+    mime_type: "text/csv",
+    size: 4096,
+    annotations: null,
+    metadata: null,
+  }]);
+});
 
 test("normalizes Agent SDK task lifecycle and background task level signals without local paths", () => {
   const events = normalizeClaudeEvents(
