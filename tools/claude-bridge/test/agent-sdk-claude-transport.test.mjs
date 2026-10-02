@@ -545,7 +545,7 @@ test("legacy local session keeps working if durable backfill fails", async () =>
     parent_status_before: null,
     backfill_status: "failed",
     backfill_failure_reason: "remote store unavailable",
-    mirror_status: "not_observed",
+    mirror_status: "ok",
     mirror_failure_reason: null,
     status_after: null,
     status_failure_reason: null,
