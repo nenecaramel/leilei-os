@@ -96,6 +96,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 "completed",
                 "failed",
                 "cancelled",
+                "stopped",
             ].contains(status)
         }
 
@@ -104,7 +105,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
 
         var isCancelled: Bool {
-            status == "cancelled"
+            status == "cancelled" || status == "stopped"
         }
 
         private func normalized(_ value: String?) -> String? {
@@ -453,6 +454,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
             if let backgrounded =
                 payload["is_backgrounded"]?.boolValue {
                 task.isBackgrounded = backgrounded
+            } else if payload["ambient"]?.boolValue == true {
+                task.isBackgrounded = true
             }
             if let depth =
                 payload["spawn_depth"]?.numberValue {
@@ -502,9 +505,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 task.description =
                     object["description"]?.stringValue
                     ?? task.description
-                if let ambient =
-                    object["ambient"]?.boolValue {
-                    task.isBackgrounded = ambient
+                if task.isBackgrounded == nil {
+                    task.isBackgrounded = true
                 }
                 task.order = min(
                     task.order,
