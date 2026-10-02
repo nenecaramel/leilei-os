@@ -763,7 +763,7 @@ export function parseNativeLiveRuntimeOutputResources(
         `output_resources[${index}].mime_type`,
         256,
       ),
-      size: nullableFiniteNumber(
+      size: nullableNonNegativeFiniteNumber(
         body.size,
         `output_resources[${index}].size`,
       ),
@@ -1559,6 +1559,19 @@ function parseContextUsageCategory(
     ),
     is_deferred: deferred as boolean | null,
   };
+}
+
+function nullableNonNegativeFiniteNumber(
+  value: unknown,
+  field: string,
+): number | null {
+  const parsed = nullableFiniteNumber(value, field);
+  if (parsed !== null && parsed < 0) {
+    throw new NativeLiveRuntimeProtocolError(
+      `${field} must be non-negative or null.`,
+    );
+  }
+  return parsed;
 }
 
 function nullableFiniteNumber(
