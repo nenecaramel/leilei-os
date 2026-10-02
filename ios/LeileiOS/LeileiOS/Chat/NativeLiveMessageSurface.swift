@@ -2386,75 +2386,61 @@ private struct NativeLiveAttachmentRemoteImage: View {
             return
         }
 
-        for _ in 0..<2 {
-            guard let url =
-                    await appModel
-                        .nativeLiveAttachmentDownloadURL(
-                            attachmentID:
-                                attachmentID
-                        ) else {
-                continue
-            }
-
-            do {
-                let (data, response) =
-                    try await URLSession.shared.data(
-                        from: url
-                    )
-                guard let http =
-                        response as? HTTPURLResponse,
-                      (200..<300).contains(
-                        http.statusCode
-                      ),
-                      nativeLiveAttachmentDataIsValid(
-                        data,
-                        for: block
-                      ),
-                      let loaded =
-                        nativeLiveAttachmentDecodedImage(
-                            data,
-                            maxPixelSize:
-                                maxPixelSize
-                        ) else {
-                    continue
-                }
-
-                let pixelWidth =
-                    loaded.size.width
-                    * loaded.scale
-                let pixelHeight =
-                    loaded.size.height
-                    * loaded.scale
-                let decodedCost =
-                    Int(
-                        min(
-                            pixelWidth
-                            * pixelHeight
-                            * 4,
-                            Double(Int.max)
+        do {
+            let data =
+                try await appModel.nativeLiveAttachmentData(
+                    attachmentID: attachmentID,
+                    expectedSize:
+                        nativeLiveAttachmentExpectedSize(
+                            block
+                        ),
+                    expectedSHA256:
+                        nativeLiveAttachmentExpectedSHA256(
+                            block
                         )
-                    )
-
-                NativeLiveAttachmentImageCache
-                    .shared
-                    .insert(
-                        loaded,
-                        for: cacheKey,
-                        cost:
-                            max(
-                                data.count,
-                                decodedCost
-                            )
-                    )
-                image = loaded
-                didFail = false
+                )
+            guard let loaded =
+                    nativeLiveAttachmentDecodedImage(
+                        data,
+                        maxPixelSize:
+                            maxPixelSize
+                    ) else {
+                didFail = true
                 return
-            } catch {
-                continue
             }
-        }
 
-        didFail = true
+            let pixelWidth =
+                loaded.size.width
+                * loaded.scale
+            let pixelHeight =
+                loaded.size.height
+                * loaded.scale
+            let decodedCost =
+                Int(
+                    min(
+                        pixelWidth
+                        * pixelHeight
+                        * 4,
+                        Double(Int.max)
+                    )
+                )
+
+            NativeLiveAttachmentImageCache
+                .shared
+                .insert(
+                    loaded,
+                    for: cacheKey,
+                    cost:
+                        max(
+                            data.count,
+                            decodedCost
+                        )
+                )
+            image = loaded
+            didFail = false
+        } catch {
+            didFail = true
+        }
     }
 }
 
@@ -2864,72 +2850,56 @@ private struct NativeLiveAttachmentBlockView: View {
                 isPreparingPreview = false
             }
 
-            for _ in 0..<2 {
-                guard let remoteURL =
-                        await appModel
-                            .nativeLiveAttachmentDownloadURL(
-                                attachmentID:
-                                    attachmentID
-                            ) else {
-                    continue
-                }
-
-                do {
-                    let (data, response) =
-                        try await URLSession.shared.data(
-                            from: remoteURL
-                        )
-                    guard let http =
-                            response
-                                as? HTTPURLResponse,
-                          (200..<300).contains(
-                            http.statusCode
-                          ),
-                          nativeLiveAttachmentDataIsValid(
-                            data,
-                            for: block
-                          ) else {
-                        continue
-                    }
-
-                    let directory =
-                        FileManager
-                            .default
-                            .temporaryDirectory
-                            .appendingPathComponent(
-                                "LeileiOS-AttachmentPreview",
-                                isDirectory: true
+            do {
+                let data =
+                    try await appModel.nativeLiveAttachmentData(
+                        attachmentID: attachmentID,
+                        expectedSize:
+                            nativeLiveAttachmentExpectedSize(
+                                block
+                            ),
+                        expectedSHA256:
+                            nativeLiveAttachmentExpectedSHA256(
+                                block
                             )
-                            .appendingPathComponent(
-                                block.id,
-                                isDirectory: true
-                            )
-                    try FileManager.default
-                        .createDirectory(
-                            at: directory,
-                            withIntermediateDirectories:
-                                true
-                        )
-
-                    let localURL =
-                        directory.appendingPathComponent(
-                            nativeLiveSafePreviewFilename(
-                                filename
-                            )
-                        )
-                    try data.write(
-                        to: localURL,
-                        options: [.atomic]
                     )
-                    previewDirectoryURL = directory
-                    preview =
-                        NativeLiveAttachmentPreview(
-                            fileURL: localURL
+
+                let directory =
+                    FileManager
+                        .default
+                        .temporaryDirectory
+                        .appendingPathComponent(
+                            "LeileiOS-AttachmentPreview",
+                            isDirectory: true
                         )
-                    return
-                } catch {
-                    continue
-                }
+                        .appendingPathComponent(
+                            block.id,
+                            isDirectory: true
+                        )
+                try FileManager.default
+                    .createDirectory(
+                        at: directory,
+                        withIntermediateDirectories:
+                            true
+                    )
+
+                let localURL =
+                    directory.appendingPathComponent(
+                        nativeLiveSafePreviewFilename(
+                            filename
+                        )
+                    )
+                try data.write(
+                    to: localURL,
+                    options: [.atomic]
+                )
+                previewDirectoryURL = directory
+                preview =
+                    NativeLiveAttachmentPreview(
+                        fileURL: localURL
+                    )
+            } catch {
+                return
             }
         }
     }
