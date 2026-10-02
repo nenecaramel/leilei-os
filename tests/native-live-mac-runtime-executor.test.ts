@@ -699,6 +699,7 @@ test("foreground MCP resource links become durable output-resource candidates wi
       },
     ],
   );
+  assert.equal(result.output_attachment_ids, undefined);
 });
 
 test("provider-terminal failure retains MCP output-resource candidates", async () => {
