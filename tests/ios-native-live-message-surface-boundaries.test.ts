@@ -140,6 +140,8 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(projection, /permissionInteractions/);
   assert.match(projection, /topLevelInteractions/);
   assert.match(projection, /!\$0\.hiddenFromTranscript/);
+  assert.match(projection, /!\$0\.hiddenFromActivity/);
+  assert.match(projection, /!\$0\.isAmbient/);
   assert.match(projection, /pendingInteractionIDs/);
   assert.match(projection, /isActiveBackgroundTask/);
   assert.match(projection, /hasActiveBackgroundTask/);
@@ -153,11 +155,13 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(toolProjection, /parent_tool_use_id/);
   assert.match(toolProjection, /parent_agent_id/);
   assert.match(toolProjection, /hidden_from_transcript/);
+  assert.match(toolProjection, /hidden_from_activity/);
   assert.match(toolProjection, /resource_links/);
 
   assert.match(taskProjection, /task_id/);
   assert.match(taskProjection, /subagent_type/);
   assert.match(taskProjection, /is_backgrounded/);
+  assert.match(taskProjection, /ambient/);
   assert.match(taskProjection, /spawn_depth/);
   assert.match(taskProjection, /hidden_from_transcript/);
   assert.match(taskProjection, /resource_links/);
