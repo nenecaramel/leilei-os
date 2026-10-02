@@ -579,6 +579,60 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func nativeLiveAttachmentData(
+        attachmentID: String,
+        expectedSize: Int? = nil,
+        expectedSHA256: String? = nil
+    ) async throws -> Data {
+        guard isAuthenticated else {
+            throw NativeLiveAttachmentLoadError.notReady
+        }
+
+        let slot =
+            try await api.nativeLiveAttachmentDownloadSlot(
+                attachmentID: attachmentID
+            )
+        guard slot.download.method == "GET",
+              let url = URL(string: slot.download.url) else {
+            throw NativeLiveAttachmentLoadError.invalidTransfer
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = slot.download.method
+        for (key, value) in slot.download.headers {
+            request.setValue(
+                value,
+                forHTTPHeaderField: key
+            )
+        }
+
+        let (data, response) =
+            try await URLSession.shared.data(for: request)
+
+        guard let http =
+                response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw NativeLiveAttachmentLoadError.invalidTransfer
+        }
+
+        if let expectedSize,
+           data.count != expectedSize {
+            throw NativeLiveAttachmentLoadError.integrityMismatch
+        }
+
+        if let expectedSHA256 {
+            let digest = SHA256.hash(data: data)
+            let actual = digest.map {
+                String(format: "%02x", $0)
+            }.joined()
+            guard actual == expectedSHA256.lowercased() else {
+                throw NativeLiveAttachmentLoadError.integrityMismatch
+            }
+        }
+
+        return data
+    }
+
     func uploadNativeLiveAttachment(
         data: Data,
         filename: String,
@@ -1768,4 +1822,10 @@ private enum NativeLiveSendError: LocalizedError {
             return "Turn completion is unknown."
         }
     }
+}
+
+private enum NativeLiveAttachmentLoadError: Error {
+    case notReady
+    case invalidTransfer
+    case integrityMismatch
 }
