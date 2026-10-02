@@ -99,6 +99,7 @@ struct NativeLiveMessageSurface: View {
     @State private var isAwayFromBottom = false
     @State private var copiedMessageID: String?
     @State private var copyFeedbackToken = UUID()
+    @State private var isLoadingOlderMessages = false
 
     var body: some View {
         Group {
@@ -168,6 +169,49 @@ struct NativeLiveMessageSurface: View {
 
                         NativeLiveHistoryForkDivider()
                             .id("native-live-history-fork-divider")
+                    }
+
+                    if snapshot?.olderCursor != nil {
+                        Button {
+                            guard !isLoadingOlderMessages,
+                                  !isTurnInFlight else {
+                                return
+                            }
+
+                            isLoadingOlderMessages = true
+                            Task {
+                                await onLoadOlder()
+                                await MainActor.run {
+                                    isLoadingOlderMessages = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if isLoadingOlderMessages {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+
+                                Text(
+                                    isLoadingOlderMessages
+                                        ? "正在加载…"
+                                        : "还有更早消息"
+                                )
+                                .font(.footnote.weight(.medium))
+                            }
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            isLoadingOlderMessages
+                                || isTurnInFlight
+                        )
+                        .id("native-live-load-older")
                     }
 
                     ForEach(messages) { message in
@@ -272,11 +316,7 @@ struct NativeLiveMessageSurface: View {
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
                 guard !isTurnInFlight else { return }
-                if snapshot?.olderCursor != nil {
-                    await onLoadOlder()
-                } else {
-                    await onRefresh()
-                }
+                await onRefresh()
             }
             .onChange(of: snapshot?.conversationId) { _, _ in
                 isAwayFromBottom = false
