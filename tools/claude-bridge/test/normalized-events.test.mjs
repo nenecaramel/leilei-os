@@ -1029,3 +1029,144 @@ test("normalizes Agent SDK task lifecycle and background task level signals with
   assert.equal(events[5].payload.has_output_file, true);
   assert.equal("output_file" in events[5].payload, false);
 });
+
+
+test("preserves bounded Agent SDK background task provenance", () => {
+  const events = normalizeClaudeEvents(
+    [
+      {
+        type: "system",
+        subtype: "task_started",
+        session_id: "s",
+        task_id: "task-depth",
+        tool_use_id: "tool-depth",
+        description: "nested research",
+        task_type: "local_agent",
+        is_backgrounded: true,
+        spawn_depth: 2,
+        ambient: true,
+        private_path: "/Users/private/should-not-survive",
+      },
+      {
+        type: "system",
+        subtype: "task_notification",
+        session_id: "s",
+        task_id: "task-depth",
+        tool_use_id: "tool-depth",
+        status: "stopped",
+        summary: "Worker stopped",
+        reason: "worker_restart",
+        ambient: true,
+        output_file: "/Users/private/output.txt",
+      },
+    ],
+    base,
+  );
+
+  assert.deepEqual(events[0].payload, {
+    phase: "started",
+    task_id: "task-depth",
+    tool_use_id: "tool-depth",
+    description: "nested research",
+    subagent_type: null,
+    task_type: "local_agent",
+    workflow_name: null,
+    hidden_from_transcript: false,
+    ambient: true,
+    is_backgrounded: true,
+    spawn_depth: 2,
+  });
+  assert.deepEqual(events[1].payload, {
+    phase: "notification",
+    task_id: "task-depth",
+    tool_use_id: "tool-depth",
+    status: "stopped",
+    summary: "Worker stopped",
+    usage: null,
+    hidden_from_transcript: false,
+    ambient: true,
+    reason: "worker_restart",
+    has_output_file: true,
+  });
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /Users\\/private|private_path/,
+  );
+});
+
+test("preserves bounded injected-message origin without duplicating peer body", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      origin: {
+        kind: "task-notification",
+        subkind: "peer-send-message",
+        server: "team-mcp",
+        from: "peer://researcher",
+        name: "Researcher",
+        fromSession: "peer-session",
+        senderTaskId: "task-peer",
+        verifiedPeerPid: 4321,
+        fireReason: "schedule_due",
+        body: "SECRET BODY MUST NOT BE COPIED",
+        unknownPrivateField: "/Users/private",
+      },
+      message: {
+        content: "peer update",
+      },
+    }],
+    base,
+  );
+
+  const provenance = events.find(
+    (event) =>
+      event.type === "runtime"
+      && event.payload?.kind === "message_origin",
+  );
+  assert.deepEqual(provenance?.payload, {
+    kind: "message_origin",
+    source_type: "user",
+    origin: {
+      kind: "task-notification",
+      subkind: "peer-send-message",
+      server: "team-mcp",
+      from: "peer://researcher",
+      name: "Researcher",
+      from_session: "peer-session",
+      sender_task_id: "task-peer",
+      verified_peer_pid: 4321,
+      fire_reason: "schedule_due",
+    },
+  });
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /SECRET BODY|unknownPrivateField|Users\\/private/,
+  );
+});
+
+test("drops malformed message origin instead of treating it as provenance", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "user",
+      session_id: "s",
+      origin: {
+        kind: 123,
+        from: "peer://bad",
+      },
+      message: {
+        content: "not attributed",
+      },
+    }],
+    base,
+  );
+
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === "runtime"
+        && event.payload?.kind === "message_origin",
+    ),
+    false,
+  );
+});
