@@ -193,6 +193,28 @@ struct NativeLiveCurrentPathMessage: Decodable, Sendable, Equatable, Identifiabl
     let blocks: [NativeLiveCurrentPathBlock]
     let activity: NativeLiveMessageActivitySnapshot?
 
+    init(
+        id: String,
+        conversationId: String,
+        parentMessageId: String?,
+        role: String,
+        status: String,
+        createdAt: String,
+        completedAt: String?,
+        blocks: [NativeLiveCurrentPathBlock],
+        activity: NativeLiveMessageActivitySnapshot? = nil
+    ) {
+        self.id = id
+        self.conversationId = conversationId
+        self.parentMessageId = parentMessageId
+        self.role = role
+        self.status = status
+        self.createdAt = createdAt
+        self.completedAt = completedAt
+        self.blocks = blocks
+        self.activity = activity
+    }
+
     var displayText: String {
         blocks
             .compactMap(\.text)
