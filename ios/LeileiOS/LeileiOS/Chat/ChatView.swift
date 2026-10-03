@@ -19,6 +19,7 @@ struct ChatView: View {
     let onDraftCommitted: () -> Void
 
     @StateObject private var voiceInput = VoiceInputController()
+    @State private var voiceLanguage: VoiceInputLanguage = .english
     @State private var messageText = ""
     @State private var model: NativeLiveClaudeModel = .opus55
     @State private var thinking: NativeLiveThinkingMode = .adaptive
@@ -155,6 +156,7 @@ struct ChatView: View {
                 model: $model,
                 thinking: $thinking,
                 effort: $effort,
+                voiceLanguage: $voiceLanguage,
                 isFocused: $isComposerFocused,
                 isSending:
                     appModel.chatSendState == .sending
@@ -197,7 +199,12 @@ struct ChatView: View {
                 },
                 voiceEnabled: voiceEnabled,
                 voiceStatus: voiceInput.status,
-                onVoicePress: { voiceInput.begin(onTranscript: sendVoiceMessage) },
+                onVoicePress: {
+                    voiceInput.begin(
+                        language: voiceLanguage,
+                        onTranscript: sendVoiceMessage
+                    )
+                },
                 onVoiceRelease: { voiceInput.release() }
             ) {
                 sendMessage()
