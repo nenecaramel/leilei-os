@@ -125,6 +125,10 @@ struct NativeLiveTurnActivityView: View {
                         ))
                         .foregroundStyle(.tertiary)
                     }
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
