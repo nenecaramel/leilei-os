@@ -30,7 +30,8 @@ returning bytes. CSP denies network, images, frames, objects and form submission
 only bundled scripts, styles and fonts are enabled. Inline engine styles are
 allowed, scripts are not. Navigation and popup creation are denied. The bridge
 accepts only main-frame ready/contentHeight/renderError from the current view and
-generation. It exposes no native filesystem/network/lookup/callback methods.
+generation. SVG byte-loading completion is independently generation-gated, so
+a cancelled older download cannot clear a newer preview. It exposes no native filesystem/network/lookup/callback methods.
 
 KaTeX has `trust:false`, bounded expansion/size and errors enabled. Mermaid has
 strict security, disabled HTML labels, bounded edges/text and protected options;
@@ -51,7 +52,8 @@ scoped original-byte cache and size/SHA authority. The sanitizer rechecks integr
 limits input to 256 KB, elements to 2,048, nesting to 32 and output to 512 KB.
 It accepts a static XML subset with local fragment references; entities, scripts,
 events, foreignObject, images, CSS and animation are rejected. Inline and fullscreen
-use the same sanitized bytes and preserve viewBox aspect. Unsupported SVG keeps
+use the same sanitized bytes and preserve viewBox aspect. Dimension-only SVGs
+receive a normalized viewBox to scale coordinates instead of cropping. Unsupported SVG keeps
 the verified original-open/Quick Look path; integrity failures cannot render/open.
 SVG copy/share remains C's file path; Math/Mermaid copy raw source. Source and
 filename/LaTeX accessibility remain available if WebKit fails.
@@ -66,7 +68,7 @@ Root package.json and lockfile are unchanged. Assets are in the iOS resource
 | --- | --- | --- | ---: |
 | KaTeX JavaScript | 0.19.0 | MIT | 272,868 |
 | KaTeX CSS + WOFF2 fonts | 0.19.0 | MIT | 282,451 |
-| Mermaid browser IIFE | 12.1.0 | MIT plus bundled dependency notices | 5,251,863 |
+| Mermaid browser IIFE | 12.1.0 | MIT plus bundled dependency notices | 5,251,761 |
 
 The complete bundle is approximately 6.0 MB including shell, manifests and notices.
 `dependency-provenance.json` records the 70 packages actually used by the Mermaid
@@ -79,9 +81,10 @@ Sources: [KaTeX options](https://katex.org/docs/options),
 [Mermaid security configuration](https://mermaid.js.org/config/schema-docs/config.html).
 Review pinned transitive licenses and runtime behavior before updating either engine.
 
-To reproduce engine files in a **separate temporary directory**, install exact
-`katex@0.19.0`, `mermaid@12.1.0`, `esbuild@0.25.12` with npm, record its lockfile,
-and bundle this entry with esbuild:
+To reproduce engine files in a **separate temporary directory**, copy `docs/native-live-visual-assets/package{,-lock}.json` there and run `npm ci`.
+This pins `katex@0.19.0`, `mermaid@12.1.0`, `esbuild@0.25.12` and transitive
+versions/integrities without installing anything into the repository. Bundle this
+entry with esbuild:
 
 ```js
 import mermaid from 'mermaid';
@@ -91,6 +94,7 @@ globalThis.LeileiMermaid = mermaid;
 Use `--bundle --platform=browser --format=iife --minify --legal-comments=external
 --metafile=meta.json --outfile=mermaid.js`. Copy KaTeX's dist/katex.min.js and
 dist/katex.min.css, retaining only WOFF2 src alternatives and dist/fonts/*.woff2.
+Remove trailing whitespace in generated JavaScript/notices before hashing.
 Use meta.json inputs to collect each included package's license and exact version.
 After an intentional asset update regenerate assets.json SHA256 entries for all
 `.js`, `.css`, `.html`, `.woff2` files. The security regression verifies every hash.

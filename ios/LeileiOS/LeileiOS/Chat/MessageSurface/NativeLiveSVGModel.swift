@@ -50,9 +50,19 @@ private final class SVGDelegate: NSObject, XMLParserDelegate {
         }
         if name == "svg", stack.isEmpty {
             if values["xmlns"] == nil { encoded.append("xmlns=\"http://www.w3.org/2000/svg\"") }
-            let box = values["viewBox"]?.split(whereSeparator: { $0.isWhitespace || $0 == "," }).compactMap { Double($0) }
-            if let box, box.count == 4, box.allSatisfy(\.isFinite), box[2] > 0, box[3] > 0 { ratio = min(100,max(0.01,box[2]/box[3])) }
-            else if let width = values["width"].flatMap(Double.init), let height = values["height"].flatMap(Double.init), width.isFinite, height.isFinite, width > 0, height > 0 { ratio = min(100,max(0.01,width/height)) }
+            if let rawBox = values["viewBox"] {
+                let parts = rawBox.split(whereSeparator: { $0.isWhitespace || $0 == "," })
+                let box = parts.compactMap { Double($0) }
+                guard parts.count == 4, box.count == 4, box.allSatisfy(\.isFinite), box[2] > 0, box[3] > 0 else { reject(parser); return }
+                ratio = min(100,max(0.01,box[2]/box[3]))
+            } else {
+                // A fitted viewport must scale coordinates rather than crop a width/height-only SVG.
+                let width = values["width"].flatMap(Double.init) ?? (values["width"] == nil ? 300 : 0)
+                let height = values["height"].flatMap(Double.init) ?? (values["height"] == nil ? 150 : 0)
+                guard width.isFinite, height.isFinite, width > 0, height > 0 else { reject(parser); return }
+                encoded.append("viewBox=\"0 0 \(width) \(height)\"")
+                ratio = min(100,max(0.01,width/height))
+            }
         }
         output += "<\(name)\(encoded.isEmpty ? "" : " "+encoded.joined(separator:" "))>"; stack.append(name)
     }
@@ -72,5 +82,36 @@ private final class SVGDelegate: NSObject, XMLParserDelegate {
     }
     private func escape(_ value: String) -> String {
         value.replacingOccurrences(of:"&",with:"&amp;").replacingOccurrences(of:"<",with:"&lt;").replacingOccurrences(of:">",with:"&gt;").replacingOccurrences(of:"\"",with:"&quot;")
+    }
+}
+
+// Generation-gated loader state is shared by the UI and deterministic Swift regressions.
+// An older cancelled download cannot clear or overwrite a newer attachment's preview.
+struct NativeLiveSVGLoadingState {
+    private(set) var generation = 0
+    private(set) var input: NativeLiveVisualSandboxInput?
+    private(set) var verified: NativeLiveLoadedAttachment?
+    private(set) var error: String?
+    private(set) var loading = false
+    mutating func begin() -> Int {
+        generation += 1; input = nil; verified = nil; error = nil; loading = true
+        return generation
+    }
+    mutating func complete(_ bytes: NativeLiveLoadedAttachment, generation token: Int) {
+        guard token == generation else { return }
+        do {
+            try NativeLiveAttachmentIntegrity.verify(bytes.data,key:bytes.key)
+            verified = bytes
+            input = try NativeLiveVisualSandboxInput.svg(bytes)
+            loading = false
+        } catch { fail("SVG preview unavailable. Open the verified file.",generation:token) }
+    }
+    mutating func fail(_ message: String, generation token: Int) {
+        guard token == generation else { return }
+        input = nil; loading = false; error = message
+    }
+    mutating func cancel(generation token: Int) {
+        guard token == generation else { return }
+        input = nil; verified = nil; loading = false
     }
 }

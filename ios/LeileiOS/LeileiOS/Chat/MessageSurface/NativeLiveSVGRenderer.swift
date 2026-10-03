@@ -2,22 +2,21 @@ import SwiftUI
 import Combine
 
 @MainActor private final class NativeLiveSVGLoadState: ObservableObject {
-    @Published var input: NativeLiveVisualSandboxInput?
-    @Published var verified: NativeLiveLoadedAttachment?
-    @Published var error: String?
-    @Published var loading = false
+    @Published private var state = NativeLiveSVGLoadingState()
+    var input: NativeLiveVisualSandboxInput? { state.input }
+    var verified: NativeLiveLoadedAttachment? { state.verified }
+    var error: String? { state.error }
+    var loading: Bool { state.loading }
     func load(_ descriptor: NativeLiveAttachmentPresentationInput, appModel: AppModel) async {
-        input = nil; verified = nil; error = nil; loading = true
-        defer { loading = false }
+        let generation = state.begin()
         do {
             guard descriptor.presentationState == .ready || descriptor.presentationState == .loaded else { throw NativeLiveVisualError.unavailable }
             // Sole download/integrity/original-cache authority remains C.
             let bytes = try await appModel.nativeLiveAttachmentBytes(descriptor)
             try Task.checkCancellation()
-            verified = bytes
-            input = try NativeLiveVisualSandboxInput.svg(bytes)
-        } catch is CancellationError { input = nil; verified = nil }
-        catch { self.error = (error as? NativeLiveMediaError)?.localizedDescription ?? "SVG preview unavailable. Open the verified file." }
+            state.complete(bytes, generation:generation)
+        } catch is CancellationError { state.cancel(generation:generation) }
+        catch { state.fail((error as? NativeLiveMediaError)?.localizedDescription ?? "SVG preview unavailable. Open the verified file.", generation:generation) }
     }
 }
 

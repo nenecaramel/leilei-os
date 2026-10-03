@@ -77,6 +77,12 @@ actor FetchCounter {
         let web = controller.view!
         let box = try! await web.evaluateJavaScript("document.querySelector('#visual>svg').viewBox.baseVal.width/document.querySelector('#visual>svg').viewBox.baseVal.height") as! Double
         expect(box == 2,"SVG aspect ratio")
+        let dimensionBytes = Data("<svg width=\"200\" height=\"100\"><rect x=\"100\" width=\"100\" height=\"100\"/></svg>".utf8)
+        let dimensionLoaded = NativeLiveLoadedAttachment(data:dimensionBytes,key:.init(scope:"test",attachmentID:"dimensions",sizeBytes:dimensionBytes.count,sha256:NativeLiveAttachmentIntegrity.sha256(dimensionBytes)))
+        controller.update(try! .svg(dimensionLoaded),dark:false,scale:1)
+        await awaitRender()
+        let fitted = try! await web.evaluateJavaScript("document.getElementById('visual').style.width='80px'; const s=document.querySelector('#visual>svg'); const r=s.querySelector('rect'); const sb=s.getBoundingClientRect(),rb=r.getBoundingClientRect(); ({viewWidth:sb.width,rectRight:rb.right-svgLeft(sb),ratio:sb.width/sb.height}); function svgLeft(b){return b.left;}") as! [String:Double]
+        expect(fitted["viewWidth"]! <= 80 && fitted["rectRight"]! <= fitted["viewWidth"]!+1 && abs(fitted["ratio"]!-2)<0.01,"width/height-only SVG scales coordinates without cropping")
         let blocked = try! await web.callAsyncJavaScript("window.violations=[]; document.addEventListener('securitypolicyviolation',e=>window.violations.push(e.violatedDirective)); try { await fetch(url) } catch {} await new Promise(r=>setTimeout(r,50)); return window.violations.includes('connect-src');",arguments:["url":"https://example.com/forbidden"],in:nil,contentWorld:.page) as! Bool
         expect(blocked,"real CSP network denial")
         web.load(URLRequest(url:URL(string:"https://example.com/forbidden-navigation")!))

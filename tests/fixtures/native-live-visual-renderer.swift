@@ -81,4 +81,22 @@ expect(NativeLiveVisualNavigationPolicy.resourceName(URL(string:"leilei-visual:/
 for url in ["leilei-visual://bundle/../secret","leilei-visual://bundle/katex.js?x=1","leilei-visual://other/katex.js","file:///katex.js","https://example.com/katex.js"] {
     expect(NativeLiveVisualNavigationPolicy.resourceName(URL(string:url),allowed:["katex.js"]) == nil, "deny resource \(url)")
 }
+let dimensionOnly = try! NativeLiveSVGSanitizer.sanitize(loaded("<svg width=\"200\" height=\"100\"><rect width=\"200\" height=\"100\"/></svg>"))
+expect(dimensionOnly.source.contains("viewBox=\"0 0 200.0 100.0\""),"dimensions normalize to a scalable viewBox")
+rejects("invalid viewBox falls back") { _ = try NativeLiveSVGSanitizer.sanitize(loaded("<svg viewBox=\"0 0 NaN 20\"/>")) }
+var svgLoading = NativeLiveSVGLoadingState()
+let olderLoad = svgLoading.begin()
+let newerLoad = svgLoading.begin()
+svgLoading.complete(good,generation:newerLoad)
+let newerIdentity = svgLoading.input?.identity
+svgLoading.cancel(generation:olderLoad)
+svgLoading.fail("old failure",generation:olderLoad)
+svgLoading.complete(loaded("<svg/>"),generation:olderLoad)
+expect(svgLoading.input?.identity == newerIdentity && svgLoading.error == nil && !svgLoading.loading,"stale SVG load cannot clear newer preview")
+let invalidLoad = svgLoading.begin()
+svgLoading.complete(.init(data:Data("changed".utf8),key:good.key),generation:invalidLoad)
+expect(svgLoading.input == nil && svgLoading.verified == nil && svgLoading.error != nil,"unverified original cannot render or open")
+let unsafeLoad = svgLoading.begin()
+svgLoading.complete(loaded("<svg><script/></svg>"),generation:unsafeLoad)
+expect(svgLoading.input == nil && svgLoading.verified != nil && svgLoading.error != nil,"unsafe SVG preserves verified file fallback")
 print("Visual renderer PASS: \(checks) real Swift assertions")
