@@ -114,9 +114,7 @@ struct NativeLiveMessageRow: View {
                 NativeLiveTurnActivityView(
                     projection: displayedActivityProjection,
                     onResolveInteraction:
-                        activityRuntimeSurface == nil
-                            ? nil
-                            : onResolveReplacementInteraction
+                        onResolveReplacementInteraction
                 )
             }
 
