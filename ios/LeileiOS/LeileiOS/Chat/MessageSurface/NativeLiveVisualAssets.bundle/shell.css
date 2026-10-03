@@ -1,0 +1,7 @@
+:root { color-scheme: light dark; }
+html,body { margin:0; padding:0; background:transparent; font-family:system-ui; }
+body { padding:8px; overflow:auto; color:var(--ink,#111); box-sizing:border-box; }
+#visual { min-height:28px; overflow:auto; pointer-events:none; }
+#visual>svg { display:block; max-width:100%; height:auto; margin:auto; }
+.katex-display { margin:8px 0; overflow:auto; }
+* { animation:none!important; transition:none!important; }

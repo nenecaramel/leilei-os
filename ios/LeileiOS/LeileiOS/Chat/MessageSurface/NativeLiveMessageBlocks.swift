@@ -104,11 +104,17 @@ struct NativeLiveVisualNodeView: View {
         case .diff:
             if let model = node.diff { NativeLiveDiffRenderer(model: model) }
             else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .mathVisual:
+            if let model = node.math { NativeLiveMathVisualRenderer(model: model) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .svgAttachment:
+            if let input = node.attachment { NativeLiveSVGRenderer(input: input) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
         case .math:
             if let model = node.math { NativeLiveMathRenderer(model: model) }
             else { NativeLiveVisualFallbackView(fallback: node.fallback) }
         case .mermaid:
-            if let model = node.code { NativeLiveMermaidSourceRenderer(model: model) }
+            if let model = node.code { NativeLiveMermaidRenderer(model: model) }
             else { NativeLiveVisualFallbackView(fallback: node.fallback) }
         case .attachment:
             if let input = node.attachment { NativeLiveMediaCard(input:input) }
