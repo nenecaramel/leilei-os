@@ -200,14 +200,13 @@ struct NativeLiveTurnActivityProjection: Equatable {
             components.append(workingDurationLabel)
         } else {
             components.append(workedDurationLabel)
-            components.append("Done")
         }
 
         if activityCount > 0 {
             components.append(
                 activityCount == 1
-                    ? "1 activity"
-                    : "\(activityCount) activities"
+                    ? "1 step"
+                    : "\(activityCount) steps"
             )
         }
 

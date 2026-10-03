@@ -107,9 +107,6 @@ struct NativeLiveMessageRow: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 4)
 
-            messageContent
-                .textSelection(.enabled)
-
             if displayedActivityProjection.hasContent {
                 NativeLiveTurnActivityView(
                     projection: displayedActivityProjection,
@@ -117,6 +114,9 @@ struct NativeLiveMessageRow: View {
                         onResolveReplacementInteraction
                 )
             }
+
+            messageContent
+                .textSelection(.enabled)
 
             messageStatus
 

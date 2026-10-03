@@ -205,6 +205,11 @@ test("runtime activity and tool presentation are extracted from the message surf
     true,
   );
   assert.match(projection, /duration_ms/);
+  assert.match(projection, /"1 step"/);
+  assert.match(projection, /"\\(activityCount\) steps"/);
+  assert.doesNotMatch(projection, /components\.append\("Done"\)/);
+  assert.doesNotMatch(projection, /"1 activity"/);
+  assert.doesNotMatch(projection, /"\\(activityCount\) activities"/);
   assert.doesNotMatch(projection, /var headerTitle: String/);
 
   const activityViewBlock = runtime.match(
@@ -250,6 +255,22 @@ test("message rows and canonical block rendering are extracted while root compos
 
   const rows = readExisting(messageRowsPath);
   const blocks = readExisting(messageBlocksPath);
+
+  const assistantContentBlock = rows.match(
+    /private var assistantContent: some View \{([\s\S]*?)@ViewBuilder\s+private var messageContent:/,
+  )?.[1] ?? "";
+  const timestampIndex = assistantContentBlock.indexOf(
+    "MessageTimestampFormatter.string",
+  );
+  const activityIndex = assistantContentBlock.indexOf(
+    "NativeLiveTurnActivityView",
+  );
+  const messageContentIndex = assistantContentBlock.indexOf(
+    "messageContent",
+  );
+  assert.ok(timestampIndex >= 0);
+  assert.ok(activityIndex > timestampIndex);
+  assert.ok(messageContentIndex > activityIndex);
 
   assert.match(rows, /nativeLiveBackgroundRuntimeSurfaces/);
   assert.match(rows, /message\.activity\?\.prepareId/);
