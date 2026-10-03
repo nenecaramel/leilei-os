@@ -214,6 +214,18 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(projection, /var summaryLabel: String/);
   assert.equal(
     projection.includes(
+      'return "Thinking for \\(Self.durationText(elapsedSeconds))"',
+    ),
+    true,
+  );
+  assert.equal(
+    projection.includes(
+      'return "Thought for \\(Self.durationText(elapsedSeconds))"',
+    ),
+    true,
+  );
+  assert.equal(
+    projection.includes(
       'return "Working for \\(Self.durationText(elapsedSeconds))"',
     ),
     true,
@@ -223,6 +235,14 @@ test("runtime activity and tool presentation are extracted from the message surf
       'return "Worked for \\(Self.durationText(elapsedSeconds))"',
     ),
     true,
+  );
+  assert.match(
+    projection,
+    /turnIsActive[\s\S]*activityCount == 0[\s\S]*thinkingDurationLabel[\s\S]*workingDurationLabel/,
+  );
+  assert.match(
+    projection,
+    /activityCount == 0[\s\S]*thoughtDurationLabel[\s\S]*workedDurationLabel/,
   );
   assert.match(projection, /duration_ms/);
   assert.match(
