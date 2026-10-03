@@ -19,7 +19,25 @@ Mainline 3 rich-surface physical acceptance: pending. C media acceptance remains
 - Independent read-only review of `fd7b7d82`: no Critical; five Important findings and one Minor. Addressed all in one pass with real Swift RED→GREEN: shared descendant node budget, whole-paragraph formatting across math, local links/matched backtick spans, original CRLF offsets, linear quote scanning; also removed complete CRLF fence terminator.
 - Reviewer declined full math typesetting/Mermaid execution (explicit G scope), physical acceptance (Mainline 3 pending), and final full-suite status (verified separately below).
 - Real Swift E: 93 primary assertions plus 15 combined/budget/CRLF/deep-quote review assertions in six independent executable runs. Source-contract checks are supplemental.
-- Initial cross-mainline focused: 75/75; after streaming path: 76/76. Isolated localhost PG integrations: 7/7, zero skipped.
-- Runtime gate: 405 root + 101 bridge passed. Complete bridge: 125 passed. Typecheck/generated/build/diff passed. Unsigned Simulator build passed.
-- Exact-base full suite under Node24.19.0: 2096 tests, 1991 passed, 10 failed, 95 skipped. Final delta pending final run.
+- Final cross-mainline focused after review fixes: 76/76. Isolated localhost PG integrations: 7/7, zero skipped.
+- Runtime gate: 405 root + 101 bridge passed. Complete bridge: 125 passed. Final typecheck/generated/build/diff passed. Final unsigned Simulator build passed after review fixes.
+- Exact-base full suite under Node24.19.0: 2096 tests, 1991 passed, 10 failed, 95 skipped. Final PR full suite: 2100 tests, 1995 passed, 10 failed, 95 skipped. Added failure names: `[]`. Removed failure names: `[]`. Same 10 historical failure names below. Suites ran sequentially (baseline first, PR second), same Node24.19.0/dependencies, concurrency=1, default DB integration skips.
 
+## Exact baseline failure names
+
+- `CI checks after a failed gate still run once their setup succeeds`
+- `CI reports all verification surfaces independently for PR and push`
+- `CI scopes database access to Postgres gates and preserves every verification command`
+- `authenticated Native Live internal JSON can exceed the public 1mb limit`
+- `iOS Runtime UI prefers SDK tool display names and surfaces API retry state`
+- `real Swift Activity preserves final duration and explicitly presents nested permission`
+- `tests/ios-native-live-message-surface-boundaries.test.ts`
+- `the app JSON parser accepts a 100k CJK Diary body`
+- `the app JSON parser remains bounded above 1mb`
+- `unauthenticated Native Live internal JSON does not get the larger parser budget`
+
+## Scope / closeout
+
+Agent status and verify plan used the exact supplied comparison base; unmapped documentation/Swift fixtures were manually covered by real Swift compilation and the explicit test matrix. Dependency symlinks are disposable verification scaffolding, not product changes. No protected workflow, package manifest, canonical persistence, Activity projection or dependency files changed. `NativeLiveRuntimeActivity.swift` only routes streaming Chat text into presentation; Activity behavior is unchanged.
+
+No production refresh/deploy/database operation or physical-device claim. Commit/push/open PR, then task-only cleanup; preserve the owner checkout and unrelated worktrees. Do not merge.
