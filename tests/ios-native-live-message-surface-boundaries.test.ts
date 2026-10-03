@@ -273,6 +273,31 @@ const messageRowsPath =
 const messageBlocksPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageBlocks.swift";
 
+test("canonical voice input is a presentation-only user bubble with local transcript reveal", () => {
+  const rows = readExisting(messageRowsPath);
+
+  assert.match(
+    rows,
+    /block\.payload\?\["input_mode"\]\?\.stringValue\s*== "voice"/,
+  );
+  assert.match(
+    rows,
+    /guard displayTextOverride == nil else \{\s*return false\s*\}/,
+  );
+  assert.match(rows, /struct NativeLiveVoiceMessageBubbleVisual: View/);
+  assert.match(rows, /Button\("转文字"\)/);
+  assert.match(rows, /@State private var isVoiceTranscriptRevealed = false/);
+  assert.match(
+    rows,
+    /if isVoiceInputMessage,[\s\S]*!isVoiceTranscriptRevealed[\s\S]*NativeLiveVoiceMessageBubbleVisual\(\)/,
+  );
+  assert.match(
+    rows,
+    /LightweightContextMenuInteraction\([\s\S]*copyText: copyText[\s\S]*onEditMessage\(message\)/,
+  );
+  assert.doesNotMatch(rows, /voice.*duration|duration.*voice|seconds|秒/i);
+});
+
 test("message rows and canonical block rendering are extracted while root composition stays put", () => {
   const root = fs.readFileSync(rootPath, "utf8");
 
