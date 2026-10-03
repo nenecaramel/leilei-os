@@ -15,3 +15,24 @@ test("voice controller waits for final text, fails on timeout, and ignores cance
     assert.equal(execFileSync(join(dir,"check"),{encoding:"utf8"}).trim(),"controller lifecycle PASS");
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test("composer uses the right action button for tap-to-language and hold-to-dictate", () => {
+  const composer=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift","utf8");
+  const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
+  const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
+  assert.doesNotMatch(composer,/ComposerCircleButton\(systemName: "mic\.fill"\)/);
+  assert.match(composer,/if isVoiceActionMode \{\s*voiceActionButton/);
+  assert.match(composer,/confirmationDialog\(\s*"Voice language"/);
+  assert.match(composer,/Task\.sleep\(for: \.milliseconds\(350\)\)/);
+  assert.match(composer,/voiceLanguage = language/);
+  assert.match(composer,/if voiceHoldActivated \{[\s\S]*onVoiceRelease\?\(\)/);
+  assert.match(composer,/isVoiceLanguagePickerPresented = true/);
+  assert.match(chatView,/@State private var voiceLanguage: VoiceInputLanguage = \.english/);
+  assert.match(chatView,/voiceLanguage: \$voiceLanguage/);
+  assert.match(chatView,/voiceInput\.begin\(\s*language: voiceLanguage/);
+  assert.match(controller,/case english = "en-US"/);
+  assert.match(controller,/case chinese = "zh-CN"/);
+  assert.match(controller,/SFSpeechRecognizer\(locale: language\.locale\)/);
+  assert.doesNotMatch(controller,/SFSpeechRecognizer\(locale: \.current\)/);
+});

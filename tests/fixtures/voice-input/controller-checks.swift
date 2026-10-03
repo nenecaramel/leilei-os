@@ -9,6 +9,11 @@ struct ControllerChecks {
         controller.begin { sent.append($0) }
         await pause()
         precondition(controller.phase == .recording)
+        precondition(
+            SFSpeechRecognizer.lastLocaleIdentifier
+                == VoiceInputLanguage.english.locale.identifier,
+            "default recognition language must be English"
+        )
         SFSpeechRecognizer.emit("开头", final: false)
         await pause()
         controller.release()
@@ -18,6 +23,16 @@ struct ControllerChecks {
         await pause()
         precondition(sent == ["开头和最后几个字"])
         precondition(controller.phase == .idle)
+
+        controller.begin(language: .chinese) { sent.append($0) }
+        await pause()
+        precondition(controller.phase == .recording)
+        precondition(
+            SFSpeechRecognizer.lastLocaleIdentifier
+                == VoiceInputLanguage.chinese.locale.identifier,
+            "Chinese selection must use zh-CN recognition"
+        )
+        controller.cancel()
 
         controller.begin { sent.append($0) }
         await pause()

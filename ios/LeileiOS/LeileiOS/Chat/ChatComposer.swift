@@ -5,6 +5,7 @@ struct ChatComposer: View {
     @Binding var model: NativeLiveClaudeModel
     @Binding var thinking: NativeLiveThinkingMode
     @Binding var effort: NativeLiveEffortLevel
+    @Binding var voiceLanguage: VoiceInputLanguage
     var isFocused: FocusState<Bool>.Binding
     var isSending = false
     var isRuntimeTurnActive = false
@@ -25,7 +26,11 @@ struct ChatComposer: View {
     var onVoicePress: (() -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
-    @GestureState private var isHoldingVoice = false
+
+    @State private var isVoiceLanguagePickerPresented = false
+    @State private var voicePressStarted = false
+    @State private var voiceHoldActivated = false
+    @State private var voiceHoldTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -174,93 +179,55 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
-                ComposerCircleButton(systemName: "mic.fill")
-                    .opacity(voiceEnabled ? 1 : 0.35)
-                    .contentShape(Circle())
-                    .gesture(DragGesture(minimumDistance: 0)
-                        .updating($isHoldingVoice) { _, held, _ in
-                            held = true
-                        })
-                    .onChange(of: isHoldingVoice) { _, held in
-                        if held {
-                            guard voiceEnabled else { return }
-                            onVoicePress?()
-                        } else {
-                            onVoiceRelease?()
-                        }
-                    }
-                    .accessibilityLabel("Hold to dictate and send")
+                if isVoiceActionMode {
+                    voiceActionButton
+                } else {
+                    Button {
+                        let normalized = text.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        )
 
-                Button {
-                    let normalized = text.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    )
+                        if isRuntimeTurnActive {
+                            guard !isRuntimeControlInFlight else {
+                                return
+                            }
 
-                    if isRuntimeTurnActive {
-                        guard !isRuntimeControlInFlight else {
+                            if normalized.isEmpty {
+                                guard !interruptRequested else {
+                                    return
+                                }
+                                onInterrupt?()
+                            } else {
+                                onMidTurnInput?(normalized)
+                            }
                             return
                         }
 
-                        if normalized.isEmpty {
-                            guard !interruptRequested else {
-                                return
-                            }
-                            onInterrupt?()
-                        } else {
-                            onMidTurnInput?(normalized)
+                        guard hasSendableContent,
+                              attachmentsReady,
+                              !isSending else {
+                            return
                         }
-                        return
+                        onSend?()
+                    } label: {
+                        composerActionLabel
                     }
-
-                    guard hasSendableContent,
-                          attachmentsReady,
-                          !isSending else {
-                        return
-                    }
-                    onSend?()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(.black)
-                            .frame(width: 36, height: 36)
-
-                        if isRuntimeTurnActive,
-                           interruptRequested,
-                           text.trimmingCharacters(
-                               in: .whitespacesAndNewlines
-                           ).isEmpty {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        } else {
-                            Image(
-                                systemName:
-                                    composerActionSymbol
+                    .buttonStyle(.plain)
+                    .disabled(
+                        isRuntimeControlInFlight
+                            || (
+                                isSending
+                                && !isRuntimeTurnActive
                             )
-                            .font(.system(
-                                size: 15,
-                                weight:
-                                    composerActionWeight
-                            ))
-                            .foregroundStyle(.white)
-                        }
-                    }
+                            || (
+                                !isRuntimeTurnActive
+                                && (
+                                    !hasSendableContent
+                                    || !attachmentsReady
+                                )
+                            )
+                    )
                 }
-                .buttonStyle(.plain)
-                .disabled(
-                    isRuntimeControlInFlight
-                        || (
-                            isSending
-                            && !isRuntimeTurnActive
-                        )
-                        || (
-                            !isRuntimeTurnActive
-                            && (
-                                !hasSendableContent
-                                || !attachmentsReady
-                            )
-                        )
-                )
             }
         }
         .padding(.horizontal, 16)
@@ -280,6 +247,124 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
+        .onDisappear {
+            voiceHoldTask?.cancel()
+            voiceHoldTask = nil
+            voicePressStarted = false
+            voiceHoldActivated = false
+        }
+    }
+
+    private var isVoiceActionMode: Bool {
+        !isRuntimeTurnActive
+            && text.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+            && attachments.isEmpty
+    }
+
+    private var composerActionLabel: some View {
+        ZStack {
+            Circle()
+                .fill(.black)
+                .frame(width: 36, height: 36)
+
+            if isRuntimeTurnActive,
+               interruptRequested,
+               text.trimmingCharacters(
+                   in: .whitespacesAndNewlines
+               ).isEmpty {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+            } else {
+                Image(systemName: composerActionSymbol)
+                    .font(.system(
+                        size: 15,
+                        weight: composerActionWeight
+                    ))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private var voiceActionButton: some View {
+        composerActionLabel
+            .opacity(voiceEnabled ? 1 : 0.35)
+            .contentShape(Circle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        beginVoicePressGesture()
+                    }
+                    .onEnded { _ in
+                        endVoicePressGesture()
+                    }
+            )
+            .confirmationDialog(
+                "Voice language",
+                isPresented: $isVoiceLanguagePickerPresented,
+                titleVisibility: .visible
+            ) {
+                ForEach(VoiceInputLanguage.allCases) { language in
+                    Button(
+                        language == voiceLanguage
+                            ? language.displayName + " ✓"
+                            : language.displayName
+                    ) {
+                        voiceLanguage = language
+                    }
+                }
+            }
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(
+                "Voice input, "
+                    + voiceLanguage.displayName
+                    + ". Tap to choose language, hold to dictate and send"
+            )
+            .accessibilityAction {
+                guard voiceEnabled else { return }
+                isVoiceLanguagePickerPresented = true
+            }
+    }
+
+    private func beginVoicePressGesture() {
+        guard voiceEnabled,
+              !voicePressStarted else {
+            return
+        }
+
+        voicePressStarted = true
+        voiceHoldActivated = false
+        voiceHoldTask?.cancel()
+        voiceHoldTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled,
+                  voicePressStarted,
+                  voiceEnabled else {
+                return
+            }
+            voiceHoldActivated = true
+            onVoicePress?()
+        }
+    }
+
+    private func endVoicePressGesture() {
+        guard voicePressStarted else { return }
+
+        voicePressStarted = false
+        voiceHoldTask?.cancel()
+        voiceHoldTask = nil
+
+        if voiceHoldActivated {
+            voiceHoldActivated = false
+            onVoiceRelease?()
+            return
+        }
+
+        guard voiceEnabled else { return }
+        isVoiceLanguagePickerPresented = true
     }
 
     private var composerActionSymbol: String {

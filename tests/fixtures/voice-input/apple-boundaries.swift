@@ -50,9 +50,12 @@ final class SFSpeechRecognizer {
     enum Authorization { case authorized, denied }
     static var permission: Authorization = .authorized
     static var handler: ((RecognitionResult?, Error?) -> Void)?
+    static var lastLocaleIdentifier: String?
     let isAvailable = true
     let supportsOnDeviceRecognition = true
-    init?(locale: Locale) {}
+    init?(locale: Locale) {
+        Self.lastLocaleIdentifier = locale.identifier
+    }
     static func requestAuthorization(_ completion: (Authorization) -> Void) { completion(permission) }
     func recognitionTask(with request: SFSpeechAudioBufferRecognitionRequest, resultHandler: @escaping (RecognitionResult?, Error?) -> Void) -> SFSpeechRecognitionTask {
         precondition(request.requiresOnDeviceRecognition, "audio must stay on device")

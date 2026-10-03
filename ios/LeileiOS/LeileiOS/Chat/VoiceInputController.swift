@@ -2,6 +2,24 @@ import AVFoundation
 import Combine
 import Speech
 
+enum VoiceInputLanguage: String, CaseIterable, Identifiable, Sendable {
+    case english = "en-US"
+    case chinese = "zh-CN"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .english: return "English"
+        case .chinese: return "中文"
+        }
+    }
+
+    var locale: Locale {
+        Locale(identifier: rawValue)
+    }
+}
+
 /// Keeps audio in memory and requires on-device recognition; only text leaves this controller.
 @MainActor
 final class VoiceInputController: ObservableObject {
@@ -29,7 +47,10 @@ final class VoiceInputController: ObservableObject {
     private var previousAudioSession: (AVAudioSession.Category, AVAudioSession.Mode, AVAudioSession.CategoryOptions)?
     private var completion: ((String) -> Void)?
 
-    func begin(onTranscript: @escaping (String) -> Void) {
+    func begin(
+        language: VoiceInputLanguage = .english,
+        onTranscript: @escaping (String) -> Void
+    ) {
         guard !isActive else { return }
         errorMessage = nil
         phase = .authorizing
@@ -53,7 +74,7 @@ final class VoiceInputController: ObservableObject {
                 fail("Microphone permission is required.")
                 return
             }
-            startRecognition(token: token)
+            startRecognition(token: token, language: language)
         }
     }
 
@@ -91,8 +112,11 @@ final class VoiceInputController: ObservableObject {
         errorMessage = "Voice message could not be sent. Please try again."
     }
 
-    private func startRecognition(token: UUID) {
-        guard let recognizer = SFSpeechRecognizer(locale: .current),
+    private func startRecognition(
+        token: UUID,
+        language: VoiceInputLanguage
+    ) {
+        guard let recognizer = SFSpeechRecognizer(locale: language.locale),
               recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
             fail("On-device speech recognition is unavailable for this language.")
             return
