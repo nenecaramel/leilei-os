@@ -5,7 +5,7 @@ Spec: user-provided Mainline 2D request, 2026-10-03. Base: 98ff75a9d44cdf3210be8
 - [x] Audit SDK/provider and canonical authority; RED→GREEN for forged normalized projection, then opaque backend authorization with ready/owned attachment resolution. No current SDK signal enables automatic projection.
 - [x] Actual Swift RED→GREEN for typed v1 structured parts, bounded JSON, search/citation relations, pending/unsupported and validated media refs through B projector/registry.
 - [x] Native JSON/search/source/result renderer composition through the existing registry and C media; safe HTTP(S) capability; preserve part order, copy and fallback markers.
-- [ ] Compatibility/real SDK fixtures, Postgres backing+separate projection regressions; required focused/runtime/bridge/compile checks and sequential exact-main full suite.
+- [x] Compatibility/real SDK fixtures, Postgres backing+separate projection regressions; required focused/runtime/bridge/compile checks and sequential exact-main full suite.
 - [ ] Fresh review, fixes with RED→GREEN, independent PR, physical acceptance pending, task-only cleanup.
 
 Interfaces: backend authorization produces the existing canonical envelope and validates attachment refs; Swift consumes that envelope without provider payload parsing. D child nodes preserve parent canonical identity and do not create ledger rows. Text citations preserve provider relation and aggregate sources separately without changing canonical ordinal.
@@ -23,3 +23,24 @@ Final: Ruling: future token/transaction producer lifetime remains documented int
 Final: Ruling: physical-device validation stays pending — the user explicitly defers D acceptance to Mainline 3, and C media acceptance is still pending — device behavior is not yet accepted.
 Final: Ruling: final full-suite delta/Simulator are executor validation — rerun after this review fix pass — historical baseline failures remain visible, not repaired incidentally.
 Final: Ruling: E–H surfaces remain outside D — native structured/search/citation and C reuse are the requested scope — rich Markdown/Artifact/interactive features remain subsequent work.
+
+Final verification after review fixes: Swift focused 11/11; existing focused 94/94 on repeat (prior local HTTP socket closure, no product change); production 405+101; full bridge 125; isolated DB normalize/readback/Swift pipeline 6/6 zero skipped; typecheck/generated/build/diff and unsigned Simulator BUILD SUCCEEDED.
+
+Exact main: **2089 tests / 1985 passed / 10 failed / 94 skipped**. Final PR: **2096 tests / 1991 passed / 10 failed / 95 skipped**. Both full suites exit 1; six additional unit/Swift tests pass and the new DB integration is gated in the normal suite (separately executed without skip).
+
+Added failure names: **[]**. Removed failure names: **[]**.
+
+Unchanged failure names:
+
+- `CI checks after a failed gate still run once their setup succeeds`
+- `CI reports all verification surfaces independently for PR and push`
+- `CI scopes database access to Postgres gates and preserves every verification command`
+- `authenticated Native Live internal JSON can exceed the public 1mb limit`
+- `iOS Runtime UI prefers SDK tool display names and surfaces API retry state`
+- `real Swift Activity preserves final duration and explicitly presents nested permission`
+- `tests/ios-native-live-message-surface-boundaries.test.ts`
+- `the app JSON parser accepts a 100k CJK Diary body`
+- `the app JSON parser remains bounded above 1mb`
+- `unauthenticated Native Live internal JSON does not get the larger parser budget`
+
+The same Activity-duration fixture clock precondition and invalid regex in message-surface-boundaries fail on both trees, alongside historical parser/CI/runtime source assertions. These are not reported as a green full suite.
