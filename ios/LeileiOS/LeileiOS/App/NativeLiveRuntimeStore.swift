@@ -41,6 +41,14 @@ extension AppModel {
         prepareID: String,
         conversationID: UUID
     ) {
+        if let previous = nativeLiveRuntimeSurface,
+           previous.prepareID != prepareID,
+           previous.foregroundTurnCompleted {
+            beginNativeLiveBackgroundObservation(
+                from: previous
+            )
+        }
+
         nativeLiveRuntimeObservationTask?.cancel()
 
         nativeLiveRuntimeSurface = NativeLiveRuntimeSurfaceState(
@@ -56,6 +64,7 @@ extension AppModel {
             guard let self else { return }
 
             var cycle = 0
+            var sawBackgroundDrainCandidate = false
 
             while !Task.isCancelled,
                   self.nativeLiveRuntimeSurface?.prepareID == prepareID {
@@ -66,10 +75,263 @@ extension AppModel {
                 )
                 cycle += 1
 
+                if let surface = self.nativeLiveRuntimeSurface,
+                   surface.prepareID == prepareID,
+                   surface.foregroundTurnCompleted {
+                    if surface.shouldRemainObservedAfterForeground {
+                        sawBackgroundDrainCandidate = false
+                    } else if sawBackgroundDrainCandidate {
+                        if self.activeNativeLiveConversationID
+                            == conversationID {
+                            await self.refreshNativeLiveCurrentPath(
+                                force: true,
+                                surfaceTransientFailure: false
+                            )
+                        }
+                        self.stopNativeLiveRuntimeObservation(
+                            prepareID: prepareID
+                        )
+                        return
+                    } else {
+                        sawBackgroundDrainCandidate = true
+                    }
+                }
+
                 try? await Task.sleep(
                     for: .milliseconds(500)
                 )
             }
+        }
+    }
+
+    private func beginNativeLiveBackgroundObservation(
+        from initialSurface: NativeLiveRuntimeSurfaceState
+    ) {
+        let prepareID = initialSurface.prepareID
+        let conversationID = initialSurface.conversationID
+
+        nativeLiveBackgroundObservationTasks[prepareID]?.cancel()
+        nativeLiveBackgroundRuntimeSurfaces[prepareID] =
+            initialSurface
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            $0 == prepareID
+        }
+        nativeLiveBackgroundSurfaceOrder.append(prepareID)
+
+        nativeLiveBackgroundObservationTasks[prepareID] =
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    self.nativeLiveBackgroundObservationTasks
+                        .removeValue(forKey: prepareID)
+                    self.pruneNativeLiveBackgroundRuntimeSurfaces()
+                }
+
+                var cycle = 0
+                var sawBackgroundDrainCandidate = false
+                var sawPostForegroundActivity =
+                    initialSurface.hasVisibleBackgroundTasks
+                var refreshedActivityAnchor = false
+
+                while !Task.isCancelled,
+                      self.nativeLiveBackgroundRuntimeSurfaces[
+                        prepareID
+                      ] != nil {
+                    let changed =
+                        await self.refreshNativeLiveBackgroundRuntimeSurface(
+                            prepareID: prepareID,
+                            conversationID: conversationID,
+                            includeInteractions:
+                                cycle.isMultiple(of: 2)
+                        )
+                    cycle += 1
+
+                    guard let surface =
+                            self.nativeLiveBackgroundRuntimeSurfaces[
+                                prepareID
+                            ] else {
+                        return
+                    }
+
+                    if changed,
+                       !refreshedActivityAnchor,
+                       self.activeNativeLiveConversationID
+                            == conversationID {
+                        await self.refreshNativeLiveCurrentPath(
+                            force: true,
+                            surfaceTransientFailure: false
+                        )
+                        refreshedActivityAnchor = true
+                    }
+
+                    if surface.shouldRemainObservedAfterForeground {
+                        sawPostForegroundActivity = true
+                        sawBackgroundDrainCandidate = false
+                    } else if sawBackgroundDrainCandidate {
+                        if self.activeNativeLiveConversationID
+                            == conversationID {
+                            await self.refreshNativeLiveCurrentPath(
+                                force: true,
+                                surfaceTransientFailure: false
+                            )
+                        }
+                        if !sawPostForegroundActivity {
+                            self.nativeLiveBackgroundRuntimeSurfaces
+                                .removeValue(forKey: prepareID)
+                        }
+                        return
+                    } else {
+                        sawBackgroundDrainCandidate = true
+                    }
+
+                    try? await Task.sleep(
+                        for: .milliseconds(500)
+                    )
+                }
+            }
+    }
+
+    private func refreshNativeLiveBackgroundRuntimeSurface(
+        prepareID: String,
+        conversationID: UUID,
+        includeInteractions: Bool
+    ) async -> Bool {
+        guard var surface =
+                nativeLiveBackgroundRuntimeSurfaces[prepareID],
+              surface.conversationID == conversationID else {
+            return false
+        }
+
+        var changed = false
+
+        do {
+            let page = try await api.nativeLiveRuntimeEvents(
+                prepareID: prepareID,
+                afterSequence: surface.nextAfterSequence
+            )
+            guard page.prepareID == prepareID else {
+                return false
+            }
+
+            if !page.events.isEmpty {
+                let known = Set(surface.events.map(\.sequence))
+                let newEvents = page.events.filter {
+                    !known.contains($0.sequence)
+                }
+                if !newEvents.isEmpty {
+                    surface.events.append(contentsOf: newEvents)
+                    changed = true
+                }
+            }
+            surface.nextAfterSequence = page.nextAfterSequence
+        } catch {
+            // Background observation is fail-soft. Durable runtime rows
+            // remain available to the next refresh or app launch.
+        }
+
+        if includeInteractions {
+            do {
+                let interactions =
+                    try await api.nativeLiveRuntimeInteractions(
+                        prepareID: prepareID
+                    )
+                if interactions != surface.interactions {
+                    surface.interactions = interactions
+                    changed = true
+                }
+            } catch {
+                // Fail-soft; the next cycle can recover.
+            }
+        }
+
+        guard nativeLiveBackgroundRuntimeSurfaces[prepareID]
+                != nil else {
+            return false
+        }
+        nativeLiveBackgroundRuntimeSurfaces[prepareID] = surface
+        return changed
+    }
+
+    func continueNativeLiveRuntimeObservationForBackgroundTasks(
+        prepareID: String,
+        conversationID: UUID
+    ) async -> Bool {
+        await refreshNativeLiveRuntimeSurface(
+            prepareID: prepareID,
+            conversationID: conversationID,
+            includeInteractions: true
+        )
+
+        guard var surface = nativeLiveRuntimeSurface,
+              surface.prepareID == prepareID,
+              surface.conversationID == conversationID else {
+            return false
+        }
+
+        // Keep the observer alive for a short settle window even when the
+        // first post-result read has not received background_tasks_changed
+        // yet. The observation loop requires two consecutive empty cycles
+        // before it refreshes canonical history and stops.
+        surface.foregroundTurnCompleted = true
+        nativeLiveRuntimeSurface = surface
+        return true
+    }
+
+    func stopNativeLiveRuntimeObservations(
+        conversationID: UUID
+    ) {
+        if nativeLiveRuntimeSurface?.conversationID == conversationID {
+            nativeLiveRuntimeObservationTask?.cancel()
+            nativeLiveRuntimeObservationTask = nil
+            nativeLiveRuntimeSurface = nil
+        }
+
+        let backgroundPrepareIDs =
+            nativeLiveBackgroundRuntimeSurfaces.compactMap {
+                prepareID, surface in
+                surface.conversationID == conversationID
+                    ? prepareID
+                    : nil
+            }
+
+        for prepareID in backgroundPrepareIDs {
+            nativeLiveBackgroundObservationTasks[
+                prepareID
+            ]?.cancel()
+            nativeLiveBackgroundObservationTasks
+                .removeValue(forKey: prepareID)
+            nativeLiveBackgroundRuntimeSurfaces
+                .removeValue(forKey: prepareID)
+        }
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            backgroundPrepareIDs.contains($0)
+        }
+    }
+
+    private func pruneNativeLiveBackgroundRuntimeSurfaces(
+        maxCompletedCount: Int = 8
+    ) {
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            nativeLiveBackgroundRuntimeSurfaces[$0] == nil
+        }
+
+        let activePrepareIDs =
+            Set(nativeLiveBackgroundObservationTasks.keys)
+        let completedPrepareIDs =
+            nativeLiveBackgroundSurfaceOrder.filter {
+                !activePrepareIDs.contains($0)
+            }
+        let overflow =
+            max(completedPrepareIDs.count - maxCompletedCount, 0)
+
+        guard overflow > 0 else { return }
+
+        for prepareID in completedPrepareIDs.prefix(overflow) {
+            nativeLiveBackgroundRuntimeSurfaces
+                .removeValue(forKey: prepareID)
+        }
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            nativeLiveBackgroundRuntimeSurfaces[$0] == nil
         }
     }
 
@@ -149,12 +411,7 @@ extension AppModel {
         _ interaction: NativeLiveRuntimeInteractionSnapshot,
         response: [String: NativeLiveJSONValue]
     ) async throws {
-        guard let surface = nativeLiveRuntimeSurface,
-              surface.prepareID == interaction.prepareID,
-              surface.interactions.contains(where: {
-                  $0.interactionID == interaction.interactionID
-                      && $0.status == "pending"
-              }) else {
+        guard interaction.status == "pending" else {
             throw NativeLiveSendError.notReady
         }
 
@@ -166,19 +423,38 @@ extension AppModel {
                     response: response
                 )
 
-            guard var latest = nativeLiveRuntimeSurface,
-                  latest.prepareID == interaction.prepareID else {
-                return
-            }
-
-            if let index = latest.interactions.firstIndex(where: {
-                $0.interactionID == updated.interactionID
-            }) {
-                latest.interactions[index] = updated
+            if var latest = nativeLiveRuntimeSurface,
+               latest.prepareID == interaction.prepareID {
+                if let index = latest.interactions.firstIndex(where: {
+                    $0.interactionID == updated.interactionID
+                }) {
+                    latest.interactions[index] = updated
+                } else {
+                    latest.interactions.append(updated)
+                }
+                nativeLiveRuntimeSurface = latest
+            } else if var background =
+                        nativeLiveBackgroundRuntimeSurfaces[
+                            interaction.prepareID
+                        ] {
+                if let index = background.interactions.firstIndex(
+                    where: {
+                        $0.interactionID == updated.interactionID
+                    }
+                ) {
+                    background.interactions[index] = updated
+                } else {
+                    background.interactions.append(updated)
+                }
+                nativeLiveBackgroundRuntimeSurfaces[
+                    interaction.prepareID
+                ] = background
             } else {
-                latest.interactions.append(updated)
+                await refreshNativeLiveCurrentPath(
+                    force: true,
+                    surfaceTransientFailure: false
+                )
             }
-            nativeLiveRuntimeSurface = latest
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
             throw LeileiAPIError.missingAccessToken

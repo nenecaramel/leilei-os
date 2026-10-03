@@ -173,6 +173,15 @@ struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let messages: [NativeLiveCurrentPathMessage]
 }
 
+struct NativeLiveMessageActivitySnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let prepareId: String
+    let events: [NativeLiveRuntimeEventSnapshot]
+    let interactions: [NativeLiveRuntimeInteractionSnapshot]
+}
+
 struct NativeLiveCurrentPathMessage: Decodable, Sendable, Equatable, Identifiable {
     let id: String
     let conversationId: String
@@ -182,6 +191,29 @@ struct NativeLiveCurrentPathMessage: Decodable, Sendable, Equatable, Identifiabl
     let createdAt: String
     let completedAt: String?
     let blocks: [NativeLiveCurrentPathBlock]
+    let activity: NativeLiveMessageActivitySnapshot?
+
+    init(
+        id: String,
+        conversationId: String,
+        parentMessageId: String?,
+        role: String,
+        status: String,
+        createdAt: String,
+        completedAt: String?,
+        blocks: [NativeLiveCurrentPathBlock],
+        activity: NativeLiveMessageActivitySnapshot? = nil
+    ) {
+        self.id = id
+        self.conversationId = conversationId
+        self.parentMessageId = parentMessageId
+        self.role = role
+        self.status = status
+        self.createdAt = createdAt
+        self.completedAt = completedAt
+        self.blocks = blocks
+        self.activity = activity
+    }
 
     var displayText: String {
         blocks

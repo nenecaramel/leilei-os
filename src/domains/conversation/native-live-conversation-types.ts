@@ -2,6 +2,9 @@ import type {
   ConversationLifecycleStatus,
   ConversationMessageStatus,
   ConversationRuntimeProvider,
+  NativeLiveRuntimeEventType,
+  NativeLiveRuntimeInteractionKind,
+  NativeLiveRuntimeInteractionStatus,
 } from "../../database/schema.js";
 
 export type NativeLiveContentKind =
@@ -27,6 +30,31 @@ export type NativeLiveContentBlock = {
   createdAt: string;
 };
 
+export type NativeLiveMessageActivity = {
+  prepareId: string;
+  events: Array<{
+    sequence: number;
+    event: {
+      type: NativeLiveRuntimeEventType;
+      provider_session_id?: string;
+      payload?: Record<string, unknown>;
+    };
+    createdAt: string;
+  }>;
+  interactions: Array<{
+    interactionId: string;
+    prepareId: string;
+    kind: NativeLiveRuntimeInteractionKind;
+    request: Record<string, unknown>;
+    status: NativeLiveRuntimeInteractionStatus;
+    response: Record<string, unknown> | null;
+    createdAt: string;
+    updatedAt: string;
+    resolvedAt: string | null;
+    cancelledAt: string | null;
+  }>;
+};
+
 export type NativeLiveMessage = {
   id: string;
   conversationId: string;
@@ -36,6 +64,7 @@ export type NativeLiveMessage = {
   createdAt: string;
   completedAt: string | null;
   blocks: NativeLiveContentBlock[];
+  activity?: NativeLiveMessageActivity | null;
 };
 
 export type NativeLiveConversationSummary = {

@@ -80,17 +80,39 @@ test("runtime interactions are extracted from the message surface", () => {
 
 const runtimeActivityPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift";
+const runtimeActivityProjectionPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection.swift";
+const runtimeActivityLifecyclePath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Lifecycle.swift";
+const runtimeActivityToolsPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tools.swift";
+const runtimeActivityTasksPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tasks.swift";
+const runtimeModelsPath =
+  "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift";
 
 test("runtime activity and tool presentation are extracted from the message surface", () => {
   const root = fs.readFileSync(rootPath, "utf8");
 
   assert.equal(fs.existsSync(runtimeActivityPath), true);
+  assert.equal(fs.existsSync(runtimeActivityProjectionPath), true);
+  assert.equal(fs.existsSync(runtimeActivityLifecyclePath), true);
+  assert.equal(fs.existsSync(runtimeActivityToolsPath), true);
+  assert.equal(fs.existsSync(runtimeActivityTasksPath), true);
   const runtime = readExisting(runtimeActivityPath);
+  const projection = readExisting(runtimeActivityProjectionPath);
+  const lifecycleProjection = readExisting(runtimeActivityLifecyclePath);
+  const toolProjection = readExisting(runtimeActivityToolsPath);
+  const taskProjection = readExisting(runtimeActivityTasksPath);
 
   for (const symbol of [
     "struct NativeLiveRuntimeAssistantRow",
+    "struct NativeLiveTurnActivityView",
+    "struct NativeLiveLifecycleActivityRow",
+    "struct NativeLiveTaskActivityRow",
+    "struct NativeLiveTaskResourceRow",
+    "struct NativeLiveToolActivityRow",
     "struct AssistantTypingIndicatorRow",
-    "struct NativeLiveRuntimeToolCallRow",
     "enum NativeLiveToolCallState",
     "struct NativeLiveToolCallCard",
     "struct NativeLiveToolResultCard",
@@ -100,13 +122,67 @@ test("runtime activity and tool presentation are extracted from the message surf
     assert.doesNotMatch(root, new RegExp(symbol));
   }
 
-  assert.match(runtime, /tool_use_id/);
-  assert.match(runtime, /event\.type == "tool_result"/);
+  assert.match(
+    projection,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+  assert.doesNotMatch(
+    runtime,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+  assert.doesNotMatch(
+    root,
+    /struct NativeLiveTurnActivityProjection/,
+  );
+
+  assert.match(projection, /childTools/);
+  assert.match(projection, /topLevelTools/);
+  assert.match(projection, /permissionInteractions/);
+  assert.match(projection, /topLevelInteractions/);
+  assert.match(projection, /!\$0\.hiddenFromTranscript/);
+  assert.match(projection, /!\$0\.hiddenFromActivity/);
+  assert.match(projection, /!\$0\.isAmbient/);
+  assert.match(projection, /pendingInteractionIDs/);
+  assert.match(projection, /isActiveBackgroundTask/);
+  assert.match(projection, /hasActiveBackgroundTask/);
+  assert.match(projection, /return "Background"/);
+
+  assert.match(lifecycleProjection, /api_retry/);
+  assert.match(lifecycleProjection, /command_lifecycle/);
+  assert.doesNotMatch(lifecycleProjection, /album_saved/);
+
+  assert.match(toolProjection, /tool_use_id/);
+  assert.match(toolProjection, /parent_tool_use_id/);
+  assert.match(toolProjection, /parent_agent_id/);
+  assert.match(toolProjection, /hidden_from_transcript/);
+  assert.match(toolProjection, /hidden_from_activity/);
+  assert.match(toolProjection, /resource_links/);
+
+  assert.match(taskProjection, /task_id/);
+  assert.match(taskProjection, /subagent_type/);
+  assert.match(taskProjection, /is_backgrounded/);
+  assert.match(taskProjection, /ambient/);
+  assert.match(taskProjection, /spawn_depth/);
+  assert.match(taskProjection, /hidden_from_transcript/);
+  assert.match(taskProjection, /resource_links/);
+  assert.match(taskProjection, /activeTaskIDs/);
+  assert.match(taskProjection, /task\.phase != "active_set"/);
   assert.match(runtime, /case \.running:/);
   assert.match(runtime, /case \.completed:/);
   assert.match(runtime, /case \.failed:/);
-  assert.match(runtime, /runtimeSurface\?\.activityText/);
-  assert.match(runtime, /runtimeSurface\?\.interactions\.first/);
+  assert.match(runtime, /tertiarySectionTitle/);
+  assert.match(runtime, /"Resources"/);
+  assert.match(runtime, /task\.resourceLinks/);
+  assert.match(runtime, /task\.isCurrentlyActive/);
+  assert.match(runtime, /projection\.hasActiveBackgroundTask/);
+  assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
+  assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
+
+  const runtimeModels = readExisting(runtimeModelsPath);
+  assert.doesNotMatch(runtimeModels, /var activityText:/);
+  assert.doesNotMatch(runtimeModels, /Working on a task/);
+  assert.doesNotMatch(runtimeModels, /Task in progress/);
+  assert.doesNotMatch(runtimeModels, /Using a tool/);
 });
 
 const attachmentPresentationPath =
@@ -146,6 +222,14 @@ test("message rows and canonical block rendering are extracted while root compos
   const rows = readExisting(messageRowsPath);
   const blocks = readExisting(messageBlocksPath);
 
+  assert.match(rows, /nativeLiveBackgroundRuntimeSurfaces/);
+  assert.match(rows, /message\.activity\?\.prepareId/);
+  assert.match(rows, /backgroundSurface/);
+  assert.match(
+    rows,
+    /onResolveInteraction:[\s\S]*onResolveReplacementInteraction/,
+  );
+
   for (const symbol of [
     "struct NativeLiveMessageRow",
     "struct NativeLiveHistorySnapshotRow",
@@ -164,5 +248,13 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.match(root, /"还有更早消息"/);
   assert.match(root, /await onLoadOlder\(\)/);
   assert.match(root, /NativeLiveRuntimeAssistantRow/);
+  assert.match(root, /activityRuntimeSurface:/);
+  assert.match(root, /matchingRuntimeSurface\(for: snapshot\)/);
+  assert.match(
+    root,
+    /UUID\(uuidString: snapshot\.conversationId\)[\s\S]*== runtimeSurface\.conversationID/,
+  );
+  assert.match(root, /runtimeSurface\?[\s\S]*foregroundTurnCompleted == true/);
+  assert.match(root, /!runtimeSurface\.foregroundTurnCompleted[\s\S]*\|\| !hasCanonicalAssistantHead/);
   assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
 });

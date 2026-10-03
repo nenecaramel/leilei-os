@@ -344,6 +344,18 @@ export class ClaudeEventNormalizer {
             tool_use_id: block.id,
             tool_name: block.name,
             input: block.input,
+            ...(messageProvenance?.parent_tool_use_id
+              ? {
+                  parent_tool_use_id:
+                    messageProvenance.parent_tool_use_id,
+                }
+              : {}),
+            ...(messageProvenance?.parent_agent_id
+              ? {
+                  parent_agent_id:
+                    messageProvenance.parent_agent_id,
+                }
+              : {}),
             ...(displayMeta ?? {}),
           });
         }

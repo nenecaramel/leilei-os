@@ -143,6 +143,8 @@ struct NativeLiveMessageSurface: View {
     private func messageList(
         _ snapshot: NativeLiveCurrentPathSnapshot?
     ) -> some View {
+        let runtimeSurface =
+            matchingRuntimeSurface(for: snapshot)
         let messages = snapshot?.messages ?? []
         let pendingIsActive = pendingPresentationIsActive(snapshot)
         let replacementAssistantID =
@@ -231,6 +233,15 @@ struct NativeLiveMessageSurface: View {
                                 message.id == replacementAssistantID
                                     ? runtimeSurface
                                     : nil,
+                            activityRuntimeSurface:
+                                pendingOperation == nil
+                                    && runtimeSurface?
+                                        .foregroundTurnCompleted == true
+                                    && message.role == "assistant"
+                                    && message.id
+                                        == snapshot?.currentHeadMessageId
+                                    ? runtimeSurface
+                                    : nil,
                             onResolveReplacementInteraction:
                                 onResolveRuntimeInteraction,
                             isTurnInFlight: isTurnInFlight,
@@ -286,7 +297,13 @@ struct NativeLiveMessageSurface: View {
                     }
 
                     if pendingOperation == nil,
-                       runtimeSurface != nil {
+                       let runtimeSurface,
+                       (
+                           !runtimeSurface.foregroundTurnCompleted
+                               || !hasCanonicalAssistantHead(
+                                   in: snapshot
+                               )
+                       ) {
                         NativeLiveRuntimeAssistantRow(
                             runtimeSurface: runtimeSurface,
                             onResolveInteraction:
@@ -294,7 +311,7 @@ struct NativeLiveMessageSurface: View {
                         )
                         .id(
                             "recovered-runtime-assistant-"
-                                + (runtimeSurface?.prepareID ?? "")
+                                + runtimeSurface.prepareID
                         )
                     }
 
@@ -442,6 +459,30 @@ struct NativeLiveMessageSurface: View {
                     )
                 }
             }
+        }
+    }
+
+    private func matchingRuntimeSurface(
+        for snapshot: NativeLiveCurrentPathSnapshot?
+    ) -> NativeLiveRuntimeSurfaceState? {
+        guard let runtimeSurface,
+              let snapshot,
+              UUID(uuidString: snapshot.conversationId)
+                == runtimeSurface.conversationID else {
+            return nil
+        }
+        return runtimeSurface
+    }
+
+    private func hasCanonicalAssistantHead(
+        in snapshot: NativeLiveCurrentPathSnapshot?
+    ) -> Bool {
+        guard let snapshot,
+              let headID = snapshot.currentHeadMessageId else {
+            return false
+        }
+        return snapshot.messages.contains {
+            $0.id == headID && $0.role == "assistant"
         }
     }
 

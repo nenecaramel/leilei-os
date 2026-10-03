@@ -14,6 +14,9 @@ import {
 import type {
   NativeLiveMessage,
 } from "./native-live-conversation-types.js";
+import {
+  readNativeLiveMessageActivityByAssistantMessage,
+} from "./native-live-message-activity-read-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -306,6 +309,16 @@ implements NativeLiveCurrentPathReader {
     const messagesById =
       new Map(messageRows.map((row) => [row.id, row]));
 
+    const activityByMessage =
+      await readNativeLiveMessageActivityByAssistantMessage(
+        this.db,
+        {
+          userId: input.userId,
+          conversationId: input.conversationId,
+          messageRows,
+        },
+      );
+
     const blockRows = await this.db
       .select({
         id: conversationContentBlocks.id,
@@ -389,6 +402,10 @@ implements NativeLiveCurrentPathReader {
         completedAt:
           row.completedAt?.toISOString() ?? null,
         blocks: blocksByMessage.get(row.id) ?? [],
+        activity:
+          row.role === "assistant"
+            ? activityByMessage.get(row.id) ?? null
+            : null,
       };
     });
 
@@ -404,6 +421,8 @@ implements NativeLiveCurrentPathReader {
       messages,
     };
   }
+
+
 }
 
 export function normalizeCurrentPathLimit(
@@ -428,10 +447,13 @@ export function nativeLiveCurrentPathEtag(
     beforeMessageId?: string | null;
     afterMessageId?: string | null;
   } = {},
+  activityRevision?: string | null,
 ): string {
   const before = cursor.beforeMessageId ?? "-";
   const after = cursor.afterMessageId ?? "-";
-  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}"`;
+  const activity =
+    activityRevision ? `:activity:${activityRevision}` : "";
+  return `"${syncToken}:limit:${normalizeCurrentPathLimit(limit)}:before:${before}:after:${after}${activity}"`;
 }
 
 function headSyncToken(headMessageId: string): string {

@@ -10,6 +10,8 @@ struct NativeLiveMessageRow: View {
     let showPendingReplacement: Bool
     let replacementRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
+    let activityRuntimeSurface:
+        NativeLiveRuntimeSurfaceState?
     let onResolveReplacementInteraction:
         (
             NativeLiveRuntimeInteractionSnapshot,
@@ -108,6 +110,14 @@ struct NativeLiveMessageRow: View {
             messageContent
                 .textSelection(.enabled)
 
+            if displayedActivityProjection.hasContent {
+                NativeLiveTurnActivityView(
+                    projection: displayedActivityProjection,
+                    onResolveInteraction:
+                        onResolveReplacementInteraction
+                )
+            }
+
             messageStatus
 
             MindWriteIndicator(
@@ -171,10 +181,12 @@ struct NativeLiveMessageRow: View {
                 $0.ordinal < $1.ordinal
             }
             let visibleBlocks = blocks.filter { block in
-                if block.kind == "tool_use"
-                    || block.kind == "tool_result"
-                    || block.kind == "attachment" {
+                if block.kind == "attachment" {
                     return true
+                }
+                if block.kind == "tool_use"
+                    || block.kind == "tool_result" {
+                    return message.role == "user"
                 }
                 return normalizedText(block.text) != nil
             }
@@ -199,6 +211,30 @@ struct NativeLiveMessageRow: View {
                 }
             }
         }
+    }
+
+    private var historicalActivityProjection:
+        NativeLiveTurnActivityProjection {
+        NativeLiveTurnActivityProjection(message: message)
+    }
+
+    private var displayedActivityProjection:
+        NativeLiveTurnActivityProjection {
+        if let activityRuntimeSurface {
+            return NativeLiveTurnActivityProjection(
+                runtimeSurface: activityRuntimeSurface
+            )
+        }
+        if let prepareID = message.activity?.prepareId,
+           let backgroundSurface =
+            appModel.nativeLiveBackgroundRuntimeSurfaces[
+                prepareID
+            ] {
+            return NativeLiveTurnActivityProjection(
+                runtimeSurface: backgroundSurface
+            )
+        }
+        return historicalActivityProjection
     }
 
     @ViewBuilder

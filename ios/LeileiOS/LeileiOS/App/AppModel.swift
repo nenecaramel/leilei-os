@@ -71,6 +71,8 @@ final class AppModel: ObservableObject {
     @Published var activeNativeLiveWorkspaceRoot: String?
     @Published var nativeLiveRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
+    @Published var nativeLiveBackgroundRuntimeSurfaces:
+        [String: NativeLiveRuntimeSurfaceState] = [:]
     @Published var mindWritesByMessageID:
         [String: MindProductMessageWriteProjection] = [:]
     @Published var albumSavesByUserMessageID:
@@ -79,6 +81,9 @@ final class AppModel: ObservableObject {
     var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
     var nativeLiveRuntimeObservationTask: Task<Void, Never>?
+    var nativeLiveBackgroundObservationTasks:
+        [String: Task<Void, Never>] = [:]
+    var nativeLiveBackgroundSurfaceOrder: [String] = []
     var mindWriteRequestsInFlight: Set<String> = []
     var albumSaveRequestsInFlight: Set<String> = []
     var currentHeadMindWriteRefreshTask: Task<Void, Never>?
@@ -140,7 +145,13 @@ final class AppModel: ObservableObject {
         currentHeadMindWriteRefreshTask = nil
         nativeLiveRuntimeObservationTask?.cancel()
         nativeLiveRuntimeObservationTask = nil
+        for task in nativeLiveBackgroundObservationTasks.values {
+            task.cancel()
+        }
+        nativeLiveBackgroundObservationTasks.removeAll()
+        nativeLiveBackgroundSurfaceOrder.removeAll()
         nativeLiveRuntimeSurface = nil
+        nativeLiveBackgroundRuntimeSurfaces.removeAll()
         chatSyncState = .idle
         conversationPaginationInFlight = false
         archivedConversationBootstrapInFlight = false

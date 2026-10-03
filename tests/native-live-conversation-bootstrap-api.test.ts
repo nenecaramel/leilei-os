@@ -610,3 +610,113 @@ test("native live bootstrap rename rejects missing, blank, invalid, and extra fi
     assert.equal(service.renameCalls.length, 1);
   });
 });
+
+
+test("native live current-path ETag changes when activity changes under the same head", async () => {
+  const service = new FakeConversationService();
+  const headMessageId = "77777777-7777-4777-8777-777777777777";
+  let sequence = 1;
+  let interactionUpdatedAt =
+    "2026-09-26T08:00:00.750Z";
+
+  const reader = {
+    async readCurrentPath() {
+      return {
+        conversationId,
+        title: "Existing",
+        currentHeadMessageId: headMessageId,
+        updatedAt: "2026-09-26T08:00:00.000Z",
+        syncToken: `head:${headMessageId}`,
+        truncated: false,
+        olderCursor: null,
+        resetRequired: false,
+        messages: [{
+          id: headMessageId,
+          conversationId,
+          parentMessageId:
+            "66666666-6666-4666-8666-666666666666",
+          role: "assistant",
+          status: "completed",
+          createdAt: "2026-09-26T08:00:00.000Z",
+          completedAt: "2026-09-26T08:00:01.000Z",
+          blocks: [],
+          activity: {
+            prepareId:
+              "88888888-8888-4888-8888-888888888888",
+            events: [{
+              sequence,
+              event: {
+                type: "task",
+                payload: {
+                  phase: "progress",
+                  task_id: "task-1",
+                },
+              },
+              createdAt: "2026-09-26T08:00:00.500Z",
+            }],
+            interactions: [{
+              interactionId:
+                "99999999-9999-4999-8999-999999999999",
+              prepareId:
+                "88888888-8888-4888-8888-888888888888",
+              kind: "permission",
+              request: { toolName: "Bash" },
+              status: "pending",
+              response: null,
+              createdAt: "2026-09-26T08:00:00.700Z",
+              updatedAt: interactionUpdatedAt,
+              resolvedAt: null,
+              cancelledAt: null,
+            }],
+          },
+        }],
+      };
+    },
+  };
+
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const url =
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/current-path`;
+
+      const first = await fetch(url);
+      assert.equal(first.status, 200);
+      const firstEtag = first.headers.get("etag");
+      assert.ok(firstEtag);
+
+      sequence = 2;
+      const changed = await fetch(url, {
+        headers: {
+          "If-None-Match": firstEtag,
+        },
+      });
+      assert.equal(changed.status, 200);
+      const changedEtag = changed.headers.get("etag");
+      assert.ok(changedEtag);
+      assert.notEqual(changedEtag, firstEtag);
+
+      interactionUpdatedAt =
+        "2026-09-26T08:00:02.000Z";
+      const interactionChanged = await fetch(url, {
+        headers: {
+          "If-None-Match": changedEtag,
+        },
+      });
+      assert.equal(interactionChanged.status, 200);
+      const interactionChangedEtag =
+        interactionChanged.headers.get("etag");
+      assert.ok(interactionChangedEtag);
+      assert.notEqual(interactionChangedEtag, changedEtag);
+
+      const unchanged = await fetch(url, {
+        headers: {
+          "If-None-Match": interactionChangedEtag,
+        },
+      });
+      assert.equal(unchanged.status, 304);
+    },
+    true,
+    reader,
+  );
+});

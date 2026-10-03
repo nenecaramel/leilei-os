@@ -44,6 +44,10 @@ export function canonicalizeNativeLiveEvents(
   error: string | null;
 } {
   const blocks: NativeLiveContentBlockInput[] = [];
+  const hiddenToolUseIds =
+    collectHiddenTranscriptToolUseIds(events);
+  const hiddenActivityToolUseIds =
+    collectHiddenActivityToolUseIds(events);
   let finalText: string | null = null;
   let error: string | null = null;
   let sawText = false;
@@ -84,10 +88,24 @@ export function canonicalizeNativeLiveEvents(
     }
 
     if (event.type === "tool_use") {
+      const canonicalPayload =
+        stripToolUseDisplayMetadata(payload);
+      const toolUseId =
+        stringValue(canonicalPayload.tool_use_id);
+      if (toolUseId && hiddenToolUseIds.has(toolUseId)) {
+        canonicalPayload.hidden_from_transcript = true;
+      }
+      if (
+        toolUseId
+        && hiddenActivityToolUseIds.has(toolUseId)
+      ) {
+        canonicalPayload.hidden_from_activity = true;
+      }
+
       blocks.push({
         kind: "tool_use",
         rawType: "tool_use",
-        payload: stripToolUseDisplayMetadata(payload),
+        payload: canonicalPayload,
       });
       continue;
     }
@@ -119,6 +137,66 @@ export function canonicalizeNativeLiveEvents(
   }
 
   return { blocks, error };
+}
+
+function collectHiddenActivityToolUseIds(
+  events: readonly NativeLiveNormalizedEvent[],
+): Set<string> {
+  return collectTaskToolUseLineage(
+    events,
+    (payload) => payload.ambient === true,
+  );
+}
+
+function collectHiddenTranscriptToolUseIds(
+  events: readonly NativeLiveNormalizedEvent[],
+): Set<string> {
+  return collectTaskToolUseLineage(
+    events,
+    (payload) => payload.hidden_from_transcript === true,
+  );
+}
+
+function collectTaskToolUseLineage(
+  events: readonly NativeLiveNormalizedEvent[],
+  matchesTask: (
+    payload: Record<string, unknown>,
+  ) => boolean,
+): Set<string> {
+  const collected = new Set<string>();
+
+  for (const event of events) {
+    if (event.type !== "task") continue;
+    const payload = event.payload ?? {};
+    if (!matchesTask(payload)) continue;
+    const toolUseId = stringValue(payload.tool_use_id);
+    if (toolUseId) {
+      collected.add(toolUseId);
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const event of events) {
+      if (event.type !== "tool_use") continue;
+      const payload = event.payload ?? {};
+      const toolUseId = stringValue(payload.tool_use_id);
+      const parentToolUseId =
+        stringValue(payload.parent_tool_use_id);
+      if (
+        toolUseId
+        && parentToolUseId
+        && collected.has(parentToolUseId)
+        && !collected.has(toolUseId)
+      ) {
+        collected.add(toolUseId);
+        changed = true;
+      }
+    }
+  }
+
+  return collected;
 }
 
 function stripToolUseDisplayMetadata(

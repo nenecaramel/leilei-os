@@ -336,6 +336,11 @@ struct NativeLiveRuntimeQuestion:
 }
 
 extension NativeLiveRuntimeInteractionSnapshot {
+    var toolUseID: String? {
+        request["toolUseId"]?.stringValue
+            ?? request["tool_use_id"]?.stringValue
+    }
+
     var isPending: Bool {
         status == "pending"
     }
@@ -454,6 +459,95 @@ struct NativeLiveRuntimeSurfaceState:
     var interactions: [NativeLiveRuntimeInteractionSnapshot]
     var controls: [NativeLiveRuntimeControlSnapshot]
     var nextAfterSequence: Int
+    var foregroundTurnCompleted = false
+
+    var visibleBackgroundTaskIDs: Set<String> {
+        var active = Set<String>()
+        var activeSetSequence = -1
+
+        for event in events.reversed() {
+            guard event.event.type == "task",
+                  event.event.payload?["phase"]?.stringValue
+                    == "active_set",
+                  let tasks =
+                    event.event.payload?["tasks"]?.arrayValue else {
+                continue
+            }
+
+            activeSetSequence = event.sequence
+            active = Set(
+                tasks.compactMap { value in
+                    guard let task = value.objectValue,
+                          task["ambient"]?.boolValue != true else {
+                        return nil
+                    }
+                    return task["task_id"]?.stringValue
+                }
+            )
+            break
+        }
+
+        let terminalStatuses = Set([
+            "completed",
+            "failed",
+            "cancelled",
+            "stopped",
+            "killed",
+        ])
+
+        for event in events
+        where event.event.type == "task"
+            && event.sequence > activeSetSequence {
+            let payload = event.event.payload ?? [:]
+            guard let taskID = payload["task_id"]?.stringValue,
+                  payload["ambient"]?.boolValue != true else {
+                continue
+            }
+
+            switch payload["phase"]?.stringValue {
+            case "started":
+                if payload["is_backgrounded"]?.boolValue == true {
+                    active.insert(taskID)
+                }
+
+            case "updated":
+                if let patch = payload["patch"]?.objectValue {
+                    if let status = patch["status"]?.stringValue,
+                       terminalStatuses.contains(status) {
+                        active.remove(taskID)
+                    } else if patch["is_backgrounded"]?.boolValue == true {
+                        active.insert(taskID)
+                    } else if patch["is_backgrounded"]?.boolValue == false {
+                        active.remove(taskID)
+                    }
+                }
+
+            case "notification":
+                if let status = payload["status"]?.stringValue,
+                   terminalStatuses.contains(status) {
+                    active.remove(taskID)
+                }
+
+            default:
+                break
+            }
+        }
+
+        return active
+    }
+
+    var hasVisibleBackgroundTasks: Bool {
+        !visibleBackgroundTaskIDs.isEmpty
+    }
+
+    var hasPendingRuntimeInteraction: Bool {
+        interactions.contains(where: \.isPending)
+    }
+
+    var shouldRemainObservedAfterForeground: Bool {
+        hasVisibleBackgroundTasks
+            || hasPendingRuntimeInteraction
+    }
 
     var streamingText: String {
         let deltas = events.compactMap { event -> String? in
@@ -543,113 +637,39 @@ struct NativeLiveRuntimeSurfaceState:
         return false
     }
 
-    var activityText: String? {
-        for event in events.reversed() {
-            let payload = event.event.payload ?? [:]
-
-            switch event.event.type {
-            case "partial_text", "text", "result", "error":
-                return nil
-
-            case "task":
-                let phase = payload["phase"]?.stringValue
-                let summary =
-                    payload["summary"]?.stringValue
-                    ?? payload["description"]?.stringValue
-                let tool = payload["last_tool_name"]?.stringValue
-
-                if phase == "updated",
-                   let patch = payload["patch"]?.objectValue,
-                   let status = patch["status"]?.stringValue,
-                   ["completed", "failed", "cancelled"].contains(status) {
-                    return nil
-                }
-
-                if phase == "notification",
-                   let status = payload["status"]?.stringValue,
-                   ["completed", "failed", "cancelled"].contains(status) {
-                    return nil
-                }
-
-                if phase == "active_set",
-                   let tasks = payload["tasks"]?.arrayValue {
-                    if tasks.isEmpty {
-                        return nil
-                    }
-                    return tasks.count == 1
-                        ? "1 task active"
-                        : "\(tasks.count) tasks active"
-                }
-
-                if let summary, !summary.isEmpty {
-                    return summary
-                }
-                if let tool, !tool.isEmpty {
-                    return "Using \(tool)"
-                }
-                if phase == "started" {
-                    return "Working on a task"
-                }
-                if phase == "progress" {
-                    return "Task in progress"
-                }
-                return "Task updated"
-
-            case "tool_use":
-                if let tool =
-                    payload["display_name"]?.stringValue
-                    ?? payload["tool_name"]?.stringValue,
-                   !tool.isEmpty {
-                    return "Using \(tool)"
-                }
-                return "Using a tool"
-
-            case "runtime":
-                if payload["kind"]?.stringValue == "album_saved" {
-                    return "Saved a photo to Album"
-                }
-                if payload["kind"]?.stringValue == "api_retry" {
-                    let attempt = payload["attempt"]?.numberValue
-                    let maxRetries = payload["max_retries"]?.numberValue
-                    if let attempt, let maxRetries {
-                        return "Claude retrying · \(Int(attempt))/\(Int(maxRetries))"
-                    }
-                    return "Claude retrying"
-                }
-                if payload["kind"]?.stringValue
-                    == "command_lifecycle" {
-                    switch payload["state"]?.stringValue {
-                    case "queued":
-                        return "Message queued"
-                    case "started":
-                        return "Claude received message"
-                    case "cancelled", "discarded", "refused",
-                         "completed":
-                        return nil
-                    default:
-                        continue
-                    }
-                }
-                continue
-
-            case "tool_result":
-                if payload["is_error"]?.boolValue == true {
-                    return "Tool failed"
-                }
-                return "Tool finished"
-
-            default:
-                continue
-            }
-        }
-
-        return nil
-    }
-
     var hasVisibleRuntimeContent: Bool {
         !streamingText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
-            || activityText != nil
+            || events.contains { event in
+                if [
+                    "tool_use",
+                    "tool_result",
+                    "task",
+                    "error",
+                ].contains(event.event.type) {
+                    return true
+                }
+
+                guard event.event.type == "runtime" else {
+                    return false
+                }
+
+                let payload = event.event.payload ?? [:]
+                switch payload["kind"]?.stringValue {
+                case "album_saved", "api_retry":
+                    return true
+                case "command_lifecycle":
+                    return [
+                        "queued",
+                        "started",
+                    ].contains(
+                        payload["state"]?.stringValue ?? ""
+                    )
+                default:
+                    return false
+                }
+            }
+            || !interactions.isEmpty
     }
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { RequestHandler } from "express";
 import {
   DEFAULT_NATIVE_LIVE_CURRENT_PATH_LIMIT,
@@ -569,6 +570,7 @@ export function readNativeLiveCurrentPathHandler(
         snapshot.syncToken,
         limit,
         { beforeMessageId, afterMessageId },
+        nativeLiveCurrentPathActivityRevision(snapshot.messages),
       );
       response.setHeader("ETag", etag);
       if (ifNoneMatchContains(request.header("if-none-match"), etag)) {
@@ -712,6 +714,51 @@ function parseCurrentPathLimit(
   )
     ? parsed
     : null;
+}
+
+function nativeLiveCurrentPathActivityRevision(
+  messages: Array<{
+    id: string;
+    activity?: {
+      prepareId: string;
+      events: Array<{ sequence: number }>;
+      interactions: Array<{ updatedAt: string }>;
+    } | null;
+  }>,
+): string | null {
+  const parts = messages.flatMap((message) => {
+    const activity = message.activity;
+    if (!activity) return [];
+
+    const latestEventSequence =
+      activity.events.at(-1)?.sequence ?? 0;
+    const latestInteractionUpdatedAt =
+      activity.interactions.reduce(
+        (latest, interaction) =>
+          interaction.updatedAt > latest
+            ? interaction.updatedAt
+            : latest,
+        "-",
+      );
+
+    return [
+      [
+        message.id,
+        activity.prepareId,
+        String(activity.events.length),
+        String(latestEventSequence),
+        String(activity.interactions.length),
+        latestInteractionUpdatedAt,
+      ].join(":"),
+    ];
+  });
+
+  if (parts.length === 0) return null;
+
+  return createHash("sha256")
+    .update(parts.join("|"))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function ifNoneMatchContains(

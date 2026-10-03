@@ -149,6 +149,9 @@ extension AppModel {
             try await api.archiveNativeLiveConversation(
                 conversationID: conversationID
             )
+            stopNativeLiveRuntimeObservations(
+                conversationID: conversationID
+            )
 
             nativeLiveConversations.removeAll {
                 UUID(uuidString: $0.id) == conversationID
@@ -212,6 +215,9 @@ extension AppModel {
 
         do {
             try await api.deleteNativeLiveConversation(
+                conversationID: conversationID
+            )
+            stopNativeLiveRuntimeObservations(
                 conversationID: conversationID
             )
 
@@ -438,6 +444,8 @@ extension AppModel {
             return
         }
 
+        var requireForceRefresh = force
+
         while isAuthenticated,
               let conversationID = activeNativeLiveConversationID {
             chatRefreshInFlight = true
@@ -447,7 +455,10 @@ extension AppModel {
             }
 
             do {
-                let deltaAnchor = existingSnapshot?.currentHeadMessageId
+                let deltaAnchor =
+                    requireForceRefresh
+                        ? nil
+                        : existingSnapshot?.currentHeadMessageId
                 let result = try await api.nativeLiveCurrentPath(
                     conversationID: conversationID,
                     afterMessageID: deltaAnchor
@@ -464,8 +475,15 @@ extension AppModel {
 
                 case .modified(let snapshot, _):
                     if let existingSnapshot,
-                       deltaAnchor != nil,
+                       requireForceRefresh,
                        !snapshot.resetRequired {
+                        nativeLiveCurrentPath = mergeNativeLiveRefresh(
+                            existing: existingSnapshot,
+                            refreshed: snapshot
+                        )
+                    } else if let existingSnapshot,
+                              deltaAnchor != nil,
+                              !snapshot.resetRequired {
                         nativeLiveCurrentPath = mergeNativeLiveDelta(
                             existing: existingSnapshot,
                             delta: snapshot
@@ -505,6 +523,7 @@ extension AppModel {
             }
 
             chatRefreshPendingForce = false
+            requireForceRefresh = true
         }
 
         chatRefreshInFlight = false
@@ -575,6 +594,55 @@ extension AppModel {
         } catch {
             return
         }
+    }
+
+    private func mergeNativeLiveRefresh(
+        existing: NativeLiveCurrentPathSnapshot,
+        refreshed: NativeLiveCurrentPathSnapshot
+    ) -> NativeLiveCurrentPathSnapshot {
+        guard let firstRefreshed = refreshed.messages.first else {
+            return refreshed
+        }
+
+        let existingIndexByID = Dictionary(
+            uniqueKeysWithValues:
+                existing.messages.enumerated().map {
+                    ($0.element.id, $0.offset)
+                }
+        )
+
+        let prefixEndIndex: Int?
+        if let sameMessageIndex =
+            existingIndexByID[firstRefreshed.id] {
+            prefixEndIndex = sameMessageIndex - 1
+        } else if let parentMessageID =
+                    firstRefreshed.parentMessageId,
+                  let parentIndex =
+                    existingIndexByID[parentMessageID] {
+            prefixEndIndex = parentIndex
+        } else {
+            prefixEndIndex = nil
+        }
+
+        guard let prefixEndIndex,
+              prefixEndIndex >= 0 else {
+            return refreshed
+        }
+
+        let preservedPrefix =
+            Array(existing.messages[0...prefixEndIndex])
+
+        return NativeLiveCurrentPathSnapshot(
+            conversationId: refreshed.conversationId,
+            title: refreshed.title,
+            currentHeadMessageId: refreshed.currentHeadMessageId,
+            updatedAt: refreshed.updatedAt,
+            syncToken: refreshed.syncToken,
+            truncated: existing.truncated,
+            olderCursor: existing.olderCursor,
+            resetRequired: false,
+            messages: preservedPrefix + refreshed.messages
+        )
     }
 
     private func mergeNativeLiveDelta(
