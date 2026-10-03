@@ -1273,6 +1273,44 @@ struct ContextOverviewSheet: View {
                     }
 
 
+                    Section("Manual Compact") {
+                        Button {
+                            Task {
+                                await compactContext()
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                if isCompacting {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(
+                                    isCompacting
+                                        ? "Compacting…"
+                                        : "Compact Context"
+                                )
+                            }
+                        }
+                        .disabled(
+                            isCompacting
+                            || appModel.chatSendState != .idle
+                            || appModel.activeNativeLiveConversationID == nil
+                        )
+
+                        Text(
+                            "Compresses the current Claude context without changing canonical chat history."
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                        if let compactError {
+                            Text(compactError)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+
                     if let environment =
                         metadata?.environment {
                         Section("Session Environment") {
@@ -1280,7 +1318,7 @@ struct ContextOverviewSheet: View {
                                 "Runtime Model",
                                 environment.model
                             )
-                            environmentRow(
+                            environmentBlockRow(
                                 "Working Directory",
                                 environment.cwd
                             )
@@ -1306,7 +1344,7 @@ struct ContextOverviewSheet: View {
                             )
 
                             if !environment.mcpServers.isEmpty {
-                                environmentRow(
+                                environmentBlockRow(
                                     "MCP",
                                     environment.mcpServers
                                         .map { server in
@@ -1354,7 +1392,7 @@ struct ContextOverviewSheet: View {
                             )
 
                             if !environment.plugins.isEmpty {
-                                environmentRow(
+                                environmentBlockRow(
                                     "Plugins",
                                     environment.plugins
                                         .map { plugin in
@@ -1367,7 +1405,7 @@ struct ContextOverviewSheet: View {
                             }
 
                             if !environment.pluginErrors.isEmpty {
-                                environmentRow(
+                                environmentBlockRow(
                                     "Plugin Errors",
                                     environment.pluginErrors
                                         .map { error in
@@ -1395,44 +1433,6 @@ struct ContextOverviewSheet: View {
                         }
                     }
 
-
-                    Section("Manual Compact") {
-                        Button {
-                            Task {
-                                await compactContext()
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                if isCompacting {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                                Text(
-                                    isCompacting
-                                        ? "Compacting…"
-                                        : "Compact Context"
-                                )
-                            }
-                        }
-                        .disabled(
-                            isCompacting
-                            || appModel.chatSendState != .idle
-                            || appModel.activeNativeLiveConversationID == nil
-                        )
-
-                        Text(
-                            "Compresses the current Claude context without changing canonical chat history."
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                        if let compactError {
-                            Text(compactError)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
 
                     if let readbackError =
                         normalized(
@@ -1634,6 +1634,28 @@ struct ContextOverviewSheet: View {
     }
 
     @ViewBuilder
+    private func environmentBlockRow(
+        _ label: String,
+        _ value: String?
+    ) -> some View {
+        if let value = normalized(value) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label)
+
+                Text(value)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .textSelection(.enabled)
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    @ViewBuilder
     private func environmentListRow(
         _ label: String,
         _ values: [String]
@@ -1641,9 +1663,9 @@ struct ContextOverviewSheet: View {
         let normalizedValues =
             values.compactMap(normalized)
         if !normalizedValues.isEmpty {
-            environmentRow(
+            environmentBlockRow(
                 label,
-                normalizedValues.joined(separator: "\n")
+                normalizedValues.joined(separator: " · ")
             )
         }
     }
