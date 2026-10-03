@@ -254,7 +254,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         interactions: [NativeLiveRuntimeInteractionSnapshot],
         turnIsActive: Bool
     ) -> Int? {
-        if let durationMs = events.reversed().compactMap({ event in
+        if let durationMs = events.reversed().compactMap({ event -> Double? in
             guard event.event.type == "result" else {
                 return nil
             }
