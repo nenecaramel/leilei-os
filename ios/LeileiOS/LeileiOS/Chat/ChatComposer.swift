@@ -247,6 +247,12 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
+        .onDisappear {
+            voiceHoldTask?.cancel()
+            voiceHoldTask = nil
+            voicePressStarted = false
+            voiceHoldActivated = false
+        }
     }
 
     private var isVoiceActionMode: Bool {
