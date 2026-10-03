@@ -20,7 +20,8 @@ enum NativeLiveMessagePresentationProjector {
             case "canonical_tool_result": kind = .canonicalToolResult
             default: kind = .unknown
             }
-            let attachment = kind == .attachment ? NativeLiveAttachmentPresentationInput(block: block) : nil
+            let attachment = kind == .attachment ? NativeLiveAttachmentPresentationInput(block: block,
+                source: source.attachmentSources[block.id] ?? .authoritative) : nil
             return .init(kind: kind, text: text, sourceBlock: block, attachment: attachment,
                          fallback: fallback(block, attachment: attachment))
         }

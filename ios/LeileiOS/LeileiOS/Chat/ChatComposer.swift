@@ -583,18 +583,12 @@ private struct NativeLiveComposerAttachmentChip: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(
-                systemName:
-                    attachment.kind == .image
-                    ? "photo"
-                    : "doc"
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
+            NativeLiveComposerMediaThumbnail(attachment:attachment)
+                .frame(width:44,height:44).clipShape(RoundedRectangle(cornerRadius:8))
 
-            Text(attachment.filename)
+            Text(attachment.presentationInput.filename)
                 .font(.system(size: 12.5, weight: .medium))
-                .lineLimit(1)
+                .lineLimit(1).truncationMode(.middle)
                 .frame(maxWidth: 150, alignment: .leading)
 
             switch attachment.state {
@@ -608,6 +602,7 @@ private struct NativeLiveComposerAttachmentChip: View {
                     .foregroundStyle(.secondary)
 
             case .failed:
+                Text("Upload failed").font(.caption2).foregroundStyle(.secondary)
                 Button {
                     onRetry()
                 } label: {
@@ -631,7 +626,7 @@ private struct NativeLiveComposerAttachmentChip: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, 5)
-        .frame(height: 32)
+        .frame(height: 54)
         .background(
             Color.chatSoftFill,
             in: RoundedRectangle(
@@ -639,5 +634,22 @@ private struct NativeLiveComposerAttachmentChip: View {
                 style: .continuous
             )
         )
+    }
+}
+
+private struct NativeLiveComposerMediaThumbnail: View {
+    @EnvironmentObject private var appModel: AppModel
+    let attachment: NativeLiveComposerAttachmentDraft
+    @StateObject private var loader = NativeLiveMediaLoadState()
+    var body: some View {
+        let input = attachment.presentationInput
+        Group {
+            if let image = loader.image { Image(uiImage:image).resizable().scaledToFill() }
+            else { Image(systemName:input.mediaKind == .bitmap ? "photo" : (input.mediaKind == .svg ? "photo.artframe" : "doc")) }
+        }
+        .task(id:"\(input.draftID)|\(input.materialization)") {
+            guard input.mediaKind == .bitmap else { return }
+            await loader.load(input,appModel:appModel,pixels:128,draftData:attachment.data)
+        }
     }
 }

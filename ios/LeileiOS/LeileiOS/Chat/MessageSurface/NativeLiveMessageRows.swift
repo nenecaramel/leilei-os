@@ -54,42 +54,6 @@ struct NativeLiveMessageRow: View {
 
                 VStack(alignment: .trailing, spacing: 6) {
                     userMessagePresentation
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            Color.chatSoftFill,
-                            in: RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
-                        )
-                        .contentShape(
-                            RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous
-                            )
-                        )
-                        .overlay {
-                            LightweightContextMenuInteraction(
-                                title: "Edit",
-                                copyText: copyText,
-                                isDisabled: isTurnInFlight,
-                                cornerRadius: 18,
-                                onCopy: onCopyMessage,
-                                onTap: {
-                                    guard isVoiceInputMessage,
-                                          voiceTranscriptText != nil else {
-                                        return
-                                    }
-
-                                    withAnimation(.easeInOut(duration: 0.16)) {
-                                        isVoiceTranscriptRevealed.toggle()
-                                    }
-                                }
-                            ) {
-                                onEditMessage(message)
-                            }
-                        }
 
                     messageStatus
                 }
@@ -121,7 +85,8 @@ struct NativeLiveMessageRow: View {
 
     private var userMessagePresentation: some View {
         NativeLiveUserMessagePresentationView(presentation: presentation,
-                                             isVoiceTranscriptRevealed: $isVoiceTranscriptRevealed)
+                                             isVoiceTranscriptRevealed: $isVoiceTranscriptRevealed,
+                                             onEdit:{ onEditMessage(message) },onCopy:onCopyMessage,isDisabled:isTurnInFlight)
     }
 
     private var isVoiceInputMessage: Bool { presentation.isVoiceInput }
@@ -343,14 +308,7 @@ struct NativeLiveOptimisticUserRow: View {
             Spacer(minLength: 48)
             NativeLiveUserMessagePresentationView(presentation: presentation,
                                                  isVoiceTranscriptRevealed: $isVoiceTranscriptRevealed)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.chatSoftFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .onTapGesture {
-                    if presentation.isVoiceInput {
-                        withAnimation(.easeInOut(duration: 0.16)) { isVoiceTranscriptRevealed.toggle() }
-                    }
-                }
+
         }
     }
 }

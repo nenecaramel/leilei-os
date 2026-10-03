@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum NativeLiveJSONValue: Codable, Sendable, Equatable {
     case string(String)
@@ -143,6 +144,7 @@ struct NativeLiveComposerAttachmentDraft:
     let mimeType: String
     let kind: NativeLiveComposerAttachmentKind
     let data: Data?
+    var presentationMetadata: [String: NativeLiveJSONValue] = [:]
     var state: NativeLiveComposerAttachmentUploadState
 
     init(
@@ -158,6 +160,10 @@ struct NativeLiveComposerAttachmentDraft:
         self.mimeType = mimeType
         self.kind = kind
         self.data = data
+        if let data {
+            presentationMetadata = ["size_bytes": .number(Double(data.count)),
+                "sha256": .string(SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined())]
+        }
         self.state = state
     }
 

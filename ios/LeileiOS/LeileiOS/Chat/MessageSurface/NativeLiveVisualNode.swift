@@ -44,9 +44,11 @@ enum NativeLiveMessageRendererRegistry {
     }
 
     static func renderer(for node: NativeLiveVisualNode) -> Renderer {
-        if node.kind == .attachment,
-           node.attachment?.entityID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false || node.materialization != "ready" {
-            return .fallback
+        // Media renderer owns explicit materialization/error states, including drafts.
+        if node.kind == .attachment {
+            guard let input = node.attachment else { return .fallback }
+            if input.entityID?.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty == true { return .fallback }
+            return .attachment
         }
         return renderer(for: node.kind)
     }

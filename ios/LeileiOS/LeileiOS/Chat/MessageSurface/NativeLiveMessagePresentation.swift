@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct NativeLiveAttachmentPresentationInput: Equatable, Sendable {
     let entityID: String?
@@ -7,32 +8,41 @@ struct NativeLiveAttachmentPresentationInput: Equatable, Sendable {
     let mimeType: String
     let kind: String
     let materialization: String
+    let metadata: [String: NativeLiveJSONValue]
+    let source: NativeLiveAttachmentSource
 
     var retainedComposerDraft: NativeLiveComposerAttachmentDraft? {
-        guard let entityID, !entityID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return .init(existingAttachmentID: entityID, filename: filename, mimeType: mimeType,
+        guard presentationState == .ready || presentationState == .loaded,
+              let entityID, !entityID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        var draft = NativeLiveComposerAttachmentDraft(existingAttachmentID: entityID, filename: filename, mimeType: mimeType,
                      kind: kind == "image" ? .image : .file)
+        draft.presentationMetadata = metadata
+        return draft
     }
 
     var blockPayload: [String: NativeLiveJSONValue] {
-        var payload: [String: NativeLiveJSONValue] = [
+        var payload = metadata
+        payload.merge([
             "filename": .string(filename), "mime_type": .string(mimeType),
             "kind": .string(kind), "materialization": .string(materialization)
-        ]
+        ]) { _, updated in updated }
         if let entityID {
             payload["attachment_id"] = .string(entityID)
-            payload["refs"] = .array([.object(["type": .string("attachment_ref"), "entity_id": .string(entityID)])])
+            if payload["refs"] == nil { payload["refs"] = .array([.object(["type": .string("attachment_ref"), "entity_id": .string(entityID)])]) }
         }
         return payload
     }
 
-    init(entityID: String?, draftID: String, filename: String, mimeType: String, kind: String, materialization: String) {
+    init(entityID: String?, draftID: String, filename: String, mimeType: String, kind: String, materialization: String, metadata: [String: NativeLiveJSONValue] = [:], source: NativeLiveAttachmentSource = .draft) {
         self.entityID = entityID; self.draftID = draftID; self.filename = filename
         self.mimeType = mimeType; self.kind = kind; self.materialization = materialization
+        self.metadata = metadata; self.source = source
     }
 
-    init(block: NativeLiveCurrentPathBlock) {
+    init(block: NativeLiveCurrentPathBlock, source: NativeLiveAttachmentSource = .authoritative) {
         let payload = block.payload ?? [:]
+        metadata = payload
+        self.source = source
         entityID = payload["attachment_id"]?.stringValue ?? payload["refs"]?.arrayValue?.first(where: {
             $0.objectValue?["type"]?.stringValue == "attachment_ref"
         })?.objectValue?["entity_id"]?.stringValue
@@ -52,9 +62,10 @@ extension NativeLiveComposerAttachmentDraft {
         case .ready: materialization = "ready"
         case .failed: materialization = "failed"
         }
+        let metadata = presentationMetadata
         return .init(entityID: remoteAttachmentID, draftID: id.uuidString,
                      filename: filename, mimeType: mimeType, kind: kind.rawValue,
-                     materialization: materialization)
+                     materialization: materialization, metadata: metadata, source: data == nil && remoteAttachmentID != nil ? .retainedEdit : .draft)
     }
 }
 
@@ -65,6 +76,8 @@ struct NativeLiveMessagePresentationSource: Equatable, Sendable {
     let role: String
     let blocks: [NativeLiveCurrentPathBlock]
     let phase: Phase
+    // Draft provenance belongs to presentation context, never canonical payload.
+    var attachmentSources: [String: NativeLiveAttachmentSource] = [:]
 
     static func canonical(_ message: NativeLiveCurrentPathMessage) -> Self {
         .init(messageID: message.id, role: message.role, blocks: message.blocks, phase: .canonical)
@@ -88,7 +101,11 @@ struct NativeLiveMessagePresentationSource: Equatable, Sendable {
         blocks += attachments.enumerated().map { index, attachment in
             attachmentBlock(attachment, ordinal: index + attachmentStart)
         }
-        return .init(messageID: messageID, role: "user", blocks: blocks, phase: .pendingSend)
+        var result = Self(messageID: messageID, role: "user", blocks: blocks, phase: .pendingSend)
+        for attachment in attachments {
+            result.attachmentSources[attachmentBlock(attachment, ordinal: 0).id] = attachment.source
+        }
+        return result
     }
 
     static func edit(_ message: NativeLiveCurrentPathMessage, text: String, attachments: [NativeLiveAttachmentPresentationInput]? = nil) -> Self {
@@ -101,6 +118,7 @@ struct NativeLiveMessagePresentationSource: Equatable, Sendable {
         }.map(\.element)
         let selected = attachments ?? originals.map { NativeLiveAttachmentPresentationInput(block: $0) }
         var blocks = message.blocks.filter { $0.kind != "text" && $0.kind != "attachment" }
+        var attachmentSources: [String: NativeLiveAttachmentSource] = [:]
         if hasText {
             blocks.append(.init(id: firstText?.id ?? "\(message.id):text", ordinal: 0,
                                 kind: "text", rawType: "text", text: text, payload: nil, createdAt: firstText?.createdAt ?? ""))
@@ -116,11 +134,14 @@ struct NativeLiveMessagePresentationSource: Equatable, Sendable {
                 blocks.append(.init(id: retained.id, ordinal: ordinal, kind: retained.kind,
                                     rawType: retained.rawType, text: retained.text,
                                     payload: retained.payload, createdAt: retained.createdAt))
+                attachmentSources[retained.id] = .retainedEdit
             } else {
-                blocks.append(attachmentBlock(attachment, ordinal: ordinal))
+                let block = attachmentBlock(attachment, ordinal: ordinal)
+                blocks.append(block)
+                attachmentSources[block.id] = attachment.source
             }
         }
-        return .init(messageID: message.id, role: message.role, blocks: blocks, phase: .pendingEdit)
+        return .init(messageID: message.id, role: message.role, blocks: blocks, phase: .pendingEdit, attachmentSources: attachmentSources)
     }
 
     private static func attachmentBlock(_ attachment: NativeLiveAttachmentPresentationInput, ordinal: Int) -> NativeLiveCurrentPathBlock {
