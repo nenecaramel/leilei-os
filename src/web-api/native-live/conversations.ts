@@ -720,7 +720,8 @@ function nativeLiveCurrentPathActivityRevision(
   messages: Array<{
     id: string;
     activity?: {
-      prepareId: string;
+      prepareId: string | null;
+      durationMs?: number;
       events: Array<{ sequence: number }>;
       interactions: Array<{ updatedAt: string }>;
     } | null;
@@ -749,6 +750,7 @@ function nativeLiveCurrentPathActivityRevision(
         String(latestEventSequence),
         String(activity.interactions.length),
         latestInteractionUpdatedAt,
+        String(activity.durationMs ?? "-"),
       ].join(":"),
     ];
   });

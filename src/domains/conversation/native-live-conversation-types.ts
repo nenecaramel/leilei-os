@@ -31,7 +31,8 @@ export type NativeLiveContentBlock = {
 };
 
 export type NativeLiveMessageActivity = {
-  prepareId: string;
+  prepareId: string | null;
+  durationMs?: number;
   events: Array<{
     sequence: number;
     event: {

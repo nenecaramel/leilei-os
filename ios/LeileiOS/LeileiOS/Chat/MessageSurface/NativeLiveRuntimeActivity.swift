@@ -492,7 +492,8 @@ private struct NativeLiveToolActivityRow: View {
                     .padding(.leading, 18)
                 } else {
                     NativeLiveInteractionHistoryRow(
-                        interaction: interaction
+                        interaction: interaction,
+                        presentation: .nestedPermission
                     )
                     .padding(.leading, 18)
                 }
@@ -559,6 +560,7 @@ private struct NativeLiveQuestionActivityRow: View {
 
 private struct NativeLiveInteractionHistoryRow: View {
     let interaction: NativeLiveRuntimeInteractionSnapshot
+    var presentation: NativeLiveInteractionHistoryPresentation = .standard
 
     @State private var isShowingDetails = false
 
@@ -590,7 +592,7 @@ private struct NativeLiveInteractionHistoryRow: View {
 
                 Spacer(minLength: 8)
 
-                Text(interaction.status.capitalized)
+                Text(statusLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -608,7 +610,7 @@ private struct NativeLiveInteractionHistoryRow: View {
         .sheet(isPresented: $isShowingDetails) {
             NativeLiveToolDetailSheet(
                 title: title,
-                status: interaction.status.capitalized,
+                status: statusLabel,
                 sectionTitle: "Request",
                 detail: nativeLiveJSONDetail(
                     .object(interaction.request)
@@ -626,13 +628,11 @@ private struct NativeLiveInteractionHistoryRow: View {
     }
 
     private var title: String {
-        if interaction.kind == "permission" {
-            return interaction.permissionTitle
-        }
-        if let question = interaction.questions.first {
-            return question.header ?? question.text
-        }
-        return interaction.kind.capitalized
+        presentation.title(for: interaction)
+    }
+
+    private var statusLabel: String {
+        presentation.statusLabel(for: interaction)
     }
 }
 

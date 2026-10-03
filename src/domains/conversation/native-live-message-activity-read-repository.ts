@@ -3,9 +3,11 @@ import {
   asc,
   eq,
   inArray,
+  sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
+  conversationProviderSessionCheckpoints,
   nativeLiveRuntimeEvents,
   nativeLiveRuntimeInteractions,
   nativeLiveTurnPreparations,
@@ -35,6 +37,31 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
     .map((row) => row.id);
   if (assistantMessageIds.length === 0) {
     return new Map();
+  }
+
+  // Final provider telemetry already lives in the canonical message checkpoint.
+  // Project only duration; operational turn retention must not remove it.
+  const durationRows = await db
+    .select({
+      messageId: conversationProviderSessionCheckpoints.canonicalMessageId,
+      durationMs: sql<unknown>`${conversationProviderSessionCheckpoints.runtimeMetadata} -> 'result' -> 'duration_ms'`,
+    })
+    .from(conversationProviderSessionCheckpoints)
+    .where(and(
+      eq(conversationProviderSessionCheckpoints.userId, input.userId),
+      eq(conversationProviderSessionCheckpoints.conversationId, input.conversationId),
+      eq(conversationProviderSessionCheckpoints.provider, "claude_code"),
+      inArray(conversationProviderSessionCheckpoints.canonicalMessageId, assistantMessageIds),
+    ));
+  const activityByMessage = new Map<string, NativeLiveMessageActivity>();
+  for (const row of durationRows) {
+    if (typeof row.durationMs !== "number" || !Number.isFinite(row.durationMs) || row.durationMs < 0) continue;
+    activityByMessage.set(row.messageId, {
+      prepareId: null,
+      durationMs: row.durationMs,
+      events: [],
+      interactions: [],
+    });
   }
 
   const preparationRows = await db
@@ -75,13 +102,11 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
   }
   const prepareIds = [...prepareToMessage.keys()];
   if (prepareIds.length === 0) {
-    return new Map();
+    return activityByMessage;
   }
-
-  const activityByMessage =
-    new Map<string, NativeLiveMessageActivity>();
   for (const [prepareId, messageId] of prepareToMessage) {
     activityByMessage.set(messageId, {
+      ...activityByMessage.get(messageId),
       prepareId,
       events: [],
       interactions: [],
@@ -241,6 +266,7 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
     if (
       activity.events.length === 0
       && activity.interactions.length === 0
+      && activity.durationMs === undefined
     ) {
       activityByMessage.delete(messageId);
     }

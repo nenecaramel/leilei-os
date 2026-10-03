@@ -114,6 +114,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
             || !tasks.isEmpty
             || !interactions.isEmpty
             || !questionActivities.isEmpty
+            || (!turnIsActive && elapsedSeconds != nil)
     }
 
     var pendingInteractions: [NativeLiveRuntimeInteractionSnapshot] {
@@ -265,8 +266,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
             }
             return event.event.payload?["duration_ms"]?.numberValue
         }).first,
-           durationMs >= 0 {
-            return max(1, Int((durationMs / 1_000).rounded()))
+           let seconds = providerDurationSeconds(durationMs) {
+            return seconds
         }
 
         guard turnIsActive else {
@@ -285,6 +286,13 @@ struct NativeLiveTurnActivityProjection: Equatable {
             0,
             Int(Date().timeIntervalSince(earliest).rounded(.down))
         )
+    }
+
+    private static func providerDurationSeconds(_ durationMs: Double?) -> Int? {
+        guard let durationMs, durationMs.isFinite, durationMs >= 0 else { return nil }
+        let seconds = (durationMs / 1_000).rounded()
+        guard seconds < Double(Int.max) else { return nil }
+        return max(1, Int(seconds))
     }
 
     private static func parseISO8601(_ value: String) -> Date? {
@@ -422,6 +430,6 @@ struct NativeLiveTurnActivityProjection: Equatable {
         interactions = projectedInteractions
         turnIsActive = false
         turnFailed = message.status == "error"
-        elapsedSeconds = nil
+        elapsedSeconds = Self.providerDurationSeconds(message.activity?.durationMs)
     }
 }
