@@ -416,14 +416,6 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
         view.backgroundColor = .clear
         view.isOpaque = false
 
-        let touchDown = UILongPressGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleTouchDown(_:))
-        )
-        touchDown.minimumPressDuration = 0
-        touchDown.allowableMovement = 50
-        touchDown.cancelsTouchesInView = false
-
         let longPress = UILongPressGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleLongPress(_:))
@@ -437,7 +429,6 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
         )
         tap.require(toFail: longPress)
 
-        view.addGestureRecognizer(touchDown)
         view.addGestureRecognizer(longPress)
         view.addGestureRecognizer(tap)
 
@@ -476,16 +467,6 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
             self.parent = parent
         }
 
-        @objc func handleTouchDown(
-            _ recognizer: UILongPressGestureRecognizer
-        ) {
-            guard parent.isEnabled,
-                  recognizer.state == .began else {
-                return
-            }
-            parent.onInteractionBegin()
-        }
-
         @objc func handleTap(
             _ recognizer: UITapGestureRecognizer
         ) {
@@ -495,6 +476,8 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
                   let view = recognizer.view else {
                 return
             }
+
+            parent.onInteractionBegin()
 
             let configuration = UIEditMenuConfiguration(
                 identifier: nil,
@@ -515,6 +498,7 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
 
             switch recognizer.state {
             case .began:
+                parent.onInteractionBegin()
                 voiceHoldActive = true
                 parent.onVoicePress()
 
