@@ -512,8 +512,10 @@ export function assembledTurnContextFromManifest(
   const renderedUserText = userTimestamp
     ? `${userTimestamp} ${userItems[0].text}`
     : userItems[0].text;
-  const voiceAttribute = userItems[0].payload?.input_mode === "voice" ? ' input_mode="voice"' : "";
-  const userMessage = `<user_message${voiceAttribute}>${escapeData(renderedUserText)}</user_message>`;
+  const isVoice = userItems[0].payload?.input_mode === "voice";
+  const voiceAttribute = isVoice ? ' input_mode="voice"' : "";
+  const voicePrefix = isVoice ? "[voice] " : "";
+  const userMessage = `<user_message${voiceAttribute}>${voicePrefix}${escapeData(renderedUserText)}</user_message>`;
   const prompt = contextData
     ? `${contextData}\n\n${userMessage}`
     : userMessage;
