@@ -98,25 +98,28 @@ struct NativeLiveMessageRow: View {
     }
 
     private var assistantContent: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(MessageTimestampFormatter.string(
-                from: message.completedAt ?? message.createdAt
-            ))
-                .font(.system(size: 13.5))
-                .tracking(0.12)
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 4)
+        let timestamp = MessageTimestampFormatter.string(
+            from: message.completedAt ?? message.createdAt
+        )
 
-            messageContent
-                .textSelection(.enabled)
-
+        return VStack(alignment: .leading, spacing: 6) {
             if displayedActivityProjection.hasContent {
                 NativeLiveTurnActivityView(
                     projection: displayedActivityProjection,
+                    timestampText: timestamp,
                     onResolveInteraction:
                         onResolveReplacementInteraction
                 )
+            } else {
+                Text(timestamp)
+                    .font(.system(size: 13.5))
+                    .tracking(0.12)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
             }
+
+            messageContent
+                .textSelection(.enabled)
 
             messageStatus
 

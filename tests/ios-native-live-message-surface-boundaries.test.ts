@@ -175,6 +175,11 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /task\.resourceLinks/);
   assert.match(runtime, /task\.isCurrentlyActive/);
   assert.match(runtime, /projection\.hasActiveBackgroundTask/);
+  assert.match(runtime, /"mcp__leileios__get_diary": "Read Diary"/);
+  assert.match(runtime, /"mcp__leileios_album__save_photo": "Save Photo"/);
+  assert.match(runtime, /"mcp__leileios_local__send_file": "Send File"/);
+  assert.match(runtime, /prefixes\.first/);
+  assert.doesNotMatch(runtime, /return "LeileiOS · "/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
 
@@ -183,6 +188,61 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.doesNotMatch(runtimeModels, /Working on a task/);
   assert.doesNotMatch(runtimeModels, /Task in progress/);
   assert.doesNotMatch(runtimeModels, /Using a tool/);
+
+  assert.match(runtime, /Text\(projection\.summaryLabel\)/);
+  assert.match(runtime, /let timestampText: String\?/);
+  assert.match(
+    runtime,
+    /Button \{[\s\S]*\} label: \{\s*HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 12\s*\)[\s\S]*Text\(timestampText\)[\s\S]*Text\(projection\.summaryLabel\)[\s\S]*Spacer\(minLength: 8\)[\s\S]*"chevron\.right"/,
+  );
+  assert.doesNotMatch(
+    runtime,
+    /HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 12\s*\) \{[\s\S]*Text\(timestampText\)[\s\S]*Button \{/,
+  );
+  assert.match(
+    runtime,
+    /\.frame\(\s*maxWidth: \.infinity,\s*alignment: \.leading\s*\)/,
+  );
+  assert.match(runtime, /"chevron\.right"/);
+  assert.match(runtime, /"chevron\.down"/);
+  assert.doesNotMatch(runtime, /projection\.headerTitle/);
+  assert.doesNotMatch(runtime, /projection\.stateLabel/);
+  assert.doesNotMatch(runtime, /private var stateIcon/);
+
+  assert.match(projection, /var summaryLabel: String/);
+  assert.equal(
+    projection.includes(
+      'return "Working for \\(Self.durationText(elapsedSeconds))"',
+    ),
+    true,
+  );
+  assert.equal(
+    projection.includes(
+      'return "Worked for \\(Self.durationText(elapsedSeconds))"',
+    ),
+    true,
+  );
+  assert.match(projection, /duration_ms/);
+  assert.match(
+    projection,
+    /tools\.count \+ tasks\.count \+ topLevelInteractions\.count/,
+  );
+  assert.doesNotMatch(
+    projection,
+    /tools\.count \+ tasks\.count \+ interactions\.count/,
+  );
+  assert.match(projection, /"1 step"/);
+  assert.match(projection, /"\\(activityCount\) steps"/);
+  assert.doesNotMatch(projection, /components\.append\("Done"\)/);
+  assert.doesNotMatch(projection, /"1 activity"/);
+  assert.doesNotMatch(projection, /"\\(activityCount\) activities"/);
+  assert.doesNotMatch(projection, /var headerTitle: String/);
+
+  const activityViewBlock = runtime.match(
+    /struct NativeLiveTurnActivityView: View \{([\s\S]*?)private struct NativeLiveLifecycleActivityRow: View \{/,
+  )?.[1] ?? "";
+  assert.doesNotMatch(activityViewBlock, /RoundedRectangle/);
+  assert.doesNotMatch(activityViewBlock, /\.background\(/);
 });
 
 const attachmentPresentationPath =
@@ -221,6 +281,27 @@ test("message rows and canonical block rendering are extracted while root compos
 
   const rows = readExisting(messageRowsPath);
   const blocks = readExisting(messageBlocksPath);
+
+  const assistantContentBlock = rows.match(
+    /private var assistantContent: some View \{([\s\S]*?)@ViewBuilder\s+private var messageContent:/,
+  )?.[1] ?? "";
+  const timestampIndex = assistantContentBlock.indexOf(
+    "MessageTimestampFormatter.string",
+  );
+  const activityIndex = assistantContentBlock.indexOf(
+    "NativeLiveTurnActivityView",
+  );
+  const messageContentIndex = assistantContentBlock.indexOf(
+    "messageContent",
+  );
+  assert.ok(timestampIndex >= 0);
+  assert.ok(activityIndex > timestampIndex);
+  assert.ok(messageContentIndex > activityIndex);
+  assert.match(rows, /timestampText: timestamp/);
+  assert.match(
+    rows,
+    /if displayedActivityProjection\.hasContent \{[\s\S]*NativeLiveTurnActivityView[\s\S]*\} else \{[\s\S]*Text\(timestamp\)/,
+  );
 
   assert.match(rows, /nativeLiveBackgroundRuntimeSurfaces/);
   assert.match(rows, /message\.activity\?\.prepareId/);

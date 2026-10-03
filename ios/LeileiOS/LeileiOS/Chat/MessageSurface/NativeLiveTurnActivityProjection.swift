@@ -103,6 +103,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     let interactions: [NativeLiveRuntimeInteractionSnapshot]
     let turnIsActive: Bool
     let turnFailed: Bool
+    let elapsedSeconds: Int?
 
     var hasContent: Bool {
         !lifecycle.isEmpty
@@ -134,10 +135,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     }
 
     var activityCount: Int {
-        lifecycle.count
-            + tools.count
-            + tasks.count
-            + interactions.count
+        tools.count + tasks.count + topLevelInteractions.count
     }
 
     func childTools(
@@ -183,72 +181,119 @@ struct NativeLiveTurnActivityProjection: Equatable {
         }
     }
 
-    var headerTitle: String {
-        if let pending = pendingInteractions.first {
-            if pending.kind == "permission" {
-                return pending.permissionTitle
-            }
-            if let question = pending.questions.first {
-                return question.header ?? question.text
-            }
+    var summaryLabel: String {
+        var components: [String] = []
+
+        if hasPendingInteraction {
+            components.append(
+                turnIsActive
+                    ? workingDurationLabel
+                    : workedDurationLabel
+            )
+            components.append("Needs input")
+        } else if hasFailure {
+            components.append(workedDurationLabel)
+            components.append("Failed")
+        } else if hasActiveBackgroundTask && !turnIsActive {
+            components.append("Working in background")
+        } else if turnIsActive {
+            components.append(workingDurationLabel)
+        } else {
+            components.append(workedDurationLabel)
         }
 
-        if let lifecycle = lifecycle.last {
-            return lifecycle.title
+        if activityCount > 0 {
+            components.append(
+                activityCount == 1
+                    ? "1 step"
+                    : "\(activityCount) steps"
+            )
         }
 
-        if let task = tasks
-            .filter(\.isCurrentlyActive)
-            .sorted(by: { $0.order < $1.order })
-            .last {
-            return task.displayTitle
-        }
-
-        if turnIsActive,
-           let tool = tools
-            .filter({ $0.state == .running })
-            .sorted(by: { $0.order < $1.order })
-            .last {
-            return nativeLiveToolDisplayName(tool.toolName)
-        }
-
-        if !turnIsActive,
-           let task = tasks
-            .sorted(by: { $0.order < $1.order })
-            .last {
-            return task.displayTitle
-        }
-
-        if let tool = tools.sorted(by: { $0.order < $1.order }).last {
-            return nativeLiveToolDisplayName(tool.toolName)
-        }
-
-        if let interaction = interactions.last {
-            if interaction.kind == "permission" {
-                return interaction.permissionTitle
-            }
-            if let question = interaction.questions.first {
-                return question.header ?? question.text
-            }
-        }
-
-        return "Activity"
+        return components
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
-    var stateLabel: String {
-        if hasPendingInteraction {
-            return "Needs input"
+    private var workingDurationLabel: String {
+        guard let elapsedSeconds else {
+            return "Working"
         }
-        if hasFailure {
-            return "Failed"
+        return "Working for \(Self.durationText(elapsedSeconds))"
+    }
+
+    private var workedDurationLabel: String {
+        guard let elapsedSeconds else {
+            return ""
         }
-        if turnIsActive {
-            return "Running"
+        return "Worked for \(Self.durationText(elapsedSeconds))"
+    }
+
+    private static func durationText(_ seconds: Int) -> String {
+        let value = max(seconds, 0)
+        if value >= 3_600 {
+            let hours = value / 3_600
+            let minutes = (value % 3_600) / 60
+            return minutes > 0
+                ? "\(hours)h \(minutes)m"
+                : "\(hours)h"
         }
-        if hasActiveBackgroundTask {
-            return "Background"
+        if value >= 60 {
+            let minutes = value / 60
+            let remainingSeconds = value % 60
+            return remainingSeconds > 0
+                ? "\(minutes)m \(remainingSeconds)s"
+                : "\(minutes)m"
         }
-        return "Done"
+        return "\(value)s"
+    }
+
+    private static func runtimeElapsedSeconds(
+        from events: [NativeLiveRuntimeEventSnapshot],
+        interactions: [NativeLiveRuntimeInteractionSnapshot],
+        turnIsActive: Bool
+    ) -> Int? {
+        if let durationMs = events.reversed().compactMap({ event -> Double? in
+            guard event.event.type == "result" else {
+                return nil
+            }
+            return event.event.payload?["duration_ms"]?.numberValue
+        }).first,
+           durationMs >= 0 {
+            return max(1, Int((durationMs / 1_000).rounded()))
+        }
+
+        guard turnIsActive else {
+            return nil
+        }
+
+        let timestamps =
+            events.map(\.createdAt)
+            + interactions.map(\.createdAt)
+        guard let earliest = timestamps.compactMap(parseISO8601)
+            .min() else {
+            return nil
+        }
+
+        return max(
+            0,
+            Int(Date().timeIntervalSince(earliest).rounded(.down))
+        )
+    }
+
+    private static func parseISO8601(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds,
+        ]
+        if let date = fractional.date(from: value) {
+            return date
+        }
+
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: value)
     }
 
     init(runtimeSurface: NativeLiveRuntimeSurfaceState) {
@@ -313,6 +358,11 @@ struct NativeLiveTurnActivityProjection: Equatable {
                         == "error"
                 )
         }
+        elapsedSeconds = Self.runtimeElapsedSeconds(
+            from: runtimeSurface.events,
+            interactions: runtimeSurface.interactions,
+            turnIsActive: projectedTurnIsActive
+        )
     }
 
     init(message: NativeLiveCurrentPathMessage) {
@@ -354,5 +404,6 @@ struct NativeLiveTurnActivityProjection: Equatable {
         interactions = projectedInteractions
         turnIsActive = false
         turnFailed = message.status == "error"
+        elapsedSeconds = nil
     }
 }

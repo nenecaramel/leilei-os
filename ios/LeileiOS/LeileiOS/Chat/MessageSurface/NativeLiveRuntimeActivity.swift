@@ -53,6 +53,7 @@ struct NativeLiveRuntimeAssistantRow: View {
 
 struct NativeLiveTurnActivityView: View {
     let projection: NativeLiveTurnActivityProjection
+    let timestampText: String?
     let onResolveInteraction:
         ((
             NativeLiveRuntimeInteractionSnapshot,
@@ -62,8 +63,22 @@ struct NativeLiveTurnActivityView: View {
     @State private var isExpanded = false
     @State private var expandedForPendingInteraction = false
 
+    init(
+        projection: NativeLiveTurnActivityProjection,
+        timestampText: String? = nil,
+        onResolveInteraction:
+            ((
+                NativeLiveRuntimeInteractionSnapshot,
+                [String: NativeLiveJSONValue]
+            ) async throws -> Void)?
+    ) {
+        self.projection = projection
+        self.timestampText = timestampText
+        self.onResolveInteraction = onResolveInteraction
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             Button {
                 if projection.hasPendingInteraction {
                     isExpanded = true
@@ -72,47 +87,47 @@ struct NativeLiveTurnActivityView: View {
                     expandedForPendingInteraction = false
                 }
             } label: {
-                HStack(spacing: 9) {
-                    stateIcon
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(projection.headerTitle)
-                            .font(.system(
-                                size: 14,
-                                weight: .medium
-                            ))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        HStack(spacing: 6) {
-                            Text(projection.stateLabel)
-
-                            Text("·")
-
-                            Text(
-                                projection.activityCount == 1
-                                    ? "1 activity"
-                                    : "\(projection.activityCount) activities"
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: 12
+                ) {
+                    if let timestampText {
+                        Text(timestampText)
+                            .font(.system(size: 13.5))
+                            .tracking(0.12)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: true,
+                                vertical: false
                             )
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     }
+
+                    Text(projection.summaryLabel)
+                        .font(.system(
+                            size: 13.5,
+                            weight: .medium
+                        ))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
 
                     Spacer(minLength: 8)
 
                     Image(
                         systemName:
                             effectiveExpanded
-                                ? "chevron.up"
-                                : "chevron.down"
+                                ? "chevron.down"
+                                : "chevron.right"
                     )
                     .font(.system(
-                        size: 10.5,
+                        size: 10,
                         weight: .semibold
                     ))
                     .foregroundStyle(.tertiary)
                 }
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -177,18 +192,9 @@ struct NativeLiveTurnActivityView: View {
                         }
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, 4)
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 10)
-        .background(
-            Color.primary.opacity(0.035),
-            in: RoundedRectangle(
-                cornerRadius: 12,
-                style: .continuous
-            )
-        )
         .onAppear {
             if projection.hasPendingInteraction,
                !isExpanded {
@@ -213,27 +219,6 @@ struct NativeLiveTurnActivityView: View {
 
     private var effectiveExpanded: Bool {
         isExpanded || projection.hasPendingInteraction
-    }
-
-    @ViewBuilder
-    private var stateIcon: some View {
-        if projection.hasPendingInteraction {
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        } else if projection.hasFailure {
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        } else if projection.turnIsActive
-                    || projection.hasActiveBackgroundTask {
-            ProgressView()
-                .controlSize(.small)
-        } else {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
     }
 }
 
@@ -869,14 +854,72 @@ private struct NativeLiveToolDetailSheet: View {
 }
 
 
+private let nativeLiveLeileiOSToolDisplayNames: [String: String] = [
+    "mcp__leileios__create_diary": "Create Diary",
+    "mcp__leileios__update_diary": "Update Diary",
+    "mcp__leileios__search_diary": "Search Diary",
+    "mcp__leileios__get_diary": "Read Diary",
+    "mcp__leileios__add_diary_comment": "Add Diary Comment",
+    "mcp__leileios__get_diary_comment": "Read Diary Comment",
+    "mcp__leileios__list_diary_comments": "List Diary Comments",
+    "mcp__leileios__update_diary_comment": "Update Diary Comment",
+    "mcp__leileios__delete_diary_comment": "Delete Diary Comment",
+    "mcp__leileios__toy_set": "Set Toy",
+    "mcp__leileios__toy_stop": "Stop Toy",
+    "mcp__leileios__global_search": "Global Search",
+    "mcp__leileios__get_universe_node": "Read Universe Node",
+    "mcp__leileios__list_universe_galaxies": "List Universe Galaxies",
+    "mcp__leileios__list_universe_nodes": "List Universe Nodes",
+    "mcp__leileios__get_universe_relations": "Read Universe Relations",
+    "mcp__leileios__create_universe_node": "Create Universe Node",
+    "mcp__leileios__update_universe_node": "Update Universe Node",
+    "mcp__leileios__create_universe_relation": "Create Universe Relation",
+    "mcp__leileios__update_universe_relation": "Update Universe Relation",
+    "mcp__leileios__delete_universe_relation": "Delete Universe Relation",
+    "mcp__leileios__get_universe_diary_sources": "Read Universe Diary Sources",
+    "mcp__leileios__add_universe_diary_source": "Add Universe Diary Source",
+    "mcp__leileios__delete_universe_diary_source": "Delete Universe Diary Source",
+    "mcp__leileios__read_todo_day": "Read Todo Day",
+    "mcp__leileios__list_todo_dates": "List Todo Dates",
+    "mcp__leileios__replace_todo_paper": "Replace Todo Paper",
+    "mcp__leileios__append_todo_entries": "Add Todo Entries",
+    "mcp__leileios__append_todo_entry": "Add Todo Entry",
+    "mcp__leileios__update_todo_entry": "Update Todo Entry",
+    "mcp__leileios__delete_todo_entry": "Delete Todo Entry",
+    "mcp__leileios__search_todo": "Search Todo",
+    "mcp__leileios__get_health": "Read Health",
+    "mcp__leileios__get_current_time": "Get Current Time",
+    "mcp__leileios__render_note_card": "Render Note Card",
+    "mcp__leileios_album__save_photo": "Save Photo",
+    "mcp__leileios_album__search_photos": "Search Photos",
+    "mcp__leileios_album__view_photo": "View Photo",
+    "mcp__leileios_album__send_photo": "Send Photo",
+    "mcp__leileios_local__send_file": "Send File",
+]
+
 func nativeLiveToolDisplayName(
     _ raw: String
 ) -> String {
-    let prefix = "mcp__leileios__"
-    guard raw.hasPrefix(prefix) else {
+    if let displayName =
+        nativeLiveLeileiOSToolDisplayNames[raw] {
+        return displayName
+    }
+
+    let prefixes = [
+        "mcp__leileios__",
+        "mcp__leileios_album__",
+        "mcp__leileios_local__",
+    ]
+    guard let prefix = prefixes.first(
+        where: { raw.hasPrefix($0) }
+    ) else {
         return raw
     }
-    return "LeileiOS · " + String(raw.dropFirst(prefix.count))
+
+    return String(raw.dropFirst(prefix.count))
+        .split(separator: "_")
+        .map { $0.capitalized }
+        .joined(separator: " ")
 }
 
 
