@@ -183,6 +183,25 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.doesNotMatch(runtimeModels, /Working on a task/);
   assert.doesNotMatch(runtimeModels, /Task in progress/);
   assert.doesNotMatch(runtimeModels, /Using a tool/);
+
+  assert.match(runtime, /Text\(projection\.summaryLabel\)/);
+  assert.match(runtime, /"chevron\.right"/);
+  assert.match(runtime, /"chevron\.down"/);
+  assert.doesNotMatch(runtime, /projection\.headerTitle/);
+  assert.doesNotMatch(runtime, /projection\.stateLabel/);
+  assert.doesNotMatch(runtime, /private var stateIcon/);
+
+  assert.match(projection, /var summaryLabel: String/);
+  assert.match(projection, /"Working for \\(Self\.durationText/);
+  assert.match(projection, /"Worked for \\(Self\.durationText/);
+  assert.match(projection, /duration_ms/);
+  assert.doesNotMatch(projection, /var headerTitle: String/);
+
+  const activityViewBlock = runtime.match(
+    /struct NativeLiveTurnActivityView: View \{([\s\S]*?)private struct NativeLiveLifecycleActivityRow: View \{/,
+  )?.[1] ?? "";
+  assert.doesNotMatch(activityViewBlock, /RoundedRectangle/);
+  assert.doesNotMatch(activityViewBlock, /\.background\(/);
 });
 
 const attachmentPresentationPath =
