@@ -63,7 +63,7 @@ struct NativeLiveTurnActivityView: View {
     @State private var expandedForPendingInteraction = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             Button {
                 if projection.hasPendingInteraction {
                     isExpanded = true
@@ -72,43 +72,25 @@ struct NativeLiveTurnActivityView: View {
                     expandedForPendingInteraction = false
                 }
             } label: {
-                HStack(spacing: 9) {
-                    stateIcon
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(projection.headerTitle)
-                            .font(.system(
-                                size: 14,
-                                weight: .medium
-                            ))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        HStack(spacing: 6) {
-                            Text(projection.stateLabel)
-
-                            Text("·")
-
-                            Text(
-                                projection.activityCount == 1
-                                    ? "1 activity"
-                                    : "\(projection.activityCount) activities"
-                            )
-                        }
-                        .font(.caption)
+                HStack(spacing: 8) {
+                    Text(projection.summaryLabel)
+                        .font(.system(
+                            size: 13.5,
+                            weight: .medium
+                        ))
                         .foregroundStyle(.secondary)
-                    }
+                        .lineLimit(1)
 
                     Spacer(minLength: 8)
 
                     Image(
                         systemName:
                             effectiveExpanded
-                                ? "chevron.up"
-                                : "chevron.down"
+                                ? "chevron.down"
+                                : "chevron.right"
                     )
                     .font(.system(
-                        size: 10.5,
+                        size: 10,
                         weight: .semibold
                     ))
                     .foregroundStyle(.tertiary)
@@ -177,18 +159,9 @@ struct NativeLiveTurnActivityView: View {
                         }
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, 4)
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 10)
-        .background(
-            Color.primary.opacity(0.035),
-            in: RoundedRectangle(
-                cornerRadius: 12,
-                style: .continuous
-            )
-        )
         .onAppear {
             if projection.hasPendingInteraction,
                !isExpanded {
@@ -213,27 +186,6 @@ struct NativeLiveTurnActivityView: View {
 
     private var effectiveExpanded: Bool {
         isExpanded || projection.hasPendingInteraction
-    }
-
-    @ViewBuilder
-    private var stateIcon: some View {
-        if projection.hasPendingInteraction {
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        } else if projection.hasFailure {
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        } else if projection.turnIsActive
-                    || projection.hasActiveBackgroundTask {
-            ProgressView()
-                .controlSize(.small)
-        } else {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-        }
     }
 }
 
