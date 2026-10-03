@@ -77,3 +77,21 @@ test("Claude Usage keeps refresh on the left and Done on the right", () => {
     /ToolbarItem\(placement: \.confirmationAction\)[\s\S]*Button\("Done"\)/,
   );
 });
+
+
+test("Claude Usage keeps an Overage skeleton until the first successful snapshot", () => {
+  const usageSheet = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Navigation/ClaudeUsageSheet.swift", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(usageSheet, /@State private var hasLoadedSnapshot = false/);
+  assert.match(
+    usageSheet,
+    /else if !hasLoadedSnapshot \{\s*Section\("Overage"\)[\s\S]*LabeledContent\("Status", value: "—"\)[\s\S]*LabeledContent\("Using overage", value: "—"\)[\s\S]*"Unavailable reason"[\s\S]*value: "—"/,
+  );
+  assert.match(
+    usageSheet,
+    /snapshot = try await api\.systemClaudeUsage\(\)\s*hasLoadedSnapshot = true/,
+  );
+});
