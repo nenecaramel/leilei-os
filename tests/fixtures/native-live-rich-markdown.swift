@@ -11,6 +11,41 @@ func presentation(_ text: String, role: String = "assistant", payload: [String:N
 func nodes(_ text: String) -> [NativeLiveVisualNode] { presentation(text).nodes[0].children }
 func text(_ node: NativeLiveVisualNode) -> String { node.markdown.map { String($0.inline.characters) } ?? node.text ?? "" }
 
+// Independent review regressions run separately so each failure is observed.
+if CommandLine.arguments.contains("--review-budget") {
+    let result = nodes(String(repeating:"$x$ ",count:30000))
+    expect(result.count == 1 && result[0].markdown?.isPlainFallback == true, "inline descendants respect shared node budget")
+    print("Rich Markdown PASS: review budget"); exit(0)
+}
+if CommandLine.arguments.contains("--review-format") {
+    for source in ["**before $x$ after**", "*before $x$ after*", "~~before $x$ after~~"] {
+        let result = nodes(source)[0]
+        expect(String(result.markdown!.inline.characters) == "before x after", "math retains whole-paragraph inline formatting")
+        let intent: InlinePresentationIntent = source.hasPrefix("**") ? .stronglyEmphasized : source.hasPrefix("~~") ? .strikethrough : .emphasized
+        expect(result.markdown!.inline.runs.allSatisfy { $0.inlinePresentationIntent?.contains(intent) == true }, "format spans math")
+    }
+    print("Rich Markdown PASS: review format"); exit(0)
+}
+if CommandLine.arguments.contains("--review-spans") {
+    expect(nodes("See [reference](https://example.com) for $x^2$.")[0].children.contains { $0.kind == .math }, "math coexists with link")
+    expect(nodes("``$x$``")[0].children.isEmpty, "double backtick code excludes math")
+    expect(nodes("``a ` $x$`` and $y$")[0].children.filter { $0.kind == .math }.map { $0.math!.latex } == ["y"], "matching backtick runs")
+    expect(nodes("[x](https://example.com/$q$) and $y$")[0].children.filter { $0.kind == .math }.map { $0.math!.latex } == ["y"], "URL math-like text excluded locally")
+    print("Rich Markdown PASS: review spans"); exit(0)
+}
+if CommandLine.arguments.contains("--review-crlf") {
+    expect(nodes("before\r\n$x$")[0].children[1].sourceRangeUTF16 == 8..<11, "CRLF canonical source range")
+    expect(nodes("```swift\r\n  let x = 1\r\n```\r\n")[0].code?.code == "  let x = 1", "copy excludes complete CRLF fence separator")
+    print("Rich Markdown PASS: review CRLF"); exit(0)
+}
+if CommandLine.arguments.contains("--review-quotes") {
+    let started = Date()
+    let result = nodes(String(repeating:"> ",count:60000)+"quote")
+    expect(result[0].markdown?.style == .quote(8) && text(result[0]) == "quote", "deep quotes visible and bounded")
+    expect(Date().timeIntervalSince(started) < 5, "deep quote scan remains bounded")
+    print("Rich Markdown PASS: review quotes"); exit(0)
+}
+
 expect(nodes("plain").count == 1 && text(nodes("plain")[0]) == "plain", "paragraph")
 expect(text(nodes("one\ntwo")[0]) == "one\ntwo", "multiline")
 expect(nodes("one\n\ntwo").count == 2, "blank line paragraphs")

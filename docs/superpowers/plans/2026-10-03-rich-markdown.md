@@ -15,4 +15,11 @@ Math rendering level: bounded LaTeX fallback. Syntax highlighting: language-awar
 Mainline 3 rich-surface physical acceptance: pending. C media acceptance remains independently pending.
 
 ## Evidence
-Pending.
+- RED→GREEN: missing typed fence/raw copy, inline paragraph composition, cache, actual streaming route and heading math source ranges.
+- Independent read-only review of `fd7b7d82`: no Critical; five Important findings and one Minor. Addressed all in one pass with real Swift RED→GREEN: shared descendant node budget, whole-paragraph formatting across math, local links/matched backtick spans, original CRLF offsets, linear quote scanning; also removed complete CRLF fence terminator.
+- Reviewer declined full math typesetting/Mermaid execution (explicit G scope), physical acceptance (Mainline 3 pending), and final full-suite status (verified separately below).
+- Real Swift E: 93 primary assertions plus 15 combined/budget/CRLF/deep-quote review assertions in six independent executable runs. Source-contract checks are supplemental.
+- Initial cross-mainline focused: 75/75; after streaming path: 76/76. Isolated localhost PG integrations: 7/7, zero skipped.
+- Runtime gate: 405 root + 101 bridge passed. Complete bridge: 125 passed. Typecheck/generated/build/diff passed. Unsigned Simulator build passed.
+- Exact-base full suite under Node24.19.0: 2096 tests, 1991 passed, 10 failed, 95 skipped. Final delta pending final run.
+

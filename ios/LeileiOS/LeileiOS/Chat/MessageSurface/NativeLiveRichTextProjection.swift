@@ -9,7 +9,7 @@ enum NativeLiveRichTextProjector {
         let text: String
         let start: Int
         let end: Int
-        var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
+        var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private static let cache = ProjectionCache()
@@ -22,7 +22,10 @@ enum NativeLiveRichTextProjector {
 
     private static func projectUncached(_ parent: NativeLiveVisualNode) -> [NativeLiveVisualNode] {
         guard let source = parent.text, !source.isEmpty else { return [] }
+        var generatedNodes = 0
+        var budgetExceeded = false
         func node(_ kind: NativeLiveVisualNodeKind, _ text: String, _ start: Int, _ end: Int) -> NativeLiveVisualNode {
+            generatedNodes += 1
             var child = parent
             child.kind = kind; child.text = text; child.children = []
             child.presentationID = "\(parent.id):rich:\(start):\(kind.rawValue)"
@@ -40,7 +43,7 @@ enum NativeLiveRichTextProjector {
         var offset = 0
         let lines = source.components(separatedBy: "\n").map { text -> Line in
             let start = offset; offset += text.utf16.count + 1
-            return .init(text: text.hasSuffix("\r") ? String(text.dropLast()) : text,
+            return .init(text: text,
                          start: start, end: min(offset, ns.length))
         }
         var result: [NativeLiveVisualNode] = []
@@ -48,7 +51,8 @@ enum NativeLiveRichTextProjector {
         func raw(_ a: Int, _ b: Int) -> String { ns.substring(with: NSRange(location: a, length: b-a)) }
         func appendMarkdown(_ text: String, style: NativeLiveMarkdownPresentation.Style, start: Int, end: Int, math: Bool = true) {
             // Inline math uses explicit paired delimiters, rejects currency and code/link spans.
-            let pieces = math ? inlineMath(text) : [(text, false, 0)]
+            guard let pieces = math ? inlineMath(text) : [(text, false, 0)] else { budgetExceeded = true; return }
+            guard generatedNodes + pieces.count + (pieces.contains { $0.1 } ? 1 : 0) <= maximumNodes else { budgetExceeded = true; return }
             var runs: [NativeLiveVisualNode] = []
             for (content, isMath, localStart) in pieces {
                 var child = node(isMath ? .math : .markdown, content, start + localStart, min(end, start + localStart + content.utf16.count + (isMath ? 2 : 0)))
@@ -60,20 +64,33 @@ enum NativeLiveRichTextProjector {
                 var group = node(.markdown, text, start, end)
                 group.presentationID = "\(parent.id):rich:\(start):inline"
                 group.children = runs; group.rendersInlineChildren = true
-                var inline = AttributedString()
-                for run in runs {
-                    if let latex = run.math?.latex {
-                        var formula = AttributedString(latex)
-                        formula.inlinePresentationIntent = .code
-                        inline.append(formula)
-                    } else if let value = run.markdown?.inline { inline.append(value) }
+                // Parse one paragraph with protected math placeholders; emphasis may span a formula.
+                var protected = "", formulas: [(String, String)] = []
+                var prefix = "LeileiRichMathPlaceholder"
+                // A collision cannot silently replace user text.
+                for _ in 0..<8 where text.contains(prefix) { prefix += "X" }
+                guard !text.contains(prefix) else { budgetExceeded = true; return }
+                for (index, piece) in pieces.enumerated() {
+                    if piece.1 {
+                        let token = prefix + String(index) + "End"
+                        protected += token; formulas.append((token, piece.0))
+                    } else { protected += piece.0 }
+                }
+                var inline = NativeLiveMarkdownPresentation.inline(protected)
+                for (token, latex) in formulas {
+                    if let range = inline.range(of: token) {
+                        let attributes = inline[range].runs.first?.attributes ?? AttributeContainer()
+                        var formula = AttributedString(latex, attributes: attributes)
+                        formula.inlinePresentationIntent = (formula.inlinePresentationIntent ?? []).union(.code)
+                        inline.replaceSubrange(range, with: formula)
+                    }
                 }
                 group.markdown = .init(style: style, inline: inline, isPlainFallback: false)
                 result.append(group)
             } else { result += runs }
         }
         while i < lines.count {
-            if result.count >= maximumNodes { return plainFallback() }
+            if generatedNodes >= maximumNodes || budgetExceeded { return plainFallback() }
             let line = lines[i], t = line.trimmed
             if t.isEmpty { i += 1; continue }
             if let (marker, count, info) = fence(t) {
@@ -88,7 +105,9 @@ enum NativeLiveRichTextProjector {
                 let bodyStart = line.end
                 // Exclude exactly the newline before the closing fence; preserve all other whitespace.
                 var bodyEnd = closed ? lines[j].start : ns.length
-                if closed, bodyEnd > bodyStart, ns.substring(with: NSRange(location: bodyEnd-1, length: 1)) == "\n" { bodyEnd -= 1 }
+                if closed, bodyEnd > bodyStart, ns.substring(with: NSRange(location: bodyEnd-1, length: 1)) == "\n" { bodyEnd -= 1
+                    if bodyEnd > bodyStart, ns.substring(with: NSRange(location: bodyEnd-1, length: 1)) == "\r" { bodyEnd -= 1 }
+                }
                 let code = raw(min(bodyStart, ns.length), max(bodyStart, bodyEnd))
                 let language = info.split(whereSeparator: { $0.isWhitespace }).first?.lowercased()
                 let kind: NativeLiveVisualNodeKind = ["diff", "patch"].contains(language ?? "") ? .diff : language == "mermaid" ? .mermaid : .code
@@ -128,7 +147,7 @@ enum NativeLiveRichTextProjector {
             appendMarkdown(lines[i..<j].map(\.text).joined(separator: "\n"), style: .paragraph, start: line.start, end: lines[j-1].end)
             i = j
         }
-        return result.isEmpty ? plainFallback() : result
+        return result.isEmpty || budgetExceeded || generatedNodes > maximumNodes ? plainFallback() : result
     }
 
     private static func fence(_ text: String) -> (Character, Int, String)? {
@@ -141,16 +160,19 @@ enum NativeLiveRichTextProjector {
     }
 
     private static func style(_ source: String) -> (style: NativeLiveMarkdownPresentation.Style, text: String)? {
-        let t = source.trimmingCharacters(in: .whitespaces)
+        let t = source.trimmingCharacters(in: .whitespacesAndNewlines)
         if ["---", "***", "___"].contains(t) { return (.divider, "") }
         let hashes = t.prefix(while: { $0 == "#" }).count
         if (1...6).contains(hashes), t.dropFirst(hashes).first == " " {
             return (.heading(hashes), String(t.dropFirst(hashes+1)))
         }
         if t.hasPrefix(">") {
-            var rest = t, depth = 0
-            while rest.hasPrefix(">") { depth += 1; rest = String(rest.dropFirst()).trimmingCharacters(in: .whitespaces) }
-            return (.quote(min(depth, 8)), rest)
+            var cursor = t.startIndex, depth = 0
+            while cursor < t.endIndex && t[cursor] == ">" {
+                depth += 1; cursor = t.index(after: cursor)
+                while cursor < t.endIndex && t[cursor].isWhitespace { cursor = t.index(after: cursor) }
+            }
+            return (.quote(min(depth, 8)), String(t[cursor...]))
         }
         let indent = source.prefix(while: { $0 == " " || $0 == "\t" }).reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
         let depth = min(indent / 2, 8)
@@ -165,18 +187,18 @@ enum NativeLiveRichTextProjector {
 
     private static func cells(_ line: String) -> [String] {
         var result: [String] = [], cell = "", escaped = false, inCode = false
-        var t = line.trimmingCharacters(in: .whitespaces)
+        var t = line.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("|") { t.removeFirst() }
         if t.hasSuffix("|"), !t.hasSuffix("\\|") { t.removeLast() }
         for c in t {
             if escaped { cell.append(c == "|" ? "|" : "\\"+String(c)); escaped = false; continue }
             if c == "\\" { escaped = true; continue }
             if c == "`" { inCode.toggle() }
-            if c == "|" && !inCode { result.append(cell.trimmingCharacters(in: .whitespaces)); cell = "" }
+            if c == "|" && !inCode { result.append(cell.trimmingCharacters(in: .whitespacesAndNewlines)); cell = "" }
             else { cell.append(c) }
         }
         if escaped { cell.append("\\") }
-        result.append(cell.trimmingCharacters(in: .whitespaces)); return result
+        result.append(cell.trimmingCharacters(in: .whitespacesAndNewlines)); return result
     }
 
     private static func table(_ lines: [Line], at i: Int, source: NSString) -> (model: NativeLiveTablePresentation, end: Int)? {
@@ -200,23 +222,41 @@ enum NativeLiveRichTextProjector {
                       cells: ([headers]+rows).map { $0.map(NativeLiveMarkdownPresentation.inline) }), j)
     }
 
-    private static func inlineMath(_ text: String) -> [(String, Bool, Int)] {
+    private static func inlineMath(_ text: String) -> [(String, Bool, Int)]? {
         // Linear scan. Code and link destinations stay native inline Markdown.
         let chars = Array(text)
-        let hasLink = text.contains("](")
-        var pieces: [(String, Bool, Int)] = [], start = 0, i = 0, utf16 = 0, startOffset = 0, inCode = false
+        var pieces: [(String, Bool, Int)] = [], start = 0, i = 0, utf16 = 0, startOffset = 0
+        var codeDelimiter: Int? = nil
         while i < chars.count {
             let c = chars[i]
             if c == "\\", i+1 < chars.count { utf16 += String(chars[i...i+1]).utf16.count; i += 2; continue }
-            if c == "`" { inCode.toggle() }
-            if c == "$", !inCode, i+1 < chars.count, !chars[i+1].isWhitespace, !chars[i+1].isNumber, chars[i+1] != "$",
-               (i == 0 || chars[i-1] != "$"), !hasLink {
+            if c == "`" {
+                var j = i
+                while j < chars.count && chars[j] == "`" { j += 1 }
+                let count = j-i
+                if codeDelimiter == nil { codeDelimiter = count }
+                else if codeDelimiter == count { codeDelimiter = nil }
+                utf16 += count; i = j; continue
+            }
+            if c == "]", codeDelimiter == nil, i+1 < chars.count, chars[i+1] == "(" {
+                var j = i+2, depth = 1
+                while j < chars.count && depth > 0 {
+                    if chars[j] == "\\", j+1 < chars.count { j += 2; continue }
+                    if chars[j] == "(" { depth += 1 }
+                    if chars[j] == ")" { depth -= 1 }
+                    j += 1
+                }
+                utf16 += String(chars[i..<j]).utf16.count; i = j; continue
+            }
+            if c == "$", codeDelimiter == nil, i+1 < chars.count, !chars[i+1].isWhitespace, !chars[i+1].isNumber, chars[i+1] != "$",
+               (i == 0 || chars[i-1] != "$") {
                 var j = i+1
                 while j < chars.count && j-i <= 2048 && chars[j] != "$" && chars[j] != "\n" {
                     if chars[j] == "\\", j+1 < chars.count { j += 2 } else { j += 1 }
                 }
                 if j < chars.count, chars[j] == "$", j > i+1, !chars[j-1].isWhitespace,
                    (j+1 == chars.count || chars[j+1] != "$"), j-i <= 2048 {
+                    guard pieces.count + 2 < maximumNodes else { return nil }
                     if start < i { pieces.append((String(chars[start..<i]), false, startOffset)) }
                     pieces.append((String(chars[(i+1)..<j]), true, utf16))
                     utf16 += String(chars[i...j]).utf16.count; i = j+1; start = i; startOffset = utf16; continue

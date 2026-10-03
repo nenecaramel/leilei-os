@@ -20,13 +20,13 @@ Only explicit `diff`/`patch` fences produce `.diff`. Unified header/hunk/context
 
 GFM tables preserve headers, rectangular rows, declared alignment and original Markdown. Escaped pipes, empty cells and inline formatting are supported. Native grids use fixed 180-point column widths in a scrolling panel; malformed/uneven/oversized tables fall back visibly. Copy returns raw Markdown. Sorting/export and JSON reinterpretation are absent.
 
-**Math rendering level: bounded LaTeX fallback.** Paired `$…$` and display `$$…$$` produce `.math`, preserving raw LaTeX and mode. The conservative inline delimiter rule rejects numeric/currency starts, whitespace, escapes, code and link-containing spans. Ambiguous or unclosed formulas remain raw text. Full typesetting is deferred to G. No WebView, network MathJax or dependency is added.
+**Math rendering level: bounded LaTeX fallback.** Paired `$…$` and display `$$…$$` produce `.math`, preserving raw LaTeX and mode. The conservative inline delimiter rule rejects numeric/currency starts, whitespace, escapes, matched code-delimiter runs and link destinations. Ambiguous or unclosed formulas remain raw text. Full typesetting is deferred to G. No WebView, network MathJax or dependency is added.
 
 Mermaid fences produce `.mermaid` and a selectable source preview. They are not executed and never become Artifact diagram identities. General HTML/SVG/Web/Artifact/Resource/MCP App/visual engines remain F–H scope.
 
 ## Bounds and fallback
 
-Rich parsing is capped at 131,072 UTF-16 source units, 2,048 presentation nodes and 512 table cells (32 columns maximum). Exceeding bounds shows original source through a plain native text fallback and leaves raw message copy intact. List/quote depth is capped at 8; inline math lookahead at 2,048 characters. No recursive parsing or regex is used. Native inline attributed text and diff/table models are prepared before rendering.
+Rich parsing is capped at 131,072 UTF-16 source units, 2,048 total presentation nodes (including inline descendants) and 512 table cells (32 columns maximum). Exceeding bounds shows original source through a plain native text fallback and leaves raw message copy intact. List/quote depth is capped at 8; inline math lookahead at 2,048 characters. Quotes scan once with string indices; no recursive parsing or regex is used. Inline formatting is parsed once across protected math spans, preserving bold/italic/strike around formulas. CRLF remains in canonical offset calculations. Native inline attributed text and diff/table models are prepared before rendering.
 
 An exact-input, locked cache stores at most 8 inputs / 262,144 source UTF-16 units. Equality covers text, provenance, citations and part namespaces; it never reuses an old relation for updated canonical payloads. This avoids full rich parsing on repeated SwiftUI body evaluations while keeping memory bounded.
 

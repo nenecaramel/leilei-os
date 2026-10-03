@@ -13,7 +13,7 @@ test("real Swift E rich Markdown projects typed children without changing canoni
     const modelFiles = ["NativeLiveMediaPresentation.swift", "NativeLiveAttachmentCache.swift", "NativeLiveMarkdownModel.swift", "NativeLiveRichTextProjection.swift", "NativeLiveVisualNode.swift", "NativeLiveStructuredToolResult.swift", "NativeLiveCitationPresentation.swift", "NativeLiveStructuredJSON.swift", "NativeLiveMessagePresentation.swift", "NativeLiveMessagePresentationProjection.swift"].map(name => surface + name).filter(file => fs.existsSync(file));
     const compiled = spawnSync("xcrun", ["swiftc", "-module-cache-path", path.join(temporary, "cache"), "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift", "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift", "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveInputMode.swift", ...modelFiles,  path.join(temporary, "main.swift"), "-o", path.join(temporary, "check")], { encoding: "utf8", timeout: 120_000 });
     assert.equal(compiled.status, 0, compiled.stderr);
-    const runs = [[]].map(args => spawnSync(path.join(temporary,"check"),args,{encoding:"utf8",timeout:60_000}));
+    const runs = [[], ["--review-budget"], ["--review-format"], ["--review-spans"], ["--review-crlf"], ["--review-quotes"]].map(args => spawnSync(path.join(temporary,"check"),args,{encoding:"utf8",timeout:60_000}));
     assert.ok(runs.every(run=>run.status===0),runs.map(run=>run.stderr).join("\n"));
     for(const ran of runs) { assert.match(ran.stdout,/Rich Markdown PASS/); t.diagnostic(ran.stdout.trim()); }
   } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
