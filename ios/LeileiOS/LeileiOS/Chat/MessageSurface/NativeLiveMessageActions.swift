@@ -7,6 +7,7 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
     let isDisabled: Bool
     let cornerRadius: CGFloat
     let onCopy: (String) -> Void
+    var onTap: (() -> Void)? = nil
     let action: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -16,6 +17,7 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
             isDisabled: isDisabled,
             cornerRadius: cornerRadius,
             onCopy: onCopy,
+            onTap: onTap,
             action: action
         )
     }
@@ -29,6 +31,13 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
             delegate: context.coordinator
         )
         view.addInteraction(interaction)
+
+        let tapRecognizer = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTap)
+        )
+        view.addGestureRecognizer(tapRecognizer)
+
         context.coordinator.hostView = view
         return view
     }
@@ -42,6 +51,7 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
         context.coordinator.isDisabled = isDisabled
         context.coordinator.cornerRadius = cornerRadius
         context.coordinator.onCopy = onCopy
+        context.coordinator.onTap = onTap
         context.coordinator.action = action
         context.coordinator.hostView = uiView
     }
@@ -54,6 +64,7 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
         var isDisabled: Bool
         var cornerRadius: CGFloat
         var onCopy: (String) -> Void
+        var onTap: (() -> Void)?
         var action: () -> Void
 
         init(
@@ -62,6 +73,7 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
             isDisabled: Bool,
             cornerRadius: CGFloat,
             onCopy: @escaping (String) -> Void,
+            onTap: (() -> Void)?,
             action: @escaping () -> Void
         ) {
             self.title = title
@@ -69,7 +81,12 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
             self.isDisabled = isDisabled
             self.cornerRadius = cornerRadius
             self.onCopy = onCopy
+            self.onTap = onTap
             self.action = action
+        }
+
+        @objc func handleTap() {
+            onTap?()
         }
 
         func contextMenuInteraction(
