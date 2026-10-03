@@ -28,13 +28,16 @@ test("composer keeps the existing mic and uses the native trailing menu for lang
   assert.match(composer,/Picker\("Voice language", selection: \$voiceLanguage\)/);
   assert.doesNotMatch(composer,/confirmationDialog/);
   assert.match(composer,/onLongPressGesture\(\s*minimumDuration: 0\.35/);
+  assert.match(composer,/if isPressing \{\s*onVoiceInteractionBegin\?\(\)/);
   assert.match(composer,/voiceHoldActivated = true\s*onVoicePress\?\(\)/);
   assert.match(composer,/!isPressing,[\s\S]*voiceHoldActivated[\s\S]*onVoiceRelease\?\(\)/);
   assert.match(chatView,/@State private var voiceLanguage: VoiceInputLanguage = \.english/);
   assert.match(chatView,/voiceLanguage: \$voiceLanguage/);
+  assert.match(chatView,/onVoiceInteractionBegin: \{\s*voiceInput\.dismissStatusMessage\(\)/);
   assert.match(chatView,/voiceInput\.begin\(\s*language: voiceLanguage/);
   assert.match(controller,/case english = "en-US"/);
   assert.match(controller,/case chinese = "zh-CN"/);
   assert.match(controller,/SFSpeechRecognizer\(locale: language\.locale\)/);
   assert.doesNotMatch(controller,/SFSpeechRecognizer\(locale: \.current\)/);
+  assert.match(controller,/func dismissStatusMessage\(\) \{\s*guard phase == \.idle else \{ return \}\s*errorMessage = nil/);
 });
