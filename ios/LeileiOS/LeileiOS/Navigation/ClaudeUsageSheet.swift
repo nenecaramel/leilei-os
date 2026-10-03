@@ -7,13 +7,13 @@ struct ClaudeUsageSheet: View {
 
     @State private var snapshot: SystemClaudeUsageSnapshot?
     @State private var isLoading = true
-    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                if let snapshot {
-                    Section("Usage") {
+                Section("Usage") {
+                    if let snapshot,
+                       !snapshot.windows.isEmpty {
                         ForEach(snapshot.windows) { window in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
@@ -42,69 +42,63 @@ struct ClaudeUsageSheet: View {
                             }
                             .padding(.vertical, 4)
                         }
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Usage")
+                                Spacer()
+                                Text("—")
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
 
-                        if snapshot.windows.isEmpty {
-                            Text("No usage windows reported yet.")
-                                .foregroundStyle(.secondary)
+                            ProgressView(value: 0)
+                                .progressViewStyle(.linear)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                if let overage = snapshot?.overage {
+                    Section("Overage") {
+                        if let status = overage.status {
+                            LabeledContent("Status", value: status)
+                        }
+                        if let isUsing = overage.isUsing {
+                            LabeledContent(
+                                "Using overage",
+                                value: isUsing ? "Yes" : "No"
+                            )
+                        }
+                        if let resetsAt = formattedDate(
+                            overage.resetsAt
+                        ) {
+                            LabeledContent(
+                                "Resets",
+                                value: resetsAt
+                            )
+                        }
+                        if let reason = overage.disabledReason {
+                            LabeledContent(
+                                "Unavailable reason",
+                                value: reason
+                            )
                         }
                     }
+                }
 
-                    if let overage = snapshot.overage {
-                        Section("Overage") {
-                            if let status = overage.status {
-                                LabeledContent("Status", value: status)
-                            }
-                            if let isUsing = overage.isUsing {
-                                LabeledContent(
-                                    "Using overage",
-                                    value: isUsing ? "Yes" : "No"
-                                )
-                            }
-                            if let resetsAt = formattedDate(
-                                overage.resetsAt
-                            ) {
-                                LabeledContent(
-                                    "Resets",
-                                    value: resetsAt
-                                )
-                            }
-                            if let reason = overage.disabledReason {
-                                LabeledContent(
-                                    "Unavailable reason",
-                                    value: reason
-                                )
-                            }
-                        }
-                    }
-
-                    Section {
-                        LabeledContent(
-                            "Last observed",
-                            value:
-                                formattedDate(snapshot.observedAt)
-                                ?? snapshot.observedAt
-                        )
-                    } footer: {
-                        Text(
-                            "Updated from Claude runtime events. Opening this sheet does not consume usage."
-                        )
-                    }
-                } else if isLoading {
-                    Section {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                    }
-                } else {
-                    Section {
-                        Text(
-                            errorMessage
-                            ?? "No Claude usage snapshot yet. Send a Claude message first."
-                        )
-                        .foregroundStyle(.secondary)
-                    }
+                Section {
+                    LabeledContent(
+                        "Last observed",
+                        value:
+                            formattedDate(snapshot?.observedAt)
+                            ?? snapshot?.observedAt
+                            ?? "—"
+                    )
+                } footer: {
+                    Text(
+                        "Updated from Claude runtime events. Opening this sheet does not consume usage."
+                    )
                 }
             }
             .formStyle(.grouped)
@@ -144,10 +138,9 @@ struct ClaudeUsageSheet: View {
 
         do {
             snapshot = try await api.systemClaudeUsage()
-            errorMessage = nil
         } catch {
-            snapshot = nil
-            errorMessage = error.localizedDescription
+            // Usage is auxiliary. Keep the existing snapshot when refresh
+            // fails, or leave the placeholder state in place on first load.
         }
     }
 
