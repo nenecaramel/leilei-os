@@ -222,6 +222,13 @@ test("message rows and canonical block rendering are extracted while root compos
   const rows = readExisting(messageRowsPath);
   const blocks = readExisting(messageBlocksPath);
 
+  assert.match(rows, /nativeLiveBackgroundRuntimeSurfaces/);
+  assert.match(rows, /message\.activity\?\.prepareId/);
+  assert.match(
+    rows,
+    /onResolveInteraction:[\s\S]*onResolveReplacementInteraction/,
+  );
+
   for (const symbol of [
     "struct NativeLiveMessageRow",
     "struct NativeLiveHistorySnapshotRow",
