@@ -7,6 +7,7 @@ struct ClaudeUsageSheet: View {
 
     @State private var snapshot: SystemClaudeUsageSnapshot?
     @State private var isLoading = true
+    @State private var hasLoadedSnapshot = false
 
     var body: some View {
         NavigationStack {
@@ -85,6 +86,15 @@ struct ClaudeUsageSheet: View {
                             )
                         }
                     }
+                } else if !hasLoadedSnapshot {
+                    Section("Overage") {
+                        LabeledContent("Status", value: "—")
+                        LabeledContent("Using overage", value: "—")
+                        LabeledContent(
+                            "Unavailable reason",
+                            value: "—"
+                        )
+                    }
                 }
 
                 Section {
@@ -138,6 +148,7 @@ struct ClaudeUsageSheet: View {
 
         do {
             snapshot = try await api.systemClaudeUsage()
+            hasLoadedSnapshot = true
         } catch {
             // Usage is auxiliary. Keep the existing snapshot when refresh
             // fails, or leave the placeholder state in place on first load.
