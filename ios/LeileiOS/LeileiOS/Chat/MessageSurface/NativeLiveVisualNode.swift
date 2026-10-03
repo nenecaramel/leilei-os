@@ -22,6 +22,13 @@ struct NativeLiveVisualNode: Identifiable, Equatable, Sendable {
     var attachment: NativeLiveAttachmentPresentationInput?
     var fallback: NativeLiveVisualFallback
 
+    var rendersInlineChildren = false
+    var sourceRangeUTF16: Range<Int>? = nil
+    var markdown: NativeLiveMarkdownPresentation? = nil
+    var code: NativeLiveCodePresentation? = nil
+    var table: NativeLiveTablePresentation? = nil
+    var diff: NativeLiveDiffPresentation? = nil
+    var math: NativeLiveMathPresentation? = nil
     var presentationID: String? = nil
     var children: [NativeLiveVisualNode] = []
     var structuredStatus: NativeLiveStructuredResultStatus? = nil
@@ -42,11 +49,16 @@ struct NativeLiveVisualNode: Identifiable, Equatable, Sendable {
 
 // G will extend renderer registration. B registers only existing rendering and fallback.
 enum NativeLiveMessageRendererRegistry {
-    enum Renderer: Equatable { case markdown, attachment, structuredResult, structuredJSON, searchResult, citation, fallback }
+    enum Renderer: Equatable { case markdown, code, table, diff, math, mermaid, attachment, structuredResult, structuredJSON, searchResult, citation, fallback }
 
     static func renderer(for kind: NativeLiveVisualNodeKind) -> Renderer {
         switch kind {
         case .text, .markdown: return .markdown
+        case .code: return .code
+        case .table: return .table
+        case .diff: return .diff
+        case .math: return .math
+        case .mermaid: return .mermaid
         case .attachment: return .attachment
         case .canonicalToolResult: return .structuredResult
         case .structuredJSON: return .structuredJSON

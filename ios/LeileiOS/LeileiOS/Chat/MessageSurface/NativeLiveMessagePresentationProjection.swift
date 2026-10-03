@@ -13,7 +13,7 @@ enum NativeLiveMessagePresentationProjector {
             switch block.kind {
             case "text":
                 guard let value = normalizedText(block.text) else { return nil }
-                text = value; kind = .markdown
+                text = block.text ?? value; kind = .markdown
             case "attachment": kind = .attachment
             case "artifact": kind = .artifact
             case "resource": kind = .resource
@@ -30,6 +30,7 @@ enum NativeLiveMessagePresentationProjector {
             } else if block.kind == "text", source.role == "assistant" {
                 node.citations = NativeLiveCitationRelation.parse(block.payload?["citations"])
             }
+            if kind == .markdown { node.children = NativeLiveRichTextProjector.project(node) }
             return node
         }
         return .init(messageID: source.messageID, role: source.role, nodes: nodes)

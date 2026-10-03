@@ -23,12 +23,8 @@ struct NativeLiveRuntimeAssistantRow: View {
         VStack(alignment: .leading, spacing: 12) {
             if let text,
                !text.isEmpty {
-                ChatMarkdownView(
-                    text: text,
-                    fillsAvailableWidth: true,
-                    lineSpacing: 6,
-                    paragraphSpacing: 22
-                )
+                NativeLiveMessagePresentationView(presentation:
+                    NativeLiveMessagePresentationProjector.project(.streaming(text)))
             }
 
             if let projection,

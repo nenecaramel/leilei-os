@@ -54,7 +54,7 @@ test("real Postgres preserves execution backing plus separately authorized struc
      fs.writeFileSync(path.join(temp,"blocks.json"),JSON.stringify(blocks));
      fs.copyFileSync("tests/fixtures/native-live-structured-presentation.swift",path.join(temp,"main.swift"));
      const root="ios/LeileiOS/LeileiOS/";
-     const files=["NativeLiveMediaPresentation","NativeLiveAttachmentCache","NativeLiveVisualNode","NativeLiveStructuredToolResult","NativeLiveCitationPresentation","NativeLiveStructuredJSON","NativeLiveMessagePresentation","NativeLiveMessagePresentationProjection"].map(n=>root+"Chat/MessageSurface/"+n+".swift");
+     const files=["NativeLiveMediaPresentation","NativeLiveAttachmentCache","NativeLiveMarkdownModel", "NativeLiveRichTextProjection", "NativeLiveVisualNode","NativeLiveStructuredToolResult","NativeLiveCitationPresentation","NativeLiveStructuredJSON","NativeLiveMessagePresentation","NativeLiveMessagePresentationProjection"].map(n=>root+"Chat/MessageSurface/"+n+".swift");
      const built=spawnSync("xcrun",["swiftc","-module-cache-path",path.join(temp,"cache"),root+"Infrastructure/NativeLiveRuntimeModels.swift",root+"Infrastructure/API/NativeLive/NativeLiveModels.swift",root+"Infrastructure/API/NativeLive/NativeLiveInputMode.swift",...files,path.join(temp,"main.swift"),"-o",path.join(temp,"check")],{encoding:"utf8",timeout:120000});
      assert.equal(built.status,0,built.stderr);
      const ran=spawnSync(path.join(temp,"check"),[path.join(temp,"blocks.json")],{encoding:"utf8",timeout:60000});
