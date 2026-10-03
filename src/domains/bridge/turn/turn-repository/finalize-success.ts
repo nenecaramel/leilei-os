@@ -6,10 +6,12 @@ import {
 import {
   conversationMessages,
   nativeLiveMindFollowUps,
+  nativeLiveRuntimeInteractions,
   nativeLiveTurnPreparations,
   runtimeContextManifests,
   runtimeContextLineageStates,
 } from "../../../../database/schema.js";
+import { withCanonicalQuestionActivity } from "../../../conversation/native-live-question-activity.js";
 import { DrizzleNativeLiveConversationRepository } from "../../../conversation/native-live-conversation-repository.js";
 import type {
   NativeLiveBackendTurnPort,
@@ -136,8 +138,23 @@ export async function finalizeSuccess(
             parentMessageId: row.canonicalUserMessageId,
           });
 
+          // Read trusted host decisions inside the canonical write transaction.
+          // Provider tool_result output is free text and cannot prove answer vs cancel.
+          const questionInteractions = input.blocks.some((block) =>
+            block.kind === "tool_use" && block.payload?.tool_name === "AskUserQuestion",
+          ) ? await transaction.select({
+            kind: nativeLiveRuntimeInteractions.kind,
+            status: nativeLiveRuntimeInteractions.status,
+            request: nativeLiveRuntimeInteractions.request,
+            response: nativeLiveRuntimeInteractions.response,
+          }).from(nativeLiveRuntimeInteractions).where(and(
+            eq(nativeLiveRuntimeInteractions.userId, input.userId),
+            eq(nativeLiveRuntimeInteractions.prepareId, row.id),
+            eq(nativeLiveRuntimeInteractions.kind, "question"),
+          )) : [];
+          const canonicalBlocks = withCanonicalQuestionActivity(input.blocks, questionInteractions);
           const blocks = [];
-          for (const [ordinal, block] of input.blocks.entries()) {
+          for (const [ordinal, block] of canonicalBlocks.entries()) {
             blocks.push(
               await conversations.appendContentBlock({
                 userId: input.userId,

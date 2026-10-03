@@ -145,6 +145,7 @@ struct NativeLiveTurnActivityView: View {
                             task: task,
                             childTools:
                                 projection.childTools(for: task),
+                            childQuestions: projection.childQuestions(for: task),
                             permissionInteractions: { tool in
                                 projection.permissionInteractions(
                                     for: tool
@@ -156,14 +157,43 @@ struct NativeLiveTurnActivityView: View {
                     }
 
                     ForEach(projection.topLevelTools) { tool in
-                        NativeLiveToolActivityRow(
-                            tool: tool,
-                            permissionInteractions:
-                                projection.permissionInteractions(
-                                    for: tool
-                                ),
+                        VStack(alignment: .leading, spacing: 8) {
+                            NativeLiveToolActivityRow(
+                                tool: tool,
+                                permissionInteractions:
+                                    projection.permissionInteractions(for: tool),
+                                onResolveInteraction: onResolveInteraction
+                            )
+                            ForEach(projection.childQuestions(forToolUseID: tool.id)) { question in
+                                NativeLiveQuestionActivityRow(
+                                    question: question,
+                                    onResolveInteraction: onResolveInteraction
+                                )
+                                .padding(.leading, 23)
+                            }
+                        }
+                    }
+
+                    ForEach(projection.topLevelQuestions) { question in
+                        NativeLiveQuestionActivityRow(
+                            question: question,
                             onResolveInteraction: onResolveInteraction
                         )
+                    }
+
+                    if !projection.unattachedQuestions.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Task activity")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            ForEach(projection.unattachedQuestions) { question in
+                                NativeLiveQuestionActivityRow(
+                                    question: question,
+                                    onResolveInteraction: onResolveInteraction
+                                )
+                                .padding(.leading, 23)
+                            }
+                        }
                     }
 
                     ForEach(projection.topLevelInteractions) { interaction in
@@ -259,6 +289,8 @@ private struct NativeLiveTaskActivityRow: View {
     let task: NativeLiveTurnActivityProjection.TaskActivity
     let childTools:
         [NativeLiveTurnActivityProjection.ToolActivity]
+    let childQuestions:
+        [NativeLiveTurnActivityProjection.QuestionActivity]
     let permissionInteractions:
         (NativeLiveTurnActivityProjection.ToolActivity)
             -> [NativeLiveRuntimeInteractionSnapshot]
@@ -317,6 +349,14 @@ private struct NativeLiveTaskActivityRow: View {
                     tool: tool,
                     permissionInteractions:
                         permissionInteractions(tool),
+                    onResolveInteraction: onResolveInteraction
+                )
+                .padding(.leading, 23)
+            }
+
+            ForEach(childQuestions) { question in
+                NativeLiveQuestionActivityRow(
+                    question: question,
                     onResolveInteraction: onResolveInteraction
                 )
                 .padding(.leading, 23)
@@ -457,6 +497,62 @@ private struct NativeLiveToolActivityRow: View {
                     .padding(.leading, 18)
                 }
             }
+        }
+    }
+}
+
+private struct NativeLiveQuestionActivityRow: View {
+    let question: NativeLiveTurnActivityProjection.QuestionActivity
+    let onResolveInteraction:
+        ((NativeLiveRuntimeInteractionSnapshot, [String: NativeLiveJSONValue]) async throws -> Void)?
+
+    @State private var isShowingDetails = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isShowingDetails = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: question.statusLabel == "Answered"
+                        ? "checkmark.circle"
+                        : question.statusLabel == "Cancelled" ? "xmark.circle" : "questionmark.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Text("Asked user")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 8)
+                    Text(question.statusLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if let interaction = question.interaction,
+               interaction.isPending,
+               let onResolveInteraction {
+                NativeLiveQuestionInteractionCard(
+                    interaction: interaction,
+                    onResolve: onResolveInteraction
+                )
+            }
+        }
+        .padding(.horizontal, 5)
+        .sheet(isPresented: $isShowingDetails) {
+            NativeLiveToolDetailSheet(
+                title: "Asked user",
+                status: question.statusLabel,
+                sectionTitle: "Question",
+                detail: question.questionDetail,
+                secondarySectionTitle: "Response",
+                secondaryDetail: question.responseDetail
+            )
         }
     }
 }

@@ -39,6 +39,8 @@ extension NativeLiveTurnActivityProjection {
                     payload["display_name"]?.stringValue
                     ?? payload["tool_name"]?.stringValue
                     ?? "Tool",
+                providerToolName: payload["tool_name"]?.stringValue ?? "Tool",
+                questionMetadata: result?.event.payload?["question_activity"] ?? payload["question_activity"],
                 input: payload["input"],
                 output: result?.event.payload?["output"],
                 resourceLinks:
@@ -79,6 +81,8 @@ extension NativeLiveTurnActivityProjection {
                 return ToolActivity(
                     id: "result-\(event.sequence)",
                     toolName: "Tool result",
+                    providerToolName: "Tool result",
+                    questionMetadata: nil,
                     input: nil,
                     output: payload["output"],
                     resourceLinks:
@@ -142,6 +146,8 @@ extension NativeLiveTurnActivityProjection {
                     payload["display_name"]?.stringValue
                     ?? payload["tool_name"]?.stringValue
                     ?? "Tool",
+                providerToolName: payload["tool_name"]?.stringValue ?? "Tool",
+                questionMetadata: result?.payload?["question_activity"] ?? payload["question_activity"],
                 input: payload["input"],
                 output: result?.payload?["output"],
                 resourceLinks:
@@ -182,6 +188,8 @@ extension NativeLiveTurnActivityProjection {
                 return ToolActivity(
                     id: "result-\(block.id)",
                     toolName: "Tool result",
+                    providerToolName: "Tool result",
+                    questionMetadata: nil,
                     input: nil,
                     output: payload["output"],
                     resourceLinks:
