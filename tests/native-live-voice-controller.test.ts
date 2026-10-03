@@ -17,12 +17,20 @@ test("voice controller waits for final text, fails on timeout, and ignores cance
 });
 
 
-test("composer keeps the existing mic and uses the native trailing menu for language plus hold-to-dictate", () => {
+test("composer keeps voice-message hold behavior and adds pure tap-to-dictate on the mic", () => {
   const composer=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift","utf8");
   const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
   const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
+
+  // Separate mic dictation path.
+  assert.match(composer,/Button \{\s*guard dictationEnabled else \{ return \}\s*onDictationStart\?\(\)/);
   assert.match(composer,/ComposerCircleButton\(\s*systemName: "mic\.fill"/);
-  assert.doesNotMatch(composer,/Button \{\s*\} label: \{\s*ComposerCircleButton\(\s*systemName: "mic\.fill"/);
+  assert.match(composer,/if isDictating \{\s*dictationComposerBody/);
+  assert.match(composer,/private var dictationComposerBody: some View \{[\s\S]*systemName: "xmark"[\s\S]*NativeLiveDictationWaveform\(\)[\s\S]*systemName: "square\.fill"/);
+  assert.match(composer,/onDictationCancel\?\(\)/);
+  assert.match(composer,/onDictationStop\?\(\)/);
+
+  // Existing trailing voice-message path stays intact.
   assert.match(composer,/if isVoiceActionMode \{\s*voiceActionButton/);
   assert.match(composer,/private var voiceActionButton: some View \{\s*Menu \{/);
   assert.match(composer,/Picker\("Voice language", selection: \$voiceLanguage\)/);
@@ -31,10 +39,24 @@ test("composer keeps the existing mic and uses the native trailing menu for lang
   assert.match(composer,/if isPressing \{\s*onVoiceInteractionBegin\?\(\)/);
   assert.match(composer,/voiceHoldActivated = true\s*onVoicePress\?\(\)/);
   assert.match(composer,/!isPressing,[\s\S]*voiceHoldActivated[\s\S]*onVoiceRelease\?\(\)/);
+
+  // Dictation uses the selected locale, writes only into messageText, and never sends.
+  assert.match(chatView,/@State private var isDictationModeActive = false/);
+  assert.match(chatView,/dictationEnabled: dictationEnabled/);
+  assert.match(chatView,/onDictationStart: \{\s*beginDictation\(\)/);
+  assert.match(chatView,/onDictationStop: \{\s*voiceInput\.release\(\)/);
+  assert.match(chatView,/onDictationCancel: \{[\s\S]*voiceInput\.cancel\(\)/);
+  assert.match(chatView,/private func beginDictation\(\) \{[\s\S]*voiceInput\.begin\(\s*language: voiceLanguage[\s\S]*applyDictationTranscript\(transcript\)/);
+  assert.match(chatView,/private func applyDictationTranscript\([\s\S]*messageText = dictated[\s\S]*messageText \+=/);
+  const dictationSlice=chatView.slice(
+    chatView.indexOf("private func beginDictation()"),
+    chatView.indexOf("private var voiceEnabled:")
+  );
+  assert.doesNotMatch(dictationSlice,/sendNewMessage|sendVoiceMessage|inputMode/);
+
   assert.match(chatView,/@State private var voiceLanguage: VoiceInputLanguage = \.english/);
   assert.match(chatView,/voiceLanguage: \$voiceLanguage/);
   assert.match(chatView,/onVoiceInteractionBegin: \{\s*voiceInput\.dismissStatusMessage\(\)/);
-  assert.match(chatView,/voiceInput\.begin\(\s*language: voiceLanguage/);
   assert.match(controller,/case english = "en-US"/);
   assert.match(controller,/case chinese = "zh-CN"/);
   assert.match(controller,/SFSpeechRecognizer\(locale: language\.locale\)/);
