@@ -17,27 +17,10 @@ test("voice controller waits for final text, fails on timeout, and ignores cance
 });
 
 
-test("voice action has language selection and no separate mic control", () => {
-  const composer = readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift", "utf8");
-  const chatView = readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift", "utf8");
-  const controller = readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift", "utf8");
-
-  assert.equal(composer.includes('ComposerCircleButton(systemName: "mic.fill")'), false);
-  assert.equal(composer.includes('"Voice language"'), true);
-  assert.equal(composer.includes("VoiceInputLanguage.allCases"), true);
-  assert.equal(composer.includes(".milliseconds(350)"), true);
-  assert.equal(chatView.includes("voiceLanguage: $voiceLanguage"), true);
-  assert.equal(chatView.includes("language: voiceLanguage"), true);
-  assert.equal(controller.includes('case english = "en-US"'), true);
-  assert.equal(controller.includes('case chinese = "zh-CN"'), true);
-  assert.equal(controller.includes("SFSpeechRecognizer(locale: language.locale)"), true);
-  assert.equal(controller.includes("SFSpeechRecognizer(locale: .current)"), false);
-});
-
-
 test("composer uses the right action button for tap-to-language and hold-to-dictate", () => {
   const composer=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift","utf8");
   const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
+  const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
   assert.doesNotMatch(composer,/ComposerCircleButton\(systemName: "mic\.fill"\)/);
   assert.match(composer,/if isVoiceActionMode \{\s*voiceActionButton/);
   assert.match(composer,/confirmationDialog\(\s*"Voice language"/);
@@ -48,4 +31,8 @@ test("composer uses the right action button for tap-to-language and hold-to-dict
   assert.match(chatView,/@State private var voiceLanguage: VoiceInputLanguage = \.english/);
   assert.match(chatView,/voiceLanguage: \$voiceLanguage/);
   assert.match(chatView,/voiceInput\.begin\(\s*language: voiceLanguage/);
+  assert.match(controller,/case english = "en-US"/);
+  assert.match(controller,/case chinese = "zh-CN"/);
+  assert.match(controller,/SFSpeechRecognizer\(locale: language\.locale\)/);
+  assert.doesNotMatch(controller,/SFSpeechRecognizer\(locale: \.current\)/);
 });
