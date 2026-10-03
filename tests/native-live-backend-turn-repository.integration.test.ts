@@ -259,6 +259,8 @@ test(
         ?.attachment_id,
       outputAttachmentId,
     );
+    assert.deepEqual(finalizedRead.assistantMessage?.blocks[1]?.payload?.refs, [{type:"attachment_ref",entity_id:outputAttachmentId}]);
+    assert.equal((finalizedRead.assistantMessage?.blocks[1]?.payload?.provenance as Record<string, unknown>)?.origin,"provider_send");
     const [boundOutputAttachment] = await database.db
       .select()
       .from(nativeLiveChatAttachments)

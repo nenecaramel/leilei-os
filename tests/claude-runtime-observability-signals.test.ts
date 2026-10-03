@@ -14,7 +14,7 @@ const base = {
   parentProviderSessionId: null,
 };
 
-test("tool_use_meta is preserved for Runtime UI but stripped from canonical tool content", () => {
+test("tool_use_meta is preserved for Runtime UI and execution stays outside canonical content", () => {
   const events = normalizeClaudeEvents(
     [{
       type: "assistant",
@@ -40,6 +40,7 @@ test("tool_use_meta is preserved for Runtime UI but stripped from canonical tool
 
   assert.equal(events.length, 1);
   assert.deepEqual(events[0]?.payload, {
+    provenance: {provider:'claude_code', raw_type:'tool_use', raw_subtype:null, provider_schema:'claude-agent-sdk/0.3.286', tool_use_id:'toolu-1'},
     tool_use_id: "toolu-1",
     tool_name: "mcp__leileios__global_search",
     input: { query: "Mind" },
@@ -49,18 +50,10 @@ test("tool_use_meta is preserved for Runtime UI but stripped from canonical tool
   });
 
   const canonical = canonicalizeNativeLiveEvents(events);
-  assert.deepEqual(canonical.blocks, [{
-    kind: "tool_use",
-    rawType: "tool_use",
-    payload: {
-      tool_use_id: "toolu-1",
-      tool_name: "mcp__leileios__global_search",
-      input: { query: "Mind" },
-    },
-  }]);
+  assert.deepEqual(canonical.blocks, []);
 });
 
-test("oversized binary tool_result stays canonical but never carries raw bytes", () => {
+test("oversized binary tool_result stays runtime and never carries raw bytes", () => {
   const binary = Buffer.alloc(75_000, 5).toString("base64");
   const events = normalizeClaudeEvents(
     [{
@@ -95,28 +88,12 @@ test("oversized binary tool_result stays canonical but never carries raw bytes",
 
   const canonical = canonicalizeNativeLiveEvents(events);
   assert.equal(canonical.error, null);
-  assert.equal(canonical.blocks.length, 1);
-  assert.equal(canonical.blocks[0]?.kind, "tool_result");
-  assert.equal(
-    canonical.blocks[0]?.payload?.tool_use_id,
-    "toolu-binary",
-  );
-  assert.equal(
-    canonical.blocks[0]?.payload?.output_binary_omitted,
-    true,
-  );
-  assert.equal(
-    JSON.stringify(canonical).includes(binary.slice(0, 64)),
-    false,
-  );
-  assert.equal(
-    (
-      canonical.blocks[0]?.payload?.output as Array<
-        Record<string, unknown>
-      >
-    )[1]?.uri,
-    "file:///tmp/image.png",
-  );
+  assert.deepEqual(canonical.blocks, []);
+  const runtime = events.find(event => event.type === 'tool_result');
+  assert.equal(runtime?.payload?.tool_use_id, 'toolu-binary');
+  assert.equal(runtime?.payload?.output_binary_omitted, true);
+  assert.equal(runtime?.payload?.output[1]?.uri, 'file:///tmp/image.png');
+
 });
 
 test("tool_use_meta accepts the observed array sidecar shape", () => {

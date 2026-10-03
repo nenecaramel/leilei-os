@@ -177,6 +177,7 @@ export async function finalizeSuccess(
               messageId: assistantMessage.id,
               attachmentIds: input.outputAttachmentIds,
               startOrdinal: blocks.length,
+              contentOrigin: "provider_send",
             });
           }
 

@@ -1,3 +1,4 @@
+import { readableContentData, storedContentKind, storedContentPayload } from './native-live-content-contract.js';
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
@@ -399,22 +400,12 @@ implements NativeLiveConversationRepository {
     >();
 
     for (const row of blockRows) {
-      if (
-        row.kind !== "text" &&
-        row.kind !== "tool_use" &&
-        row.kind !== "tool_result" &&
-        row.kind !== "attachment"
-      ) {
-        continue;
-      }
       const blocks = blocksByMessage.get(row.messageId) ?? [];
       blocks.push({
         id: row.id,
         ordinal: row.ordinal,
-        kind: row.kind,
+        ...readableContentData(row.kind, row.rawType, row.text, row.payload),
         rawType: row.rawType,
-        text: row.text,
-        payload: row.payload,
         createdAt: row.createdAt.toISOString(),
       });
       blocksByMessage.set(row.messageId, blocks);
@@ -986,10 +977,10 @@ implements NativeLiveConversationRepository {
         userId: input.userId,
         messageId: input.messageId,
         ordinal: input.ordinal,
-        kind: input.block.kind,
+        kind: storedContentKind(input.block.kind),
         rawType: input.block.rawType ?? input.block.kind,
         text: input.block.text ?? null,
-        payload: input.block.payload ?? null,
+        payload: storedContentPayload(input.block.kind, input.block.payload ?? null),
       })
       .returning({
         id: conversationContentBlocks.id,
@@ -1002,22 +993,12 @@ implements NativeLiveConversationRepository {
       });
 
     if (!row) throw new Error("Native live content block insert failed.");
-    if (
-      row.kind !== "text" &&
-      row.kind !== "tool_use" &&
-      row.kind !== "tool_result" &&
-      row.kind !== "attachment"
-    ) {
-      throw new Error("Native live content block has an unsupported kind.");
-    }
 
     return {
       id: row.id,
       ordinal: row.ordinal,
-      kind: row.kind,
+      ...readableContentData(row.kind, row.rawType, row.text, row.payload),
       rawType: row.rawType,
-      text: row.text,
-      payload: row.payload,
       createdAt: row.createdAt.toISOString(),
     };
   }

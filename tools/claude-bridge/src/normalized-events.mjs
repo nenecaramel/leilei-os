@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { boundedOutput, isReasoning, provenance, structuredToolOutput, SDK_EVENT_SURFACES } from "./output-contract.mjs";
 
 export class ClaudeEventNormalizer {
   constructor({
@@ -30,8 +31,8 @@ export class ClaudeEventNormalizer {
         timestamp: this.now(),
         payload,
         raw_metadata: {
-          raw_event_type: raw.type ?? null,
-          raw_event_subtype: raw.subtype ?? null,
+          raw_event_type: clippedString(raw.type,128),
+          raw_event_subtype: clippedString(raw.subtype,128),
         },
       });
     };
@@ -315,6 +316,16 @@ export class ClaudeEventNormalizer {
             this.accumulated.length,
         });
       }
+      if (event?.type === "content_block_delta" && event.delta?.type === "citations_delta") {
+        emit("runtime", this.sessionId, {kind:"citation_preview", provenance:provenance(raw, "citations_delta"), compatibility:boundedOutput(event.delta)});
+      }
+      if (event?.type === "content_block_start" && event.content_block && !isReasoning(event.content_block) && !["text", "tool_use"].includes(event.content_block.type)) {
+        emit("runtime", this.sessionId, {kind:"provider_content_preview", provenance:provenance(raw, event.content_block.type), compatibility:boundedOutput(event.content_block)});
+      } else if (event && !["message_start", "message_delta", "message_stop", "content_block_start", "content_block_stop", "content_block_delta", "ping"].includes(event.type)) {
+        emit("runtime", this.sessionId, {kind:"unsupported_provider_event", diagnostic_code:"UNSUPPORTED_PROVIDER_EVENT", provenance:provenance(raw, event.type), compatibility:boundedOutput(event)});
+      } else if (event?.type === "content_block_delta" && !["text_delta", "input_json_delta", "thinking_delta", "signature_delta", "citations_delta"].includes(event.delta?.type)) {
+        emit("runtime", this.sessionId, {kind:"unsupported_provider_event", diagnostic_code:"UNSUPPORTED_PROVIDER_EVENT", provenance:provenance(raw, event.delta?.type), compatibility:boundedOutput(event.delta)});
+      }
       return output;
     }
 
@@ -329,10 +340,16 @@ export class ClaudeEventNormalizer {
 
       for (const block of raw.message?.content ?? []) {
         if (block.type === "text") {
+          if (raw.context_usage || raw.usage_report) {
+            emit("runtime", this.sessionId, {kind:"provider_observability", provenance:provenance(raw, "text"), compatibility:boundedOutput({context_usage:raw.context_usage, usage_report:raw.usage_report})});
+            continue;
+          }
           emit("text", this.sessionId, {
             role: "assistant",
             text: block.text,
             final: false,
+            provenance: provenance(raw, "text"),
+            ...(block.citations ? {citations:boundedOutput(block.citations)} : {}),
           });
         }
         if (block.type === "tool_use") {
@@ -341,9 +358,10 @@ export class ClaudeEventNormalizer {
             block.id,
           );
           emit("tool_use", this.sessionId, {
+            provenance: provenance(raw, "tool_use", {tool_use_id:block.id}),
             tool_use_id: block.id,
             tool_name: block.name,
-            input: block.input,
+            input: boundedOutput(block.input).payload,
             ...(messageProvenance?.parent_tool_use_id
               ? {
                   parent_tool_use_id:
@@ -363,8 +381,21 @@ export class ClaudeEventNormalizer {
           emit(
             "tool_result",
             this.sessionId,
-            normalizeToolResultPayload(block),
+            {...normalizeToolResultPayload(block), provenance:provenance(raw, block.type, {tool_use_id:block.tool_use_id})},
           );
+        }
+        if (["container_upload", "image", "document", "search_result", "resource", "resource_link"].includes(block.type)) {
+          emit("runtime", this.sessionId, {kind:"provider_content_candidate", provenance:provenance(raw, block.type), compatibility:boundedOutput(block)});
+        } else if (block.type === "fallback") {
+          emit("runtime", this.sessionId, {kind:"provider_observability", provenance:provenance(raw, block.type), compatibility:boundedOutput(block)});
+        } else if (["server_tool_use", "mcp_tool_use", "web_search_tool_result", "web_fetch_tool_result", "advisor_tool_result", "code_execution_tool_result", "bash_code_execution_tool_result", "text_editor_code_execution_tool_result", "tool_search_tool_result", "mcp_tool_result", "mcp_tool_listing"].includes(block.type)) {
+          emit("runtime", this.sessionId, {kind:"provider_execution", provenance:provenance(raw, block.type), compatibility:boundedOutput(block)});
+        } else if (!["text", "tool_use", "tool_result"].includes(block.type) && !isReasoning(block)) {
+          emit("runtime", this.sessionId, {
+            kind:"unsupported_provider_content", diagnostic_code:"UNSUPPORTED_PROVIDER_CONTENT",
+            scope:raw.parent_tool_use_id || raw.parent_agent_id ? "activity" : "conversation",
+            provenance:provenance(raw, block.type), compatibility:boundedOutput(block),
+          });
         }
       }
       return output;
@@ -390,8 +421,12 @@ export class ClaudeEventNormalizer {
           ?? raw.tool_use_result?.toolUseID,
         );
 
+      let attachedProviderOutput = false;
       for (const block of toolResultBlocks) {
         emittedToolResult = true;
+        const attachesProviderOutput = raw.tool_use_result !== undefined
+          && (resourceToolUseId === block.tool_use_id || (resourceToolUseId === null && toolResultBlocks.length === 1));
+        attachedProviderOutput ||= attachesProviderOutput;
         const attachesResourceLinks =
           resourceLinks.length > 0
           && (
@@ -404,13 +439,16 @@ export class ClaudeEventNormalizer {
         emit(
           "tool_result",
           this.sessionId,
-          normalizeToolResultPayload(
-            block,
-            attachesResourceLinks
-              ? resourceLinks
-              : [],
-          ),
+          {...normalizeToolResultPayload(block, attachesResourceLinks ? resourceLinks : [], attachesProviderOutput ? boundedOutput(raw.tool_use_result) : null), provenance:provenance(raw, block.type, {tool_use_id:block.tool_use_id})},
         );
+      }
+      if (raw.tool_use_result !== undefined && !attachedProviderOutput) {
+        emit("runtime", this.sessionId, {kind:"unattributed_tool_output", diagnostic_code:"UNATTRIBUTED_TOOL_OUTPUT", provenance:provenance(raw, "tool_use_result"), compatibility:boundedOutput(raw.tool_use_result)});
+      }
+      for (const block of Array.isArray(raw.message?.content) ? raw.message.content : []) {
+        if (block?.type !== "tool_result" && block?.type !== "text" && !isReasoning(block)) {
+          emit("runtime", this.sessionId, {kind:"unsupported_provider_content", diagnostic_code:"UNSUPPORTED_PROVIDER_CONTENT", scope:"activity", provenance:provenance(raw, block?.type), compatibility:boundedOutput(block)});
+        }
       }
       if (emittedToolResult || messageProvenance) return output;
     }
@@ -429,6 +467,7 @@ export class ClaudeEventNormalizer {
             : 0,
         duration_ms: telemetry.duration_ms,
         telemetry,
+        ...(raw.structured_output !== undefined ? {structured_output:{...boundedOutput(raw.structured_output), provenance:provenance(raw, "structured_output")}} : {}),
       });
       return output;
     }
@@ -442,10 +481,15 @@ export class ClaudeEventNormalizer {
       return output;
     }
 
+    const surface = SDK_EVENT_SURFACES[raw.type === "system" ? `system/${raw.subtype}` : raw.type];
     emit("runtime", this.sessionId, {
-      raw_event_type: raw.type ?? null,
-      raw_event_subtype: raw.subtype ?? null,
-      metadata: null,
+      raw_event_type: clippedString(raw.type,128),
+      raw_event_subtype: clippedString(raw.subtype,128),
+      kind: surface ? "provider_runtime" : "unsupported_provider_event",
+      surface: surface ?? "unknown",
+      ...(surface ? {} : {diagnostic_code: "UNSUPPORTED_PROVIDER_EVENT"}),
+      provenance: provenance(raw),
+      compatibility: boundedOutput(raw),
     });
     return output;
   }
@@ -619,6 +663,7 @@ function normalizeResultTelemetry(raw) {
       : [],
     structured_output_present:
       raw?.structured_output !== undefined,
+    ...(raw?.structured_output !== undefined ? {structured_output:{...boundedOutput(raw.structured_output), provenance:provenance(raw, "structured_output")}} : {}),
     deferred_tool_use_present:
       raw?.deferred_tool_use !== undefined,
     latency: {
@@ -779,7 +824,7 @@ function boundedResourceLinkMetadata(value) {
     ) {
       return null;
     }
-    return JSON.parse(serialized);
+    return boundedOutput(JSON.parse(serialized)).payload;
   } catch {
     return null;
   }
@@ -794,6 +839,7 @@ const TOOL_RESULT_MAX_DEPTH = 6;
 function normalizeToolResultPayload(
   block,
   resourceLinks = [],
+  providerOutput = null,
 ) {
   const stats = {
     truncated: false,
@@ -802,6 +848,7 @@ function normalizeToolResultPayload(
   };
   const budget = {
     remainingTextChars: TOOL_RESULT_TEXT_BUDGET_CHARS,
+    remainingNodes: 512,
   };
   const output = projectToolResultValue(
     block.content,
@@ -810,9 +857,16 @@ function normalizeToolResultPayload(
     0,
   );
 
+  const structuredEnvelope = boundedOutput(output);
   return {
     tool_use_id: block.tool_use_id,
     output,
+    structured: {
+      ...structuredToolOutput(structuredEnvelope.payload),
+      ...(providerOutput ? {provider_output:providerOutput} : {}),
+      truncated: stats.truncated || structuredEnvelope.truncated,
+      redacted: stats.reasoningRedacted === true || structuredEnvelope.redacted,
+    },
     is_error: Boolean(block.is_error),
     ...(resourceLinks.length > 0
       ? { resource_links: resourceLinks }
@@ -838,6 +892,10 @@ function projectToolResultValue(
   budget,
   depth,
 ) {
+  if (--budget.remainingNodes < 0) {
+    stats.truncated = true;
+    return null;
+  }
   if (value === null || value === undefined) {
     return value ?? null;
   }
@@ -870,7 +928,7 @@ function projectToolResultValue(
       stats.truncated = true;
     }
     return value
-      .slice(0, TOOL_RESULT_MAX_ARRAY_ITEMS)
+      .slice(0, Math.min(TOOL_RESULT_MAX_ARRAY_ITEMS, Math.max(0, budget.remainingNodes)))
       .map((item) =>
         projectToolResultValue(
           item,
@@ -885,6 +943,7 @@ function projectToolResultValue(
   }
 
   const record = value;
+  if (isReasoning(record)) { stats.reasoningRedacted = true; return {type:"reasoning_redacted"}; }
   if (isBase64BinaryRecord(record)) {
     const data =
       typeof record.data === "string"
@@ -921,8 +980,10 @@ function projectToolResultValue(
   for (
     const key of keys.slice(0, TOOL_RESULT_MAX_OBJECT_KEYS)
   ) {
+    if (budget.remainingNodes <= 0) { stats.truncated = true; break; }
     const item = record[key];
-    if (key === "blob" && typeof item === "string") {
+    if (/^(thinking|reasoning|signature|encrypted_content|chain_of_thought)$/i.test(key)) { stats.reasoningRedacted = true; projected[key] = "[redacted: reasoning]"; continue; }
+    if ((["blob", "bytes", "base64"].includes(key) || (key === "data" && (record.type === "base64" || record.encoding === "base64" || record.media_type || record.mime_type || record.mimeType || ["image", "document"].includes(record.type) || (typeof item === "string" && item.length >= 512 && /^[A-Za-z0-9+/=\s]+$/.test(item))))) && typeof item === "string") {
       const byteLength = estimateBase64Bytes(item);
       stats.omittedBinaryItems += 1;
       stats.omittedBinaryBytes += byteLength;
@@ -933,12 +994,18 @@ function projectToolResultValue(
       };
       continue;
     }
-    projected[key] = projectToolResultValue(
-      item,
-      stats,
-      budget,
-      depth + 1,
-    );
+    let safeKey = boundedToolResultString(key.slice(0, 128), stats, budget);
+    if (Object.hasOwn(projected, safeKey)) {
+      stats.truncated = true;
+      const prefix = safeKey.slice(0,116);
+      let suffix = Object.keys(projected).length;
+      do { safeKey = prefix + ':' + suffix++; } while (Object.hasOwn(projected,safeKey));
+    }
+    if (safeKey.length < key.length) stats.truncated = true;
+    Object.defineProperty(projected, safeKey, {
+      value: projectToolResultValue(item, stats, budget, depth + 1),
+      enumerable: true,
+    });
   }
   return projected;
 }
@@ -982,7 +1049,7 @@ function isBase64BinaryRecord(value) {
       mediaType.startsWith("image/")
       || mediaType.startsWith("audio/")
       || mediaType.startsWith("video/")
-      || mediaType === "application/octet-stream"
+      || mediaType.startsWith("application/")
     )
   );
 }

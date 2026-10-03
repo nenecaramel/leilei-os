@@ -438,6 +438,7 @@ export class DrizzleNativeLiveAttachmentBinding {
     attachmentIds: readonly string[];
     allowPreviouslyBound?: boolean;
     startOrdinal?: number;
+    contentOrigin?: "user_send" | "provider_send";
   }): Promise<NativeLiveRuntimeAttachment[]> {
     const attachmentIds = normalizeAttachmentIds(
       input.attachmentIds,
@@ -548,6 +549,15 @@ export class DrizzleNativeLiveAttachmentBinding {
             rawType: attachment.kind,
             text: null,
             payload: {
+              schema_version: 1,
+              identity: "attachment",
+              refs: [{ type: "attachment_ref", entity_id: attachment.attachment_id }],
+              provenance: {
+                provider: "claude_code",
+                raw_type: input.contentOrigin === "provider_send" ? "send_file" : "user_attachment",
+                origin: input.contentOrigin ?? "user_send",
+                source_ref: { type: "attachment_ref", entity_id: attachment.attachment_id },
+              },
               attachment_id: attachment.attachment_id,
               filename: attachment.filename,
               mime_type: attachment.mime_type,

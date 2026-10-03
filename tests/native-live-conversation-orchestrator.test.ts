@@ -4,7 +4,7 @@ import {
   canonicalizeNativeLiveEvents,
 } from "../src/domains/conversation/native-live-conversation-orchestrator.js";
 
-test("canonical tool blocks preserve provider parent provenance", () => {
+test("execution with parent provenance remains Activity", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "tool_use",
@@ -20,23 +20,12 @@ test("canonical tool blocks preserve provider parent provenance", () => {
   ]);
 
   assert.equal(result.error, null);
-  assert.deepEqual(result.blocks, [
-    {
-      kind: "tool_use",
-      rawType: "tool_use",
-      payload: {
-        tool_use_id: "tool-child",
-        tool_name: "Read",
-        input: { path: "src/example.ts" },
-        parent_tool_use_id: "tool-subagent",
-        parent_agent_id: "agent-parent",
-      },
-    },
-  ]);
+  assert.deepEqual(result.blocks, []);
+
 });
 
 
-test("canonical tool blocks preserve hidden task lineage after runtime retention", () => {
+test("hidden task lineage does not enter canonical content", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "task",
@@ -75,22 +64,14 @@ test("canonical tool blocks preserve hidden task lineage after runtime retention
   ]);
 
   assert.equal(result.error, null);
-  assert.equal(
-    result.blocks[0]?.payload?.hidden_from_transcript,
-    true,
-  );
-  assert.equal(
-    result.blocks[1]?.payload?.hidden_from_transcript,
-    true,
-  );
-  assert.equal(
-    result.blocks[2]?.payload?.hidden_from_transcript,
-    undefined,
-  );
+  assert.deepEqual(result.blocks, []);
+
+
+
 });
 
 
-test("canonical tool blocks preserve ambient activity suppression lineage", () => {
+test("ambient task lineage does not enter canonical content", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "task",
@@ -129,16 +110,8 @@ test("canonical tool blocks preserve ambient activity suppression lineage", () =
   ]);
 
   assert.equal(result.error, null);
-  assert.equal(
-    result.blocks[0]?.payload?.hidden_from_activity,
-    true,
-  );
-  assert.equal(
-    result.blocks[1]?.payload?.hidden_from_activity,
-    true,
-  );
-  assert.equal(
-    result.blocks[2]?.payload?.hidden_from_activity,
-    undefined,
-  );
+  assert.deepEqual(result.blocks, []);
+
+
+
 });
