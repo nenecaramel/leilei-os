@@ -192,8 +192,18 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.doesNotMatch(runtime, /private var stateIcon/);
 
   assert.match(projection, /var summaryLabel: String/);
-  assert.match(projection, /"Working for \\(Self\.durationText/);
-  assert.match(projection, /"Worked for \\(Self\.durationText/);
+  assert.equal(
+    projection.includes(
+      'return "Working for \\(Self.durationText(elapsedSeconds))"',
+    ),
+    true,
+  );
+  assert.equal(
+    projection.includes(
+      'return "Worked for \\(Self.durationText(elapsedSeconds))"',
+    ),
+    true,
+  );
   assert.match(projection, /duration_ms/);
   assert.doesNotMatch(projection, /var headerTitle: String/);
 
