@@ -376,7 +376,8 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.secondary)
         }
-        .frame(width: 118, minHeight: 24, alignment: .leading)
+        .frame(width: 118, alignment: .leading)
+        .frame(minHeight: 24, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isExpanded
