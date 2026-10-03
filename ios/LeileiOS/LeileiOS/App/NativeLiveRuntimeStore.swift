@@ -129,7 +129,7 @@ extension AppModel {
 
                 var cycle = 0
                 var sawBackgroundDrainCandidate = false
-                var sawVisibleBackgroundTask =
+                var sawPostForegroundActivity =
                     initialSurface.hasVisibleBackgroundTasks
                 var refreshedActivityAnchor = false
 
@@ -165,7 +165,7 @@ extension AppModel {
                     }
 
                     if surface.shouldRemainObservedAfterForeground {
-                        sawVisibleBackgroundTask = true
+                        sawPostForegroundActivity = true
                         sawBackgroundDrainCandidate = false
                     } else if sawBackgroundDrainCandidate {
                         if self.activeNativeLiveConversationID
@@ -175,7 +175,7 @@ extension AppModel {
                                 surfaceTransientFailure: false
                             )
                         }
-                        if !sawVisibleBackgroundTask {
+                        if !sawPostForegroundActivity {
                             self.nativeLiveBackgroundRuntimeSurfaces
                                 .removeValue(forKey: prepareID)
                         }
