@@ -225,6 +225,15 @@ struct NativeLiveMessageRow: View {
                 runtimeSurface: activityRuntimeSurface
             )
         }
+        if let prepareID = message.activity?.prepareId,
+           let backgroundSurface =
+            appModel.nativeLiveBackgroundRuntimeSurfaces[
+                prepareID
+            ] {
+            return NativeLiveTurnActivityProjection(
+                runtimeSurface: backgroundSurface
+            )
+        }
         return historicalActivityProjection
     }
 
