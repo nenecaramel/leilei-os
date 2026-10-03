@@ -27,10 +27,7 @@ struct ChatComposer: View {
     var onVoiceRelease: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
-    @State private var isVoiceLanguagePickerPresented = false
-    @State private var voicePressStarted = false
     @State private var voiceHoldActivated = false
-    @State private var voiceHoldTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -179,6 +176,14 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
+                Button {
+                } label: {
+                    ComposerCircleButton(
+                        systemName: "mic.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+
                 if isVoiceActionMode {
                     voiceActionButton
                 } else {
@@ -248,9 +253,6 @@ struct ChatComposer: View {
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
         .onDisappear {
-            voiceHoldTask?.cancel()
-            voiceHoldTask = nil
-            voicePressStarted = false
             voiceHoldActivated = false
         }
     }
@@ -289,82 +291,42 @@ struct ChatComposer: View {
     }
 
     private var voiceActionButton: some View {
-        composerActionLabel
-            .opacity(voiceEnabled ? 1 : 0.35)
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        beginVoicePressGesture()
-                    }
-                    .onEnded { _ in
-                        endVoicePressGesture()
-                    }
-            )
-            .confirmationDialog(
-                "Voice language",
-                isPresented: $isVoiceLanguagePickerPresented,
-                titleVisibility: .visible
-            ) {
+        Menu {
+            Picker("Voice language", selection: $voiceLanguage) {
                 ForEach(VoiceInputLanguage.allCases) { language in
-                    Button(
-                        language == voiceLanguage
-                            ? language.displayName + " ✓"
-                            : language.displayName
-                    ) {
-                        voiceLanguage = language
-                    }
+                    Text(language.displayName)
+                        .tag(language)
                 }
             }
-            .accessibilityElement()
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(
-                "Voice input, "
-                    + voiceLanguage.displayName
-                    + ". Tap to choose language, hold to dictate and send"
-            )
-            .accessibilityAction {
-                guard voiceEnabled else { return }
-                isVoiceLanguagePickerPresented = true
+        } label: {
+            composerActionLabel
+                .opacity(voiceEnabled ? 1 : 0.35)
+        }
+        .disabled(!voiceEnabled)
+        .onLongPressGesture(
+            minimumDuration: 0.35,
+            maximumDistance: 50,
+            pressing: { isPressing in
+                if !isPressing,
+                   voiceHoldActivated {
+                    voiceHoldActivated = false
+                    onVoiceRelease?()
+                }
+            },
+            perform: {
+                guard voiceEnabled,
+                      !voiceHoldActivated else {
+                    return
+                }
+                voiceHoldActivated = true
+                onVoicePress?()
             }
-    }
-
-    private func beginVoicePressGesture() {
-        guard voiceEnabled,
-              !voicePressStarted else {
-            return
-        }
-
-        voicePressStarted = true
-        voiceHoldActivated = false
-        voiceHoldTask?.cancel()
-        voiceHoldTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled,
-                  voicePressStarted,
-                  voiceEnabled else {
-                return
-            }
-            voiceHoldActivated = true
-            onVoicePress?()
-        }
-    }
-
-    private func endVoicePressGesture() {
-        guard voicePressStarted else { return }
-
-        voicePressStarted = false
-        voiceHoldTask?.cancel()
-        voiceHoldTask = nil
-
-        if voiceHoldActivated {
-            voiceHoldActivated = false
-            onVoiceRelease?()
-            return
-        }
-
-        guard voiceEnabled else { return }
-        isVoiceLanguagePickerPresented = true
+        )
+        .accessibilityLabel(
+            "Voice input, "
+                + voiceLanguage.displayName
+                + ". Tap to choose language, hold to dictate and send"
+        )
     }
 
     private var composerActionSymbol: String {
