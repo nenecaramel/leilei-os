@@ -22,25 +22,16 @@ struct ChatComposer: View {
     var onInterrupt: (() -> Void)? = nil
     var onMidTurnInput: ((String) -> Void)? = nil
     var voiceEnabled = false
-    var dictationEnabled = false
-    var isDictating = false
     var voiceStatus: String? = nil
     var onVoiceInteractionBegin: (() -> Void)? = nil
     var onVoicePress: (() -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
-    var onDictationStart: (() -> Void)? = nil
-    var onDictationStop: (() -> Void)? = nil
-    var onDictationCancel: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
     @State private var voiceHoldActivated = false
 
     var body: some View {
-        Group {
-            if isDictating {
-                dictationComposerBody
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
             if let voiceStatus {
                 Text(voiceStatus).font(.footnote).foregroundStyle(.secondary)
             }
@@ -186,19 +177,8 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
-                Button {
-                    guard dictationEnabled else { return }
-                    onDictationStart?()
-                } label: {
-                    ComposerCircleButton(
-                        systemName: "mic.fill"
-                    )
-                    .opacity(dictationEnabled ? 1 : 0.35)
-                }
-                .buttonStyle(.plain)
-                .disabled(!dictationEnabled)
-                .accessibilityLabel(
-                    "Dictate in " + voiceLanguage.displayName
+                ComposerCircleButton(
+                    systemName: "mic.fill"
                 )
 
                 if isVoiceActionMode {
@@ -251,8 +231,6 @@ struct ChatComposer: View {
                     )
                 }
             }
-                }
-            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 15)
@@ -274,41 +252,6 @@ struct ChatComposer: View {
         .onDisappear {
             voiceHoldActivated = false
         }
-    }
-
-    private var dictationComposerBody: some View {
-        HStack(spacing: 12) {
-            Button {
-                onDictationCancel?()
-            } label: {
-                ComposerCircleButton(
-                    systemName: "xmark",
-                    weight: .regular
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Cancel dictation")
-
-            NativeLiveDictationWaveform()
-                .frame(maxWidth: .infinity)
-
-            Button {
-                onDictationStop?()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.chatSoftFill)
-                        .frame(width: 36, height: 36)
-
-                    Image(systemName: "square.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Stop dictation")
-        }
-        .frame(minHeight: 36)
     }
 
     private var isVoiceActionMode: Bool {
@@ -474,29 +417,6 @@ struct ChatComposer: View {
                 }
             }
         )
-    }
-}
-
-
-private struct NativeLiveDictationWaveform: View {
-    private let heights: [CGFloat] = [
-        4, 7, 10, 6, 13, 8, 15, 9, 12, 6,
-        14, 8, 11, 7, 13, 9, 5, 8, 6, 4,
-    ]
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 3) {
-            ForEach(
-                Array(heights.enumerated()),
-                id: \.offset
-            ) { _, height in
-                Capsule()
-                    .fill(Color.primary.opacity(0.48))
-                    .frame(width: 2.2, height: height)
-            }
-        }
-        .frame(height: 22)
-        .accessibilityHidden(true)
     }
 }
 
