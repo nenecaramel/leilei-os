@@ -69,23 +69,23 @@ struct NativeLiveMessageRow: View {
                                 style: .continuous
                             )
                         )
-                        .onTapGesture {
-                            guard isVoiceInputMessage,
-                                  voiceTranscriptText != nil else {
-                                return
-                            }
-
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                isVoiceTranscriptRevealed.toggle()
-                            }
-                        }
                         .overlay {
                             LightweightContextMenuInteraction(
                                 title: "Edit",
                                 copyText: copyText,
                                 isDisabled: isTurnInFlight,
                                 cornerRadius: 18,
-                                onCopy: onCopyMessage
+                                onCopy: onCopyMessage,
+                                onTap: {
+                                    guard isVoiceInputMessage,
+                                          voiceTranscriptText != nil else {
+                                        return
+                                    }
+
+                                    withAnimation(.easeInOut(duration: 0.16)) {
+                                        isVoiceTranscriptRevealed.toggle()
+                                    }
+                                }
                             ) {
                                 onEditMessage(message)
                             }
@@ -362,7 +362,7 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "waveform")
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(.primary)
 
             Spacer(minLength: 4)
@@ -373,11 +373,11 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
                         ? "chevron.up"
                         : "chevron.down"
             )
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 9, weight: .semibold))
             .foregroundStyle(.secondary)
         }
-        .frame(width: 118, alignment: .leading)
-        .frame(minHeight: 24, alignment: .leading)
+        .frame(width: 68, alignment: .leading)
+        .frame(height: 21, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isExpanded
