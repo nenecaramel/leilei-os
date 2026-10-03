@@ -272,6 +272,34 @@ extension AppModel {
         return true
     }
 
+    func stopNativeLiveRuntimeObservations(
+        conversationID: UUID
+    ) {
+        if nativeLiveRuntimeSurface?.conversationID == conversationID {
+            nativeLiveRuntimeObservationTask?.cancel()
+            nativeLiveRuntimeObservationTask = nil
+            nativeLiveRuntimeSurface = nil
+        }
+
+        let backgroundPrepareIDs =
+            nativeLiveBackgroundRuntimeSurfaces.compactMap {
+                prepareID, surface in
+                surface.conversationID == conversationID
+                    ? prepareID
+                    : nil
+            }
+
+        for prepareID in backgroundPrepareIDs {
+            nativeLiveBackgroundObservationTasks[
+                prepareID
+            ]?.cancel()
+            nativeLiveBackgroundObservationTasks
+                .removeValue(forKey: prepareID)
+            nativeLiveBackgroundRuntimeSurfaces
+                .removeValue(forKey: prepareID)
+        }
+    }
+
     func stopNativeLiveRuntimeObservation(
         prepareID: String
     ) {
