@@ -11,6 +11,23 @@ func presentation(_ text: String, role: String = "assistant", payload: [String:N
 func nodes(_ text: String) -> [NativeLiveVisualNode] { presentation(text).nodes[0].children }
 func text(_ node: NativeLiveVisualNode) -> String { node.markdown.map { String($0.inline.characters) } ?? node.text ?? "" }
 
+if CommandLine.arguments.contains("--review-digit-math") {
+    for source in ["$2x$", "$1+1=2$", #"$3\pi r^2$"#, "$2026-n$", "$10$"] {
+        let result = nodes(source)
+        expect(result.count == 1 && result[0].children.count == 1 && result[0].children[0].kind == .math,
+               "digit-leading paired formula: \(source)")
+        expect(result[0].children[0].math?.latex == String(source.dropFirst().dropLast()), "digit formula preserves LaTeX")
+        expect(presentation(source).copyText == source, "digit formula preserves canonical copy")
+    }
+    for source in ["$5", "USD $10", "Price is $10", "Price is $10 and $20", "$10$20"] {
+        expect(nodes(source).allSatisfy { $0.kind != .math && $0.children.allSatisfy { $0.kind != .math } }, "currency/closing digit remains plain: \(source)")
+        expect(text(nodes(source)[0]) == source, "currency remains visible")
+    }
+    let mixed = nodes("Price is $10 and $20; formula $2x$.")[0]
+    expect(mixed.children.filter { $0.kind == .math }.map { $0.math!.latex } == ["2x"], "currency and digit formula coexist")
+    print("Rich Markdown PASS: digit-leading math \(checks) assertions"); exit(0)
+}
+
 // Independent review regressions run separately so each failure is observed.
 if CommandLine.arguments.contains("--review-budget") {
     let result = nodes(String(repeating:"$x$ ",count:30000))

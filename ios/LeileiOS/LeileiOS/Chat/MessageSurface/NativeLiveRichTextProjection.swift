@@ -248,14 +248,16 @@ enum NativeLiveRichTextProjector {
                 }
                 utf16 += String(chars[i..<j]).utf16.count; i = j; continue
             }
-            if c == "$", codeDelimiter == nil, i+1 < chars.count, !chars[i+1].isWhitespace, !chars[i+1].isNumber, chars[i+1] != "$",
+            if c == "$", codeDelimiter == nil, i+1 < chars.count, !chars[i+1].isWhitespace, chars[i+1] != "$",
                (i == 0 || chars[i-1] != "$") {
                 var j = i+1
                 while j < chars.count && j-i <= 2048 && chars[j] != "$" && chars[j] != "\n" {
                     if chars[j] == "\\", j+1 < chars.count { j += 2 } else { j += 1 }
                 }
                 if j < chars.count, chars[j] == "$", j > i+1, !chars[j-1].isWhitespace,
-                   (j+1 == chars.count || chars[j+1] != "$"), j-i <= 2048 {
+                   // A closing delimiter cannot lead directly into an amount.
+                   // Explicit pairs such as $10$ are math; unpaired currency stays literal.
+                   (j+1 == chars.count || (chars[j+1] != "$" && !chars[j+1].isNumber)), j-i <= 2048 {
                     guard pieces.count + 2 < maximumNodes else { return nil }
                     if start < i { pieces.append((String(chars[start..<i]), false, startOffset)) }
                     pieces.append((String(chars[(i+1)..<j]), true, utf16))

@@ -41,3 +41,15 @@ Mainline 3 rich-surface physical acceptance: pending. C media acceptance remains
 Agent status and verify plan used the exact supplied comparison base; unmapped documentation/Swift fixtures were manually covered by real Swift compilation and the explicit test matrix. Dependency symlinks are disposable verification scaffolding, not product changes. No protected workflow, package manifest, canonical persistence, Activity projection or dependency files changed. `NativeLiveRuntimeActivity.swift` only routes streaming Chat text into presentation; Activity behavior is unchanged.
 
 No production refresh/deploy/database operation or physical-device claim. Commit/push/open PR, then task-only cleanup; preserve the owner checkout and unrelated worktrees. Do not merge.
+
+## Review follow-up: digit-leading inline Math
+
+Request: fix only the Important inline Math contract regression; preserve architecture, do not merge. Starting head: `55df89256707dccd69416baf67e3bf6852072a6a`. Main base remains the explicitly supplied `6b65436641ccbd9ec18c14b44e25db1a94599c54`; no fetch/rebase/latest-main verification.
+
+RED: real Swift fixture failed on `$2x$` under the previous nonnumeric opener rule. GREEN: remove the digit-leading opener rejection and require the closing delimiter not be immediately followed by a digit. Explicit paired numeric-only `$10$` is Math; unpaired currency remains literal. Code/link/escape/bounds/canonical semantics are unchanged.
+
+Added 26 real Swift assertions: `$2x$`, `$1+1=2$`, `$3\pi r^2$`, `$2026-n$`, `$10$`, raw LaTeX/canonical copy, `$5`, `USD $10`, `Price is $10`, multiple amounts, rejected closing-digit context and currency/formula coexistence. All previous E review regressions run alongside them.
+
+Follow-up focused E/B/C/D/question/ordinary hidden ambient Tool Activity/voice: 15/15 passed. Runtime gate 405 root +101 bridge, complete bridge125, typecheck/generated/build/diff and unsigned Simulator passed. Backend persistence and Postgres paths are unchanged; prior7/7 isolated retention integration evidence remains recorded above.
+
+Fresh full-suite comparison: exact main baseline 2096 tests/1991 pass/10 fail/95 skip; fixed PR2100 tests/1995 pass/10 fail/95 skip. Added failure names: `[]`; removed failure names: `[]`. The same10 historical failures listed above remain. Exact main baseline ran first, PR second, same Node24.19.0/dependencies/concurrency1.
