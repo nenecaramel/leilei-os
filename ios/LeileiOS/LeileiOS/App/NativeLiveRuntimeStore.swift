@@ -124,6 +124,8 @@ extension AppModel {
 
                 var cycle = 0
                 var sawBackgroundDrainCandidate = false
+                var sawVisibleBackgroundTask =
+                    initialSurface.hasVisibleBackgroundTasks
                 var refreshedActivityAnchor = false
 
                 while !Task.isCancelled,
@@ -158,6 +160,7 @@ extension AppModel {
                     }
 
                     if surface.hasVisibleBackgroundTasks {
+                        sawVisibleBackgroundTask = true
                         sawBackgroundDrainCandidate = false
                     } else if sawBackgroundDrainCandidate {
                         if self.activeNativeLiveConversationID
@@ -166,6 +169,10 @@ extension AppModel {
                                 force: true,
                                 surfaceTransientFailure: false
                             )
+                        }
+                        if !sawVisibleBackgroundTask {
+                            self.nativeLiveBackgroundRuntimeSurfaces
+                                .removeValue(forKey: prepareID)
                         }
                         return
                     } else {
