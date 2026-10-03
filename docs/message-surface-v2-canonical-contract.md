@@ -81,12 +81,12 @@ Version 1 product identities are `text`, `attachment`, `artifact`, `resource`,
 
 Existing physical text/attachment kinds remain unchanged. Artifact/resource/
 canonical_tool_result use physical `unknown` with `payload.schema_version = 1`
-and `payload.identity`. Both conversation readers decode this envelope. A future
+and `payload.identity`. Both conversation readers decode only these three extension identities from physical unknown. An unknown payload claiming text/attachment never becomes an authoritative text/file row. A future
 schema version stays readable as `unknown`. No schema migration is required.
 `rawType` retains the provider type; no duplicate raw-type DB column is introduced.
 
 Legacy tool_use/tool_result rows continue to read exactly as legacy identities.
-New canonicalization does not create execution rows. Previously unsupported legacy rows now read as diagnostic compatibility content;
+New canonicalization does not create ordinary execution rows. AskUserQuestion use/result rows remain durable canonical Activity backing evidence, including provider identity, input, parent lineage and the existing minimal resolution enrichment from #813; their persistence does not make them Chat product content. Previously unsupported legacy rows now read as diagnostic compatibility content;
 legacy thinking/reasoning rows expose only an exclusion diagnostic, and unknown
 media payloads are bounded/redacted on read. No historical rewrite,
 lineage changes or Retry/Edit/head semantics changes are required.
@@ -98,7 +98,7 @@ lineage changes or Retry/Edit/head semantics changes are required.
 2. Ready files enter only through existing authenticated attachment binding:
    completed upload, user ownership, ready status and transaction locks. An
    `attachment` provider candidate event cannot bypass this path.
-3. Execution output defaults to Activity. The bridge never forwards a provider's
+3. Execution output defaults to Activity. Canonical storage can back durable Activity: AskUserQuestion use/result rows continue through the #813 enrichment path and survive operational retention. The bridge never forwards a provider's
    `conversation_projection` as authority. A trusted backend projector may add a
    version 1 projection with identity, reason (`explicit_share` or
    `materialized_send`) and validated refs. This opt-in is not a UI decision.
@@ -119,7 +119,7 @@ Use stable authoritative IDs, never duplicate whole entities into tool output.
 Entity identities require a matching ref. Projection refs are bounded to 32.
 The existing attachment store remains authoritative; canonical descriptors are
 metadata, not a second file store. Ready binding records schema, identity, refs
-and structural source provenance. Generated-file provenance must survive future
+and structural source provenance. User sends have origin user_send/raw_type user_attachment without a model provider; only provider_send has provider claude_code/raw_type send_file. Generated-file provenance must survive future
 materialization; a generated path or URI alone is not an entity ID.
 
 Provenance can carry provider, raw type/subtype, provider schema, tool use/task

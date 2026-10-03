@@ -8,7 +8,7 @@ export type CanonicalEntityRef = {
   entity_id: string;
 };
 export type ContentProvenance = {
-  provider: string;
+  provider?: string;
   raw_type: string;
   raw_subtype?: string | null;
   provider_schema?: string;
@@ -237,7 +237,7 @@ export function readableContentKind(
     kind === "unknown" &&
     payload?.schema_version === 1 &&
     typeof payload.identity === "string" &&
-    identities.has(payload.identity)
+    ["artifact", "resource", "canonical_tool_result"].includes(payload.identity)
   )
     return payload.identity as CanonicalContentIdentity;
   return ["text", "attachment", "tool_use", "tool_result"].includes(kind)

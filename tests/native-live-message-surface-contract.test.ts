@@ -5,7 +5,7 @@ import { normalizeClaudeEvents } from "../tools/claude-bridge/src/normalized-eve
 const normalize = (raw: unknown[]) =>
   normalizeClaudeEvents(raw, { logicalConversationId: "c", mode: "new" });
 
-test("execution, questions, tasks, candidates and telemetry stay outside canonical content", () => {
+test("execution, tasks, candidates and telemetry stay outside Chat; questions retain Activity backing", () => {
   const events = normalize([
     {
       type: "assistant",
@@ -46,7 +46,10 @@ test("execution, questions, tasks, candidates and telemetry stay outside canonic
     },
     { type: "rate_limit_event", rate_limit_info: {} },
   ]);
-  assert.deepEqual(canonicalizeNativeLiveEvents(events).blocks, []);
+  const blocks = canonicalizeNativeLiveEvents(events).blocks;
+  assert.deepEqual(blocks.map(block => block.kind), ["tool_use", "tool_result"]);
+  assert.equal(blocks[0].payload?.tool_name, "AskUserQuestion");
+  assert.equal(blocks[1].payload?.tool_use_id, "q");
 });
 
 test("ordinary assistant text remains canonical, subagent text stays runtime", () => {

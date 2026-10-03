@@ -553,7 +553,7 @@ export class DrizzleNativeLiveAttachmentBinding {
               identity: "attachment",
               refs: [{ type: "attachment_ref", entity_id: attachment.attachment_id }],
               provenance: {
-                provider: "claude_code",
+                ...(input.contentOrigin === "provider_send" ? { provider: "claude_code" } : {}),
                 raw_type: input.contentOrigin === "provider_send" ? "send_file" : "user_attachment",
                 origin: input.contentOrigin ?? "user_send",
                 source_ref: { type: "attachment_ref", entity_id: attachment.attachment_id },

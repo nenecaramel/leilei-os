@@ -238,3 +238,9 @@ test("structured JSON data strings remain payload while declared binary data is 
   assert.equal(payload.data, "business text");
   assert.ok(!JSON.stringify(payload).includes("AQID"));
 });
+
+ test("physical unknown cannot impersonate authoritative text or attachments", () => {
+  for (const identity of ["text", "attachment", "tool_use", "tool_result"]) {
+    assert.equal(readableContentKind("unknown", { schema_version: 1, identity }), "unknown");
+  }
+});

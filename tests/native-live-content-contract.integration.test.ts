@@ -7,9 +7,11 @@ import {
   conversationProviderSessionCheckpoints,
   conversations,
   users,
+  nativeLiveChatAttachments,
 } from "../src/database/schema.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
+import { DrizzleNativeLiveAttachmentBinding } from "../src/domains/bridge/attachment/native-live-attachment-service.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 
 test(
@@ -31,6 +33,7 @@ test(
         await database.db
           .delete(conversations)
           .where(eq(conversations.userId, user.id));
+        await database.db.delete(nativeLiveChatAttachments).where(eq(nativeLiveChatAttachments.userId, user.id));
         await database.db.delete(users).where(eq(users.id, user.id));
       } finally {
         await database.close();
@@ -44,6 +47,16 @@ test(
       conversationId: conversation.id,
       parentMessageId: null,
       blocks: [{ kind: "text", text: "fixture" }],
+    });
+    const attachmentId = crypto.randomUUID();
+    await database.db.insert(nativeLiveChatAttachments).values({
+      id: attachmentId, userId: user.id, objectKey: `contract/${attachmentId}`,
+      filename: "user.pdf", mimeType: "application/pdf", sizeBytes: 3,
+      sha256: "a".repeat(64), kind: "file", status: "ready",
+      readyAt: new Date(), expiresAt: new Date(Date.now() + 60000),
+    });
+    await new DrizzleNativeLiveAttachmentBinding(database.db).bindReadyToMessage({
+      userId: user.id, messageId: parent.id, attachmentIds: [attachmentId],
     });
     const turn = await service.completeAssistantTurn({
       userId: user.id,
@@ -134,6 +147,12 @@ test(
     });
     for (const view of [complete, current]) {
       assert.ok(view);
+      const userAttachment = view.messages.find(message => message.id === parent.id)?.blocks.find(block => block.kind === "attachment");
+      assert.ok(userAttachment);
+      const source = userAttachment.payload?.provenance as Record<string, unknown>;
+      assert.equal(source.origin, "user_send");
+      assert.equal(source.raw_type, "user_attachment");
+      assert.equal(source.provider, undefined);
       const assistant = view.messages.find(
         (message) => message.id === turn.message.id,
       )!;

@@ -40,6 +40,14 @@ export function canonicalizeNativeLiveEvents(
   error: string | null;
 } {
   const blocks: NativeLiveContentBlockInput[] = [];
+  // Durable Activity backing survives operational history retention (#813).
+  // These legacy tool rows are evidence, not canonical Chat product content.
+  const questionIds = new Set(
+    events
+      .filter(event => event.type === "tool_use" && event.payload?.tool_name === "AskUserQuestion")
+      .map(event => stringValue(event.payload?.tool_use_id))
+      .filter((id): id is string => id !== null),
+  );
   let finalText: string | null = null;
   let error: string | null = null;
   let sawText = false;
@@ -95,7 +103,24 @@ export function canonicalizeNativeLiveEvents(
       continue;
     }
 
-    if (event.type === "tool_use") continue;
+    if (event.type === "tool_use" || event.type === "tool_result") {
+      const id = stringValue(payload.tool_use_id);
+      if (id && questionIds.has(id)) {
+        const {
+          display_name: _displayName,
+          server_display_name: _serverDisplayName,
+          icon_url: _iconUrl,
+          ...evidence
+        } = payload;
+        blocks.push({
+          kind: event.type,
+          rawType: event.type,
+          payload: boundCanonicalPayload(evidence).compatibility_payload as Record<string, unknown>,
+        });
+        continue;
+      }
+      if (event.type === "tool_use") continue;
+    }
 
     if (
       event.type === "tool_result" ||
