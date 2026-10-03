@@ -202,7 +202,7 @@ struct PageContainer: View {
             showingClaudeSessions = true
         } label: {
             Label(
-                "Fork Claude Session",
+                "Fork Session",
                 systemImage: "arrow.triangle.branch"
             )
         }
@@ -226,8 +226,16 @@ struct PageContainer: View {
 
         Divider()
 
-        Button("Delete", systemImage: "trash", role: .destructive) {
+        Button(role: .destructive) {
             showingDeleteConfirmation = true
+        } label: {
+            Label {
+                Text("Delete")
+                    .foregroundStyle(.red)
+            } icon: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+            }
         }
         .disabled(
             appModel.activeNativeLiveConversationID == nil
