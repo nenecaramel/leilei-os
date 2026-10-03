@@ -391,18 +391,24 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
 });
 
-test("scroll-to-latest visibility follows the real bottom anchor instead of transient geometry", () => {
+test("scroll-to-latest visibility only commits geometry changes during real user scrolling", () => {
   const root = fs.readFileSync(rootPath, "utf8");
 
+  assert.match(root, /@State private var latestAwayFromBottom = false/);
+  assert.match(root, /@State private var userScrollInteractionActive = false/);
   assert.match(
     root,
-    /\.id\(bottomAnchorID\)[\s\S]*\.onScrollVisibilityChange\(\s*threshold: 0\.01/,
+    /\.onScrollGeometryChange\(for: Bool\.self\)[\s\S]*latestAwayFromBottom = awayFromBottom[\s\S]*guard userScrollInteractionActive/,
   );
   assert.match(
     root,
-    /let awayFromBottom = !isVisible[\s\S]*isAwayFromBottom =\s*awayFromBottom/,
+    /\.onScrollPhaseChange[\s\S]*newPhase == \.tracking[\s\S]*newPhase == \.interacting[\s\S]*newPhase == \.decelerating[\s\S]*userScrollInteractionActive = true/,
   );
-  assert.doesNotMatch(root, /\.onScrollGeometryChange\(/);
+  assert.match(
+    root,
+    /guard newPhase == \.idle,[\s\S]*userScrollInteractionActive[\s\S]*userScrollInteractionActive = false[\s\S]*isAwayFromBottom =\s*latestAwayFromBottom/,
+  );
+  assert.doesNotMatch(root, /\.onScrollVisibilityChange\(/);
   assert.match(
     root,
     /if isAwayFromBottom \{[\s\S]*accessibilityLabel\("Scroll to latest"\)/,

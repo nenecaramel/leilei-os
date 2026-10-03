@@ -97,6 +97,8 @@ struct NativeLiveMessageSurface: View {
 
     private let bottomAnchorID = "native-live-chat-bottom"
     @State private var isAwayFromBottom = false
+    @State private var latestAwayFromBottom = false
+    @State private var userScrollInteractionActive = false
     @State private var copiedMessageID: String?
     @State private var copyFeedbackToken = UUID()
     @State private var isLoadingOlderMessages = false
@@ -314,22 +316,6 @@ struct NativeLiveMessageSurface: View {
                     Color.clear
                         .frame(height: 1)
                         .id(bottomAnchorID)
-                        .onScrollVisibilityChange(
-                            threshold: 0.01
-                        ) { isVisible in
-                            let awayFromBottom = !isVisible
-                            guard awayFromBottom
-                                    != isAwayFromBottom else {
-                                return
-                            }
-
-                            withAnimation(
-                                .easeInOut(duration: 0.16)
-                            ) {
-                                isAwayFromBottom =
-                                    awayFromBottom
-                            }
-                        }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -347,8 +333,50 @@ struct NativeLiveMessageSurface: View {
                 guard !isTurnInFlight else { return }
                 await onRefresh()
             }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY
+                    < geometry.contentSize.height - 12
+            } action: { _, awayFromBottom in
+                latestAwayFromBottom = awayFromBottom
+
+                guard userScrollInteractionActive,
+                      awayFromBottom != isAwayFromBottom else {
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isAwayFromBottom = awayFromBottom
+                }
+            }
+            .onScrollPhaseChange { _, newPhase in
+                if newPhase == .tracking
+                    || newPhase == .interacting
+                    || newPhase == .decelerating {
+                    userScrollInteractionActive = true
+                    return
+                }
+
+                guard newPhase == .idle,
+                      userScrollInteractionActive else {
+                    return
+                }
+
+                userScrollInteractionActive = false
+
+                guard latestAwayFromBottom
+                        != isAwayFromBottom else {
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isAwayFromBottom =
+                        latestAwayFromBottom
+                }
+            }
             .onChange(of: snapshot?.conversationId) { _, _ in
                 isAwayFromBottom = false
+                latestAwayFromBottom = false
+                userScrollInteractionActive = false
             }
             .onChange(of: pendingOperation) { _, operation in
                 guard let operation,
