@@ -277,6 +277,9 @@ struct ChatView: View {
             visibleRuntimeSurface?.providerTurnActive {
             return nativeState
         }
+        if visibleRuntimeSurface?.foregroundTurnCompleted == true {
+            return false
+        }
         return visibleRuntimeSurface != nil
     }
 
