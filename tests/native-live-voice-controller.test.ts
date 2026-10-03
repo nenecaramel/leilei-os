@@ -21,7 +21,8 @@ test("composer keeps the existing mic and uses the native trailing menu for lang
   const composer=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift","utf8");
   const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
   const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
-  assert.match(composer,/Button \{\s*\} label: \{\s*ComposerCircleButton\(\s*systemName: "mic\.fill"/);
+  assert.match(composer,/ComposerCircleButton\(\s*systemName: "mic\.fill"/);
+  assert.doesNotMatch(composer,/Button \{\s*\} label: \{\s*ComposerCircleButton\(\s*systemName: "mic\.fill"/);
   assert.match(composer,/if isVoiceActionMode \{\s*voiceActionButton/);
   assert.match(composer,/private var voiceActionButton: some View \{\s*Menu \{/);
   assert.match(composer,/Picker\("Voice language", selection: \$voiceLanguage\)/);
