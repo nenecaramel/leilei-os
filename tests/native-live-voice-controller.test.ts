@@ -26,10 +26,14 @@ test("composer keeps mic placeholder and arbitrates trailing tap versus hold in 
   assert.match(composer,/ComposerCircleButton\(\s*systemName: "mic\.fill"/);
   assert.doesNotMatch(composer,/onDictationStart|dictationEnabled|isDictating|NativeLiveDictationWaveform/);
 
-  // Trailing voice control no longer stacks SwiftUI Menu + onLongPressGesture.
-  assert.match(composer,/private var voiceActionButton: some View \{\s*NativeLiveVoiceActionControl\(/);
+  // Trailing voice control preserves the original SwiftUI visual and layers
+  // a transparent native interaction surface above it.
+  assert.match(composer,/private var voiceActionButton: some View \{\s*ZStack \{\s*composerActionLabel[\s\S]*NativeLiveVoiceActionControl\(/);
   assert.doesNotMatch(composer,/private var voiceActionButton: some View \{\s*Menu \{/);
   assert.doesNotMatch(composer,/\.onLongPressGesture\(/);
+  assert.match(composer,/func makeUIView\([\s\S]*\) -> UIView \{\s*let view = UIView\(frame: \.zero\)[\s\S]*view\.backgroundColor = \.clear/);
+  assert.doesNotMatch(composer,/UIButton\(type: \.system\)/);
+  assert.doesNotMatch(composer,/UIImage\([\s\S]*systemName: "waveform"/);
 
   // A single UIKit arbiter owns tap and hold.
   assert.match(composer,/struct NativeLiveVoiceActionControl: UIViewRepresentable/);
