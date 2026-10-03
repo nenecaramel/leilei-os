@@ -175,6 +175,11 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /task\.resourceLinks/);
   assert.match(runtime, /task\.isCurrentlyActive/);
   assert.match(runtime, /projection\.hasActiveBackgroundTask/);
+  assert.match(runtime, /"mcp__leileios__get_diary": "Read Diary"/);
+  assert.match(runtime, /"mcp__leileios_album__save_photo": "Save Photo"/);
+  assert.match(runtime, /"mcp__leileios_local__send_file": "Send File"/);
+  assert.match(runtime, /prefixes\.first/);
+  assert.doesNotMatch(runtime, /return "LeileiOS · "/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.activityText/);
   assert.doesNotMatch(runtime, /runtimeSurface\?\.interactions\.first/);
 
@@ -205,6 +210,14 @@ test("runtime activity and tool presentation are extracted from the message surf
     true,
   );
   assert.match(projection, /duration_ms/);
+  assert.match(
+    projection,
+    /tools\.count \+ tasks\.count \+ topLevelInteractions\.count/,
+  );
+  assert.doesNotMatch(
+    projection,
+    /tools\.count \+ tasks\.count \+ interactions\.count/,
+  );
   assert.match(projection, /"1 step"/);
   assert.match(projection, /"\\(activityCount\) steps"/);
   assert.doesNotMatch(projection, /components\.append\("Done"\)/);

@@ -135,7 +135,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     }
 
     var activityCount: Int {
-        tools.count + tasks.count + interactions.count
+        tools.count + tasks.count + topLevelInteractions.count
     }
 
     func childTools(
