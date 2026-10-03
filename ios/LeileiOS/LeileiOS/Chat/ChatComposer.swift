@@ -285,20 +285,25 @@ struct ChatComposer: View {
     }
 
     private var voiceActionButton: some View {
-        NativeLiveVoiceActionControl(
-            voiceLanguage: $voiceLanguage,
-            isEnabled: voiceEnabled,
-            onInteractionBegin: {
-                onVoiceInteractionBegin?()
-            },
-            onVoicePress: {
-                onVoicePress?()
-            },
-            onVoiceRelease: {
-                onVoiceRelease?()
-            }
-        )
+        ZStack {
+            composerActionLabel
+
+            NativeLiveVoiceActionControl(
+                voiceLanguage: $voiceLanguage,
+                isEnabled: voiceEnabled,
+                onInteractionBegin: {
+                    onVoiceInteractionBegin?()
+                },
+                onVoicePress: {
+                    onVoicePress?()
+                },
+                onVoiceRelease: {
+                    onVoiceRelease?()
+                }
+            )
+        }
         .frame(width: 36, height: 36)
+        .opacity(voiceEnabled ? 1 : 0.35)
     }
 
     private var composerActionSymbol: String {
@@ -406,29 +411,18 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
 
     func makeUIView(
         context: Context
-    ) -> UIButton {
-        let button = UIButton(type: .system)
-        button.backgroundColor = .black
-        button.tintColor = .white
-        button.layer.cornerRadius = 18
-        button.clipsToBounds = true
-        button.setImage(
-            UIImage(
-                systemName: "waveform",
-                withConfiguration:
-                    UIImage.SymbolConfiguration(
-                        pointSize: 15,
-                        weight: .semibold
-                    )
-            ),
-            for: .normal
-        )
+    ) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isOpaque = false
 
-        button.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.handleTouchDown),
-            for: .touchDown
+        let touchDown = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTouchDown(_:))
         )
+        touchDown.minimumPressDuration = 0
+        touchDown.allowableMovement = 50
+        touchDown.cancelsTouchesInView = false
 
         let longPress = UILongPressGestureRecognizer(
             target: context.coordinator,
@@ -443,26 +437,27 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
         )
         tap.require(toFail: longPress)
 
-        button.addGestureRecognizer(longPress)
-        button.addGestureRecognizer(tap)
+        view.addGestureRecognizer(touchDown)
+        view.addGestureRecognizer(longPress)
+        view.addGestureRecognizer(tap)
 
         let editMenu = UIEditMenuInteraction(
             delegate: context.coordinator
         )
-        button.addInteraction(editMenu)
+        view.addInteraction(editMenu)
         context.coordinator.editMenuInteraction = editMenu
 
-        return button
+        return view
     }
 
     func updateUIView(
-        _ button: UIButton,
+        _ view: UIView,
         context: Context
     ) {
         context.coordinator.parent = self
-        button.alpha = isEnabled ? 1 : 0.35
-        button.isUserInteractionEnabled = isEnabled
-        button.accessibilityLabel =
+        view.isUserInteractionEnabled = isEnabled
+        view.isAccessibilityElement = true
+        view.accessibilityLabel =
             "Voice input, "
             + voiceLanguage.displayName
             + ". Tap to choose language, hold to dictate and send"
@@ -481,8 +476,13 @@ private struct NativeLiveVoiceActionControl: UIViewRepresentable {
             self.parent = parent
         }
 
-        @objc func handleTouchDown() {
-            guard parent.isEnabled else { return }
+        @objc func handleTouchDown(
+            _ recognizer: UILongPressGestureRecognizer
+        ) {
+            guard parent.isEnabled,
+                  recognizer.state == .began else {
+                return
+            }
             parent.onInteractionBegin()
         }
 
