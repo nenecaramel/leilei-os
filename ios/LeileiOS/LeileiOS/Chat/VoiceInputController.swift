@@ -108,6 +108,11 @@ final class VoiceInputController: ObservableObject {
         phase = .idle
     }
 
+    func dismissStatusMessage() {
+        guard phase == .idle else { return }
+        errorMessage = nil
+    }
+
     func reportSendFailure() {
         errorMessage = "Voice message could not be sent. Please try again."
     }

@@ -199,6 +199,9 @@ struct ChatView: View {
                 },
                 voiceEnabled: voiceEnabled,
                 voiceStatus: voiceInput.status,
+                onVoiceInteractionBegin: {
+                    voiceInput.dismissStatusMessage()
+                },
                 onVoicePress: {
                     voiceInput.begin(
                         language: voiceLanguage,
