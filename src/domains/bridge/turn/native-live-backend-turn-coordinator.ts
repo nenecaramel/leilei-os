@@ -173,6 +173,7 @@ export interface NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    inputMode?: "voice";
     attachmentIds: readonly string[];
     workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
@@ -275,6 +276,7 @@ export class NativeLiveBackendTurnCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          ...(request.input_mode === "voice" ? { inputMode: "voice" as const } : {}),
           attachmentIds: request.attachment_ids ?? [],
           workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,

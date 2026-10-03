@@ -98,6 +98,7 @@ implements NativeLiveBackendTurnPort {
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    inputMode?: "voice";
     attachmentIds: readonly string[];
     workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;

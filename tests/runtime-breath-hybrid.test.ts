@@ -949,3 +949,24 @@ test("partial semantic score maps are rejected and fall back to lexical scoring"
     true,
   );
 });
+
+test("voice identity never labels semantic or Breath query, including prepared semantic plans", async () => {
+  const port = new Port([state("voice-memory", "我今天好累")]);
+  const queries: string[] = [];
+  const service = new NativeLiveMindLoopService(port, {
+    assemblyVersion:"voice-v1", promptContractVersion:"voice-v1", ruleVersion:"test", processVersion:"test", breathLimit:3, breathSemanticWeight:0.8, maxContextItems:16, maxContextChars:8000,
+  }, {async score(input) {queries.push(input.query);return new Map([["voice-memory",0.95]]);}});
+  const {DefaultNativeLiveMindRuntime}=await import("../src/domains/runtime/mind/native-live-mind-runtime.js");
+  const user = {id:"voice-user",conversationId:"c1",parentMessageId:null,role:"user" as const,status:"completed" as const,createdAt:"2026-09-22T10:00:00.000Z",completedAt:null,blocks:[{id:"voice-block",ordinal:0,kind:"text" as const,rawType:"text",text:"我今天好累",payload:{input_mode:"voice"},createdAt:"2026-09-22T10:00:00.000Z"}]};
+  const runtime=new DefaultNativeLiveMindRuntime(service,{subjectId:"G",now:()=>"2026-09-22T10:00:00.000Z"});
+  const input={userId:"u1",conversation:conversation(),userMessage:user,userText:"我今天好累",surfaceHeadMessageId:null};
+  const prompt=await runtime.prepareUserTurn(input);
+  assert.deepEqual(queries,["我今天好累"]);
+  assert.match(prompt,/<user_message input_mode="voice">/);
+  const plan=await runtime.planSemanticUserTurn(input);
+  assert.ok(plan);assert.equal(plan.query,"我今天好累");
+  const planned=await runtime.prepareUserTurnFromSemanticPlan({...input,plan,scores:new Map([["voice-memory",0.95]])});
+  assert.match(planned,/<user_message input_mode="voice">/);
+  assert.deepEqual(queries,["我今天好累"]);
+  assert.equal(port.manifests[0].items.find(item=>item.type==="user_message")?.text,"我今天好累");
+});

@@ -3,6 +3,7 @@ import Foundation
 extension AppModel {
     func sendNativeLiveMessage(
         _ text: String,
+        inputMode: NativeLiveInputMode = .text,
         attachmentIDs: [String] = [],
         workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil
@@ -36,6 +37,7 @@ extension AppModel {
                 conversationID: conversationID,
                 expectedHeadMessageID: snapshot.currentHeadMessageId,
                 text: normalized,
+                inputMode: inputMode,
                 attachmentIDs: attachmentIDs,
                 workspaceID: workspaceID,
                 execution: execution

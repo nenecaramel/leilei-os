@@ -20,10 +20,18 @@ struct ChatComposer: View {
     var onRetryAttachment: ((UUID) -> Void)? = nil
     var onInterrupt: (() -> Void)? = nil
     var onMidTurnInput: ((String) -> Void)? = nil
+    var voiceEnabled = false
+    var voiceStatus: String? = nil
+    var onVoicePress: (() -> Void)? = nil
+    var onVoiceRelease: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
+    @GestureState private var isHoldingVoice = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let voiceStatus {
+                Text(voiceStatus).font(.footnote).foregroundStyle(.secondary)
+            }
             if isEditing {
                 HStack(spacing: 8) {
                     Text("Edit message")
@@ -166,13 +174,22 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
-                Button {
-                } label: {
-                    ComposerCircleButton(
-                        systemName: "mic.fill"
-                    )
-                }
-                .buttonStyle(.plain)
+                ComposerCircleButton(systemName: "mic.fill")
+                    .opacity(voiceEnabled ? 1 : 0.35)
+                    .contentShape(Circle())
+                    .gesture(DragGesture(minimumDistance: 0)
+                        .updating($isHoldingVoice) { _, held, _ in
+                            held = true
+                        })
+                    .onChange(of: isHoldingVoice) { _, held in
+                        if held {
+                            guard voiceEnabled else { return }
+                            onVoicePress?()
+                        } else {
+                            onVoiceRelease?()
+                        }
+                    }
+                    .accessibilityLabel("Hold to dictate and send")
 
                 Button {
                     let normalized = text.trimmingCharacters(

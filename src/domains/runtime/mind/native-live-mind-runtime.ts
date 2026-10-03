@@ -137,6 +137,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       userMessageId: input.userMessage.id,
       userText: input.userText,
       userMessageCreatedAt: input.userMessage.createdAt,
+      userInputMode: canonicalUserInputMode(input.userMessage),
       snapshotSequence: input.conversation.messages.length,
       assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
@@ -201,6 +202,7 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
       userMessageId: input.userMessage.id,
       userText: input.userText,
       userMessageCreatedAt: input.userMessage.createdAt,
+      userInputMode: canonicalUserInputMode(input.userMessage),
       snapshotSequence: input.plan.snapshotSequence,
       assembledAt: input.plan.assembledAt,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
@@ -285,4 +287,14 @@ export class DefaultNativeLiveMindRuntime implements NativeLiveMindRuntime {
     });
   }
 
+}
+
+function canonicalUserInputMode(message: NativeLiveMessage): "voice" | undefined {
+  return message.role === "user" && message.blocks.some(block =>
+    block.kind === "text"
+      && typeof block.payload === "object"
+      && block.payload !== null
+      && !Array.isArray(block.payload)
+      && block.payload?.input_mode === "voice"
+  ) ? "voice" : undefined;
 }

@@ -42,6 +42,7 @@ export async function prepareSend(
     conversationId: string;
     expectedHeadMessageId: string | null;
     text: string;
+    inputMode?: "voice";
     attachmentIds: readonly string[];
     workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
@@ -51,6 +52,7 @@ export async function prepareSend(
       conversationId: input.conversationId,
       expectedHeadMessageId: input.expectedHeadMessageId,
       text: input.text,
+      ...(input.inputMode === "voice" ? { inputMode: "voice" } : {}),
       ...(input.attachmentIds.length > 0
         ? { attachmentIds: input.attachmentIds }
         : {}),
@@ -124,6 +126,9 @@ export async function prepareSend(
               kind: "text",
               rawType: "text",
               text: input.text,
+              ...(input.inputMode === "voice"
+                ? { payload: { input_mode: "voice" } }
+                : {}),
             },
           });
         }
