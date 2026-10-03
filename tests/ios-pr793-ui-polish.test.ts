@@ -42,7 +42,11 @@ test("ported PR 793 conversation menu uses concise fork label and red delete aff
   assert.doesNotMatch(pageContainer, /"Fork Claude Session"/);
   assert.match(
     pageContainer,
-    /Button\(role: \.destructive\)[\s\S]*Text\("Delete"\)[\s\S]*foregroundStyle\(\.red\)[\s\S]*Image\(systemName: "trash"\)[\s\S]*foregroundStyle\(\.red\)/,
+    /Button\(role: \.destructive\)[\s\S]*Text\("Delete"\)[\s\S]*foregroundStyle\(\.red\)[\s\S]*destructiveTrashIcon/,
+  );
+  assert.match(
+    pageContainer,
+    /UIImage\(systemName: "trash"\)\?[\s\S]*withTintColor\([\s\S]*\.systemRed,[\s\S]*renderingMode: \.alwaysOriginal/,
   );
 });
 
