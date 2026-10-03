@@ -14,7 +14,7 @@ const base = {
   parentProviderSessionId: null,
 };
 
-test("tool_use_meta is preserved for Runtime UI and execution stays outside canonical content", () => {
+test("tool_use_meta is preserved for Runtime UI and durable Activity strips display metadata", () => {
   const events = normalizeClaudeEvents(
     [{
       type: "assistant",
@@ -50,10 +50,12 @@ test("tool_use_meta is preserved for Runtime UI and execution stays outside cano
   });
 
   const canonical = canonicalizeNativeLiveEvents(events);
-  assert.deepEqual(canonical.blocks, []);
+  assert.deepEqual(canonical.blocks.map(block => block.kind), ["tool_use"]);
+  const { display_name, server_display_name, icon_url, ...evidence } = events[0].payload;
+  assert.deepEqual(canonical.blocks[0]?.payload, evidence);
 });
 
-test("oversized binary tool_result stays runtime and never carries raw bytes", () => {
+test("oversized binary tool_result retains durable Activity backing and never carries raw bytes", () => {
   const binary = Buffer.alloc(75_000, 5).toString("base64");
   const events = normalizeClaudeEvents(
     [{
@@ -88,7 +90,8 @@ test("oversized binary tool_result stays runtime and never carries raw bytes", (
 
   const canonical = canonicalizeNativeLiveEvents(events);
   assert.equal(canonical.error, null);
-  assert.deepEqual(canonical.blocks, []);
+  assert.deepEqual(canonical.blocks.map(block => block.kind), ["tool_result"]);
+  assert.equal(JSON.stringify(canonical.blocks).includes(binary.slice(0, 64)), false);
   const runtime = events.find(event => event.type === 'tool_result');
   assert.equal(runtime?.payload?.tool_use_id, 'toolu-binary');
   assert.equal(runtime?.payload?.output_binary_omitted, true);

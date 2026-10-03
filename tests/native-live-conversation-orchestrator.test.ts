@@ -4,7 +4,7 @@ import {
   canonicalizeNativeLiveEvents,
 } from "../src/domains/conversation/native-live-conversation-orchestrator.js";
 
-test("execution with parent provenance remains Activity", () => {
+test("canonical tool blocks preserve provider parent provenance", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "tool_use",
@@ -20,12 +20,23 @@ test("execution with parent provenance remains Activity", () => {
   ]);
 
   assert.equal(result.error, null);
-  assert.deepEqual(result.blocks, []);
-
+  assert.deepEqual(result.blocks, [
+    {
+      kind: "tool_use",
+      rawType: "tool_use",
+      payload: {
+        tool_use_id: "tool-child",
+        tool_name: "Read",
+        input: { path: "src/example.ts" },
+        parent_tool_use_id: "tool-subagent",
+        parent_agent_id: "agent-parent",
+      },
+    },
+  ]);
 });
 
 
-test("hidden task lineage does not enter canonical content", () => {
+test("canonical tool blocks preserve hidden task lineage after runtime retention", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "task",
@@ -64,14 +75,22 @@ test("hidden task lineage does not enter canonical content", () => {
   ]);
 
   assert.equal(result.error, null);
-  assert.deepEqual(result.blocks, []);
-
-
-
+  assert.equal(
+    result.blocks[0]?.payload?.hidden_from_transcript,
+    true,
+  );
+  assert.equal(
+    result.blocks[1]?.payload?.hidden_from_transcript,
+    true,
+  );
+  assert.equal(
+    result.blocks[2]?.payload?.hidden_from_transcript,
+    undefined,
+  );
 });
 
 
-test("ambient task lineage does not enter canonical content", () => {
+test("canonical tool blocks preserve ambient activity suppression lineage", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "task",
@@ -110,8 +129,31 @@ test("ambient task lineage does not enter canonical content", () => {
   ]);
 
   assert.equal(result.error, null);
-  assert.deepEqual(result.blocks, []);
+  assert.equal(
+    result.blocks[0]?.payload?.hidden_from_activity,
+    true,
+  );
+  assert.equal(
+    result.blocks[1]?.payload?.hidden_from_activity,
+    true,
+  );
+  assert.equal(
+    result.blocks[2]?.payload?.hidden_from_activity,
+    undefined,
+  );
+});
 
-
-
+test("ordinary tool use and result retain durable Activity evidence without Chat opt-in", () => {
+  const use = { tool_use_id: "read1", tool_name: "Read", input: { path: "src/example.ts" }, parent_tool_use_id: "task1", parent_agent_id: "agent1", provenance: { provider: "claude_code", raw_type: "tool_use", tool_use_id: "read1" } };
+  const output = { tool_use_id: "read1", output: { text: "file contents" }, is_error: false, provenance: { provider: "claude_code", raw_type: "tool_result", tool_use_id: "read1" } };
+  const result = canonicalizeNativeLiveEvents([
+    { type: "tool_use", payload: { ...use, display_name: "Read file", server_display_name: "Provider", icon_url: "https://example.test/icon" } },
+    { type: "tool_result", payload: output },
+  ]);
+  assert.equal(result.error, null);
+  assert.deepEqual(result.blocks, [
+    { kind: "tool_use", rawType: "tool_use", payload: use },
+    { kind: "tool_result", rawType: "tool_result", payload: output },
+  ]);
+  assert.ok(result.blocks.every(block => !["text", "attachment", "artifact", "resource", "canonical_tool_result"].includes(block.kind)));
 });

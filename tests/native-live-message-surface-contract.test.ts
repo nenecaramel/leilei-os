@@ -92,7 +92,10 @@ test("backend projection opts structured tool output into canonical content with
       },
     },
   ];
-  const block = canonicalizeNativeLiveEvents(events).blocks[0];
+  const blocks = canonicalizeNativeLiveEvents(events).blocks;
+  assert.deepEqual(blocks.map(block => block.kind), ["tool_result", "canonical_tool_result"]);
+  assert.deepEqual(blocks[0]?.payload, events[0].payload);
+  const block = blocks[1];
   assert.equal(block?.kind, "canonical_tool_result");
   assert.equal(block?.payload?.schema_version, 1);
   assert.deepEqual(block?.payload?.refs, [
@@ -226,7 +229,7 @@ test("raw attachment candidate requires ready binding, execution payload cannot 
       },
     },
   ]);
-  assert.deepEqual(canonicalizeNativeLiveEvents(events).blocks, []);
+  assert.deepEqual(canonicalizeNativeLiveEvents(events).blocks.map(block => block.kind), ["tool_result"]);
 });
 
 test("SDK server tool execution is Activity, never unsupported conversation content", () => {
@@ -358,7 +361,9 @@ test("full SDK tool output survives separately from model-directed text with ide
     "report.pdf",
   );
   assert.equal(payload.provenance.tool_use_id, "t");
-  assert.deepEqual(canonicalizeNativeLiveEvents(events).blocks, []);
+  const backing = canonicalizeNativeLiveEvents(events).blocks;
+  assert.deepEqual(backing.map(block => block.kind), ["tool_result"]);
+  assert.deepEqual(backing[0].payload?.structured, payload.structured);
 });
 
 test("ambiguous full tool output is retained as diagnostic runtime data without false attribution", () => {

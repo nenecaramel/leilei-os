@@ -1,6 +1,6 @@
 # Message Surface v2: Claude output and canonical contract
 
-This contract defines provider truth → canonical identity. Presentation projection,
+This contract defines provider truth → conversation durable ledger, separating Chat product identity from Activity backing evidence. Presentation projection,
 visual nodes and renderer registration belong to subsequent work.
 
 ## Sources and inventory maintenance
@@ -29,7 +29,7 @@ must use the compatibility path, never an empty default renderer assumption.
 | web_search_tool_result, web_fetch_tool_result | Server execution results, structured bounded compatibility record. | Activity |
 | server_tool_use, mcp_tool_use, mcp_tool_result, mcp_tool_listing | Provider tool use/results/listing. | Activity |
 | advisor_tool_result, code_execution_tool_result, bash_code_execution_tool_result, text_editor_code_execution_tool_result, tool_search_tool_result | Execution, including nested generated-file/search data. Encrypted/reasoning fields excluded. | Activity |
-| tool_result text/object/array | Typed structured parts alongside the bounded legacy output field. | Activity unless backend projection |
+| tool_result text/object/array | Typed structured parts alongside the bounded legacy output field. | Durable Activity backing; additional Chat content only with backend projection |
 | container_upload | Provider file candidate; no automatic delivery. | Runtime candidate |
 | fallback | Provider model handoff boundary, not conversation content. | Observability |
 | future content blocks | No assumed product identity; unsupported content envelope and diagnostic. | Compatibility content if top-level; Activity if subagent |
@@ -73,10 +73,23 @@ Known but not specialized SDK events use a bounded `provider_runtime` envelope
 with their inventory surface. Unknown events use `UNSUPPORTED_PROVIDER_EVENT`.
 Thinking token counts may be retained; hidden thinking text/signatures may not.
 
-## Product identities and storage
+## Conversation durable ledger and Chat identities
 
-Version 1 product identities are `text`, `attachment`, `artifact`, `resource`,
-`canonical_tool_result`. These are product identities, not provider type aliases.
+```text
+Conversation durable ledger
+├── Chat canonical content
+│   ├── text
+│   ├── attachment
+│   ├── artifact
+│   ├── resource
+│   └── canonical_tool_result
+└── Activity backing evidence
+    ├── tool_use
+    └── tool_result
+```
+
+Version 1 **Chat canonical product identities** are `text`, `attachment`, `artifact`, `resource`,
+`canonical_tool_result`. These are Chat product identities, not provider type aliases.
 `unknown` is a compatibility carrier, not a sixth rendered product concept.
 
 Existing physical text/attachment kinds remain unchanged. Artifact/resource/
@@ -85,20 +98,40 @@ and `payload.identity`. Both conversation readers decode only these three extens
 schema version stays readable as `unknown`. No schema migration is required.
 `rawType` retains the provider type; no duplicate raw-type DB column is introduced.
 
-Legacy tool_use/tool_result rows continue to read exactly as legacy identities.
-New canonicalization does not create ordinary execution rows. AskUserQuestion use/result rows remain durable canonical Activity backing evidence, including provider identity, input, parent lineage and the existing minimal resolution enrichment from #813; their persistence does not make them Chat product content. Previously unsupported legacy rows now read as diagnostic compatibility content;
-legacy thinking/reasoning rows expose only an exclusion diagnostic, and unknown
-media payloads are bounded/redacted on read. No historical rewrite,
-lineage changes or Retry/Edit/head semantics changes are required.
+`tool_use` / `tool_result` are durable Activity evidence / legacy execution
+ledger kinds, not sixth/seventh Chat identities. Both existing and newly finalized
+ordinary tool use/results persist these rows. They preserve tool identity,
+input/output, tool_use_id, parent tool/agent IDs and normalized provenance. Tool
+use display_name/server_display_name/icon_url metadata is stripped exactly as in
+main. Hidden tasks propagate hidden_from_transcript through all tool descendants;
+ambient tasks propagate hidden_from_activity. Suppressed backing rows remain
+stored, so historical Activity does not resurrect hidden work after runtime
+history expires. The main iOS Activity projection reads message.blocks; assistant
+Chat body already filters tool_use/tool_result. Neither behavior is changed here.
 
-## Canonicalization predicate
+#813 AskUserQuestion resolution enrichment continues on these same backing rows:
+question_activity retains the minimal answered/cancelled truth and restores one
+Asked user step after operational history retention. A trusted backend projection
+may additionally create a Chat identity from a tool result; it does not replace
+or erase the result evidence. Ordinary execution never implicitly creates
+canonical_tool_result or Chat-visible content.
+
+Previously unsupported legacy rows now read as diagnostic compatibility content;
+legacy thinking/reasoning rows expose only an exclusion diagnostic, and unknown
+media payloads are bounded/redacted on read. No historical rewrite, lineage
+changes or Retry/Edit/head semantics changes are required.
+
+## Chat canonicalization predicate
 
 1. Nonempty top-level assistant text is conversation content. Parent tool/agent
    text and structured context/usage report text are excluded.
 2. Ready files enter only through existing authenticated attachment binding:
    completed upload, user ownership, ready status and transaction locks. An
    `attachment` provider candidate event cannot bypass this path.
-3. Execution output defaults to Activity. Canonical storage can back durable Activity: AskUserQuestion use/result rows continue through the #813 enrichment path and survive operational retention. The bridge never forwards a provider's
+3. Execution output defaults to Activity, retaining ordinary tool_use/tool_result
+   durable backing with main's lineage/suppression semantics. AskUserQuestion
+   uses the same rows and existing #813 enrichment. No default execution becomes
+   a Chat product identity. The bridge never forwards a provider's
    `conversation_projection` as authority. A trusted backend projector may add a
    version 1 projection with identity, reason (`explicit_share` or
    `materialized_send`) and validated refs. This opt-in is not a UI decision.
@@ -163,7 +196,7 @@ Truncation/cycle markers are explicit. Binary bytes, declared/large encoded data
 excluded; ordinary JSON `data` text remains text. Pending metadata preserves known MIME/size. Nonfinite numbers and
 non-JSON values normalize safely. Thinking/redacted thinking, reasoning keys,
 signatures and encrypted reasoning content are excluded. Bounds apply in the
-bridge and again at the canonical writer for older runtime inputs.
+bridge and again for new Chat compatibility/projection envelopes at the canonical writer. Legacy tool backing retains the normalized execution payload contract; it is not converted into a Chat envelope.
 
 Existing legacy tool-output limits remain 48,000 text characters, 24,000 per
 string, 32 items, 48 keys (128 characters each), depth 6 and 512 nodes; the new structured projection is separately

@@ -13,7 +13,7 @@ const base = {
   parentProviderSessionId: null,
 };
 
-test("bounded binary tool_result remains runtime without raw bytes", () => {
+test("bounded binary tool_result retains durable Activity backing without raw bytes", () => {
   const binary = Buffer.alloc(75_000, 5).toString("base64");
   const events = normalizeClaudeEvents(
     [{
@@ -51,7 +51,9 @@ test("bounded binary tool_result remains runtime without raw bytes", () => {
 
   const canonical = canonicalizeNativeLiveEvents(events);
   assert.equal(canonical.error, null);
-  assert.deepEqual(canonical.blocks, []);
+  assert.deepEqual(canonical.blocks.map(block => block.kind), ["tool_result"]);
+  assert.equal(JSON.stringify(canonical.blocks).includes(binary.slice(0, 64)), false);
+  assert.deepEqual(canonical.blocks[0]?.payload, events.find(event => event.type === "tool_result")?.payload);
   const result = events.find(event => event.type === 'tool_result');
   assert.equal(result?.payload?.tool_use_id, 'toolu-binary');
   assert.equal(result?.payload?.output_binary_omitted, true);

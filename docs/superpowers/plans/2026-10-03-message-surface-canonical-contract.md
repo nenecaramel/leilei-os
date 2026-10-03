@@ -2,7 +2,7 @@
 
 Goal: classify Claude output before presentation, retain bounded compatibility data, and preserve legacy conversation reads.
 
-Architecture: versioned product identities use existing JSON payload/rawType storage. New extension identities use the existing physical unknown kind. Runtime execution remains Activity; only explicit backend projection may make its structured output canonical.
+Architecture: versioned product identities use existing JSON payload/rawType storage. New extension identities use the existing physical unknown kind. Ordinary execution persists tool_use/tool_result as durable Activity backing. Only explicit backend projection additionally gives structured output a Chat product identity.
 
 Spec: ../../message-surface-v2-canonical-contract.md
 
@@ -21,3 +21,5 @@ Review focus: future schema versions; oversized/cyclic inputs; thinking and PDF 
 Validation evidence: targeted regressions were observed failing before fixes and passing afterward. Independent code review additionally found key collisions, reasoning readback and structured-output retention gaps; regression coverage now pins those fixes. An isolated local Postgres cluster ran the new content-contract test and existing conversation/turn integration suites; existing migrations applied to this empty test database and schema ledger validation passed. No production DB or runtime refresh was performed. Nine unrelated root-suite failures were reproduced against origin/main in a temporary baseline snapshot; details belong to PR verification evidence, not the architecture contract.
 
 Review follow-up: rebase onto the main commit containing #812 and #813; retain AskUserQuestion canonical Activity backing, omit model provider from user attachment provenance, and restrict physical unknown decoding to extension identities. Regression evidence includes RED→GREEN storage/provenance tests and unchanged question/voice unit and isolated Postgres lifecycle/retention suites.
+
+Durable ledger correction: restore main ordinary tool backing, display metadata stripping and transitive hidden/ambient task suppression, with #813 enrichment on the same rows. Restored main tests failed before the fix and passed afterward. New regression fixtures feed actual backend rows to unchanged Swift Activity and Chat body filters; real Postgres retention tests exercise both ledger readers.

@@ -4,7 +4,7 @@ import {
   canonicalizeNativeLiveEvents,
 } from "../src/domains/conversation/native-live-conversation-orchestrator.js";
 
-test("foreground MCP resource candidates remain runtime references", () => {
+test("foreground MCP resource candidates remain Activity references with durable result backing", () => {
   const resourceLinks = [{
     type: "resource_link",
     uri: "mcp://exports/report.pdf",
@@ -35,7 +35,9 @@ test("foreground MCP resource candidates remain runtime references", () => {
   ]);
 
   assert.equal(canonical.error, null);
-  assert.deepEqual(canonical.blocks, []);
+  assert.deepEqual(canonical.blocks.map(block => block.kind), ["tool_result"]);
+  assert.deepEqual(canonical.blocks[0]?.payload?.resource_links, resourceLinks);
+  assert.equal(canonical.blocks[0]?.payload?.output, "Generated report");
 });
 
 test("background task resource links remain runtime provenance and do not become chat content", () => {
