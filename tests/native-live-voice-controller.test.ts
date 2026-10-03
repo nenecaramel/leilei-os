@@ -15,3 +15,21 @@ test("voice controller waits for final text, fails on timeout, and ignores cance
     assert.equal(execFileSync(join(dir,"check"),{encoding:"utf8"}).trim(),"controller lifecycle PASS");
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test("voice action has language selection and no separate mic control", () => {
+  const composer = readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift", "utf8");
+  const chatView = readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift", "utf8");
+  const controller = readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift", "utf8");
+
+  assert.equal(composer.includes('ComposerCircleButton(systemName: "mic.fill")'), false);
+  assert.equal(composer.includes('"Voice language"'), true);
+  assert.equal(composer.includes("VoiceInputLanguage.allCases"), true);
+  assert.equal(composer.includes(".milliseconds(350)"), true);
+  assert.equal(chatView.includes("voiceLanguage: $voiceLanguage"), true);
+  assert.equal(chatView.includes("language: voiceLanguage"), true);
+  assert.equal(controller.includes('case english = "en-US"'), true);
+  assert.equal(controller.includes('case chinese = "zh-CN"'), true);
+  assert.equal(controller.includes("SFSpeechRecognizer(locale: language.locale)"), true);
+  assert.equal(controller.includes("SFSpeechRecognizer(locale: .current)"), false);
+});
