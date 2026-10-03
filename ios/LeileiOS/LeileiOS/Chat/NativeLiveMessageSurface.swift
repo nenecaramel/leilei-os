@@ -314,6 +314,22 @@ struct NativeLiveMessageSurface: View {
                     Color.clear
                         .frame(height: 1)
                         .id(bottomAnchorID)
+                        .onScrollVisibilityChange(
+                            threshold: 0.01
+                        ) { isVisible in
+                            let awayFromBottom = !isVisible
+                            guard awayFromBottom
+                                    != isAwayFromBottom else {
+                                return
+                            }
+
+                            withAnimation(
+                                .easeInOut(duration: 0.16)
+                            ) {
+                                isAwayFromBottom =
+                                    awayFromBottom
+                            }
+                        }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -340,18 +356,6 @@ struct NativeLiveMessageSurface: View {
                     return
                 }
                 scrollToBottom(proxy)
-            }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.visibleRect.maxY
-                    < geometry.contentSize.height - 12
-            } action: { _, awayFromBottom in
-                guard awayFromBottom != isAwayFromBottom else {
-                    return
-                }
-
-                withAnimation(.easeInOut(duration: 0.16)) {
-                    isAwayFromBottom = awayFromBottom
-                }
             }
             .onChange(of: snapshot?.syncToken) { _, _ in
                 guard pendingOperation?.isSend == true
