@@ -23,6 +23,7 @@ struct ChatComposer: View {
     var onMidTurnInput: ((String) -> Void)? = nil
     var voiceEnabled = false
     var voiceStatus: String? = nil
+    var onVoiceInteractionBegin: (() -> Void)? = nil
     var onVoicePress: (() -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
@@ -303,6 +304,9 @@ struct ChatComposer: View {
             minimumDuration: 0.35,
             maximumDistance: 50,
             pressing: { isPressing in
+                if isPressing {
+                    onVoiceInteractionBegin?()
+                }
                 if !isPressing,
                    voiceHoldActivated {
                     voiceHoldActivated = false
