@@ -1,10 +1,11 @@
 import Foundation
 
 extension AppModel {
-    func refreshActiveNativeLiveRuntimeMetadata() async {
+    @discardableResult
+    func refreshActiveNativeLiveRuntimeMetadata() async -> Bool {
         guard isAuthenticated,
               let conversationID = activeNativeLiveConversationID else {
-            return
+            return false
         }
 
         do {
@@ -28,12 +29,16 @@ extension AppModel {
                 nativeLiveRuntimeMetadataByConversationID
                     .removeValue(forKey: conversationID)
             }
+            return true
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
+            return false
         } catch LeileiAPIError.unauthorized {
             clearNativeLiveSessionData()
+            return false
         } catch {
             // Durable metadata is auxiliary to canonical chat loading.
+            return false
         }
     }
 

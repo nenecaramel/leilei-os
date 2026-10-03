@@ -1216,6 +1216,7 @@ struct ContextOverviewSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var isCompacting = false
     @State private var compactError: String?
+    @State private var hasLoadedRuntimeMetadata = false
 
     var body: some View {
         NavigationStack {
@@ -1431,6 +1432,29 @@ struct ContextOverviewSheet: View {
                                 )
                             }
                         }
+                    } else if !hasLoadedRuntimeMetadata {
+                        Section("Session Environment") {
+                            environmentRow(
+                                "Runtime Model",
+                                "—"
+                            )
+                            environmentBlockRow(
+                                "Working Directory",
+                                "—"
+                            )
+                            environmentRow(
+                                "Permission",
+                                "—"
+                            )
+                            environmentRow(
+                                "Claude Code",
+                                "—"
+                            )
+                            environmentRow(
+                                "Agent SDK",
+                                "—"
+                            )
+                        }
                     }
 
 
@@ -1461,7 +1485,8 @@ struct ContextOverviewSheet: View {
         }
         .background(Color.settingsBackground)
         .task {
-            await appModel.refreshActiveNativeLiveRuntimeMetadata()
+            hasLoadedRuntimeMetadata =
+                await appModel.refreshActiveNativeLiveRuntimeMetadata()
         }
     }
 

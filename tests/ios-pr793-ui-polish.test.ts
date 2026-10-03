@@ -18,6 +18,10 @@ const projects = readFileSync(
   "ios/LeileiOS/LeileiOS/Pages/ProjectsView.swift",
   "utf8",
 );
+const runtimeStore = readFileSync(
+  "ios/LeileiOS/LeileiOS/App/NativeLiveRuntimeStore.swift",
+  "utf8",
+);
 
 test("ported PR 793 composer polish preserves idle primary-action contrast", () => {
   assert.match(
@@ -68,4 +72,26 @@ test("ported PR 793 Context puts Manual Compact before dense Session Environment
     projects,
     /normalizedValues\.joined\(separator: " · "\)/,
   );
+});
+
+
+test("Context keeps a Session Environment skeleton until metadata fetch succeeds", () => {
+  assert.match(
+    projects,
+    /@State private var hasLoadedRuntimeMetadata = false/,
+  );
+  assert.match(
+    projects,
+    /else if !hasLoadedRuntimeMetadata \{\s*Section\("Session Environment"\)[\s\S]*"Runtime Model"[\s\S]*"Working Directory"[\s\S]*"Permission"[\s\S]*"Claude Code"[\s\S]*"Agent SDK"/,
+  );
+  assert.match(
+    projects,
+    /hasLoadedRuntimeMetadata =\s*await appModel\.refreshActiveNativeLiveRuntimeMetadata\(\)/,
+  );
+  assert.match(
+    runtimeStore,
+    /@discardableResult\s*func refreshActiveNativeLiveRuntimeMetadata\(\) async -> Bool/,
+  );
+  assert.match(runtimeStore, /return true[\s\S]*catch LeileiAPIError\.missingAccessToken/);
+  assert.match(runtimeStore, /catch \{[\s\S]*return false[\s\S]*\}/);
 });
