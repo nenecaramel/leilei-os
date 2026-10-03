@@ -10,7 +10,7 @@ test("actual Swift media descriptors, layers, layout, integrity/cache/retry and 
   const root = "ios/LeileiOS/LeileiOS/";
   try {
     fs.copyFileSync("tests/fixtures/native-live-media-foundation.swift", path.join(temp,"Checks.swift"));
-    const names = ["NativeLiveMarkdownModel", "NativeLiveRichTextProjection", "NativeLiveVisualNode", "NativeLiveStructuredToolResult", "NativeLiveCitationPresentation", "NativeLiveStructuredJSON", "NativeLiveMessagePresentation", "NativeLiveMessagePresentationProjection", "NativeLiveMediaPresentation", "NativeLiveAttachmentCache", "NativeLiveImageLoader", "NativeLiveFilePreviewLifecycle"];
+    const names = ["NativeLiveMarkdownModel", "NativeLiveRichTextProjection", "NativeLiveVisualNode", "NativeLiveVisualRendererRegistry", "NativeLiveVisualSandboxModel", "NativeLiveSVGModel", "NativeLiveStructuredToolResult", "NativeLiveCitationPresentation", "NativeLiveStructuredJSON", "NativeLiveMessagePresentation", "NativeLiveMessagePresentationProjection", "NativeLiveMediaPresentation", "NativeLiveAttachmentCache", "NativeLiveImageLoader", "NativeLiveFilePreviewLifecycle"];
     const files = names.map(n => root + "Chat/MessageSurface/" + n + ".swift").filter(fs.existsSync);
     const compiled = spawnSync("xcrun", ["swiftc", "-parse-as-library", "-module-cache-path", path.join(temp,"cache"), root + "Infrastructure/NativeLiveRuntimeModels.swift", root + "Infrastructure/API/NativeLive/NativeLiveModels.swift", root + "Infrastructure/API/NativeLive/NativeLiveInputMode.swift", ...files, path.join(temp,"Checks.swift"), "-o", path.join(temp,"check")], {encoding:"utf8", timeout:120000});
     assert.equal(compiled.status,0,compiled.stderr);
@@ -43,7 +43,7 @@ test("actual Swift download-slot path honors headers, verifies bytes, retries an
     const root = "ios/LeileiOS/LeileiOS/";
     const compiled = spawnSync("xcrun",["swiftc","-parse-as-library","-module-cache-path",path.join(temp,"cache"),
       root+"Infrastructure/NativeLiveRuntimeModels.swift",root+"Infrastructure/API/NativeLive/NativeLiveModels.swift",root+"Infrastructure/API/NativeLive/NativeLiveInputMode.swift",
-      ...["NativeLiveMessagePresentation","NativeLiveMessagePresentationProjection","NativeLiveMarkdownModel", "NativeLiveRichTextProjection", "NativeLiveVisualNode", "NativeLiveStructuredToolResult", "NativeLiveCitationPresentation", "NativeLiveStructuredJSON","NativeLiveMediaPresentation","NativeLiveAttachmentCache"].map(n=>root+"Chat/MessageSurface/"+n+".swift"),
+      ...["NativeLiveMessagePresentation","NativeLiveMessagePresentationProjection","NativeLiveMarkdownModel", "NativeLiveRichTextProjection", "NativeLiveVisualNode", "NativeLiveVisualRendererRegistry", "NativeLiveVisualSandboxModel", "NativeLiveSVGModel", "NativeLiveStructuredToolResult", "NativeLiveCitationPresentation", "NativeLiveStructuredJSON","NativeLiveMediaPresentation","NativeLiveAttachmentCache"].map(n=>root+"Chat/MessageSurface/"+n+".swift"),
       path.join(temp,"Download.swift"),"tests/fixtures/native-live-media-transport.swift","-o",path.join(temp,"check")],{encoding:"utf8",timeout:120000});
     assert.equal(compiled.status,0,compiled.stderr);
     const address = server.address() as {port:number};

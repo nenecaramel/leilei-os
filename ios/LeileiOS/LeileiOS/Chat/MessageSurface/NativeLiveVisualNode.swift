@@ -46,35 +46,3 @@ struct NativeLiveVisualNode: Identifiable, Equatable, Sendable {
     var materialization: String? { attachment?.materialization ?? sourceBlock.payload?["materialization"]?.stringValue }
     var inputMode: String? { sourceBlock.payload?["input_mode"]?.stringValue }
 }
-
-// G will extend renderer registration. B registers only existing rendering and fallback.
-enum NativeLiveMessageRendererRegistry {
-    enum Renderer: Equatable { case markdown, code, table, diff, math, mermaid, attachment, structuredResult, structuredJSON, searchResult, citation, fallback }
-
-    static func renderer(for kind: NativeLiveVisualNodeKind) -> Renderer {
-        switch kind {
-        case .text, .markdown: return .markdown
-        case .code: return .code
-        case .table: return .table
-        case .diff: return .diff
-        case .math: return .math
-        case .mermaid: return .mermaid
-        case .attachment: return .attachment
-        case .canonicalToolResult: return .structuredResult
-        case .structuredJSON: return .structuredJSON
-        case .searchResult: return .searchResult
-        case .citation: return .citation
-        default: return .fallback
-        }
-    }
-
-    static func renderer(for node: NativeLiveVisualNode) -> Renderer {
-        // Media renderer owns explicit materialization/error states, including drafts.
-        if node.kind == .attachment {
-            guard let input = node.attachment else { return .fallback }
-            if input.entityID?.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty == true { return .fallback }
-            return .attachment
-        }
-        return renderer(for: node.kind)
-    }
-}

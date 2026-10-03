@@ -65,7 +65,7 @@ struct NativeLiveMediaRenderer: View {
                             }
                         }
                     }
-                } else if let input = group.first { NativeLiveMediaCard(input:input) }
+                } else if let input = group.first { NativeLiveRegisteredAttachmentView(input:input) }
             }
         }
         .fullScreenCover(item:$gallery) { NativeLiveImageGallery(selection:$0) }
