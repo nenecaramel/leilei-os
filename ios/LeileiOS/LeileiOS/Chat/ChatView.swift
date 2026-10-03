@@ -19,7 +19,6 @@ struct ChatView: View {
     let onDraftCommitted: () -> Void
 
     @StateObject private var voiceInput = VoiceInputController()
-    @State private var isDictationModeActive = false
     @State private var voiceLanguage: VoiceInputLanguage = .english
     @State private var messageText = ""
     @State private var model: NativeLiveClaudeModel = .opus55
@@ -108,30 +107,15 @@ struct ChatView: View {
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
         }
-        .onDisappear {
-            isDictationModeActive = false
-            voiceInput.cancel()
-        }
+        .onDisappear { voiceInput.cancel() }
         .onChange(of: voiceEnabled) { _, enabled in
-            if !enabled {
-                isDictationModeActive = false
-                voiceInput.cancel()
-            }
-        }
-        .onChange(of: voiceInput.isActive) { _, isActive in
-            if !isActive {
-                isDictationModeActive = false
-            }
+            if !enabled { voiceInput.cancel() }
         }
         .onChange(of: appModel.activeNativeLiveConversationID) { _, _ in
-            isDictationModeActive = false
             voiceInput.cancel()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                isDictationModeActive = false
-                voiceInput.cancel()
-            }
+            if phase != .active { voiceInput.cancel() }
             guard phase == .active else { return }
             Task {
                 await appModel.refreshNativeLiveConversations()
@@ -141,7 +125,6 @@ struct ChatView: View {
             }
         }
         .onChange(of: draftConversationID) { _, _ in
-            isDictationModeActive = false
             voiceInput.cancel()
             messageText = ""
             composerAttachments = []
@@ -215,36 +198,17 @@ struct ChatView: View {
                     sendMidTurnInput(text)
                 },
                 voiceEnabled: voiceEnabled,
-                dictationEnabled: dictationEnabled,
-                isDictating:
-                    isDictationModeActive
-                        && voiceInput.isActive,
-                voiceStatus:
-                    isDictationModeActive
-                        && voiceInput.isActive
-                        ? nil
-                        : voiceInput.status,
+                voiceStatus: voiceInput.status,
                 onVoiceInteractionBegin: {
                     voiceInput.dismissStatusMessage()
                 },
                 onVoicePress: {
-                    isDictationModeActive = false
                     voiceInput.begin(
                         language: voiceLanguage,
                         onTranscript: sendVoiceMessage
                     )
                 },
-                onVoiceRelease: { voiceInput.release() },
-                onDictationStart: {
-                    beginDictation()
-                },
-                onDictationStop: {
-                    voiceInput.release()
-                },
-                onDictationCancel: {
-                    isDictationModeActive = false
-                    voiceInput.cancel()
-                }
+                onVoiceRelease: { voiceInput.release() }
             ) {
                 sendMessage()
             }
@@ -632,53 +596,6 @@ struct ChatView: View {
         }
 
         sendNewMessage(pendingText: pendingText, pendingAttachments: pendingAttachments)
-    }
-
-    private var dictationEnabled: Bool {
-        editDraft == nil
-            && !isRuntimeTurnActive
-            && pendingOperation == nil
-            && !isDraftCommitInFlight
-            && appModel.chatSendState != .sending
-            && !voiceInput.isActive
-            && appModel.isAuthenticated
-            && scenePhase == .active
-    }
-
-    private func beginDictation() {
-        guard dictationEnabled else { return }
-
-        voiceInput.dismissStatusMessage()
-        isDictationModeActive = true
-        isComposerFocused = false
-
-        voiceInput.begin(
-            language: voiceLanguage
-        ) { transcript in
-            applyDictationTranscript(transcript)
-            isDictationModeActive = false
-        }
-    }
-
-    private func applyDictationTranscript(
-        _ transcript: String
-    ) {
-        let dictated = transcript.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard !dictated.isEmpty else { return }
-
-        if messageText.isEmpty {
-            messageText = dictated
-        } else if messageText.last?.isWhitespace == true {
-            messageText += dictated
-        } else if voiceLanguage == .chinese {
-            messageText += dictated
-        } else {
-            messageText += " " + dictated
-        }
-
-        isComposerFocused = true
     }
 
     private var voiceEnabled: Bool {

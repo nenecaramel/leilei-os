@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ChatComposer: View {
     @Binding var text: String
@@ -22,25 +23,15 @@ struct ChatComposer: View {
     var onInterrupt: (() -> Void)? = nil
     var onMidTurnInput: ((String) -> Void)? = nil
     var voiceEnabled = false
-    var dictationEnabled = false
-    var isDictating = false
     var voiceStatus: String? = nil
     var onVoiceInteractionBegin: (() -> Void)? = nil
     var onVoicePress: (() -> Void)? = nil
     var onVoiceRelease: (() -> Void)? = nil
-    var onDictationStart: (() -> Void)? = nil
-    var onDictationStop: (() -> Void)? = nil
-    var onDictationCancel: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
-    @State private var voiceHoldActivated = false
 
     var body: some View {
-        Group {
-            if isDictating {
-                dictationComposerBody
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
             if let voiceStatus {
                 Text(voiceStatus).font(.footnote).foregroundStyle(.secondary)
             }
@@ -186,19 +177,8 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
-                Button {
-                    guard dictationEnabled else { return }
-                    onDictationStart?()
-                } label: {
-                    ComposerCircleButton(
-                        systemName: "mic.fill"
-                    )
-                    .opacity(dictationEnabled ? 1 : 0.35)
-                }
-                .buttonStyle(.plain)
-                .disabled(!dictationEnabled)
-                .accessibilityLabel(
-                    "Dictate in " + voiceLanguage.displayName
+                ComposerCircleButton(
+                    systemName: "mic.fill"
                 )
 
                 if isVoiceActionMode {
@@ -251,8 +231,6 @@ struct ChatComposer: View {
                     )
                 }
             }
-                }
-            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 15)
@@ -271,44 +249,6 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
-        .onDisappear {
-            voiceHoldActivated = false
-        }
-    }
-
-    private var dictationComposerBody: some View {
-        HStack(spacing: 12) {
-            Button {
-                onDictationCancel?()
-            } label: {
-                ComposerCircleButton(
-                    systemName: "xmark",
-                    weight: .regular
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Cancel dictation")
-
-            NativeLiveDictationWaveform()
-                .frame(maxWidth: .infinity)
-
-            Button {
-                onDictationStop?()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.chatSoftFill)
-                        .frame(width: 36, height: 36)
-
-                    Image(systemName: "square.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Stop dictation")
-        }
-        .frame(minHeight: 36)
     }
 
     private var isVoiceActionMode: Bool {
@@ -345,45 +285,20 @@ struct ChatComposer: View {
     }
 
     private var voiceActionButton: some View {
-        Menu {
-            Picker("Voice language", selection: $voiceLanguage) {
-                ForEach(VoiceInputLanguage.allCases) { language in
-                    Text(language.displayName)
-                        .tag(language)
-                }
-            }
-        } label: {
-            composerActionLabel
-                .opacity(voiceEnabled ? 1 : 0.35)
-        }
-        .disabled(!voiceEnabled)
-        .onLongPressGesture(
-            minimumDuration: 0.35,
-            maximumDistance: 50,
-            pressing: { isPressing in
-                if isPressing {
-                    onVoiceInteractionBegin?()
-                }
-                if !isPressing,
-                   voiceHoldActivated {
-                    voiceHoldActivated = false
-                    onVoiceRelease?()
-                }
+        NativeLiveVoiceActionControl(
+            voiceLanguage: $voiceLanguage,
+            isEnabled: voiceEnabled,
+            onInteractionBegin: {
+                onVoiceInteractionBegin?()
             },
-            perform: {
-                guard voiceEnabled,
-                      !voiceHoldActivated else {
-                    return
-                }
-                voiceHoldActivated = true
+            onVoicePress: {
                 onVoicePress?()
+            },
+            onVoiceRelease: {
+                onVoiceRelease?()
             }
         )
-        .accessibilityLabel(
-            "Voice input, "
-                + voiceLanguage.displayName
-                + ". Tap to choose language, hold to dictate and send"
-        )
+        .frame(width: 36, height: 36)
     }
 
     private var composerActionSymbol: String {
@@ -478,25 +393,164 @@ struct ChatComposer: View {
 }
 
 
-private struct NativeLiveDictationWaveform: View {
-    private let heights: [CGFloat] = [
-        4, 7, 10, 6, 13, 8, 15, 9, 12, 6,
-        14, 8, 11, 7, 13, 9, 5, 8, 6, 4,
-    ]
+private struct NativeLiveVoiceActionControl: UIViewRepresentable {
+    @Binding var voiceLanguage: VoiceInputLanguage
+    let isEnabled: Bool
+    let onInteractionBegin: () -> Void
+    let onVoicePress: () -> Void
+    let onVoiceRelease: () -> Void
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 3) {
-            ForEach(
-                Array(heights.enumerated()),
-                id: \.offset
-            ) { _, height in
-                Capsule()
-                    .fill(Color.primary.opacity(0.48))
-                    .frame(width: 2.2, height: height)
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(
+        context: Context
+    ) -> UIButton {
+        let button = UIButton(type: .system)
+        button.backgroundColor = .black
+        button.tintColor = .white
+        button.layer.cornerRadius = 18
+        button.clipsToBounds = true
+        button.setImage(
+            UIImage(
+                systemName: "waveform",
+                withConfiguration:
+                    UIImage.SymbolConfiguration(
+                        pointSize: 15,
+                        weight: .semibold
+                    )
+            ),
+            for: .normal
+        )
+
+        button.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.handleTouchDown),
+            for: .touchDown
+        )
+
+        let longPress = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleLongPress(_:))
+        )
+        longPress.minimumPressDuration = 0.35
+        longPress.allowableMovement = 50
+
+        let tap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTap(_:))
+        )
+        tap.require(toFail: longPress)
+
+        button.addGestureRecognizer(longPress)
+        button.addGestureRecognizer(tap)
+
+        let editMenu = UIEditMenuInteraction(
+            delegate: context.coordinator
+        )
+        button.addInteraction(editMenu)
+        context.coordinator.editMenuInteraction = editMenu
+
+        return button
+    }
+
+    func updateUIView(
+        _ button: UIButton,
+        context: Context
+    ) {
+        context.coordinator.parent = self
+        button.alpha = isEnabled ? 1 : 0.35
+        button.isUserInteractionEnabled = isEnabled
+        button.accessibilityLabel =
+            "Voice input, "
+            + voiceLanguage.displayName
+            + ". Tap to choose language, hold to dictate and send"
+    }
+
+    final class Coordinator:
+        NSObject,
+        UIEditMenuInteractionDelegate {
+        var parent: NativeLiveVoiceActionControl
+        weak var editMenuInteraction: UIEditMenuInteraction?
+        private var voiceHoldActive = false
+
+        init(
+            parent: NativeLiveVoiceActionControl
+        ) {
+            self.parent = parent
+        }
+
+        @objc func handleTouchDown() {
+            guard parent.isEnabled else { return }
+            parent.onInteractionBegin()
+        }
+
+        @objc func handleTap(
+            _ recognizer: UITapGestureRecognizer
+        ) {
+            guard parent.isEnabled,
+                  recognizer.state == .ended,
+                  let editMenuInteraction,
+                  let view = recognizer.view else {
+                return
+            }
+
+            let configuration = UIEditMenuConfiguration(
+                identifier: nil,
+                sourcePoint: CGPoint(
+                    x: view.bounds.midX,
+                    y: view.bounds.midY
+                )
+            )
+            editMenuInteraction.presentEditMenu(
+                with: configuration
+            )
+        }
+
+        @objc func handleLongPress(
+            _ recognizer: UILongPressGestureRecognizer
+        ) {
+            guard parent.isEnabled else { return }
+
+            switch recognizer.state {
+            case .began:
+                voiceHoldActive = true
+                parent.onVoicePress()
+
+            case .ended, .cancelled, .failed:
+                guard voiceHoldActive else { return }
+                voiceHoldActive = false
+                parent.onVoiceRelease()
+
+            default:
+                break
             }
         }
-        .frame(height: 22)
-        .accessibilityHidden(true)
+
+        func editMenuInteraction(
+            _ interaction: UIEditMenuInteraction,
+            menuFor configuration: UIEditMenuConfiguration,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            let actions = VoiceInputLanguage.allCases.map {
+                language in
+                UIAction(
+                    title: language.displayName,
+                    state:
+                        language == parent.voiceLanguage
+                            ? .on
+                            : .off
+                ) { [weak self] _ in
+                    self?.parent.voiceLanguage = language
+                }
+            }
+
+            return UIMenu(
+                title: "Voice language",
+                children: actions
+            )
+        }
     }
 }
 
