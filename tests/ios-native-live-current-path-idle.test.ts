@@ -119,3 +119,19 @@ test("archive and delete can stop all runtime observers for one conversation", (
     /deleteNativeLiveConversation[\s\S]*stopNativeLiveRuntimeObservations/,
   );
 });
+
+
+test("completed detached background activity cache is bounded while active watchers are preserved", () => {
+  assert.match(
+    runtimeStore,
+    /pruneNativeLiveBackgroundRuntimeSurfaces/,
+  );
+  assert.match(
+    runtimeStore,
+    /maxCompletedCount: Int = 8/,
+  );
+  assert.match(
+    runtimeStore,
+    /activePrepareIDs[\s\S]*nativeLiveBackgroundObservationTasks\.keys/,
+  );
+});
