@@ -17,20 +17,34 @@ test("voice controller waits for final text, fails on timeout, and ignores cance
 });
 
 
-test("composer keeps the existing mic and uses the native trailing menu for language plus hold-to-dictate", () => {
+test("composer keeps mic placeholder and arbitrates trailing tap versus hold in one native control", () => {
   const composer=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift","utf8");
   const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
   const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
+
+  // Mic is back to decorative placeholder only.
   assert.match(composer,/ComposerCircleButton\(\s*systemName: "mic\.fill"/);
-  assert.doesNotMatch(composer,/Button \{\s*\} label: \{\s*ComposerCircleButton\(\s*systemName: "mic\.fill"/);
-  assert.match(composer,/if isVoiceActionMode \{\s*voiceActionButton/);
-  assert.match(composer,/private var voiceActionButton: some View \{\s*Menu \{/);
-  assert.match(composer,/Picker\("Voice language", selection: \$voiceLanguage\)/);
-  assert.doesNotMatch(composer,/confirmationDialog/);
-  assert.match(composer,/onLongPressGesture\(\s*minimumDuration: 0\.35/);
-  assert.match(composer,/if isPressing \{\s*onVoiceInteractionBegin\?\(\)/);
-  assert.match(composer,/voiceHoldActivated = true\s*onVoicePress\?\(\)/);
-  assert.match(composer,/!isPressing,[\s\S]*voiceHoldActivated[\s\S]*onVoiceRelease\?\(\)/);
+  assert.doesNotMatch(composer,/onDictationStart|dictationEnabled|isDictating|NativeLiveDictationWaveform/);
+
+  // Trailing voice control no longer stacks SwiftUI Menu + onLongPressGesture.
+  assert.match(composer,/private var voiceActionButton: some View \{\s*NativeLiveVoiceActionControl\(/);
+  assert.doesNotMatch(composer,/private var voiceActionButton: some View \{\s*Menu \{/);
+  assert.doesNotMatch(composer,/\.onLongPressGesture\(/);
+
+  // A single UIKit arbiter owns tap and hold.
+  assert.match(composer,/struct NativeLiveVoiceActionControl: UIViewRepresentable/);
+  assert.match(composer,/UILongPressGestureRecognizer\(/);
+  assert.match(composer,/longPress\.minimumPressDuration = 0\.35/);
+  assert.match(composer,/UITapGestureRecognizer\(/);
+  assert.match(composer,/tap\.require\(toFail: longPress\)/);
+  assert.match(composer,/UIEditMenuInteraction\(/);
+  assert.match(composer,/editMenuInteraction\.presentEditMenu/);
+  assert.match(composer,/case \.began:[\s\S]*parent\.onVoicePress\(\)/);
+  assert.match(composer,/case \.ended, \.cancelled, \.failed:[\s\S]*parent\.onVoiceRelease\(\)/);
+  assert.match(composer,/VoiceInputLanguage\.allCases\.map/);
+  assert.match(composer,/language == parent\.voiceLanguage[\s\S]*\? \.on/);
+
+  // Existing language and speech wiring remains.
   assert.match(chatView,/@State private var voiceLanguage: VoiceInputLanguage = \.english/);
   assert.match(chatView,/voiceLanguage: \$voiceLanguage/);
   assert.match(chatView,/onVoiceInteractionBegin: \{\s*voiceInput\.dismissStatusMessage\(\)/);
