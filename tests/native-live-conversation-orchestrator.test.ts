@@ -142,3 +142,18 @@ test("canonical tool blocks preserve ambient activity suppression lineage", () =
     undefined,
   );
 });
+
+test("ordinary tool use and result retain durable Activity evidence without Chat opt-in", () => {
+  const use = { tool_use_id: "read1", tool_name: "Read", input: { path: "src/example.ts" }, parent_tool_use_id: "task1", parent_agent_id: "agent1", provenance: { provider: "claude_code", raw_type: "tool_use", tool_use_id: "read1" } };
+  const output = { tool_use_id: "read1", output: { text: "file contents" }, is_error: false, provenance: { provider: "claude_code", raw_type: "tool_result", tool_use_id: "read1" } };
+  const result = canonicalizeNativeLiveEvents([
+    { type: "tool_use", payload: { ...use, display_name: "Read file", server_display_name: "Provider", icon_url: "https://example.test/icon" } },
+    { type: "tool_result", payload: output },
+  ]);
+  assert.equal(result.error, null);
+  assert.deepEqual(result.blocks, [
+    { kind: "tool_use", rawType: "tool_use", payload: use },
+    { kind: "tool_result", rawType: "tool_result", payload: output },
+  ]);
+  assert.ok(result.blocks.every(block => !["text", "attachment", "artifact", "resource", "canonical_tool_result"].includes(block.kind)));
+});

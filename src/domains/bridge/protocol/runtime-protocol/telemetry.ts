@@ -1,3 +1,4 @@
+import { boundCanonicalPayload } from '../../../conversation/native-live-content-contract.js';
 import type {
   NativeLiveRuntimeResultTelemetry,
   NativeLiveRuntimeResultPermissionDenial,
@@ -45,7 +46,7 @@ export function parseNativeLiveRuntimeResultTelemetry(
     "structured_output_present",
     "deferred_tool_use_present",
     "latency",
-  ]);
+  ], ["structured_output"]);
 
   if (
     !Array.isArray(body.permission_denials)
@@ -157,6 +158,7 @@ export function parseNativeLiveRuntimeResultTelemetry(
     ),
     structured_output_present:
       body.structured_output_present,
+    ...(body.structured_output === undefined ? {} : {structured_output:parseStructuredOutput(body.structured_output)}),
     deferred_tool_use_present:
       body.deferred_tool_use_present,
     latency: parseResultLatency(body.latency),
@@ -498,4 +500,11 @@ function parseContextUsageCategory(
     ),
     is_deferred: deferred as boolean | null,
   };
+}
+
+function parseStructuredOutput(value: unknown): Record<string, unknown> | null {
+  const raw = parseBoundedJsonRecord(value, "result.structured_output", 64_000);
+  if (raw === null) return null;
+  const bounded = boundCanonicalPayload(raw);
+  return { ...(bounded.compatibility_payload as Record<string, unknown>), truncated:raw.truncated === true || bounded.truncated === true };
 }

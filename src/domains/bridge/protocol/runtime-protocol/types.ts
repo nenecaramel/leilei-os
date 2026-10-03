@@ -180,6 +180,7 @@ export type NativeLiveRuntimeResultTelemetry = {
   permission_denials: NativeLiveRuntimeResultPermissionDenial[];
   errors: string[];
   structured_output_present: boolean;
+  structured_output?: Record<string, unknown> | null;
   deferred_tool_use_present: boolean;
   latency: NativeLiveRuntimeResultLatency;
 };

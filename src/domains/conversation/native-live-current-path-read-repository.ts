@@ -1,3 +1,4 @@
+import { readableContentData, storedContentKind } from './native-live-content-contract.js';
 import {
   and,
   asc,
@@ -358,23 +359,13 @@ implements NativeLiveCurrentPathReader {
       NativeLiveMessage["blocks"]
     >();
     for (const row of blockRows) {
-      if (
-        row.kind !== "text"
-        && row.kind !== "tool_use"
-        && row.kind !== "tool_result"
-        && row.kind !== "attachment"
-      ) {
-        continue;
-      }
       const blocks =
         blocksByMessage.get(row.messageId) ?? [];
       blocks.push({
         id: row.id,
         ordinal: row.ordinal,
-        kind: row.kind,
+        ...readableContentData(row.kind, row.rawType, row.text, row.payload),
         rawType: row.rawType,
-        text: row.text,
-        payload: row.payload,
         createdAt: row.createdAt.toISOString(),
       });
       blocksByMessage.set(row.messageId, blocks);

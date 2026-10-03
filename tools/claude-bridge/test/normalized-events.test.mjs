@@ -641,7 +641,9 @@ test("does not attach ambiguous top-level resourceLinks to multiple tool results
     base,
   );
 
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 3);
+  assert.equal(events[2].payload.diagnostic_code, "UNATTRIBUTED_TOOL_OUTPUT");
+  assert.equal(events[2].payload.compatibility.payload.resourceLinks[0].uri, "file:///project/ambiguous.txt");
   assert.equal("resource_links" in events[0].payload, false);
   assert.equal("resource_links" in events[1].payload, false);
 });
@@ -1335,6 +1337,12 @@ test("preserves assistant subagent parent linkage on provenance and tool use", (
   });
   assert.equal(events[1].payload.text, "nested answer");
   assert.deepEqual(events[2].payload, {
+    provenance: {
+      provider: "claude_code", raw_type: "tool_use", raw_subtype: null,
+      provider_schema: "claude-agent-sdk/0.3.286",
+      parent_tool_use_id: "tool-subagent", parent_agent_id: "agent-parent",
+      tool_use_id: "tool-child",
+    },
     tool_use_id: "tool-child",
     tool_name: "Read",
     input: { path: "src/example.ts" },

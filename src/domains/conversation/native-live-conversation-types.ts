@@ -7,11 +7,8 @@ import type {
   NativeLiveRuntimeInteractionStatus,
 } from "../../database/schema.js";
 
-export type NativeLiveContentKind =
-  | "text"
-  | "tool_use"
-  | "tool_result"
-  | "attachment";
+import type { NativeLiveReadableKind } from './native-live-content-contract.js';
+export type NativeLiveContentKind = NativeLiveReadableKind;
 
 export type NativeLiveContentBlockInput = {
   kind: NativeLiveContentKind;
