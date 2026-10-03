@@ -29,7 +29,6 @@ struct ChatComposer: View {
     var onVoiceRelease: (() -> Void)? = nil
     var onSend: (() -> Void)? = nil
 
-    @State private var voiceHoldActivated = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -250,9 +249,6 @@ struct ChatComposer: View {
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
         }
-        .onDisappear {
-            voiceHoldActivated = false
-        }
     }
 
     private var isVoiceActionMode: Bool {
@@ -296,18 +292,9 @@ struct ChatComposer: View {
                 onVoiceInteractionBegin?()
             },
             onVoicePress: {
-                guard voiceEnabled,
-                      !voiceHoldActivated else {
-                    return
-                }
-                voiceHoldActivated = true
                 onVoicePress?()
             },
             onVoiceRelease: {
-                guard voiceHoldActivated else {
-                    return
-                }
-                voiceHoldActivated = false
                 onVoiceRelease?()
             }
         )
