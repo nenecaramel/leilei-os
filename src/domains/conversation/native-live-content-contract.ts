@@ -110,13 +110,13 @@ export function parseConversationProjection(
 }
 
 // Bound again at the authoritative writer: normalized events can originate in older runtimes.
-export function boundCanonicalPayload(value: unknown): Record<string, unknown> {
+export function boundCanonicalPayload(value: unknown, maxDepth = 6): Record<string, unknown> {
   let chars = 24000;
   let nodes = 512;
   let truncated = false;
   const seen = new WeakSet<object>();
   function visit(v: unknown, depth = 0, key = ""): unknown {
-    if (--nodes < 0 || depth > 6) {
+    if (--nodes < 0 || depth > maxDepth) {
       truncated = true;
       return "[omitted: bounds]";
     }
@@ -253,7 +253,13 @@ export function storedContentPayload(
     !["artifact", "resource", "canonical_tool_result", "unknown"].includes(kind)
   )
     return payload;
-  const bounded = boundCanonicalPayload(payload);
+  // Structured semantics were bounded before their transport/storage wrappers.
+  // Charge the same semantic depth, while retaining the shared node/text budgets.
+  const structured = payload?.structured as Record<string, unknown> | undefined;
+  const depth = kind === "canonical_tool_result"
+    ? (structured?.compatibility_payload ? 8 : 7)
+    : 6;
+  const bounded = boundCanonicalPayload(payload, depth);
   if (kind === "unknown")
     return {
       ...(bounded.compatibility_payload as Record<string, unknown> | null),

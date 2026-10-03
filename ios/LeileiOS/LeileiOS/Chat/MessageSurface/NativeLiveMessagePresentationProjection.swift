@@ -22,8 +22,15 @@ enum NativeLiveMessagePresentationProjector {
             }
             let attachment = kind == .attachment ? NativeLiveAttachmentPresentationInput(block: block,
                 source: source.attachmentSources[block.id] ?? .authoritative) : nil
-            return .init(kind: kind, text: text, sourceBlock: block, attachment: attachment,
+            var node = NativeLiveVisualNode(kind: kind, text: text, sourceBlock: block, attachment: attachment,
                          fallback: fallback(block, attachment: attachment))
+            if kind == .canonicalToolResult {
+                let (status,children) = NativeLiveStructuredToolResultProjector.project(block)
+                node.structuredStatus = status; node.children = children
+            } else if block.kind == "text", source.role == "assistant" {
+                node.citations = NativeLiveCitationRelation.parse(block.payload?["citations"])
+            }
+            return node
         }
         return .init(messageID: source.messageID, role: source.role, nodes: nodes)
     }

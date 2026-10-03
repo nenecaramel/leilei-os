@@ -41,9 +41,9 @@ precondition(NativeLiveMessageRendererRegistry.renderer(for: unknown.nodes[0]) =
 for identity in ["artifact", "resource", "canonical_tool_result"] {
     let result = project([block(identity, 0, identity)])
     precondition(result.nodes[0].canonicalIdentity == identity)
-    precondition(NativeLiveMessageRendererRegistry.renderer(for: result.nodes[0]) == .fallback)
+    precondition(NativeLiveMessageRendererRegistry.renderer(for: result.nodes[0]) == (identity == "canonical_tool_result" ? .structuredResult : .fallback))
 }
-for kind in NativeLiveVisualNodeKind.allCases where kind != .markdown && kind != .text && kind != .attachment {
+for kind in NativeLiveVisualNodeKind.allCases where ![.markdown,.text,.attachment,.canonicalToolResult,.structuredJSON,.searchResult,.citation].contains(kind) {
     precondition(NativeLiveMessageRendererRegistry.renderer(for: kind) == .fallback)
 }
 let voice = project([block("voice", 0, "text", "transcript", ["input_mode": .string("voice")])])
