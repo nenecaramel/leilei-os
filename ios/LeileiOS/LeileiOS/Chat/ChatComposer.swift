@@ -214,7 +214,12 @@ struct ChatComposer: View {
                     } label: {
                         composerActionLabel
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(
+                        ComposerPrimaryActionButtonStyle(
+                            isVisuallyDimmed:
+                                shouldDimPrimaryAction
+                        )
+                    )
                     .disabled(
                         isRuntimeControlInFlight
                             || (
@@ -337,6 +342,18 @@ struct ChatComposer: View {
             : .regular
     }
 
+    private var shouldDimPrimaryAction: Bool {
+        isRuntimeControlInFlight
+            || (
+                isSending
+                && !isRuntimeTurnActive
+            )
+            || (
+                !isRuntimeTurnActive
+                && !attachmentsReady
+            )
+    }
+
     private var hasSendableContent: Bool {
         !text.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -394,6 +411,26 @@ struct ChatComposer: View {
                 }
             }
         )
+    }
+}
+
+
+private struct ComposerPrimaryActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    let isVisuallyDimmed: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(
+                isVisuallyDimmed
+                    ? 0.35
+                    : (
+                        configuration.isPressed
+                        && isEnabled
+                            ? 0.72
+                            : 1
+                    )
+            )
     }
 }
 
