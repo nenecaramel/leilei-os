@@ -81,6 +81,9 @@ export class NativeLiveBackendRelayPrepareCoordinator {
           conversationId: request.conversation_id,
           expectedHeadMessageId: request.expected_head_message_id,
           text: request.text,
+          ...(request.input_mode === "voice"
+            ? { inputMode: "voice" as const }
+            : {}),
           attachmentIds: request.attachment_ids ?? [],
           workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
