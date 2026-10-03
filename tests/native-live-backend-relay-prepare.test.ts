@@ -49,8 +49,14 @@ class FakePort implements NativeLiveBackendTurnPort {
     preparation: prepared(),
   };
   persistCalls: unknown[] = [];
+  prepareSendCalls: Parameters<
+    NativeLiveBackendTurnPort["prepareSend"]
+  >[0][] = [];
 
-  async prepareSend() {
+  async prepareSend(
+    input: Parameters<NativeLiveBackendTurnPort["prepareSend"]>[0],
+  ) {
+    this.prepareSendCalls.push(input);
     return this.prepareResult;
   }
   async prepareRetry() {
@@ -144,6 +150,25 @@ function request() {
     text: "solo travel independent",
   };
 }
+
+test("relay prepare forwards voice identity into canonical send preparation", async () => {
+  const port = new FakePort();
+  const coordinator = new NativeLiveBackendRelayPrepareCoordinator(
+    port,
+    null,
+    null,
+    () => prepareId,
+  );
+
+  const result = await coordinator.prepare(userId, {
+    ...request(),
+    input_mode: "voice",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(port.prepareSendCalls.length, 1);
+  assert.equal(port.prepareSendCalls[0]?.inputMode, "voice");
+});
 
 test("relay prepare stages semantic scoring without persisting a lexical prompt first", async () => {
   const port = new FakePort();
