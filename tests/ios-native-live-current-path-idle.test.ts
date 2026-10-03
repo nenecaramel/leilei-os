@@ -54,8 +54,24 @@ test("background task observation outlives the foreground turn only while user-v
     /event\.sequence > activeSetSequence/,
   );
   assert.match(
+    runtimeModels,
+    /hasPendingRuntimeInteraction/,
+  );
+  assert.match(
+    runtimeModels,
+    /shouldRemainObservedAfterForeground/,
+  );
+  assert.match(
     runtimeStore,
     /continueNativeLiveRuntimeObservationForBackgroundTasks/,
+  );
+  assert.match(
+    runtimeStore,
+    /beginNativeLiveBackgroundObservation/,
+  );
+  assert.match(
+    runtimeStore,
+    /nativeLiveBackgroundRuntimeSurfaces/,
   );
   assert.match(
     runtimeStore,
