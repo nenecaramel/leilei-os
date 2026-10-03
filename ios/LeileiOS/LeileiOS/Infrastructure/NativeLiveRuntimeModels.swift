@@ -540,6 +540,15 @@ struct NativeLiveRuntimeSurfaceState:
         !visibleBackgroundTaskIDs.isEmpty
     }
 
+    var hasPendingRuntimeInteraction: Bool {
+        interactions.contains(where: \.isPending)
+    }
+
+    var shouldRemainObservedAfterForeground: Bool {
+        hasVisibleBackgroundTasks
+            || hasPendingRuntimeInteraction
+    }
+
     var streamingText: String {
         let deltas = events.compactMap { event -> String? in
             guard event.event.type == "partial_text" else {
