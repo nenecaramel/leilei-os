@@ -149,6 +149,9 @@ extension AppModel {
             try await api.archiveNativeLiveConversation(
                 conversationID: conversationID
             )
+            stopNativeLiveRuntimeObservations(
+                conversationID: conversationID
+            )
 
             nativeLiveConversations.removeAll {
                 UUID(uuidString: $0.id) == conversationID
@@ -212,6 +215,9 @@ extension AppModel {
 
         do {
             try await api.deleteNativeLiveConversation(
+                conversationID: conversationID
+            )
+            stopNativeLiveRuntimeObservations(
                 conversationID: conversationID
             )
 
