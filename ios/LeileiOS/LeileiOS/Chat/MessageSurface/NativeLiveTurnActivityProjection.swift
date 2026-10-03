@@ -216,22 +216,6 @@ struct NativeLiveTurnActivityProjection: Equatable {
             .joined(separator: " · ")
     }
 
-    var stateLabel: String {
-        if hasPendingInteraction {
-            return "Needs input"
-        }
-        if hasFailure {
-            return "Failed"
-        }
-        if turnIsActive {
-            return "Running"
-        }
-        if hasActiveBackgroundTask {
-            return "Background"
-        }
-        return "Done"
-    }
-
     private var workingDurationLabel: String {
         guard let elapsedSeconds else {
             return "Working"
