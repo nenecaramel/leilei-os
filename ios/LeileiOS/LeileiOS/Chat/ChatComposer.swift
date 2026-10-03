@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ChatComposer: View {
     @Binding var text: String
@@ -288,45 +289,29 @@ struct ChatComposer: View {
     }
 
     private var voiceActionButton: some View {
-        Menu {
-            Picker("Voice language", selection: $voiceLanguage) {
-                ForEach(VoiceInputLanguage.allCases) { language in
-                    Text(language.displayName)
-                        .tag(language)
-                }
-            }
-        } label: {
-            composerActionLabel
-                .opacity(voiceEnabled ? 1 : 0.35)
-        }
-        .disabled(!voiceEnabled)
-        .onLongPressGesture(
-            minimumDuration: 0.35,
-            maximumDistance: 50,
-            pressing: { isPressing in
-                if isPressing {
-                    onVoiceInteractionBegin?()
-                }
-                if !isPressing,
-                   voiceHoldActivated {
-                    voiceHoldActivated = false
-                    onVoiceRelease?()
-                }
+        NativeLiveVoiceActionControl(
+            voiceLanguage: $voiceLanguage,
+            isEnabled: voiceEnabled,
+            onInteractionBegin: {
+                onVoiceInteractionBegin?()
             },
-            perform: {
+            onVoicePress: {
                 guard voiceEnabled,
                       !voiceHoldActivated else {
                     return
                 }
                 voiceHoldActivated = true
                 onVoicePress?()
+            },
+            onVoiceRelease: {
+                guard voiceHoldActivated else {
+                    return
+                }
+                voiceHoldActivated = false
+                onVoiceRelease?()
             }
         )
-        .accessibilityLabel(
-            "Voice input, "
-                + voiceLanguage.displayName
-                + ". Tap to choose language, hold to dictate and send"
-        )
+        .frame(width: 36, height: 36)
     }
 
     private var composerActionSymbol: String {
@@ -417,6 +402,168 @@ struct ChatComposer: View {
                 }
             }
         )
+    }
+}
+
+
+private struct NativeLiveVoiceActionControl: UIViewRepresentable {
+    @Binding var voiceLanguage: VoiceInputLanguage
+    let isEnabled: Bool
+    let onInteractionBegin: () -> Void
+    let onVoicePress: () -> Void
+    let onVoiceRelease: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(
+        context: Context
+    ) -> UIButton {
+        let button = UIButton(type: .system)
+        button.backgroundColor = .black
+        button.tintColor = .white
+        button.layer.cornerRadius = 18
+        button.clipsToBounds = true
+        button.setImage(
+            UIImage(
+                systemName: "waveform",
+                withConfiguration:
+                    UIImage.SymbolConfiguration(
+                        pointSize: 15,
+                        weight: .semibold
+                    )
+            ),
+            for: .normal
+        )
+
+        button.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.handleTouchDown),
+            for: .touchDown
+        )
+
+        let longPress = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleLongPress(_:))
+        )
+        longPress.minimumPressDuration = 0.35
+        longPress.allowableMovement = 50
+
+        let tap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTap(_:))
+        )
+        tap.require(toFail: longPress)
+
+        button.addGestureRecognizer(longPress)
+        button.addGestureRecognizer(tap)
+
+        let editMenu = UIEditMenuInteraction(
+            delegate: context.coordinator
+        )
+        button.addInteraction(editMenu)
+        context.coordinator.editMenuInteraction = editMenu
+
+        return button
+    }
+
+    func updateUIView(
+        _ button: UIButton,
+        context: Context
+    ) {
+        context.coordinator.parent = self
+        button.alpha = isEnabled ? 1 : 0.35
+        button.isUserInteractionEnabled = isEnabled
+        button.accessibilityLabel =
+            "Voice input, "
+            + voiceLanguage.displayName
+            + ". Tap to choose language, hold to dictate and send"
+    }
+
+    final class Coordinator:
+        NSObject,
+        UIEditMenuInteractionDelegate {
+        var parent: NativeLiveVoiceActionControl
+        weak var editMenuInteraction: UIEditMenuInteraction?
+        private var voiceHoldActive = false
+
+        init(
+            parent: NativeLiveVoiceActionControl
+        ) {
+            self.parent = parent
+        }
+
+        @objc func handleTouchDown() {
+            guard parent.isEnabled else { return }
+            parent.onInteractionBegin()
+        }
+
+        @objc func handleTap(
+            _ recognizer: UITapGestureRecognizer
+        ) {
+            guard parent.isEnabled,
+                  recognizer.state == .ended,
+                  let editMenuInteraction,
+                  let view = recognizer.view else {
+                return
+            }
+
+            let configuration = UIEditMenuConfiguration(
+                identifier: nil,
+                sourcePoint: CGPoint(
+                    x: view.bounds.midX,
+                    y: view.bounds.midY
+                )
+            )
+            editMenuInteraction.presentEditMenu(
+                with: configuration
+            )
+        }
+
+        @objc func handleLongPress(
+            _ recognizer: UILongPressGestureRecognizer
+        ) {
+            guard parent.isEnabled else { return }
+
+            switch recognizer.state {
+            case .began:
+                voiceHoldActive = true
+                parent.onVoicePress()
+
+            case .ended, .cancelled, .failed:
+                guard voiceHoldActive else { return }
+                voiceHoldActive = false
+                parent.onVoiceRelease()
+
+            default:
+                break
+            }
+        }
+
+        func editMenuInteraction(
+            _ interaction: UIEditMenuInteraction,
+            menuFor configuration: UIEditMenuConfiguration,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            let actions = VoiceInputLanguage.allCases.map {
+                language in
+                UIAction(
+                    title: language.displayName,
+                    state:
+                        language == parent.voiceLanguage
+                            ? .on
+                            : .off
+                ) { [weak self] _ in
+                    self?.parent.voiceLanguage = language
+                }
+            }
+
+            return UIMenu(
+                title: "Voice language",
+                children: actions
+            )
+        }
     }
 }
 
