@@ -13,24 +13,34 @@ struct NativeLivePendingOperation: Equatable {
     let id: UUID
     let kind: Kind
     let baselineSyncToken: String?
+    let presentationAttachments: [NativeLiveAttachmentPresentationInput]
+    let inputMode: NativeLiveInputMode
 
     init(
         kind: Kind,
-        baselineSyncToken: String?
+        baselineSyncToken: String?,
+        presentationAttachments: [NativeLiveAttachmentPresentationInput] = [],
+        inputMode: NativeLiveInputMode = .text
     ) {
         self.id = UUID()
         self.kind = kind
         self.baselineSyncToken = baselineSyncToken
+        self.presentationAttachments = presentationAttachments
+        self.inputMode = inputMode
     }
 
     private init(
         id: UUID,
         kind: Kind,
-        baselineSyncToken: String?
+        baselineSyncToken: String?,
+        presentationAttachments: [NativeLiveAttachmentPresentationInput],
+        inputMode: NativeLiveInputMode
     ) {
         self.id = id
         self.kind = kind
         self.baselineSyncToken = baselineSyncToken
+        self.presentationAttachments = presentationAttachments
+        self.inputMode = inputMode
     }
 
     func rebased(
@@ -39,7 +49,9 @@ struct NativeLivePendingOperation: Equatable {
         NativeLivePendingOperation(
             id: id,
             kind: kind,
-            baselineSyncToken: syncToken
+            baselineSyncToken: syncToken,
+            presentationAttachments: presentationAttachments,
+            inputMode: inputMode
         )
     }
 
@@ -230,8 +242,8 @@ struct NativeLiveMessageSurface: View {
                             isCurrentHead:
                                 message.id
                                     == snapshot?.currentHeadMessageId,
-                            displayTextOverride:
-                                editedTextOverride(
+                            presentationSource:
+                                presentationSource(
                                     for: message,
                                     pendingIsActive: pendingIsActive
                                 ),
@@ -281,7 +293,9 @@ struct NativeLiveMessageSurface: View {
                        let pendingOperation,
                        let sendText = pendingOperation.sendText {
                         NativeLiveOptimisticUserRow(
-                            text: sendText
+                            source: .send(messageID: "pending-user-\(pendingOperation.id.uuidString)",
+                                          text: sendText, attachments: pendingOperation.presentationAttachments,
+                                          inputMode: pendingOperation.inputMode)
                         )
                         .id(
                             "pending-user-"
@@ -539,10 +553,10 @@ struct NativeLiveMessageSurface: View {
         })?.id
     }
 
-    private func editedTextOverride(
+    private func presentationSource(
         for message: NativeLiveCurrentPathMessage,
         pendingIsActive: Bool
-    ) -> String? {
+    ) -> NativeLiveMessagePresentationSource {
         guard pendingIsActive,
               let pendingOperation,
               case .edit(
@@ -550,10 +564,10 @@ struct NativeLiveMessageSurface: View {
                   let text
               ) = pendingOperation.kind,
               message.id == targetUserMessageID else {
-            return nil
+            return .canonical(message)
         }
 
-        return text
+        return .edit(message, text: text, attachments: pendingOperation.presentationAttachments)
     }
 
     private func copyMessage(

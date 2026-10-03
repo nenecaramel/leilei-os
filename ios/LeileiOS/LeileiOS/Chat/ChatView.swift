@@ -497,13 +497,9 @@ struct ChatView: View {
             return
         }
 
-        let text = message.displayText.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        let existingAttachments =
-            message.blocks.compactMap(
-                composerAttachmentFromCanonicalBlock
-            )
+        let text = NativeLiveMessagePresentationProjector.project(.canonical(message)).copyText ?? ""
+        let existingAttachments = NativeLiveMessagePresentationProjector.project(.canonical(message))
+            .attachmentInputs.compactMap(\.retainedComposerDraft)
         guard !text.isEmpty || !existingAttachments.isEmpty else {
             return
         }
@@ -561,7 +557,8 @@ struct ChatView: View {
                     text: pendingText
                 ),
                 baselineSyncToken:
-                    appModel.nativeLiveCurrentPath?.syncToken
+                    appModel.nativeLiveCurrentPath?.syncToken,
+                presentationAttachments: pendingAttachments.map(\.presentationInput)
             )
             editDraft = nil
             messageText = ""
@@ -622,7 +619,9 @@ struct ChatView: View {
         pendingOperation = NativeLivePendingOperation(
             kind: .send(text: pendingText),
             baselineSyncToken:
-                appModel.nativeLiveCurrentPath?.syncToken
+                appModel.nativeLiveCurrentPath?.syncToken,
+            presentationAttachments: pendingAttachments.map(\.presentationInput),
+            inputMode: inputMode
         )
         if inputMode == .text { messageText = "" }
         composerAttachments = []
@@ -835,30 +834,6 @@ struct ChatView: View {
         }
     }
 
-    private func composerAttachmentFromCanonicalBlock(
-        _ block: NativeLiveCurrentPathBlock
-    ) -> NativeLiveComposerAttachmentDraft? {
-        guard block.kind == "attachment",
-              let payload = block.payload,
-              let attachmentID =
-                payload["attachment_id"]?.stringValue,
-              let filename =
-                payload["filename"]?.stringValue,
-              let mimeType =
-                payload["mime_type"]?.stringValue else {
-            return nil
-        }
-        let kind: NativeLiveComposerAttachmentKind =
-            payload["kind"]?.stringValue == "image"
-                ? .image
-                : .file
-        return NativeLiveComposerAttachmentDraft(
-            existingAttachmentID: attachmentID,
-            filename: filename,
-            mimeType: mimeType,
-            kind: kind
-        )
-    }
 
 }
 

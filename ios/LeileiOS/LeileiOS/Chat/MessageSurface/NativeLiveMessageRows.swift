@@ -6,7 +6,7 @@ struct NativeLiveMessageRow: View {
 
     let message: NativeLiveCurrentPathMessage
     let isCurrentHead: Bool
-    let displayTextOverride: String?
+    let presentationSource: NativeLiveMessagePresentationSource
     let showPendingReplacement: Bool
     let replacementRuntimeSurface:
         NativeLiveRuntimeSurfaceState?
@@ -115,48 +115,17 @@ struct NativeLiveMessageRow: View {
         }
     }
 
-    @ViewBuilder
+    private var presentation: NativeLiveMessagePresentation {
+        NativeLiveMessagePresentationProjector.project(presentationSource)
+    }
+
     private var userMessagePresentation: some View {
-        if isVoiceInputMessage {
-            VStack(alignment: .leading, spacing: 10) {
-                NativeLiveVoiceMessageBubbleVisual(
-                    isExpanded: isVoiceTranscriptRevealed
-                )
-
-                if isVoiceTranscriptRevealed,
-                   let voiceTranscriptText {
-                    ChatMarkdownView(
-                        text: voiceTranscriptText,
-                        fillsAvailableWidth: false,
-                        lineSpacing: 5,
-                        paragraphSpacing: 19
-                    )
-                    .transition(
-                        .opacity.combined(
-                            with: .move(edge: .top)
-                        )
-                    )
-                }
-            }
-        } else {
-            messageContent
-        }
+        NativeLiveUserMessagePresentationView(presentation: presentation,
+                                             isVoiceTranscriptRevealed: $isVoiceTranscriptRevealed)
     }
 
-    private var isVoiceInputMessage: Bool {
-        guard displayTextOverride == nil else {
-            return false
-        }
-
-        return message.blocks.contains { block in
-            block.payload?["input_mode"]?.stringValue
-                == "voice"
-        }
-    }
-
-    private var voiceTranscriptText: String? {
-        copyText
-    }
+    private var isVoiceInputMessage: Bool { presentation.isVoiceInput }
+    private var voiceTranscriptText: String? { presentation.copyText }
 
     private var assistantContent: some View {
         let timestamp = MessageTimestampFormatter.string(
@@ -231,50 +200,8 @@ struct NativeLiveMessageRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
     private var messageContent: some View {
-        if let override = normalizedText(displayTextOverride) {
-            ChatMarkdownView(
-                text: override,
-                fillsAvailableWidth: message.role != "user",
-                lineSpacing: message.role == "user" ? 5 : 6,
-                paragraphSpacing: message.role == "user" ? 19 : 22
-            )
-        } else {
-            let blocks = message.blocks.sorted {
-                $0.ordinal < $1.ordinal
-            }
-            let visibleBlocks = blocks.filter { block in
-                if block.kind == "attachment" {
-                    return true
-                }
-                if block.kind == "tool_use"
-                    || block.kind == "tool_result" {
-                    return message.role == "user"
-                }
-                return normalizedText(block.text) != nil
-            }
-
-            if visibleBlocks.isEmpty {
-                if message.status == "pending"
-                    || message.status == "streaming" {
-                    AssistantTypingIndicatorRow()
-                }
-            } else {
-                VStack(
-                    alignment: .leading,
-                    spacing: message.role == "user" ? 19 : 22
-                ) {
-                    ForEach(visibleBlocks) { block in
-                        NativeLiveBlockView(
-                            block: block,
-                            fillsAvailableWidth: message.role != "user",
-                            isUserMessage: message.role == "user"
-                        )
-                    }
-                }
-            }
-        }
+        NativeLiveMessagePresentationView(presentation: presentation)
     }
 
     private var historicalActivityProjection:
@@ -310,18 +237,7 @@ struct NativeLiveMessageRow: View {
         }
     }
 
-    private var copyText: String? {
-        if let override = normalizedText(displayTextOverride) {
-            return override
-        }
-
-        let text = message.blocks
-            .sorted { $0.ordinal < $1.ordinal }
-            .compactMap { normalizedText($0.text) }
-            .joined(separator: "\n\n")
-
-        return text.isEmpty ? nil : text
-    }
+    private var copyText: String? { presentation.copyText }
 
     private var albumSaveCount: Int {
         guard let userMessageID = message.parentMessageId else {
@@ -346,62 +262,22 @@ struct NativeLiveMessageRow: View {
         }
     }
 
-    private func normalizedText(_ text: String?) -> String? {
-        guard let text else { return nil }
-        let normalized = text.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        return normalized.isEmpty ? nil : normalized
-    }
-}
-
-
-private struct NativeLiveVoiceMessageBubbleVisual: View {
-    let isExpanded: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(.primary)
-
-            Spacer(minLength: 4)
-
-            Image(
-                systemName:
-                    isExpanded
-                        ? "chevron.up"
-                        : "chevron.down"
-            )
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(.secondary)
-        }
-        .frame(width: 68, alignment: .leading)
-        .frame(height: 21, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            isExpanded
-                ? "Voice message, transcript shown"
-                : "Voice message, tap to show transcript"
-        )
-    }
 }
 
 struct NativeLiveHistorySnapshotRow: View {
     let message: NativeLiveConversationHistoryMessage
     let timeZone: String
 
+    private var presentation: NativeLiveMessagePresentation {
+        NativeLiveMessagePresentationProjector.project(.history(message))
+    }
+
     var body: some View {
         if message.role == "user" {
             HStack(alignment: .top, spacing: 0) {
                 Spacer(minLength: 48)
 
-                ChatMarkdownView(
-                    text: message.content,
-                    fillsAvailableWidth: false,
-                    lineSpacing: 5,
-                    paragraphSpacing: 19
-                )
+                NativeLiveMessagePresentationView(presentation: presentation)
                 .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -426,12 +302,7 @@ struct NativeLiveHistorySnapshotRow: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 4)
 
-                ChatMarkdownView(
-                    text: message.content,
-                    fillsAvailableWidth: true,
-                    lineSpacing: 6,
-                    paragraphSpacing: 22
-                )
+                NativeLiveMessagePresentationView(presentation: presentation)
                 .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -463,27 +334,23 @@ struct NativeLiveHistoryForkDivider: View {
 
 
 struct NativeLiveOptimisticUserRow: View {
-    let text: String
+    let source: NativeLiveMessagePresentationSource
+    @State private var isVoiceTranscriptRevealed = false
 
     var body: some View {
+        let presentation = NativeLiveMessagePresentationProjector.project(source)
         HStack(alignment: .top, spacing: 0) {
             Spacer(minLength: 48)
-
-            ChatMarkdownView(
-                text: text,
-                fillsAvailableWidth: false,
-                lineSpacing: 5,
-                paragraphSpacing: 19
-            )
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                Color.chatSoftFill,
-                in: RoundedRectangle(
-                    cornerRadius: 18,
-                    style: .continuous
-                )
-            )
+            NativeLiveUserMessagePresentationView(presentation: presentation,
+                                                 isVoiceTranscriptRevealed: $isVoiceTranscriptRevealed)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.chatSoftFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .onTapGesture {
+                    if presentation.isVoiceInput {
+                        withAnimation(.easeInOut(duration: 0.16)) { isVoiceTranscriptRevealed.toggle() }
+                    }
+                }
         }
     }
 }

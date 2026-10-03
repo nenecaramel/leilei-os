@@ -32,6 +32,6 @@ for name in ["ordinary", "hidden", "ambient"] {
         $0.payload?["display_name"] == nil && $0.payload?["server_display_name"] == nil && $0.payload?["icon_url"] == nil
     })
     let body = chatBody(message)
-    precondition(body.count == 1 && body[0].kind == "text" && body[0].text == "Assistant answer")
+    precondition(body.count == 1 && body[0].kind == .markdown && body[0].text == "Assistant answer")
 }
 print("Durable tool Activity passed: ordinary, hidden, ambient, Chat body")
