@@ -197,12 +197,7 @@ extension AppModel {
         _ interaction: NativeLiveRuntimeInteractionSnapshot,
         response: [String: NativeLiveJSONValue]
     ) async throws {
-        guard let surface = nativeLiveRuntimeSurface,
-              surface.prepareID == interaction.prepareID,
-              surface.interactions.contains(where: {
-                  $0.interactionID == interaction.interactionID
-                      && $0.status == "pending"
-              }) else {
+        guard interaction.status == "pending" else {
             throw NativeLiveSendError.notReady
         }
 
@@ -214,19 +209,22 @@ extension AppModel {
                     response: response
                 )
 
-            guard var latest = nativeLiveRuntimeSurface,
-                  latest.prepareID == interaction.prepareID else {
-                return
-            }
-
-            if let index = latest.interactions.firstIndex(where: {
-                $0.interactionID == updated.interactionID
-            }) {
-                latest.interactions[index] = updated
+            if var latest = nativeLiveRuntimeSurface,
+               latest.prepareID == interaction.prepareID {
+                if let index = latest.interactions.firstIndex(where: {
+                    $0.interactionID == updated.interactionID
+                }) {
+                    latest.interactions[index] = updated
+                } else {
+                    latest.interactions.append(updated)
+                }
+                nativeLiveRuntimeSurface = latest
             } else {
-                latest.interactions.append(updated)
+                await refreshNativeLiveCurrentPath(
+                    force: true,
+                    surfaceTransientFailure: false
+                )
             }
-            nativeLiveRuntimeSurface = latest
         } catch LeileiAPIError.missingAccessToken {
             clearNativeLiveSessionData()
             throw LeileiAPIError.missingAccessToken
