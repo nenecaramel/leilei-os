@@ -12,6 +12,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
     struct ToolActivity: Equatable, Identifiable {
         let id: String
         let toolName: String
+        let providerToolName: String
+        let questionMetadata: NativeLiveJSONValue?
         let input: NativeLiveJSONValue?
         let output: NativeLiveJSONValue?
         let resourceLinks: [NativeLiveJSONValue]
@@ -101,6 +103,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
     let tools: [ToolActivity]
     let tasks: [TaskActivity]
     let interactions: [NativeLiveRuntimeInteractionSnapshot]
+    let questionActivities: [QuestionActivity]
     let turnIsActive: Bool
     let turnFailed: Bool
     let elapsedSeconds: Int?
@@ -110,6 +113,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
             || !tools.isEmpty
             || !tasks.isEmpty
             || !interactions.isEmpty
+            || !questionActivities.isEmpty
     }
 
     var pendingInteractions: [NativeLiveRuntimeInteractionSnapshot] {
@@ -136,6 +140,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
 
     var activityCount: Int {
         tools.count + tasks.count + topLevelInteractions.count
+            + questionActivities.count
     }
 
     func childTools(
@@ -177,7 +182,8 @@ struct NativeLiveTurnActivityProjection: Equatable {
             }
         )
         return interactions.filter {
-            !nestedInteractionIDs.contains($0.id)
+            $0.kind != "question"
+                && !nestedInteractionIDs.contains($0.id)
         }
     }
 
@@ -339,10 +345,16 @@ struct NativeLiveTurnActivityProjection: Equatable {
                 projectedTools[index].state = .unknown
             }
         }
+        questionActivities = Self.questions(
+            from: projectedTools,
+            interactions: runtimeSurface.interactions,
+            suppressedParentIDs: suppressedTaskToolUseIDs
+        )
         tools = projectedTools.filter {
             !$0.hiddenFromTranscript
                 && !$0.hiddenFromActivity
                 && !taskToolUseIDs.contains($0.id)
+                && $0.providerToolName != "AskUserQuestion"
                 && !questionToolUseIDs.contains($0.id)
                 && !suppressedTaskToolUseIDs.contains(
                     $0.parentToolUseID ?? ""
@@ -391,11 +403,17 @@ struct NativeLiveTurnActivityProjection: Equatable {
         tasks = projectedTasks.filter {
             !$0.hiddenFromTranscript && !$0.isAmbient
         }
-        tools = Self.tools(from: message.blocks)
-            .filter {
+        let projectedTools = Self.tools(from: message.blocks)
+        questionActivities = Self.questions(
+            from: projectedTools,
+            interactions: projectedInteractions,
+            suppressedParentIDs: suppressedTaskToolUseIDs
+        )
+        tools = projectedTools.filter {
                 !$0.hiddenFromTranscript
                     && !$0.hiddenFromActivity
                     && !taskToolUseIDs.contains($0.id)
+                    && $0.providerToolName != "AskUserQuestion"
                     && !questionToolUseIDs.contains($0.id)
                     && !suppressedTaskToolUseIDs.contains(
                         $0.parentToolUseID ?? ""
