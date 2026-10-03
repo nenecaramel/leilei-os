@@ -83,6 +83,7 @@ final class AppModel: ObservableObject {
     var nativeLiveRuntimeObservationTask: Task<Void, Never>?
     var nativeLiveBackgroundObservationTasks:
         [String: Task<Void, Never>] = [:]
+    var nativeLiveBackgroundSurfaceOrder: [String] = []
     var mindWriteRequestsInFlight: Set<String> = []
     var albumSaveRequestsInFlight: Set<String> = []
     var currentHeadMindWriteRefreshTask: Task<Void, Never>?
@@ -148,6 +149,7 @@ final class AppModel: ObservableObject {
             task.cancel()
         }
         nativeLiveBackgroundObservationTasks.removeAll()
+        nativeLiveBackgroundSurfaceOrder.removeAll()
         nativeLiveRuntimeSurface = nil
         nativeLiveBackgroundRuntimeSurfaces.removeAll()
         chatSyncState = .idle
