@@ -256,6 +256,7 @@ export function assembleTurnContext(input: {
   userMessageId: string;
   userText: string;
   userMessageCreatedAt?: string;
+  userInputMode?: "voice";
   contextTimeZone?: string;
   subjectStates: readonly SubjectStateWrite[];
   snapshotSequence: number;
@@ -306,6 +307,7 @@ export function assembleTurnContext(input: {
     payload: {
       created_at: input.userMessageCreatedAt ?? input.assembledAt,
       context_timestamp: userTimestamp,
+      ...(input.userInputMode === "voice" ? { input_mode: "voice" } : {}),
     },
     selection: selection("current_user_message", 0),
   };
@@ -510,7 +512,8 @@ export function assembledTurnContextFromManifest(
   const renderedUserText = userTimestamp
     ? `${userTimestamp} ${userItems[0].text}`
     : userItems[0].text;
-  const userMessage = `<user_message>${escapeData(renderedUserText)}</user_message>`;
+  const voiceAttribute = userItems[0].payload?.input_mode === "voice" ? ' input_mode="voice"' : "";
+  const userMessage = `<user_message${voiceAttribute}>${escapeData(renderedUserText)}</user_message>`;
   const prompt = contextData
     ? `${contextData}\n\n${userMessage}`
     : userMessage;

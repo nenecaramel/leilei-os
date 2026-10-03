@@ -279,3 +279,15 @@ test("native live turns accept validated optional execution selection", () => {
     /effort is not supported/i,
   );
 });
+
+ test("voice identity is accepted only on new send and rejects other wire modes", () => {
+  const plain = { dispatch_target: "claude_code", request_id: requestId, operation: "send", conversation_id: conversationId, expected_head_message_id: null, text: "我今天好累" };
+  assert.deepEqual(parseNativeLiveRelayRequest({...plain, input_mode: "voice"}), {...plain, input_mode: "voice"});
+  assert.deepEqual(parseNativeLiveRelayRequest(plain), plain);
+  for (const input_mode of ["text", "audio", null, 1, {}, []]) {
+    assert.throws(() => parseNativeLiveRelayRequest({...plain, input_mode}), NativeLiveRelayContractError);
+  }
+  for (const operation of ["retry", "edit"]) {
+    assert.throws(() => parseNativeLiveRelayRequest({dispatch_target: "claude_code", request_id: requestId, operation, conversation_id: conversationId, target_user_message_id: userMessageId, ...(operation === "edit" ? {text:"edited"} : {}), input_mode:"voice"}), NativeLiveRelayContractError);
+  }
+});

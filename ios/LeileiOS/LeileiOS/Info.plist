@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Transcribe your voice into a chat message.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Recognize speech on your device to send text messages.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>LeileiOS uses the camera only when you choose Camera to attach a photo to a chat.</string>
 	<key>CFBundleURLTypes</key>

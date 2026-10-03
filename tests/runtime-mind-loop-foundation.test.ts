@@ -1104,3 +1104,12 @@ test("both block parser passes preserve retired wrapper text including whitespac
   assert.deepEqual(parsed.actions?.map(({ ref }) => ref), ["T2"]);
   assert.equal(parsed.visibleBlocks[0]?.text, wrapper);
 });
+
+test("voice envelope preserves transcript and timestamp while plain text shape stays unchanged", () => {
+  const common = {manifestId:"voice-manifest", userId:"u1", subjectId:"G", conversation:conversation([],null), userMessageId:"voice-user", userText:"我今天好累", subjectStates:[], snapshotSequence:1, assembledAt:now, assemblyVersion:"assembly-v2", promptContractVersion:"prompt-v5", breathLimit:3, maxContextItems:16, maxContextChars:8000};
+  const plain = assembleTurnContext(common);
+  const voice = assembleTurnContext({...common, userInputMode:"voice"});
+  assert.equal(voice.prompt, plain.prompt.replace("<user_message>", '<user_message input_mode="voice">'));
+  assert.equal(voice.manifest.items.find(item => item.type === "user_message")?.payload?.input_mode, "voice");
+  assert.equal(plain.manifest.items.find(item => item.type === "user_message")?.payload?.input_mode, undefined);
+});

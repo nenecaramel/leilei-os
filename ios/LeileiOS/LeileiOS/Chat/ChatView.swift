@@ -18,6 +18,7 @@ struct ChatView: View {
     @Binding var selectedWorkspaceID: String?
     let onDraftCommitted: () -> Void
 
+    @StateObject private var voiceInput = VoiceInputController()
     @State private var messageText = ""
     @State private var model: NativeLiveClaudeModel = .opus55
     @State private var thinking: NativeLiveThinkingMode = .adaptive
@@ -105,7 +106,15 @@ struct ChatView: View {
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
         }
+        .onDisappear { voiceInput.cancel() }
+        .onChange(of: voiceEnabled) { _, enabled in
+            if !enabled { voiceInput.cancel() }
+        }
+        .onChange(of: appModel.activeNativeLiveConversationID) { _, _ in
+            voiceInput.cancel()
+        }
         .onChange(of: scenePhase) { _, phase in
+            if phase != .active { voiceInput.cancel() }
             guard phase == .active else { return }
             Task {
                 await appModel.refreshNativeLiveConversations()
@@ -115,6 +124,7 @@ struct ChatView: View {
             }
         }
         .onChange(of: draftConversationID) { _, _ in
+            voiceInput.cancel()
             messageText = ""
             composerAttachments = []
             editDraft = nil
@@ -148,6 +158,7 @@ struct ChatView: View {
                 isFocused: $isComposerFocused,
                 isSending:
                     appModel.chatSendState == .sending
+                        || voiceInput.isActive
                         || isDraftCommitInFlight
                         || pendingOperation != nil
                         || isRuntimeTurnActive,
@@ -183,7 +194,11 @@ struct ChatView: View {
                 },
                 onMidTurnInput: { text in
                     sendMidTurnInput(text)
-                }
+                },
+                voiceEnabled: voiceEnabled,
+                voiceStatus: voiceInput.status,
+                onVoicePress: { voiceInput.begin(onTranscript: sendVoiceMessage) },
+                onVoiceRelease: { voiceInput.release() }
             ) {
                 sendMessage()
             }
@@ -570,13 +585,36 @@ struct ChatView: View {
             return
         }
 
+        sendNewMessage(pendingText: pendingText, pendingAttachments: pendingAttachments)
+    }
+
+    private var voiceEnabled: Bool {
+        editDraft == nil && !isRuntimeTurnActive && pendingOperation == nil
+            && !isDraftCommitInFlight && appModel.chatSendState != .sending
+            && composerAttachments.isEmpty && messageText.isEmpty
+            && appModel.isAuthenticated && scenePhase == .active
+    }
+
+    private func sendVoiceMessage(_ transcript: String) {
+        guard voiceEnabled else { return }
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        sendNewMessage(pendingText: text, pendingAttachments: [], inputMode: .voice)
+    }
+
+    private func sendNewMessage(
+        pendingText: String,
+        pendingAttachments: [NativeLiveComposerAttachmentDraft],
+        inputMode: NativeLiveInputMode = .text
+    ) {
+        let attachmentIDs = pendingAttachments.compactMap(\.remoteAttachmentID)
         let shouldCreateConversation = isDraftConversation
         pendingOperation = NativeLivePendingOperation(
             kind: .send(text: pendingText),
             baselineSyncToken:
                 appModel.nativeLiveCurrentPath?.syncToken
         )
-        messageText = ""
+        if inputMode == .text { messageText = "" }
         composerAttachments = []
         isComposerFocused = false
 
@@ -606,6 +644,7 @@ struct ChatView: View {
                         .currentHeadMessageId == nil
                 try await appModel.sendNativeLiveMessage(
                     pendingText,
+                    inputMode: inputMode,
                     attachmentIDs: attachmentIDs,
                     workspaceID:
                         shouldBindWorkspace
@@ -616,12 +655,16 @@ struct ChatView: View {
                 pendingOperation = nil
             } catch {
                 pendingOperation = nil
-                composerAttachments = pendingAttachments
+                if inputMode == .voice {
+                    voiceInput.reportSendFailure()
+                } else {
+                    composerAttachments = pendingAttachments
 
-                if messageText.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ).isEmpty {
-                    messageText = pendingText
+                    if messageText.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty {
+                        messageText = pendingText
+                    }
                 }
             }
 

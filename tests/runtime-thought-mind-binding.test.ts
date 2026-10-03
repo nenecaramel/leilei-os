@@ -232,3 +232,31 @@ test("Retry/Edit context treats a thought dropped by the replaced turn as still 
   assert.equal(retry.prompt.includes("更早被放下的"), false);
   assert.equal(retry.prompt.includes("被挤掉的"), false);
 });
+
+test("Mind takes voice identity only from canonical text block payload and ignores malformed modes", async () => {
+  for (const payload of [{input_mode:"voice"}, {input_mode:"text"}, {input_mode:"audio"}, null, []]) {
+    const user=userMessage();
+    user.blocks[0].payload=payload as typeof user.blocks[0]["payload"];
+    const mind=createMind(new Port());
+    const prompt=await mind.prepareUserTurn({userId:"u1",conversation:conversation(),userMessage:user,userText:"hello",surfaceHeadMessageId:null});
+    const isVoice=payload !== null && !Array.isArray(payload) && payload.input_mode === "voice";
+    assert.equal(prompt.includes('<user_message input_mode="voice">'),isVoice);
+    assert.equal(prompt.includes('<user_message>[09-22 周二 15:30] hello</user_message>'),!isVoice);
+  }
+});
+
+test("persisted Context Manifest replays voice identity and rejects a conflicting plain-text snapshot", async () => {
+  const {NativeLiveMindLoopService}=await import("../src/domains/runtime/mind/native-live-mind-loop-service.js");
+  let manifest: import("../src/domains/runtime/context/context-assembly-contract.js").InitialContextManifest | null = null;
+  const service=new NativeLiveMindLoopService({
+    async list(){return []},async append(){},async transition(){},
+    async saveContextManifest(input){manifest=input.manifest;},
+    async loadContextManifest(){return manifest;},
+  },{assemblyVersion:"voice-v1",promptContractVersion:"voice-v1",ruleVersion:"test",processVersion:"test",breathLimit:3,maxContextItems:16,maxContextChars:8000});
+  const input={manifestId:"same-voice-manifest",userId:"u1",subjectId:"G",conversation:conversation(),userMessageId:userMessage().id,userText:"hello",snapshotSequence:1,assembledAt:now,userInputMode:"voice" as const};
+  const first=await service.prepareTurn(input);
+  const replay=await service.prepareTurn(input);
+  assert.equal(replay.prompt,first.prompt);
+  assert.match(replay.prompt,/<user_message input_mode="voice">/);
+  await assert.rejects(service.prepareTurn({...input,userInputMode:undefined}),/conflicts with the requested turn snapshot/);
+});

@@ -198,6 +198,7 @@ export class NativeLiveMindLoopService {
     userMessageId: string;
     userText: string;
     userMessageCreatedAt?: string;
+    userInputMode?: "voice";
     snapshotSequence: number;
     assembledAt: string;
     surfaceHeadMessageId?: string | null;
@@ -229,6 +230,7 @@ export class NativeLiveMindLoopService {
             !== this.config.promptContractVersion
           || persistedUser?.sourceId !== input.userMessageId
           || persistedUser?.text !== input.userText
+          || (persistedUser?.payload?.input_mode === "voice") !== (input.userInputMode === "voice")
         ) {
           throw new Error(
             "Persisted Context Manifest conflicts with the requested turn snapshot.",
@@ -329,6 +331,7 @@ export class NativeLiveMindLoopService {
       userMessageId: input.userMessageId,
       userText: input.userText,
       userMessageCreatedAt: input.userMessageCreatedAt,
+      userInputMode: input.userInputMode,
       contextTimeZone: this.config.contextTimeZone,
       subjectStates: states,
       snapshotSequence: input.snapshotSequence,

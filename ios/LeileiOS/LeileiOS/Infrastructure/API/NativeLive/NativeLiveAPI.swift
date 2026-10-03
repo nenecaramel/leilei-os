@@ -228,6 +228,7 @@ extension LeileiAPIClient {
         conversationID: UUID,
         expectedHeadMessageID: String?,
         text: String,
+        inputMode: NativeLiveInputMode = .text,
         attachmentIDs: [String] = [],
         workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil,
@@ -243,7 +244,8 @@ extension LeileiAPIClient {
                 workspaceId: workspaceID,
                 text: text,
                 attachmentIds: attachmentIDs,
-                execution: execution
+                execution: execution,
+                inputMode: inputMode
             )
         )
         let envelope: NativeLivePrepareEnvelope = try await request(
@@ -912,6 +914,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
     let text: String
     let attachmentIds: [String]
     let execution: NativeLiveExecutionSelection?
+    var inputMode: NativeLiveInputMode = .text
 
     enum CodingKeys: String, CodingKey {
         case dispatchTarget = "dispatch_target"
@@ -922,6 +925,7 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         case workspaceId = "workspace_id"
         case text
         case attachmentIds = "attachment_ids"
+        case inputMode = "input_mode"
         case execution
     }
 
@@ -948,6 +952,9 @@ private struct NativeLiveSendBody: Encodable, Sendable {
             )
         }
         try container.encodeIfPresent(execution, forKey: .execution)
+        if inputMode == .voice {
+            try container.encode(inputMode.rawValue, forKey: .inputMode)
+        }
     }
 }
 
