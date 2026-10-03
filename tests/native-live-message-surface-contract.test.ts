@@ -379,3 +379,23 @@ test("ambiguous full tool output is retained as diagnostic runtime data without 
   for (const e of events.filter((e) => e.type === "tool_result"))
     assert.equal(e.payload.structured.provider_output, undefined);
 });
+
+test("future result subtype retains unknown payload and a visible compatibility diagnostic", () => {
+  const events = normalize([
+    {
+      type: "result",
+      subtype: "future_result",
+      result: "",
+      future_payload: { answer: 42 },
+    },
+  ]);
+  const diagnostic = events.find(
+    (e) => e.payload?.diagnostic_code === "UNSUPPORTED_PROVIDER_EVENT",
+  );
+  assert.equal(
+    diagnostic?.payload.compatibility.payload.future_payload.answer,
+    42,
+  );
+  assert.equal(diagnostic?.payload.provenance.raw_subtype, "future_result");
+  assert.deepEqual(canonicalizeNativeLiveEvents(events).blocks, []);
+});

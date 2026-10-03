@@ -454,6 +454,9 @@ export class ClaudeEventNormalizer {
     }
 
     if (raw.type === "result") {
+      if (raw.subtype && !["success", "error_during_execution", "error_max_turns", "error_max_budget_usd", "error_max_structured_output_retries"].includes(raw.subtype)) {
+        emit("runtime", this.sessionId, {kind:"unsupported_provider_event", diagnostic_code:"UNSUPPORTED_PROVIDER_EVENT", provenance:provenance(raw), compatibility:boundedOutput(raw)});
+      }
       const telemetry = normalizeResultTelemetry(raw);
       emit("result", this.sessionId, {
         status: raw.is_error ? "error" : "success",
