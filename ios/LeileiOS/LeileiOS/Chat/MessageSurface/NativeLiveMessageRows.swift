@@ -362,7 +362,7 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "waveform")
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(.primary)
 
             Spacer(minLength: 4)
@@ -373,7 +373,7 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
                         ? "chevron.up"
                         : "chevron.down"
             )
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 9, weight: .semibold))
             .foregroundStyle(.secondary)
         }
         .frame(width: 68, alignment: .leading)
