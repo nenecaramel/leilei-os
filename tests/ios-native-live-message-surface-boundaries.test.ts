@@ -190,6 +190,19 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.doesNotMatch(runtimeModels, /Using a tool/);
 
   assert.match(runtime, /Text\(projection\.summaryLabel\)/);
+  assert.match(runtime, /let timestampText: String\?/);
+  assert.match(
+    runtime,
+    /alignment: \.firstTextBaseline,[\s\S]*spacing: 12/,
+  );
+  assert.match(
+    runtime,
+    /Button \{[\s\S]*Text\(projection\.summaryLabel\)[\s\S]*Spacer\(minLength: 8\)[\s\S]*"chevron\.right"/,
+  );
+  assert.match(
+    runtime,
+    /\.frame\(\s*maxWidth: \.infinity,\s*alignment: \.leading\s*\)/,
+  );
   assert.match(runtime, /"chevron\.right"/);
   assert.match(runtime, /"chevron\.down"/);
   assert.doesNotMatch(runtime, /projection\.headerTitle/);
@@ -284,6 +297,11 @@ test("message rows and canonical block rendering are extracted while root compos
   assert.ok(timestampIndex >= 0);
   assert.ok(activityIndex > timestampIndex);
   assert.ok(messageContentIndex > activityIndex);
+  assert.match(rows, /timestampText: timestamp/);
+  assert.match(
+    rows,
+    /if displayedActivityProjection\.hasContent \{[\s\S]*NativeLiveTurnActivityView[\s\S]*\} else \{[\s\S]*Text\(timestamp\)/,
+  );
 
   assert.match(rows, /nativeLiveBackgroundRuntimeSurfaces/);
   assert.match(rows, /message\.activity\?\.prepareId/);

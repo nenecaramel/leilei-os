@@ -53,6 +53,7 @@ struct NativeLiveRuntimeAssistantRow: View {
 
 struct NativeLiveTurnActivityView: View {
     let projection: NativeLiveTurnActivityProjection
+    let timestampText: String?
     let onResolveInteraction:
         ((
             NativeLiveRuntimeInteractionSnapshot,
@@ -62,42 +63,76 @@ struct NativeLiveTurnActivityView: View {
     @State private var isExpanded = false
     @State private var expandedForPendingInteraction = false
 
+    init(
+        projection: NativeLiveTurnActivityProjection,
+        timestampText: String? = nil,
+        onResolveInteraction:
+            ((
+                NativeLiveRuntimeInteractionSnapshot,
+                [String: NativeLiveJSONValue]
+            ) async throws -> Void)?
+    ) {
+        self.projection = projection
+        self.timestampText = timestampText
+        self.onResolveInteraction = onResolveInteraction
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Button {
-                if projection.hasPendingInteraction {
-                    isExpanded = true
-                } else {
-                    isExpanded.toggle()
-                    expandedForPendingInteraction = false
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Text(projection.summaryLabel)
-                        .font(.system(
-                            size: 13.5,
-                            weight: .medium
-                        ))
+            HStack(
+                alignment: .firstTextBaseline,
+                spacing: 12
+            ) {
+                if let timestampText {
+                    Text(timestampText)
+                        .font(.system(size: 13.5))
+                        .tracking(0.12)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 8)
-
-                    Image(
-                        systemName:
-                            effectiveExpanded
-                                ? "chevron.down"
-                                : "chevron.right"
-                    )
-                    .font(.system(
-                        size: 10,
-                        weight: .semibold
-                    ))
-                    .foregroundStyle(.tertiary)
+                        .fixedSize(
+                            horizontal: true,
+                            vertical: false
+                        )
                 }
-                .contentShape(Rectangle())
+
+                Button {
+                    if projection.hasPendingInteraction {
+                        isExpanded = true
+                    } else {
+                        isExpanded.toggle()
+                        expandedForPendingInteraction = false
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(projection.summaryLabel)
+                            .font(.system(
+                                size: 13.5,
+                                weight: .medium
+                            ))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 8)
+
+                        Image(
+                            systemName:
+                                effectiveExpanded
+                                    ? "chevron.down"
+                                    : "chevron.right"
+                        )
+                        .font(.system(
+                            size: 10,
+                            weight: .semibold
+                        ))
+                        .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
             }
-            .buttonStyle(.plain)
 
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {
