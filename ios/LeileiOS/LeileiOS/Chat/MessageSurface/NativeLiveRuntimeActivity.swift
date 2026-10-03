@@ -79,64 +79,58 @@ struct NativeLiveTurnActivityView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(
-                alignment: .firstTextBaseline,
-                spacing: 12
-            ) {
-                if let timestampText {
-                    Text(timestampText)
-                        .font(.system(size: 13.5))
-                        .tracking(0.12)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(
-                            horizontal: true,
-                            vertical: false
-                        )
+            Button {
+                if projection.hasPendingInteraction {
+                    isExpanded = true
+                } else {
+                    isExpanded.toggle()
+                    expandedForPendingInteraction = false
                 }
-
-                Button {
-                    if projection.hasPendingInteraction {
-                        isExpanded = true
-                    } else {
-                        isExpanded.toggle()
-                        expandedForPendingInteraction = false
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(projection.summaryLabel)
-                            .font(.system(
-                                size: 13.5,
-                                weight: .medium
-                            ))
+            } label: {
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: 12
+                ) {
+                    if let timestampText {
+                        Text(timestampText)
+                            .font(.system(size: 13.5))
+                            .tracking(0.12)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-
-                        Spacer(minLength: 8)
-
-                        Image(
-                            systemName:
-                                effectiveExpanded
-                                    ? "chevron.down"
-                                    : "chevron.right"
-                        )
-                        .font(.system(
-                            size: 10,
-                            weight: .semibold
-                        ))
-                        .foregroundStyle(.tertiary)
+                            .fixedSize(
+                                horizontal: true,
+                                vertical: false
+                            )
                     }
-                    .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading
+
+                    Text(projection.summaryLabel)
+                        .font(.system(
+                            size: 13.5,
+                            weight: .medium
+                        ))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    Image(
+                        systemName:
+                            effectiveExpanded
+                                ? "chevron.down"
+                                : "chevron.right"
                     )
-                    .contentShape(Rectangle())
+                    .font(.system(
+                        size: 10,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
                 .frame(
                     maxWidth: .infinity,
                     alignment: .leading
                 )
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {

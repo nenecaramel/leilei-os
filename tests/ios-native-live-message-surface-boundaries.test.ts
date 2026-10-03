@@ -193,11 +193,11 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /let timestampText: String\?/);
   assert.match(
     runtime,
-    /alignment: \.firstTextBaseline,[\s\S]*spacing: 12/,
+    /Button \{[\s\S]*\} label: \{\s*HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 12\s*\)[\s\S]*Text\(timestampText\)[\s\S]*Text\(projection\.summaryLabel\)[\s\S]*Spacer\(minLength: 8\)[\s\S]*"chevron\.right"/,
   );
-  assert.match(
+  assert.doesNotMatch(
     runtime,
-    /Button \{[\s\S]*Text\(projection\.summaryLabel\)[\s\S]*Spacer\(minLength: 8\)[\s\S]*"chevron\.right"/,
+    /HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 12\s*\) \{[\s\S]*Text\(timestampText\)[\s\S]*Button \{/,
   );
   assert.match(
     runtime,
