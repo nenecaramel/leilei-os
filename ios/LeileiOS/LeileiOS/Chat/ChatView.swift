@@ -118,6 +118,11 @@ struct ChatView: View {
                 voiceInput.cancel()
             }
         }
+        .onChange(of: voiceInput.isActive) { _, isActive in
+            if !isActive {
+                isDictationModeActive = false
+            }
+        }
         .onChange(of: appModel.activeNativeLiveConversationID) { _, _ in
             isDictationModeActive = false
             voiceInput.cancel()
