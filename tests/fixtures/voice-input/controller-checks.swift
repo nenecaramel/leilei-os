@@ -84,6 +84,8 @@ struct ControllerChecks {
         SFSpeechRecognizer.handler?(nil, NSError(domain: "recognition", code: 1))
         await pause()
         precondition(controller.phase == .idle && controller.errorMessage != nil && sent.count == 2)
+        controller.dismissStatusMessage()
+        precondition(controller.errorMessage == nil, "idle voice status must be dismissible before opening the language menu")
         print("controller lifecycle PASS")
     }
 }
