@@ -616,6 +616,7 @@ test("native live current-path ETag changes when activity changes under the same
   const service = new FakeConversationService();
   const headMessageId = "77777777-7777-4777-8777-777777777777";
   let sequence = 1;
+  let durationMs: number | undefined;
   let interactionUpdatedAt =
     "2026-09-26T08:00:00.750Z";
 
@@ -641,6 +642,7 @@ test("native live current-path ETag changes when activity changes under the same
           completedAt: "2026-09-26T08:00:01.000Z",
           blocks: [],
           activity: {
+            durationMs,
             prepareId:
               "88888888-8888-4888-8888-888888888888",
             events: [{
@@ -709,9 +711,20 @@ test("native live current-path ETag changes when activity changes under the same
       assert.ok(interactionChangedEtag);
       assert.notEqual(interactionChangedEtag, changedEtag);
 
+      durationMs = 18000;
+      const durationChanged = await fetch(url, {
+        headers: { "If-None-Match": interactionChangedEtag },
+      });
+      assert.equal(durationChanged.status, 200);
+      const durationEtag = durationChanged.headers.get("etag");
+      assert.ok(durationEtag);
+      assert.notEqual(durationEtag, interactionChangedEtag);
+      const durationBody = await durationChanged.json() as { data: { messages: Array<{ activity: { durationMs: number } }> } };
+      assert.equal(durationBody.data.messages[0]?.activity.durationMs, 18000);
+
       const unchanged = await fetch(url, {
         headers: {
-          "If-None-Match": interactionChangedEtag,
+          "If-None-Match": durationEtag,
         },
       });
       assert.equal(unchanged.status, 304);

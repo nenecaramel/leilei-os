@@ -177,9 +177,22 @@ struct NativeLiveMessageActivitySnapshot:
     Decodable,
     Sendable,
     Equatable {
-    let prepareId: String
+    let prepareId: String?
     let events: [NativeLiveRuntimeEventSnapshot]
     let interactions: [NativeLiveRuntimeInteractionSnapshot]
+    let durationMs: Double?
+
+    init(
+        prepareId: String?,
+        events: [NativeLiveRuntimeEventSnapshot],
+        interactions: [NativeLiveRuntimeInteractionSnapshot],
+        durationMs: Double? = nil
+    ) {
+        self.prepareId = prepareId
+        self.events = events
+        self.interactions = interactions
+        self.durationMs = durationMs
+    }
 }
 
 struct NativeLiveCurrentPathMessage: Decodable, Sendable, Equatable, Identifiable {
