@@ -90,3 +90,11 @@ test("background task observation outlives the foreground turn only while user-v
     /shouldStopRuntimeObservation =[\s\S]*continueNativeLiveRuntimeObservationForBackgroundTasks/,
   );
 });
+
+
+test("foreground completion unlocks the composer even while background observation stays alive", () => {
+  assert.match(
+    chatView,
+    /if visibleRuntimeSurface\?\.foregroundTurnCompleted == true[\s\S]*return false/,
+  );
+});
