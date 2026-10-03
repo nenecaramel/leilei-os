@@ -82,6 +82,7 @@ enum NativeLiveStructuredToolResultProjector {
             node.fallback = .init(title:"Resource reference",rawType:type,diagnostic:"REFERENCE_ONLY",metadata:metadata)
         default: break
         }
+        if node.kind == .markdown { node.children = NativeLiveRichTextProjector.project(node) }
         return node
     }
 }

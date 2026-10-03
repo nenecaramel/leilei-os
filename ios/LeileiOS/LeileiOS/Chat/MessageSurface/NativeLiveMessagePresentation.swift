@@ -71,7 +71,7 @@ extension NativeLiveComposerAttachmentDraft {
 
 // These block values are presentation input descriptors, never canonical writes.
 struct NativeLiveMessagePresentationSource: Equatable, Sendable {
-    enum Phase: Equatable, Sendable { case canonical, externalHistory, pendingSend, pendingEdit }
+    enum Phase: Equatable, Sendable { case canonical, externalHistory, runtimeStreaming, pendingSend, pendingEdit }
     let messageID: String
     let role: String
     let blocks: [NativeLiveCurrentPathBlock]
@@ -89,6 +89,13 @@ struct NativeLiveMessagePresentationSource: Equatable, Sendable {
               blocks: [.init(id: "history:\(message.ordinal):text", ordinal: 0, kind: "text",
                              rawType: "text", text: message.content, payload: nil, createdAt: message.time)],
               phase: .externalHistory)
+    }
+
+    // Ephemeral text descriptor; the runtime never writes Markdown children to the ledger.
+    static func streaming(_ text: String) -> Self {
+        .init(messageID: "runtime-streaming", role: "assistant",
+              blocks: [.init(id: "runtime-streaming:text", ordinal: 0, kind: "text", rawType: "text",
+                             text: text, payload: nil, createdAt: "")], phase: .runtimeStreaming)
     }
 
     static func send(messageID: String, text: String, attachments: [NativeLiveAttachmentPresentationInput] = [], inputMode: NativeLiveInputMode = .text) -> Self {

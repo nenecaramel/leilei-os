@@ -78,13 +78,38 @@ struct NativeLiveVisualNodeView: View {
     @ViewBuilder var body: some View {
         switch NativeLiveMessageRendererRegistry.renderer(for: node) {
         case .markdown:
-            if let text = node.text {
-                ChatMarkdownView(text: text, fillsAvailableWidth: role != "user",
-                                 lineSpacing: role == "user" ? 5 : 6,
-                                 paragraphSpacing: role == "user" ? 19 : 22)
-            } else {
-                NativeLiveVisualFallbackView(fallback: node.fallback)
-            }
+            if node.rendersInlineChildren, let model = node.markdown {
+                NativeLiveMarkdownRenderer(model: model, role: role)
+                    .contextMenu {
+                        ForEach(node.children.filter { $0.math != nil }) { child in
+                            Button("Copy math: \(String((child.math?.latex ?? "").prefix(30)))") {
+                                UIPasteboard.general.string = child.math?.latex
+                            }
+                        }
+                    }
+            } else if !node.children.isEmpty {
+                NativeLiveVisualNodesView(nodes: node.children, role: role)
+            } else if let model = node.markdown {
+                NativeLiveMarkdownRenderer(model: model, role: role)
+            } else if let text = node.text {
+                // Unprojected future text stays visible without another parser authority.
+                Text(text).textSelection(.enabled)
+            } else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .code:
+            if let model = node.code { NativeLiveCodeRenderer(model: model) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .table:
+            if let model = node.table { NativeLiveTableRenderer(model: model) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .diff:
+            if let model = node.diff { NativeLiveDiffRenderer(model: model) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .math:
+            if let model = node.math { NativeLiveMathRenderer(model: model) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
+        case .mermaid:
+            if let model = node.code { NativeLiveMermaidSourceRenderer(model: model) }
+            else { NativeLiveVisualFallbackView(fallback: node.fallback) }
         case .attachment:
             if let input = node.attachment { NativeLiveMediaCard(input:input) }
             else { NativeLiveVisualFallbackView(fallback:node.fallback) }

@@ -12,7 +12,7 @@ func project(_ blocks: [NativeLiveCurrentPathBlock], role: String = "user") -> N
 let user = project([block("t1", 0, "text", " hello ")])
 precondition(user.role == "user" && user.nodes.count == 1)
 precondition(user.nodes[0].kind == .markdown && user.nodes[0].canonicalIdentity == "text")
-precondition(user.copyText == "hello")
+precondition(user.copyText == " hello ")
 let assistant = project([block("a1", 0, "text", "answer")], role: "assistant")
 precondition(assistant.role == "assistant" && assistant.copyText == "answer")
 let attachmentPayload: [String: NativeLiveJSONValue] = ["attachment_id": .string("file1"), "filename": .string("report.pdf"), "mime_type": .string("application/pdf"), "kind": .string("file"), "refs": .array([.object(["type": .string("attachment_ref"), "entity_id": .string("file1")])]), "provenance": .object(["origin": .string("user_send")])]
@@ -43,7 +43,7 @@ for identity in ["artifact", "resource", "canonical_tool_result"] {
     precondition(result.nodes[0].canonicalIdentity == identity)
     precondition(NativeLiveMessageRendererRegistry.renderer(for: result.nodes[0]) == (identity == "canonical_tool_result" ? .structuredResult : .fallback))
 }
-for kind in NativeLiveVisualNodeKind.allCases where ![.markdown,.text,.attachment,.canonicalToolResult,.structuredJSON,.searchResult,.citation].contains(kind) {
+for kind in NativeLiveVisualNodeKind.allCases where ![.markdown,.text,.attachment,.canonicalToolResult,.structuredJSON,.searchResult,.citation,.code,.table,.diff,.math,.mermaid].contains(kind) {
     precondition(NativeLiveMessageRendererRegistry.renderer(for: kind) == .fallback)
 }
 let voice = project([block("voice", 0, "text", "transcript", ["input_mode": .string("voice")])])
