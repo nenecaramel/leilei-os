@@ -288,6 +288,8 @@ test("canonical voice input is a tappable compact bubble that expands and collap
   );
   assert.match(rows, /struct NativeLiveVoiceMessageBubbleVisual: View/);
   assert.match(rows, /Image\(systemName: "waveform"\)/);
+  assert.match(rows, /\.frame\(width: 68, alignment: \.leading\)/);
+  assert.match(rows, /\.frame\(height: 21, alignment: \.leading\)/);
   assert.doesNotMatch(rows, /speaker\.wave/);
   assert.doesNotMatch(rows, /Button\("转文字"\)/);
   assert.match(rows, /@State private var isVoiceTranscriptRevealed = false/);
