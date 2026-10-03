@@ -45,6 +45,9 @@ final class AppModel: ObservableObject {
         }
     }
 
+    let nativeLiveAttachmentBytesCache = NativeLiveAttachmentBytesCache(diskRoot:
+        FileManager.default.urls(for:.cachesDirectory,in:.userDomainMask).first?
+            .appendingPathComponent("LeileiOS-MediaOriginal",isDirectory:true))
     let config: AppConfig
     let authSession: AuthSessionController
     let api: LeileiAPIClient

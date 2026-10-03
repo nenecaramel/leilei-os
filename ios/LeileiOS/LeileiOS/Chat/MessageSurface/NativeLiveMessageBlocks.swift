@@ -12,21 +12,46 @@ struct NativeLiveMessagePresentationView: View {
 struct NativeLiveUserMessagePresentationView: View {
     let presentation: NativeLiveMessagePresentation
     @Binding var isVoiceTranscriptRevealed: Bool
+    var onEdit: (() -> Void)? = nil
+    var onCopy: (String) -> Void = { _ in }
+    var isDisabled = false
 
-    @ViewBuilder var body: some View {
+    var body: some View {
+        VStack(alignment:.trailing,spacing:10) {
+            if !presentation.mediaNodes.isEmpty {
+                NativeLiveMediaRenderer(inputs:presentation.attachmentInputs)
+                    .contextMenu { if let onEdit { Button("Edit",action:onEdit).disabled(isDisabled) } }
+            }
+            if !presentation.nonTextBodyNodes.isEmpty {
+                NativeLiveVisualNodesView(nodes:presentation.nonTextBodyNodes,role:presentation.role)
+            }
+            if !presentation.textNodes.isEmpty {
+                textBubble
+                    .padding(.horizontal,14).padding(.vertical,12)
+                    .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:18,style:.continuous))
+                    .overlay {
+                        if let onEdit {
+                            LightweightContextMenuInteraction(title:"Edit",copyText:presentation.copyText,isDisabled:isDisabled,
+                                cornerRadius:18,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
+                        }
+                    }
+                    .onTapGesture { if onEdit == nil { toggleVoice() } }
+            }
+        }
+    }
+    @ViewBuilder private var textBubble: some View {
         if presentation.isVoiceInput {
-            VStack(alignment: .leading, spacing: 10) {
-                NativeLiveVoiceMessageBubbleVisual(isExpanded: isVoiceTranscriptRevealed)
+            VStack(alignment:.leading,spacing:10) {
+                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)
                 if isVoiceTranscriptRevealed {
-                    NativeLiveMessagePresentationView(presentation: presentation)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                } else {
-                    NativeLiveVisualNodesView(nodes: presentation.collapsedVoiceNodes, role: presentation.role)
+                    NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role)
                 }
             }
-        } else {
-            NativeLiveMessagePresentationView(presentation: presentation)
-        }
+        } else { NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role) }
+    }
+    private func toggleVoice() {
+        guard presentation.isVoiceInput, presentation.copyText != nil else { return }
+        withAnimation(.easeInOut(duration:0.16)) { isVoiceTranscriptRevealed.toggle() }
     }
 }
 
@@ -58,21 +83,14 @@ struct NativeLiveVisualNodeView: View {
                 NativeLiveVisualFallbackView(fallback: node.fallback)
             }
         case .attachment:
-            NativeLiveAttachmentBlockView(block: attachmentRendererBlock)
+            if let input = node.attachment { NativeLiveMediaCard(input:input) }
+            else { NativeLiveVisualFallbackView(fallback:node.fallback) }
         case .fallback:
             NativeLiveVisualFallbackView(fallback: node.fallback)
         }
     }
 
-    private var attachmentRendererBlock: NativeLiveCurrentPathBlock {
-        var payload = node.sourceBlock.payload ?? [:]
-        if let attachment = node.attachment {
-            // Preserve canonical integrity/size metadata while supporting ref-only inputs.
-            payload.merge(attachment.blockPayload) { original, _ in original }
-        }
-        return .init(id: node.id, ordinal: node.ordinal, kind: "attachment", rawType: node.rawType,
-                     text: nil, payload: payload, createdAt: node.sourceBlock.createdAt)
-    }
+
 }
 
 private struct NativeLiveVisualFallbackView: View {

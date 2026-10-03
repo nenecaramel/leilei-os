@@ -8,7 +8,7 @@ const boundaries = [
   ["ConversationCoordination", "refreshNativeLiveConversations", "refreshNativeLiveCurrentPath", "loadOlderNativeLiveMessages"],
   ["NativeLiveTurnController", "sendNativeLiveMessage", "retryNativeLiveMessage", "editNativeLiveMessage", "waitForNativeLiveTurn"],
   ["NativeLiveRuntimeStore", "refreshNativeLiveRuntimeSurface", "resolveNativeLiveRuntimeInteraction", "interruptNativeLiveTurn"],
-  ["NativeLiveAttachmentCoordination", "uploadNativeLiveAttachment", "nativeLiveAttachmentDownloadURL"],
+  ["NativeLiveAttachmentCoordination", "uploadNativeLiveAttachment", "nativeLiveAttachmentBytes"],
   ["MessageProjectionCoordination", "refreshMindWrites", "refreshAlbumSaves"],
 ] as const;
 

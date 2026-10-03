@@ -736,8 +736,8 @@ struct ChatView: View {
                         ) else {
                     return
                 }
-                composerAttachments[index].state =
-                    .ready(ready.attachmentId)
+                composerAttachments[index].presentationMetadata = ready.presentationMetadata
+                composerAttachments[index].state = .ready(ready.attachmentId)
             } catch {
                 guard let index =
                         composerAttachments.firstIndex(
