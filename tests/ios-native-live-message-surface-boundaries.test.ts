@@ -224,6 +224,7 @@ test("message rows and canonical block rendering are extracted while root compos
 
   assert.match(rows, /nativeLiveBackgroundRuntimeSurfaces/);
   assert.match(rows, /message\.activity\?\.prepareId/);
+  assert.match(rows, /backgroundSurface/);
   assert.match(
     rows,
     /onResolveInteraction:[\s\S]*onResolveReplacementInteraction/,
