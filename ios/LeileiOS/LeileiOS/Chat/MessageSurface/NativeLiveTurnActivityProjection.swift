@@ -204,9 +204,17 @@ struct NativeLiveTurnActivityProjection: Equatable {
         } else if hasActiveBackgroundTask && !turnIsActive {
             components.append("Working in background")
         } else if turnIsActive {
-            components.append(workingDurationLabel)
+            components.append(
+                activityCount == 0
+                    ? thinkingDurationLabel
+                    : workingDurationLabel
+            )
         } else {
-            components.append(workedDurationLabel)
+            components.append(
+                activityCount == 0
+                    ? thoughtDurationLabel
+                    : workedDurationLabel
+            )
         }
 
         if activityCount > 0 {
@@ -220,6 +228,20 @@ struct NativeLiveTurnActivityProjection: Equatable {
         return components
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
+    }
+
+    private var thinkingDurationLabel: String {
+        guard let elapsedSeconds else {
+            return "Thinking"
+        }
+        return "Thinking for \(Self.durationText(elapsedSeconds))"
+    }
+
+    private var thoughtDurationLabel: String {
+        guard let elapsedSeconds else {
+            return ""
+        }
+        return "Thought for \(Self.durationText(elapsedSeconds))"
     }
 
     private var workingDurationLabel: String {
