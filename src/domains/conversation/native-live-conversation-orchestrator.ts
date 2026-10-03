@@ -1,6 +1,6 @@
+import { backendConversationProjection, type TrustedConversationProjections } from "./native-live-conversation-content-projector.js";
 import {
   boundCanonicalPayload,
-  parseConversationProjection,
 } from "./native-live-content-contract.js";
 import type { NativeLiveContentBlockInput } from "./native-live-conversation-types.js";
 
@@ -35,6 +35,7 @@ export interface NativeLiveClaudeRuntime {
 
 export function canonicalizeNativeLiveEvents(
   events: readonly NativeLiveNormalizedEvent[],
+  trustedProjections?: TrustedConversationProjections,
 ): {
   blocks: NativeLiveContentBlockInput[];
   error: string | null;
@@ -65,7 +66,7 @@ export function canonicalizeNativeLiveEvents(
           "Claude runtime result reported an error.";
       }
       finalText = stringValue(payload.final_text) ?? finalText;
-      if (!payload.conversation_projection) continue;
+      if (!backendConversationProjection(trustedProjections,event)) continue;
     }
 
     if (event.type === "text") {
@@ -122,32 +123,31 @@ export function canonicalizeNativeLiveEvents(
       event.type === "runtime" ||
       event.type === "result"
     ) {
-      const projection = parseConversationProjection(
-        payload.conversation_projection,
-      );
-      if (payload.conversation_projection && !projection) {
-        error = "Unsupported canonical content projection contract.";
-        continue;
-      }
-      if (
-        projection &&
-        projection.identity !== "attachment" &&
-        (projection.identity !== "text" || typeof payload.output === "string")
-      ) {
+      const authorization = backendConversationProjection(trustedProjections,event);
+      const projection = authorization?.projection;
+      const toolID = stringValue(payload.tool_use_id);
+      const provenance = payload.provenance as Record<string,unknown> | undefined;
+      const suppressed = payload.hidden_from_transcript === true || payload.hidden_from_activity === true
+        || (toolID != null && (hiddenToolUseIds.has(toolID) || hiddenActivityToolUseIds.has(toolID)))
+        || Boolean(payload.parent_tool_use_id || payload.parent_agent_id || provenance?.parent_tool_use_id || provenance?.parent_agent_id)
+        || events.some(e => e.type === "tool_use" && e.payload?.tool_use_id === toolID && e.payload?.tool_name === "AskUserQuestion");
+      if (projection && !suppressed) {
         const bounded = boundCanonicalPayload(
-          payload.structured ?? payload.output ?? payload.structured_output,
+          payload.structured ?? (payload.structured_output
+            ? {schema_version:1,parts:[{type:"structured_output",value:(payload.structured_output as Record<string,unknown>).payload}],
+               truncated:(payload.structured_output as Record<string,unknown>).truncated === true,
+               redacted:(payload.structured_output as Record<string,unknown>).redacted === true}
+            : {schema_version:1,parts:[{type:"json",value:payload.output}],truncated:false,redacted:false}),
         );
         blocks.push({
           kind: projection.identity,
           rawType: event.type,
-          ...(projection.identity === "text" &&
-          typeof payload.output === "string"
-            ? { text: payload.output }
-            : {}),
           payload: {
             schema_version: 1,
             identity: projection.identity,
             refs: projection.refs,
+            projection_reason: projection.reason,
+            materialized_attachments: authorization?.attachments ?? [],
             provenance: boundCanonicalPayload(
               payload.provenance ?? {
                 provider: "claude_code",

@@ -5,7 +5,10 @@ struct NativeLiveMessagePresentationView: View {
     let presentation: NativeLiveMessagePresentation
 
     var body: some View {
-        NativeLiveVisualNodesView(nodes: presentation.nodes, role: presentation.role)
+        VStack(alignment:.leading,spacing:12) {
+            NativeLiveVisualNodesView(nodes: presentation.nodes, role: presentation.role)
+            NativeLiveCitationSourcesView(sources:presentation.citationSources)
+        }
     }
 }
 
@@ -85,6 +88,17 @@ struct NativeLiveVisualNodeView: View {
         case .attachment:
             if let input = node.attachment { NativeLiveMediaCard(input:input) }
             else { NativeLiveVisualFallbackView(fallback:node.fallback) }
+        case .structuredResult:
+            NativeLiveStructuredToolResultView(node:node)
+        case .structuredJSON:
+            if let json=node.json { NativeLiveStructuredJSONView(json:json) }
+            else { NativeLiveVisualFallbackView(fallback:node.fallback) }
+        case .searchResult:
+            if let search=node.search { NativeLiveSearchResultView(result:search,sources:node.citationSourcesToRender) }
+            else { NativeLiveVisualFallbackView(fallback:node.fallback) }
+        case .citation:
+            if node.citationSourcesToRender?.isEmpty == true { Text("Source reference").font(.caption).foregroundStyle(.secondary) }
+            else { NativeLiveCitationSourcesView(sources:node.citationSourcesToRender ?? NativeLiveCitationSource.aggregate(node.citations)) }
         case .fallback:
             NativeLiveVisualFallbackView(fallback: node.fallback)
         }

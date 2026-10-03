@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { canonicalizeNativeLiveEvents } from "../src/domains/conversation/native-live-conversation-orchestrator.js";
 import { normalizeClaudeEvents } from "../tools/claude-bridge/src/normalized-events.mjs";
+import { authorizeNativeLiveConversationProjections } from "../src/domains/conversation/native-live-conversation-content-projector.js";
 const normalize = (raw: unknown[]) =>
   normalizeClaudeEvents(raw, { logicalConversationId: "c", mode: "new" });
 
@@ -72,7 +73,7 @@ test("ordinary assistant text remains canonical, subagent text stays runtime", (
   );
 });
 
-test("backend projection opts structured tool output into canonical content with entity refs", () => {
+test("backend projection opts structured tool output into canonical content with entity refs", async () => {
   const events = [
     {
       type: "tool_result" as const,
@@ -92,7 +93,9 @@ test("backend projection opts structured tool output into canonical content with
       },
     },
   ];
-  const blocks = canonicalizeNativeLiveEvents(events).blocks;
+  const authority = await authorizeNativeLiveConversationProjections({userId:"u",decisions:[{event:events[0],projection:events[0].payload.conversation_projection}],
+    resolveAttachment:async()=>({userId:"u",attachmentId:"a",status:"ready",filename:"a.pdf",mimeType:"application/pdf",kind:"file",sizeBytes:3,sha256:"a".repeat(64)})});
+  const blocks = canonicalizeNativeLiveEvents(events,authority).blocks;
   assert.deepEqual(blocks.map(block => block.kind), ["tool_result", "canonical_tool_result"]);
   assert.deepEqual(blocks[0]?.payload, events[0].payload);
   const block = blocks[1];
@@ -300,7 +303,7 @@ test("known file/resource candidates, fallback models and context telemetry do n
   assert.ok(JSON.stringify(events).includes("provider-f"));
 });
 
-test("future canonical projection versions fail visibly instead of dropping content", () => {
+test("future provider projection versions cannot fail an otherwise valid turn", () => {
   const result = canonicalizeNativeLiveEvents([
     {
       type: "tool_result",
@@ -315,7 +318,8 @@ test("future canonical projection versions fail visibly instead of dropping cont
       },
     },
   ]);
-  assert.match(result.error ?? "", /Unsupported canonical content projection/);
+  assert.equal(result.error,null);
+  assert.deepEqual(result.blocks.map(b=>b.kind),["tool_result"]);
 });
 
 test("structured tool parts report their own truncation independently of legacy output", () => {
