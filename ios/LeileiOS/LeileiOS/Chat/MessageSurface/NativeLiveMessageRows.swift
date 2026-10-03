@@ -23,6 +23,8 @@ struct NativeLiveMessageRow: View {
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
+    @State private var isVoiceTranscriptRevealed = false
+
     var body: some View {
         rowContent
             .task(id: "\(message.id):\(message.status)") {
@@ -51,7 +53,7 @@ struct NativeLiveMessageRow: View {
                 Spacer(minLength: 48)
 
                 VStack(alignment: .trailing, spacing: 6) {
-                    messageContent
+                    userMessagePresentation
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                         .background(
@@ -72,6 +74,19 @@ struct NativeLiveMessageRow: View {
                                 onEditMessage(message)
                             }
                         }
+
+                    if isVoiceInputMessage,
+                       !isVoiceTranscriptRevealed,
+                       voiceTranscriptText != nil {
+                        Button("转文字") {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                isVoiceTranscriptRevealed = true
+                            }
+                        }
+                        .font(.system(size: 12.5, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                    }
 
                     messageStatus
                 }
@@ -95,6 +110,31 @@ struct NativeLiveMessageRow: View {
         } else {
             assistantContent
         }
+    }
+
+    @ViewBuilder
+    private var userMessagePresentation: some View {
+        if isVoiceInputMessage,
+           !isVoiceTranscriptRevealed {
+            NativeLiveVoiceMessageBubbleVisual()
+        } else {
+            messageContent
+        }
+    }
+
+    private var isVoiceInputMessage: Bool {
+        guard displayTextOverride == nil else {
+            return false
+        }
+
+        return message.blocks.contains { block in
+            block.payload?["input_mode"]?.stringValue
+                == "voice"
+        }
+    }
+
+    private var voiceTranscriptText: String? {
+        copyText
     }
 
     private var assistantContent: some View {
@@ -291,6 +331,46 @@ struct NativeLiveMessageRow: View {
             in: .whitespacesAndNewlines
         )
         return normalized.isEmpty ? nil : normalized
+    }
+}
+
+
+private struct NativeLiveVoiceMessageBubbleVisual: View {
+    private let barHeights: [CGFloat] = [
+        8,
+        14,
+        20,
+        11,
+        17,
+        9,
+        15,
+        21,
+        12,
+        18,
+        10,
+        16,
+    ]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.primary)
+
+            HStack(alignment: .center, spacing: 2.5) {
+                ForEach(
+                    Array(barHeights.enumerated()),
+                    id: \.offset
+                ) { _, height in
+                    Capsule()
+                        .fill(Color.primary.opacity(0.76))
+                        .frame(width: 2.2, height: height)
+                }
+            }
+        }
+        .frame(minWidth: 128, minHeight: 24, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Voice message")
     }
 }
 
