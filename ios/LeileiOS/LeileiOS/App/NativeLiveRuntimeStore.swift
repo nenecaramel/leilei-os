@@ -15,7 +15,7 @@ extension AppModel {
                 )
 
             guard activeNativeLiveConversationID == conversationID else {
-                return
+                return false
             }
 
             nativeLiveRuntimeMetadata = snapshot.runtimeMetadata
