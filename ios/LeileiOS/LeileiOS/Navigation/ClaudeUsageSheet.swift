@@ -108,12 +108,6 @@ struct ClaudeUsageSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task {
                             await load()
@@ -123,6 +117,12 @@ struct ClaudeUsageSheet: View {
                     }
                     .disabled(isLoading)
                     .accessibilityLabel("Refresh Claude usage")
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
                 }
             }
             .task {
