@@ -29,8 +29,9 @@ struct NativeLiveStructuredJSON: Equatable, Sendable {
                 }
                 return .object(output)
             case .array(let values):
-                if values.count > 32 { clipped=true }
-                return .array(values.prefix(min(32,max(0,nodes))).map { bound($0,depth+1) })
+                let count=min(32,max(0,nodes))
+                if values.count > count { clipped=true }
+                return .array(values.prefix(count).map { bound($0,depth+1) })
             case .string(let text):
                 let safe=String(text.prefix(min(8000,max(0,chars)))); chars -= safe.count
                 if safe != text { clipped=true }; return .string(safe)

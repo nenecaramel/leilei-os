@@ -15,7 +15,7 @@ enum NativeLiveStructuredToolResultProjector {
             return (.init(truncated:payload["truncated"]?.boolValue == true,redacted:false,diagnostic:"Unsupported structured result contract"),[])
         }
         var nodes=parts.prefix(32).enumerated().map { index,part in child(part,index:index,parent:block) }
-        let sources=NativeLiveCitationSource.aggregate(nodes.flatMap(\.citations))
+        let sources=NativeLiveCitationSource.aggregate(nodes.flatMap { $0.citations + ($0.search?.citations ?? []) })
         for index in nodes.indices {
             if let url=nodes[index].search?.url {
                 nodes[index].search?.citations=sources.filter { $0.id == "url:"+url }.flatMap(\.relations)
@@ -53,8 +53,9 @@ enum NativeLiveStructuredToolResultProjector {
             if let text=p["text"]?.stringValue ?? value.objectValue?["text"]?.stringValue, !text.isEmpty { node.kind = .markdown; node.text=String(text.prefix(8000)) }
         case "json","structured_output":
             node.kind = .structuredJSON
-            let wrapper=value.objectValue
-            node.json=NativeLiveStructuredJSON(wrapper?["type"]?.stringValue == type ? (wrapper?["value"] ?? wrapper?["data"] ?? value) : value)
+            // The normalized part value is semantic JSON. Its own type/value keys
+            // do not authorize unwrapping or removal of business fields.
+            node.json=NativeLiveStructuredJSON(value)
         case "search_result": node.kind = .searchResult; node.search = .init(value)
         case "citation":
             if let citation=NativeLiveCitationRelation(value.objectValue?["citation"] ?? value) { node.kind = .citation; node.citations=[citation] }

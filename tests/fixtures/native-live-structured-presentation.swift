@@ -6,6 +6,19 @@ func block(_ id:String,_ kind:String,_ payload:[String:NativeLiveJSONValue],_ or
 func project(_ blocks:[NativeLiveCurrentPathBlock])->NativeLiveMessagePresentation {
  NativeLiveMessagePresentationProjector.project(.canonical(.init(id:"m",conversationId:"c",parentMessageId:nil,role:"assistant",status:"completed",createdAt:"",completedAt:nil,blocks:blocks)))
 }
+if CommandLine.arguments.contains("--review-json-budget") {
+ let broad=NativeLiveStructuredJSON(object(Dictionary(uniqueKeysWithValues:(0..<8).map { ("array\($0)",.array(Array(repeating:.number(1),count:32))) })))
+ precondition(broad.truncated)
+ print("Structured presentation PASS"); exit(0)
+}
+if CommandLine.arguments.contains("--review-json-semantic") {
+ for type in ["json","structured_output"] {
+  let semantic=object(["type":.string(type),"value":.number(42),"label":.string("answer")])
+  let projected=project([block("semantic","canonical_tool_result",["schema_version":.number(1),"identity":.string("canonical_tool_result"),"structured":object(["schema_version":.number(1),"parts":.array([object(["type":.string(type),"value":semantic])])])])]).nodes[0].children[0]
+  precondition(projected.json?.value == semantic)
+ }
+ print("Structured presentation PASS"); exit(0)
+}
 let citation:NativeLiveJSONValue = object(["type":.string("web_search_result_location"),"encrypted_index":.string("provider-index"),"url":.string("https://example.test/a"),"title":.string("Source"),"cited_text":.string("real quote")])
 let parts:[NativeLiveJSONValue] = [object(["type":.string("text"),"text":.string("Child text")]),object(["type":.string("json"),"value":object(["z":.null,"a":.array([.number(42),.bool(true)])])]),object(["type":.string("structured_output"),"value":object(["type":.string("structured_output"),"value":.null])]),object(["type":.string("search_result"),"value":object(["type":.string("search_result"),"source":.string("https://example.test/a"),"title":.string("Search"),"content":.array([object(["type":.string("text"),"text":.string("snippet")])])])]),object(["type":.string("citation"),"value":citation]),object(["type":.string("generated_file"),"materialization":.string("pending")]),object(["type":.string("resource_link"),"value":object(["uri":.string("ui://app"),"name":.string("Resource")])]),object(["type":.string("future_part"),"value":object(["secret":.string("DO_NOT_DUMP")])])]
 let result = project([block("ledger","tool_result",[:]),block("result","canonical_tool_result",["schema_version":.number(1),"identity":.string("canonical_tool_result"),"structured":object(["schema_version":.number(1),"parts":.array(parts),"truncated":.bool(true),"redacted":.bool(true)])])])
@@ -57,4 +70,23 @@ let minimal=NativeLiveSearchResultPresentation(object(["source":.string("https:/
 precondition(minimal.title == nil && minimal.snippet == nil && minimal.url == "https://minimal.test")
 precondition(NativeLiveCitationRelation(.null) == nil && NativeLiveCitationRelation(object(["title":.string("Not an identity")])) == nil)
 precondition(NativeLiveLinkCapability.openableURL("http://example.test") != nil)
+let localRelation=project([block("local-citation","canonical_tool_result",["schema_version":.number(1),"identity":.string("canonical_tool_result"),"structured":object(["schema_version":.number(1),"parts":.array([object(["type":.string("search_result"),"value":object(["source":.string("https://example.test/a"),"citation_relations":.array([citation])])])])])])]).nodes[0]
+precondition(localRelation.children[0].search?.citations.count == 1)
+precondition(localRelation.children[0].citationSourcesToRender?.count == 1)
+let broad=NativeLiveStructuredJSON(object(Dictionary(uniqueKeysWithValues:(0..<8).map { ("array\($0)",.array(Array(repeating:.number(1),count:32))) })))
+precondition(broad.truncated)
+for type in ["json","structured_output"] {
+ let semantic=object(["type":.string(type),"value":.number(42),"label":.string("answer")])
+ let projected=project([block("semantic","canonical_tool_result",["schema_version":.number(1),"identity":.string("canonical_tool_result"),"structured":object(["schema_version":.number(1),"parts":.array([object(["type":.string(type),"value":semantic])])])])]).nodes[0].children[0]
+ precondition(projected.json?.value == semantic)
+}
+if CommandLine.arguments.count > 1 {
+ let durable=try JSONDecoder().decode([NativeLiveCurrentPathBlock].self,from:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[1])))
+ let children=project(durable).nodes.first(where:{$0.kind == .canonicalToolResult})!.children
+ precondition(children[0].search?.snippet == "durable snippet")
+ precondition(children[1].citations[0].quote == "durable quote")
+ precondition(children[2].json?.value.objectValue?["outer"]?.objectValue?["inner"]?.numberValue == 42)
+ precondition(children[3].json?.value.objectValue?["label"]?.stringValue == "answer")
+ print("Durable structured presentation PASS")
+}
 print("Structured presentation PASS")

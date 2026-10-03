@@ -39,3 +39,14 @@ test("explicit decisions cannot expose hidden/ambient descendants or durable que
  const token=await authorizeNativeLiveConversationProjections({userId:"u",decisions:[{event,projection}],resolveAttachment:async()=>null});
  assert.deepEqual(canonicalizeNativeLiveEvents([{type:"tool_use",payload:{tool_use_id:"q",tool_name:"AskUserQuestion"}},event],token).blocks.map(b=>b.kind),["tool_use","tool_result"]);
 });
+
+import {storedContentPayload} from "../src/domains/conversation/native-live-content-contract.js";
+test("durable structured envelopes preserve small semantic values through storage rebounding",async()=>{
+ const event={type:"tool_result" as const,payload:{structured:{schema_version:1,parts:[{type:"search_result",value:{source:"https://example.test",content:[{type:"text",text:"durable snippet"}]}},{type:"citation",value:{type:"citation",citation:{type:"web_search_result_location",url:"https://example.test",cited_text:"durable quote",encrypted_index:"real-id"}}},{type:"json",value:{outer:{inner:42}}}],truncated:false,redacted:false}}};
+ const token=await authorizeNativeLiveConversationProjections({userId:"u",decisions:[{event,projection}],resolveAttachment:async()=>null});
+ const projected=canonicalizeNativeLiveEvents([event],token).blocks[1];
+ const stored=storedContentPayload(projected.kind,projected.payload ?? null) as any;
+ assert.equal(stored.structured.compatibility_payload.parts[0].value.content[0].text,"durable snippet");
+ assert.equal(stored.structured.compatibility_payload.parts[1].value.citation.cited_text,"durable quote");
+ assert.equal(stored.structured.compatibility_payload.parts[2].value.outer.inner,42);
+});
