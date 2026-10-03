@@ -176,13 +176,9 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
-                Button {
-                } label: {
-                    ComposerCircleButton(
-                        systemName: "mic.fill"
-                    )
-                }
-                .buttonStyle(.plain)
+                ComposerCircleButton(
+                    systemName: "mic.fill"
+                )
 
                 if isVoiceActionMode {
                     voiceActionButton
