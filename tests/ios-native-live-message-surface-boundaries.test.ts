@@ -390,3 +390,21 @@ test("message rows and canonical block rendering are extracted while root compos
   );
   assert.match(root, /\.refreshable \{[\s\S]*await onRefresh\(\)/);
 });
+
+test("scroll-to-latest visibility follows the real bottom anchor instead of transient geometry", () => {
+  const root = fs.readFileSync(rootPath, "utf8");
+
+  assert.match(
+    root,
+    /\.id\(bottomAnchorID\)[\s\S]*\.onScrollVisibilityChange\(\s*threshold: 0\.01/,
+  );
+  assert.match(
+    root,
+    /let awayFromBottom = !isVisible[\s\S]*isAwayFromBottom =\s*awayFromBottom/,
+  );
+  assert.doesNotMatch(root, /\.onScrollGeometryChange\(/);
+  assert.match(
+    root,
+    /if isAwayFromBottom \{[\s\S]*accessibilityLabel\("Scroll to latest"\)/,
+  );
+});
