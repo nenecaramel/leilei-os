@@ -153,6 +153,12 @@ struct NativeLiveMessageSurface: View {
                     in: messages
                 )
                 : nil
+        let canonicalRuntimeAssistantID =
+            pendingOperation == nil
+                ? canonicalAssistantAfterLatestUserID(
+                    in: messages
+                )
+                : nil
 
         return ScrollViewReader { proxy in
             ScrollView {
@@ -234,12 +240,7 @@ struct NativeLiveMessageSurface: View {
                                     ? runtimeSurface
                                     : nil,
                             activityRuntimeSurface:
-                                pendingOperation == nil
-                                    && runtimeSurface?
-                                        .foregroundTurnCompleted == true
-                                    && message.role == "assistant"
-                                    && message.id
-                                        == snapshot?.currentHeadMessageId
+                                message.id == canonicalRuntimeAssistantID
                                     ? runtimeSurface
                                     : nil,
                             onResolveReplacementInteraction:
@@ -298,12 +299,7 @@ struct NativeLiveMessageSurface: View {
 
                     if pendingOperation == nil,
                        let runtimeSurface,
-                       (
-                           !runtimeSurface.foregroundTurnCompleted
-                               || !hasCanonicalAssistantHead(
-                                   in: snapshot
-                               )
-                       ) {
+                       canonicalRuntimeAssistantID == nil {
                         NativeLiveRuntimeAssistantRow(
                             runtimeSurface: runtimeSurface,
                             onResolveInteraction:
@@ -474,16 +470,21 @@ struct NativeLiveMessageSurface: View {
         return runtimeSurface
     }
 
-    private func hasCanonicalAssistantHead(
-        in snapshot: NativeLiveCurrentPathSnapshot?
-    ) -> Bool {
-        guard let snapshot,
-              let headID = snapshot.currentHeadMessageId else {
-            return false
+    private func canonicalAssistantAfterLatestUserID(
+        in messages: [NativeLiveCurrentPathMessage]
+    ) -> String? {
+        guard let latestUserIndex = messages.lastIndex(where: {
+            $0.role == "user"
+        }) else {
+            return nil
         }
-        return snapshot.messages.contains {
-            $0.id == headID && $0.role == "assistant"
-        }
+
+        let tail = messages.suffix(
+            from: messages.index(after: latestUserIndex)
+        )
+        return tail.last(where: {
+            $0.role == "assistant"
+        })?.id
     }
 
     private func pendingPresentationIsActive(
