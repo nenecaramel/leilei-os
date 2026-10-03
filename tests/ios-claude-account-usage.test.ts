@@ -21,3 +21,33 @@ test("iOS reads Claude account usage from the authenticated system endpoint", ()
   assert.match(apiClient, /func systemClaudeUsage\(\) async throws -> SystemClaudeUsageSnapshot/);
   assert.match(apiClient, /path:\s*"\/api\/v1\/system\/claude-usage"/);
 });
+
+
+test("Claude Usage uses Context-style placeholder and fail-soft refresh states", () => {
+  const usageSheet = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Navigation/ClaudeUsageSheet.swift", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    usageSheet,
+    /if let snapshot,\s*!snapshot\.windows\.isEmpty/,
+  );
+  assert.match(
+    usageSheet,
+    /Text\("Usage"\)[\s\S]*Text\("—"\)[\s\S]*ProgressView\(value: 0\)/,
+  );
+  assert.match(
+    usageSheet,
+    /formattedDate\(snapshot\?\.observedAt\)[\s\S]*\?\? "—"/,
+  );
+  assert.doesNotMatch(
+    usageSheet,
+    /No usage windows reported yet|No Claude usage snapshot yet/,
+  );
+  assert.doesNotMatch(usageSheet, /errorMessage/);
+  assert.match(
+    usageSheet,
+    /catch \{[\s\S]*Keep the existing snapshot when refresh[\s\S]*\}/,
+  );
+});
