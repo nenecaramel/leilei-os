@@ -113,6 +113,10 @@ extension AppModel {
         nativeLiveBackgroundObservationTasks[prepareID]?.cancel()
         nativeLiveBackgroundRuntimeSurfaces[prepareID] =
             initialSurface
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            $0 == prepareID
+        }
+        nativeLiveBackgroundSurfaceOrder.append(prepareID)
 
         nativeLiveBackgroundObservationTasks[prepareID] =
             Task { @MainActor [weak self] in
@@ -120,6 +124,7 @@ extension AppModel {
                 defer {
                     self.nativeLiveBackgroundObservationTasks
                         .removeValue(forKey: prepareID)
+                    self.pruneNativeLiveBackgroundRuntimeSurfaces()
                 }
 
                 var cycle = 0
@@ -297,6 +302,36 @@ extension AppModel {
                 .removeValue(forKey: prepareID)
             nativeLiveBackgroundRuntimeSurfaces
                 .removeValue(forKey: prepareID)
+        }
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            backgroundPrepareIDs.contains($0)
+        }
+    }
+
+    private func pruneNativeLiveBackgroundRuntimeSurfaces(
+        maxCompletedCount: Int = 8
+    ) {
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            nativeLiveBackgroundRuntimeSurfaces[$0] == nil
+        }
+
+        let activePrepareIDs =
+            Set(nativeLiveBackgroundObservationTasks.keys)
+        let completedPrepareIDs =
+            nativeLiveBackgroundSurfaceOrder.filter {
+                !activePrepareIDs.contains($0)
+            }
+        let overflow =
+            max(completedPrepareIDs.count - maxCompletedCount, 0)
+
+        guard overflow > 0 else { return }
+
+        for prepareID in completedPrepareIDs.prefix(overflow) {
+            nativeLiveBackgroundRuntimeSurfaces
+                .removeValue(forKey: prepareID)
+        }
+        nativeLiveBackgroundSurfaceOrder.removeAll {
+            nativeLiveBackgroundRuntimeSurfaces[$0] == nil
         }
     }
 
