@@ -51,3 +51,29 @@ test("Claude Usage uses Context-style placeholder and fail-soft refresh states",
     /catch \{[\s\S]*Keep the existing snapshot when refresh[\s\S]*\}/,
   );
 });
+
+
+test("Claude Usage keeps refresh on the left and Done on the right", () => {
+  const usageSheet = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Navigation/ClaudeUsageSheet.swift", import.meta.url),
+    "utf8",
+  );
+
+  const refreshIndex = usageSheet.indexOf(
+    "ToolbarItem(placement: .cancellationAction)",
+  );
+  const doneIndex = usageSheet.indexOf(
+    "ToolbarItem(placement: .confirmationAction)",
+  );
+  assert.ok(refreshIndex >= 0);
+  assert.ok(doneIndex >= 0);
+  assert.ok(refreshIndex < doneIndex);
+  assert.match(
+    usageSheet,
+    /ToolbarItem\(placement: \.cancellationAction\)[\s\S]*Image\(systemName: "arrow\.clockwise"\)/,
+  );
+  assert.match(
+    usageSheet,
+    /ToolbarItem\(placement: \.confirmationAction\)[\s\S]*Button\("Done"\)/,
+  );
+});
