@@ -98,3 +98,24 @@ test("foreground completion unlocks the composer even while background observati
     /if visibleRuntimeSurface\?\.foregroundTurnCompleted == true[\s\S]*return false/,
   );
 });
+
+
+test("archive and delete can stop all runtime observers for one conversation", () => {
+  const conversationCoordination = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/ConversationCoordination.swift",
+    "utf8",
+  );
+
+  assert.match(
+    runtimeStore,
+    /func stopNativeLiveRuntimeObservations\([\s\S]*conversationID: UUID/,
+  );
+  assert.match(
+    conversationCoordination,
+    /archiveNativeLiveConversation[\s\S]*stopNativeLiveRuntimeObservations/,
+  );
+  assert.match(
+    conversationCoordination,
+    /deleteNativeLiveConversation[\s\S]*stopNativeLiveRuntimeObservations/,
+  );
+});
