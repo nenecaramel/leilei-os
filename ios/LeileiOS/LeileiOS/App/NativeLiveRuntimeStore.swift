@@ -78,7 +78,7 @@ extension AppModel {
                 if let surface = self.nativeLiveRuntimeSurface,
                    surface.prepareID == prepareID,
                    surface.foregroundTurnCompleted {
-                    if surface.hasVisibleBackgroundTasks {
+                    if surface.shouldRemainObservedAfterForeground {
                         sawBackgroundDrainCandidate = false
                     } else if sawBackgroundDrainCandidate {
                         if self.activeNativeLiveConversationID
@@ -159,7 +159,7 @@ extension AppModel {
                         refreshedActivityAnchor = true
                     }
 
-                    if surface.hasVisibleBackgroundTasks {
+                    if surface.shouldRemainObservedAfterForeground {
                         sawVisibleBackgroundTask = true
                         sawBackgroundDrainCandidate = false
                     } else if sawBackgroundDrainCandidate {
