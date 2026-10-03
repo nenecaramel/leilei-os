@@ -63,6 +63,22 @@ struct NativeLiveMessageRow: View {
                                 style: .continuous
                             )
                         )
+                        .contentShape(
+                            RoundedRectangle(
+                                cornerRadius: 18,
+                                style: .continuous
+                            )
+                        )
+                        .onTapGesture {
+                            guard isVoiceInputMessage,
+                                  voiceTranscriptText != nil else {
+                                return
+                            }
+
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                isVoiceTranscriptRevealed.toggle()
+                            }
+                        }
                         .overlay {
                             LightweightContextMenuInteraction(
                                 title: "Edit",
@@ -74,19 +90,6 @@ struct NativeLiveMessageRow: View {
                                 onEditMessage(message)
                             }
                         }
-
-                    if isVoiceInputMessage,
-                       !isVoiceTranscriptRevealed,
-                       voiceTranscriptText != nil {
-                        Button("转文字") {
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                isVoiceTranscriptRevealed = true
-                            }
-                        }
-                        .font(.system(size: 12.5, weight: .regular))
-                        .foregroundStyle(.secondary)
-                        .buttonStyle(.plain)
-                    }
 
                     messageStatus
                 }
@@ -114,9 +117,27 @@ struct NativeLiveMessageRow: View {
 
     @ViewBuilder
     private var userMessagePresentation: some View {
-        if isVoiceInputMessage,
-           !isVoiceTranscriptRevealed {
-            NativeLiveVoiceMessageBubbleVisual()
+        if isVoiceInputMessage {
+            VStack(alignment: .leading, spacing: 10) {
+                NativeLiveVoiceMessageBubbleVisual(
+                    isExpanded: isVoiceTranscriptRevealed
+                )
+
+                if isVoiceTranscriptRevealed,
+                   let voiceTranscriptText {
+                    ChatMarkdownView(
+                        text: voiceTranscriptText,
+                        fillsAvailableWidth: false,
+                        lineSpacing: 5,
+                        paragraphSpacing: 19
+                    )
+                    .transition(
+                        .opacity.combined(
+                            with: .move(edge: .top)
+                        )
+                    )
+                }
+            }
         } else {
             messageContent
         }
@@ -336,44 +357,34 @@ struct NativeLiveMessageRow: View {
 
 
 private struct NativeLiveVoiceMessageBubbleVisual: View {
-    private let barHeights: [CGFloat] = [
-        8,
-        14,
-        20,
-        11,
-        17,
-        9,
-        15,
-        21,
-        12,
-        18,
-        10,
-        16,
-    ]
+    let isExpanded: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "speaker.wave.2.fill")
-                .font(.system(size: 15, weight: .medium))
+        HStack(spacing: 12) {
+            Image(systemName: "waveform")
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(.primary)
 
-            HStack(alignment: .center, spacing: 2.5) {
-                ForEach(
-                    Array(barHeights.enumerated()),
-                    id: \.offset
-                ) { _, height in
-                    Capsule()
-                        .fill(Color.primary.opacity(0.76))
-                        .frame(width: 2.2, height: height)
-                }
-            }
+            Spacer(minLength: 4)
+
+            Image(
+                systemName:
+                    isExpanded
+                        ? "chevron.up"
+                        : "chevron.down"
+            )
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
         }
-        .frame(minWidth: 128, minHeight: 24, alignment: .leading)
+        .frame(width: 118, minHeight: 24, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Voice message")
+        .accessibilityLabel(
+            isExpanded
+                ? "Voice message, transcript shown"
+                : "Voice message, tap to show transcript"
+        )
     }
 }
-
 
 struct NativeLiveHistorySnapshotRow: View {
     let message: NativeLiveConversationHistoryMessage

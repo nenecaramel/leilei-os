@@ -273,7 +273,7 @@ const messageRowsPath =
 const messageBlocksPath =
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageBlocks.swift";
 
-test("canonical voice input is a presentation-only user bubble with local transcript reveal", () => {
+test("canonical voice input is a tappable compact bubble that expands and collapses its transcript", () => {
   const rows = readExisting(messageRowsPath);
 
   assert.match(
@@ -285,11 +285,18 @@ test("canonical voice input is a presentation-only user bubble with local transc
     /guard displayTextOverride == nil else \{\s*return false\s*\}/,
   );
   assert.match(rows, /struct NativeLiveVoiceMessageBubbleVisual: View/);
-  assert.match(rows, /Button\("转文字"\)/);
+  assert.match(rows, /Image\(systemName: "waveform"\)/);
+  assert.doesNotMatch(rows, /speaker\.wave/);
+  assert.doesNotMatch(rows, /Button\("转文字"\)/);
   assert.match(rows, /@State private var isVoiceTranscriptRevealed = false/);
+  assert.match(rows, /isVoiceTranscriptRevealed\.toggle\(\)/);
   assert.match(
     rows,
-    /if isVoiceInputMessage,[\s\S]*!isVoiceTranscriptRevealed[\s\S]*NativeLiveVoiceMessageBubbleVisual\(\)/,
+    /if isVoiceInputMessage \{[\s\S]*NativeLiveVoiceMessageBubbleVisual\([\s\S]*if isVoiceTranscriptRevealed,[\s\S]*ChatMarkdownView\(/,
+  );
+  assert.match(
+    rows,
+    /systemName:[\s\S]*isExpanded[\s\S]*"chevron\.up"[\s\S]*"chevron\.down"/,
   );
   assert.match(
     rows,
