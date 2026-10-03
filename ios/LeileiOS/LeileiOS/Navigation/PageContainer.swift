@@ -233,14 +233,24 @@ struct PageContainer: View {
                 Text("Delete")
                     .foregroundStyle(.red)
             } icon: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.red)
+                destructiveTrashIcon
             }
         }
         .disabled(
             appModel.activeNativeLiveConversationID == nil
                 || appModel.chatSendState == .sending
         )
+    }
+
+    private var destructiveTrashIcon: Image {
+        let image =
+            UIImage(systemName: "trash")?
+                .withTintColor(
+                    .systemRed,
+                    renderingMode: .alwaysOriginal
+                )
+            ?? UIImage()
+        return Image(uiImage: image)
     }
 
     private var workspaceMenu: some View {
