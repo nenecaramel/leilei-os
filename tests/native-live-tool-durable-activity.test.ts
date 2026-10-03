@@ -40,25 +40,15 @@ test("backend durable rows feed unchanged Swift historical Activity and assistan
     fs.writeFileSync(path.join(temporary, "blocks.json"), JSON.stringify(fixtures));
     const runtime = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
     fs.writeFileSync(path.join(temporary, "State.swift"), runtime.slice(runtime.indexOf("enum NativeLiveToolCallState:"), runtime.indexOf("struct NativeLiveToolCallCard:")));
-    // Compile the actual body filter; do not maintain a second test-only policy.
-    const rows = fs.readFileSync(surface + "NativeLiveMessageRows.swift", "utf8");
-    const start = rows.indexOf("let visibleBlocks = blocks.filter { block in");
-    const end = rows.indexOf("\n\n            if visibleBlocks.isEmpty", start);
-    assert.ok(start >= 0 && end > start);
+    // Exercise the shared Chat projector while Activity still reads ledger rows.
     fs.writeFileSync(path.join(temporary, "Body.swift"), `import Foundation
-func normalizedText(_ value: String?) -> String? {
-  guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
-  return value
-}
-func chatBody(_ message: NativeLiveCurrentPathMessage) -> [NativeLiveCurrentPathBlock] {
-  let blocks = message.blocks
-  ${rows.slice(start, end)}
-  return visibleBlocks
+func chatBody(_ message: NativeLiveCurrentPathMessage) -> [NativeLiveVisualNode] {
+  NativeLiveMessagePresentationProjector.project(.canonical(message)).nodes
 }
 `);
     fs.copyFileSync("tests/fixtures/native-live-tool-durable-activity.swift", path.join(temporary, "main.swift"));
     const projections = fs.readdirSync(surface).filter(name => name.startsWith("NativeLiveTurnActivityProjection") && name.endsWith(".swift")).map(name => surface + name);
-    const compiled = spawnSync("xcrun", ["swiftc", "-module-cache-path", path.join(temporary, "cache"), "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift", "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift", ...projections, path.join(temporary, "State.swift"), path.join(temporary, "Body.swift"), path.join(temporary, "main.swift"), "-o", path.join(temporary, "check")], { encoding: "utf8", timeout: 120_000 });
+    const compiled = spawnSync("xcrun", ["swiftc", "-module-cache-path", path.join(temporary, "cache"), "ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift", "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift", ...projections, ...["NativeLiveVisualNode.swift", "NativeLiveMessagePresentation.swift", "NativeLiveMessagePresentationProjection.swift"].map(name => surface + name), "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveInputMode.swift", path.join(temporary, "State.swift"), path.join(temporary, "Body.swift"), path.join(temporary, "main.swift"), "-o", path.join(temporary, "check")], { encoding: "utf8", timeout: 120_000 });
     assert.equal(compiled.status, 0, compiled.stderr);
     const ran = spawnSync(path.join(temporary, "check"), [path.join(temporary, "blocks.json")], { encoding: "utf8" });
     assert.equal(ran.status, 0, ran.stderr);
