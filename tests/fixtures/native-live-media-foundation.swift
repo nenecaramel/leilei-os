@@ -31,6 +31,11 @@ import CoreGraphics
             let media = NativeLiveAttachmentPresentationInput(entityID:"id",draftID:"d",filename:"image",mimeType:mime,kind:"file",materialization:"ready")
             precondition(media.mediaKind == .bitmap)
         }
+        let memeSticker = NativeLiveAttachmentPresentationInput(entityID:"meme",draftID:"meme",filename:"meme_0003.webp",mimeType:"image/webp",kind:"image",materialization:"ready")
+        precondition(memeSticker.isMemeSticker)
+        precondition(!NativeLiveAttachmentPresentationInput(entityID:"meme",draftID:"meme",filename:"meme_003.webp",mimeType:"image/webp",kind:"image",materialization:"ready").isMemeSticker)
+        precondition(!NativeLiveAttachmentPresentationInput(entityID:"meme",draftID:"meme",filename:"meme_0003.png",mimeType:"image/png",kind:"image",materialization:"ready").isMemeSticker)
+        precondition(!NativeLiveAttachmentPresentationInput(entityID:"meme",draftID:"meme",filename:"other_0003.webp",mimeType:"image/webp",kind:"image",materialization:"ready").isMemeSticker)
         precondition(NativeLiveAttachmentPresentationInput(entityID:"id",draftID:"d",filename:"art.svg",mimeType:"image/svg+xml",kind:"image",materialization:"ready").mediaKind == .svg)
         precondition(NativeLiveAttachmentPresentationInput(entityID:"id",draftID:"d",filename:"x.dat",mimeType:"application/x-future",kind:"file",materialization:"ready").mediaKind == .file)
         let name = String(repeating:"x",count:300) + ".pdf"

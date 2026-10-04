@@ -68,3 +68,32 @@ test("capped gallery entry remains interactive independent of thumbnail load and
   assert.doesNotMatch(capped,/allowsHitTesting\(false\)/);
   assert.match(source,/case \.openFile: open\(\)/);
 });
+
+
+test("single meme webp uses a bounded sticker layout without changing ordinary image grids", () => {
+  const presentation = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaPresentation.swift",
+    "utf8",
+  );
+  const renderer = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift",
+    "utf8",
+  );
+
+  assert.match(
+    presentation,
+    /\^meme_\[0-9\]\{4,32\}\\\.webp\$/,
+  );
+  assert.match(
+    renderer,
+    /group\.count == 1[\s\S]*input\.isMemeSticker[\s\S]*stickerImage:true/,
+  );
+  assert.match(
+    renderer,
+    /private var stickerTile:[\s\S]*\.scaledToFit\(\)[\s\S]*maxWidth:220[\s\S]*maxHeight:220/,
+  );
+  assert.match(
+    renderer,
+    /NativeLiveMediaGrid\(count:group\.count\)/,
+  );
+});
