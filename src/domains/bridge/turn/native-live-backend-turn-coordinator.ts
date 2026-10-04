@@ -152,7 +152,7 @@ export type NativeLiveFinalizeResult =
     }
   | {
       ok: true;
-      outcome: "wake_quiet" | "wake_stale" | "wake_failed";
+      outcome: "wake_quiet" | "wake_stale" | "wake_failed" | "wake_discarded";
       requestId: string;
       operation: "wake";
       conversationId: string;
