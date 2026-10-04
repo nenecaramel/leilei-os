@@ -82,6 +82,9 @@ struct NativeLiveConversationPresentationAssembler {
             var divider = NativeLiveConversationRowPresentation(id:"history:\(history.conversationId):fork",user:nil,userBacking:nil,assistant:nil)
             divider.isHistoryDivider = true; rows.append(divider)
         }
+        let canonicalUserMessageIDs = Set(
+            messages.filter { $0.role == "user" }.map(\.id)
+        )
         var consumedPrepare = Set<String>()
         for message in messages {
             if message.role == "user" {
@@ -103,7 +106,7 @@ struct NativeLiveConversationPresentationAssembler {
                 if let prepare, previous["turn:prepare:\(prepare)"] != nil { stable = "turn:prepare:\(prepare)" }
                 if let prepare, let pendingIDs, prepare == binding?.prepareID { stable = pendingIDs.assistant }
                 canonicalIDs[message.id] = stable
-                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,now:now)
+                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now)
                 rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
                 if let prepare { consumedPrepare.insert(prepare) }
             }
@@ -114,7 +117,7 @@ struct NativeLiveConversationPresentationAssembler {
                 rows.append(.init(id:ids.user,user:NativeLiveMessagePresentationProjector.project(.send(messageID:ids.user,text:operation.sendText ?? "",attachments:operation.presentationAttachments,inputMode:operation.inputMode),presentationNamespace:ids.user),userBacking:nil,assistant:nil))
             }
             if !rows.contains(where: { $0.id == ids.assistant }) {
-                let turn = makeTurn(id:ids.assistant,message:nil,runtime:runtime,pending:operation,identities:identities,now:now)
+                let turn = makeTurn(id:ids.assistant,message:nil,runtime:runtime,pending:operation,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now)
                 rows.append(.init(id:ids.assistant,user:nil,userBacking:nil,assistant:turn))
             }
         } else if let runtime, !consumedPrepare.contains(runtime.prepareID), let user = runtime.userMessageID,
@@ -124,7 +127,7 @@ struct NativeLiveConversationPresentationAssembler {
             let stable = identities.binding(prepareID:runtime.prepareID)?.stableAssistantID ?? "turn:prepare:\(runtime.prepareID)"
             // An active retry/edit owns its parent slot. Old siblings belong only to history.
             rows.removeAll { $0.assistant?.parentUserMessageID == user }
-            var turn = makeTurn(id:stable,message:nil,runtime:runtime,pending:nil,identities:identities,now:now)
+            var turn = makeTurn(id:stable,message:nil,runtime:runtime,pending:nil,identities:identities,canonicalUserMessageIDs:canonicalUserMessageIDs,now:now)
             turn.hasCanonicalRetryTarget = snapshot?.messages.contains(where:{ $0.id == user && $0.role == "user" }) == true
             rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
         }
@@ -144,7 +147,8 @@ struct NativeLiveConversationPresentationAssembler {
     }
 
     private mutating func makeTurn(id: String,message: NativeLiveCurrentPathMessage?,runtime: NativeLiveRuntimeSurfaceState?,
-        background: NativeLiveRuntimeSurfaceState? = nil,pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,now: Date) -> NativeLiveAssistantTurnPresentation {
+        background: NativeLiveRuntimeSurfaceState? = nil,pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,
+        canonicalUserMessageIDs: Set<String>,now: Date) -> NativeLiveAssistantTurnPresentation {
         let prepare = runtime?.prepareID ?? message?.activity?.prepareId
         let binding = prepare.flatMap { identities.binding(prepareID:$0) } ?? pending.flatMap { identities.bindings[$0.id] }
         let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? message?.id ?? generationOwners[id] ?? id
@@ -220,8 +224,11 @@ struct NativeLiveConversationPresentationAssembler {
         else if let last { body = last.bodyPresentation }
         else { body = NativeLiveMessagePresentationProjector.project(.streaming(""),presentationNamespace:id) }
         let header = header(phase:phase,duration:duration,count:activity.activityCount)
+        let canonicalParentUserMessageID = message?.parentMessageId.flatMap {
+            canonicalUserMessageIDs.contains($0) ? $0 : nil
+        }
         var turn = NativeLiveAssistantTurnPresentation(stableID:id,canonicalMessageID:message?.id,prepareID:prepare,requestID:runtime?.requestID ?? binding?.requestID,
-            parentUserMessageID:message?.parentMessageId ?? runtime?.userMessageID ?? binding?.userMessageID,
+            parentUserMessageID:canonicalParentUserMessageID ?? runtime?.userMessageID ?? binding?.userMessageID,
             phase:phase,timestamp:timestamp,bodyPresentation:body,activityProjection:activity,duration:duration,header:header,failure:phase == .failed ? "Failed" : nil)
         turn.providerMessageStartedAt = providerStart
         turn.hasAuthoritativeDuration = authoritativeDuration
