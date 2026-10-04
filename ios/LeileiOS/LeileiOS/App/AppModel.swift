@@ -89,6 +89,8 @@ final class AppModel: ObservableObject {
     var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
     var nativeLiveRuntimeObservationTask: Task<Void, Never>?
+    var nativeLiveConversationHeadObservationTask:
+        Task<Void, Never>?
     var nativeLiveBackgroundObservationTasks:
         [String: Task<Void, Never>] = [:]
     var nativeLiveBackgroundSurfaceOrder: [String] = []
@@ -153,6 +155,8 @@ final class AppModel: ObservableObject {
         currentHeadMindWriteRefreshTask = nil
         nativeLiveRuntimeObservationTask?.cancel()
         nativeLiveRuntimeObservationTask = nil
+        nativeLiveConversationHeadObservationTask?.cancel()
+        nativeLiveConversationHeadObservationTask = nil
         for task in nativeLiveBackgroundObservationTasks.values {
             task.cancel()
         }
