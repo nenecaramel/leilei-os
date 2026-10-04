@@ -390,6 +390,28 @@ export class ClaudeEventNormalizer {
             {...normalizeToolResultPayload(block), provenance:provenance(raw, block.type, {tool_use_id:block.tool_use_id})},
           );
         }
+
+        const providerSearchParts =
+          !raw.parent_tool_use_id
+          && !raw.parent_agent_id
+          && !messageProvenance?.parent_tool_use_id
+          && !messageProvenance?.parent_agent_id
+            ? normalizeProviderSearchParts(block)
+            : [];
+        if (providerSearchParts.length > 0) {
+          emit(
+            "search_result",
+            this.sessionId,
+            {
+              provenance: provenance(raw, block.type),
+              structured: structuredToolOutput(providerSearchParts),
+              ...(typeof block.tool_use_id === "string"
+                ? { tool_use_id: block.tool_use_id }
+                : {}),
+            },
+          );
+        }
+
         if (["container_upload", "image", "document", "search_result", "resource", "resource_link"].includes(block.type)) {
           emit("runtime", this.sessionId, {kind:"provider_content_candidate", provenance:provenance(raw, block.type), compatibility:boundedOutput(block)});
         } else if (block.type === "fallback") {
@@ -837,6 +859,60 @@ function boundedResourceLinkMetadata(value) {
   } catch {
     return null;
   }
+}
+
+function normalizeProviderSearchParts(block) {
+  const candidates =
+    block?.type === "search_result"
+      ? [block]
+      : Array.isArray(block?.content)
+        ? block.content
+        : [];
+
+  const parts = [];
+  for (const value of candidates.slice(0, 32)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      continue;
+    }
+    const type = safeString(value.type);
+    if (type !== "web_search_result" && type !== "search_result") {
+      continue;
+    }
+
+    const title = safeString(value.title);
+    const url = safeString(value.url);
+    const source = safeString(value.source) ?? url;
+    let snippet = safeString(value.snippet);
+
+    if (!snippet && typeof value.content === "string") {
+      snippet = value.content;
+    } else if (!snippet && Array.isArray(value.content)) {
+      const texts = value.content
+        .slice(0, 16)
+        .map((item) =>
+          item && typeof item === "object" && !Array.isArray(item)
+            ? safeString(item.text)
+            : null,
+        )
+        .filter(Boolean);
+      if (texts.length > 0) {
+        snippet = texts.join("\n");
+      }
+    }
+
+    if (!title && !url && !source && !snippet) {
+      continue;
+    }
+
+    parts.push({
+      type: "search_result",
+      ...(title ? { title: title.slice(0, 2_000) } : {}),
+      ...(source ? { source: source.slice(0, 8_000) } : {}),
+      ...(url ? { url: url.slice(0, 8_000) } : {}),
+      ...(snippet ? { snippet: snippet.slice(0, 8_000) } : {}),
+    });
+  }
+  return parts;
 }
 
 const TOOL_RESULT_TEXT_BUDGET_CHARS = 48_000;

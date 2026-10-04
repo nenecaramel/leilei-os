@@ -10,6 +10,7 @@ export type NativeLiveNormalizedEventType =
   | "partial_text"
   | "tool_use"
   | "tool_result"
+  | "search_result"
   | "attachment"
   | "task"
   | "result"
@@ -67,6 +68,53 @@ export function canonicalizeNativeLiveEvents(
       }
       finalText = stringValue(payload.final_text) ?? finalText;
       if (!backendConversationProjection(trustedProjections,event)) continue;
+    }
+
+    if (event.type === "search_result") {
+      const provenance = payload.provenance as
+        Record<string, unknown> | undefined;
+      const structured = payload.structured as
+        Record<string, unknown> | undefined;
+      const parts =
+        structured?.schema_version === 1
+        && Array.isArray(structured.parts)
+          ? structured.parts
+          : [];
+
+      const isTopLevel =
+        !provenance?.parent_tool_use_id
+        && !provenance?.parent_agent_id;
+      const isSearchOnly =
+        parts.length > 0
+        && parts.every((part) =>
+          Boolean(
+            part
+            && typeof part === "object"
+            && !Array.isArray(part)
+            && (part as Record<string, unknown>).type === "search_result",
+          )
+        );
+
+      if (isTopLevel && isSearchOnly) {
+        blocks.push({
+          kind: "canonical_tool_result",
+          rawType: "search_result",
+          payload: {
+            schema_version: 1,
+            identity: "canonical_tool_result",
+            refs: [],
+            projection_reason: "provider_visible_search",
+            provenance: boundCanonicalPayload(
+              payload.provenance ?? {
+                provider: "claude_code",
+                raw_type: "search_result",
+              },
+            ).compatibility_payload,
+            structured: boundCanonicalPayload(structured),
+          },
+        });
+      }
+      continue;
     }
 
     if (event.type === "text") {

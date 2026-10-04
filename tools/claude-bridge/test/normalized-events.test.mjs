@@ -1372,3 +1372,85 @@ test("first main provider message_start is timing metadata once per turn, includ
   assert.equal(remaining.at(-1).payload.duration_ms, 17000);
   assert.equal(new ClaudeEventNormalizer(base).normalize(start()).length, 1);
 });
+
+
+test("normalizes top-level provider web search results as durable structured search", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "assistant",
+      session_id: "s",
+      message: {
+        content: [{
+          type: "web_search_tool_result",
+          tool_use_id: "server-search",
+          content: [{
+            type: "web_search_result",
+            url: "https://example.test/news",
+            title: "Example result",
+            encrypted_content: "DO_NOT_PERSIST",
+          }],
+        }],
+      },
+    }],
+    base,
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["search_result", "runtime"],
+  );
+  const search = events[0];
+  assert.equal(search.payload.structured.schema_version, 1);
+  assert.deepEqual(
+    search.payload.structured.parts,
+    [{
+      type: "search_result",
+      value: {
+        type: "search_result",
+        title: "Example result",
+        source: "https://example.test/news",
+        url: "https://example.test/news",
+      },
+    }],
+  );
+  assert.doesNotMatch(
+    JSON.stringify(search),
+    /DO_NOT_PERSIST|encrypted_content/,
+  );
+});
+
+test("does not project nested provider search results into conversation content", () => {
+  const events = normalizeClaudeEvents(
+    [{
+      type: "assistant",
+      session_id: "s",
+      parent_tool_use_id: "subagent-tool",
+      parent_agent_id: "researcher",
+      message: {
+        content: [{
+          type: "web_search_tool_result",
+          tool_use_id: "nested-search",
+          content: [{
+            type: "web_search_result",
+            url: "https://example.test/private",
+            title: "Nested result",
+          }],
+        }],
+      },
+    }],
+    base,
+  );
+
+  assert.equal(
+    events.some((event) => event.type === "search_result"),
+    false,
+  );
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === "runtime"
+        && event.payload?.kind === "provider_execution",
+    ),
+    true,
+  );
+});
