@@ -175,7 +175,9 @@ export async function readTurn(
       throw new Error("Finalized assistant message was not found.");
     }
 
-    const blockRows = await this.db.select({
+    const blockRows = messageRows.length === 0
+      ? []
+      : await this.db.select({
       id: conversationContentBlocks.id,
       messageId: conversationContentBlocks.messageId,
       ordinal: conversationContentBlocks.ordinal,
@@ -200,7 +202,8 @@ export async function readTurn(
       });
       blocksByMessage.set(block.messageId, blocks);
     }
-    const message = (value: typeof userRow): NativeLiveMessage => {
+    type TurnMessageRow = (typeof messageRows)[number];
+    const message = (value: TurnMessageRow): NativeLiveMessage => {
       if (value.role !== "user" && value.role !== "assistant") throw new Error("Unsupported turn message role.");
       return {
         id: value.id,
