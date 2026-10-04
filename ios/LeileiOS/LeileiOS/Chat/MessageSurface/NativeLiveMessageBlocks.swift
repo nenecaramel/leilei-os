@@ -79,14 +79,18 @@ struct NativeLiveVisualNodeView: View {
         switch NativeLiveMessageRendererRegistry.renderer(for: node) {
         case .markdown:
             if node.rendersInlineChildren, let model = node.markdown {
-                NativeLiveMarkdownRenderer(model: model, role: role)
-                    .contextMenu {
-                        ForEach(node.children.filter { $0.math != nil }) { child in
-                            Button("Copy math: \(String((child.math?.latex ?? "").prefix(30)))") {
-                                UIPasteboard.general.string = child.math?.latex
-                            }
+                NativeLiveInlineMathParagraphRenderer(
+                    node: node,
+                    model: model,
+                    role: role
+                )
+                .contextMenu {
+                    ForEach(node.children.filter { $0.math != nil }) { child in
+                        Button("Copy math: \(String((child.math?.latex ?? "").prefix(30)))") {
+                            UIPasteboard.general.string = child.math?.latex
                         }
                     }
+                }
             } else if !node.children.isEmpty {
                 NativeLiveVisualNodesView(nodes: node.children, role: role)
             } else if let model = node.markdown {
