@@ -35,6 +35,7 @@ test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start 
   const handle = await createAgentSdkTurnHandle({
     prompt: "cold start message",
     environment: {},
+    streaming: true,
     mcpStartupTimeoutMs: 2_000,
     queryOptions: {
       mcpServers: {
@@ -63,6 +64,9 @@ test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start 
         async reconnectMcpServer(name: string) {
           assert.equal(name, "leileios");
           reconnectCalls += 1;
+          if (reconnectCalls < 3) {
+            throw new Error("database is still waking");
+          }
         },
         async *[Symbol.asyncIterator]() {
           for await (const message of prompt) {
@@ -76,6 +80,7 @@ test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start 
 
   assert.equal(queryCalls, 1);
   assert.equal(reconnectCalls, 3);
+  assert.equal(promptMessages.length, 0);
 
   const result = await handle.start();
 
