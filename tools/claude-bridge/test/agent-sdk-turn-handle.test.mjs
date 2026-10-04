@@ -875,6 +875,7 @@ test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the
   const handle = await createAgentSdkTurnHandle({
     prompt: "cold start message",
     environment: {},
+    streaming: true,
     mcpStartupTimeoutMs: 2_000,
     queryOptions: {
       mcpServers: {
@@ -903,6 +904,9 @@ test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the
         async reconnectMcpServer(name) {
           assert.equal(name, "leileios");
           reconnectCalls += 1;
+          if (reconnectCalls < 3) {
+            throw new Error("database is still waking");
+          }
         },
         async *[Symbol.asyncIterator]() {
           for await (const message of prompt) {
@@ -918,6 +922,7 @@ test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the
 
   assert.equal(queryCalls, 1);
   assert.equal(reconnectCalls, 3);
+  assert.equal(promptMessages.length, 0);
 
   const result = await handle.start();
   assert.equal(result.providerSessionId, "provider-mcp-cold-start");
