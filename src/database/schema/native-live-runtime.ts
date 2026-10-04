@@ -29,6 +29,7 @@ export type NativeLiveRuntimeEventType =
   | "partial_text"
   | "tool_use"
   | "tool_result"
+  | "search_result"
   | "attachment"
   | "task"
   | "result"
@@ -92,7 +93,7 @@ export const nativeLiveRuntimeEvents = pgTable(
     ),
     check(
       "native_live_runtime_events_type_allowed",
-      sql`${table.eventType} IN ('session', 'text', 'partial_text', 'tool_use', 'tool_result', 'attachment', 'task', 'result', 'error', 'runtime')`,
+      sql`${table.eventType} IN ('session', 'text', 'partial_text', 'tool_use', 'tool_result', 'search_result', 'attachment', 'task', 'result', 'error', 'runtime')`,
     ),
     check(
       "native_live_runtime_events_provider_session_not_blank",
