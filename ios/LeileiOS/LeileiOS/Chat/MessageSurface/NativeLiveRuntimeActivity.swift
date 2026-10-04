@@ -12,11 +12,16 @@ struct NativeLiveTurnActivityView: View {
 
     @Binding var expansion: NativeLiveMessageUIStateStore.State
     let header: String
+    let murmurText: String?
+
+    @State private var isShowingMurmur = false
 
     init(
         projection: NativeLiveTurnActivityProjection,
         timestampText: String? = nil,
-        header: String, expansion: Binding<NativeLiveMessageUIStateStore.State>,
+        header: String,
+        murmurText: String? = nil,
+        expansion: Binding<NativeLiveMessageUIStateStore.State>,
         onResolveInteraction:
             ((
                 NativeLiveRuntimeInteractionSnapshot,
@@ -24,60 +29,101 @@ struct NativeLiveTurnActivityView: View {
             ) async throws -> Void)?
     ) {
         self.projection = projection
-        self.header = header; self._expansion = expansion
+        self.header = header
+        self.murmurText = murmurText
+        self._expansion = expansion
         self.timestampText = timestampText
         self.onResolveInteraction = onResolveInteraction
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Button {
-                expansion.toggleActivity()
-            } label: {
-                HStack(
-                    alignment: .firstTextBaseline,
-                    spacing: 12
-                ) {
-                    if let timestampText {
-                        Text(timestampText)
-                            .font(.system(size: 13.5))
-                            .tracking(0.12)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(
-                                horizontal: true,
-                                vertical: false
-                            )
+            HStack(
+                alignment: .firstTextBaseline,
+                spacing: 8
+            ) {
+                Button {
+                    expansion.toggleActivity()
+                } label: {
+                    HStack(
+                        alignment: .firstTextBaseline,
+                        spacing: 12
+                    ) {
+                        if let timestampText {
+                            Text(timestampText)
+                                .font(.system(size: 13.5))
+                                .tracking(0.12)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(
+                                    horizontal: true,
+                                    vertical: false
+                                )
+                        }
+
+                        if !header.isEmpty {
+                            Text(header)
+                                .font(.system(
+                                    size: 13.5,
+                                    weight: .medium
+                                ))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 8)
                     }
-
-                    Text(header)
-                        .font(.system(
-                            size: 13.5,
-                            weight: .medium
-                        ))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 8)
-
-                    Image(
-                        systemName:
-                            effectiveExpanded
-                                ? "chevron.down"
-                                : "chevron.right"
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
                     )
-                    .font(.system(
-                        size: 10,
-                        weight: .semibold
-                    ))
-                    .foregroundStyle(.tertiary)
+                    .contentShape(Rectangle())
                 }
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: .leading
-                )
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .disabled(header.isEmpty)
+
+                if normalizedMurmurText != nil {
+                    Button {
+                        isShowingMurmur = true
+                    } label: {
+                        Image(systemName: "bubble.left")
+                            .font(.system(
+                                size: 12.5,
+                                weight: .medium
+                            ))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Murmur")
+                }
+
+                if !header.isEmpty {
+                    Button {
+                        expansion.toggleActivity()
+                    } label: {
+                        Image(
+                            systemName:
+                                effectiveExpanded
+                                    ? "chevron.down"
+                                    : "chevron.right"
+                        )
+                        .font(.system(
+                            size: 10,
+                            weight: .semibold
+                        ))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        effectiveExpanded
+                            ? "Collapse activity"
+                            : "Expand activity"
+                    )
+                }
             }
-            .buttonStyle(.plain)
 
             if effectiveExpanded {
                 VStack(alignment: .leading, spacing: 9) {
@@ -172,10 +218,50 @@ struct NativeLiveTurnActivityView: View {
                 .padding(.top, 4)
             }
         }
+        .sheet(isPresented: $isShowingMurmur) {
+            if let text = normalizedMurmurText {
+                NativeLiveMurmurSheet(text: text)
+            }
+        }
     }
 
-    private var effectiveExpanded: Bool { expansion.isActivityExpanded }
+    private var normalizedMurmurText: String? {
+        guard let murmurText else { return nil }
+        let value = murmurText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return value.isEmpty ? nil : value
+    }
 
+    private var effectiveExpanded: Bool {
+        !header.isEmpty && expansion.isActivityExpanded
+    }
+
+}
+
+private struct NativeLiveMurmurSheet: View {
+    let text: String
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(text)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
+            }
+            .navigationTitle("Murmur")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
 }
 
 private struct NativeLiveLifecycleActivityRow: View {
