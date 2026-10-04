@@ -27,6 +27,7 @@ import {
   deleteNativeLiveConversationHandler,
   readNativeLiveCurrentPathHandler,
   readNativeLiveConversationRuntimeMetadataHandler,
+  waitNativeLiveConversationHeadHandler,
 } from "./conversations.js";
 import {
   createNativeLiveManualCompactHandler,
@@ -125,6 +126,12 @@ export function createNativeLiveApiRouter(
     router.get(
       "/conversations/:conversationId/current-path",
       readNativeLiveCurrentPathHandler(dependencies),
+    );
+  }
+  if (dependencies.conversationHeadWaitService) {
+    router.post(
+      "/conversations/:conversationId/head/wait",
+      waitNativeLiveConversationHeadHandler(dependencies),
     );
   }
   if (dependencies.conversationRuntimeMetadataReader) {
