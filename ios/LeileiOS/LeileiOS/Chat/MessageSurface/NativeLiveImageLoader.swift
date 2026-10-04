@@ -2,7 +2,7 @@ import Foundation
 import ImageIO
 import CoreGraphics
 
-final class NativeLiveDecodedImage: @unchecked Sendable {
+nonisolated final class NativeLiveDecodedImage: @unchecked Sendable {
     let image: CGImage
     let aspectRatio: Double
     init(_ image: CGImage) { self.image = image; aspectRatio = Double(image.width)/Double(image.height) }
