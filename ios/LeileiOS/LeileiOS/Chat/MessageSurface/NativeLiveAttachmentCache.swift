@@ -28,9 +28,20 @@ actor NativeLiveAttachmentBytesCache {
         self.limit = limit; self.diskRoot = diskRoot; self.diskLimit = diskLimit
     }
 
+    func cached(key: NativeLiveAttachmentCacheKey) throws -> Data? {
+        if let data = bytesByKey[key] {
+            touch(key)
+            return data
+        }
+        if let data = try readDisk(key) {
+            storeMemory(data,key:key)
+            return data
+        }
+        return nil
+    }
+
     func bytes(key: NativeLiveAttachmentCacheKey, fetch: @escaping @Sendable () async throws -> Data) async throws -> Data {
-        if let data = bytesByKey[key] { touch(key); return data }
-        if let data = try readDisk(key) { storeMemory(data,key:key); return data }
+        if let data = try cached(key:key) { return data }
         if let task = inFlight[key] { return try await task.value }
         let task = Task {
             let data = try await fetch()

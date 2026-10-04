@@ -6,6 +6,20 @@ extension AppModel {
         guard isAuthenticated, let id = input.entityID else { throw NativeLiveMediaError.unavailable }
         let account = accountEmail
         let scope = config.apiBaseURL.absoluteString + "|" + (account ?? "authenticated")
+
+        // Reuse already-verified original bytes before asking the backend for
+        // another short-lived download capability. Gallery / inline / file
+        // preview must share the same attachment cache.
+        if let canonicalKey = try? input.cacheKey(scope:scope),
+           let cached = try await nativeLiveAttachmentBytesCache.cached(
+               key:canonicalKey
+           ) {
+            guard isAuthenticated, accountEmail == account else {
+                throw NativeLiveMediaError.unavailable
+            }
+            return .init(data:cached,key:canonicalKey)
+        }
+
         let slot = try await api.nativeLiveAttachmentDownloadSlot(attachmentID:id)
         guard slot.attachment.attachmentId == id, slot.download.method == "GET",
               let url = URL(string:slot.download.url), ["https", "http"].contains(url.scheme ?? "") else { throw NativeLiveMediaError.unavailable }
