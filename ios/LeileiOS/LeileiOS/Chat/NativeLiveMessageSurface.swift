@@ -21,6 +21,7 @@ struct NativeLiveMessageSurface: View {
     let onLoadOlder: () async -> Void
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
+    let onDismissKeyboard: () -> Void
 
     @EnvironmentObject private var appModel: AppModel
     private let bottomAnchorID = "native-live-chat-bottom"
@@ -148,6 +149,21 @@ struct NativeLiveMessageSurface: View {
                 await onRefresh()
             }
             .coordinateSpace(name:"native-live-viewport")
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                SpatialTapGesture(
+                    count: 1,
+                    coordinateSpace: .named("native-live-viewport")
+                )
+                .onEnded { value in
+                    guard !rowFrames.values.contains(where: {
+                        $0.contains(value.location)
+                    }) else {
+                        return
+                    }
+                    onDismissKeyboard()
+                }
+            )
             .scrollPosition($scrollPosition)
             .onPreferenceChange(NativeLiveRowFramesKey.self) { frames in
                 if let operation = pendingOperation, !operation.isSend { captureReplacementAnchor(operation) }
