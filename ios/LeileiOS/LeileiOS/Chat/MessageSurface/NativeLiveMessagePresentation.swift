@@ -162,6 +162,14 @@ struct NativeLiveMessagePresentation: Equatable, Sendable {
     let role: String
     let nodes: [NativeLiveVisualNode]
 
+    // One direct rich render list avoids reparenting children when durable text blocks split.
+    // Original nodes remain the canonical source/copy/citation authority.
+    var renderNodes: [NativeLiveVisualNode] {
+        guard role == "assistant" else { return nodes }
+        return nodes.flatMap { node in
+            node.kind == .markdown && node.presentationID != nil && !node.children.isEmpty ? node.children : [node]
+        }
+    }
     var copyText: String? {
         let text = nodes.filter { $0.canonicalIdentity == "text" }.compactMap(\.text).joined(separator: "\n\n")
         return text.isEmpty ? nil : text

@@ -15,9 +15,11 @@ struct NativeLiveConversationScrollState: Equatable {
     mutating func returnToBottom() { followLatest = true; isNearBottom = true }
     mutating func sentNewMessage() { returnToBottom() }
     // Menus, sheets and taps do not alter follow intent; only geometry/explicit action do.
-    func preservedAnchor(before: Anchor?, survivingIDs: Set<String>) -> Anchor? {
-        guard let before,survivingIDs.contains(before.stableID),before.relativeOffset.isFinite else { return nil }
-        return before
+    func preservedAnchor(before: Anchor?, survivingIDs: Set<String>, replacementID: String? = nil) -> Anchor? {
+        guard let before,before.relativeOffset.isFinite else { return nil }
+        if survivingIDs.contains(before.stableID) { return before }
+        guard let replacementID,survivingIDs.contains(replacementID) else { return nil }
+        return .init(stableID:replacementID,relativeOffset:before.relativeOffset)
     }
 }
 

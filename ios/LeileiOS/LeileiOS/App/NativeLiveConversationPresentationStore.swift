@@ -8,7 +8,9 @@ extension AppModel {
         for row in nativeLiveConversationRows {
             if let turn = row.assistant { nativeLiveMessageUIState[row.id].pendingInputChanged(turn.hasPendingInput) }
         }
-        nativeLiveMessageUIState.prune(retaining:Set(nativeLiveConversationRows.map(\.id)))
+        let liveIDs = Set(nativeLiveConversationRows.map(\.id))
+        nativeLiveMessageUIState.prune(retaining:liveIDs)
+        nativeLiveTurnIdentities.prune(retaining:liveIDs)
     }
     func bindNativeLivePresentation(_ operation: NativeLivePendingOperation?, prepared: NativeLivePrepareResult) {
         guard let operation else { return }

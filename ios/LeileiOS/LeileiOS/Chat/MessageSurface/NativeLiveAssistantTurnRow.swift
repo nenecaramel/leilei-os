@@ -14,11 +14,11 @@ struct NativeLiveAssistantTurnRow: View {
         VStack(alignment:.leading,spacing:6) {
             if !turn.header.isEmpty {
                 NativeLiveTurnActivityView(projection:turn.activityProjection,
-                    timestampText:MessageTimestampFormatter.string(from:turn.timestamp),header:turn.header,
+                    timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,
                     expansion:Binding(get:{ appModel.nativeLiveMessageUIState[turn.id] },set:{ appModel.nativeLiveMessageUIState[turn.id] = $0 }),
                     onResolveInteraction:onResolveInteraction)
-            } else {
-                Text(MessageTimestampFormatter.string(from:turn.timestamp)).font(.system(size:13.5)).foregroundStyle(.secondary)
+            } else if let timestamp = turn.timestamp {
+                Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:13.5)).foregroundStyle(.secondary)
             }
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
             MindWriteIndicator(items:mindWrites)

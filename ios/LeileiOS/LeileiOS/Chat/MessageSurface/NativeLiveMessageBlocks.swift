@@ -6,7 +6,7 @@ struct NativeLiveMessagePresentationView: View {
 
     var body: some View {
         VStack(alignment:.leading,spacing:12) {
-            NativeLiveVisualNodesView(nodes: presentation.nodes, role: presentation.role)
+            NativeLiveVisualNodesView(nodes: presentation.renderNodes, role: presentation.role)
             NativeLiveCitationSourcesView(sources:presentation.citationSources)
         }
     }

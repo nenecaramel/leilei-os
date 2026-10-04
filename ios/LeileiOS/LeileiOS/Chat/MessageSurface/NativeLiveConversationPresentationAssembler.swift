@@ -4,6 +4,7 @@ import Foundation
 struct NativeLiveConversationPresentationAssembler {
     private var previous: [String: NativeLiveAssistantTurnPresentation] = [:]
     private var generationOwners: [String:String] = [:]
+    private var retainedUsers: [String:NativeLiveConversationRowPresentation] = [:]
     private var canonicalIDs: [String:String] = [:]
     func pendingIDs(_ operation: NativeLivePendingOperation, snapshot: NativeLiveCurrentPathSnapshot?, identities: NativeLiveTurnIdentityCoordinator) -> (user:String,assistant:String) {
         let ids = identities.pendingIDs(operation,snapshot:snapshot)
@@ -34,6 +35,12 @@ struct NativeLiveConversationPresentationAssembler {
            let user = runtime.userMessageID, let index = messages.firstIndex(where:{ $0.role == "user" && $0.id == user }) {
             messages = Array(messages.prefix(index+1))
         }
+        let recoveredBinding = runtime.flatMap { identities.binding(prepareID:$0.prepareID) }
+        if pendingOperation == nil, let runtime, !messages.contains(where:{ $0.id == runtime.userMessageID }),
+           let target = recoveredBinding?.targetUserMessageID,
+           let index = messages.firstIndex(where:{ $0.role == "user" && $0.id == target }) {
+            messages = Array(messages.prefix(index))
+        }
         let pendingIDs = pendingOperation.map { self.pendingIDs($0,snapshot:snapshot,identities:identities) }
         var rows: [NativeLiveConversationRowPresentation] = []
         if pendingOperation?.isDraftConversation != true, let history = historySnapshot,
@@ -60,12 +67,14 @@ struct NativeLiveConversationPresentationAssembler {
                 rows.append(.init(id:stable,user:presentation,userBacking:message,assistant:nil))
             } else {
                 let prepare = message.activity?.prepareId
-                let surface = prepare.flatMap { backgroundRuntimeSurfaces[$0] } ?? (prepare == runtime?.prepareID ? runtime : nil)
+                let foreground = prepare == runtime?.prepareID ? runtime : nil
+                let background = prepare.flatMap { backgroundRuntimeSurfaces[$0] }
+                let surface = foreground ?? background
                 var stable = canonicalIDs[message.id] ?? identities.assistantID(message)
                 if let prepare, previous["turn:prepare:\(prepare)"] != nil { stable = "turn:prepare:\(prepare)" }
                 if let prepare, let pendingIDs, prepare == binding?.prepareID { stable = pendingIDs.assistant }
                 canonicalIDs[message.id] = stable
-                let turn = makeTurn(id:stable,message:message,runtime:surface,pending:nil,identities:identities,now:now)
+                let turn = makeTurn(id:stable,message:message,runtime:surface,background:foreground != nil ? background : nil,pending:nil,identities:identities,now:now)
                 rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
                 if let prepare { consumedPrepare.insert(prepare) }
             }
@@ -80,16 +89,20 @@ struct NativeLiveConversationPresentationAssembler {
                 rows.append(.init(id:ids.assistant,user:nil,userBacking:nil,assistant:turn))
             }
         } else if let runtime, !consumedPrepare.contains(runtime.prepareID), let user = runtime.userMessageID,
-                  messages.contains(where: { $0.role == "user" && $0.id == user }) {
+                  messages.contains(where: { $0.role == "user" && $0.id == user }) || recoveredBinding.flatMap({ retainedUsers[$0.stableUserID] }) != nil {
+            if !rows.contains(where:{ $0.id == identities.userID(user) }),
+               let binding = recoveredBinding, let retained = retainedUsers[binding.stableUserID] { rows.append(retained) }
             let stable = identities.binding(prepareID:runtime.prepareID)?.stableAssistantID ?? "turn:prepare:\(runtime.prepareID)"
             // An active retry/edit owns its parent slot. Old siblings belong only to history.
             rows.removeAll { $0.assistant?.parentUserMessageID == user }
             let turn = makeTurn(id:stable,message:nil,runtime:runtime,pending:nil,identities:identities,now:now)
             rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
         }
-        if previous.count > 2000 {
+        for row in rows where row.user != nil { retainedUsers[row.id] = row }
+        if previous.count > 2000 || retainedUsers.count > 2000 {
             let live = Set(rows.map(\.id))
             previous = previous.filter { live.contains($0.key) }
+            retainedUsers = retainedUsers.filter { live.contains($0.key) }
             generationOwners = generationOwners.filter { live.contains($0.key) }
             canonicalIDs = canonicalIDs.filter { live.contains($0.value) }
         }
@@ -97,24 +110,30 @@ struct NativeLiveConversationPresentationAssembler {
     }
 
     private mutating func makeTurn(id: String,message: NativeLiveCurrentPathMessage?,runtime: NativeLiveRuntimeSurfaceState?,
-        pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,now: Date) -> NativeLiveAssistantTurnPresentation {
+        background: NativeLiveRuntimeSurfaceState? = nil,pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,now: Date) -> NativeLiveAssistantTurnPresentation {
         let prepare = runtime?.prepareID ?? message?.activity?.prepareId
         let binding = prepare.flatMap { identities.binding(prepareID:$0) } ?? pending.flatMap { identities.bindings[$0.id] }
         let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? generationOwners[id] ?? message?.id ?? id
         let last = generationOwners[id] == owner ? previous[id] : nil
         generationOwners[id] = owner
-        let start = last?.timestamp ?? runtime?.startedAt ?? binding?.startedAt ?? pending?.startedAt
-            ?? message?.activity?.startedAt ?? earliest(message:message,runtime:runtime) ?? message?.createdAt ?? ISO8601DateFormatter().string(from:now)
-        let overlay = runtime.map { NativeLiveTurnActivityProjection(runtimeSurface:$0) }
+        // Client click time drives provisional elapsed only; show a timestamp once authority exists.
+        let timestamp = last?.timestamp ?? runtime?.startedAt ?? binding?.authoritativeStartedAt
+            ?? message?.activity?.startedAt ?? earliest(message:message,runtime:runtime) ?? message?.createdAt
+        let start = timestamp ?? binding?.startedAt ?? pending?.startedAt ?? ISO8601DateFormatter().string(from:now)
+        let foregroundActivity = runtime.map { NativeLiveTurnActivityProjection(runtimeSurface:$0) }
+        let backgroundActivity = background.map { NativeLiveTurnActivityProjection(runtimeSurface:$0) }
         let durable = message.map { NativeLiveTurnActivityProjection(message:$0) }
         let canonicalTerminal = message.map { ["completed","error"].contains($0.status) } ?? false
         let terminal = canonicalTerminal || runtime?.foregroundTurnCompleted == true || runtime?.events.contains { ["result","error"].contains($0.event.type) } == true
         let active = runtime != nil ? !terminal : (pending != nil && message == nil)
         let resultDuration = runtime?.events.reversed().first(where: { $0.event.type == "result" })?.event.payload?["duration_ms"]?.numberValue
-        let frozen = last.flatMap { $0.phase == .completed || $0.phase == .background || $0.phase == .failed ? $0.duration : nil }
+            ?? background?.events.reversed().first(where:{ $0.event.type == "result" })?.event.payload?["duration_ms"]?.numberValue
+        let frozen = last.flatMap { $0.hasAuthoritativeDuration ? $0.duration : nil }
         let duration = frozen ?? resultDuration.flatMap(seconds) ?? durable?.elapsedSeconds
             ?? (active ? parse(start).map { max(0,Int(now.timeIntervalSince($0))) } : last?.duration)
-        let activity = NativeLiveTurnActivityProjection(durable:durable ?? last?.activityProjection,overlay:overlay,active:active,elapsed:duration)
+        let knownActivity = NativeLiveTurnActivityProjection(durable:last?.activityProjection,overlay:durable,active:active,elapsed:duration)
+        let foregroundOverlay = NativeLiveTurnActivityProjection(durable:knownActivity,overlay:foregroundActivity,active:active,elapsed:duration)
+        let activity = NativeLiveTurnActivityProjection(durable:foregroundOverlay,overlay:backgroundActivity,active:active,elapsed:duration)
         let phase: NativeLiveAssistantTurnPresentation.Phase
         if activity.turnFailed || runtime?.terminalFailure != nil { phase = .failed }
         else if activity.hasPendingInteraction { phase = .needsInput }
@@ -129,9 +148,10 @@ struct NativeLiveConversationPresentationAssembler {
         else if let last { body = last.bodyPresentation }
         else { body = NativeLiveMessagePresentationProjector.project(.streaming(""),presentationNamespace:id) }
         let header = header(phase:phase,duration:duration,count:activity.activityCount)
-        let turn = NativeLiveAssistantTurnPresentation(stableID:id,canonicalMessageID:message?.id,prepareID:prepare,requestID:runtime?.requestID ?? binding?.requestID,
+        var turn = NativeLiveAssistantTurnPresentation(stableID:id,canonicalMessageID:message?.id,prepareID:prepare,requestID:runtime?.requestID ?? binding?.requestID,
             parentUserMessageID:message?.parentMessageId ?? runtime?.userMessageID ?? binding?.userMessageID,
-            phase:phase,timestamp:start,bodyPresentation:body,activityProjection:activity,duration:duration,header:header,failure:phase == .failed ? "Failed" : nil)
+            phase:phase,timestamp:timestamp,bodyPresentation:body,activityProjection:activity,duration:duration,header:header,failure:phase == .failed ? "Failed" : nil)
+        turn.hasAuthoritativeDuration = frozen != nil || resultDuration.flatMap(seconds) != nil || durable?.elapsedSeconds != nil
         previous[id] = turn
         return turn
     }

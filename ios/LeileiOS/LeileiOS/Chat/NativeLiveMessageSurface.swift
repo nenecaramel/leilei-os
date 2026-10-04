@@ -27,6 +27,7 @@ struct NativeLiveMessageSurface: View {
     @State private var scrollState = NativeLiveConversationScrollState()
     @State private var scrollPosition = ScrollPosition()
     @State private var rowFrames: [String:CGRect] = [:]
+    @State private var anchorReplacementID: String?
     @State private var preservedAnchor: NativeLiveConversationScrollState.Anchor?
     @State private var contentOffset: Double = 0
     @State private var copiedMessageID: String?
@@ -44,7 +45,7 @@ struct NativeLiveMessageSurface: View {
             } else {
                 switch NativeLiveConversationLoadPresentation.project(
                     hasSnapshot:snapshot != nil || historySnapshot != nil,
-                    hasRows:!appModel.nativeLiveConversationRows.isEmpty,
+                    hasRows:appModel.nativeLiveConversationRows.contains { !$0.isHistoryDivider },
                     ready:syncState == .ready,failed:syncUnavailable) {
                 case .content: messageList(snapshot)
                 case .quietLoading: Color.clear
@@ -145,10 +146,14 @@ struct NativeLiveMessageSurface: View {
             .coordinateSpace(name:"native-live-viewport")
             .scrollPosition($scrollPosition)
             .onPreferenceChange(NativeLiveRowFramesKey.self) { frames in
+                if preservedAnchor == nil, let operation = pendingOperation, !operation.isSend {
+                    captureAnchor()
+                    anchorReplacementID = appModel.nativeLivePresentationAssembler.pendingIDs(operation,snapshot:snapshot,identities:appModel.nativeLiveTurnIdentities).assistant
+                }
                 rowFrames = frames
-                preservedAnchor = scrollState.preservedAnchor(before:preservedAnchor,survivingIDs:Set(rows.map(\.id)))
+                preservedAnchor = scrollState.preservedAnchor(before:preservedAnchor,survivingIDs:Set(rows.map(\.id)),replacementID:anchorReplacementID)
                 if let anchor = preservedAnchor, let frame = frames[anchor.stableID] {
-                    preservedAnchor = nil
+                    preservedAnchor = nil; anchorReplacementID = nil
                     scrollPosition.scrollTo(y:max(0,contentOffset + frame.minY - anchor.relativeOffset))
                 }
             }
@@ -169,7 +174,10 @@ struct NativeLiveMessageSurface: View {
             }
             .onChange(of:pendingOperation?.id) { _, _ in
                 if pendingOperation?.isSend == true { scrollState.sentNewMessage(); scrollToBottom(proxy) }
-                else if pendingOperation != nil { captureAnchor() }
+                else if let operation = pendingOperation {
+                    captureAnchor()
+                    anchorReplacementID = appModel.nativeLivePresentationAssembler.pendingIDs(operation,snapshot:snapshot,identities:appModel.nativeLiveTurnIdentities).assistant
+                }
             }
             .overlay(alignment: .top) {
                 if copiedMessageID != nil {

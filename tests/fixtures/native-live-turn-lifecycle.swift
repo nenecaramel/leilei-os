@@ -20,6 +20,7 @@ func prepared(_ id: String, user: String) -> NativeLivePrepareResult {
 func surface(_ prepare: String, user: String, text: String = "", terminal: Bool = false) -> NativeLiveRuntimeSurfaceState {
     var value = NativeLiveRuntimeSurfaceState(prepareID:prepare,conversationID:UUID(uuidString:conversation)!,events:[],interactions:[],controls:[],nextAfterSequence:0)
     value.userMessageID = user
+    value.startedAt = start
     if !text.isEmpty { value.events.append(.init(sequence:1,event:.init(type:"partial_text",providerSessionID:nil,payload:["delta":.string(text)]),createdAt:start)) }
     if terminal { value.events.append(.init(sequence:2,event:.init(type:"result",providerSessionID:nil,payload:["duration_ms":.number(18_000)]),createdAt:start)); value.foregroundTurnCompleted = true }
     return value
@@ -239,4 +240,47 @@ let richMessage = NativeLiveCurrentPathMessage(id:"canonical-rich",conversationI
 let canonicalRich = NativeLiveMessagePresentationProjector.project(.canonical(richMessage),presentationNamespace:"stable-rich")
 expect(liveRich.nodes.flatMap(\.children).map(\.id) == canonicalRich.nodes.flatMap(\.children).map(\.id),"Math Mermaid code IDs survive real canonical ledger ordinals")
 expect(canonicalRich.nodes[0].sourceBlock.id == "real-block","UI namespace never overwrites canonical provenance")
+// Completion refresh may fail before the prepared user enters the current snapshot.
+assembler = .init(); identities = .init()
+var failSoftSend = NativeLivePendingOperation(kind:.send(text:"Keep optimistic"),baselineSyncToken:nil); failSoftSend.startedAt = start
+let failSoftInitial = rows(snapshot(prefix),failSoftSend)
+identities.bind(failSoftSend,prepared:prepared("pFailSoft",user:"uMissing"),snapshot:snapshot(prefix))
+var delayed = surface("pFailSoft",user:"uMissing",text:"Kept body")
+_ = rows(snapshot(prefix),failSoftSend,delayed)
+delayed.foregroundTurnCompleted = true
+let withoutPending = rows(snapshot(prefix),nil,delayed)
+expect(withoutPending.count == 4 && withoutPending[2].id == failSoftInitial[2].id && withoutPending[3].id == failSoftInitial[3].id,"completion refresh failure retains prepared optimistic pair")
+expect(withoutPending[3].assistant!.copyText == "Kept body","completion refresh failure retains body")
+delayed.events.append(event("result",["duration_ms":.number(18_000)],3))
+expect(rows(snapshot(prefix),nil,delayed).last!.assistant!.duration == 18,"delayed provider duration replaces approximate terminal elapsed")
+// Multiple durable text blocks must preserve the same direct rich render tree.
+let firstText = NativeLiveCurrentPathBlock(id:"first-text",ordinal:0,kind:"text",rawType:"text",text:"Intro",payload:nil,createdAt:start)
+let secondText = NativeLiveCurrentPathBlock(id:"second-text",ordinal:1,kind:"text",rawType:"text",text:richText,payload:nil,createdAt:start)
+let splitCanonical = NativeLiveCurrentPathMessage(id:"split-canonical",conversationId:conversation,parentMessageId:"uA",role:"assistant",status:"completed",createdAt:start,completedAt:start,blocks:[firstText,secondText],activity:nil)
+let joinedLive = NativeLiveMessagePresentationProjector.project(.streaming("Intro\n\n"+richText),presentationNamespace:"split-turn")
+let splitBody = NativeLiveMessagePresentationProjector.project(.canonical(splitCanonical),presentationNamespace:"split-turn")
+expect(joinedLive.renderNodes.map(\.id) == splitBody.renderNodes.map(\.id),"multiple canonical text blocks preserve logical rich child IDs")
+// A slow prepare must not freeze a pre-authority timestamp into live presentation.
+assembler = .init(); identities = .init()
+var slowSend = NativeLivePendingOperation(kind:.send(text:"Slow prepare"),baselineSyncToken:nil); slowSend.startedAt = start
+_ = rows(snapshot(prefix),slowSend)
+var slowPrepared = prepared("pSlow",user:"uSlow"); slowPrepared.startedAt = "2026-10-04T00:01:05.000Z"
+identities.bind(slowSend,prepared:slowPrepared,snapshot:snapshot(prefix))
+var slowRuntime = surface("pSlow",user:"uSlow",text:"Done",terminal:true); slowRuntime.startedAt = slowPrepared.startedAt
+let liveTime = rows(snapshot(prefix),slowSend,slowRuntime).last!.assistant!.timestamp
+let slowCanonical = NativeLiveCurrentPathMessage(id:"aSlow",conversationId:conversation,parentMessageId:"uSlow",role:"assistant",status:"completed",createdAt:"2026-10-04T00:01:30.000Z",completedAt:nil,blocks:[],activity:.init(prepareId:"pSlow",events:[],interactions:[],durationMs:18_000,startedAt:slowPrepared.startedAt))
+var slowReload = NativeLiveConversationPresentationAssembler()
+let reloadTime = slowReload.project(snapshot:snapshot([message("uSlow","user",text:"Slow prepare"),slowCanonical]),pendingOperation:nil,runtimeSurface:nil,backgroundRuntimeSurfaces:[:],identities:.init(),now:now).last!.assistant!.timestamp
+expect(liveTime == reloadTime && liveTime == slowPrepared.startedAt,"slow preparation uses the same durable timestamp live and after reload")
+let removedAnchor = NativeLiveConversationScrollState.Anchor(stableID:"removed-downstream",relativeOffset:-31)
+expect(scroll.preservedAnchor(before:removedAnchor,survivingIDs:["uA","replacement"],replacementID:"replacement") == .init(stableID:"replacement",relativeOffset:-31),"removed downstream anchor falls back to replacement slot at same viewport offset")
+// Foreground and background overlays both contribute to the original canonical row.
+var fgOverlay = surface("pOverlay",user:"uA",text:"Final",terminal:true)
+fgOverlay.events.append(event("tool_use",["tool_use_id":.string("fg-tool"),"tool_name":.string("Read")],3))
+fgOverlay.events.append(event("tool_result",["tool_use_id":.string("fg-tool"),"output":.string("ok")],4))
+var bgOverlay = surface("pOverlay",user:"uA",terminal:true)
+bgOverlay.events.append(event("task",["phase":.string("started"),"task_id":.string("bg-overlay"),"is_backgrounded":.bool(true)],3))
+let overlayPath = snapshot([message("uA","user",text:"A"),message("aOverlay","assistant",parent:"uA",text:"Final",prepare:"pOverlay")])
+let overlaid = assembler.project(snapshot:overlayPath,pendingOperation:nil,runtimeSurface:fgOverlay,backgroundRuntimeSurfaces:["pOverlay":bgOverlay],identities:.init(),now:now)
+expect(overlaid.count == 2 && overlaid[1].assistant!.activityProjection.tools.count == 1 && overlaid[1].assistant!.activityProjection.tasks.count == 1,"durable foreground and background all merge into one canonical assistant")
 print("Turn lifecycle PASS: \(checks) real Swift frame assertions")

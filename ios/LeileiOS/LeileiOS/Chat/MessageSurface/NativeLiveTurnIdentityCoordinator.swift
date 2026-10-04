@@ -12,8 +12,13 @@ struct NativeLiveTurnIdentityCoordinator {
         let stableUserID: String
         let stableAssistantID: String
         let startedAt: String
+        let authoritativeStartedAt: String?
     }
     private(set) var bindings: [UUID: Binding] = [:]
+    mutating func prune(retaining stableIDs: Set<String>) {
+        guard bindings.count > 2000 else { return }
+        bindings = bindings.filter { stableIDs.contains($0.value.stableUserID) || stableIDs.contains($0.value.stableAssistantID) }
+    }
     func binding(prepareID: String) -> Binding? { bindings.values.first { $0.prepareID == prepareID } }
     func binding(userMessageID: String) -> Binding? { bindings.values.first { $0.userMessageID == userMessageID } }
     func userID(_ id: String) -> String { binding(userMessageID:id)?.stableUserID ?? "user:message:\(id)" }
@@ -36,6 +41,6 @@ struct NativeLiveTurnIdentityCoordinator {
         let ids = stableIDs ?? pendingIDs(operation,snapshot:snapshot)
         bindings[operation.id] = .init(operationID:operation.id,conversationID:prepared.conversationId,prepareID:prepared.prepareId,
             requestID:prepared.requestId,userMessageID:prepared.userMessageId,targetUserMessageID:operation.targetUserMessageID,
-            stableUserID:ids.user,stableAssistantID:ids.assistant,startedAt:operation.startedAt)
+            stableUserID:ids.user,stableAssistantID:ids.assistant,startedAt:operation.startedAt,authoritativeStartedAt:prepared.startedAt)
     }
 }

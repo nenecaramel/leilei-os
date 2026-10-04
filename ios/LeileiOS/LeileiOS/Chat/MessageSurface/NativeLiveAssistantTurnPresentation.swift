@@ -9,12 +9,13 @@ struct NativeLiveAssistantTurnPresentation: Equatable, Identifiable {
     let requestID: String?
     let parentUserMessageID: String?
     let phase: Phase
-    let timestamp: String
+    let timestamp: String?
     let bodyPresentation: NativeLiveMessagePresentation
     let activityProjection: NativeLiveTurnActivityProjection
     let duration: Int?
     let header: String
     let failure: String?
+    var hasAuthoritativeDuration = false
     var stepCount: Int { activityProjection.activityCount }
     var hasPendingInput: Bool { activityProjection.hasPendingInteraction }
     var copyText: String? { bodyPresentation.copyText }
@@ -44,7 +45,7 @@ extension NativeLiveTurnActivityProjection {
         prepareID = overlay?.prepareID ?? durable?.prepareID
         lifecycle = overlay?.lifecycle ?? durable?.lifecycle ?? []
         tools = merge(durable?.tools ?? [],overlay?.tools ?? []).map { item in
-            guard item.state == .running, let final = durable?.tools.first(where:{ $0.id == item.id && $0.state != .running }) else { return item }
+            guard item.state == .running, let final = durable?.tools.first(where:{ $0.id == item.id && ($0.state == .completed || $0.state == .failed) }) else { return item }
             return final
         }
         tasks = merge(durable?.tasks ?? [],overlay?.tasks ?? []).map { item in
