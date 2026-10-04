@@ -7,6 +7,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { users } from "./users.js";
 
 export type NativeLiveSilenceWakeSlot =
   | "post_turn_idle"
@@ -15,7 +16,12 @@ export type NativeLiveSilenceWakeSlot =
 export const nativeLiveSilenceWakeReceipts = pgTable(
   "native_live_silence_wake_receipts",
   {
-    userId: uuid("user_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     epochId: uuid("epoch_id").notNull(),
     slot: varchar("slot", { length: 32 })
       .$type<NativeLiveSilenceWakeSlot>()
