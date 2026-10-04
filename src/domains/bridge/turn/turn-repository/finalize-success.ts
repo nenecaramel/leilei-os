@@ -1,9 +1,7 @@
 import {
   and,
+  desc,
   eq,
-  gt,
-  ne,
-  or,
   sql,
 } from "drizzle-orm";
 import {
@@ -136,75 +134,45 @@ export async function finalizeSuccess(
               .for("update")
               .limit(1);
 
-            canonicalWritePhase = "wake_source_user";
-            const [sourceUser] = await transaction
-              .select({
-                id: conversationMessages.id,
-                createdAt: conversationMessages.createdAt,
-              })
+            canonicalWritePhase = "wake_latest_user";
+            const [latestUser] = await transaction
+              .select({ id: conversationMessages.id })
               .from(conversationMessages)
+              .innerJoin(
+                conversationTable,
+                and(
+                  eq(
+                    conversationTable.id,
+                    conversationMessages.conversationId,
+                  ),
+                  eq(
+                    conversationTable.userId,
+                    conversationMessages.userId,
+                  ),
+                ),
+              )
               .where(
                 and(
                   eq(conversationMessages.userId, input.userId),
-                  eq(conversationMessages.id, wake.sourceUserMessageId),
                   eq(conversationMessages.role, "user"),
+                  eq(conversationTable.origin, "native_live"),
+                  eq(
+                    conversationTable.lifecycleStatus,
+                    "active",
+                  ),
                 ),
               )
+              .orderBy(
+                desc(conversationMessages.createdAt),
+                desc(conversationMessages.id),
+              )
               .limit(1);
-
-            canonicalWritePhase = "wake_newer_user";
-            const newerUser = sourceUser
-              ? await transaction
-                  .select({ id: conversationMessages.id })
-                  .from(conversationMessages)
-                  .innerJoin(
-                    conversationTable,
-                    and(
-                      eq(
-                        conversationTable.id,
-                        conversationMessages.conversationId,
-                      ),
-                      eq(
-                        conversationTable.userId,
-                        conversationMessages.userId,
-                      ),
-                    ),
-                  )
-                  .where(
-                    and(
-                      eq(conversationMessages.userId, input.userId),
-                      eq(conversationMessages.role, "user"),
-                      eq(conversationTable.origin, "native_live"),
-                      eq(
-                        conversationTable.lifecycleStatus,
-                        "active",
-                      ),
-                      or(
-                        gt(
-                          conversationMessages.createdAt,
-                          sourceUser.createdAt,
-                        ),
-                        and(
-                          eq(
-                            conversationMessages.createdAt,
-                            sourceUser.createdAt,
-                          ),
-                          ne(
-                            conversationMessages.id,
-                            sourceUser.id,
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                  .limit(1)
-              : [{ id: "missing-source-user" }];
 
             if (
               !surface
               || surface.currentHeadMessageId
                 !== wake.sourceHeadMessageId
-              || newerUser.length > 0
+              || latestUser?.id !== wake.sourceUserMessageId
             ) {
               canonicalWritePhase = "wake_stale_discard";
               await discardWakeLocked(
