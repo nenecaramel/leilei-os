@@ -71,6 +71,7 @@ export async function finalizeSuccess(
         : {}),
     });
 
+    let canonicalWritePhase = "transaction_start";
     try {
       return await this.db.transaction(
         async (transaction) => {
@@ -217,6 +218,7 @@ export async function finalizeSuccess(
             }
           }
 
+          canonicalWritePhase = "assistant_message";
           const assistantMessage =
             row.operation === "wake"
               ? await appendWakeAssistantMessage(
@@ -248,6 +250,7 @@ export async function finalizeSuccess(
             eq(nativeLiveRuntimeInteractions.prepareId, row.id),
             eq(nativeLiveRuntimeInteractions.kind, "question"),
           )) : [];
+          canonicalWritePhase = "content_blocks";
           const canonicalBlocks = withCanonicalQuestionActivity(input.blocks, questionInteractions);
           const blocks = [];
           for (const [ordinal, block] of canonicalBlocks.entries()) {
@@ -293,6 +296,7 @@ export async function finalizeSuccess(
             });
             timingEvents.push({ sequence, event: { type: "result" }, createdAt: finalizedAt.toISOString() });
           }
+          canonicalWritePhase = "provider_checkpoint";
           const checkpoint = await conversations.bindProviderCheckpoint({
             userId: input.userId,
             conversationId: row.conversationId,
@@ -307,12 +311,14 @@ export async function finalizeSuccess(
             },
           });
 
+          canonicalWritePhase = "set_current_head";
           await conversations.setCurrentHead({
             userId: input.userId,
             conversationId: row.conversationId,
             messageId: assistantMessage.id,
           });
 
+          canonicalWritePhase = "context_lineage";
           await this.persistFinalizedContextLineage(
             transaction as Transaction,
             row,
@@ -335,6 +341,7 @@ export async function finalizeSuccess(
             `);
           }
 
+          canonicalWritePhase = "finalize_preparation";
           const updated = await transaction
             .update(nativeLiveTurnPreparations)
             .set({
@@ -373,6 +380,7 @@ export async function finalizeSuccess(
           }
 
           if (input.mindFollowUp) {
+            canonicalWritePhase = "mind_followup";
             await transaction.insert(nativeLiveMindFollowUps).values({
               prepareId: row.id,
               userId: input.userId,
@@ -410,6 +418,7 @@ export async function finalizeSuccess(
       logCanonicalWriteFailure(
         input.preparation.prepareId,
         input.preparation.operation,
+        canonicalWritePhase,
         error,
       );
       return { ok: false, code: "CANONICAL_WRITE_FAILURE" };
@@ -419,6 +428,7 @@ export async function finalizeSuccess(
 function logCanonicalWriteFailure(
   prepareId: string,
   operation: PreparationRow["operation"],
+  phase: string,
   error: unknown,
 ): void {
   const record =
@@ -432,6 +442,7 @@ function logCanonicalWriteFailure(
       event: "native_live_canonical_write_failed",
       prepareId,
       operation,
+      phase,
       errorName:
         error instanceof Error
           ? error.name
