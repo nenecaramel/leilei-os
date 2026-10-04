@@ -266,7 +266,7 @@ struct NativeLiveMessageSurface: View {
 
                     Text(
                         isLoadingOlderMessages
-                            ? "正在加载…"
+                            ? "Loading…"
                             : "还有更早消息"
                     )
                     .font(.footnote.weight(.medium))
