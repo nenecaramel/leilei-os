@@ -38,6 +38,7 @@ export type NativeLiveBackendTurnReadModel = {
   conversationId: string;
   operation: "send" | "retry" | "edit" | "wake";
   canonicalUserMessageId: string | null;
+  wakeContext?: Record<string, unknown> | null;
   workspaceId: string | null;
   expectedWorkspaceRoot: string | null;
   executionSelection: NativeLiveExecutionSelection | null;
