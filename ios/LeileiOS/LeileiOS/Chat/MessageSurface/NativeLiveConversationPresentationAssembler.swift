@@ -245,10 +245,41 @@ struct NativeLiveConversationPresentationAssembler {
     private func logicalRuntimeText(_ runtime: NativeLiveRuntimeSurfaceState?,terminal: Bool) -> String? {
         guard let runtime else { return nil }
         if terminal {
-            let final = runtime.events.filter { $0.event.type == "text" }.compactMap { $0.event.payload?["text"]?.stringValue }.joined(separator:"\n\n")
-            if !final.isEmpty { return final }
+            let final = runtime.events.filter { $0.event.type == "text" }
+                .compactMap { $0.event.payload?["text"]?.stringValue }
+                .joined(separator:"\n\n")
+            let visible = murmurStrippedRuntimeText(final)
+            if !visible.isEmpty { return visible }
         }
-        return runtime.streamingText
+        return murmurStrippedRuntimeText(runtime.streamingText ?? "")
+    }
+
+    private func murmurStrippedRuntimeText(_ value: String) -> String {
+        var result = value
+        while let open = result.range(of: "<murmur>") {
+            guard let close = result.range(
+                of: "</murmur>",
+                range: open.upperBound..<result.endIndex
+            ) else {
+                result.removeSubrange(open.lowerBound..<result.endIndex)
+                break
+            }
+            result.removeSubrange(open.lowerBound..<close.upperBound)
+        }
+        result = result.replacingOccurrences(
+            of: "</murmur>",
+            with: ""
+        )
+        if let marker = result.lastIndex(of: "<") {
+            let suffix = String(result[marker...])
+            if "<murmur>".hasPrefix(suffix)
+                || "</murmur>".hasPrefix(suffix) {
+                result.removeSubrange(marker..<result.endIndex)
+            }
+        }
+        return result.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
     }
     private func header(phase: NativeLiveAssistantTurnPresentation.Phase,duration: Int?,count: Int) -> String {
         if phase == .starting { return "Thinking…" }
