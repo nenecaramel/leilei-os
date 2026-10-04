@@ -317,7 +317,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         return max(1, Int(seconds))
     }
 
-    private static func parseISO8601(_ value: String) -> Date? {
+    nonisolated private static func parseISO8601(_ value: String) -> Date? {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [
             .withInternetDateTime,
