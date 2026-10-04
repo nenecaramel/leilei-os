@@ -31,7 +31,7 @@ export type NativeLiveMindFollowUpJob = {
   userId: string;
   conversationId: string;
   assistantMessageId: string;
-  operation: "send" | "retry" | "edit";
+  operation: "send" | "retry" | "edit" | "wake";
   intents: MindWriteIntent[];
   actions: MindSemanticAction[];
 };
@@ -417,6 +417,7 @@ function parseJob(row: RawFollowUpRow): NativeLiveMindFollowUpJob {
     row.operation !== "send"
     && row.operation !== "retry"
     && row.operation !== "edit"
+    && row.operation !== "wake"
   ) {
     throw new Error("Native live Mind follow-up operation is invalid.");
   }
