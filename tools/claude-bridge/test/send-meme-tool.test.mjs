@@ -19,8 +19,30 @@ test("local meme tool exposes only send_meme and passes an exact existing id",as
   for(const input of [{meme_id:"meme_1"},{meme_id:"../meme_0001"},{meme_id:"meme_0001\n"},{meme_id:"meme_0001",repo:"arbitrary"},{meme_id:"meme_0001",path:"arbitrary"}])await assert.rejects(server.tools[0].call(input));
 });
 
-test("meme handler errors become safe MCP isError",async()=>{
+test("meme handler stage errors become safe actionable MCP isError messages",async()=>{
+  const expected=new Map([
+    ["MEME_GH_UNAVAILABLE","GitHub CLI is unavailable"],
+    ["MEME_NOT_FOUND","not found"],
+    ["MEME_GITHUB_FETCH_FAILED","GitHub fetch failed"],
+    ["MEME_SOURCE_INVALID","invalid meme image bytes"],
+    ["MEME_ATTACHMENT_FAILED","attachment upload or completion failed"],
+  ]);
+  for(const [code,fragment] of expected){
+    const server=await createMemeMcpServer({async sendMeme(){throw Object.assign(new Error("TOKEN /credential/path"),{code});}},sdk);
+    const result=await server.tools[0].call({meme_id:"meme_0001"});
+    assert.equal(result.isError,true);
+    assert.match(result.content[0].text,new RegExp(code));
+    assert.match(result.content[0].text,new RegExp(fragment,"i"));
+    assert.equal(JSON.stringify(result).includes("TOKEN"),false);
+    assert.equal(JSON.stringify(result).includes("credential/path"),false);
+  }
+});
+
+test("unknown meme handler errors stay generic and secret-free",async()=>{
   const server=await createMemeMcpServer({async sendMeme(){throw new Error("TOKEN /credential/path");}},sdk);
   const result=await server.tools[0].call({meme_id:"meme_0001"});
-  assert.equal(result.isError,true);assert.equal(JSON.stringify(result).includes("TOKEN"),false);assert.equal(JSON.stringify(result).includes("credential/path"),false);
+  assert.equal(result.isError,true);
+  assert.match(result.content[0].text,/MEME_UNKNOWN/);
+  assert.equal(JSON.stringify(result).includes("TOKEN"),false);
+  assert.equal(JSON.stringify(result).includes("credential/path"),false);
 });
