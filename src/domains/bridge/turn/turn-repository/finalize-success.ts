@@ -5,6 +5,7 @@ import {
 } from "drizzle-orm";
 import {
   conversationMessages,
+  conversations as conversationTable,
   nativeLiveMindFollowUps,
   nativeLiveRuntimeInteractions,
   nativeLiveRuntimeEvents,
@@ -41,6 +42,7 @@ import type {
   Transaction,
   PreparationRow,
 } from "./types.js";
+import { discardWakeLocked } from "./discard-wake.js";
 
 export async function finalizeSuccess(
   this: TurnRepositoryContext,
@@ -105,8 +107,89 @@ export async function finalizeSuccess(
               transaction as Transaction,
             );
 
+          let wakeSourceHeadMessageId: string | null = null;
+          if (row.operation === "wake") {
+            const wake = readWakeContext(row);
+            wakeSourceHeadMessageId = wake.sourceHeadMessageId;
+
+            const [surface] = await transaction
+              .select({
+                currentHeadMessageId:
+                  conversationTable.currentHeadMessageId,
+              })
+              .from(conversationTable)
+              .where(
+                and(
+                  eq(conversationTable.userId, input.userId),
+                  eq(conversationTable.id, row.conversationId),
+                  eq(conversationTable.origin, "native_live"),
+                  eq(conversationTable.lifecycleStatus, "active"),
+                ),
+              )
+              .for("update")
+              .limit(1);
+
+            const [sourceUser] = await transaction
+              .select({
+                id: conversationMessages.id,
+                createdAt: conversationMessages.createdAt,
+              })
+              .from(conversationMessages)
+              .where(
+                and(
+                  eq(conversationMessages.userId, input.userId),
+                  eq(conversationMessages.id, wake.sourceUserMessageId),
+                  eq(conversationMessages.role, "user"),
+                ),
+              )
+              .limit(1);
+
+            const newerUser = sourceUser
+              ? await transaction.execute<{ id: string }>(sql`
+                  SELECT message.id
+                  FROM conversation_messages AS message
+                  JOIN conversations AS conversation
+                    ON conversation.id = message.conversation_id
+                   AND conversation.user_id = message.user_id
+                  WHERE message.user_id = ${input.userId}::uuid
+                    AND message.role = 'user'
+                    AND conversation.origin = 'native_live'
+                    AND conversation.lifecycle_status = 'active'
+                    AND (
+                      message.created_at > ${sourceUser.createdAt}
+                      OR (
+                        message.created_at = ${sourceUser.createdAt}
+                        AND message.id > ${sourceUser.id}::uuid
+                      )
+                    )
+                  LIMIT 1
+                `)
+              : [{ id: "missing-source-user" }];
+
+            if (
+              !surface
+              || surface.currentHeadMessageId
+                !== wake.sourceHeadMessageId
+              || newerUser.length > 0
+            ) {
+              await discardWakeLocked(
+                transaction as Transaction,
+                row,
+                input.providerSessionId,
+              );
+              return {
+                ok: true as const,
+                outcome: "wake_discarded" as const,
+                record: null,
+              };
+            }
+          }
+
           let replacementPurgePlan: ReplacementPurgePlan | null = null;
-          if (row.operation !== "send") {
+          if (
+            row.operation === "retry"
+            || row.operation === "edit"
+          ) {
             const conversation = await conversations.getConversation({
               userId: input.userId,
               conversationId: row.conversationId,
@@ -134,11 +217,22 @@ export async function finalizeSuccess(
             }
           }
 
-          const assistantMessage = await conversations.appendAssistantMessage({
-            userId: input.userId,
-            conversationId: row.conversationId,
-            parentMessageId: row.canonicalUserMessageId,
-          });
+          const assistantMessage =
+            row.operation === "wake"
+              ? await appendWakeAssistantMessage(
+                  transaction as Transaction,
+                  {
+                    userId: input.userId,
+                    conversationId: row.conversationId,
+                    parentMessageId: wakeSourceHeadMessageId!,
+                  },
+                )
+              : await conversations.appendAssistantMessage({
+                  userId: input.userId,
+                  conversationId: row.conversationId,
+                  parentMessageId:
+                    requireCanonicalUserMessageId(row),
+                });
 
           // Read trusted host decisions inside the canonical write transaction.
           // Provider tool_result output is free text and cannot prove answer vs cancel.
@@ -317,6 +411,80 @@ export async function finalizeSuccess(
     }
   }
 
+function requireCanonicalUserMessageId(
+  row: PreparationRow,
+): string {
+  if (!row.canonicalUserMessageId) {
+    throw new Error(
+      "Foreground turn is missing its canonical user message.",
+    );
+  }
+  return row.canonicalUserMessageId;
+}
+
+function readWakeContext(row: PreparationRow): {
+  sourceUserMessageId: string;
+  sourceHeadMessageId: string;
+} {
+  const context = row.wakeContext;
+  const sourceUserMessageId = context?.source_user_message_id;
+  const sourceHeadMessageId = context?.source_head_message_id;
+  if (
+    typeof sourceUserMessageId !== "string"
+    || typeof sourceHeadMessageId !== "string"
+  ) {
+    throw new Error("Silence wake context is invalid.");
+  }
+  return { sourceUserMessageId, sourceHeadMessageId };
+}
+
+async function appendWakeAssistantMessage(
+  transaction: Transaction,
+  input: {
+    userId: string;
+    conversationId: string;
+    parentMessageId: string;
+  },
+) {
+  const now = new Date();
+  const [row] = await transaction
+    .insert(conversationMessages)
+    .values({
+      userId: input.userId,
+      conversationId: input.conversationId,
+      parentMessageId: input.parentMessageId,
+      role: "assistant",
+      status: "completed",
+      completedAt: now,
+      sourceNodeId: null,
+      sourceFingerprint: null,
+      firstSeenImportId: null,
+      lastSeenImportId: null,
+    })
+    .returning({
+      id: conversationMessages.id,
+      conversationId: conversationMessages.conversationId,
+      parentMessageId: conversationMessages.parentMessageId,
+      role: conversationMessages.role,
+      status: conversationMessages.status,
+      createdAt: conversationMessages.createdAt,
+      completedAt: conversationMessages.completedAt,
+    });
+  if (!row || row.role !== "assistant") {
+    throw new Error("Silence wake assistant message insert failed.");
+  }
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    parentMessageId: row.parentMessageId,
+    role: "assistant" as const,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    completedAt: row.completedAt?.toISOString() ?? null,
+    blocks: [],
+  };
+}
+
 export async function persistFinalizedContextLineage(
   this: TurnRepositoryContext,
     transaction: Transaction,
@@ -362,27 +530,35 @@ export async function persistFinalizedContextLineage(
       return;
     }
 
-    const [userMessage] = await transaction
-      .select({
-        parentMessageId: conversationMessages.parentMessageId,
-      })
-      .from(conversationMessages)
-      .where(
-        and(
-          eq(conversationMessages.id, row.canonicalUserMessageId),
-          eq(conversationMessages.userId, row.userId),
-          eq(conversationMessages.conversationId, row.conversationId),
-        ),
-      )
-      .limit(1);
-    if (!userMessage) {
-      throw new Error(
-        "Context lineage source user message was not found.",
-      );
+    let parentMessageId: string | null;
+    if (row.operation === "wake") {
+      parentMessageId = readWakeContext(row).sourceHeadMessageId;
+    } else {
+      const canonicalUserMessageId =
+        requireCanonicalUserMessageId(row);
+      const [userMessage] = await transaction
+        .select({
+          parentMessageId: conversationMessages.parentMessageId,
+        })
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.id, canonicalUserMessageId),
+            eq(conversationMessages.userId, row.userId),
+            eq(conversationMessages.conversationId, row.conversationId),
+          ),
+        )
+        .limit(1);
+      if (!userMessage) {
+        throw new Error(
+          "Context lineage source user message was not found.",
+        );
+      }
+      parentMessageId = userMessage.parentMessageId;
     }
 
     let parentLineage = normalizeContextLineageState(null);
-    if (userMessage.parentMessageId) {
+    if (parentMessageId) {
       const rows = await transaction.execute<{
         epoch: number;
         seen_state_ids: string[];
@@ -395,7 +571,7 @@ export async function persistFinalizedContextLineage(
             message.parent_message_id,
             0 AS depth
           FROM conversation_messages AS message
-          WHERE message.id = ${userMessage.parentMessageId}::uuid
+          WHERE message.id = ${parentMessageId}::uuid
             AND message.user_id = ${row.userId}::uuid
             AND message.conversation_id = ${row.conversationId}::uuid
 
