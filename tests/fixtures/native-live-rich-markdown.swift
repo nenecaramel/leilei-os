@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 var checks = 0
 func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
@@ -72,7 +73,12 @@ for level in 1...6 {
 for (source, intent) in [("**bold**", InlinePresentationIntent.stronglyEmphasized), ("*italic*", .emphasized), ("`code`", .code), ("~~deleted~~", .strikethrough)] {
     expect(nodes(source)[0].markdown!.inline.runs.contains { $0.inlinePresentationIntent?.contains(intent) == true }, "inline \(source)")
 }
-expect(nodes("[safe](https://example.com)")[0].markdown!.inline.runs.contains { $0.link?.host == "example.com" }, "safe link")
+let safeLinkRuns = nodes("[safe](https://example.com)")[0].markdown!.inline.runs
+expect(safeLinkRuns.contains {
+    $0.link?.host == "example.com"
+        && $0.foregroundColor != nil
+        && $0.underlineStyle != nil
+}, "safe link is visibly styled")
 for scheme in ["javascript:", "file:///tmp/a", "data:text/plain,x", "custom://host", "ui://app", "https://u:p@example.com"] {
     expect(nodes("[unsafe](\(scheme))")[0].markdown!.inline.runs.allSatisfy { $0.link == nil }, "unsafe link \(scheme)")
 }

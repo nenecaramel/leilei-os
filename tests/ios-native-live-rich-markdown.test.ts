@@ -59,3 +59,14 @@ test("source panels share message-copy icon semantics and visible success feedba
   assert.match(source, /Task\.sleep\(for: \.seconds\(2\)\)/);
   assert.doesNotMatch(source, /"doc\.on\.doc"/);
 });
+
+
+test("safe Markdown links are visibly distinct from ordinary text", () => {
+  const source = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMarkdownModel.swift",
+    "utf8",
+  );
+  assert.match(source, /foregroundColor = \.accentColor/);
+  assert.match(source, /underlineStyle = \.single/);
+  assert.match(source, /NativeLiveLinkCapability\.openableURL/);
+});
