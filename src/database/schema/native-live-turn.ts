@@ -346,7 +346,7 @@ export const nativeLiveMindFollowUps = pgTable(
     ),
     check(
       "native_live_mind_followups_operation_allowed",
-      sql`${table.operation} IN ('send', 'retry', 'edit')`,
+      sql`${table.operation} IN ('send', 'retry', 'edit', 'wake')`,
     ),
     check(
       "native_live_mind_followups_intents_array",
