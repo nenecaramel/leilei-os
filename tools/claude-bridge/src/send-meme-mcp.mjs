@@ -1,5 +1,13 @@
 export const MEME_SYSTEM_HINT = "A small curated meme library is available in nenecaramel/leileios-album. You may inspect it with the existing `gh` CLI. When a reaction image genuinely fits, choose an existing meme ID and use send_meme. Use memes sparingly and naturally; do not force one into every reply and do not invent IDs.";
 
+const SAFE_MEME_ERRORS = new Map([
+  ["MEME_GH_UNAVAILABLE", "GitHub CLI is unavailable in the Mac daemon environment."],
+  ["MEME_NOT_FOUND", "The meme was not found in the fixed GitHub library."],
+  ["MEME_GITHUB_FETCH_FAILED", "GitHub fetch failed in the Mac daemon environment."],
+  ["MEME_SOURCE_INVALID", "GitHub returned invalid meme image bytes."],
+  ["MEME_ATTACHMENT_FAILED", "LeileiOS attachment upload or completion failed."],
+]);
+
 export async function createMemeMcpServer(handlers, sdk = null) {
   sdk ??= await import("@anthropic-ai/claude-agent-sdk");
   const { z } = await import("zod");
@@ -23,10 +31,21 @@ export async function createMemeMcpServer(handlers, sdk = null) {
               }),
             }],
           };
-        } catch {
+        } catch (cause) {
+          const code =
+            cause && typeof cause === "object"
+            && typeof cause.code === "string"
+              ? cause.code
+              : "MEME_UNKNOWN";
+          const message =
+            SAFE_MEME_ERRORS.get(code)
+            ?? "Meme send failed for an unknown internal reason.";
           return {
             isError: true,
-            content: [{ type: "text", text: "Meme could not be sent. Check the existing meme id and GitHub availability." }],
+            content: [{
+              type: "text",
+              text: `send_meme failed [${code in Object.fromEntries(SAFE_MEME_ERRORS) ? code : "MEME_UNKNOWN"}]: ${message}`,
+            }],
           };
         }
       },

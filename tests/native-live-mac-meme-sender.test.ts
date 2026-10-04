@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { NativeLiveMacMemeSender } from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
+import {
+  NativeLiveMacMemeSender,
+  NativeLiveMemeSendError,
+} from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
 import { NativeLiveMacOutputAttachmentSender } from "../src/domains/bridge/mac/native-live-mac-output-attachment-sender.js";
 
 // Real one-pixel static WebP fixture, not JSON/base64 CLI output.
@@ -28,20 +31,58 @@ for(const memeId of ["meme_1","../meme_0001","meme_0001/../../secret","meme_0001
     await assert.rejects(sender.sendMeme({memeId}));assert.equal(calls,0);
   });
 }
-for(const failure of [new Error("HTTP 404 PRIVATE_TOKEN"),new Error("auth PRIVATE_TOKEN"),new Error("network /secret/credential/path"),Buffer.alloc(0),Buffer.from('{"content":"base64"}'),Buffer.from("not webp"),Buffer.concat([webp,Buffer.alloc(20*1024*1024)])]){
-  test(`gh errors/invalid bytes fail closed ${failure instanceof Error?failure.message.split(" ")[0]:failure.length}`,async()=>{
-    let uploads=0;
-    const sender=new NativeLiveMacMemeSender({async sendBytes(){uploads++;throw new Error("unused");}},async()=>{if(failure instanceof Error)throw failure;return failure;});
+
+test("gh failures preserve only a safe stage code",async()=>{
+  for(const failure of [
+    new Error("HTTP 404 PRIVATE_TOKEN"),
+    new Error("auth PRIVATE_TOKEN"),
+    new Error("network /secret/credential/path"),
+  ]){
+    const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},async()=>{throw failure;});
     await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
-      assert.match(String(error),/Meme/);assert.equal(String(error).includes("PRIVATE_TOKEN"),false);assert.equal(String(error).includes("credential/path"),false);assert.equal("cause" in (error as object),false);return true;
-    });assert.equal(uploads,0);
+      assert.ok(error instanceof NativeLiveMemeSendError);
+      assert.equal(error.code,"MEME_GITHUB_FETCH_FAILED");
+      assert.equal(String(error).includes("PRIVATE_TOKEN"),false);
+      assert.equal(String(error).includes("credential/path"),false);
+      assert.equal("cause" in error,false);
+      return true;
+    });
+  }
+});
+
+test("typed gh availability and not-found failures survive without secret detail",async()=>{
+  for(const code of ["MEME_GH_UNAVAILABLE","MEME_NOT_FOUND"] as const){
+    const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},async()=>{throw new NativeLiveMemeSendError(code);});
+    await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
+      assert.ok(error instanceof NativeLiveMemeSendError);
+      assert.equal(error.code,code);
+      return true;
+    });
+  }
+});
+
+for(const bytes of [Buffer.alloc(0),Buffer.from('{"content":"base64"}'),Buffer.from("not webp"),Buffer.concat([webp,Buffer.alloc(20*1024*1024)])]){
+  test(`invalid source bytes report MEME_SOURCE_INVALID: ${bytes.length}`,async()=>{
+    let uploads=0;
+    const sender=new NativeLiveMacMemeSender({async sendBytes(){uploads++;throw new Error("unused");}},async()=>bytes);
+    await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
+      assert.ok(error instanceof NativeLiveMemeSendError);
+      assert.equal(error.code,"MEME_SOURCE_INVALID");
+      return true;
+    });
+    assert.equal(uploads,0);
   });
 }
 
-test("attachment failure and image metadata mismatch return safe errors",async()=>{
+test("attachment failure and image metadata mismatch report MEME_ATTACHMENT_FAILED safely",async()=>{
   for(const response of [new Error("signed-url PRIVATE_TOKEN"),{...descriptor,mimeType:"application/json"},{...descriptor,kind:"file" as const},{...descriptor,sizeBytes:1},{...descriptor,sha256:"a".repeat(64)}]){
     const sender=new NativeLiveMacMemeSender({async sendBytes(){if(response instanceof Error)throw response;return response;}},async()=>webp);
-    await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{assert.equal(String(error).includes("PRIVATE_TOKEN"),false);return true;});
+    await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
+      assert.ok(error instanceof NativeLiveMemeSendError);
+      assert.equal(error.code,"MEME_ATTACHMENT_FAILED");
+      assert.equal(String(error).includes("PRIVATE_TOKEN"),false);
+      return true;
+    });
   }
 });
 
