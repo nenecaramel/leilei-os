@@ -408,8 +408,8 @@ export async function finalizeSuccess(
       );
     } catch (error) {
       logCanonicalWriteFailure(
-        row.id,
-        row.operation,
+        input.preparation.prepareId,
+        input.preparation.operation,
         error,
       );
       return { ok: false, code: "CANONICAL_WRITE_FAILURE" };
