@@ -184,6 +184,7 @@ let edit = NativeLivePendingOperation(kind:.edit(targetUserMessageID:"uB",text:"
 _ = rows(old,edit)
 let rollback = rows(old)
 expect(rollback.count == 4 && rollback[2].user?.copyText == "B" && rollback[3].assistant?.copyText == "Old answer B","failed edit rolls back entire original branch")
+expect(rollback[3].assistant!.header.isEmpty && rollback[3].assistant!.timestamp == start,"failed edit restores original timestamp-only presentation without optimistic duration")
 var ui = NativeLiveMessageUIStateStore()
 expect(!ui["turn"].isActivityExpanded,"default collapsed")
 ui["turn"].pendingInputChanged(true)

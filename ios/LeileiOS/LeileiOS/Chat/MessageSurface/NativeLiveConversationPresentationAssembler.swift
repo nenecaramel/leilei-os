@@ -113,7 +113,7 @@ struct NativeLiveConversationPresentationAssembler {
         background: NativeLiveRuntimeSurfaceState? = nil,pending: NativeLivePendingOperation?,identities: NativeLiveTurnIdentityCoordinator,now: Date) -> NativeLiveAssistantTurnPresentation {
         let prepare = runtime?.prepareID ?? message?.activity?.prepareId
         let binding = prepare.flatMap { identities.binding(prepareID:$0) } ?? pending.flatMap { identities.bindings[$0.id] }
-        let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? generationOwners[id] ?? message?.id ?? id
+        let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? message?.id ?? generationOwners[id] ?? id
         let last = generationOwners[id] == owner ? previous[id] : nil
         generationOwners[id] = owner
         // Client click time drives provisional elapsed only; show a timestamp once authority exists.

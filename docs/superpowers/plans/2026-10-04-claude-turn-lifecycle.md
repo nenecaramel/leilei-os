@@ -80,13 +80,13 @@
 
 Environment: Node 24.19.0; same dependencies and root test command/order for exact-main baseline and PR. Local Postgres 18 on disposable isolated DB only. Swift tests compile production Foundation models.
 
-- RED→GREEN: initial lifecycle architecture; retained rich/source namespace; actual Postgres preparation start after operational retention; recovered older branch; fail-soft missing prepared user; multi-block rich identity; slow prepare timestamp; older Retry operation:nil; late hidden/ambient ancestry.
-- Lifecycle: 143 actual Swift assertions, including every Edit/Retry prepare/partial/tool/input/result/canonical frame, stable rows/children, body, failure, background, duration, timestamp, expansion, scroll/anchor, initial/stale load and history/fork.
+- RED→GREEN: initial lifecycle architecture; retained rich/source namespace; actual Postgres preparation start after operational retention; recovered older branch; fail-soft missing prepared user; multi-block rich identity; slow prepare timestamp; older Retry operation:nil; late hidden/ambient ancestry; failed Edit restores the original timestamp-only header without optimistic duration.
+- Lifecycle: 144 actual Swift assertions, including every Edit/Retry prepare/partial/tool/input/result/canonical frame, stable rows/children, body, failure, background, duration, timestamp, expansion, scroll/anchor, initial/stale load and history/fork.
 - A–G/#812/#813/#815/ordinary-hidden-ambient/current-path/history/background/attachment/settings focused: 92 tests, 91 pass, 1 known baseline failure (`real Swift Activity preserves final duration and explicitly presents nested permission`). Additional final lifecycle + unchanged historical tool ledger: 2/2 pass. E/B lifecycle focused: 6/6 pass.
 - Isolated Postgres: 14/14 pass (turn repository/checkpoints/current path/branches/history/content/D/#812/#813/#815/ordinary-hidden-ambient), plus attachment concurrent migration/retention 1/1 pass. No skips.
 - Production runtime gate: 405/405 root and 101/101 selected bridge tests. Complete bridge: 125/125.
 - Root typecheck, generated freshness, build and base-relative diff check pass. Node24 Web typecheck/build pass. Final unsigned arm64 Simulator build pass.
-- Full baseline: 2105 total, 2000 pass, 10 fail, 95 skip. Initial PR run: 2106 total, 2001 pass, 10 fail, 95 skip; added/removed failure names both empty. Final expanded-fixture full run pending below.
+- Full baseline: 2105 total, 2000 pass, 10 fail, 95 skip. Initial PR run: 2106 total, 2001 pass, 10 fail, 95 skip; added/removed failure names both empty. Final immutable-code full run pending below.
 
 Baseline historical failure names (not incidentally fixed):
 1. CI checks after a failed gate still run once their setup succeeds
