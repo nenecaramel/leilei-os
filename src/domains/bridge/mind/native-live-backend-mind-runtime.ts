@@ -351,7 +351,10 @@ implements NativeLiveBackendMindRuntime {
       });
     }
 
-    if (input.preparation.operation === "send") return;
+    if (
+      input.preparation.operation === "send"
+      || input.preparation.operation === "wake"
+    ) return;
 
     await this.mind.reconcileSelectedPath({
       userId: input.userId,
