@@ -9,7 +9,31 @@ struct NativeLiveVisualSandboxInput: Equatable, Sendable {
     private init(kind: Kind, source: String, identity: String) { self.kind = kind; self.source = source; self.identity = identity }
     static func displayMath(_ model: NativeLiveMathPresentation) throws -> Self {
         guard model.isDisplay, !model.latex.isEmpty, model.latex.utf16.count <= 8192 else { throw NativeLiveVisualError.invalidInput }
-        return .init(kind: .math, source: model.latex, identity: NativeLiveAttachmentIntegrity.sha256(Data(model.latex.utf8)))
+        return .init(
+            kind: .math,
+            source: model.latex,
+            identity:
+                "display:"
+                + NativeLiveAttachmentIntegrity.sha256(
+                    Data(model.latex.utf8)
+                )
+        )
+    }
+
+    static func inlineMath(_ model: NativeLiveMathPresentation) throws -> Self {
+        guard !model.isDisplay, !model.latex.isEmpty,
+              model.latex.utf16.count <= 2048 else {
+            throw NativeLiveVisualError.invalidInput
+        }
+        return .init(
+            kind: .math,
+            source: model.latex,
+            identity:
+                "inline:"
+                + NativeLiveAttachmentIntegrity.sha256(
+                    Data(model.latex.utf8)
+                )
+        )
     }
     static func mermaid(_ model: NativeLiveCodePresentation) throws -> Self {
         let source = model.code
