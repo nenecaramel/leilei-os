@@ -513,6 +513,11 @@ export function createProcessRuntime(
       nativeLiveTurnPort,
       nativeLiveWorkWakeBroker,
     );
+  const nativeLiveConversationHeadWaitService =
+    new NativeLiveConversationHeadWaitService(
+      db,
+      nativeLiveWorkWakeBroker,
+    );
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
     new DrizzleNativeLiveMindFollowUpRepository(db),
     nativeLiveTurnPort,
@@ -799,6 +804,8 @@ export function createProcessRuntime(
           relayService: nativeLiveRelayService,
           turnReader: nativeLiveTurnPort,
           turnWaitService: nativeLiveTurnWaitService,
+          conversationHeadWaitService:
+            nativeLiveConversationHeadWaitService,
           currentPathReader:
             new DrizzleNativeLiveCurrentPathReader(db),
           conversationRuntimeMetadataReader:
