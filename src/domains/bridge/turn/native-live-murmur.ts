@@ -25,9 +25,10 @@ export function extractNativeLiveMurmur(
     }
 
     const text = block.text;
+    const lowerText = text.toLowerCase();
     if (
-      !text.includes("<murmur")
-      && !text.includes("</murmur>")
+      !lowerText.includes("<murmur")
+      && !lowerText.includes("</murmur>")
     ) {
       visibleBlocks.push({ ...block });
       continue;
