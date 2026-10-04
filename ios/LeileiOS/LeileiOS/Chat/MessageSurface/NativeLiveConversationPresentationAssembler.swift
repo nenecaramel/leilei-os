@@ -251,7 +251,7 @@ struct NativeLiveConversationPresentationAssembler {
             let visible = murmurStrippedRuntimeText(final)
             if !visible.isEmpty { return visible }
         }
-        return murmurStrippedRuntimeText(runtime.streamingText ?? "")
+        return murmurStrippedRuntimeText(runtime.streamingText)
     }
 
     private func murmurStrippedRuntimeText(_ value: String) -> String {
