@@ -248,7 +248,10 @@ export class NativeLiveSilenceWakeService {
           )
           .limit(1);
         if (foreground) {
-          return { outcome: "ignored" as const, schedule };
+          return {
+            outcome: "ignored" as const,
+            schedule: null,
+          };
         }
 
         const preparationId = silenceWakePreparationId(
