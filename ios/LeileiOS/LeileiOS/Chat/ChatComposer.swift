@@ -173,9 +173,15 @@ struct ChatComposer: View {
 
                 Spacer(minLength: 0)
 
-                ComposerCircleButton(
-                    systemName: "mic.fill"
-                )
+                Button {
+                    isFocused.wrappedValue = false
+                } label: {
+                    ComposerCircleButton(
+                        systemName: "chevron.down"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss keyboard")
 
                 if isVoiceActionMode {
                     voiceActionButton
