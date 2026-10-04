@@ -30,6 +30,9 @@ import {
   NativeLiveMacCompanionScheduler,
 } from "../src/domains/bridge/mac/native-live-mac-companion-scheduler.js";
 import {
+  NativeLiveMacSilenceWakeScheduler,
+} from "../src/domains/bridge/mac/native-live-mac-silence-wake-scheduler.js";
+import {
   acquireNativeLiveMacDaemonLock,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-lock.js";
 import {
@@ -65,6 +68,11 @@ const relay = new NativeLiveMacHttpRelayClient(
   relayBaseUrl,
   relayToken,
 );
+const silenceWakeScheduler =
+  new NativeLiveMacSilenceWakeScheduler(
+    relay,
+    () => Date.now(),
+  );
 const wakeBrokerClient =
   wakeBroker
     ? new NativeLiveMacWakeBrokerClient(
@@ -138,6 +146,17 @@ process.stdout.write(
     attachments: "private_bucket_bidirectional",
   }) + "\n",
 );
+
+await silenceWakeScheduler.refresh().catch((error) => {
+  process.stderr.write(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      outcome: "silence_wake_schedule_refresh_failed",
+      errorName:
+        error instanceof Error ? error.name : "UnknownError",
+    }) + "\n",
+  );
+});
 
 const executor = new NativeLiveMacRuntimeExecutor(
   workspaceRuntimePool,
@@ -217,11 +236,25 @@ function networkCauseDiagnostics(error: unknown): {
 let consecutiveWakeErrors = 0;
 
 async function waitForWork(): Promise<
-  "ready" | "timeout" | "busy" | "retry" | "stopped"
+  "ready" | "timeout" | "busy" | "retry" | "silence_due" | "stopped"
 > {
   if (stopping) return "stopped";
   const controller = new AbortController();
   activeWorkWaitController = controller;
+  let silenceDeadlineReached = false;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  const silenceDeadline = silenceWakeScheduler.nextDeadlineAt();
+  if (silenceDeadline !== null) {
+    const delayMs = Math.max(0, silenceDeadline - Date.now());
+    if (delayMs === 0) {
+      activeWorkWaitController = null;
+      return "silence_due";
+    }
+    silenceTimer = setTimeout(() => {
+      silenceDeadlineReached = true;
+      controller.abort();
+    }, delayMs);
+  }
   try {
     if (wakeBrokerClient) {
       try {
@@ -243,7 +276,13 @@ async function waitForWork(): Promise<
           signal: controller.signal,
         });
         wakeBrokerCursor = result.cursor;
-        if (stopping || controller.signal.aborted) {
+        if (stopping) {
+          return "stopped";
+        }
+        if (silenceDeadlineReached) {
+          return "silence_due";
+        }
+        if (controller.signal.aborted) {
           return "stopped";
         }
         if (result.outcome === "reset") {
@@ -258,7 +297,13 @@ async function waitForWork(): Promise<
         }
         return result.outcome;
       } catch (error) {
-        if (stopping || controller.signal.aborted) {
+        if (stopping) {
+          return "stopped";
+        }
+        if (silenceDeadlineReached) {
+          return "silence_due";
+        }
+        if (controller.signal.aborted) {
           return "stopped";
         }
         process.stderr.write(
@@ -284,12 +329,17 @@ async function waitForWork(): Promise<
       dispatchTarget: "claude_code",
       signal: controller.signal,
     });
-    if (stopping || controller.signal.aborted) return "stopped";
+    if (stopping) return "stopped";
+    if (silenceDeadlineReached) return "silence_due";
+    if (controller.signal.aborted) return "stopped";
     return outcome;
   } catch (error) {
-    if (stopping || controller.signal.aborted) return "stopped";
+    if (stopping) return "stopped";
+    if (silenceDeadlineReached) return "silence_due";
+    if (controller.signal.aborted) return "stopped";
     throw error;
   } finally {
+    if (silenceTimer) clearTimeout(silenceTimer);
     if (activeWorkWaitController === controller) {
       activeWorkWaitController = null;
     }
@@ -336,6 +386,19 @@ while (!stopping) {
       }) + "\n",
     );
 
+    if (outcome.outcome === "completed") {
+      await silenceWakeScheduler.refresh().catch((error) => {
+        process.stderr.write(
+          JSON.stringify({
+            at: new Date().toISOString(),
+            outcome: "silence_wake_schedule_refresh_failed",
+            errorName:
+              error instanceof Error ? error.name : "UnknownError",
+          }) + "\n",
+        );
+      });
+    }
+
     if (
       outcome.outcome === "completed"
       && outcome.result.status === "success"
@@ -376,6 +439,44 @@ while (!stopping) {
             }) + "\n",
           );
           break;
+        }
+        if (wake === "silence_due") {
+          try {
+            const fired = await silenceWakeScheduler.fireDue();
+            process.stdout.write(
+              JSON.stringify({
+                at: new Date().toISOString(),
+                outcome: "silence_wake",
+                silenceOutcome: fired.outcome,
+                ...(
+                  fired.slot
+                    ? { slot: fired.slot }
+                    : {}
+                ),
+              }) + "\n",
+            );
+            if (fired.outcome === "queued") break;
+          } catch (error) {
+            process.stderr.write(
+              JSON.stringify({
+                at: new Date().toISOString(),
+                outcome: "silence_wake_failed",
+                errorName:
+                  error instanceof Error
+                    ? error.name
+                    : "UnknownError",
+              }) + "\n",
+            );
+            await silenceWakeScheduler
+              .refresh()
+              .catch(() => null);
+            // The backend may have committed the durable wake even if this
+            // HTTP response was lost. Probe the relay queue immediately;
+            // if nothing committed, the next outer cycle will retry the
+            // still-due local slot.
+            break;
+          }
+          continue;
         }
         if (wake === "retry") {
           await sleep(5_000);

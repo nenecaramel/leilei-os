@@ -63,8 +63,13 @@ function isNativeClaudeScheduleCommand(
 
 function requirePreparedUserMessage(
   conversation: NativeLiveConversation,
-  messageId: string,
+  messageId: string | null,
 ): NativeLiveMessage {
+  if (!messageId) {
+    throw new Error(
+      "Prepared turn has no canonical user message.",
+    );
+  }
   const message = conversation.messages.find(
     (candidate) => candidate.id === messageId,
   );
@@ -275,7 +280,12 @@ implements NativeLiveBackendMindRuntime {
     conversation: NativeLiveConversation,
     preparation: NativeLivePreparedTurn,
   ): ReadonlySet<string> | undefined {
-    if (preparation.operation === "send") return undefined;
+    if (
+      preparation.operation === "send"
+      || preparation.operation === "wake"
+    ) {
+      return undefined;
+    }
 
     const targetUserMessageId =
       preparation.replacementTargetUserMessageId
@@ -341,7 +351,10 @@ implements NativeLiveBackendMindRuntime {
       });
     }
 
-    if (input.preparation.operation === "send") return;
+    if (
+      input.preparation.operation === "send"
+      || input.preparation.operation === "wake"
+    ) return;
 
     await this.mind.reconcileSelectedPath({
       userId: input.userId,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   createNativeLiveMacClaudeTransport,
@@ -114,4 +115,45 @@ test("Mac daemon transport carries MCP config outside the Claude environment", a
       Authorization: "Bearer relay-secret",
     },
   });
+});
+
+
+test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks", () => {
+  const wakePrompt = readFileSync(
+    "tools/claude-bridge/src/leileios-wake-system-prompt.mjs",
+    "utf8",
+  );
+  assert.match(
+    wakePrompt,
+    /A \[wake · \.\.\. · no reply\] marker is an opportunity to continue the current conversation after silence\./u,
+  );
+  assert.match(
+    wakePrompt,
+    /If you genuinely want to say something or do something, continue normally\./u,
+  );
+  assert.match(
+    wakePrompt,
+    /Otherwise output exactly <quiet \/>\./u,
+  );
+
+  const transport = readFileSync(
+    "tools/claude-bridge/src/agent-sdk-claude-transport.mjs",
+    "utf8",
+  );
+  assert.match(
+    transport,
+    /leileios-mind-system-prompt\.mjs";\nimport \{ LEILEIOS_WAKE_SYSTEM_PROMPT \}/u,
+  );
+  assert.doesNotMatch(
+    transport,
+    /leileios-mind-system-prompt\.mjs";\\\\nimport/u,
+  );
+  assert.match(
+    transport,
+    /\[LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
+  );
+  assert.doesNotMatch(
+    transport,
+    /\.join\("\\\\n\\\\n"\)/u,
+  );
 });

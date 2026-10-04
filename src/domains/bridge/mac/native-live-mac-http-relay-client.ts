@@ -20,6 +20,10 @@ import {
 import type {
   ClaudeAlbumToolPhoto,
 } from "../../album/claude-photo-album-tool-contract.js";
+import type {
+  NativeLiveSilenceWakeSchedule,
+  NativeLiveSilenceWakeSlot,
+} from "../turn/native-live-silence-wake.js";
 
 type FetchLike = typeof fetch;
 
@@ -701,6 +705,51 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async readSilenceWakeSchedule(): Promise<
+    NativeLiveSilenceWakeSchedule | null
+  > {
+    const data = await this.post(
+      "/silence-wake/schedule",
+      {},
+    );
+    return data === null
+      ? null
+      : parseSilenceWakeSchedule(data);
+  }
+
+  async fireSilenceWake(input: {
+    epochId: string;
+    slot: NativeLiveSilenceWakeSlot;
+  }): Promise<{
+    outcome: "queued" | "ignored";
+    schedule: NativeLiveSilenceWakeSchedule | null;
+  }> {
+    const data = readRecord(
+      await this.post(
+        "/silence-wake/fire",
+        {
+          epoch_id: input.epochId,
+          slot: input.slot,
+        },
+      ),
+    );
+    if (
+      data.outcome !== "queued"
+      && data.outcome !== "ignored"
+    ) {
+      throw new Error(
+        "Native live silence wake outcome is invalid.",
+      );
+    }
+    return {
+      outcome: data.outcome,
+      schedule:
+        data.schedule === null
+          ? null
+          : parseSilenceWakeSchedule(data.schedule),
+    };
+  }
+
   async renewLease(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";
@@ -1216,6 +1265,34 @@ function readStringRecord(
       return [key, field];
     }),
   );
+}
+
+function parseSilenceWakeSchedule(
+  value: unknown,
+): NativeLiveSilenceWakeSchedule {
+  const record = readRecord(value);
+  if (
+    typeof record.epochId !== "string"
+    || typeof record.conversationId !== "string"
+    || typeof record.postTurnDueAt !== "string"
+    || typeof record.longIdleDueAt !== "string"
+    || typeof record.postTurnConsumed !== "boolean"
+    || typeof record.longIdleConsumed !== "boolean"
+    || !Number.isFinite(Date.parse(record.postTurnDueAt))
+    || !Number.isFinite(Date.parse(record.longIdleDueAt))
+  ) {
+    throw new Error(
+      "Native live silence wake schedule is invalid.",
+    );
+  }
+  return {
+    epochId: record.epochId,
+    conversationId: record.conversationId,
+    postTurnDueAt: record.postTurnDueAt,
+    longIdleDueAt: record.longIdleDueAt,
+    postTurnConsumed: record.postTurnConsumed,
+    longIdleConsumed: record.longIdleConsumed,
+  };
 }
 
 function readRecord(value: unknown): Record<string, unknown> {

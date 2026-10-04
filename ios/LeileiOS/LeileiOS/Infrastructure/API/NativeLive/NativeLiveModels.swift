@@ -161,6 +161,21 @@ struct NativeLiveConversationHistoryMessage:
     var id: Int { ordinal }
 }
 
+struct NativeLiveConversationHeadWaitSnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let outcome: String
+    let currentHeadMessageId: String?
+}
+
+struct NativeLiveConversationHeadWaitEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveConversationHeadWaitSnapshot
+}
+
 struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let title: String?

@@ -680,6 +680,13 @@
       "when": 1790886300000,
       "tag": "0096_claude_photo_album",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1791088980000,
+      "tag": "0097_native_live_silence_wake",
+      "breakpoints": true
     }
   ]
 }

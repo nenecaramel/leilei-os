@@ -61,6 +61,15 @@ export async function finalizeFailure(
           if (row.status !== "prepared") {
             return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
           }
+          if (
+            row.operation === "wake"
+            || !row.canonicalUserMessageId
+          ) {
+            return {
+              ok: false as const,
+              code: "FINALIZE_CONFLICT" as const,
+            };
+          }
 
           const finalizedAt = new Date();
           // Failure has no canonical assistant. Persist a presentation sidecar independently

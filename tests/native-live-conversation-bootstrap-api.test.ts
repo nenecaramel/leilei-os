@@ -127,6 +127,9 @@ async function withServer(
   conversationRuntimeMetadataReader?: {
     readLatest(input: unknown): Promise<unknown>;
   },
+  conversationHeadWaitService?: {
+    wait(input: unknown): Promise<unknown>;
+  },
 ): Promise<void> {
   const app = express();
   app.use(express.json());
@@ -156,6 +159,8 @@ async function withServer(
       currentPathReader: currentPathReader as never,
       conversationRuntimeMetadataReader:
         conversationRuntimeMetadataReader as never,
+      conversationHeadWaitService:
+        conversationHeadWaitService as never,
     }),
   );
 
@@ -293,6 +298,104 @@ test("native live current path rejects simultaneous older and delta cursors", as
     {
       async readCurrentPath() {
         throw new Error("must not be called");
+      },
+    },
+  );
+});
+
+test("native live conversation head wait is owner-scoped and carries only the head cursor", async () => {
+  const service = new FakeConversationService();
+  const calls: unknown[] = [];
+  const headMessageId =
+    "77777777-7777-4777-8777-777777777777";
+
+  await withServer(
+    service,
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/head/wait`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            after_head_message_id: headMessageId,
+          }),
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        success: true,
+        data: {
+          outcome: "changed",
+          currentHeadMessageId:
+            "88888888-8888-4888-8888-888888888888",
+        },
+      });
+      const firstCall = calls[0] as {
+        userId: string;
+        conversationId: string;
+        afterHeadMessageId: string | null;
+        timeoutMs: number;
+        signal?: unknown;
+      };
+      assert.deepEqual(
+        {
+          userId: firstCall.userId,
+          conversationId: firstCall.conversationId,
+          afterHeadMessageId:
+            firstCall.afterHeadMessageId,
+          timeoutMs: firstCall.timeoutMs,
+        },
+        {
+          userId,
+          conversationId,
+          afterHeadMessageId: headMessageId,
+          timeoutMs: 25_000,
+        },
+      );
+      assert.ok(firstCall.signal instanceof AbortSignal);
+
+      const empty = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/head/wait`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            after_head_message_id: null,
+          }),
+        },
+      );
+      assert.equal(empty.status, 200);
+      assert.equal(
+        (calls[1] as { afterHeadMessageId: unknown })
+          .afterHeadMessageId,
+        null,
+      );
+
+      const malformed = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/head/wait`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            after_head_message_id: "not-a-uuid",
+          }),
+        },
+      );
+      assert.equal(malformed.status, 400);
+      assert.equal(calls.length, 2);
+    },
+    true,
+    undefined,
+    undefined,
+    {
+      async wait(input: unknown) {
+        calls.push(input);
+        return {
+          outcome: "changed",
+          currentHeadMessageId:
+            "88888888-8888-4888-8888-888888888888",
+        };
       },
     },
   );

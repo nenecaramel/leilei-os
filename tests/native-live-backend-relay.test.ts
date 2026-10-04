@@ -50,6 +50,7 @@ class FakePort implements NativeLiveBackendRelayPort {
   lease: "acquired" | "renewed" | "busy" = "acquired";
   preparation: NativeLivePreparedTurn | null = prepared();
   owns = true;
+  discardedWake = false;
   mutation:
     | "applied"
     | "idempotent"
@@ -80,6 +81,11 @@ class FakePort implements NativeLiveBackendRelayPort {
   async ownsSubmitReservation(input: unknown) {
     this.calls.push({ name: "ownsSubmitReservation", input });
     return this.owns;
+  }
+
+  async isDiscardedWakeReservation(input: unknown) {
+    this.calls.push({ name: "isDiscardedWakeReservation", input });
+    return this.discardedWake;
   }
 
   async markCompleted(input: unknown) {
@@ -198,6 +204,49 @@ test("runtime failure is a valid terminal callback, closes the reservation, and 
     kind: "turn_terminal",
     prepareId,
   }]);
+});
+
+test("discarded wake result replay is idempotent after the invisible preparation has been deleted", async () => {
+  const { port, coordinator, service } = setup();
+  port.owns = false;
+  port.discardedWake = true;
+
+  const finalized = await service.submitResult({
+    userId,
+    listenerInstanceId,
+    reservationId: prepareId,
+    result: {
+      protocol_version: 3,
+      prepare_id: prepareId,
+      request_id: requestId,
+      conversation_id: conversationId,
+      status: "success",
+      provider_session_id: "provider-wake-replay",
+      normalized_events: [
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text: "<quiet />",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(finalized, {
+    ok: true,
+    outcome: "wake_discarded",
+    requestId,
+    operation: "wake",
+    conversationId,
+    providerSessionId: "provider-wake-replay",
+  });
+  assert.equal(coordinator.calls.length, 0);
+  assert.equal(
+    port.calls.filter((entry) => entry.name === "markCompleted").length,
+    0,
+  );
 });
 
 test("reservation identity mismatch is rejected before canonical finalize", async () => {

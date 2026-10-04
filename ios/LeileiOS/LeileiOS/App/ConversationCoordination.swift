@@ -396,6 +396,77 @@ extension AppModel {
         await refreshNativeLiveConversationHistorySnapshot()
         await refreshNativeLiveCurrentPath(force: true)
         await refreshActiveNativeLiveRuntimeMetadata()
+        beginNativeLiveConversationHeadObservation(
+            conversationID: conversationID
+        )
+    }
+
+    func beginNativeLiveConversationHeadObservation(
+        conversationID: UUID
+    ) {
+        nativeLiveConversationHeadObservationTask?.cancel()
+        nativeLiveConversationHeadObservationTask =
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+
+                while !Task.isCancelled,
+                      self.isAuthenticated,
+                      self.activeNativeLiveConversationID
+                        == conversationID {
+                    let afterHeadMessageID =
+                        self.nativeLiveCurrentPath?
+                            .currentHeadMessageId
+
+                    do {
+                        let result =
+                            try await self.api
+                                .waitNativeLiveConversationHead(
+                                    conversationID: conversationID,
+                                    afterHeadMessageID:
+                                        afterHeadMessageID
+                                )
+
+                        guard !Task.isCancelled,
+                              self.activeNativeLiveConversationID
+                                == conversationID else {
+                            return
+                        }
+
+                        if result.outcome == "changed",
+                           result.currentHeadMessageId
+                                != afterHeadMessageID {
+                            await self.refreshNativeLiveCurrentPath(
+                                force: false,
+                                surfaceTransientFailure: false
+                            )
+                            self.scheduleCurrentHeadMindWriteRefresh()
+                        }
+                    } catch is CancellationError {
+                        return
+                    } catch LeileiAPIError.missingAccessToken {
+                        self.clearNativeLiveSessionData()
+                        return
+                    } catch LeileiAPIError.unauthorized {
+                        self.clearNativeLiveSessionData()
+                        return
+                    } catch LeileiAPIError.backend(
+                        let status,
+                        _,
+                        _
+                    ) where status == 404 {
+                        return
+                    } catch {
+                        try? await Task.sleep(
+                            for: .seconds(1)
+                        )
+                    }
+                }
+            }
+    }
+
+    func stopNativeLiveConversationHeadObservation() {
+        nativeLiveConversationHeadObservationTask?.cancel()
+        nativeLiveConversationHeadObservationTask = nil
     }
 
     func refreshNativeLiveConversationHistorySnapshot() async {
@@ -707,6 +778,8 @@ extension AppModel {
             return
         }
 
+        nativeLiveConversationHeadObservationTask?.cancel()
+        nativeLiveConversationHeadObservationTask = nil
         activeNativeLiveConversationID = nil
         nativeLiveCurrentPath = nil
         nativeLiveHistorySnapshot = nil

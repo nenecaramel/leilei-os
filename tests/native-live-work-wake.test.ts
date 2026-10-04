@@ -160,6 +160,25 @@ test("external wake signal posts only a bounded readiness hint", async () => {
   );
 });
 
+test("external wake signal accepts the silence-wake readiness hint", async () => {
+  const requests: Array<RequestInit> = [];
+  const signal = new NativeLiveHttpWakeSignal(
+    "https://wake.example",
+    "wake-token-that-is-long-enough-for-tests",
+    (async (_url, init) => {
+      requests.push(init ?? {});
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch,
+  );
+
+  await signal.notify({ kind: "silence_wake" });
+
+  assert.deepEqual(
+    JSON.parse(String(requests[0]?.body)),
+    { kind: "silence_wake" },
+  );
+});
+
 test("external wake signal reads broker listener presence", async () => {
   const signal = new NativeLiveHttpWakeSignal(
     "https://wake.example",

@@ -554,6 +554,79 @@ test("Mac HTTP relay client offers one scoped companion background opportunity",
   );
 });
 
+test("Mac HTTP relay client reads and fires silence wake without sending user identity", async () => {
+  const epochId = userMessageId;
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const schedule = {
+    epochId,
+    conversationId,
+    postTurnDueAt: "2026-10-04T01:08:00.000Z",
+    longIdleDueAt: "2026-10-04T02:40:00.000Z",
+    postTurnConsumed: false,
+    longIdleConsumed: false,
+  };
+  const responses = [
+    { success: true, data: schedule },
+    {
+      success: true,
+      data: {
+        outcome: "queued",
+        schedule: {
+          ...schedule,
+          postTurnConsumed: true,
+        },
+      },
+    },
+  ];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    return new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  assert.deepEqual(await client.readSilenceWakeSchedule(), schedule);
+  assert.deepEqual(
+    await client.fireSilenceWake({
+      epochId,
+      slot: "post_turn_idle",
+    }),
+    {
+      outcome: "queued",
+      schedule: {
+        ...schedule,
+        postTurnConsumed: true,
+      },
+    },
+  );
+  assert.deepEqual(calls, [
+    {
+      url:
+        "https://relay.example/internal/native-live-relay/silence-wake/schedule",
+      body: {},
+    },
+    {
+      url:
+        "https://relay.example/internal/native-live-relay/silence-wake/fire",
+      body: {
+        epoch_id: epochId,
+        slot: "post_turn_idle",
+      },
+    },
+  ]);
+  assert.equal(JSON.stringify(calls).includes("user_id"), false);
+  assert.equal(JSON.stringify(calls).includes("userId"), false);
+});
+
 test("Mac HTTP relay client round-trips a durable permission interaction", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   let interactionId: string | null = null;

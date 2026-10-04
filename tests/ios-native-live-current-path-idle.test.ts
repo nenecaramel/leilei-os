@@ -135,3 +135,48 @@ test("completed detached background activity cache is bounded while active watch
     /activePrepareIDs[\s\S]*nativeLiveBackgroundObservationTasks\.keys/,
   );
 });
+
+
+test("iOS observes proactive head changes through bounded long-poll instead of periodic current-path polling", () => {
+  const conversationCoordination = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/ConversationCoordination.swift",
+    "utf8",
+  );
+  const nativeLiveAPI = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveAPI.swift",
+    "utf8",
+  );
+
+  assert.match(
+    conversationCoordination,
+    /beginNativeLiveConversationHeadObservation/,
+  );
+  assert.match(
+    conversationCoordination,
+    /waitNativeLiveConversationHead/,
+  );
+  assert.match(
+    conversationCoordination,
+    /result\.outcome == "changed"[\s\S]*refreshNativeLiveCurrentPath/,
+  );
+  assert.doesNotMatch(
+    conversationCoordination,
+    /while[\s\S]{0,400}Task\.sleep\([\s\S]{0,200}refreshNativeLiveCurrentPath/,
+  );
+  assert.match(
+    nativeLiveAPI,
+    /\/head\/wait/,
+  );
+  assert.match(
+    chatView,
+    /\.task\(id: appModel\.activeNativeLiveConversationID\)[\s\S]*beginNativeLiveConversationHeadObservation/,
+  );
+  assert.match(
+    chatView,
+    /phase != \.active[\s\S]*stopNativeLiveConversationHeadObservation/,
+  );
+  assert.match(
+    chatView,
+    /phase == \.active[\s\S]*beginNativeLiveConversationHeadObservation/,
+  );
+});

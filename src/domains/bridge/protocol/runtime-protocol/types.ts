@@ -23,9 +23,9 @@ export type NativeLiveRuntimeCommand = {
   dispatch_target: "claude_code";
   prepare_id: string;
   request_id: string;
-  operation: "send" | "retry" | "edit";
+  operation: "send" | "retry" | "edit" | "wake";
   conversation_id: string;
-  canonical_user_message_id: string;
+  canonical_user_message_id: string | null;
   runtime_mode: NativeLiveRuntimeMode;
   parent_provider_session_id: string | null;
   workspace_id: string | null;

@@ -558,6 +558,32 @@ extension LeileiAPIClient {
         }
     }
 
+    func waitNativeLiveConversationHead(
+        conversationID: UUID,
+        afterHeadMessageID: String?
+    ) async throws -> NativeLiveConversationHeadWaitSnapshot {
+        let body = try JSONEncoder().encode(
+            NativeLiveConversationHeadWaitBody(
+                afterHeadMessageID: afterHeadMessageID
+            )
+        )
+        let envelope: NativeLiveConversationHeadWaitEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/conversations/"
+                    + conversationID.uuidString.lowercased()
+                    + "/head/wait",
+                method: "POST",
+                body: body,
+                authenticated: true
+            )
+        guard envelope.data.outcome == "changed"
+                || envelope.data.outcome == "timeout" else {
+            throw LeileiAPIError.invalidResponse
+        }
+        return envelope.data
+    }
+
     func nativeLiveConversationRuntimeMetadata(
         conversationID: UUID
     ) async throws -> NativeLiveConversationRuntimeMetadataSnapshot {
@@ -1001,4 +1027,29 @@ private struct NativeLiveEditBody: Encodable, Sendable {
 private struct NativeLiveCurrentPathEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLiveCurrentPathSnapshot
+}
+
+
+private struct NativeLiveConversationHeadWaitBody: Encodable {
+    let afterHeadMessageID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case afterHeadMessageID = "after_head_message_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(
+            keyedBy: CodingKeys.self
+        )
+        if let afterHeadMessageID {
+            try container.encode(
+                afterHeadMessageID,
+                forKey: .afterHeadMessageID
+            )
+        } else {
+            try container.encodeNil(
+                forKey: .afterHeadMessageID
+            )
+        }
+    }
 }

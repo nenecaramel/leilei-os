@@ -140,6 +140,46 @@ test("runtime protocol v2 carries bounded attachment descriptors", () => {
   );
 });
 
+test("silence wake runtime command carries no fake canonical user message", () => {
+  const command = parseNativeLiveRuntimeCommand({
+    protocol_version: 3,
+    dispatch_target: "claude_code",
+    prepare_id: prepareId,
+    request_id: requestId,
+    operation: "wake",
+    conversation_id: conversationId,
+    canonical_user_message_id: null,
+    runtime_mode: "fork",
+    parent_provider_session_id: "provider-parent",
+    prompt: "[10-04 周日 11:47 · wake · +1h 47m · no reply]",
+  });
+
+  assert.equal(command.operation, "wake");
+  assert.equal(command.canonical_user_message_id, null);
+  assert.equal(command.parent_provider_session_id, "provider-parent");
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeCommand({
+        ...command,
+        canonical_user_message_id: userMessageId,
+      }),
+    /must not include a canonical user message/u,
+  );
+
+  assert.throws(
+    () =>
+      parseNativeLiveRuntimeCommand({
+        ...command,
+        operation: "send",
+        canonical_user_message_id: null,
+        runtime_mode: "new",
+        parent_provider_session_id: null,
+      }),
+    /canonical_user_message_id/u,
+  );
+});
+
 test("fork runtime command requires an exact parent provider session", () => {
   const command = parseNativeLiveRuntimeCommand({
     protocol_version: 1,

@@ -57,7 +57,7 @@ export function parseNativeLiveRuntimeCommand(
     throw new NativeLiveRuntimeProtocolError("Runtime command target must be Claude Code.");
   }
   const operation = body.operation;
-  if (operation !== "send" && operation !== "retry" && operation !== "edit") {
+  if (operation !== "send" && operation !== "retry" && operation !== "edit" && operation !== "wake") {
     throw new NativeLiveRuntimeProtocolError("Runtime operation is invalid.");
   }
   const runtimeMode = body.runtime_mode;
@@ -92,6 +92,11 @@ export function parseNativeLiveRuntimeCommand(
       "Fork runtime command requires a parent provider session.",
     );
   }
+  if (operation === "wake" && runtimeMode !== "fork") {
+    throw new NativeLiveRuntimeProtocolError(
+      "Wake runtime command must fork the current provider session.",
+    );
+  }
 
   return {
     protocol_version: protocolVersion,
@@ -100,10 +105,21 @@ export function parseNativeLiveRuntimeCommand(
     request_id: requireUuid(body.request_id, "request_id"),
     operation,
     conversation_id: requireUuid(body.conversation_id, "conversation_id"),
-    canonical_user_message_id: requireUuid(
-      body.canonical_user_message_id,
-      "canonical_user_message_id",
-    ),
+    canonical_user_message_id:
+      operation === "wake"
+        ? (
+            body.canonical_user_message_id === null
+              ? null
+              : (() => {
+                  throw new NativeLiveRuntimeProtocolError(
+                    "Wake runtime command must not include a canonical user message.",
+                  );
+                })()
+          )
+        : requireUuid(
+            body.canonical_user_message_id,
+            "canonical_user_message_id",
+          ),
     runtime_mode: runtimeMode,
     parent_provider_session_id: parentProviderSessionId,
     workspace_id: workspaceId,

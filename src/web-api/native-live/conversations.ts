@@ -419,6 +419,103 @@ export function deleteNativeLiveConversationHandler(
   };
 }
 
+export function waitNativeLiveConversationHeadHandler(
+  dependencies: NativeLiveApiDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    if (!requireWebUser(response, request.webUserId)) return;
+
+    const conversationId =
+      routeParam(request.params.conversationId);
+    if (!UUID_PATTERN.test(conversationId)) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_CONVERSATION_ID",
+          message: "Native live conversation id is invalid.",
+        },
+      });
+      return;
+    }
+
+    const body = exactBody(request.body, ["after_head_message_id"]);
+    const afterHeadMessageId = body?.after_head_message_id;
+    if (
+      !body
+      || !(
+        afterHeadMessageId === null
+        || (
+          typeof afterHeadMessageId === "string"
+          && UUID_PATTERN.test(afterHeadMessageId)
+        )
+      )
+    ) {
+      response.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_NATIVE_LIVE_HEAD_WAIT",
+          message:
+            "after_head_message_id must be a UUID or null.",
+        },
+      });
+      return;
+    }
+
+    const service = dependencies.conversationHeadWaitService;
+    if (!service) {
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_HEAD_WAIT_UNAVAILABLE",
+          message:
+            "Conversation head wait is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const onClose = () => controller.abort();
+    response.once("close", onClose);
+    try {
+      const result = await service.wait({
+        userId: request.webUserId,
+        conversationId,
+        afterHeadMessageId,
+        timeoutMs: 25_000,
+        signal: controller.signal,
+      });
+      if (response.writableEnded || controller.signal.aborted) return;
+      if (!result) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_NOT_FOUND",
+            message: "Native live conversation was not found.",
+          },
+        });
+        return;
+      }
+      response.json({
+        success: true,
+        data: result,
+      });
+    } catch {
+      if (response.writableEnded || controller.signal.aborted) return;
+      response.status(503).json({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_HEAD_WAIT_UNAVAILABLE",
+          message:
+            "Conversation head wait is temporarily unavailable.",
+        },
+      });
+    } finally {
+      response.off("close", onClose);
+    }
+  };
+}
+
 export function readNativeLiveConversationRuntimeMetadataHandler(
   dependencies: NativeLiveApiDependencies,
 ): RequestHandler {

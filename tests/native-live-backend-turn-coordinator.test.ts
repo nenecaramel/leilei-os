@@ -74,6 +74,7 @@ class FakePort implements NativeLiveBackendTurnPort {
   persistMindPreparedPromptCalls: unknown[] = [];
   finalizeSuccessCalls: unknown[] = [];
   finalizeFailureCalls: unknown[] = [];
+  discardWakeCalls: unknown[] = [];
   finalizeOutcome: "completed" | "idempotent" = "completed";
   preparation: NativeLivePreparedTurn | null = prepared();
   prepareResult: NativeLivePreparePortResult = {
@@ -141,6 +142,11 @@ class FakePort implements NativeLiveBackendTurnPort {
   async finalizeFailure(input: unknown) {
     this.finalizeFailureCalls.push(input);
     return { ok: true as const, outcome: "recorded" as const };
+  }
+
+  async discardWake(input: unknown) {
+    this.discardWakeCalls.push(input);
+    return "discarded" as const;
   }
 }
 
@@ -446,6 +452,139 @@ test("runtime failure finalizes only the failed preparation and never creates an
     conversationId,
     code: "CLAUDE_PROCESS_FAILED",
   });
+});
+
+test("quiet silence wake is discarded without canonical assistant finalization", async () => {
+  const { port, coordinator } = setup();
+  port.preparation = prepared({
+    operation: "wake",
+    canonicalUserMessageId: null,
+    wakeContext: {
+      version: 1,
+      epoch_id: userMessageId,
+      slot: "post_turn_idle",
+      source_user_message_id: userMessageId,
+      source_head_message_id: headId,
+    },
+    prompt: "[09-21 周一 08:07 · wake · +7m · no reply]",
+    mindPrepared: true,
+  });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-wake-quiet",
+    normalized_events: [
+      {
+        type: "text",
+        payload: { text: "<quiet />" },
+      },
+      {
+        type: "result",
+        payload: {
+          status: "success",
+          final_text: "<quiet />",
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    outcome: "wake_quiet",
+    requestId,
+    operation: "wake",
+    conversationId,
+    providerSessionId: "provider-wake-quiet",
+  });
+  assert.equal(port.finalizeSuccessCalls.length, 0);
+  assert.equal(port.finalizeFailureCalls.length, 0);
+  assert.equal(port.discardWakeCalls.length, 1);
+});
+
+test("failed silence wake is invisible and uses the same discard path", async () => {
+  const { port, coordinator } = setup();
+  port.preparation = prepared({
+    operation: "wake",
+    canonicalUserMessageId: null,
+    wakeContext: {
+      version: 1,
+      epoch_id: userMessageId,
+      slot: "long_idle",
+      source_user_message_id: userMessageId,
+      source_head_message_id: headId,
+    },
+    prompt: "[09-21 周一 09:40 · wake · +1h 40m · no reply]",
+    mindPrepared: true,
+  });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure",
+    error_code: "ABORTED",
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    outcome: "wake_failed",
+    requestId,
+    operation: "wake",
+    conversationId,
+    providerSessionId: null,
+  });
+  assert.equal(port.finalizeFailureCalls.length, 0);
+  assert.equal(port.discardWakeCalls.length, 1);
+});
+
+test("visible silence wake finalizes as a normal assistant continuation with no fake user message", async () => {
+  const { port, coordinator } = setup();
+  port.preparation = prepared({
+    operation: "wake",
+    canonicalUserMessageId: null,
+    wakeContext: {
+      version: 1,
+      epoch_id: userMessageId,
+      slot: "post_turn_idle",
+      source_user_message_id: userMessageId,
+      source_head_message_id: headId,
+    },
+    prompt: "[09-21 周一 08:07 · wake · +7m · no reply]",
+    mindPrepared: true,
+  });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-wake-visible",
+    normalized_events: [
+      { type: "text", payload: { text: "还想补一句。" } },
+      {
+        type: "result",
+        payload: {
+          status: "success",
+          final_text: "还想补一句。",
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(port.finalizeSuccessCalls.length, 1);
+  if (!result.ok || result.outcome !== "completed") {
+    throw new Error("expected visible wake canonical success");
+  }
+  assert.equal(result.operation, "wake");
+  assert.equal(result.userMessageId, null);
+  assert.equal(result.providerSessionId, "provider-child");
 });
 
 test("mismatched callback identity is rejected before either finalize mutation runs", async () => {

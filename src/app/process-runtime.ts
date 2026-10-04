@@ -102,6 +102,7 @@ import {
 } from "../domains/conversation/native-live-conversation-runtime-metadata.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/turn/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/turn/native-live-backend-turn-coordinator.js";
+import { NativeLiveSilenceWakeService } from "../domains/bridge/turn/native-live-silence-wake.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
@@ -501,9 +502,20 @@ export function createProcessRuntime(
     db,
     memoryDecayConfig,
   );
+  const nativeLiveSilenceWakeService =
+    new NativeLiveSilenceWakeService(
+      db,
+      () => new Date(),
+      nativeLiveWorkWakePublisher,
+    );
   const nativeLiveTurnWaitService =
     new NativeLiveTurnWaitService(
       nativeLiveTurnPort,
+      nativeLiveWorkWakeBroker,
+    );
+  const nativeLiveConversationHeadWaitService =
+    new NativeLiveConversationHeadWaitService(
+      db,
       nativeLiveWorkWakeBroker,
     );
   const nativeLiveMindFollowUpService = new NativeLiveMindFollowUpService(
@@ -792,6 +804,8 @@ export function createProcessRuntime(
           relayService: nativeLiveRelayService,
           turnReader: nativeLiveTurnPort,
           turnWaitService: nativeLiveTurnWaitService,
+          conversationHeadWaitService:
+            nativeLiveConversationHeadWaitService,
           currentPathReader:
             new DrizzleNativeLiveCurrentPathReader(db),
           conversationRuntimeMetadataReader:
@@ -854,6 +868,8 @@ export function createProcessRuntime(
             nativeLiveRuntimeControlService,
           companionBackgroundOpportunity:
             companionBackgroundOpportunity,
+          silenceWakeService:
+            nativeLiveSilenceWakeService,
         },
       },
       healthSyncService: healthService,

@@ -3,6 +3,7 @@ import {
   asc,
   eq,
   inArray,
+  ne,
   sql,
 } from "drizzle-orm";
 import {
@@ -57,6 +58,7 @@ export async function readActiveTurn(
             input.conversationId,
           ),
           eq(nativeLiveTurnPreparations.status, "prepared"),
+          ne(nativeLiveTurnPreparations.operation, "wake"),
           inArray(nativeLiveTurnPreparations.dispatchStatus, [
             "staged",
             "pending",
@@ -133,8 +135,13 @@ export async function readTurn(
 
     // This is also the bounded-wait hot path. Read only this preparation's exact
     // detached user and optional finalized assistant, never the whole conversation.
-    const messageIds = [row.canonicalUserMessageId, ...(row.assistantMessageId ? [row.assistantMessageId] : [])];
-    const messageRows = await this.db.select({
+    const messageIds = [
+      ...(row.canonicalUserMessageId ? [row.canonicalUserMessageId] : []),
+      ...(row.assistantMessageId ? [row.assistantMessageId] : []),
+    ];
+    const messageRows = messageIds.length === 0
+      ? []
+      : await this.db.select({
       id: conversationMessages.id,
       conversationId: conversationMessages.conversationId,
       parentMessageId: conversationMessages.parentMessageId,
@@ -151,13 +158,25 @@ export async function readTurn(
       eq(conversations.origin, "native_live"),
       inArray(conversationMessages.id, messageIds),
     )).limit(2);
-    const userRow = messageRows.find(message => message.id === row.canonicalUserMessageId && message.role === "user");
+    const userRow = row.canonicalUserMessageId
+      ? messageRows.find(
+          (message) =>
+            message.id === row.canonicalUserMessageId
+            && message.role === "user",
+        )
+      : undefined;
     const assistantRow = row.assistantMessageId
       ? messageRows.find(message => message.id === row.assistantMessageId && message.role === "assistant") : null;
-    if (!userRow) throw new Error("Prepared user message was not found.");
-    if (row.assistantMessageId && !assistantRow) throw new Error("Finalized assistant message was not found.");
+    if (row.operation !== "wake" && !userRow) {
+      throw new Error("Prepared user message was not found.");
+    }
+    if (row.assistantMessageId && !assistantRow) {
+      throw new Error("Finalized assistant message was not found.");
+    }
 
-    const blockRows = await this.db.select({
+    const blockRows = messageRows.length === 0
+      ? []
+      : await this.db.select({
       id: conversationContentBlocks.id,
       messageId: conversationContentBlocks.messageId,
       ordinal: conversationContentBlocks.ordinal,
@@ -182,7 +201,8 @@ export async function readTurn(
       });
       blocksByMessage.set(block.messageId, blocks);
     }
-    const message = (value: typeof userRow): NativeLiveMessage => {
+    type TurnMessageRow = (typeof messageRows)[number];
+    const message = (value: TurnMessageRow): NativeLiveMessage => {
       if (value.role !== "user" && value.role !== "assistant") throw new Error("Unsupported turn message role.");
       return {
         id: value.id,
@@ -195,7 +215,7 @@ export async function readTurn(
         blocks: blocksByMessage.get(value.id) ?? [],
       };
     };
-    const preparedUserMessage = message(userRow);
+    const preparedUserMessage = userRow ? message(userRow) : undefined;
     const assistantMessage = assistantRow ? message(assistantRow) : null;
 
     return {
@@ -204,7 +224,7 @@ export async function readTurn(
       requestId: row.requestId,
       conversationId: row.conversationId,
       operation: row.operation,
-      preparedUserMessage,
+      ...(preparedUserMessage ? { preparedUserMessage } : {}),
       replacementTargetUserMessageId: row.replacementTargetUserMessageId ?? (row.operation === "retry" ? row.canonicalUserMessageId : null),
       canonicalUserMessageId: row.canonicalUserMessageId,
       workspaceId: row.workspaceId,
@@ -320,6 +340,7 @@ export function selection(this: TurnRepositoryContext) {
         nativeLiveTurnPreparations.canonicalUserMessageId,
       replacementTargetUserMessageId:
         nativeLiveTurnPreparations.replacementTargetUserMessageId,
+      wakeContext: nativeLiveTurnPreparations.wakeContext,
       runtimeMode: nativeLiveTurnPreparations.runtimeMode,
       parentProviderSessionId:
         nativeLiveTurnPreparations.parentProviderSessionId,

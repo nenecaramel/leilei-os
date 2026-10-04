@@ -435,6 +435,104 @@ test("internal relay companion background opportunity uses authenticated user sc
   );
 });
 
+test("internal relay silence wake endpoints use authenticated user scope and reject malformed fire requests", async () => {
+  const relayService = new FakeRelayService();
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const schedule = {
+    epochId: userMessageId,
+    conversationId,
+    postTurnDueAt: "2026-10-04T01:08:00.000Z",
+    longIdleDueAt: "2026-10-04T02:40:00.000Z",
+    postTurnConsumed: false,
+    longIdleConsumed: false,
+  };
+  const silenceWakeService = {
+    async readSchedule(input: unknown) {
+      calls.push({ name: "readSchedule", input });
+      return schedule;
+    },
+    async fire(input: unknown) {
+      calls.push({ name: "fire", input });
+      return {
+        outcome: "queued" as const,
+        schedule: {
+          ...schedule,
+          postTurnConsumed: true,
+        },
+      };
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          silenceWakeService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const read = await fetch(
+        `${baseUrl}/internal/native-live-relay/silence-wake/schedule`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        },
+      );
+      assert.equal(read.status, 200);
+      assert.deepEqual(
+        (await read.json() as { data: unknown }).data,
+        schedule,
+      );
+
+      const fired = await fetch(
+        `${baseUrl}/internal/native-live-relay/silence-wake/fire`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            epoch_id: userMessageId,
+            slot: "post_turn_idle",
+          }),
+        },
+      );
+      assert.equal(fired.status, 200);
+      assert.deepEqual(calls, [
+        { name: "readSchedule", input: { userId } },
+        {
+          name: "fire",
+          input: {
+            userId,
+            epochId: userMessageId,
+            slot: "post_turn_idle",
+          },
+        },
+      ]);
+
+      const malformed = await fetch(
+        `${baseUrl}/internal/native-live-relay/silence-wake/fire`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            epoch_id: userMessageId,
+            slot: "later",
+          }),
+        },
+      );
+      assert.equal(malformed.status, 400);
+      assert.equal(calls.length, 2);
+    },
+  );
+});
+
 test("internal relay persists authenticated foreground runtime event batches", async () => {
   const relayService = new FakeRelayService();
   const runtimeEvents = new FakeRuntimeEventService();

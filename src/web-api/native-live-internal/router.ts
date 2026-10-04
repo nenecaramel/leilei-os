@@ -48,6 +48,10 @@ import {
   waitRuntimeControlHandler,
   completeRuntimeControlHandler,
 } from "./controls.js";
+import {
+  readSilenceWakeScheduleHandler,
+  fireSilenceWakeHandler,
+} from "./silence-wake.js";
 
 export function createNativeLiveRelayInternalRouter(
   dependencies: NativeLiveRelayInternalDependencies,
@@ -79,6 +83,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/background/opportunity",
       companionBackgroundOpportunityHandler(dependencies),
+    );
+  }
+  if (dependencies.silenceWakeService) {
+    router.post(
+      "/silence-wake/schedule",
+      readSilenceWakeScheduleHandler(dependencies),
+    );
+    router.post(
+      "/silence-wake/fire",
+      fireSilenceWakeHandler(dependencies),
     );
   }
   if (dependencies.backgroundModelService) {

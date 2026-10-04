@@ -11,6 +11,7 @@ export type NativeLiveWorkKind =
   | "semantic"
   | "foreground"
   | "background_model"
+  | "silence_wake"
   | "runtime_control"
   | "runtime_interaction"
   | "turn_terminal";
@@ -18,7 +19,11 @@ export type NativeLiveWorkKind =
 type NativeLiveWorkWakeInput =
   | {
       userId: string;
-      kind: "semantic" | "foreground" | "background_model";
+      kind:
+        | "semantic"
+        | "foreground"
+        | "background_model"
+        | "silence_wake";
     }
   | {
       userId: string;
@@ -174,6 +179,7 @@ export class DrizzleNativeLiveWorkWakePublisher {
         input.kind === "semantic"
         || input.kind === "foreground"
         || input.kind === "background_model"
+        || input.kind === "silence_wake"
       )
     ) {
       try {
@@ -775,6 +781,7 @@ export class NativeLiveWorkWakeBroker {
       this.signalKey(
         turnWakeKey(userId, prepareId),
       );
+      this.signalKey(userWakeKey(userId));
       return;
     }
 
@@ -782,6 +789,7 @@ export class NativeLiveWorkWakeBroker {
       kind === "semantic"
       || kind === "foreground"
       || kind === "background_model"
+      || kind === "silence_wake"
     ) {
       this.signalKey(userWakeKey(userId));
     }

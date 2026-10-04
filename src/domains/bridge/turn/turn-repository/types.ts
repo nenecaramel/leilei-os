@@ -36,8 +36,9 @@ export type NativeLiveBackendTurnReadModel = {
   prepareId: string;
   requestId: string;
   conversationId: string;
-  operation: "send" | "retry" | "edit";
-  canonicalUserMessageId: string;
+  operation: "send" | "retry" | "edit" | "wake";
+  canonicalUserMessageId: string | null;
+  wakeContext?: Record<string, unknown> | null;
   workspaceId: string | null;
   expectedWorkspaceRoot: string | null;
   executionSelection: NativeLiveExecutionSelection | null;
@@ -71,10 +72,11 @@ export type PreparationRow = {
   userId: string;
   requestId: string;
   conversationId: string;
-  operation: "send" | "retry" | "edit";
+  operation: "send" | "retry" | "edit" | "wake";
   requestHash: string;
-  canonicalUserMessageId: string;
+  canonicalUserMessageId: string | null;
   replacementTargetUserMessageId: string | null;
+  wakeContext: Record<string, unknown> | null;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
   workspaceId: string | null;

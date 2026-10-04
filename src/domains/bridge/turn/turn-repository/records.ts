@@ -27,6 +27,7 @@ export function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     operation: row.operation,
     canonicalUserMessageId: row.canonicalUserMessageId,
     replacementTargetUserMessageId: row.replacementTargetUserMessageId,
+    wakeContext: row.wakeContext,
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
     workspaceId: row.workspaceId,

@@ -20,7 +20,7 @@ import {
   conversationMessages,
 } from "./conversation.js";
 
-export type NativeLiveTurnOperation = "send" | "retry" | "edit";
+export type NativeLiveTurnOperation = "send" | "retry" | "edit" | "wake";
 export type NativeLiveTurnRuntimeMode = "new" | "fork";
 export type NativeLiveTurnPreparationStatus =
   | "prepared"
@@ -51,8 +51,9 @@ export const nativeLiveTurnPreparations = pgTable(
       .$type<NativeLiveTurnOperation>()
       .notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
-    canonicalUserMessageId: uuid("canonical_user_message_id").notNull(),
+    canonicalUserMessageId: uuid("canonical_user_message_id"),
     replacementTargetUserMessageId: uuid("replacement_target_user_message_id"),
+    wakeContext: jsonb("wake_context").$type<Record<string, unknown> | null>(),
     runtimeMode: varchar("runtime_mode", { length: 16 })
       .$type<NativeLiveTurnRuntimeMode>()
       .notNull(),
@@ -159,7 +160,21 @@ export const nativeLiveTurnPreparations = pgTable(
     ),
     check(
       "native_live_turn_preparations_operation_allowed",
-      sql`${table.operation} IN ('send', 'retry', 'edit')`,
+      sql`${table.operation} IN ('send', 'retry', 'edit', 'wake')`,
+    ),
+    check(
+      "native_live_turn_preparations_wake_consistency",
+      sql`(
+        ${table.operation} = 'wake'
+        AND ${table.canonicalUserMessageId} IS NULL
+        AND ${table.replacementTargetUserMessageId} IS NULL
+        AND ${table.wakeContext} IS NOT NULL
+        AND jsonb_typeof(${table.wakeContext}) = 'object'
+      ) OR (
+        ${table.operation} <> 'wake'
+        AND ${table.canonicalUserMessageId} IS NOT NULL
+        AND ${table.wakeContext} IS NULL
+      )`,
     ),
     check(
       "native_live_turn_preparations_runtime_mode_allowed",
@@ -331,7 +346,7 @@ export const nativeLiveMindFollowUps = pgTable(
     ),
     check(
       "native_live_mind_followups_operation_allowed",
-      sql`${table.operation} IN ('send', 'retry', 'edit')`,
+      sql`${table.operation} IN ('send', 'retry', 'edit', 'wake')`,
     ),
     check(
       "native_live_mind_followups_intents_array",

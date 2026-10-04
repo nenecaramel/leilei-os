@@ -6,6 +6,7 @@ import type { NativeLiveRuntimeEventService } from "../../domains/bridge/runtime
 import type { NativeLiveRuntimeInteractionService } from "../../domains/bridge/runtime-interaction/native-live-runtime-interaction.js";
 import type { NativeLiveRuntimeControlService } from "../../domains/bridge/runtime-interaction/native-live-runtime-control.js";
 import type { CompanionBackgroundOpportunityService } from "../../domains/runtime/background/companion-background-opportunity.js";
+import type { NativeLiveSilenceWakeService } from "../../domains/bridge/turn/native-live-silence-wake.js";
 import type { NativeLiveWorkWaitService } from "../../domains/bridge/relay/native-live-work-wake.js";
 import type { NativeLiveProviderSessionCleanupService } from "../../domains/bridge/provider-session/native-live-provider-session-cleanup.js";
 import type { NativeLiveManualCompactService } from "../../domains/bridge/turn/native-live-manual-compact.js";
@@ -51,6 +52,10 @@ export type NativeLiveRelayInternalDependencies = {
   companionBackgroundOpportunity?: Pick<
     CompanionBackgroundOpportunityService,
     "offer"
+  >;
+  silenceWakeService?: Pick<
+    NativeLiveSilenceWakeService,
+    "readSchedule" | "fire"
   >;
   observeCompanionBackgroundOpportunity?: (event: {
     outcome: "offered" | "failed";

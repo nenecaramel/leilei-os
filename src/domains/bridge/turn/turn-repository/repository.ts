@@ -43,6 +43,7 @@ import {
   persistFinalizedContextLineage,
 } from "./finalize-success.js";
 import { finalizeFailure } from "./finalize-failure.js";
+import { discardWake } from "./discard-wake.js";
 import {
   recoverStaleDeliveryUnknownTurn,
   purgeReplacementArtifacts,
@@ -200,6 +201,14 @@ implements NativeLiveBackendTurnPort {
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult> {
     return finalizeFailure.call(this.context, input);
+  }
+
+  discardWake(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string | null;
+  }): Promise<"discarded" | "idempotent"> {
+    return discardWake.call(this.context, input);
   }
 
   private purgeReplacementArtifacts(
