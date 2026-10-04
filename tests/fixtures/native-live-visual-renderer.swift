@@ -27,6 +27,9 @@ for kind in [NativeLiveVisualNodeKind.artifact,.resource,.webArtifact,.interacti
 let equation = try! NativeLiveVisualSandboxInput.displayMath(.init(latex:#"\frac{1}{2}+\sqrt{x}+\sum_i a_i"#,isDisplay:true))
 expect(equation.kind == .math && equation.source.hasPrefix(#"\frac"#), "typed Math and raw copy")
 rejects("inline Math not WebView") { _ = try NativeLiveVisualSandboxInput.displayMath(.init(latex:"x",isDisplay:false)) }
+let inlineEquation = try! NativeLiveVisualSandboxInput.inlineMath(.init(latex:#"\frac{1}{2}"#,isDisplay:false))
+expect(inlineEquation.kind == .math && inlineEquation.identity.hasPrefix("inline:"), "inline Math visual input")
+rejects("display Math is not inline") { _ = try NativeLiveVisualSandboxInput.inlineMath(.init(latex:"x",isDisplay:true)) }
 rejects("empty Math") { _ = try NativeLiveVisualSandboxInput.displayMath(.init(latex:"",isDisplay:true)) }
 rejects("huge Math") { _ = try NativeLiveVisualSandboxInput.displayMath(.init(latex:String(repeating:"x",count:8193),isDisplay:true)) }
 let diagram = try! NativeLiveVisualSandboxInput.mermaid(.init(info:"mermaid",code:"graph TD\nA-->B",closed:false))
