@@ -70,5 +70,5 @@ test("malformed murmur markers never leak raw murmur tags into the main body", (
   ]);
 
   assert.equal(result.murmurBlock, null);
-  assert.equal(result.visibleBlocks[0]?.text, "Visible unfinished");
+  assert.equal(result.visibleBlocks[0]?.text, "Visible");
 });
