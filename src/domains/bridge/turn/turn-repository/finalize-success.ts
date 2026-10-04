@@ -406,10 +406,58 @@ export async function finalizeSuccess(
         },
         { isolationLevel: "serializable" },
       );
-    } catch {
+    } catch (error) {
+      logCanonicalWriteFailure(
+        row.id,
+        row.operation,
+        error,
+      );
       return { ok: false, code: "CANONICAL_WRITE_FAILURE" };
     }
   }
+
+function logCanonicalWriteFailure(
+  prepareId: string,
+  operation: PreparationRow["operation"],
+  error: unknown,
+): void {
+  const record =
+    error && typeof error === "object"
+      ? error as Record<string, unknown>
+      : {};
+  process.stderr.write(
+    JSON.stringify({
+      level: "error",
+      timestamp: new Date().toISOString(),
+      event: "native_live_canonical_write_failed",
+      prepareId,
+      operation,
+      errorName:
+        error instanceof Error
+          ? error.name
+          : "UnknownError",
+      ...(
+        typeof record.code === "string"
+          ? { errorCode: record.code }
+          : {}
+      ),
+      ...(
+        typeof record.constraint_name === "string"
+          ? { constraintName: record.constraint_name }
+          : typeof record.constraint === "string"
+            ? { constraintName: record.constraint }
+            : {}
+      ),
+      ...(
+        typeof record.table_name === "string"
+          ? { tableName: record.table_name }
+          : typeof record.table === "string"
+            ? { tableName: record.table }
+            : {}
+      ),
+    }) + "\n",
+  );
+}
 
 function requireCanonicalUserMessageId(
   row: PreparationRow,
