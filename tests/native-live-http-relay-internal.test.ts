@@ -436,10 +436,12 @@ test("internal relay companion background opportunity uses authenticated user sc
 });
 
 test("internal relay silence wake endpoints use authenticated user scope and reject malformed fire requests", async () => {
+  const epochId =
+    "44444444-4444-4444-8444-444444444444";
   const relayService = new FakeRelayService();
   const calls: Array<{ name: string; input: unknown }> = [];
   const schedule = {
-    epochId: userMessageId,
+    epochId: epochId,
     conversationId,
     postTurnDueAt: "2026-10-04T01:08:00.000Z",
     longIdleDueAt: "2026-10-04T02:40:00.000Z",
@@ -498,7 +500,7 @@ test("internal relay silence wake endpoints use authenticated user scope and rej
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            epoch_id: userMessageId,
+            epoch_id: epochId,
             slot: "post_turn_idle",
           }),
         },
@@ -510,7 +512,7 @@ test("internal relay silence wake endpoints use authenticated user scope and rej
           name: "fire",
           input: {
             userId,
-            epochId: userMessageId,
+            epochId: epochId,
             slot: "post_turn_idle",
           },
         },
@@ -522,7 +524,7 @@ test("internal relay silence wake endpoints use authenticated user scope and rej
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            epoch_id: userMessageId,
+            epoch_id: epochId,
             slot: "later",
           }),
         },
