@@ -38,8 +38,9 @@ export type NativeLivePreparedTurn = {
   requestId: string;
   userId: string;
   conversationId: string;
-  operation: NativeLiveRelayRequest["operation"];
-  canonicalUserMessageId: string;
+  operation: NativeLiveRelayRequest["operation"] | "wake";
+  canonicalUserMessageId: string | null;
+  wakeContext?: Record<string, unknown> | null;
   replacementTargetUserMessageId?: string | null;
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
@@ -124,6 +125,11 @@ export type NativeLiveFinalizeSuccessPortResult =
       record: NativeLiveFinalizeSuccessRecord;
     }
   | {
+      ok: true;
+      outcome: "wake_discarded";
+      record: null;
+    }
+  | {
       ok: false;
       code: "FINALIZE_CONFLICT" | "CANONICAL_WRITE_FAILURE";
     };
@@ -137,12 +143,20 @@ export type NativeLiveFinalizeResult =
       ok: true;
       outcome: "completed" | "idempotent";
       requestId: string;
-      operation: NativeLiveRelayRequest["operation"];
+      operation: NativeLiveRelayRequest["operation"] | "wake";
       conversationId: string;
-      userMessageId: string;
+      userMessageId: string | null;
       assistantMessageId: string;
       checkpointId: string;
       providerSessionId: string;
+    }
+  | {
+      ok: true;
+      outcome: "wake_quiet" | "wake_stale" | "wake_failed";
+      requestId: string;
+      operation: "wake";
+      conversationId: string;
+      providerSessionId: string | null;
     }
   | {
       ok: false;
@@ -229,6 +243,12 @@ export interface NativeLiveBackendTurnPort {
     errorCode: NativeLiveRuntimeFailureCode | "RUNTIME_PROTOCOL_ERROR";
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult>;
+
+  discardWake(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string | null;
+  }): Promise<"discarded" | "idempotent">;
 }
 
 export class NativeLiveBackendTurnCoordinator {
@@ -415,6 +435,25 @@ export class NativeLiveBackendTurnCoordinator {
     }
 
     if (result.status === "failure") {
+      if (preparation.operation === "wake") {
+        try {
+          await this.port.discardWake({
+            userId,
+            preparation,
+            providerSessionId: null,
+          });
+          return {
+            ok: true,
+            outcome: "wake_failed",
+            requestId: preparation.requestId,
+            operation: "wake",
+            conversationId: preparation.conversationId,
+            providerSessionId: null,
+          };
+        } catch {
+          return failureForResult(result, "INTERNAL_ERROR");
+        }
+      }
       try {
         const recorded = await this.port.finalizeFailure({
           userId,
@@ -434,6 +473,25 @@ export class NativeLiveBackendTurnCoordinator {
 
     const canonical = canonicalizeNativeLiveEvents(result.normalized_events);
     if (canonical.error) {
+      if (preparation.operation === "wake") {
+        try {
+          await this.port.discardWake({
+            userId,
+            preparation,
+            providerSessionId: result.provider_session_id,
+          });
+          return {
+            ok: true,
+            outcome: "wake_failed",
+            requestId: preparation.requestId,
+            operation: "wake",
+            conversationId: preparation.conversationId,
+            providerSessionId: result.provider_session_id,
+          };
+        } catch {
+          return failureForResult(result, "INTERNAL_ERROR");
+        }
+      }
       try {
         const recorded = await this.port.finalizeFailure({
           userId,
@@ -449,6 +507,29 @@ export class NativeLiveBackendTurnCoordinator {
         return failureForResult(result, "INTERNAL_ERROR");
       }
       return failureForResult(result, "RUNTIME_PROTOCOL_ERROR");
+    }
+
+    if (
+      preparation.operation === "wake"
+      && isQuietWakeResult(result.normalized_events, canonical.blocks)
+    ) {
+      try {
+        await this.port.discardWake({
+          userId,
+          preparation,
+          providerSessionId: result.provider_session_id,
+        });
+        return {
+          ok: true,
+          outcome: "wake_quiet",
+          requestId: preparation.requestId,
+          operation: "wake",
+          conversationId: preparation.conversationId,
+          providerSessionId: result.provider_session_id,
+        };
+      } catch {
+        return failureForResult(result, "INTERNAL_ERROR");
+      }
     }
 
     const parsedMind = this.mind
@@ -481,6 +562,16 @@ export class NativeLiveBackendTurnCoordinator {
 
     if (!finalized.ok) {
       return failureForResult(result, finalized.code);
+    }
+    if (finalized.outcome === "wake_discarded") {
+      return {
+        ok: true,
+        outcome: "wake_stale",
+        requestId: preparation.requestId,
+        operation: "wake",
+        conversationId: preparation.conversationId,
+        providerSessionId: result.provider_session_id,
+      };
     }
 
     if (this.postFinalize) {
@@ -558,6 +649,26 @@ export function nativeLiveRuntimeCommandFromPreparation(
     prompt: preparation.prompt,
   };
   return command;
+}
+
+function isQuietWakeResult(
+  events: readonly NativeLiveNormalizedEvent[],
+  blocks: readonly NativeLiveContentBlockInput[],
+): boolean {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type !== "result") continue;
+    const finalText = event.payload?.final_text;
+    if (typeof finalText === "string") {
+      return finalText.trim() === "<quiet />";
+    }
+  }
+  const text = blocks
+    .filter((block) => block.kind === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+  return text === "<quiet />";
 }
 
 function failureForResult(
