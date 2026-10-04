@@ -164,12 +164,27 @@ struct NativeLiveConversationPresentationAssembler {
             .min { $0.sequence < $1.sequence }?.createdAt
         let frozen = last.flatMap { $0.hasAuthoritativeDuration ? $0.duration : nil }
         let duration: Int?
+        let authoritativeDuration: Bool
         if let providerStart {
-            let end = active ? now : terminalAt.flatMap(parse)
-            duration = frozen ?? end.flatMap { end in parse(providerStart).map { max(0,Int(end.timeIntervalSince($0))) } }
+            if let frozen {
+                duration = frozen
+                authoritativeDuration = true
+            } else if active {
+                duration = parse(providerStart).map { max(0,Int(now.timeIntervalSince($0))) }
+                authoritativeDuration = false
+            } else if let end = terminalAt.flatMap(parse) {
+                duration = parse(providerStart).map { max(0,Int(end.timeIntervalSince($0))) }
+                authoritativeDuration = duration != nil
+            } else {
+                // Completion can be observed one frame before its terminal event read.
+                // Keep the prior value from the same provider-start clock without freezing it.
+                duration = last?.duration
+                authoritativeDuration = false
+            }
         } else {
             // Only canonical terminal legacy data may use provider telemetry.
             duration = !active && canonicalTerminal ? message?.activity?.durationMs.flatMap(seconds) : nil
+            authoritativeDuration = duration != nil
         }
         let foregroundActivity = runtime.map { NativeLiveTurnActivityProjection(runtimeSurface:$0,elapsed:duration) }
         let backgroundActivity = background.map { NativeLiveTurnActivityProjection(runtimeSurface:$0,elapsed:duration) }
@@ -209,7 +224,7 @@ struct NativeLiveConversationPresentationAssembler {
             parentUserMessageID:message?.parentMessageId ?? runtime?.userMessageID ?? binding?.userMessageID,
             phase:phase,timestamp:timestamp,bodyPresentation:body,activityProjection:activity,duration:duration,header:header,failure:phase == .failed ? "Failed" : nil)
         turn.providerMessageStartedAt = providerStart
-        turn.hasAuthoritativeDuration = !active && duration != nil
+        turn.hasAuthoritativeDuration = authoritativeDuration
         previous[id] = turn
         return turn
     }
