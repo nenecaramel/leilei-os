@@ -398,8 +398,8 @@ export class NativeLiveSilenceWakeService {
     const rows = await executor.execute<{
       conversation_id: string;
       user_message_id: string;
-      user_activity_at: Date;
-      assistant_completed_at: Date;
+      user_activity_at: Date | string;
+      assistant_completed_at: Date | string;
       current_head_message_id: string;
       provider_session_id: string;
       workspace_id: string | null;
@@ -501,8 +501,14 @@ export class NativeLiveSilenceWakeService {
       ? {
           conversationId: row.conversation_id,
           epochId: row.user_message_id,
-          userActivityAt: row.user_activity_at,
-          assistantCompletedAt: row.assistant_completed_at,
+          userActivityAt: readDatabaseTimestamp(
+            row.user_activity_at,
+            "user_activity_at",
+          ),
+          assistantCompletedAt: readDatabaseTimestamp(
+            row.assistant_completed_at,
+            "assistant_completed_at",
+          ),
           currentHeadMessageId: row.current_head_message_id,
           providerSessionId: row.provider_session_id,
           workspaceId: row.workspace_id,
@@ -510,6 +516,22 @@ export class NativeLiveSilenceWakeService {
         }
       : null;
   }
+}
+
+function readDatabaseTimestamp(
+  value: Date | string,
+  field: string,
+): Date {
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error(
+      `Silence wake source ${field} is invalid.`,
+    );
+  }
+  return date;
 }
 
 export function silenceWakePreparationId(
