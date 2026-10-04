@@ -17,6 +17,7 @@ export class ClaudeEventNormalizer {
     this.sessionId = null;
     this.sequence = 0;
     this.accumulated = "";
+    this.providerMessageStarted = false;
   }
 
   normalize(raw) {
@@ -303,6 +304,11 @@ export class ClaudeEventNormalizer {
 
     if (raw.type === "stream_event") {
       const event = raw.event;
+      if (event?.type === "message_start" && !this.providerMessageStarted
+          && !raw.parent_tool_use_id && !raw.parent_agent_id) {
+        this.providerMessageStarted = true;
+        emit("runtime", this.sessionId, { kind: "provider_message_start" });
+      }
       if (
         event?.type === "content_block_delta"
         && event.delta?.type === "text_delta"

@@ -15,6 +15,7 @@ struct NativeLiveAssistantTurnPresentation: Equatable, Identifiable {
     let duration: Int?
     let header: String
     let failure: String?
+    var providerMessageStartedAt: String? = nil
     var hasAuthoritativeDuration = false
     var hasCanonicalRetryTarget = true
     var stepCount: Int { activityProjection.activityCount }

@@ -1,3 +1,4 @@
+import { decodeDurableTurnTimingEvents } from "./native-live-turn-timing.js";
 import {
   and,
   asc,
@@ -40,11 +41,12 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
   }
 
   // Final provider telemetry already lives in the canonical message checkpoint.
-  // Project only duration; operational turn retention must not remove it.
+  // Retain the server-owned provider clock alongside legacy duration after operational retention.
   const durationRows = await db
     .select({
       messageId: conversationProviderSessionCheckpoints.canonicalMessageId,
       startedAt: sql<unknown>`${conversationProviderSessionCheckpoints.runtimeMetadata} ->> 'turn_started_at'`,
+      timingEvents: sql<unknown>`${conversationProviderSessionCheckpoints.runtimeMetadata} -> 'native_live_turn_timing_events'`,
       durationMs: sql<unknown>`${conversationProviderSessionCheckpoints.runtimeMetadata} -> 'result' -> 'duration_ms'`,
     })
     .from(conversationProviderSessionCheckpoints)
@@ -58,12 +60,13 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
   for (const row of durationRows) {
     const durationMs = typeof row.durationMs === "number" && Number.isFinite(row.durationMs) && row.durationMs >= 0 ? row.durationMs : undefined;
     const startedAt = typeof row.startedAt === "string" && Number.isFinite(Date.parse(row.startedAt)) ? row.startedAt : undefined;
-    if (durationMs === undefined && startedAt === undefined) continue;
+    const timingEvents = decodeDurableTurnTimingEvents(row.timingEvents);
+    if (durationMs === undefined && startedAt === undefined && timingEvents.length === 0) continue;
     activityByMessage.set(row.messageId, {
       prepareId: null,
       ...(durationMs === undefined ? {} : { durationMs }),
       ...(startedAt === undefined ? {} : { startedAt }),
-      events: [],
+      events: timingEvents,
       interactions: [],
     });
   }
@@ -112,7 +115,7 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
     activityByMessage.set(messageId, {
       ...activityByMessage.get(messageId),
       prepareId,
-      events: [],
+      events: activityByMessage.get(messageId)?.events ?? [],
       interactions: [],
     });
   }

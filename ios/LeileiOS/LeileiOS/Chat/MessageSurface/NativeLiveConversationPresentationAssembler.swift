@@ -150,21 +150,45 @@ struct NativeLiveConversationPresentationAssembler {
         let owner = binding?.operationID.uuidString ?? pending?.id.uuidString ?? prepare ?? message?.id ?? generationOwners[id] ?? id
         let last = generationOwners[id] == owner ? previous[id] : nil
         generationOwners[id] = owner
-        // Client click time drives provisional elapsed only; show a timestamp once authority exists.
+        // Display timestamp keeps its lifecycle semantics; it never anchors elapsed time.
         let timestamp = last?.timestamp ?? runtime?.startedAt ?? binding?.authoritativeStartedAt
             ?? message?.activity?.startedAt ?? earliest(message:message,runtime:runtime) ?? message?.createdAt
-        let start = timestamp ?? binding?.startedAt ?? pending?.startedAt ?? ISO8601DateFormatter().string(from:now)
-        let foregroundActivity = runtime.map { NativeLiveTurnActivityProjection(runtimeSurface:$0) }
-        let backgroundActivity = background.map { NativeLiveTurnActivityProjection(runtimeSurface:$0) }
-        let durable = message.map { NativeLiveTurnActivityProjection(message:$0) }
         let canonicalTerminal = message.map { ["completed","error"].contains($0.status) } ?? false
         let terminal = canonicalTerminal || runtime?.foregroundTurnCompleted == true || runtime?.events.contains { ["result","error"].contains($0.event.type) } == true
         let active = runtime != nil ? !terminal : (pending != nil && message == nil)
-        let resultDuration = runtime?.events.reversed().first(where: { $0.event.type == "result" })?.event.payload?["duration_ms"]?.numberValue
-            ?? background?.events.reversed().first(where:{ $0.event.type == "result" })?.event.payload?["duration_ms"]?.numberValue
+        let timingEvents = (message?.activity?.events ?? []) + (runtime?.events ?? []) + (background?.events ?? [])
+        let providerStart = last?.providerMessageStartedAt ?? timingEvents.filter {
+            $0.event.type == "runtime" && $0.event.payload?["kind"]?.stringValue == "provider_message_start"
+        }.min { $0.sequence < $1.sequence }?.createdAt
+        let terminalAt = timingEvents.filter { ["result","error"].contains($0.event.type) }
+            .min { $0.sequence < $1.sequence }?.createdAt
         let frozen = last.flatMap { $0.hasAuthoritativeDuration ? $0.duration : nil }
-        let duration = frozen ?? resultDuration.flatMap(seconds) ?? durable?.elapsedSeconds
-            ?? (active ? parse(start).map { max(0,Int(now.timeIntervalSince($0))) } : last?.duration)
+        let duration: Int?
+        let authoritativeDuration: Bool
+        if let providerStart {
+            if let frozen {
+                duration = frozen
+                authoritativeDuration = true
+            } else if active {
+                duration = parse(providerStart).map { max(0,Int(now.timeIntervalSince($0))) }
+                authoritativeDuration = false
+            } else if let end = terminalAt.flatMap(parse) {
+                duration = parse(providerStart).map { max(0,Int(end.timeIntervalSince($0))) }
+                authoritativeDuration = duration != nil
+            } else {
+                // Completion can be observed one frame before its terminal event read.
+                // Keep the prior value from the same provider-start clock without freezing it.
+                duration = last?.duration
+                authoritativeDuration = false
+            }
+        } else {
+            // Only canonical terminal legacy data may use provider telemetry.
+            duration = !active && canonicalTerminal ? message?.activity?.durationMs.flatMap(seconds) : nil
+            authoritativeDuration = duration != nil
+        }
+        let foregroundActivity = runtime.map { NativeLiveTurnActivityProjection(runtimeSurface:$0,elapsed:duration) }
+        let backgroundActivity = background.map { NativeLiveTurnActivityProjection(runtimeSurface:$0,elapsed:duration) }
+        let durable = message.map { NativeLiveTurnActivityProjection(message:$0,elapsed:duration) }
         let knownActivity = NativeLiveTurnActivityProjection(durable:last?.activityProjection,overlay:durable,active:active,elapsed:duration)
         let foregroundOverlay = NativeLiveTurnActivityProjection(durable:knownActivity,overlay:foregroundActivity,active:active,elapsed:duration)
         let eventSources = [message?.activity?.events ?? [],runtime?.events ?? [],background?.events ?? []]
@@ -183,6 +207,7 @@ struct NativeLiveConversationPresentationAssembler {
             suppressedTools:hiddenTools.union(rawTasks.compactMap(\.toolUseID)),suppressedTasks:Set(hiddenTasks.map(\.id)),suppressedQuestions:hiddenTools)
         let phase: NativeLiveAssistantTurnPresentation.Phase
         if activity.turnFailed || runtime?.terminalFailure != nil { phase = .failed }
+        else if active && providerStart == nil { phase = .starting }
         else if activity.hasPendingInteraction { phase = .needsInput }
         else if !active && activity.hasActiveBackgroundTask { phase = .background }
         else if !active { phase = .completed }
@@ -198,7 +223,8 @@ struct NativeLiveConversationPresentationAssembler {
         var turn = NativeLiveAssistantTurnPresentation(stableID:id,canonicalMessageID:message?.id,prepareID:prepare,requestID:runtime?.requestID ?? binding?.requestID,
             parentUserMessageID:message?.parentMessageId ?? runtime?.userMessageID ?? binding?.userMessageID,
             phase:phase,timestamp:timestamp,bodyPresentation:body,activityProjection:activity,duration:duration,header:header,failure:phase == .failed ? "Failed" : nil)
-        turn.hasAuthoritativeDuration = frozen != nil || resultDuration.flatMap(seconds) != nil || durable?.elapsedSeconds != nil
+        turn.providerMessageStartedAt = providerStart
+        turn.hasAuthoritativeDuration = authoritativeDuration
         previous[id] = turn
         return turn
     }

@@ -7,10 +7,12 @@ import {
   conversationMessages,
   nativeLiveMindFollowUps,
   nativeLiveRuntimeInteractions,
+  nativeLiveRuntimeEvents,
   nativeLiveTurnPreparations,
   runtimeContextManifests,
   runtimeContextLineageStates,
 } from "../../../../database/schema.js";
+import { readDurableTurnTimingEvents } from "../../../conversation/native-live-turn-timing.js";
 import { withCanonicalQuestionActivity } from "../../../conversation/native-live-question-activity.js";
 import { DrizzleNativeLiveConversationRepository } from "../../../conversation/native-live-conversation-repository.js";
 import type {
@@ -181,6 +183,22 @@ export async function finalizeSuccess(
             });
           }
 
+          const finalizedAt = new Date();
+          const timingEvents = await readDurableTurnTimingEvents(transaction as Transaction, input.userId, row.id);
+          // A terminal batch can exhaust relay retries while the success envelope arrives.
+          // Preserve one server-owned boundary for runtime readers and canonical reopen.
+          if (timingEvents.length === 1) {
+            const [tail] = await transaction.select({ sequence: sql<number>`coalesce(max(${nativeLiveRuntimeEvents.sequence}), 0)` })
+              .from(nativeLiveRuntimeEvents).where(and(
+                eq(nativeLiveRuntimeEvents.userId, input.userId), eq(nativeLiveRuntimeEvents.prepareId, row.id),
+              ));
+            const sequence = (tail?.sequence ?? 0) + 1;
+            await transaction.insert(nativeLiveRuntimeEvents).values({
+              userId: input.userId, prepareId: row.id, sequence,
+              eventType: "result", payload: { status: "success" }, createdAt: finalizedAt,
+            });
+            timingEvents.push({ sequence, event: { type: "result" }, createdAt: finalizedAt.toISOString() });
+          }
           const checkpoint = await conversations.bindProviderCheckpoint({
             userId: input.userId,
             conversationId: row.conversationId,
@@ -191,7 +209,7 @@ export async function finalizeSuccess(
               workspaceId: input.workspaceId,
               effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
               runtimeMetadata:
-                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), turn_started_at: row.createdAt.toISOString() },
+                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },
           });
 
@@ -223,7 +241,6 @@ export async function finalizeSuccess(
             `);
           }
 
-          const finalizedAt = new Date();
           const updated = await transaction
             .update(nativeLiveTurnPreparations)
             .set({

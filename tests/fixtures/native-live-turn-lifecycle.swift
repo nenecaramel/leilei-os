@@ -21,9 +21,72 @@ func surface(_ prepare: String, user: String, text: String = "", terminal: Bool 
     var value = NativeLiveRuntimeSurfaceState(prepareID:prepare,conversationID:UUID(uuidString:conversation)!,events:[],interactions:[],controls:[],nextAfterSequence:0)
     value.userMessageID = user
     value.startedAt = start
+    value.events = [.init(sequence:0,event:.init(type:"runtime",providerSessionID:nil,payload:["kind":.string("provider_message_start")]),createdAt:start)]
     if !text.isEmpty { value.events.append(.init(sequence:1,event:.init(type:"partial_text",providerSessionID:nil,payload:["delta":.string(text)]),createdAt:start)) }
-    if terminal { value.events.append(.init(sequence:2,event:.init(type:"result",providerSessionID:nil,payload:["duration_ms":.number(18_000)]),createdAt:start)); value.foregroundTurnCompleted = true }
+    if terminal { value.events.append(.init(sequence:2,event:.init(type:"result",providerSessionID:nil,payload:["duration_ms":.number(18_000)]),createdAt:"2026-10-04T00:00:18.000Z")); value.foregroundTurnCompleted = true }
     return value
+}
+// Provider clock regression: real production assembler, fixed time, no sleeps.
+func timingDate(_ second: Int) -> Date { ISO8601DateFormatter().date(from: String(format:"2026-10-04T10:00:%02dZ",second))! }
+func timingEvent(_ type: String, _ second: Int, _ sequence: Int, _ payload: [String:NativeLiveJSONValue] = [:]) -> NativeLiveRuntimeEventSnapshot {
+    .init(sequence:sequence,event:.init(type:type,providerSessionID:nil,payload:payload),createdAt:ISO8601DateFormatter().string(from:timingDate(second)))
+}
+do {
+    var model = NativeLiveConversationPresentationAssembler()
+    var clockIDs = NativeLiveTurnIdentityCoordinator()
+    var operation = NativeLivePendingOperation(kind:.send(text:"Clock"),baselineSyncToken:nil)
+    operation.startedAt = ISO8601DateFormatter().string(from:timingDate(0))
+    var prepare = prepared("pClock",user:"uClock"); prepare.startedAt = ISO8601DateFormatter().string(from:timingDate(1))
+    clockIDs.bind(operation,prepared:prepare,snapshot:snapshot([]))
+    var live = surface("pClock",user:"uClock",text:"Partial")
+    live.startedAt = prepare.startedAt; live.events = []
+    let path = snapshot([message("uClock","user",text:"Clock")])
+    func project(_ second: Int) -> NativeLiveAssistantTurnPresentation {
+        model.project(snapshot:path,pendingOperation:operation,runtimeSurface:live,backgroundRuntimeSurfaces:[:],identities:clockIDs,now:timingDate(second)).last!.assistant!
+    }
+    let a = project(6)
+    expect(a.phase == .starting && a.header == "Thinking…" && a.duration == nil,"A: no elapsed before provider start")
+    live.events.append(timingEvent("runtime",5,1,["kind":.string("provider_message_start")]))
+    let b = project(8)
+    expect(b.header == "Thinking for 3s" && b.duration == 3 && b.stepCount == 0,"B: marker starts one clock without an Activity step")
+    expect(b.timestamp == a.timestamp,"display timestamp remains separate")
+    live.events.append(timingEvent("partial_text",8,2,["delta":.string("Partial")]))
+    live.events.append(timingEvent("tool_use",9,3,["tool_use_id":.string("clockTool"),"tool_name":.string("Read")]))
+    let c = project(12)
+    expect(c.header == "Working for 7s · 1 step" && c.activityProjection.elapsedSeconds == c.duration,"C: tool uses same clock")
+    live.foregroundTurnCompleted = true
+    let cTerminalPending = project(13)
+    expect(cTerminalPending.duration == c.duration && cTerminalPending.header == "Worked for 7s · 1 step" && !cTerminalPending.hasAuthoritativeDuration,"C: terminal-before-event frame keeps the same clock without freezing it")
+    live.events.append(timingEvent("result",17,4,["duration_ms":.number(17000)]))
+    let d = project(30)
+    expect(d.duration == 12 && d.header == "Worked for 12s · 1 step","D: terminal event ignores conflicting provider duration")
+    expect(project(50).duration == 12,"terminal duration freezes")
+    live.events.removeLast(); live.foregroundTurnCompleted = false
+    live.events.append(timingEvent("tool_result",10,4,["tool_use_id":.string("clockTool"),"output":.string("Done")]))
+    live.events.append(timingEvent("runtime",11,5,["kind":.string("provider_message_start")]))
+    live.events.append(timingEvent("result",20,6,["duration_ms":.number(17000)])); live.foregroundTurnCompleted = true
+    model = .init()
+    let e = project(30)
+    expect(e.duration == 15,"E: second marker cannot reset clock")
+    let final = NativeLiveCurrentPathMessage(id:"aClock",conversationId:conversation,parentMessageId:"uClock",role:"assistant",status:"completed",createdAt:start,completedAt:start,blocks:[],activity:.init(prepareId:nil,events:live.events,interactions:[],durationMs:17000))
+    var reopened = NativeLiveConversationPresentationAssembler()
+    let f = reopened.project(snapshot:snapshot([message("uClock","user"),final]),pendingOperation:nil,runtimeSurface:nil,backgroundRuntimeSurfaces:[:],identities:.init(),now:timingDate(59)).last!.assistant!
+    expect(f.duration == e.duration && f.activityProjection.elapsedSeconds == f.duration,"F: durable only reopen has same frozen clock")
+    live.events = Array(live.events.prefix(3)) + [timingEvent("error",13,4,["message":.string("failed")])]
+    live.terminalFailure = "Failed"; model = .init()
+    let g = project(30)
+    expect(g.duration == 8 && g.phase == .failed && g.copyText == "Partial" && g.stepCount == 1,"G: failure freezes clock and retains body/activity")
+    var failedPath = path
+    failedPath.failedTurn = .init(prepareId:"pClock",requestId:"request-pClock",conversationId:conversation,operation:"send",userMessageId:"uClock",preparedUserMessage:message("uClock","user",text:"Clock"),replacementTargetUserMessageId:nil,anchorHeadMessageId:path.currentHeadMessageId,startedAt:prepare.startedAt!,failureCode:"CLAUDE_PROCESS_FAILED",events:live.events,interactions:[])
+    let teardown = model.project(snapshot:failedPath,pendingOperation:nil,runtimeSurface:nil,backgroundRuntimeSurfaces:[:],identities:clockIDs,now:timingDate(50)).last!.assistant!
+    expect(teardown.id == g.id && teardown.duration == 8 && teardown.copyText == "Partial" && teardown.stepCount == 1,"G: pending/runtime teardown retains one failed clock/body/activity")
+    var freshFailure = NativeLiveConversationPresentationAssembler()
+    let failureReopen = freshFailure.project(snapshot:failedPath,pendingOperation:nil,runtimeSurface:nil,backgroundRuntimeSurfaces:[:],identities:.init(),now:timingDate(59)).last!.assistant!
+    expect(failureReopen.duration == 8 && failureReopen.phase == .failed && failureReopen.copyText == "Partial" && failureReopen.stepCount == 1,"G: durable failure reopen freezes exact same clock")
+    let legacy = NativeLiveCurrentPathMessage(id:"aLegacy",conversationId:conversation,parentMessageId:"uClock",role:"assistant",status:"completed",createdAt:start,completedAt:start,blocks:[],activity:.init(prepareId:nil,events:[],interactions:[],durationMs:9000))
+    reopened = .init()
+    let h = reopened.project(snapshot:snapshot([message("uClock","user"),legacy]),pendingOperation:nil,runtimeSurface:nil,backgroundRuntimeSurfaces:[:],identities:.init(),now:timingDate(59)).last!.assistant!
+    expect(h.header == "Thought for 9s","H: terminal legacy fallback remains")
 }
 let prefix = [message("uA","user",text:"A"),message("aA","assistant",parent:"uA",text:"Answer A")]
 let old = snapshot(prefix+[message("uB","user",text:"B"),message("aB","assistant",parent:"uB",text:"Old answer B")])
@@ -93,7 +156,7 @@ expect(before.last!.assistant!.timestamp == after.last!.assistant!.timestamp,"ha
 expect(after.last!.assistant!.bodyPresentation.nodes[0].sourceBlock.id == "aRecovered:block","canonical source identity remains true")
 // Execution and interaction frames share provider entity IDs throughout status upgrades.
 func event(_ type: String,_ payload: [String:NativeLiveJSONValue],_ sequence: Int) -> NativeLiveRuntimeEventSnapshot {
-    .init(sequence:sequence,event:.init(type:type,providerSessionID:nil,payload:payload),createdAt:start)
+    .init(sequence:sequence,event:.init(type:type,providerSessionID:nil,payload:payload),createdAt:type == "result" ? "2026-10-04T00:00:18.000Z" : start)
 }
 func permission(_ status: String) -> NativeLiveRuntimeInteractionSnapshot {
     .init(interactionID:"permission",prepareID:"pActivity",kind:"permission",request:["toolUseId":.string("tool"),"toolName":.string("Read")],status:status,
@@ -269,7 +332,7 @@ let withoutPending = rows(snapshot(prefix),nil,delayed)
 expect(withoutPending.count == 4 && withoutPending[2].id == failSoftInitial[2].id && withoutPending[3].id == failSoftInitial[3].id,"completion refresh failure retains prepared optimistic pair")
 expect(withoutPending[3].assistant!.copyText == "Kept body","completion refresh failure retains body")
 delayed.events.append(event("result",["duration_ms":.number(18_000)],3))
-expect(rows(snapshot(prefix),nil,delayed).last!.assistant!.duration == 18,"delayed provider duration replaces approximate terminal elapsed")
+expect(rows(snapshot(prefix),nil,delayed).last!.assistant!.duration == 18,"delayed durable terminal timestamp freezes provider clock")
 // Multiple durable text blocks must preserve the same direct rich render tree.
 let firstText = NativeLiveCurrentPathBlock(id:"first-text",ordinal:0,kind:"text",rawType:"text",text:"Intro",payload:nil,createdAt:start)
 let secondText = NativeLiveCurrentPathBlock(id:"second-text",ordinal:1,kind:"text",rawType:"text",text:richText,payload:nil,createdAt:start)

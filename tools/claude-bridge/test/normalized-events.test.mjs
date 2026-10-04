@@ -1350,3 +1350,25 @@ test("preserves assistant subagent parent linkage on provenance and tool use", (
     parent_agent_id: "agent-parent",
   });
 });
+
+test("first main provider message_start is timing metadata once per turn, including tool loops", () => {
+  const normalizer = new ClaudeEventNormalizer({ ...base, now: () => "2026-10-04T10:00:05.000Z" });
+  const start = (extra = {}) => ({ type: "stream_event", event: { type: "message_start", message: { content: [] } }, ...extra });
+  assert.deepEqual(normalizer.normalize(start({ parent_tool_use_id: "nested" })), []);
+  assert.deepEqual(normalizer.normalize(start({ parent_agent_id: "agent" })), []);
+  const first = normalizer.normalize(start());
+  assert.deepEqual(first.map(({type,payload,timestamp}) => ({type,payload,timestamp})), [{ type: "runtime", payload: { kind: "provider_message_start" }, timestamp: "2026-10-04T10:00:05.000Z" }]);
+  assert.deepEqual(normalizer.normalize(start()), []);
+  const remaining = [
+    { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "SECRET" } } },
+    { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hello" } } },
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "read", name: "Read", input: { path: "a" } }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "read", content: "Done" }] } },
+    start(),
+    { type: "result", subtype: "success", result: "Hello", duration_ms: 17000 },
+  ].flatMap(raw => normalizer.normalize(raw));
+  assert.deepEqual(remaining.map(e => e.type), ["partial_text", "tool_use", "tool_result", "result"]);
+  assert.ok(!JSON.stringify([...first,...remaining]).includes("SECRET"));
+  assert.equal(remaining.at(-1).payload.duration_ms, 17000);
+  assert.equal(new ClaudeEventNormalizer(base).normalize(start()).length, 1);
+});

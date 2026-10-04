@@ -71,3 +71,52 @@ test("current-path reuses durable checkpoint duration through refresh and operat
     assert.equal(old?.messages.at(-1)?.activity, null);
   }
 });
+
+test("provider timing evidence uses persisted event timestamps through successful and failed operational retention", { skip: process.env.RUN_NATIVE_LIVE_TURN_DATABASE_TEST !== "1" }, async t => {
+  const database = createDatabase(process.env.DATABASE_URL!, {ssl:false});
+  const [user] = await database.db.insert(users).values({email:`clock-${crypto.randomUUID()}@example.com`,displayName:"Clock"}).returning();
+  t.after(async()=> { await database.db.delete(conversations).where(eq(conversations.userId,user.id)); await database.db.delete(users).where(eq(users.id,user.id)); await database.close(); });
+  const { nativeLiveRuntimeEvents } = await import("../src/database/schema.js");
+  const repository = new DrizzleNativeLiveConversationRepository(database.db);
+  const port = new DrizzleNativeLiveBackendTurnPort(database.db);
+  const coordinator = new NativeLiveBackendTurnCoordinator(port);
+  const reader = new DrizzleNativeLiveCurrentPathReader(database.db);
+  for (const outcome of ["success","success-no-terminal","failure","failure-no-terminal"] as const) {
+    const status = outcome.startsWith("success") ? "success" : "failure";
+    const conversation = await repository.createConversation({userId:user.id,title:"Timing"});
+    const prepared = await coordinator.prepare(user.id,{dispatch_target:"claude_code",request_id:crypto.randomUUID(),operation:"send",conversation_id:conversation.id,expected_head_message_id:null,text:"Clock"});
+    assert.ok(prepared.ok); if (!prepared.ok) throw Error("prepare");
+    const c = prepared.command;
+    const expected = [
+      {sequence:1,event:{type:"runtime" as const,payload:{kind:"provider_message_start"}},createdAt:"2026-10-04T10:00:05.000Z"},
+      {sequence:4,event:{type:status === "success" ? "result" as const : "error" as const,payload:status === "success" ? {duration_ms:17000} : {message:"failed"}},createdAt:"2026-10-04T10:00:17.000Z"},
+    ];
+    await database.db.insert(nativeLiveRuntimeEvents).values([
+      ...expected.filter(e => !outcome.endsWith("no-terminal") || e.event.type === "runtime").map(e => ({userId:user.id,prepareId:c.prepare_id,sequence:e.sequence,eventType:e.event.type,payload:e.event.payload,createdAt:new Date(e.createdAt)})),
+      {userId:user.id,prepareId:c.prepare_id,sequence:2,eventType:"partial_text",payload:{delta:"Partial"},createdAt:new Date("2026-10-04T10:00:08Z")},
+      {userId:user.id,prepareId:c.prepare_id,sequence:3,eventType:"runtime",payload:{kind:"provider_message_start"},createdAt:new Date("2026-10-04T10:00:11Z")},
+    ]);
+    const finalized = await coordinator.finalize(user.id,{protocol_version:3,prepare_id:c.prepare_id,request_id:c.request_id,conversation_id:conversation.id,status,...(status === "success" ? {provider_session_id:`clock-${conversation.id}`,normalized_events:[{type:"text",payload:{text:"Partial"}},{type:"result",payload:{status:"success",duration_ms:17000}}]} : {error_code:"CLAUDE_PROCESS_FAILED"})});
+    assert.equal(finalized.ok,status === "success",JSON.stringify(finalized));
+    const input = {userId:user.id,conversationId:conversation.id,limit:100};
+    const before = await reader.readCurrentPath(input);
+    const events = status === "success" ? before?.messages.at(-1)?.activity?.events : before?.failedTurn?.events;
+    assert.ok(events);
+    if (outcome.endsWith("no-terminal")) {
+      const terminalType = status === "success" ? "result" : "error";
+      assert.equal(events.filter(e=>e.event.type === terminalType).length,1,"a missing terminal delivery must persist a terminal clock boundary");
+      const [preparation] = await database.db.select({finalizedAt:nativeLiveTurnPreparations.finalizedAt}).from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id,c.prepare_id));
+      assert.equal(events.find(e=>e.event.type === terminalType)!.createdAt,preparation.finalizedAt?.toISOString(),"runtime and durable failure use the exact persisted terminal boundary");
+    }
+    for (const expectedEvent of expected.filter(e=>!outcome.endsWith("no-terminal") || e.event.type === "runtime")) {
+      const actual = events.find(e=>e.sequence===expectedEvent.sequence);
+      assert.equal(actual?.createdAt,expectedEvent.createdAt);
+      assert.equal(actual?.event.type,expectedEvent.event.type);
+      if (expectedEvent.event.type === "runtime") assert.deepEqual(actual?.event.payload,{kind:"provider_message_start"});
+    }
+    await database.db.delete(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id,c.prepare_id));
+    const after = await reader.readCurrentPath(input);
+    assert.deepEqual(status === "success" ? after?.messages.at(-1)?.activity?.events : after?.failedTurn?.events,events,"timing survives deletion of operational rows");
+    if (status === "success") assert.deepEqual(after?.messages.at(-1)?.blocks.map(b=>b.kind),["text"],"marker never becomes canonical Chat content");
+  }
+});
