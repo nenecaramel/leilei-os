@@ -133,7 +133,20 @@ struct NativeLiveConversationPresentationAssembler {
             ?? (active ? parse(start).map { max(0,Int(now.timeIntervalSince($0))) } : last?.duration)
         let knownActivity = NativeLiveTurnActivityProjection(durable:last?.activityProjection,overlay:durable,active:active,elapsed:duration)
         let foregroundOverlay = NativeLiveTurnActivityProjection(durable:knownActivity,overlay:foregroundActivity,active:active,elapsed:duration)
-        let activity = NativeLiveTurnActivityProjection(durable:foregroundOverlay,overlay:backgroundActivity,active:active,elapsed:duration)
+        let eventSources = [message?.activity?.events ?? [],runtime?.events ?? [],background?.events ?? []]
+        let rawTasks = eventSources.flatMap { NativeLiveTurnActivityProjection.tasks(from:$0) }
+        let rawTools = NativeLiveTurnActivityProjection.tools(from:message?.blocks ?? [])
+            + eventSources.flatMap { NativeLiveTurnActivityProjection.tools(from:$0) }
+        let hiddenTasks = rawTasks.filter { $0.hiddenFromTranscript || $0.isAmbient }
+        var hiddenTools = Set(rawTools.filter { $0.hiddenFromTranscript || $0.hiddenFromActivity }.map(\.id) + hiddenTasks.compactMap(\.toolUseID))
+        var changed = true
+        while changed {
+            let before = hiddenTools.count
+            for tool in rawTools where hiddenTools.contains(tool.parentToolUseID ?? "") { hiddenTools.insert(tool.id) }
+            changed = before != hiddenTools.count
+        }
+        let activity = NativeLiveTurnActivityProjection(durable:foregroundOverlay,overlay:backgroundActivity,active:active,elapsed:duration,
+            suppressedTools:hiddenTools.union(rawTasks.compactMap(\.toolUseID)),suppressedTasks:Set(hiddenTasks.map(\.id)),suppressedQuestions:hiddenTools)
         let phase: NativeLiveAssistantTurnPresentation.Phase
         if activity.turnFailed || runtime?.terminalFailure != nil { phase = .failed }
         else if activity.hasPendingInteraction { phase = .needsInput }

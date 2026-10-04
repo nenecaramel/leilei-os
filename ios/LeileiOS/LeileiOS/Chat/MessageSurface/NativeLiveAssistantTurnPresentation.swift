@@ -36,7 +36,7 @@ struct NativeLiveConversationRowPresentation: Identifiable, Equatable {
 
 extension NativeLiveTurnActivityProjection {
     // Reconcile entities by provider identity, retaining durable evidence absent from an overlay.
-    init(durable: Self?, overlay: Self?, active: Bool, elapsed: Int?) {
+    init(durable: Self?, overlay: Self?, active: Bool, elapsed: Int?, suppressedTools: Set<String> = [], suppressedTasks: Set<String> = [], suppressedQuestions: Set<String> = []) {
         func merge<T: Identifiable>(_ base: [T], _ fresh: [T]) -> [T] where T.ID: Hashable {
             var result = base
             for item in fresh { if let i = result.firstIndex(where: { $0.id == item.id }) { result[i] = item } else { result.append(item) } }
@@ -44,19 +44,19 @@ extension NativeLiveTurnActivityProjection {
         }
         prepareID = overlay?.prepareID ?? durable?.prepareID
         lifecycle = overlay?.lifecycle ?? durable?.lifecycle ?? []
-        tools = merge(durable?.tools ?? [],overlay?.tools ?? []).map { item in
+        tools = merge(durable?.tools ?? [],overlay?.tools ?? []).filter { !suppressedTools.contains($0.id) }.map { item in
             guard item.state == .running, let final = durable?.tools.first(where:{ $0.id == item.id && ($0.state == .completed || $0.state == .failed) }) else { return item }
             return final
         }
-        tasks = merge(durable?.tasks ?? [],overlay?.tasks ?? []).map { item in
+        tasks = merge(durable?.tasks ?? [],overlay?.tasks ?? []).filter { !suppressedTasks.contains($0.id) }.map { item in
             guard !item.isTerminal, let final = durable?.tasks.first(where:{ $0.id == item.id && $0.isTerminal }) else { return item }
             return final
         }
-        interactions = merge(durable?.interactions ?? [],overlay?.interactions ?? []).map { item in
+        interactions = merge(durable?.interactions ?? [],overlay?.interactions ?? []).filter { !suppressedQuestions.contains($0.toolUseID ?? "") }.map { item in
             guard item.isPending, let final = durable?.interactions.first(where:{ $0.id == item.id && !$0.isPending }) else { return item }
             return final
         }
-        questionActivities = merge(durable?.questionActivities ?? [],overlay?.questionActivities ?? []).map { item in
+        questionActivities = merge(durable?.questionActivities ?? [],overlay?.questionActivities ?? []).filter { !suppressedQuestions.contains($0.id) && !suppressedQuestions.contains($0.parentToolUseID ?? "") }.map { item in
             guard item.statusLabel == "Needs input", let final = durable?.questionActivities.first(where:{ $0.id == item.id && ["Answered","Cancelled"].contains($0.statusLabel) }) else { return item }
             return final
         }

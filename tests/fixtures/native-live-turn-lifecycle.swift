@@ -294,4 +294,14 @@ expect(oldRetryRetained.count == 2 && oldRetryRetained[1].assistant!.copyText ==
 let replacementOperationID = UUID()
 expect(scroll.beginReplacement(replacementOperationID),"replacement captures viewport once")
 for _ in 0..<5 { expect(!scroll.beginReplacement(replacementOperationID),"streaming/layout/drag callbacks never recapture replacement anchor") }
+// Late hidden/ambient task lineage may suppress previously visible execution evidence.
+for flag in ["hidden_from_transcript","ambient"] {
+    assembler = .init(); identities = .init()
+    var suppressing = surface("pSuppress",user:"uA")
+    suppressing.events = [event("tool_use",["tool_use_id":.string("root"),"tool_name":.string("Task")],1),event("tool_use",["tool_use_id":.string("child"),"parent_tool_use_id":.string("root"),"tool_name":.string("Read")],2)]
+    _ = rows(snapshot([message("uA","user",text:"A")]),nil,suppressing)
+    suppressing.events.append(event("task",["phase":.string("started"),"task_id":.string("suppressed-task"),"tool_use_id":.string("root"),flag:.bool(true)],3))
+    let suppressed = rows(snapshot([message("uA","user",text:"A")]),nil,suppressing).last!.assistant!
+    expect(suppressed.stepCount == 0,"late hidden/ambient lineage never resurrects retained execution Activity")
+}
 print("Turn lifecycle PASS: \(checks) real Swift frame assertions")
