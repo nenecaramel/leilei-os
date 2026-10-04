@@ -142,6 +142,14 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
   );
   assert.match(
     transport,
+    /leileios-mind-system-prompt\.mjs";\nimport \{ LEILEIOS_WAKE_SYSTEM_PROMPT \}/u,
+  );
+  assert.doesNotMatch(
+    transport,
+    /leileios-mind-system-prompt\.mjs";\\\\nimport/u,
+  );
+  assert.match(
+    transport,
     /\[LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
   );
   assert.doesNotMatch(
