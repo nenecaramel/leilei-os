@@ -470,7 +470,11 @@ while (!stopping) {
             await silenceWakeScheduler
               .refresh()
               .catch(() => null);
-            await sleep(5_000);
+            // The backend may have committed the durable wake even if this
+            // HTTP response was lost. Probe the relay queue immediately;
+            // if nothing committed, the next outer cycle will retry the
+            // still-due local slot.
+            break;
           }
           continue;
         }
