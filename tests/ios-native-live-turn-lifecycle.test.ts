@@ -77,9 +77,13 @@ test("composer typing is isolated from unrelated chat churn", () => {
     "ios/LeileiOS/LeileiOS/Chat/ChatView.swift",
     "utf8",
   );
-  assert.doesNotMatch(
+  assert.match(
     chat,
-    /\.contentShape\(Rectangle\(\)\)[\s\S]{0,100}isComposerFocused = false/,
+    /if isDraftConversation && pendingOperation == nil \{[\s\S]{0,220}Color\.clear[\s\S]{0,180}\.onTapGesture \{[\s\S]{0,100}isComposerFocused = false/,
+  );
+  assert.match(
+    chat,
+    /onDismissKeyboard: \{[\s\S]{0,80}isComposerFocused = false/,
   );
   assert.match(
     chat,
@@ -102,6 +106,15 @@ test("composer typing is isolated from unrelated chat churn", () => {
   assert.doesNotMatch(
     surface,
     /\.scrollDismissesKeyboard\(\.interactively\)/,
+  );
+  assert.match(
+    surface,
+    /SpatialTapGesture\([\s\S]{0,220}coordinateSpace: \.named\("native-live-viewport"\)[\s\S]{0,260}rowFrames\.values\.contains[\s\S]{0,220}onDismissKeyboard\(\)/,
+  );
+
+  assert.match(
+    composer,
+    /ToolbarItemGroup\(placement: \.keyboard\)[\s\S]{0,180}Button\("Done"\)[\s\S]{0,120}isFocused\.wrappedValue = false/,
   );
 
   const runtimeStore = fs.readFileSync(
