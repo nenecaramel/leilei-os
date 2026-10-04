@@ -435,3 +435,13 @@ test("scroll-to-latest visibility only commits geometry changes during real user
     /if isAwayFromBottom \{[\s\S]*accessibilityLabel\("Scroll to latest"\)/,
   );
 });
+
+
+test("assistant attachment renderer applies sticker layout to meme attachments", () => {
+  const blocks = readExisting(messageBlocksPath);
+
+  assert.match(
+    blocks,
+    /case \.attachment:[\s\S]*NativeLiveMediaCard\(input:input,stickerImage:input\.isMemeSticker\)/,
+  );
+});
