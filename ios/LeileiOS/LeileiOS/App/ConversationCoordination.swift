@@ -464,6 +464,11 @@ extension AppModel {
             }
     }
 
+    func stopNativeLiveConversationHeadObservation() {
+        nativeLiveConversationHeadObservationTask?.cancel()
+        nativeLiveConversationHeadObservationTask = nil
+    }
+
     func refreshNativeLiveConversationHistorySnapshot() async {
         guard isAuthenticated,
               let conversationID = activeNativeLiveConversationID else {
