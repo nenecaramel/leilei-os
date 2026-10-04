@@ -30,7 +30,7 @@ struct NativeLiveConversationPresentationAssembler {
             // Canonical arrival may already have replaced the user; include only this preparation's answer.
             if let prepare = binding?.prepareID, let canonical = snapshot?.messages.first(where: { $0.role == "assistant" && $0.activity?.prepareId == prepare }) { messages.append(canonical) }
         }
-        if pendingOperation == nil, let runtime, ["retry","edit"].contains(runtime.operation ?? ""),
+        if pendingOperation == nil, let runtime,
            !messages.contains(where:{ $0.activity?.prepareId == runtime.prepareID }),
            let user = runtime.userMessageID, let index = messages.firstIndex(where:{ $0.role == "user" && $0.id == user }) {
             messages = Array(messages.prefix(index+1))

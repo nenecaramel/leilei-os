@@ -2,6 +2,12 @@ import Foundation
 
 struct NativeLiveConversationScrollState: Equatable {
     struct Anchor: Equatable { let stableID: String; let relativeOffset: Double }
+    private(set) var replacementOperationID: UUID?
+    mutating func beginReplacement(_ operationID: UUID) -> Bool {
+        guard replacementOperationID != operationID else { return false }
+        replacementOperationID = operationID
+        return true
+    }
     private(set) var isNearBottom = true
     private(set) var followLatest = true
     private(set) var userIsInteracting = false
