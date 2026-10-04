@@ -272,6 +272,11 @@ export class NativeLiveMacRuntimeExecutor {
                   savePhoto: async (
                     input: ClaudeAlbumRuntimeSaveInput,
                   ) => {
+                    if (!command.canonical_user_message_id) {
+                      throw new Error(
+                        "Saving a new album photo is unavailable during a silence wake.",
+                      );
+                    }
                     const result =
                       await this.albumToolClient!.savePhoto({
                         ...input,
