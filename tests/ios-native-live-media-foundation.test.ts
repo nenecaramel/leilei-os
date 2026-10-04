@@ -97,3 +97,54 @@ test("single meme webp uses a bounded sticker layout without changing ordinary i
     /NativeLiveMediaGrid\(count:group\.count\)/,
   );
 });
+
+test("meme sticker renders no ordinary attachment label, failure text or actions", () => {
+  const renderer = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift", "utf8",
+  );
+  const sticker = renderer.slice(renderer.indexOf("@ViewBuilder private var stickerTile"), renderer.indexOf("@ViewBuilder private var compactTile"));
+  assert.doesNotMatch(sticker, /stillPreviewLabel|fileLabel|loader\.error|openError|Button\("(?:Retry|Open file)"/);
+  assert.match(sticker, /scaledToFit\(\)/);
+  assert.match(sticker, /maxWidth:220,maxHeight:220/);
+  assert.match(sticker, /if let onImageOpen \{ onImageOpen\(\) \}/);
+  assert.match(sticker, /else \{ ownGallery =/);
+  // Ordinary grid images keep their preview/failure/actions; the fix is sticker-only.
+  const compact = renderer.slice(renderer.indexOf("@ViewBuilder private var compactTile"), renderer.indexOf("private var fileLabel"));
+  assert.match(compact, /stillPreviewLabel/);
+  assert.match(compact, /openError \?\? loader\.error/);
+  assert.match(compact, /Button\("Retry"/);
+});
+
+test("actual Swift card branch gates isolate both sticker flags and preserve ordinary error chrome", {skip:process.platform !== "darwin"}, () => {
+  const renderer = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift", "utf8",
+  );
+  const card = renderer.slice(renderer.indexOf("struct NativeLiveMediaCard"));
+  const stickerCondition = card.match(/if ([^\n]+) \{\s*stickerTile/)?.[1];
+  const errorCondition = card.match(/if ([^\n]+), let error = openError \?\? loader\.error/)?.[1];
+  assert.ok(stickerCondition && errorCondition, "card must have distinct sticker/error branches");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(),"leilei-sticker-chrome-"));
+  try {
+    // Compile/evaluate the production Swift conditions, not a second copy of the policy.
+    const checks = `struct Input { let isMemeSticker: Bool }
+for stickerImage in [false,true] {
+  for recognized in [false,true] {
+    for compactImage in [false,true] {
+      let input = Input(isMemeSticker:recognized)
+      let showsSticker = ${stickerCondition}
+      let showsErrorChrome = ${errorCondition}
+      precondition(showsSticker == (stickerImage || recognized))
+      precondition(showsErrorChrome == (!stickerImage && !recognized && !compactImage))
+    }
+  }
+}
+print("Sticker gates PASS")
+`;
+    const file = path.join(temp,"Checks.swift"); fs.writeFileSync(file,checks);
+    const compiled = spawnSync("xcrun",["swiftc","-module-cache-path",path.join(temp,"cache"),file,"-o",path.join(temp,"check")],{encoding:"utf8",timeout:60_000});
+    assert.equal(compiled.status,0,compiled.stderr);
+    const run = spawnSync(path.join(temp,"check"),[],{encoding:"utf8",timeout:60_000});
+    assert.equal(run.status,0,run.stderr);
+    assert.match(run.stdout,/Sticker gates PASS/);
+  } finally { fs.rmSync(temp,{recursive:true,force:true}); }
+});
