@@ -167,4 +167,16 @@ test("iOS observes proactive head changes through bounded long-poll instead of p
     nativeLiveAPI,
     /\/head\/wait/,
   );
+  assert.match(
+    chatView,
+    /\.task\(id: appModel\.activeNativeLiveConversationID\)[\s\S]*beginNativeLiveConversationHeadObservation/,
+  );
+  assert.match(
+    chatView,
+    /phase != \.active[\s\S]*stopNativeLiveConversationHeadObservation/,
+  );
+  assert.match(
+    chatView,
+    /phase == \.active[\s\S]*beginNativeLiveConversationHeadObservation/,
+  );
 });
