@@ -132,7 +132,9 @@ export async function waitForAgentSdkMcpServer(
   }
 
   const deadline = Date.now() + timeoutMs;
-  let reconnectAttempted = false;
+  const maxReconnectDelayMs = 5_000;
+  let reconnectDelayMs = Math.max(pollMs, 200);
+  let nextReconnectAt = 0;
   let lastStatus = null;
   let lastError = null;
 
@@ -152,10 +154,9 @@ export async function waitForAgentSdkMcpServer(
       if (lastStatus === "connected") return;
       if (
         (lastStatus === "failed" || lastStatus === "needs-auth")
-        && !reconnectAttempted
         && typeof query.reconnectMcpServer === "function"
+        && Date.now() >= nextReconnectAt
       ) {
-        reconnectAttempted = true;
         try {
           await withTimeout(
             Promise.resolve(query.reconnectMcpServer(serverName)),
@@ -165,6 +166,11 @@ export async function waitForAgentSdkMcpServer(
           lastError =
             cause instanceof Error ? cause.message : String(cause);
         }
+        nextReconnectAt = Date.now() + reconnectDelayMs;
+        reconnectDelayMs = Math.min(
+          reconnectDelayMs * 2,
+          maxReconnectDelayMs,
+        );
       }
       if (lastStatus === "disabled") {
         break;
@@ -174,7 +180,11 @@ export async function waitForAgentSdkMcpServer(
         cause instanceof Error ? cause.message : String(cause);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(pollMs, remainingMs))
+    );
   }
 
   throw runtimeError(
@@ -223,7 +233,7 @@ export async function createAgentSdkTurnHandle({
   midTurnInput = false,
   userMessageUuid = null,
   executionReadback = false,
-  mcpStartupTimeoutMs = 30_000,
+  mcpStartupTimeoutMs = 120_000,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
