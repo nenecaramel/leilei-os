@@ -141,6 +141,7 @@ struct NativeLiveMessageSurface: View {
                 .padding(.bottom, 8)
             }
             .scrollClipDisabled()
+            .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
