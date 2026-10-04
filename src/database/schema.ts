@@ -8,6 +8,7 @@ export * from "./schema/conversation-import.js";
 export * from "./schema/conversation.js";
 export * from "./schema/workspace.js";
 export * from "./schema/native-live-turn.js";
+export * from "./schema/native-live-silence-wake.js";
 export * from "./schema/native-live-provider-session.js";
 export * from "./schema/native-live-runtime.js";
 export * from "./schema/attachment.js";
