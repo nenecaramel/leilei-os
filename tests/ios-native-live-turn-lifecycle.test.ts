@@ -55,34 +55,18 @@ test("user interrupt unlocks send/edit without restoring the stopped draft", () 
 });
 
 
-test("composer keeps UIKit caret ownership across runtime refreshes", () => {
+test("composer typing owns focus without voice or root-view churn", () => {
   const composer = fs.readFileSync(
     "ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift",
     "utf8",
   );
+  assert.match(
+    composer,
+    /TextField\([\s\S]{0,260}Write a message[\s\S]{0,260}\.focused\(isFocused\)/,
+  );
   assert.doesNotMatch(
     composer,
-    /TextField\([\s\S]{0,220}Write a message/,
-  );
-  assert.match(
-    composer,
     /NativeLiveStableComposerTextView/,
-  );
-  assert.match(
-    composer,
-    /UIViewRepresentable/,
-  );
-  assert.match(
-    composer,
-    /if view\.text != text,[\s\S]*view\.markedTextRange == nil/,
-  );
-  assert.match(
-    composer,
-    /previousSelection = view\.selectedRange[\s\S]*view\.selectedRange = NSRange/,
-  );
-  assert.match(
-    composer,
-    /textViewDidChange[\s\S]*parent\.text = next/,
   );
 
   const chat = fs.readFileSync(
@@ -92,6 +76,19 @@ test("composer keeps UIKit caret ownership across runtime refreshes", () => {
   assert.doesNotMatch(
     chat,
     /\.contentShape\(Rectangle\(\)\)[\s\S]{0,100}isComposerFocused = false/,
+  );
+  assert.match(
+    chat,
+    /\.onChange\(of: voiceEnabled\)[\s\S]{0,180}guard !enabled, voiceInput\.isActive else \{ return \}[\s\S]{0,100}voiceInput\.cancel\(\)/,
+  );
+
+  const voice = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift",
+    "utf8",
+  );
+  assert.match(
+    voice,
+    /func cancel\(\) \{[\s\S]{0,420}guard phase != \.idle[\s\S]{0,420}else \{[\s\S]{0,80}return/,
   );
 
   const surface = fs.readFileSync(
