@@ -819,7 +819,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT].join("\\n\\n"),
+          append: [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT].join("\n\n"),
         },
         ...executionOptions,
         ...leileiosMcpQueryOptions(
