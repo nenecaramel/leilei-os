@@ -340,3 +340,205 @@ test(
     );
   },
 );
+
+
+test(
+  "silence wake revalidates user activity before canonical write and discards an in-flight stale wake",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email:
+          `native-live-silence-stale-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Silence Wake Stale",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+
+    t.after(async () => {
+      try {
+        await database.db
+          .delete(nativeLiveProviderSessionCleanups)
+          .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db
+          .delete(conversations)
+          .where(eq(conversations.userId, user.id));
+        await database.db
+          .delete(users)
+          .where(eq(users.id, user.id));
+      } finally {
+        await database.close();
+      }
+    });
+
+    const conversationService =
+      new NativeLiveConversationService(
+        new DrizzleNativeLiveConversationRepository(database.db),
+      );
+    const conversation =
+      await conversationService.createConversation({
+        userId: user.id,
+        title: "Silence wake stale integration",
+      });
+    const port =
+      new DrizzleNativeLiveBackendTurnPort(database.db);
+    const coordinator =
+      new NativeLiveBackendTurnCoordinator(
+        port,
+        () => crypto.randomUUID(),
+      );
+
+    const foregroundRequestId = crypto.randomUUID();
+    const foreground = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: foregroundRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: null,
+      text: "first",
+    });
+    assert.equal(foreground.ok, true);
+    if (!foreground.ok) {
+      throw new Error("expected foreground prepare success");
+    }
+    const sourceUserMessageId =
+      foreground.command.canonical_user_message_id;
+    assert.ok(sourceUserMessageId);
+
+    const foregroundFinalized =
+      await coordinator.finalize(user.id, {
+        protocol_version: 3,
+        prepare_id: foreground.command.prepare_id,
+        request_id: foregroundRequestId,
+        conversation_id: conversation.id,
+        status: "success",
+        provider_session_id: "provider-stale-source",
+        normalized_events: [
+          {
+            type: "text",
+            payload: { text: "first answer" },
+          },
+        ],
+      });
+    assert.equal(foregroundFinalized.ok, true);
+    if (
+      !foregroundFinalized.ok
+      || foregroundFinalized.outcome !== "completed"
+    ) {
+      throw new Error("expected foreground finalize success");
+    }
+
+    let now = new Date();
+    const silence = new NativeLiveSilenceWakeService(
+      database.db,
+      () => now,
+    );
+    const schedule =
+      await silence.readSchedule({ userId: user.id });
+    assert.ok(schedule);
+    now = new Date(schedule.postTurnDueAt);
+
+    const fired = await silence.fire({
+      userId: user.id,
+      epochId: schedule.epochId,
+      slot: "post_turn_idle",
+    });
+    assert.equal(fired.outcome, "queued");
+
+    const wakePrepareId = silenceWakePreparationId(
+      schedule.epochId,
+      "post_turn_idle",
+    );
+    const wakePreparation = await port.getPreparation({
+      userId: user.id,
+      prepareId: wakePrepareId,
+    });
+    assert.ok(wakePreparation);
+
+    const nextRequestId = crypto.randomUUID();
+    const next = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: nextRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id:
+        foregroundFinalized.assistantMessageId,
+      text: "I replied while wake was running",
+    });
+    assert.equal(next.ok, true);
+
+    const stale = await coordinator.finalize(user.id, {
+      protocol_version: 3,
+      prepare_id: wakePrepareId,
+      request_id: wakePreparation.requestId,
+      conversation_id: conversation.id,
+      status: "success",
+      provider_session_id: "provider-stale-wake-child",
+      normalized_events: [
+        {
+          type: "text",
+          payload: { text: "This must never be written." },
+        },
+      ],
+    });
+    assert.deepEqual(stale, {
+      ok: true,
+      outcome: "wake_stale",
+      requestId: wakePreparation.requestId,
+      operation: "wake",
+      conversationId: conversation.id,
+      providerSessionId: "provider-stale-wake-child",
+    });
+    assert.equal(
+      await port.getPreparation({
+        userId: user.id,
+        prepareId: wakePrepareId,
+      }),
+      null,
+    );
+
+    const after =
+      await conversationService.getConversation({
+        userId: user.id,
+        conversationId: conversation.id,
+      });
+    assert.ok(after);
+    assert.equal(
+      after.messages.some((message) =>
+        message.blocks.some((block) =>
+          block.kind === "text"
+          && block.text === "This must never be written."
+        )
+      ),
+      false,
+    );
+    assert.equal(
+      after.currentHeadMessageId,
+      foregroundFinalized.assistantMessageId,
+      "the unfinalized newer user turn does not let the stale wake advance the head",
+    );
+
+    const cleanups = await database.db
+      .select({
+        providerSessionId:
+          nativeLiveProviderSessionCleanups.providerSessionId,
+      })
+      .from(nativeLiveProviderSessionCleanups)
+      .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+    assert.deepEqual(
+      cleanups.map((row) => row.providerSessionId),
+      ["provider-stale-wake-child"],
+    );
+
+    assert.equal(
+      await silence.readSchedule({ userId: user.id }),
+      null,
+      "the new user activity invalidates the old epoch before it receives a reply",
+    );
+  },
+);
