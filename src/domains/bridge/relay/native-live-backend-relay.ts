@@ -416,6 +416,37 @@ implements NativeLiveBackendRelayPort {
           )
       `);
 
+      // Foreground user intent always wins over a silence opportunity,
+      // including a cross-conversation race between /fire and a new send.
+      await transaction.execute(sql`
+        UPDATE native_live_turn_preparations AS wake
+        SET dispatch_status = 'rejected',
+            reserved_by = NULL,
+            reserved_at = NULL,
+            reservation_expires_at = NULL,
+            execution_started_at = NULL,
+            dispatch_error_code = 'SUPERSEDED_BY_NEWER_TURN',
+            updated_at = now()
+        WHERE wake.user_id = ${input.userId}::uuid
+          AND wake.operation = 'wake'
+          AND wake.status = 'prepared'
+          AND wake.dispatch_status = 'pending'
+          AND EXISTS (
+            SELECT 1
+            FROM native_live_turn_preparations AS foreground
+            WHERE foreground.user_id = wake.user_id
+              AND foreground.operation <> 'wake'
+              AND foreground.status = 'prepared'
+              AND foreground.dispatch_status IN (
+                'staged',
+                'pending',
+                'reserved',
+                'executing',
+                'delivery_unknown'
+              )
+          )
+      `);
+
       await transaction.execute(sql`
         DELETE FROM native_live_turn_preparations
         WHERE user_id = ${input.userId}::uuid
@@ -432,7 +463,7 @@ implements NativeLiveBackendRelayPort {
           WHERE user_id = ${input.userId}::uuid
             AND status = 'prepared'
             AND dispatch_status = 'pending'
-          ORDER BY created_at ASC, id ASC
+          ORDER BY (operation = 'wake') ASC, created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         )
