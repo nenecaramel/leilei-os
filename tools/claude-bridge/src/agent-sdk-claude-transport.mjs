@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
-import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
+import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";\nimport { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
 import {
   normalizeAgentSdkExecutionSelection,
 } from "./agent-sdk-execution-selection.mjs";
@@ -819,7 +819,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: LEILEIOS_MIND_SYSTEM_PROMPT,
+          append: [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT].join("\\n\\n"),
         },
         ...executionOptions,
         ...leileiosMcpQueryOptions(
