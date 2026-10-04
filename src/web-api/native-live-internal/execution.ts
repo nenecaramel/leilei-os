@@ -205,6 +205,10 @@ export function submitResultHandler(
         },
       });
     } catch (error) {
+      logResultSubmissionFailure(
+        reservationId,
+        error,
+      );
       sendRelayError(response, error);
     }
   };
@@ -303,6 +307,38 @@ function parseRejectBody(
     listener_instance_id: record.listener_instance_id,
     code: record.code,
   };
+}
+
+function logResultSubmissionFailure(
+  reservationId: string,
+  error: unknown,
+): void {
+  const record =
+    error && typeof error === "object"
+      ? error as Record<string, unknown>
+      : {};
+  process.stderr.write(
+    JSON.stringify({
+      level: "error",
+      timestamp: new Date().toISOString(),
+      event: "native_live_result_submission_failed",
+      reservationId,
+      errorName:
+        error instanceof Error
+          ? error.name
+          : "UnknownError",
+      ...(
+        typeof record.code === "string"
+          ? { relayCode: record.code }
+          : {}
+      ),
+      ...(
+        typeof record.finalizeCode === "string"
+          ? { finalizeCode: record.finalizeCode }
+          : {}
+      ),
+    }) + "\n",
+  );
 }
 
 function sendRelayError(response: Response, error: unknown): void {
