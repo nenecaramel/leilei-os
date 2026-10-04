@@ -47,20 +47,26 @@ struct NativeLiveMediaRenderer: View {
         VStack(alignment:.trailing,spacing:8) {
             ForEach(Array(groups.enumerated()),id:\.offset) { _, group in
                 if group.first?.mediaKind == .bitmap {
-                    NativeLiveMediaGrid(count:group.count) {
-                        ForEach(Array(group.prefix(4).enumerated()),id:\.offset) { index,input in
-                            NativeLiveMediaCard(input:input,compactImage:true,onImageOpen:{
-                                gallery = .init(inputs:imageInputs,selectedID:input.entityID ?? input.draftID)
-                            })
-                            .overlay(alignment:.bottomTrailing) {
-                                if index == 3 && group.count > 4 {
-                                    Button {
-                                        gallery = .init(inputs:imageInputs,selectedID:input.entityID ?? input.draftID)
-                                    } label: {
-                                        Text("+\(group.count-4) · View all").font(.caption.bold()).padding(8)
-                                            .background(.ultraThinMaterial,in:Capsule())
-                                    }.buttonStyle(.borderless).padding(6)
-                                    .accessibilityLabel("View all \(imageInputs.count) images")
+                    if group.count == 1, let input = group.first, input.isMemeSticker {
+                        NativeLiveMediaCard(input:input,stickerImage:true,onImageOpen:{
+                            gallery = .init(inputs:imageInputs,selectedID:input.entityID ?? input.draftID)
+                        })
+                    } else {
+                        NativeLiveMediaGrid(count:group.count) {
+                            ForEach(Array(group.prefix(4).enumerated()),id:\.offset) { index,input in
+                                NativeLiveMediaCard(input:input,compactImage:true,onImageOpen:{
+                                    gallery = .init(inputs:imageInputs,selectedID:input.entityID ?? input.draftID)
+                                })
+                                .overlay(alignment:.bottomTrailing) {
+                                    if index == 3 && group.count > 4 {
+                                        Button {
+                                            gallery = .init(inputs:imageInputs,selectedID:input.entityID ?? input.draftID)
+                                        } label: {
+                                            Text("+\(group.count-4) · View all").font(.caption.bold()).padding(8)
+                                                .background(.ultraThinMaterial,in:Capsule())
+                                        }.buttonStyle(.borderless).padding(6)
+                                        .accessibilityLabel("View all \(imageInputs.count) images")
+                                    }
                                 }
                             }
                         }
@@ -94,6 +100,7 @@ struct NativeLiveMediaCard: View {
     @EnvironmentObject private var appModel: AppModel
     let input: NativeLiveAttachmentPresentationInput
     var compactImage = false
+    var stickerImage = false
     var draftData: Data? = nil
     var onImageOpen: (() -> Void)? = nil
     @StateObject private var loader = NativeLiveMediaLoadState()
@@ -107,7 +114,9 @@ struct NativeLiveMediaCard: View {
 
     var body: some View {
         VStack(alignment:.leading,spacing:6) {
-            if compactImage {
+            if stickerImage {
+                stickerTile
+            } else if compactImage {
                 compactTile
             } else if input.mediaKind == .bitmap, let image = loader.image {
                 Button {
@@ -150,6 +159,31 @@ struct NativeLiveMediaCard: View {
             NativeLiveFileOpenView(lease:$0)
         }
         .fullScreenCover(item:$ownGallery) { NativeLiveImageGallery(selection:$0) }
+    }
+
+    @ViewBuilder private var stickerTile: some View {
+        if let image = loader.image {
+            Button {
+                if let onImageOpen { onImageOpen() }
+                else { ownGallery = .init(inputs:[input],selectedID:input.entityID ?? input.draftID) }
+            } label: {
+                Image(uiImage:image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth:220,maxHeight:220,alignment:.leading)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth:220,alignment:.leading)
+            .accessibilityLabel(input.filename)
+            .overlay(alignment:.bottomLeading) {
+                if let label = input.stillPreviewLabel { Text(label).font(.caption2).padding(4).background(.thinMaterial) }
+            }
+        } else {
+            Button { open() } label: { fileLabel }
+                .buttonStyle(.plain)
+                .disabled(isOpening || input.presentationState == .uploading)
+                .frame(maxWidth:220,alignment:.leading)
+        }
     }
 
     @ViewBuilder private var compactTile: some View {

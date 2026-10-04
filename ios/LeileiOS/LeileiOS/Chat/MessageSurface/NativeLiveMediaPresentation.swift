@@ -36,6 +36,13 @@ extension NativeLiveAttachmentPresentationInput {
         if mimeType?.conforms(to:.image) == true || extensionType?.conforms(to:.image) == true || kind == "image" { return .bitmap }
         return .file
     }
+    var isMemeSticker: Bool {
+        let basename = (filename as NSString).lastPathComponent.lowercased()
+        return basename.range(
+            of: #"^meme_[0-9]{4,32}\.webp$"#,
+            options: .regularExpression
+        ) != nil
+    }
     var stillPreviewLabel: String? {
         let mime = mimeType.lowercased()
         return mime == "image/gif" || mime == "image/webp" ? "Still preview" : nil
