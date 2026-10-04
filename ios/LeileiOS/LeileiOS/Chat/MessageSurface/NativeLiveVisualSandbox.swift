@@ -79,7 +79,7 @@ private final class WeakVisualOwner { weak var value: NativeLiveVisualSandboxCon
     private func ensureView() -> Bool {
         if view != nil { return true }
         Self.owners = Self.owners.filter { $0.value.value != nil }
-        guard Self.owners.count < 3, assetsRoot != nil else { return false }
+        guard Self.owners.count < 12, assetsRoot != nil else { return false }
         Self.owners[ownerID] = WeakVisualOwner(self)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
