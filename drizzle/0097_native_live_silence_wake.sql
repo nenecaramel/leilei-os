@@ -39,3 +39,10 @@ CREATE TABLE "native_live_silence_wake_receipts" (
   CONSTRAINT "native_live_silence_wake_receipts_slot_allowed"
     CHECK ("slot" IN ('post_turn_idle', 'long_idle'))
 );
+--> statement-breakpoint
+ALTER TABLE "native_live_mind_followups"
+  DROP CONSTRAINT "native_live_mind_followups_operation_allowed";
+--> statement-breakpoint
+ALTER TABLE "native_live_mind_followups"
+  ADD CONSTRAINT "native_live_mind_followups_operation_allowed"
+  CHECK ("operation" IN ('send', 'retry', 'edit', 'wake'));
