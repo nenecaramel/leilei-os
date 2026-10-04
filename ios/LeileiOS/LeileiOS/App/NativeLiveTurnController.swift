@@ -370,6 +370,9 @@ extension AppModel {
                         nativeLiveRuntimeSurface?.foregroundTurnCompleted = true
                         nativeLiveRuntimeSurface?.terminalFailure = turn.failureCode ?? "Turn failed"
                         await refreshNativeLiveCurrentPath(force:true,surfaceTransientFailure:false)
+                        if turn.failureCode == "INTERRUPTED" {
+                            throw NativeLiveSendError.interrupted
+                        }
                         throw NativeLiveSendError.failed(
                             code: turn.failureCode
                         )
