@@ -431,7 +431,7 @@ export class NativeLiveSilenceWakeService {
          AND parent.user_id = ${userId}::uuid
          AND parent.conversation_id = path.conversation_id
       ),
-      latest_user AS (
+      latest_user_per_conversation AS (
         SELECT DISTINCT ON (conversation_id)
           conversation_id,
           current_head_message_id,
@@ -440,6 +440,12 @@ export class NativeLiveSilenceWakeService {
         FROM current_path
         WHERE role = 'user'
         ORDER BY conversation_id, created_at DESC, id DESC
+      ),
+      latest_user AS (
+        SELECT *
+        FROM latest_user_per_conversation
+        ORDER BY user_activity_at DESC, user_message_id DESC
+        LIMIT 1
       ),
       direct_reply AS (
         SELECT DISTINCT ON (source.conversation_id)
@@ -478,7 +484,6 @@ export class NativeLiveSilenceWakeService {
        AND checkpoint.canonical_message_id =
          source.current_head_message_id
        AND checkpoint.provider = 'claude_code'
-      ORDER BY source.user_activity_at DESC, source.user_message_id DESC
       LIMIT 1
     `);
     const row = rows[0];
@@ -523,6 +528,18 @@ export function silenceWakeEpochFromPreparationId(
   slot: NativeLiveSilenceWakeSlot,
 ): string {
   return silenceWakePreparationId(preparationId, slot);
+}
+
+export function silenceWakeReceiptCandidatesForPreparationId(
+  preparationId: string,
+): Array<{
+  epochId: string;
+  slot: NativeLiveSilenceWakeSlot;
+}> {
+  return (["post_turn_idle", "long_idle"] as const).map((slot) => ({
+    epochId: silenceWakeEpochFromPreparationId(preparationId, slot),
+    slot,
+  }));
 }
 
 function markConsumed(
