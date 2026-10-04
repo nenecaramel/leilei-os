@@ -117,7 +117,7 @@ struct NativeLiveVisualNodeView: View {
             if let model = node.code { NativeLiveMermaidRenderer(model: model) }
             else { NativeLiveVisualFallbackView(fallback: node.fallback) }
         case .attachment:
-            if let input = node.attachment { NativeLiveMediaCard(input:input) }
+            if let input = node.attachment { NativeLiveMediaCard(input:input,stickerImage:input.isMemeSticker) }
             else { NativeLiveVisualFallbackView(fallback:node.fallback) }
         case .structuredResult:
             NativeLiveStructuredToolResultView(node:node)
