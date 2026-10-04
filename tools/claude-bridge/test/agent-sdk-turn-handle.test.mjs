@@ -867,6 +867,69 @@ test("turn startup reconnects LeileiOS MCP before releasing the first prompt", a
 });
 
 
+test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the query or prompt", async () => {
+  let queryCalls = 0;
+  let reconnectCalls = 0;
+  const promptMessages = [];
+
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "cold start message",
+    environment: {},
+    mcpStartupTimeoutMs: 2_000,
+    queryOptions: {
+      mcpServers: {
+        leileios: {
+          type: "http",
+          url: "https://leilei-os.example/internal/native-live-mcp",
+          headers: {
+            Authorization: "Bearer relay-secret",
+          },
+        },
+      },
+    },
+    queryImpl: ({ prompt }) => {
+      queryCalls += 1;
+      return {
+        close() {},
+        async mcpServerStatus() {
+          return [{
+            name: "leileios",
+            status: reconnectCalls >= 3 ? "connected" : "failed",
+            ...(reconnectCalls >= 3
+              ? {}
+              : { error: "database is still waking" }),
+          }];
+        },
+        async reconnectMcpServer(name) {
+          assert.equal(name, "leileios");
+          reconnectCalls += 1;
+        },
+        async *[Symbol.asyncIterator]() {
+          for await (const message of prompt) {
+            promptMessages.push(message);
+          }
+          for (const message of successMessages("provider-mcp-cold-start")) {
+            yield message;
+          }
+        },
+      };
+    },
+  });
+
+  assert.equal(queryCalls, 1);
+  assert.equal(reconnectCalls, 3);
+
+  const result = await handle.start();
+  assert.equal(result.providerSessionId, "provider-mcp-cold-start");
+  assert.equal(queryCalls, 1);
+  assert.equal(promptMessages.length, 1);
+  assert.equal(
+    promptMessages[0]?.message?.content?.[0]?.text,
+    "cold start message",
+  );
+});
+
+
 test("turn startup closes a query that misses the LeileiOS MCP startup budget", async () => {
   let closeCalls = 0;
   await assert.rejects(
