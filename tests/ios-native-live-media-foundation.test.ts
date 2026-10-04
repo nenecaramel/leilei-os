@@ -148,3 +148,41 @@ print("Sticker gates PASS")
     assert.match(run.stdout,/Sticker gates PASS/);
   } finally { fs.rmSync(temp,{recursive:true,force:true}); }
 });
+
+
+test("bitmap preview keeps download and decode failures distinct and has a Quick Look fallback", () => {
+  const loader = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveImageLoader.swift",
+    "utf8",
+  );
+  const renderer = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift",
+    "utf8",
+  );
+
+  assert.match(loader, /import QuickLookThumbnailing/);
+  assert.match(
+    loader,
+    /CGImageSourceCreateThumbnailAtIndex[\s\S]*quickLookDecode/,
+  );
+  assert.match(
+    loader,
+    /QLThumbnailGenerator\.Request[\s\S]*representationTypes:\.thumbnail/,
+  );
+  assert.match(
+    loader,
+    /representation\?\.cgImage/,
+  );
+  assert.match(
+    renderer,
+    /filename:input\.filename,[\s\S]*mimeType:input\.mimeType/,
+  );
+  assert.match(
+    renderer,
+    /catch let failure as NativeLiveMediaError \{[\s\S]*throw failure/,
+  );
+  assert.match(
+    renderer,
+    /catch \{[\s\S]*throw NativeLiveMediaError\.decodeFailed/,
+  );
+});

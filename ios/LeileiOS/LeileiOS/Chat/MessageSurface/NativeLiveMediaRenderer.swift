@@ -23,7 +23,22 @@ import QuickLook
                 data = loaded.data; identity = loaded.key.imageKey
             }
             if input.mediaKind == .bitmap {
-                let decoded = try await NativeLiveImageDecoder.shared.decode(data,identity:identity,maxPixelSize:pixels)
+                let decoded: NativeLiveDecodedImage
+                do {
+                    decoded = try await NativeLiveImageDecoder.shared.decode(
+                        data,
+                        identity:identity,
+                        maxPixelSize:pixels,
+                        filename:input.filename,
+                        mimeType:input.mimeType
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch let failure as NativeLiveMediaError {
+                    throw failure
+                } catch {
+                    throw NativeLiveMediaError.decodeFailed
+                }
                 try Task.checkCancellation()
                 image = UIImage(cgImage:decoded.image)
             }
