@@ -31,8 +31,12 @@ export function extractNativeLiveMurmur(
       if (normalized) murmurText = normalized;
     }
 
-    const visibleText = text
-      .replace(MURMUR_PATTERN, "")
+    let visibleText = text.replace(MURMUR_PATTERN, "");
+    const danglingOpen = visibleText.search(/<murmur>/iu);
+    if (danglingOpen >= 0) {
+      visibleText = visibleText.slice(0, danglingOpen);
+    }
+    visibleText = visibleText
       .replace(MURMUR_TAG_PATTERN, "")
       .trim();
 
