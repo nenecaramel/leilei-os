@@ -25,6 +25,14 @@ export function extractNativeLiveMurmur(
     }
 
     const text = block.text;
+    if (
+      !text.includes("<murmur")
+      && !text.includes("</murmur>")
+    ) {
+      visibleBlocks.push({ ...block });
+      continue;
+    }
+
     for (const match of text.matchAll(MURMUR_PATTERN)) {
       if (murmurText !== null) continue;
       const normalized = normalizeMurmur(match[1] ?? "");
