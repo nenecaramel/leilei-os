@@ -132,7 +132,9 @@ export async function waitForAgentSdkMcpServer(
   }
 
   const deadline = Date.now() + timeoutMs;
-  let reconnectAttempted = false;
+  const maxReconnectDelayMs = 5_000;
+  let reconnectDelayMs = Math.max(pollMs, 200);
+  let nextReconnectAt = 0;
   let lastStatus = null;
   let lastError = null;
 
@@ -152,10 +154,9 @@ export async function waitForAgentSdkMcpServer(
       if (lastStatus === "connected") return;
       if (
         (lastStatus === "failed" || lastStatus === "needs-auth")
-        && !reconnectAttempted
         && typeof query.reconnectMcpServer === "function"
+        && Date.now() >= nextReconnectAt
       ) {
-        reconnectAttempted = true;
         try {
           await withTimeout(
             Promise.resolve(query.reconnectMcpServer(serverName)),
@@ -165,6 +166,11 @@ export async function waitForAgentSdkMcpServer(
           lastError =
             cause instanceof Error ? cause.message : String(cause);
         }
+        nextReconnectAt = Date.now() + reconnectDelayMs;
+        reconnectDelayMs = Math.min(
+          reconnectDelayMs * 2,
+          maxReconnectDelayMs,
+        );
       }
       if (lastStatus === "disabled") {
         break;
@@ -174,7 +180,11 @@ export async function waitForAgentSdkMcpServer(
         cause instanceof Error ? cause.message : String(cause);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(pollMs, remainingMs))
+    );
   }
 
   throw runtimeError(
@@ -223,7 +233,7 @@ export async function createAgentSdkTurnHandle({
   midTurnInput = false,
   userMessageUuid = null,
   executionReadback = false,
-  mcpStartupTimeoutMs = 30_000,
+  mcpStartupTimeoutMs = 120_000,
 } = {}) {
   if (environment.ANTHROPIC_API_KEY) {
     throw new Error(
@@ -338,6 +348,19 @@ export async function createAgentSdkTurnHandle({
     yield userMessage(prompt, initialUserMessageUuid);
   }
 
+  const requiresMcpReadiness = Boolean(queryOptions.mcpServers?.leileios);
+  let settleMcpReadiness;
+  const mcpReadiness = requiresMcpReadiness
+    ? new Promise((resolve) => { settleMcpReadiness = resolve; })
+    : null;
+
+  async function* readyPromptStream() {
+    // SDK query() starts reading input immediately, before output iteration.
+    // A false outcome ends that read cleanly without releasing the user message.
+    if (!(await mcpReadiness)) return;
+    yield* (inputQueue ?? promptStream());
+  }
+
   const options = {
     cwd,
     env: environment,
@@ -362,8 +385,9 @@ export async function createAgentSdkTurnHandle({
   let query;
   try {
     query = resolvedQuery({
-      prompt:
-        inputQueue
+      prompt: requiresMcpReadiness
+        ? readyPromptStream()
+        : inputQueue
         ?? (
           queryOptions.verbatimPrompts === false
             ? prompt
@@ -372,6 +396,8 @@ export async function createAgentSdkTurnHandle({
       options,
     });
   } catch (cause) {
+    settleMcpReadiness?.(false);
+    inputQueue?.end();
     throw runtimeError(
       `Failed to start Claude Agent SDK turn: ${
         cause instanceof Error ? cause.message : String(cause)
@@ -381,13 +407,20 @@ export async function createAgentSdkTurnHandle({
   }
 
   if (!query || typeof query[Symbol.asyncIterator] !== "function") {
+    settleMcpReadiness?.(false);
+    inputQueue?.end();
+    try {
+      await query?.close?.();
+    } catch {
+      // Invalid queries still need best-effort cleanup.
+    }
     throw runtimeError(
       "Claude Agent SDK query() did not return an async iterable.",
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
   }
 
-  if (queryOptions.mcpServers?.leileios) {
+  if (requiresMcpReadiness) {
     try {
       await waitForAgentSdkMcpServer(
         query,
@@ -395,6 +428,8 @@ export async function createAgentSdkTurnHandle({
         { timeoutMs: mcpStartupTimeoutMs },
       );
     } catch (cause) {
+      settleMcpReadiness(false);
+      inputQueue?.end();
       try {
         await query.close?.();
       } catch {
@@ -404,6 +439,7 @@ export async function createAgentSdkTurnHandle({
     }
   }
 
+  settleMcpReadiness?.(true);
   return new AgentSdkTurnHandle({
     query,
     mode,
