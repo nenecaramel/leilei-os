@@ -160,8 +160,12 @@ final class VoiceInputController: ObservableObject {
                 fail("Microphone is unavailable.")
                 return
             }
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-                request.append(buffer)
+            let tapBufferSize = AVAudioFrameCount(max(1, Int((format.sampleRate * 0.1).rounded(.up))))
+            try input.installAudioTap(onBus: 0, bufferSize: tapBufferSize, format: format) { [weak self] buffer, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.generation == token, let request = self.request else { return }
+                    request.append(AVAudioPCMBuffer(copying: buffer))
+                }
             }
             tapInstalled = true
             engine.prepare()

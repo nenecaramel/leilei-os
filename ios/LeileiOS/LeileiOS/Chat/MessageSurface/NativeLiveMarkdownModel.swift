@@ -1,6 +1,6 @@
 import Foundation
 
-struct NativeLiveMarkdownPresentation: Equatable, Sendable {
+nonisolated struct NativeLiveMarkdownPresentation: Equatable, Sendable {
     enum Style: Equatable, Sendable {
         case paragraph, heading(Int), list(marker: String, depth: Int), quote(Int), divider
     }

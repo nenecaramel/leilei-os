@@ -41,19 +41,23 @@ private final class WeakVisualOwner { weak var value: NativeLiveVisualSandboxCon
     private var signature: String?
     private var loaded = false, initialNavigation = true
     private var work: Task<Void,Never>?, timeout: Task<Void,Never>?
-    private var observations: [NSObjectProtocol] = []
     init(assetsRoot: URL? = Bundle.main.url(forResource: "NativeLiveVisualAssets", withExtension: "bundle")) {
         self.assetsRoot = assetsRoot
         super.init()
         #if canImport(UIKit)
-        for notification in [UIApplication.didEnterBackgroundNotification, UIApplication.didReceiveMemoryWarningNotification] {
-            observations.append(NotificationCenter.default.addObserver(forName: notification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.stop() }
-            })
-        }
+        NotificationCenter.default.addObserver(self, selector: #selector(handleVisualLifecycleNotification(_:)),
+                                               name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleVisualLifecycleNotification(_:)),
+                                               name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
         #endif
     }
-    deinit { observations.forEach(NotificationCenter.default.removeObserver) }
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    #if canImport(UIKit)
+    @objc private func handleVisualLifecycleNotification(_ notification: Notification) {
+        stop()
+    }
+    #endif
 
     func update(_ input: NativeLiveVisualSandboxInput, dark: Bool, scale: Double, retry: Int = 0) {
         let boundedScale = scale.isFinite ? min(2,max(1,scale)) : 1

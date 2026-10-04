@@ -1,13 +1,13 @@
 import Foundation
 
-enum NativeLiveLinkCapability {
+nonisolated enum NativeLiveLinkCapability {
     static func openableURL(_ value:String?) -> URL? {
         guard let value, let url=URL(string:value), ["http","https"].contains(url.scheme?.lowercased() ?? ""),
               let host=url.host, !host.isEmpty, url.user == nil, url.password == nil else { return nil }
         return url
     }
 }
-struct NativeLiveCitationRelation: Equatable, Sendable {
+nonisolated struct NativeLiveCitationRelation: Equatable, Sendable {
     let sourceKey: String
     let fields: [String:NativeLiveJSONValue]
     var title:String? { fields["title"]?.stringValue ?? fields["document_title"]?.stringValue }
@@ -38,7 +38,7 @@ struct NativeLiveCitationRelation: Equatable, Sendable {
         return (payload.arrayValue ?? [payload]).prefix(32).compactMap(Self.init)
     }
 }
-struct NativeLiveCitationSource: Identifiable, Equatable, Sendable {
+nonisolated struct NativeLiveCitationSource: Identifiable, Equatable, Sendable {
     let id:String
     let title:String?
     let url:String?
@@ -52,7 +52,7 @@ struct NativeLiveCitationSource: Identifiable, Equatable, Sendable {
         return sources
     }
 }
-struct NativeLiveSearchResultPresentation: Equatable, Sendable {
+nonisolated struct NativeLiveSearchResultPresentation: Equatable, Sendable {
     let title:String?
     let source:String?
     let url:String?
