@@ -114,4 +114,14 @@ Full-suite comparison is complete. PR: https://github.com/nenecaramel/leilei-os/
 - RED evidence: real Postgres active read omitted detached prepared users; previous production Swift assembler lost a fresh failure at nil runtime/pending. GREEN: real Postgres prepare/failure/success fixtures drive production Swift recovery, teardown, reopen, non-root truncated paths, canonical handoff and retry-slot checks.
 - Independent requesting-code-review review found the truncated-page descendant defect; fixed with a non-root fixture and re-reviewed with no remaining Important finding.
 
-Followup verification ledger will be recorded after all gates and exact-main name comparison finish.
+### Followup verification ledger
+
+- Exact-main baseline: `b9e0d1be1286b170a93c72f58bfd262a0b82ec98`. Verified final implementation/test revision: `0f18e6760fd8fec61f6a5b8bade99b5c35d3d1b9`; subsequent closeout changes are documentation only.
+- Production Swift lifecycle: 213 passing frame assertions. Includes actual Postgres Send/Edit prepared users absent from current path, no bindings/retained rows, non-root paginated targets, canonical handoff, partial+tool failure, stop-runtime before pending-clear, nil runtime/pending, fresh reopen after operational deletion and repeated failed Retry slot ownership.
+- A–G/#812/#813/#815/ordinary Activity/current path/settings focused: 64 tests, 63 pass, the same exact-main historical Activity-finish failure. Final lifecycle test additionally passes. No historical failure was incidentally fixed.
+- Real isolated Postgres: 17/17 pass, no skips (13 primary lifecycle/content/question/tool/voice/checkpoint/branch integrations, bootstrap + attachment retention 2/2, duration/start retention + read-only external history 2/2). Includes owner isolation, pagination, superseding prepare, late older failure, idempotent failure replay and changed-head protection. Bootstrap's required TLS was enabled only on the task-owned test cluster; no product change.
+- Production runtime gate: 406/406 root and 101/101 selected bridge. Complete bridge: 125/125.
+- Root typecheck/generated/build and Node24 Web typecheck/build pass. Final unsigned arm64 Simulator build and base-relative diff check pass.
+- Independent read-only review: truncated-page finding fixed with non-root fixtures; durable ownership and final stop-before-pending-clear generation isolation re-reviewed without remaining Important findings.
+- Final sequential full-suite comparison, same Node24.19.0 dependencies and command/order: baseline 2105 total / 2000 pass / 10 fail / 95 skip; final implementation 2108 total / 2002 pass / 10 fail / 96 skip. Added failure names: []; removed failure names: []. The extra gated database test was separately executed against real Postgres and passed.
+- All 10 historical failure names match the list above. No merge, production deployment/DB mutation, owner daemon restart or device run. Physical Mainline3/C/G acceptance remains pending.
