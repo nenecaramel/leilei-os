@@ -6,13 +6,24 @@ struct NativeLiveSourcePanel<Content: View>: View {
     let label: String
     let copyText: String
     @ViewBuilder let content: Content
+    @State private var isCopied = false
+    @State private var copyGeneration = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(label).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button { UIPasteboard.general.string = copyText } label: { Image(systemName: "doc.on.doc") }
-                    .buttonStyle(.plain).accessibilityLabel("Copy \(label)")
+                Button { copy() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isCopied ? "checkmark" : "square.on.square")
+                        if isCopied {
+                            Text("Copied").font(.caption2)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isCopied ? "Copied" : "Copy \(label)")
             }
             ScrollView([.horizontal, .vertical]) {
                 content.fixedSize(horizontal: true, vertical: true)
@@ -21,6 +32,22 @@ struct NativeLiveSourcePanel<Content: View>: View {
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func copy() {
+        UIPasteboard.general.string = copyText
+        copyGeneration += 1
+        let generation = copyGeneration
+        withAnimation(.easeInOut(duration: 0.16)) {
+            isCopied = true
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard copyGeneration == generation else { return }
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isCopied = false
+            }
+        }
     }
 }
 struct NativeLiveCodeRenderer: View {
