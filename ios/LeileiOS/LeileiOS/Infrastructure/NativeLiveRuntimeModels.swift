@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-enum NativeLiveJSONValue: Codable, Sendable, Equatable {
+nonisolated enum NativeLiveJSONValue: Codable, Sendable, Equatable {
     case string(String)
     case number(Double)
     case bool(Bool)
