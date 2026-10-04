@@ -20,6 +20,7 @@ import type {
   NativeLiveRuntimeExecutionResult,
 } from "../protocol/native-live-runtime-protocol.js";
 import { parseNativeLiveExecutionSelection } from "../turn/native-live-execution-selection.js";
+import { hasDiscardedWakeReceipt } from "../turn/turn-repository/discard-wake.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -54,6 +55,10 @@ export interface NativeLiveBackendRelayPort {
   ownsSubmitReservation(input: {
     userId: string;
     listenerInstanceId: string;
+    reservationId: string;
+  }): Promise<boolean>;
+  isDiscardedWakeReservation(input: {
+    userId: string;
     reservationId: string;
   }): Promise<boolean>;
   markCompleted(input: {
@@ -94,6 +99,7 @@ const preparationSelection = {
   operation: nativeLiveTurnPreparations.operation,
   canonicalUserMessageId:
     nativeLiveTurnPreparations.canonicalUserMessageId,
+  wakeContext: nativeLiveTurnPreparations.wakeContext,
   runtimeMode: nativeLiveTurnPreparations.runtimeMode,
   parentProviderSessionId:
     nativeLiveTurnPreparations.parentProviderSessionId,
@@ -113,8 +119,9 @@ type SelectedRelayPreparationRow = {
   requestId: string;
   userId: string;
   conversationId: string;
-  operation: "send" | "retry" | "edit";
-  canonicalUserMessageId: string;
+  operation: "send" | "retry" | "edit" | "wake";
+  canonicalUserMessageId: string | null;
+  wakeContext: Record<string, unknown> | null;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
   workspaceId: string | null;
@@ -409,6 +416,15 @@ implements NativeLiveBackendRelayPort {
           )
       `);
 
+      await transaction.execute(sql`
+        DELETE FROM native_live_turn_preparations
+        WHERE user_id = ${input.userId}::uuid
+          AND operation = 'wake'
+          AND status = 'prepared'
+          AND dispatch_status = 'rejected'
+          AND dispatch_error_code = 'SUPERSEDED_BY_NEWER_TURN'
+      `);
+
       const reserved = await transaction.execute<{ id: string }>(sql`
         WITH candidate AS (
           SELECT id
@@ -526,6 +542,17 @@ implements NativeLiveBackendRelayPort {
       )
       .limit(1);
     return Boolean(row);
+  }
+
+  async isDiscardedWakeReservation(input: {
+    userId: string;
+    reservationId: string;
+  }): Promise<boolean> {
+    return hasDiscardedWakeReceipt(
+      this.db,
+      input.userId,
+      input.reservationId,
+    );
   }
 
   async markCompleted(input: {
@@ -827,17 +854,35 @@ export class NativeLiveBackendRelayService {
     reservationId: string;
     result: NativeLiveRuntimeExecutionResult;
   }): Promise<NativeLiveFinalizeResult> {
-    const owned = await this.repository.ownsSubmitReservation(input);
-    if (!owned) {
-      throw new NativeLiveBackendRelayError(
-        "RESERVATION_CONFLICT",
-        "Native live result does not belong to the active reservation.",
-      );
-    }
     if (input.result.prepare_id !== input.reservationId) {
       throw new NativeLiveBackendRelayError(
         "RESERVATION_CONFLICT",
         "Native live result reservation identity does not match.",
+      );
+    }
+    const owned = await this.repository.ownsSubmitReservation(input);
+    if (!owned) {
+      const discarded =
+        await this.repository.isDiscardedWakeReservation({
+          userId: input.userId,
+          reservationId: input.reservationId,
+        });
+      if (discarded) {
+        return {
+          ok: true,
+          outcome: "wake_discarded",
+          requestId: input.result.request_id,
+          operation: "wake",
+          conversationId: input.result.conversation_id,
+          providerSessionId:
+            input.result.status === "success"
+              ? input.result.provider_session_id
+              : null,
+        };
+      }
+      throw new NativeLiveBackendRelayError(
+        "RESERVATION_CONFLICT",
+        "Native live result does not belong to the active reservation.",
       );
     }
 
@@ -856,8 +901,18 @@ export class NativeLiveBackendRelayService {
       );
     }
 
-    const outcome = await this.repository.markCompleted(input);
-    this.requireMutation(outcome);
+    if (
+      !finalized.ok
+      || !(
+        finalized.outcome === "wake_quiet"
+        || finalized.outcome === "wake_stale"
+        || finalized.outcome === "wake_failed"
+        || finalized.outcome === "wake_discarded"
+      )
+    ) {
+      const outcome = await this.repository.markCompleted(input);
+      this.requireMutation(outcome);
+    }
     await this.bestEffortTurnTerminalWake(
       input.userId,
       input.reservationId,
