@@ -1036,4 +1036,20 @@ private struct NativeLiveConversationHeadWaitBody: Encodable {
     enum CodingKeys: String, CodingKey {
         case afterHeadMessageID = "after_head_message_id"
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(
+            keyedBy: CodingKeys.self
+        )
+        if let afterHeadMessageID {
+            try container.encode(
+                afterHeadMessageID,
+                forKey: .afterHeadMessageID
+            )
+        } else {
+            try container.encodeNil(
+                forKey: .afterHeadMessageID
+            )
+        }
+    }
 }
