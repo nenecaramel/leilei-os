@@ -4,6 +4,24 @@ import {
   extractNativeLiveMurmur,
 } from "../src/domains/bridge/turn/native-live-murmur.js";
 
+test("ordinary assistant text is passed through without trimming or payload changes", () => {
+  const block = {
+    kind: "text" as const,
+    rawType: "text",
+    text: "\n  indented markdown  \n",
+    payload: {
+      schema_version: 1,
+      identity: "text",
+      citations: [{ id: "c1" }],
+    },
+  };
+
+  const result = extractNativeLiveMurmur([block]);
+
+  assert.deepEqual(result.visibleBlocks, [block]);
+  assert.equal(result.murmurBlock, null);
+});
+
 test("murmur is removed from visible assistant text and persisted separately", () => {
   const result = extractNativeLiveMurmur([
     {
@@ -29,6 +47,18 @@ test("murmur is removed from visible assistant text and persisted separately", (
       identity: "murmur",
     },
   });
+});
+
+test("murmur tags are parsed case-insensitively", () => {
+  const result = extractNativeLiveMurmur([
+    {
+      kind: "text",
+      text: "Main <Murmur>Aside</MURMUR>",
+    },
+  ]);
+
+  assert.equal(result.visibleBlocks[0]?.text, "Main");
+  assert.equal(result.murmurBlock?.text, "Aside");
 });
 
 test("only the first non-empty murmur is kept while all murmur segments stay out of main text", () => {
@@ -59,6 +89,20 @@ test("Mind-like tags inside murmur are stripped instead of becoming semantic wri
     JSON.stringify(result.visibleBlocks).includes("secret"),
     false,
   );
+});
+
+test("partial murmur tag suffixes are fail-closed", () => {
+  for (const text of [
+    "Visible <mur",
+    "Visible <MURMUR",
+    "Visible </mur",
+  ]) {
+    const result = extractNativeLiveMurmur([
+      { kind: "text", text },
+    ]);
+    assert.equal(result.visibleBlocks[0]?.text, "Visible");
+    assert.equal(result.murmurBlock, null);
+  }
 });
 
 test("malformed murmur markers never leak raw murmur tags into the main body", () => {

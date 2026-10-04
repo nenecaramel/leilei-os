@@ -25,6 +25,15 @@ export function extractNativeLiveMurmur(
     }
 
     const text = block.text;
+    const lowerText = text.toLowerCase();
+    if (
+      !lowerText.includes("<murmur")
+      && !lowerText.includes("</murmur>")
+    ) {
+      visibleBlocks.push({ ...block });
+      continue;
+    }
+
     for (const match of text.matchAll(MURMUR_PATTERN)) {
       if (murmurText !== null) continue;
       const normalized = normalizeMurmur(match[1] ?? "");
@@ -35,6 +44,16 @@ export function extractNativeLiveMurmur(
     const danglingOpen = visibleText.search(/<murmur>/iu);
     if (danglingOpen >= 0) {
       visibleText = visibleText.slice(0, danglingOpen);
+    }
+    const marker = visibleText.lastIndexOf("<");
+    if (marker >= 0) {
+      const suffix = visibleText.slice(marker).toLowerCase();
+      if (
+        "<murmur>".startsWith(suffix)
+        || "</murmur>".startsWith(suffix)
+      ) {
+        visibleText = visibleText.slice(0, marker);
+      }
     }
     visibleText = visibleText
       .replace(MURMUR_TAG_PATTERN, "")

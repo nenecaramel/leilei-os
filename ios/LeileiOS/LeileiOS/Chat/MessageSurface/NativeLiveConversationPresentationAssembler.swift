@@ -256,9 +256,13 @@ struct NativeLiveConversationPresentationAssembler {
 
     private func murmurStrippedRuntimeText(_ value: String) -> String {
         var result = value
-        while let open = result.range(of: "<murmur>") {
+        while let open = result.range(
+            of: "<murmur>",
+            options: .caseInsensitive
+        ) {
             guard let close = result.range(
                 of: "</murmur>",
+                options: .caseInsensitive,
                 range: open.upperBound..<result.endIndex
             ) else {
                 result.removeSubrange(open.lowerBound..<result.endIndex)
@@ -266,12 +270,14 @@ struct NativeLiveConversationPresentationAssembler {
             }
             result.removeSubrange(open.lowerBound..<close.upperBound)
         }
-        result = result.replacingOccurrences(
+        while let close = result.range(
             of: "</murmur>",
-            with: ""
-        )
+            options: .caseInsensitive
+        ) {
+            result.removeSubrange(close)
+        }
         if let marker = result.lastIndex(of: "<") {
-            let suffix = String(result[marker...])
+            let suffix = String(result[marker...]).lowercased()
             if "<murmur>".hasPrefix(suffix)
                 || "</murmur>".hasPrefix(suffix) {
                 result.removeSubrange(marker..<result.endIndex)
