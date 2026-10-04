@@ -4,6 +4,24 @@ import {
   extractNativeLiveMurmur,
 } from "../src/domains/bridge/turn/native-live-murmur.js";
 
+test("ordinary assistant text is passed through without trimming or payload changes", () => {
+  const block = {
+    kind: "text" as const,
+    rawType: "text",
+    text: "\n  indented markdown  \n",
+    payload: {
+      schema_version: 1,
+      identity: "text",
+      citations: [{ id: "c1" }],
+    },
+  };
+
+  const result = extractNativeLiveMurmur([block]);
+
+  assert.deepEqual(result.visibleBlocks, [block]);
+  assert.equal(result.murmurBlock, null);
+});
+
 test("murmur is removed from visible assistant text and persisted separately", () => {
   const result = extractNativeLiveMurmur([
     {
