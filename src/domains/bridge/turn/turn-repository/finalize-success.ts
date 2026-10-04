@@ -159,7 +159,7 @@ export async function finalizeSuccess(
                       message.created_at > ${sourceUser.createdAt}
                       OR (
                         message.created_at = ${sourceUser.createdAt}
-                        AND message.id > ${sourceUser.id}::uuid
+                        AND message.id <> ${sourceUser.id}::uuid
                       )
                     )
                   LIMIT 1
