@@ -1,3 +1,4 @@
+import type { NativeLiveMemeRuntimeHandlers } from "./native-live-mac-meme-sender.js";
 import { isAbsolute } from "node:path";
 import type {
   NativeLiveClaudeRuntime,
@@ -61,6 +62,7 @@ export type NativeLiveMacInteractiveTurnOptions = {
     sha256: string;
     kind: "image" | "file";
   }>;
+  memeHandlers?: NativeLiveMemeRuntimeHandlers;
   albumHandlers?: NativeLiveMacAlbumToolHandlers;
   controlPump?: (
     controller: NativeLiveMacActiveTurnController,

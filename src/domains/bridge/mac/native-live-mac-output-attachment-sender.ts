@@ -108,20 +108,54 @@ export class NativeLiveMacOutputAttachmentSender {
         : "file" as const;
     const sha256 = await sha256File(filePath);
 
+    return this.uploadBytes({
+      filename, mimeType, sizeBytes: fileStat.size, sha256, kind,
+      bytes: await readFile(filePath),
+    });
+  }
+
+  // Internal runtime entrypoint; does not add a Claude-visible arbitrary bytes tool.
+  async sendBytes(input: {
+    bytes: Uint8Array;
+    filename: string;
+  }): Promise<NativeLiveMacOutputAttachmentDescriptor> {
+    if (!Number.isSafeInteger(input.bytes.byteLength)
+      || input.bytes.byteLength <= 0
+      || input.bytes.byteLength > this.maxFileBytes) {
+      throw new Error("Output bytes exceed the allowed attachment limit.");
+    }
+    const filename = normalizeDisplayName(input.filename, input.filename);
+    const mimeType = mimeTypeForFilename(filename);
+    const bytes = Buffer.from(input.bytes);
+    return this.uploadBytes({
+      bytes, filename, mimeType, sizeBytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      kind: mimeType.startsWith("image/") ? "image" : "file",
+    });
+  }
+
+  private async uploadBytes(input: {
+    bytes: Buffer;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    sha256: string;
+    kind: "image" | "file";
+  }): Promise<NativeLiveMacOutputAttachmentDescriptor> {
+    const { bytes, filename, mimeType, sizeBytes, sha256, kind } = input;
     const slot = await this.relay.createAttachmentUploadSlot({
       filename,
       mimeType,
-      sizeBytes: fileStat.size,
+      sizeBytes,
       sha256,
       kind,
     });
-    const bytes = await readFile(filePath);
     const response = await this.fetchImpl(
       slot.upload.url,
       {
         method: slot.upload.method,
         headers: slot.upload.headers,
-        body: bytes,
+        body: new Uint8Array(bytes),
       },
     );
     if (!response.ok) {
@@ -141,7 +175,7 @@ export class NativeLiveMacOutputAttachmentSender {
     if (
       attachment.attachmentId
         !== slot.attachment.attachmentId
-      || attachment.sizeBytes !== fileStat.size
+      || attachment.sizeBytes !== sizeBytes
       || attachment.sha256 !== sha256
     ) {
       throw new Error(

@@ -179,6 +179,10 @@ export function trustedNativeLiveToolPolicy(
     return "leileios_all";
   }
 
+  if (toolName === "mcp__leileios_memes__send_meme") {
+    return "leileios_memes";
+  }
+
   if (TRUSTED_LOCAL_ALBUM_TOOLS.has(toolName)) {
     return "leileios_album";
   }
