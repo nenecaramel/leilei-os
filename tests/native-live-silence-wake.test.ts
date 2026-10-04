@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import {
   chooseDueSilenceWakeSlot,
@@ -61,5 +62,26 @@ test("post-turn consumption never consumes the independent long-idle slot", () =
   assert.equal(
     chooseDueSilenceWakeSlot(schedule, Date.parse("2026-10-04T02:41:00.000Z")),
     "long_idle",
+  );
+});
+
+
+test("wake finalization revalidates exact latest user identity without timestamp round-trip", () => {
+  const source = fs.readFileSync(
+    "src/domains/bridge/turn/turn-repository/finalize-success.ts",
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /\.orderBy\(\s*desc\(conversationMessages\.createdAt\),\s*desc\(conversationMessages\.id\),\s*\)/u,
+  );
+  assert.match(
+    source,
+    /latestUser\?\.id !== wake\.sourceUserMessageId/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /gt\(\s*conversationMessages\.createdAt/u,
   );
 });
