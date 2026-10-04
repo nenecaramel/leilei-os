@@ -123,7 +123,8 @@ struct ChatView: View {
             appModel.stopNativeLiveConversationHeadObservation()
         }
         .onChange(of: voiceEnabled) { _, enabled in
-            if !enabled { voiceInput.cancel() }
+            guard !enabled, voiceInput.isActive else { return }
+            voiceInput.cancel()
         }
         .onChange(of: appModel.activeNativeLiveConversationID) { _, _ in
             voiceInput.cancel()
