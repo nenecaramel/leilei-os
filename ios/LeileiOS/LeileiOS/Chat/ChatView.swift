@@ -101,6 +101,12 @@ struct ChatView: View {
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
+            if let conversationID =
+                    appModel.activeNativeLiveConversationID {
+                appModel.beginNativeLiveConversationHeadObservation(
+                    conversationID: conversationID
+                )
+            }
             await appModel.recoverActiveNativeLiveTurn()
         }
         .task(id: appModel.isAuthenticated) {
@@ -109,8 +115,17 @@ struct ChatView: View {
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveConversationHistorySnapshot()
             await appModel.refreshNativeLiveCurrentPath()
+            if let conversationID =
+                    appModel.activeNativeLiveConversationID {
+                appModel.beginNativeLiveConversationHeadObservation(
+                    conversationID: conversationID
+                )
+            }
         }
-        .onDisappear { voiceInput.cancel() }
+        .onDisappear {
+            voiceInput.cancel()
+            appModel.stopNativeLiveConversationHeadObservation()
+        }
         .onChange(of: voiceEnabled) { _, enabled in
             if !enabled { voiceInput.cancel() }
         }
@@ -118,13 +133,22 @@ struct ChatView: View {
             voiceInput.cancel()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { voiceInput.cancel() }
+            if phase != .active {
+                voiceInput.cancel()
+                appModel.stopNativeLiveConversationHeadObservation()
+            }
             guard phase == .active else { return }
             Task {
                 await appModel.refreshNativeLiveConversations()
                 guard !isDraftConversation else { return }
                 await appModel.refreshNativeLiveConversationHistorySnapshot()
                 await appModel.refreshNativeLiveCurrentPath()
+                if let conversationID =
+                        appModel.activeNativeLiveConversationID {
+                    appModel.beginNativeLiveConversationHeadObservation(
+                        conversationID: conversationID
+                    )
+                }
             }
         }
         .onChange(of: draftConversationID) { _, _ in
