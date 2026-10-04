@@ -114,7 +114,7 @@ struct NativeLiveMediaCard: View {
 
     var body: some View {
         VStack(alignment:.leading,spacing:6) {
-            if stickerImage {
+            if stickerImage || input.isMemeSticker {
                 stickerTile
             } else if compactImage {
                 compactTile
@@ -138,7 +138,7 @@ struct NativeLiveMediaCard: View {
                 Button { open() } label: { fileLabel }
                     .buttonStyle(.plain).disabled(isOpening || input.presentationState == .uploading)
             }
-            if !compactImage, let error = openError ?? loader.error {
+            if !stickerImage && !input.isMemeSticker && !compactImage, let error = openError ?? loader.error {
                 Text(error).font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Retry",action:retryFailedOperation)
@@ -175,14 +175,8 @@ struct NativeLiveMediaCard: View {
             .buttonStyle(.plain)
             .frame(maxWidth:220,alignment:.leading)
             .accessibilityLabel(input.filename)
-            .overlay(alignment:.bottomLeading) {
-                if let label = input.stillPreviewLabel { Text(label).font(.caption2).padding(4).background(.thinMaterial) }
-            }
         } else {
-            Button { open() } label: { fileLabel }
-                .buttonStyle(.plain)
-                .disabled(isOpening || input.presentationState == .uploading)
-                .frame(maxWidth:220,alignment:.leading)
+            Color.clear.frame(width:220,height:220)
         }
     }
 
