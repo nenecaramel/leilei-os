@@ -1,15 +1,11 @@
-import { createHash } from "node:crypto";
 import type {
   NativeLiveBackgroundModelJob,
   NativeLiveBackgroundModelQueueService,
 } from "../../bridge/background/native-live-background-model-queue.js";
 import {
-  buildClaudeCodeProactivityWakePrompt,
-  CLAUDE_CODE_PROACTIVITY_WAKE_PROMPT_CONTRACT_VERSION,
   parseClaudeCodeProactivityWakeOutput,
 } from "./claude-code-proactivity-wake-model.js";
 import {
-  evaluateProactivityWakeGate,
   evaluateProactivityWakeGateAt,
   type ProactivityWakeDecision,
   type ProactivityWakeGateInput,
@@ -21,7 +17,6 @@ import type {
   ProactivityEffectMaterializer,
 } from "../effects/proactivity-effect-materializer.js";
 import {
-  normalizeProactivityWakeContext,
   type ProactivityWakeContextSnapshot,
   type ProactivityWakeGateRevalidator,
   type ProactivityWakePort,
@@ -30,7 +25,6 @@ import {
 
 type Queue = Pick<
   NativeLiveBackgroundModelQueueService,
-  | "stage"
   | "findNextUnconsumedTerminalForWorkflow"
   | "markConsumed"
 >;
@@ -64,95 +58,14 @@ export class ProactivityWakeCrossDeviceCoordinator {
     } | null = null,
   ) {}
 
-  async start(input: {
+  async start(_input: {
     gate: ProactivityWakeGateInput;
     contactTarget: string | null;
     context: ProactivityWakeContextSnapshot;
   }): Promise<ProactivityWakeCrossDeviceResult> {
-    requireUuid(input.gate.wakeId, "wakeId");
-    const durable = await this.wakes.createOrGet({
-      gate: input.gate,
-      contactTarget: input.contactTarget,
-      context: normalizeProactivityWakeContext(input.context),
-    });
-
-    if (
-      durable.status === "decided"
-      && durable.decision
-    ) {
-      await this.materializeEffect(durable);
-      return {
-        outcome: "decided",
-        wakeId: durable.id,
-        decision: durable.decision,
-      };
-    }
-    if (
-      durable.status === "waiting_model"
-      && durable.modelTaskId
-    ) {
-      return {
-        outcome: "waiting",
-        wakeId: durable.id,
-        taskId: durable.modelTaskId,
-      };
-    }
-
-    const gate = evaluateProactivityWakeGate(durable.gate);
-    if (gate.outcome === "blocked") {
-      const completed = await this.wakes.completeDecision({
-        userId: durable.userId,
-        wakeId: durable.id,
-        decision: this.decisions.blocked(
-          durable.gate,
-          gate.reason,
-        ),
-      });
-      return decidedResult(completed);
-    }
-
-    const taskId = modelTaskId(durable.id);
-    await this.queue.stage({
-      userId: durable.userId,
-      subjectId: durable.subjectId,
-      command: {
-        protocol_version: 1,
-        task_id: taskId,
-        task_kind: "proactivity_deliberate",
-        prompt_contract_version:
-          CLAUDE_CODE_PROACTIVITY_WAKE_PROMPT_CONTRACT_VERSION,
-        prompt: buildClaudeCodeProactivityWakePrompt({
-          gate: durable.gate,
-          context: durable.context,
-        }),
-      },
-      workflow: {
-        kind: "proactivity_wake",
-        runId: durable.id,
-        payload: {
-          version: 1,
-          wake_id: durable.id,
-        },
-      },
-    });
-
-    const waiting = await this.wakes.markWaitingModel({
-      userId: durable.userId,
-      wakeId: durable.id,
-      modelTaskId: taskId,
-    });
-    if (
-      waiting.status === "decided"
-      && waiting.decision
-    ) {
-      await this.materializeEffect(waiting);
-      return decidedResult(waiting);
-    }
-    return {
-      outcome: "staged",
-      wakeId: durable.id,
-      taskId,
-    };
+    throw new Error(
+      "Legacy Proactivity v1 model staging is retired.",
+    );
   }
 
   async advanceNextForUser(input: {
@@ -338,26 +251,6 @@ function requireResultText(
     );
   }
   return job.resultText;
-}
-
-function modelTaskId(wakeId: string): string {
-  const digest = createHash("sha256")
-    .update(
-      "leileios:proactivity-wake-deliberation:v1:" + wakeId,
-      "utf8",
-    )
-    .digest();
-  const bytes = Buffer.from(digest.subarray(0, 16));
-  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20, 32),
-  ].join("-");
 }
 
 function requireUuid(value: string, field: string): void {
