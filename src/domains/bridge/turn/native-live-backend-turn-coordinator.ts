@@ -244,7 +244,7 @@ export interface NativeLiveBackendTurnPort {
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
   }): Promise<NativeLiveFinalizeFailurePortResult>;
 
-  discardWake(input: {
+  discardWake?(input: {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string | null;
@@ -437,7 +437,7 @@ export class NativeLiveBackendTurnCoordinator {
     if (result.status === "failure") {
       if (preparation.operation === "wake") {
         try {
-          await this.port.discardWake({
+          await this.discardWake({
             userId,
             preparation,
             providerSessionId: null,
@@ -475,7 +475,7 @@ export class NativeLiveBackendTurnCoordinator {
     if (canonical.error) {
       if (preparation.operation === "wake") {
         try {
-          await this.port.discardWake({
+          await this.discardWake({
             userId,
             preparation,
             providerSessionId: result.provider_session_id,
@@ -514,7 +514,7 @@ export class NativeLiveBackendTurnCoordinator {
       && isQuietWakeResult(result.normalized_events, canonical.blocks)
     ) {
       try {
-        await this.port.discardWake({
+        await this.discardWake({
           userId,
           preparation,
           providerSessionId: result.provider_session_id,
@@ -611,6 +611,17 @@ export class NativeLiveBackendTurnCoordinator {
       checkpointId: finalized.record.checkpoint.id,
       providerSessionId: finalized.record.checkpoint.providerSessionId,
     };
+  }
+
+  private discardWake(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string | null;
+  }): Promise<"discarded" | "idempotent"> {
+    if (!this.port.discardWake) {
+      throw new Error("Silence wake discard port is unavailable.");
+    }
+    return this.port.discardWake(input);
   }
 }
 
