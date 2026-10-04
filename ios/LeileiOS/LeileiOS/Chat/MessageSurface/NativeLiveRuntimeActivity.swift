@@ -974,6 +974,8 @@ private let nativeLiveLeileiOSToolDisplayNames: [String: String] = [
     "mcp__leileios_album__view_photo": "View Photo",
     "mcp__leileios_album__send_photo": "Send Photo",
     "mcp__leileios_local__send_file": "Send File",
+    "mcp__leileios_memes__send_meme": "Send Sticker",
+    "Send Meme": "Send Sticker",
 ]
 
 func nativeLiveToolDisplayName(
@@ -988,6 +990,7 @@ func nativeLiveToolDisplayName(
         "mcp__leileios__",
         "mcp__leileios_album__",
         "mcp__leileios_local__",
+        "mcp__leileios_memes__",
     ]
     guard let prefix = prefixes.first(
         where: { raw.hasPrefix($0) }
