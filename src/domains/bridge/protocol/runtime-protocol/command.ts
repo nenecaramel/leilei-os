@@ -92,6 +92,11 @@ export function parseNativeLiveRuntimeCommand(
       "Fork runtime command requires a parent provider session.",
     );
   }
+  if (operation === "wake" && runtimeMode !== "fork") {
+    throw new NativeLiveRuntimeProtocolError(
+      "Wake runtime command must fork the current provider session.",
+    );
+  }
 
   return {
     protocol_version: protocolVersion,
