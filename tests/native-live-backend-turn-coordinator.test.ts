@@ -564,6 +564,53 @@ test("quiet silence wake is discarded without canonical assistant finalization",
   assert.equal(port.discardWakeCalls.length, 1);
 });
 
+test("empty successful silence wake is also discarded without creating an assistant message", async () => {
+  const { port, coordinator } = setup();
+  port.preparation = prepared({
+    operation: "wake",
+    canonicalUserMessageId: null,
+    wakeContext: {
+      version: 1,
+      epoch_id: userMessageId,
+      slot: "post_turn_idle",
+      source_user_message_id: userMessageId,
+      source_head_message_id: headId,
+    },
+    prompt: "[09-21 周一 08:07 · wake · +7m · no reply]",
+    mindPrepared: true,
+  });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-wake-empty",
+    normalized_events: [
+      {
+        type: "result",
+        payload: {
+          status: "success",
+          final_text: "",
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    outcome: "wake_quiet",
+    requestId,
+    operation: "wake",
+    conversationId,
+    providerSessionId: "provider-wake-empty",
+  });
+  assert.equal(port.finalizeSuccessCalls.length, 0);
+  assert.equal(port.finalizeFailureCalls.length, 0);
+  assert.equal(port.discardWakeCalls.length, 1);
+});
+
 test("failed silence wake is invisible and uses the same discard path", async () => {
   const { port, coordinator } = setup();
   port.preparation = prepared({
