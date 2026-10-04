@@ -30,6 +30,8 @@ function successMessages(sessionId: string) {
 test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start reconnects", async () => {
   let queryCalls = 0;
   let reconnectCalls = 0;
+  let mcpReady = false;
+  let promptsBeforeReady = 0;
   const promptMessages: unknown[] = [];
 
   const handle = await createAgentSdkTurnHandle({
@@ -50,9 +52,17 @@ test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start 
     },
     queryImpl: ({ prompt }: { prompt: AsyncIterable<unknown> }) => {
       queryCalls += 1;
+      // The real SDK starts consuming input inside query(), not handle.start().
+      const inputConsumed = (async () => {
+        for await (const message of prompt) {
+          promptMessages.push(message);
+          if (!mcpReady) promptsBeforeReady += 1;
+        }
+      })();
       return {
         close() {},
         async mcpServerStatus() {
+          mcpReady = reconnectCalls >= 3;
           return [{
             name: "leileios",
             status: reconnectCalls >= 3 ? "connected" : "failed",
@@ -69,9 +79,7 @@ test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start 
           }
         },
         async *[Symbol.asyncIterator]() {
-          for await (const message of prompt) {
-            promptMessages.push(message);
-          }
+          await inputConsumed;
           yield* successMessages("provider-mcp-cold-start");
         },
       };
@@ -80,7 +88,7 @@ test("Native Live keeps one Agent SDK turn alive across repeated MCP cold-start 
 
   assert.equal(queryCalls, 1);
   assert.equal(reconnectCalls, 3);
-  assert.equal(promptMessages.length, 0);
+  assert.equal(promptsBeforeReady, 0);
 
   const result = await handle.start();
 

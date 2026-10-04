@@ -870,6 +870,8 @@ test("turn startup reconnects LeileiOS MCP before releasing the first prompt", a
 test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the query or prompt", async () => {
   let queryCalls = 0;
   let reconnectCalls = 0;
+  let mcpReady = false;
+  let promptsBeforeReady = 0;
   const promptMessages = [];
 
   const handle = await createAgentSdkTurnHandle({
@@ -890,9 +892,17 @@ test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the
     },
     queryImpl: ({ prompt }) => {
       queryCalls += 1;
+      // The real SDK starts consuming input inside query(), not handle.start().
+      const inputConsumed = (async () => {
+        for await (const message of prompt) {
+          promptMessages.push(message);
+          if (!mcpReady) promptsBeforeReady += 1;
+        }
+      })();
       return {
         close() {},
         async mcpServerStatus() {
+          mcpReady = reconnectCalls >= 3;
           return [{
             name: "leileios",
             status: reconnectCalls >= 3 ? "connected" : "failed",
@@ -909,9 +919,7 @@ test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the
           }
         },
         async *[Symbol.asyncIterator]() {
-          for await (const message of prompt) {
-            promptMessages.push(message);
-          }
+          await inputConsumed;
           for (const message of successMessages("provider-mcp-cold-start")) {
             yield message;
           }
@@ -922,7 +930,7 @@ test("turn startup keeps reconnecting a cold LeileiOS MCP without recreating the
 
   assert.equal(queryCalls, 1);
   assert.equal(reconnectCalls, 3);
-  assert.equal(promptMessages.length, 0);
+  assert.equal(promptsBeforeReady, 0);
 
   const result = await handle.start();
   assert.equal(result.providerSessionId, "provider-mcp-cold-start");
@@ -973,3 +981,198 @@ test("turn startup closes a query that misses the LeileiOS MCP startup budget", 
   assert.equal(closeCalls, 1);
 });
 
+
+test("MCP readiness gates eager prompt reads for normal, queued and string-prompt modes", async (t) => {
+  for (const [name, modeOptions] of [
+    ["normal", {}],
+    ["mid-turn queue", { midTurnInput: true }],
+    ["string-prompt compatibility", { verbatimPrompts: false }],
+  ]) {
+    await t.test(name, async () => {
+      let connected = false;
+      let reconnects = 0;
+      let queryCalls = 0;
+      const beforeReady = [];
+      const delivered = [];
+      const handle = await createAgentSdkTurnHandle({
+        prompt: "exactly once",
+        environment: {},
+        mcpStartupTimeoutMs: 2_000,
+        midTurnInput: modeOptions.midTurnInput ?? false,
+        queryOptions: {
+          ...("verbatimPrompts" in modeOptions
+            ? { verbatimPrompts: modeOptions.verbatimPrompts }
+            : {}),
+          mcpServers: { leileios: { type: "http", url: "https://example.invalid/mcp" } },
+        },
+        queryImpl: ({ prompt }) => {
+          queryCalls += 1;
+          const firstRead = typeof prompt === "string"
+            ? Promise.resolve({ value: prompt, done: false })
+            : prompt[Symbol.asyncIterator]().next();
+          const consumed = firstRead.then(({ value, done }) => {
+            if (!done) {
+              delivered.push(value);
+              if (!connected) beforeReady.push(value);
+            }
+          });
+          return {
+            close() {},
+            async mcpServerStatus() {
+              connected = reconnects >= 2;
+              return [{ name: "leileios", status: connected ? "connected" : "failed" }];
+            },
+            async reconnectMcpServer() {
+              reconnects += 1;
+              if (reconnects < 2) throw new Error("database waking");
+            },
+            async *[Symbol.asyncIterator]() {
+              await consumed;
+              yield* successMessages();
+            },
+          };
+        },
+      });
+      await handle.start();
+      assert.equal(queryCalls, 1);
+      assert.equal(reconnects, 2);
+      assert.deepEqual(beforeReady, []);
+      assert.equal(delivered.length, 1);
+      assert.equal(delivered[0].message.content[0].text, "exactly once");
+    });
+  }
+});
+
+test("MCP startup timeout ends the eager input stream before closing the query without sending", async () => {
+  let closeCalls = 0;
+  let firstRead;
+  const delivered = [];
+  await assert.rejects(createAgentSdkTurnHandle({
+    prompt: "must not send",
+    environment: {},
+    midTurnInput: true,
+    mcpStartupTimeoutMs: 25,
+    queryOptions: { mcpServers: { leileios: { type: "http", url: "https://example.invalid/mcp" } } },
+    queryImpl: ({ prompt }) => {
+      firstRead = prompt[Symbol.asyncIterator]().next().then((item) => {
+        if (!item.done) delivered.push(item.value);
+        return item;
+      });
+      return {
+        async close() { closeCalls += 1; await firstRead; },
+        async mcpServerStatus() { return [{ name: "leileios", status: "failed" }]; },
+        async reconnectMcpServer() { throw new Error("still asleep"); },
+        async *[Symbol.asyncIterator]() { throw new Error("must not start"); },
+      };
+    },
+  }), /LeileiOS MCP did not connect/);
+  assert.equal(closeCalls, 1);
+  assert.deepEqual(delivered, []);
+  assert.equal((await firstRead).done, true);
+});
+
+test("query construction failure releases a pending gated input reader without sending", async () => {
+  let firstRead;
+  await assert.rejects(createAgentSdkTurnHandle({
+    prompt: "must not send",
+    environment: {},
+    queryOptions: { mcpServers: { leileios: { type: "http", url: "https://example.invalid/mcp" } } },
+    queryImpl: ({ prompt }) => {
+      firstRead = prompt[Symbol.asyncIterator]().next();
+      throw new Error("query construction failed");
+    },
+  }), /query construction failed/);
+  assert.equal((await firstRead).done, true);
+});
+
+test("installed Agent SDK cannot write a native command before MCP readiness", async (t) => {
+  // Railway's server-only gate does not install the Mac-only SDK dependency.
+  let sdkPath;
+  try {
+    sdkPath = import.meta.resolve("@anthropic-ai/claude-agent-sdk");
+  } catch (error) {
+    if (error.code !== "ERR_MODULE_NOT_FOUND") throw error;
+    t.skip("Actual SDK integration requires installed Mac bridge dependencies.");
+    return;
+  }
+  const { query } = await import(sdkPath);
+  const { PassThrough } = await import("node:stream");
+  const { EventEmitter } = await import("node:events");
+  let spawns = 0;
+  let reconnects = 0;
+  let ready = false;
+  const sent = [];
+  const beforeReady = [];
+  const child = new EventEmitter();
+  child.stdin = new PassThrough();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.killed = false;
+  child.exitCode = null;
+  child.kill = () => {
+    child.killed = true;
+    child.stdout.end();
+    child.stderr.end();
+    return true;
+  };
+  let buffer = "";
+  child.stdin.on("data", (data) => {
+    buffer += data.toString();
+    while (buffer.includes("\n")) {
+      const newline = buffer.indexOf("\n");
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (!line) continue;
+      const message = JSON.parse(line);
+      if (message.type === "control_request") {
+        const subtype = message.request.subtype;
+        let response = {};
+        let error = null;
+        if (subtype === "mcp_status") {
+          ready = reconnects >= 3;
+          response = { mcpServers: [{ name: "leileios", status: ready ? "connected" : "failed" }] };
+        } else if (subtype === "mcp_reconnect") {
+          reconnects += 1;
+          if (reconnects < 3) error = "database waking";
+        }
+        child.stdout.write(JSON.stringify({
+          type: "control_response",
+          response: error
+            ? { subtype: "error", request_id: message.request_id, error }
+            : { subtype: "success", request_id: message.request_id, response },
+        }) + "\n");
+      } else if (message.type === "user") {
+        sent.push(message);
+        if (!ready) beforeReady.push(message);
+        for (const event of successMessages("provider-real-sdk")) {
+          child.stdout.write(JSON.stringify(event) + "\n");
+        }
+        queueMicrotask(() => {
+          child.exitCode = 0;
+          child.stdout.end();
+          child.stderr.end();
+          child.emit("exit", 0, null);
+        });
+      }
+    }
+  });
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "/schedule list",
+    environment: {},
+    mcpStartupTimeoutMs: 3_000,
+    queryImpl: query,
+    queryOptions: {
+      verbatimPrompts: false,
+      mcpServers: { leileios: { type: "http", url: "https://example.invalid/mcp" } },
+      spawnClaudeCodeProcess: () => { spawns += 1; return child; },
+    },
+  });
+  const result = await handle.start();
+  assert.equal(result.providerSessionId, "provider-real-sdk");
+  assert.equal(spawns, 1);
+  assert.equal(reconnects, 3);
+  assert.deepEqual(beforeReady, []);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].message.content[0].text, "/schedule list");
+  assert.equal(sent[0].client_composed, undefined);
+});

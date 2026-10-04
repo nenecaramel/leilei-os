@@ -348,6 +348,19 @@ export async function createAgentSdkTurnHandle({
     yield userMessage(prompt, initialUserMessageUuid);
   }
 
+  const requiresMcpReadiness = Boolean(queryOptions.mcpServers?.leileios);
+  let settleMcpReadiness;
+  const mcpReadiness = requiresMcpReadiness
+    ? new Promise((resolve) => { settleMcpReadiness = resolve; })
+    : null;
+
+  async function* readyPromptStream() {
+    // SDK query() starts reading input immediately, before output iteration.
+    // A false outcome ends that read cleanly without releasing the user message.
+    if (!(await mcpReadiness)) return;
+    yield* (inputQueue ?? promptStream());
+  }
+
   const options = {
     cwd,
     env: environment,
@@ -372,8 +385,9 @@ export async function createAgentSdkTurnHandle({
   let query;
   try {
     query = resolvedQuery({
-      prompt:
-        inputQueue
+      prompt: requiresMcpReadiness
+        ? readyPromptStream()
+        : inputQueue
         ?? (
           queryOptions.verbatimPrompts === false
             ? prompt
@@ -382,6 +396,8 @@ export async function createAgentSdkTurnHandle({
       options,
     });
   } catch (cause) {
+    settleMcpReadiness?.(false);
+    inputQueue?.end();
     throw runtimeError(
       `Failed to start Claude Agent SDK turn: ${
         cause instanceof Error ? cause.message : String(cause)
@@ -391,13 +407,20 @@ export async function createAgentSdkTurnHandle({
   }
 
   if (!query || typeof query[Symbol.asyncIterator] !== "function") {
+    settleMcpReadiness?.(false);
+    inputQueue?.end();
+    try {
+      await query?.close?.();
+    } catch {
+      // Invalid queries still need best-effort cleanup.
+    }
     throw runtimeError(
       "Claude Agent SDK query() did not return an async iterable.",
       { runtimeCode: "RUNTIME_UNAVAILABLE" },
     );
   }
 
-  if (queryOptions.mcpServers?.leileios) {
+  if (requiresMcpReadiness) {
     try {
       await waitForAgentSdkMcpServer(
         query,
@@ -405,6 +428,8 @@ export async function createAgentSdkTurnHandle({
         { timeoutMs: mcpStartupTimeoutMs },
       );
     } catch (cause) {
+      settleMcpReadiness(false);
+      inputQueue?.end();
       try {
         await query.close?.();
       } catch {
@@ -414,6 +439,7 @@ export async function createAgentSdkTurnHandle({
     }
   }
 
+  settleMcpReadiness?.(true);
   return new AgentSdkTurnHandle({
     query,
     mode,
