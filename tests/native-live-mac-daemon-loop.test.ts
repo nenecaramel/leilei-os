@@ -57,6 +57,7 @@ class FakeRelay implements NativeLiveMacDaemonRelayClient {
   calls: Array<{ name: string; input: unknown }> = [];
   startError: Error | null = null;
   submitError: Error | null = null;
+  canonicalOutcome: string | null = null;
 
   async renewLease(input: unknown) {
     this.calls.push({ name: "renewLease", input });
@@ -76,6 +77,9 @@ class FakeRelay implements NativeLiveMacDaemonRelayClient {
   async submitResult(input: unknown) {
     this.calls.push({ name: "submitResult", input });
     if (this.submitError) throw this.submitError;
+    return this.canonicalOutcome
+      ? { canonicalOutcome: this.canonicalOutcome }
+      : undefined;
   }
 
   async markResultDeliveryUnknown(input: unknown) {
@@ -395,6 +399,18 @@ test("reserved command is marked started, executed once, then submitted once", a
   assert.equal(submit.listenerInstanceId, listenerInstanceId);
   assert.equal(submit.reservationId, reservationId);
   assert.deepEqual(submit.result, success());
+});
+
+test("daemon propagates wake_quiet as canonical terminal metadata without changing completed execution semantics", async () => {
+  const { relay, loop } = setup();
+  relay.canonicalOutcome = "wake_quiet";
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "completed",
+    reservationId,
+    result: success(),
+    canonicalOutcome: "wake_quiet",
+  });
 });
 
 test("execution-start failure rejects reservation and never invokes Claude", async () => {
