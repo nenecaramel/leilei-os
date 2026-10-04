@@ -34,15 +34,13 @@ export async function discardWake(
         true,
       );
       if (!row) {
-        return hasDiscardedWakeReceipt(
+        const discarded = await hasDiscardedWakeReceipt(
           transaction as Transaction,
           input.userId,
           input.preparation.prepareId,
-        )
-          ? "idempotent"
-          : Promise.reject(
-              new Error("Silence wake preparation was not found."),
-            );
+        );
+        if (discarded) return "idempotent";
+        throw new Error("Silence wake preparation was not found.");
       }
       if (row.operation !== "wake") {
         throw new Error("Only silence wake preparations may be discarded.");
