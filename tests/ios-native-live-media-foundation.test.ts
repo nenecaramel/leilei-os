@@ -202,3 +202,34 @@ test("preview filename and lease stay nonisolated under Swift 6 default MainActo
     /nonisolated final class NativeLiveFilePreviewLease/,
   );
 });
+
+
+test("attachment bytes are reused from verified cache before requesting a fresh download slot", () => {
+  const cache = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAttachmentCache.swift",
+    "utf8",
+  );
+  const coordination = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/NativeLiveAttachmentCoordination.swift",
+    "utf8",
+  );
+
+  assert.match(
+    cache,
+    /func cached\(key: NativeLiveAttachmentCacheKey\) throws -> Data\?/,
+  );
+
+  const cacheLookup = coordination.indexOf(
+    "nativeLiveAttachmentBytesCache.cached",
+  );
+  const slotRequest = coordination.indexOf(
+    "nativeLiveAttachmentDownloadSlot",
+  );
+
+  assert.notEqual(cacheLookup, -1);
+  assert.notEqual(slotRequest, -1);
+  assert.ok(
+    cacheLookup < slotRequest,
+    "verified cache must be checked before requesting a new download slot",
+  );
+});
