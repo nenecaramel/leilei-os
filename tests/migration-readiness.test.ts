@@ -107,6 +107,26 @@ test("readiness exponential backoff is capped so wake waits remain bounded", asy
   assert.deepEqual(sleepDurations, [100, 150, 150]);
 });
 
+test("runtime readiness retry budget spans at least 90 seconds without changing migration retries", () => {
+  let retryDelayMs = 0;
+  for (
+    let attempt = 1;
+    attempt < readiness.RUNTIME_DATABASE_READINESS_MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    retryDelayMs += Math.min(
+      readiness.MIGRATION_READINESS_BACKOFF_MS * 2 ** (attempt - 1),
+      readiness.MIGRATION_READINESS_MAX_BACKOFF_MS,
+    );
+  }
+
+  assert.equal(readiness.MIGRATION_READINESS_MAX_ATTEMPTS, 8);
+  assert.ok(
+    retryDelayMs >= 90_000,
+    `expected runtime readiness retry delay >= 90s, got ${retryDelayMs}ms`,
+  );
+});
+
 test("retry metadata contains only safe stage fields and no error text", async () => {
   const retryEvents: Array<Record<string, unknown>> = [];
   let attempts = 0;
