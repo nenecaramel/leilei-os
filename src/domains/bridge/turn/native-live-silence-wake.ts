@@ -6,6 +6,9 @@ import {
   nativeLiveSilenceWakeReceipts,
   nativeLiveTurnPreparations,
 } from "../../../database/schema.js";
+import type {
+  DrizzleNativeLiveWorkWakePublisher,
+} from "../relay/native-live-work-wake.js";
 
 export type NativeLiveSilenceWakeSlot =
   | "post_turn_idle"
@@ -175,6 +178,8 @@ export class NativeLiveSilenceWakeService {
   constructor(
     private readonly db: SilenceWakeDatabase,
     private readonly now: () => Date = () => new Date(),
+    private readonly wakePublisher:
+      Pick<DrizzleNativeLiveWorkWakePublisher, "notify"> | null = null,
   ) {}
 
   async readSchedule(input: {
@@ -195,7 +200,7 @@ export class NativeLiveSilenceWakeService {
     schedule: NativeLiveSilenceWakeSchedule | null;
   }> {
     const firedAt = this.now();
-    return this.db.transaction(
+    const result = await this.db.transaction(
       async (transaction) => {
         const source = await this.readSource(
           transaction as SilenceWakeTransaction,
@@ -347,6 +352,13 @@ export class NativeLiveSilenceWakeService {
       },
       { isolationLevel: "serializable" },
     );
+    if (result.outcome === "queued" && this.wakePublisher) {
+      await this.wakePublisher.notify({
+        userId: input.userId,
+        kind: "silence_wake",
+      }).catch(() => undefined);
+    }
+    return result;
   }
 
   private async scheduleForSource(
