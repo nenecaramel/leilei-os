@@ -93,10 +93,6 @@ struct ChatView: View {
                 )
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isComposerFocused = false
-        }
         .task(id: appModel.activeNativeLiveConversationID) {
             guard !isDraftConversation else { return }
             await appModel.refreshNativeLiveConversationHistorySnapshot()
