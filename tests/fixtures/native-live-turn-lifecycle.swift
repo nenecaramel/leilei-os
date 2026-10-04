@@ -54,7 +54,10 @@ do {
     live.events.append(timingEvent("tool_use",9,3,["tool_use_id":.string("clockTool"),"tool_name":.string("Read")]))
     let c = project(12)
     expect(c.header == "Working for 7s · 1 step" && c.activityProjection.elapsedSeconds == c.duration,"C: tool uses same clock")
-    live.events.append(timingEvent("result",17,4,["duration_ms":.number(17000)])); live.foregroundTurnCompleted = true
+    live.foregroundTurnCompleted = true
+    let cTerminalPending = project(13)
+    expect(cTerminalPending.duration == c.duration && cTerminalPending.header == "Worked for 7s · 1 step" && !cTerminalPending.hasAuthoritativeDuration,"C: terminal-before-event frame keeps the same clock without freezing it")
+    live.events.append(timingEvent("result",17,4,["duration_ms":.number(17000)]))
     let d = project(30)
     expect(d.duration == 12 && d.header == "Worked for 12s · 1 step","D: terminal event ignores conflicting provider duration")
     expect(project(50).duration == 12,"terminal duration freezes")
