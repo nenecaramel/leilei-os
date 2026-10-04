@@ -47,17 +47,29 @@ test("live streaming text enters the same rich presentation projection", () => {
 });
 
 
-test("source panels share message-copy icon semantics and visible success feedback", () => {
+test("source panels match assistant copy interaction without growing the button", () => {
   const source = fs.readFileSync(
     "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveCodeRenderer.swift",
     "utf8",
   );
   assert.match(source, /"square\.on\.square"/);
-  assert.match(source, /isCopied \? "checkmark" : "square\.on\.square"/);
-  assert.match(source, /Text\("Copied"\)/);
+  assert.match(source, /"checkmark"/);
+  assert.match(source, /font\(\.system\(size: 15\)\)/);
+  assert.match(source, /frame\(width: 24, height: 24\)/);
+  assert.match(source, /copyFeedback\("Copied"\)/);
   assert.match(source, /UIPasteboard\.general\.string = copyText/);
   assert.match(source, /Task\.sleep\(for: \.seconds\(2\)\)/);
+  assert.doesNotMatch(source, /Text\("Copied"\)/);
   assert.doesNotMatch(source, /"doc\.on\.doc"/);
+
+  const surface = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift",
+    "utf8",
+  );
+  assert.match(surface, /copyFeedbackText/);
+  assert.match(surface, /Text\(copyFeedbackText\)/);
+  assert.match(surface, /showCopyFeedback\("Message copied"/);
+  assert.match(surface, /\.environment\(\\\.nativeLiveCopyFeedback\)/);
 });
 
 

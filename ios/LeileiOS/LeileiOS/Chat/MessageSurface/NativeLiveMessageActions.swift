@@ -169,3 +169,15 @@ struct LightweightContextMenuInteraction: UIViewRepresentable {
         }
     }
 }
+
+
+private struct NativeLiveCopyFeedbackActionKey: EnvironmentKey {
+    static let defaultValue: (String) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var nativeLiveCopyFeedback: (String) -> Void {
+        get { self[NativeLiveCopyFeedbackActionKey.self] }
+        set { self[NativeLiveCopyFeedbackActionKey.self] = newValue }
+    }
+}
