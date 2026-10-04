@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-struct NativeLiveAttachmentCacheKey: Hashable, Sendable {
+nonisolated struct NativeLiveAttachmentCacheKey: Hashable, Sendable {
     let scope: String
     let attachmentID: String
     let sizeBytes: Int
@@ -9,7 +9,7 @@ struct NativeLiveAttachmentCacheKey: Hashable, Sendable {
     var imageKey: String { "\(scope)|\(attachmentID)|\(sizeBytes)|\(sha256)" }
 }
 
-enum NativeLiveAttachmentIntegrity {
+nonisolated enum NativeLiveAttachmentIntegrity {
     static func sha256(_ data: Data) -> String { SHA256.hash(data:data).map { String(format:"%02x",$0) }.joined() }
     static func verify(_ data: Data, key: NativeLiveAttachmentCacheKey) throws {
         guard data.count == key.sizeBytes, sha256(data) == key.sha256 else { throw NativeLiveMediaError.integrityFailed }
