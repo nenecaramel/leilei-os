@@ -95,6 +95,17 @@ final class VoiceInputController: ObservableObject {
     }
 
     func cancel() {
+        guard phase != .idle
+                || deadline != nil
+                || recognitionTask != nil
+                || request != nil
+                || tapInstalled
+                || ownsAudioSession
+                || completion != nil
+                || !transcript.isEmpty else {
+            return
+        }
+
         generation = UUID()
         deadline?.cancel()
         deadline = nil
