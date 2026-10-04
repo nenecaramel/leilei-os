@@ -230,6 +230,13 @@ struct NativeLiveConversationPresentationAssembler {
         var turn = NativeLiveAssistantTurnPresentation(stableID:id,canonicalMessageID:message?.id,prepareID:prepare,requestID:runtime?.requestID ?? binding?.requestID,
             parentUserMessageID:canonicalParentUserMessageID ?? runtime?.userMessageID ?? binding?.userMessageID,
             phase:phase,timestamp:timestamp,bodyPresentation:body,activityProjection:activity,duration:duration,header:header,failure:phase == .failed ? "Failed" : nil)
+        turn.murmurText = message?.blocks
+            .first(where: { $0.kind == "murmur" })?
+            .text?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if turn.murmurText?.isEmpty == true {
+            turn.murmurText = nil
+        }
         turn.providerMessageStartedAt = providerStart
         turn.hasAuthoritativeDuration = authoritativeDuration
         previous[id] = turn
