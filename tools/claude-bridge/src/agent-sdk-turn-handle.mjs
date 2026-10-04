@@ -472,6 +472,9 @@ export class AgentSdkTurnHandle {
     this.interruptReceipt = null;
     this.interruptRequested = false;
     this.abortRequested = false;
+    this.interruptSignal = new Promise((resolve) => {
+      this.resolveInterruptSignal = resolve;
+    });
     this.closed = false;
     this.started = false;
     this.completion = null;
@@ -580,6 +583,13 @@ export class AgentSdkTurnHandle {
     this.inputQueue?.end();
     this.interruptReceipt = receipt;
     this.events.emit("interrupt", receipt);
+    this.resolveInterruptSignal?.();
+    this.resolveInterruptSignal = null;
+    try {
+      Promise.resolve(this.query.close?.()).catch(() => undefined);
+    } catch {
+      // Provider already accepted the interrupt. Local close is best-effort.
+    }
     return receipt;
   }
 
@@ -606,7 +616,24 @@ export class AgentSdkTurnHandle {
     let terminalFailure = null;
 
     try {
-      for await (const message of this.query) {
+      const iterator = this.query[Symbol.asyncIterator]();
+      while (true) {
+        const next = await Promise.race([
+          iterator.next().then((value) => ({
+            kind: "message",
+            value,
+          })),
+          this.interruptSignal.then(() => ({
+            kind: "interrupt",
+          })),
+        ]);
+        if (next.kind === "interrupt") {
+          break;
+        }
+        if (next.value.done) {
+          break;
+        }
+        const message = next.value.value;
         parsedEvents.push(message);
         this.providerSessionId =
           this.providerSessionId

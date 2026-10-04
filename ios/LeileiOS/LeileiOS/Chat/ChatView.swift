@@ -604,6 +604,8 @@ struct ChatView: View {
                         presentationOperation: pendingOperation
                     )
                     pendingOperation = nil
+                } catch NativeLiveSendError.interrupted {
+                    pendingOperation = nil
                 } catch {
                     pendingOperation = nil
                     editDraft = draft
@@ -692,6 +694,8 @@ struct ChatView: View {
                     execution: executionSelection,
                     presentationOperation: pendingOperation
                 )
+                pendingOperation = nil
+            } catch NativeLiveSendError.interrupted {
                 pendingOperation = nil
             } catch {
                 pendingOperation = nil

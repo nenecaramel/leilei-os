@@ -72,6 +72,9 @@ extension AppModel {
             clearNativeLiveSessionData()
             chatSendState = .failed
             throw LeileiAPIError.unauthorized
+        } catch NativeLiveSendError.interrupted {
+            chatSendState = .idle
+            throw NativeLiveSendError.interrupted
         } catch let error as LeileiAPIError {
             if case .backend(_, let code, _) = error,
                code == "STALE_HEAD" {
@@ -131,6 +134,9 @@ extension AppModel {
             clearNativeLiveSessionData()
             chatSendState = .failed
             throw LeileiAPIError.unauthorized
+        } catch NativeLiveSendError.interrupted {
+            chatSendState = .idle
+            throw NativeLiveSendError.interrupted
         } catch {
             chatSendState = .failed
             throw error
@@ -208,6 +214,9 @@ extension AppModel {
             clearNativeLiveSessionData()
             chatSendState = .failed
             throw LeileiAPIError.unauthorized
+        } catch NativeLiveSendError.interrupted {
+            chatSendState = .idle
+            throw NativeLiveSendError.interrupted
         } catch {
             chatSendState = .failed
             throw error
@@ -376,7 +385,10 @@ extension AppModel {
                 throw LeileiAPIError.forbidden
             } catch LeileiAPIError.invalidResponse {
                 throw LeileiAPIError.invalidResponse
-            } catch let error as LeileiAPIError {
+            } catch NativeLiveSendError.interrupted {
+            chatSendState = .idle
+            throw NativeLiveSendError.interrupted
+        } catch let error as LeileiAPIError {
                 if case .backend(let status, _, _) = error,
                    status >= 500 {
                     // Preserve the same prepare id across transient server
