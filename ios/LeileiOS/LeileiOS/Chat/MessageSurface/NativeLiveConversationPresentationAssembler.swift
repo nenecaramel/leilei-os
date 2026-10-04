@@ -25,7 +25,10 @@ struct NativeLiveConversationPresentationAssembler {
         let failure = snapshot?.failedTurn.flatMap { evidence in
             evidence.anchorHeadMessageId == snapshot?.currentHeadMessageId ? evidence.runtimeSurface : nil
         }
-        let runtime = (runtimeSurface ?? (pendingOperation == nil ? failure : nil)).flatMap { surface -> NativeLiveRuntimeSurfaceState? in
+        // Teardown stops observation before the caller clears pending. The same preparation's
+        // durable failure must own both frames; a different pending generation cannot adopt it.
+        let ownedFailure = pendingOperation == nil || binding?.prepareID == failure?.prepareID ? failure : nil
+        let runtime = (runtimeSurface ?? ownedFailure).flatMap { surface -> NativeLiveRuntimeSurfaceState? in
             guard conversationID == nil || surface.conversationID.uuidString.caseInsensitiveCompare(conversationID!) == .orderedSame else { return nil }
             if let pendingOperation { guard binding?.prepareID == surface.prepareID else { return nil }; _ = pendingOperation }
             return surface

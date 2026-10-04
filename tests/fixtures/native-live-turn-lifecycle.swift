@@ -360,6 +360,21 @@ for fixture in fixtures {
     let partial = rows(fixture.before,nil,recovering)
     expect(partial.map(\.id) == ids && partial.last?.assistant?.copyText == "Partial answer","recovery runtime preserves row IDs and body")
     if let failed = fixture.failed, let reopened = fixture.reopened {
+        // The real cleanup order stops runtime before ChatView clears its pending operation.
+        assembler = .init(); identities = .init()
+        let kind: NativeLivePendingOperation.Kind = fixture.operation == "send" ? .send(text:"New send")
+            : fixture.operation == "edit" ? .edit(targetUserMessageID:active.replacementTargetUserMessageId!,text:"Edited")
+            : .retry(targetUserMessageID:active.userMessageId)
+        let boundOperation = NativeLivePendingOperation(kind:kind,baselineSyncToken:nil)
+        let preparation = NativeLivePrepareResult(preparedUserMessage:active.preparedUserMessage,replacementTargetUserMessageId:active.replacementTargetUserMessageId,
+            startedAt:active.startedAt,outcome:"created",semanticPending:false,prepareId:active.prepareId,requestId:active.requestId,conversationId:active.conversationId,userMessageId:active.userMessageId,workspaceId:nil,expectedWorkspaceRoot:nil)
+        identities.bind(boundOperation,prepared:preparation,snapshot:fixture.before)
+        var terminal = recovering; terminal.foregroundTurnCompleted = true; terminal.terminalFailure = "CLAUDE_PROCESS_FAILED"
+        let beforeStop = rows(failed,boundOperation,terminal)
+        let afterStop = rows(failed,boundOperation,nil)
+        expect(afterStop.last?.assistant?.phase == .failed && afterStop.last?.assistant?.copyText == "Partial answer","stopping runtime before pending clears cannot regress Failed to Thinking")
+        expect(rows(failed,nil,nil).map(\.id) == beforeStop.map(\.id),"runtime-stop then pending-clear preserve bound row IDs")
+        assembler = .init(); identities = .init(); _ = rows(fixture.before,nil,recovering)
         recovering.foregroundTurnCompleted = true; recovering.terminalFailure = active.failureCode ?? "CLAUDE_PROCESS_FAILED"
         let failure = rows(failed,nil,recovering)
         let teardown = rows(failed,nil,nil)
