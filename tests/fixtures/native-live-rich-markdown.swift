@@ -110,6 +110,10 @@ let table = nodes(tableRaw)[0].table!
 expect(nodes(tableRaw)[0].kind == .table, "GFM typed table")
 expect(table.headers == ["A","B"] && table.rows == [["one|two",""]], "escaped pipe and empty cell")
 expect(table.alignments == [.leading,.trailing], "table alignment")
+let compactTableRaw = "| # | Feature | Status |\n|:-:|:---|---:|\n|1|Math|yes|"
+let compactTable = nodes(compactTableRaw)[0].table!
+expect(nodes(compactTableRaw)[0].kind == .table, "compact provider table delimiter")
+expect(compactTable.alignments == [.center,.leading,.trailing], "compact delimiter alignment")
 expect(table.columnWidth == 180 && table.cells.count == 2, "bounded horizontal layout")
 expect(table.rawSource == tableRaw, "table copy original raw")
 expect(nodes("|A|B|\n|---|---|\n|one|").allSatisfy { $0.kind != .table }, "uneven table fallback")

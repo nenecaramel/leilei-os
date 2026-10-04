@@ -82,3 +82,54 @@ test("safe Markdown links are visibly distinct from ordinary text", () => {
   assert.match(source, /underlineStyle = \.single/);
   assert.match(source, /NativeLiveLinkCapability\.openableURL/);
 });
+
+
+test("compact provider tables, inline math visuals, wide math scrolling and visual copy stay supported", () => {
+  const projection = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRichTextProjection.swift",
+    "utf8",
+  );
+  assert.match(
+    projection,
+    /guard !dashes\.isEmpty, dashes\.allSatisfy/,
+  );
+
+  const blocks = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageBlocks.swift",
+    "utf8",
+  );
+  assert.match(
+    blocks,
+    /NativeLiveInlineMathParagraphRenderer/,
+  );
+
+  const math = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMathRenderer.swift",
+    "utf8",
+  );
+  assert.match(math, /NativeLiveInlineMathFlowLayout/);
+  assert.match(
+    math,
+    /NativeLiveVisualSandboxInput\.inlineMath/,
+  );
+
+  const visual = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveVisualSurface.swift",
+    "utf8",
+  );
+  assert.match(
+    visual,
+    /ScrollView\([\s\S]*\.horizontal[\s\S]*displayMathWidth/,
+  );
+  assert.match(visual, /"square\.on\.square"/);
+  assert.match(visual, /"checkmark"/);
+  assert.match(
+    visual,
+    /frame\(width: 24, height: 24\)/,
+  );
+  assert.match(
+    visual,
+    /copyFeedback\("Copied"\)/,
+  );
+  assert.doesNotMatch(visual, /"doc\.on\.doc"/);
+});

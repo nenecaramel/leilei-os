@@ -208,7 +208,9 @@ enum NativeLiveRichTextProjector {
         var alignments: [NativeLiveTablePresentation.Alignment] = []
         for separator in separators {
             let dashes = separator.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
-            guard dashes.count >= 3, dashes.allSatisfy({ $0 == "-" }) else { return nil }
+            // Accept compact provider-authored delimiters such as "-" and ":-:"
+            // while still requiring at least one actual dash.
+            guard !dashes.isEmpty, dashes.allSatisfy({ $0 == "-" }) else { return nil }
             alignments.append(separator.hasPrefix(":") && separator.hasSuffix(":") ? .center : separator.hasSuffix(":") ? .trailing : .leading)
         }
         var rows: [[String]] = [], j = i+2
