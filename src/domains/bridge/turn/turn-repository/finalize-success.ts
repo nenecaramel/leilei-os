@@ -75,6 +75,7 @@ export async function finalizeSuccess(
     try {
       return await this.db.transaction(
         async (transaction) => {
+          canonicalWritePhase = "load_preparation";
           const row = await this.findById(
             transaction as Transaction,
             input.userId,
@@ -110,9 +111,11 @@ export async function finalizeSuccess(
 
           let wakeSourceHeadMessageId: string | null = null;
           if (row.operation === "wake") {
+            canonicalWritePhase = "wake_context";
             const wake = readWakeContext(row);
             wakeSourceHeadMessageId = wake.sourceHeadMessageId;
 
+            canonicalWritePhase = "wake_surface";
             const [surface] = await transaction
               .select({
                 currentHeadMessageId:
@@ -130,6 +133,7 @@ export async function finalizeSuccess(
               .for("update")
               .limit(1);
 
+            canonicalWritePhase = "wake_source_user";
             const [sourceUser] = await transaction
               .select({
                 id: conversationMessages.id,
@@ -145,6 +149,7 @@ export async function finalizeSuccess(
               )
               .limit(1);
 
+            canonicalWritePhase = "wake_newer_user";
             const newerUser = sourceUser
               ? await transaction.execute<{ id: string }>(sql`
                   SELECT message.id
@@ -173,6 +178,7 @@ export async function finalizeSuccess(
                 !== wake.sourceHeadMessageId
               || newerUser.length > 0
             ) {
+              canonicalWritePhase = "wake_stale_discard";
               await discardWakeLocked(
                 transaction as Transaction,
                 row,
