@@ -221,11 +221,20 @@ export function boundCanonicalPayload(value: unknown, maxDepth = 6): Record<stri
 }
 
 export type NativeLiveReadableKind =
-  CanonicalContentIdentity | "tool_use" | "tool_result" | "unknown";
+  | CanonicalContentIdentity
+  | "tool_use"
+  | "tool_result"
+  | "murmur"
+  | "unknown";
 export function storedContentKind(
   kind: NativeLiveReadableKind,
 ): ConversationContentKind {
-  return ["artifact", "resource", "canonical_tool_result"].includes(kind)
+  return [
+    "artifact",
+    "resource",
+    "canonical_tool_result",
+    "murmur",
+  ].includes(kind)
     ? "unknown"
     : (kind as ConversationContentKind);
 }
@@ -233,6 +242,13 @@ export function readableContentKind(
   kind: string,
   payload: Record<string, unknown> | null,
 ): NativeLiveReadableKind {
+  if (
+    kind === "unknown"
+    && payload?.schema_version === 1
+    && payload.identity === "murmur"
+  ) {
+    return "murmur";
+  }
   if (
     kind === "unknown" &&
     payload?.schema_version === 1 &&
@@ -249,6 +265,12 @@ export function storedContentPayload(
   kind: NativeLiveReadableKind,
   payload: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
+  if (kind === "murmur") {
+    return {
+      schema_version: 1,
+      identity: "murmur",
+    };
+  }
   if (
     !["artifact", "resource", "canonical_tool_result", "unknown"].includes(kind)
   )
