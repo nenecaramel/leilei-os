@@ -236,10 +236,6 @@ export class NativeLiveSilenceWakeService {
           .where(
             and(
               eq(nativeLiveTurnPreparations.userId, input.userId),
-              eq(
-                nativeLiveTurnPreparations.conversationId,
-                source.conversationId,
-              ),
               eq(nativeLiveTurnPreparations.status, "prepared"),
               ne(nativeLiveTurnPreparations.operation, "wake"),
               sql`${nativeLiveTurnPreparations.dispatchStatus}
