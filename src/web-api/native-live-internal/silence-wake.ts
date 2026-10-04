@@ -25,7 +25,8 @@ export function readSilenceWakeScheduleHandler(
         success: true,
         data: schedule,
       });
-    } catch {
+    } catch (error) {
+      logSilenceWakeFailure("schedule", error);
       response.status(503).json({
         success: false,
         error: {
@@ -70,7 +71,8 @@ export function fireSilenceWakeHandler(
         success: true,
         data: result,
       });
-    } catch {
+    } catch (error) {
+      logSilenceWakeFailure("fire", error);
       response.status(503).json({
         success: false,
         error: {
@@ -81,6 +83,33 @@ export function fireSilenceWakeHandler(
       });
     }
   };
+}
+
+function logSilenceWakeFailure(
+  action: "schedule" | "fire",
+  error: unknown,
+): void {
+  const record =
+    error && typeof error === "object"
+      ? error as Record<string, unknown>
+      : {};
+  process.stderr.write(
+    JSON.stringify({
+      level: "error",
+      timestamp: new Date().toISOString(),
+      event: "native_live_silence_wake_failed",
+      action,
+      errorName:
+        error instanceof Error
+          ? error.name
+          : "UnknownError",
+      ...(
+        typeof record.code === "string"
+          ? { errorCode: record.code }
+          : {}
+      ),
+    }) + "\n",
+  );
 }
 
 function parseFireBody(value: unknown): {
