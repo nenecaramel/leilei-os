@@ -87,19 +87,17 @@ struct ChatComposer: View {
                 .transition(.opacity)
             }
 
-            ZStack(alignment: .topLeading) {
-                if text.isEmpty {
-                    Text("Write a message...")
-                        .font(.system(size: 17.5, weight: .regular))
-                        .foregroundStyle(Color.primary.opacity(0.64))
-                        .allowsHitTesting(false)
-                }
-
-                NativeLiveStableComposerTextView(
-                    text: $text,
-                    isFocused: isFocused
-                )
-            }
+            TextField(
+                "",
+                text: $text,
+                prompt: Text("Write a message...")
+                    .foregroundStyle(Color.primary.opacity(0.64)),
+                axis: .vertical
+            )
+            .focused(isFocused)
+            .font(.system(size: 17.5, weight: .regular))
+            .foregroundStyle(.primary)
+            .lineLimit(1...6)
 
             HStack(spacing: 8) {
                 Menu {
@@ -652,157 +650,6 @@ private struct NativeLiveComposerMediaThumbnail: View {
         .task(id:"\(input.draftID)|\(input.materialization)") {
             guard input.mediaKind == .bitmap else { return }
             await loader.load(input,appModel:appModel,pixels:128,draftData:attachment.data)
-        }
-    }
-}
-
-
-private struct NativeLiveStableComposerTextView:
-    UIViewRepresentable {
-    @Binding var text: String
-    var isFocused: FocusState<Bool>.Binding
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(
-        context: Context
-    ) -> UITextView {
-        let view = UITextView()
-        view.delegate = context.coordinator
-        view.backgroundColor = .clear
-        view.font = .systemFont(
-            ofSize: 17.5,
-            weight: .regular
-        )
-        view.textColor = .label
-        view.textContainerInset = .zero
-        view.textContainer.lineFragmentPadding = 0
-        view.isScrollEnabled = false
-        view.alwaysBounceVertical = false
-        view.keyboardDismissMode = .none
-        view.setContentCompressionResistancePriority(
-            .defaultLow,
-            for: .horizontal
-        )
-        view.text = text
-        return view
-    }
-
-    func updateUIView(
-        _ view: UITextView,
-        context: Context
-    ) {
-        context.coordinator.parent = self
-
-        // Runtime/streaming updates can rebuild the surrounding SwiftUI tree
-        // many times per second. Never reassign identical text: UIKit owns
-        // marked text and the caret while the user is typing.
-        if view.text != text,
-           view.markedTextRange == nil {
-            let previousSelection = view.selectedRange
-            view.text = text
-
-            if view.isFirstResponder {
-                let end = view.text.utf16.count
-                let location = min(
-                    previousSelection.location,
-                    end
-                )
-                let length = min(
-                    previousSelection.length,
-                    max(0, end - location)
-                )
-                view.selectedRange = NSRange(
-                    location: location,
-                    length: length
-                )
-            } else {
-                view.selectedRange = NSRange(
-                    location: view.text.utf16.count,
-                    length: 0
-                )
-            }
-        }
-
-        if isFocused.wrappedValue {
-            if !view.isFirstResponder {
-                view.becomeFirstResponder()
-            }
-        } else if view.isFirstResponder {
-            view.resignFirstResponder()
-        }
-    }
-
-    func sizeThatFits(
-        _ proposal: ProposedViewSize,
-        uiView: UITextView,
-        context: Context
-    ) -> CGSize? {
-        guard let width = proposal.width,
-              width > 0 else {
-            return nil
-        }
-
-        let measured = uiView.sizeThatFits(
-            CGSize(
-                width: width,
-                height: .greatestFiniteMagnitude
-            )
-        )
-        let lineHeight =
-            uiView.font?.lineHeight ?? 21
-        let minimumHeight = ceil(lineHeight)
-        let maximumHeight = ceil(lineHeight * 6)
-        let height = min(
-            maximumHeight,
-            max(minimumHeight, measured.height)
-        )
-
-        uiView.isScrollEnabled =
-            measured.height > maximumHeight + 0.5
-
-        return CGSize(
-            width: width,
-            height: height
-        )
-    }
-
-    final class Coordinator:
-        NSObject,
-        UITextViewDelegate {
-        var parent: NativeLiveStableComposerTextView
-
-        init(
-            parent: NativeLiveStableComposerTextView
-        ) {
-            self.parent = parent
-        }
-
-        func textViewDidBeginEditing(
-            _ textView: UITextView
-        ) {
-            if !parent.isFocused.wrappedValue {
-                parent.isFocused.wrappedValue = true
-            }
-        }
-
-        func textViewDidEndEditing(
-            _ textView: UITextView
-        ) {
-            if parent.isFocused.wrappedValue {
-                parent.isFocused.wrappedValue = false
-            }
-        }
-
-        func textViewDidChange(
-            _ textView: UITextView
-        ) {
-            let next = textView.text ?? ""
-            if parent.text != next {
-                parent.text = next
-            }
         }
     }
 }
