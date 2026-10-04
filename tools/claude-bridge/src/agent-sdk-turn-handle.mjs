@@ -618,7 +618,7 @@ export class AgentSdkTurnHandle {
     try {
       const iterator = this.query[Symbol.asyncIterator]();
       while (true) {
-        const next = await Promise.race([
+        const step = await Promise.race([
           iterator.next().then((value) => ({
             kind: "message",
             value,
@@ -627,13 +627,13 @@ export class AgentSdkTurnHandle {
             kind: "interrupt",
           })),
         ]);
-        if (next.kind === "interrupt") {
+        if (step.kind === "interrupt") {
           break;
         }
-        if (next.value.done) {
+        if (step.value.done) {
           break;
         }
-        const message = next.value.value;
+        const message = step.value.value;
         parsedEvents.push(message);
         this.providerSessionId =
           this.providerSessionId
