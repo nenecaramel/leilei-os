@@ -36,6 +36,9 @@ CREATE TABLE "native_live_silence_wake_receipts" (
   "consumed_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "native_live_silence_wake_receipts_user_epoch_slot_pk"
     PRIMARY KEY ("user_id", "epoch_id", "slot"),
+  CONSTRAINT "native_live_silence_wake_receipts_user_id_users_id_fk"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id")
+    ON DELETE cascade ON UPDATE cascade,
   CONSTRAINT "native_live_silence_wake_receipts_slot_allowed"
     CHECK ("slot" IN ('post_turn_idle', 'long_idle'))
 );
