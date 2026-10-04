@@ -929,6 +929,51 @@ test("Mac HTTP relay terminal result retries transient 503 and then completes", 
   assert.equal(calls, 2);
 });
 
+test("Mac HTTP relay terminal result bounds persistent transient failures", async () => {
+  let calls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    calls += 1;
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: "NATIVE_LIVE_RELAY_UNAVAILABLE",
+          message: "temporary",
+        },
+      }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const result: NativeLiveRuntimeExecutionResult = {
+    protocol_version: 1,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "failure",
+    error_code: "CLAUDE_PROCESS_FAILED",
+  };
+
+  await assert.rejects(
+    () => client.submitResult({
+      listenerInstanceId: listenerId,
+      reservationId: prepareId,
+      result,
+    }),
+    /Native live relay request failed/u,
+  );
+
+  assert.equal(calls, 3);
+});
+
 test("Mac HTTP relay terminal result does not retry durable 409 conflicts", async () => {
   let calls = 0;
   const fakeFetch: typeof fetch = async () => {
