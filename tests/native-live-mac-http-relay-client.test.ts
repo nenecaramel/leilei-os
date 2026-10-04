@@ -917,11 +917,14 @@ test("Mac HTTP relay terminal result retries transient 503 and then completes", 
     error_code: "CLAUDE_PROCESS_FAILED",
   };
 
-  await client.submitResult({
-    listenerInstanceId: listenerId,
-    reservationId: prepareId,
-    result,
-  });
+  assert.deepEqual(
+    await client.submitResult({
+      listenerInstanceId: listenerId,
+      reservationId: prepareId,
+      result,
+    }),
+    { canonicalOutcome: "finalized_success" },
+  );
 
   assert.equal(calls, 2);
 });

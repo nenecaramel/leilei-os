@@ -346,14 +346,38 @@ async function waitForWork(): Promise<
   }
 }
 
+function isWakeTerminalOutcome(
+  value: unknown,
+): value is
+  | "wake_quiet"
+  | "wake_stale"
+  | "wake_failed"
+  | "wake_discarded" {
+  return (
+    value === "wake_quiet"
+    || value === "wake_stale"
+    || value === "wake_failed"
+    || value === "wake_discarded"
+  );
+}
+
 while (!stopping) {
   try {
     const outcome = await loop.runOnce();
     consecutiveWakeErrors = 0;
+    const wakeTerminalOutcome =
+      outcome.outcome === "completed"
+      && "canonicalOutcome" in outcome
+      && isWakeTerminalOutcome(outcome.canonicalOutcome)
+        ? outcome.canonicalOutcome
+        : null;
     process.stdout.write(
       JSON.stringify({
         at: new Date().toISOString(),
-        outcome: outcome.outcome,
+        outcome: wakeTerminalOutcome ?? outcome.outcome,
+        ...(wakeTerminalOutcome
+          ? { daemonOutcome: outcome.outcome }
+          : {}),
         claudeTransport: claudeTransportKind,
         ...("reservationId" in outcome
           ? { reservationId: outcome.reservationId }

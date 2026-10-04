@@ -53,6 +53,10 @@ export type NativeLiveDaemonRejectCode =
   | "INVALID_COMMAND"
   | "EXECUTION_START_FAILED";
 
+export type NativeLiveResultSubmissionReceipt = {
+  canonicalOutcome: string | null;
+};
+
 export type NativeLiveDaemonRunOutcome =
   | { outcome: "idle" }
   | { outcome: "busy" }
@@ -71,6 +75,7 @@ export type NativeLiveDaemonRunOutcome =
       eventDeliveryFailures?: number;
       relayErrorCode?: string;
       finalizeCode?: string;
+      canonicalOutcome?: string;
     }
   | {
       outcome: "rejected";
@@ -293,7 +298,7 @@ export interface NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     reservationId: string;
     result: NativeLiveRuntimeExecutionResult;
-  }): Promise<void>;
+  }): Promise<NativeLiveResultSubmissionReceipt | void>;
 
   markResultDeliveryUnknown(input: {
     listenerInstanceId: string;
@@ -852,8 +857,10 @@ export class NativeLiveMacDaemonLoop {
         };
       }
 
+      let submission:
+        NativeLiveResultSubmissionReceipt | void;
       try {
-        await this.relay.submitResult({
+        submission = await this.relay.submitResult({
           listenerInstanceId: this.listenerInstanceId,
           reservationId: reservation.reservationId,
           result,
@@ -883,6 +890,12 @@ export class NativeLiveMacDaemonLoop {
         result,
         ...(eventDeliveryFailures > 0
           ? { eventDeliveryFailures }
+          : {}),
+        ...(submission?.canonicalOutcome
+          ? {
+              canonicalOutcome:
+                submission.canonicalOutcome,
+            }
           : {}),
       };
     } finally {
