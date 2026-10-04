@@ -418,6 +418,20 @@ while (!stopping) {
             outcome: "silence_wake_schedule_refresh_failed",
             errorName:
               error instanceof Error ? error.name : "UnknownError",
+            ...(
+              error && typeof error === "object"
+              && "relayCode" in error
+              && typeof error.relayCode === "string"
+                ? { relayCode: error.relayCode }
+                : {}
+            ),
+            ...(
+              error && typeof error === "object"
+              && "relayMessage" in error
+              && typeof error.relayMessage === "string"
+                ? { relayMessage: error.relayMessage }
+                : {}
+            ),
           }) + "\n",
         );
       });
