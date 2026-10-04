@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
+import {
+  RUNTIME_DATABASE_READINESS_MAX_ATTEMPTS,
+} from "../src/database/migration-readiness.js";
 
 const createAppSource = readFileSync("src/app/create-app.ts", "utf8");
 const clientSource = readFileSync("src/database/client.ts", "utf8");
@@ -215,7 +218,12 @@ test("database readiness retry event contains only safe retry fields", async () 
       assert.deepEqual(retry, {
         level: "warn",
         event: "database_readiness_retry",
-        fields: { attempt: 1, maxAttempts: 8, name: "PostgresError", code: "57P03" },
+        fields: {
+          attempt: 1,
+          maxAttempts: RUNTIME_DATABASE_READINESS_MAX_ATTEMPTS,
+          name: "PostgresError",
+          code: "57P03",
+        },
       });
       assert.equal(JSON.stringify(events).includes("private transient details"), false);
     },

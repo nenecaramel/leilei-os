@@ -15,8 +15,8 @@ import { getWebApiConfig } from "../config/env.js";
 import {
   createDatabaseReadinessGate,
   MIGRATION_READINESS_BACKOFF_MS,
-  MIGRATION_READINESS_MAX_ATTEMPTS,
   MIGRATION_READINESS_MAX_BACKOFF_MS,
+  RUNTIME_DATABASE_READINESS_MAX_ATTEMPTS,
 } from "../database/migration-readiness.js";
 import { createMcpRouter } from "../mcp/server/router.js";
 import {
@@ -171,7 +171,7 @@ export function createApp(
     ? createDatabaseReadinessGate(
         dependencies.databaseReadinessProbe,
         {
-          maxAttempts: MIGRATION_READINESS_MAX_ATTEMPTS,
+          maxAttempts: RUNTIME_DATABASE_READINESS_MAX_ATTEMPTS,
           backoffMs: MIGRATION_READINESS_BACKOFF_MS,
           maxBackoffMs: MIGRATION_READINESS_MAX_BACKOFF_MS,
           onRetry: ({ attempt, maxAttempts, name, code }) => {

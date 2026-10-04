@@ -12,6 +12,10 @@ const TRANSIENT_DATABASE_NOT_READY_CODES = new Set([
 ]);
 
 export const MIGRATION_READINESS_MAX_ATTEMPTS = 8;
+// Runtime HTTP readiness needs a longer serverless wake budget than migrations.
+// With the current capped backoff, 26 attempts include 91.5s of retry delay
+// even when transient probes fail immediately.
+export const RUNTIME_DATABASE_READINESS_MAX_ATTEMPTS = 26;
 export const MIGRATION_READINESS_BACKOFF_MS = 500;
 export const MIGRATION_READINESS_MAX_BACKOFF_MS = 4_000;
 export const DATABASE_READINESS_READY_TTL_MS = 5_000;
