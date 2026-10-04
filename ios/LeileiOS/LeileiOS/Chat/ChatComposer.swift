@@ -437,6 +437,15 @@ private struct NativeLiveComposerTextInput: View, Equatable {
         .font(.system(size: 17.5, weight: .regular))
         .foregroundStyle(.primary)
         .lineLimit(1...6)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+
+                Button("Done") {
+                    isFocused.wrappedValue = false
+                }
+            }
+        }
     }
 }
 
