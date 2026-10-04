@@ -16,9 +16,10 @@ extension AppModel {
         request.httpMethod = slot.download.method
         request.timeoutInterval = 30
         for (name,value) in slot.download.headers { request.setValue(value,forHTTPHeaderField:name) }
+        let downloadRequest = request
         let data = try await nativeLiveAttachmentBytesCache.bytes(key:key) {
             do {
-                let (data,response) = try await NativeLiveMediaTransport.session.data(for:request)
+                let (data,response) = try await NativeLiveMediaTransport.session.data(for:downloadRequest)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw NativeLiveMediaError.downloadFailed }
                 return data
             } catch is CancellationError { throw CancellationError() }
