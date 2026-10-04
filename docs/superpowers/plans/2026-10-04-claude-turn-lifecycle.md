@@ -125,3 +125,11 @@ Full-suite comparison is complete. PR: https://github.com/nenecaramel/leilei-os/
 - Independent read-only review: truncated-page finding fixed with non-root fixtures; durable ownership and final stop-before-pending-clear generation isolation re-reviewed without remaining Important findings.
 - Final sequential full-suite comparison, same Node24.19.0 dependencies and command/order: baseline 2105 total / 2000 pass / 10 fail / 95 skip; final implementation 2108 total / 2002 pass / 10 fail / 96 skip. Added failure names: []; removed failure names: []. The extra gated database test was separately executed against real Postgres and passed.
 - All 10 historical failure names match the list above. No merge, production deployment/DB mutation, owner daemon restart or device run. Physical Mainline3/C/G acceptance remains pending.
+
+## Review followup: bounded turn read hot path
+
+- `readTurn()` is called by bounded turn waits during execution. Replaced its whole-conversation repository read with exact owner/conversation/native-origin-scoped prepared-user and optional finalized-assistant reads (at most two rows), then owner-scoped blocks for those validated IDs only.
+- Preparation/semantic read, public DTOs, detached user/replacement lineage, dates/status/parent provenance, block ordering and existing `readableContentData` decoding are preserved. No UI, lifecycle architecture, schema or provider changes. Cold `loadFinalizedSuccess` and `finalizeFailure` reads are outside this performance fix.
+- RED: prepared and terminal unit regressions both reject the previous hot-path `getConversation()` call. GREEN: full conversation reads are forbidden by the tests; compiled query predicates require exact IDs and owner/native conversation scope, and only target message blocks are assembled.
+- Focused turn-read/wait/HTTP/repository tests: 19/19 pass. Real isolated Postgres lifecycle/content/question/tool/voice/duration/history/bootstrap regressions: 16/16 pass, no skips. Independent read-only review: no Important finding.
+- Final gate and exact-main comparison results will be recorded after completion.
