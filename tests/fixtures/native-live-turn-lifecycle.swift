@@ -41,6 +41,7 @@ identities.bind(send,prepared:prepared("pSend",user:"uNew"),snapshot:snapshot(pr
 for frame in [surface("pSend",user:"uNew"),surface("pSend",user:"uNew",text:"Hel"),surface("pSend",user:"uNew",text:"Hello"),surface("pSend",user:"uNew",text:"Hello",terminal:true)] {
     let projected = rows(snapshot(prefix+[message("uNew","user",text:"New")]),send,frame)
     expect(projected.count == 4 && projected[2].id == userID && projected[3].id == assistantID,"Send prepared/runtime stable rows")
+    expect(projected[3].assistant!.copyText == (frame.streamingText.isEmpty ? nil : frame.streamingText),"each Send frame renders exactly its one logical body")
 }
 let canonical = snapshot(prefix+[message("uNew","user",text:"New"),message("aNew","assistant",parent:"uNew",text:"Hello",prepare:"pSend")])
 let finalRows = rows(canonical,nil,surface("pSend",user:"uNew",text:"Hello",terminal:true))
@@ -57,10 +58,25 @@ for kind in [NativeLivePendingOperation.Kind.edit(targetUserMessageID:"uB",text:
     let slot = pending[3].id
     expect(pending[3].assistant?.header == "Thinking…","replacement first frame Thinking")
     identities.bind(operation,prepared:prepared("pReplace",user:operation.editedText == nil ? "uB" : "uEdited"),snapshot:old)
-    for frame in [surface("pReplace",user:operation.editedText == nil ? "uB" : "uEdited"),surface("pReplace",user:operation.editedText == nil ? "uB" : "uEdited",text:"Replacement")] {
+    let replacementUser = operation.editedText == nil ? "uB" : "uEdited"
+    expect(rows(old,operation).count == 4 && rows(old,operation).last!.id == slot,"prepare response alone retains replacement slot")
+    var replacementTool = surface("pReplace",user:replacementUser,text:"Replacement")
+    replacementTool.events.append(event("tool_use",["tool_use_id":.string("replace-tool"),"tool_name":.string("Read")],2))
+    var replacementInput = replacementTool
+    replacementInput.interactions = [.init(interactionID:"replace-permission",prepareID:"pReplace",kind:"permission",request:["toolUseId":.string("replace-tool")],status:"pending",response:nil,createdAt:start,updatedAt:start,resolvedAt:nil,cancelledAt:nil)]
+    var replacementResult = replacementTool
+    replacementResult.events.append(event("tool_result",["tool_use_id":.string("replace-tool"),"output":.string("Done")],3))
+    replacementResult.interactions = [.init(interactionID:"replace-permission",prepareID:"pReplace",kind:"permission",request:["toolUseId":.string("replace-tool")],status:"resolved",response:["decision":.string("allow")],createdAt:start,updatedAt:start,resolvedAt:start,cancelledAt:nil)]
+    var replacementFinal = replacementResult
+    replacementFinal.events.append(event("result",["duration_ms":.number(18_000)],4)); replacementFinal.foregroundTurnCompleted = true
+    for frame in [surface("pReplace",user:replacementUser),surface("pReplace",user:replacementUser,text:"Replacement"),replacementTool,replacementInput,replacementResult,replacementFinal] {
         let next = rows(old,operation,frame)
         expect(next.count == 4 && next[3].id == slot,"Edit/Retry intermediate row count and slot stable")
         expect(next.filter { $0.assistant?.copyText == "Old answer B" }.isEmpty,"old answer never leaks into replacement branch")
+        expect(next[2].id == pending[2].id,"Edit/Retry every execution frame preserves user identity")
+        if !frame.events.filter({ $0.event.type == "tool_use" }).isEmpty {
+            expect(next[3].assistant!.activityProjection.tools.map(\.id) == ["replace-tool"],"Edit/Retry every tool/input/result frame keeps one child ID")
+        }
     }
     let newUser = operation.editedText == nil ? "uB" : "uEdited"
     let next = rows(snapshot(prefix+[message(newUser,"user",text:operation.editedText ?? "B"),message("aReplacement","assistant",parent:newUser,text:"Replacement.",prepare:"pReplace")]),nil,surface("pReplace",user:newUser,text:"Replacement",terminal:true))

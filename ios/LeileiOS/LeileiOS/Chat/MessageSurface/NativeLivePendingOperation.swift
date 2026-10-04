@@ -89,4 +89,3 @@ struct NativeLivePendingOperation: Equatable {
         return false
     }
 }
-
