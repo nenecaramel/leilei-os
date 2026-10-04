@@ -102,6 +102,7 @@ import {
 } from "../domains/conversation/native-live-conversation-runtime-metadata.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/turn/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/turn/native-live-backend-turn-coordinator.js";
+import { NativeLiveSilenceWakeService } from "../domains/bridge/turn/native-live-silence-wake.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
@@ -501,6 +502,8 @@ export function createProcessRuntime(
     db,
     memoryDecayConfig,
   );
+  const nativeLiveSilenceWakeService =
+    new NativeLiveSilenceWakeService(db);
   const nativeLiveTurnWaitService =
     new NativeLiveTurnWaitService(
       nativeLiveTurnPort,
@@ -854,6 +857,8 @@ export function createProcessRuntime(
             nativeLiveRuntimeControlService,
           companionBackgroundOpportunity:
             companionBackgroundOpportunity,
+          silenceWakeService:
+            nativeLiveSilenceWakeService,
         },
       },
       healthSyncService: healthService,
