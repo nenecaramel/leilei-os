@@ -55,8 +55,8 @@
 - [x] Runtime gate, complete bridge, typecheck/generated/build/Web gates/diff/unsigned Simulator.
 - [x] Fresh independent review; Important fixes RED→GREEN and relevant gates rerun.
 - [x] Sequential exact-main baseline vs PR full suite; report totals and added/removed failure names.
-- [ ] Open `refactor: unify Claude turn lifecycle rendering`, exact SHAs and all requested contract/acceptance evidence, no merge.
-- [ ] Commit/push/attach; hygiene and task-only temporary cleanup, stop for review.
+- [x] Open `refactor: unify Claude turn lifecycle rendering`, exact SHAs and all requested contract/acceptance evidence, no merge.
+- [x] Commit/push/attach; hygiene and task-only temporary cleanup, stop for review.
 
 ## Evidence / rulings
 - User supplied the full architectural spec and authorized implementation/PR. Execute in this session without repeating design approvals; preserve the supplied spec verbatim.
@@ -100,4 +100,4 @@ Baseline historical failure names (not incidentally fixed):
 9. the app JSON parser remains bounded above 1mb
 10. unauthenticated Native Live internal JSON does not get the larger parser budget
 
-Full-suite comparison is complete. PR link and closeout will be recorded after publication.
+Full-suite comparison is complete. PR: https://github.com/nenecaramel/leilei-os/pull/839 (open, no merge). Commit/push/attach and hygiene:finish completed. Task-owned disposable worktree/dependencies/build/cache/logs and stopped isolated test Postgres will be removed at closeout; owner checkout, running owner daemon and unrelated worktrees are preserved.
