@@ -11,6 +11,7 @@ import {
   conversationContentBlocks,
   conversations,
   nativeLiveSemanticScoringRequests,
+  nativeLiveRuntimeControls,
   nativeLiveTurnPreparations,
 } from "../../../../database/schema.js";
 import { DrizzleNativeLiveConversationRepository } from "../../../conversation/native-live-conversation-repository.js";
@@ -75,10 +76,13 @@ export async function readActiveTurn(
       .limit(1);
 
     if (!active) return null;
-    return this.readTurn({
+    const turn = await this.readTurn({
       userId: input.userId,
       prepareId: active.id,
     });
+    return turn?.canonicalStatus === "prepared"
+      ? turn
+      : null;
   }
 
 export async function readTurn(
@@ -118,6 +122,24 @@ export async function readTurn(
       .limit(1);
 
     if (!row) return null;
+
+    const [appliedInterrupt] =
+      row.canonicalStatus === "prepared"
+        ? await this.db
+            .select({ id: nativeLiveRuntimeControls.id })
+            .from(nativeLiveRuntimeControls)
+            .where(
+              and(
+                eq(nativeLiveRuntimeControls.userId, input.userId),
+                eq(nativeLiveRuntimeControls.prepareId, input.prepareId),
+                eq(nativeLiveRuntimeControls.kind, "interrupt"),
+                eq(nativeLiveRuntimeControls.status, "applied"),
+              ),
+            )
+            .limit(1)
+        : [];
+
+    const interrupted = Boolean(appliedInterrupt);
 
     const [semantic] = await this.db
       .select({
@@ -235,12 +257,14 @@ export async function readTurn(
           : parseNativeLiveExecutionSelection(
               row.executionSelection,
             ),
-      canonicalStatus: row.canonicalStatus,
+      canonicalStatus:
+        interrupted ? "finalized_failure" : row.canonicalStatus,
       dispatchStatus: row.dispatchStatus,
       assistantMessage,
       runtimeMetadata:
         row.runtimeMetadata as NativeLiveRuntimeMetadata | null,
-      failureCode: row.failureCode,
+      failureCode:
+        interrupted ? "INTERRUPTED" : row.failureCode,
       semanticStatus: semantic?.status ?? null,
       semanticFallbackCode: semantic?.fallbackCode ?? null,
     };
