@@ -37,14 +37,18 @@ export async function createMemeMcpServer(handlers, sdk = null) {
             && typeof cause.code === "string"
               ? cause.code
               : "MEME_UNKNOWN";
+          const safeCode =
+            SAFE_MEME_ERRORS.has(code)
+              ? code
+              : "MEME_UNKNOWN";
           const message =
-            SAFE_MEME_ERRORS.get(code)
+            SAFE_MEME_ERRORS.get(safeCode)
             ?? "Meme send failed for an unknown internal reason.";
           return {
             isError: true,
             content: [{
               type: "text",
-              text: `send_meme failed [${code in Object.fromEntries(SAFE_MEME_ERRORS) ? code : "MEME_UNKNOWN"}]: ${message}`,
+              text: `send_meme failed [${safeCode}]: ${message}`,
             }],
           };
         }
