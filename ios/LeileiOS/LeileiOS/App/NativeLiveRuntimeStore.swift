@@ -232,7 +232,10 @@ extension AppModel {
                     changed = true
                 }
             }
-            surface.nextAfterSequence = page.nextAfterSequence
+            if surface.nextAfterSequence != page.nextAfterSequence {
+                surface.nextAfterSequence = page.nextAfterSequence
+                changed = true
+            }
         } catch {
             // Background observation is fail-soft. Durable runtime rows
             // remain available to the next refresh or app launch.
@@ -253,12 +256,13 @@ extension AppModel {
             }
         }
 
-        guard nativeLiveBackgroundRuntimeSurfaces[prepareID]
+        guard changed,
+              nativeLiveBackgroundRuntimeSurfaces[prepareID]
                 != nil else {
             return false
         }
         nativeLiveBackgroundRuntimeSurfaces[prepareID] = surface
-        return changed
+        return true
     }
 
     func continueNativeLiveRuntimeObservationForBackgroundTasks(
@@ -372,6 +376,8 @@ extension AppModel {
             return
         }
 
+        var changed = false
+
         do {
             let page = try await api.nativeLiveRuntimeEvents(
                 prepareID: prepareID,
@@ -383,13 +389,18 @@ extension AppModel {
 
             if !page.events.isEmpty {
                 let known = Set(surface.events.map(\.sequence))
-                surface.events.append(
-                    contentsOf: page.events.filter {
-                        !known.contains($0.sequence)
-                    }
-                )
+                let newEvents = page.events.filter {
+                    !known.contains($0.sequence)
+                }
+                if !newEvents.isEmpty {
+                    surface.events.append(contentsOf: newEvents)
+                    changed = true
+                }
             }
-            surface.nextAfterSequence = page.nextAfterSequence
+            if surface.nextAfterSequence != page.nextAfterSequence {
+                surface.nextAfterSequence = page.nextAfterSequence
+                changed = true
+            }
         } catch {
             // Runtime observation is fail-soft. Canonical turn completion
             // remains authoritative.
@@ -397,25 +408,34 @@ extension AppModel {
 
         if includeInteractions {
             do {
-                surface.interactions =
+                let interactions =
                     try await api.nativeLiveRuntimeInteractions(
                         prepareID: prepareID
                     )
+                if interactions != surface.interactions {
+                    surface.interactions = interactions
+                    changed = true
+                }
             } catch {
                 // Fail-soft; the next observation can recover.
             }
 
             do {
-                surface.controls =
+                let controls =
                     try await api.nativeLiveRuntimeControls(
                         prepareID: prepareID
                     )
+                if controls != surface.controls {
+                    surface.controls = controls
+                    changed = true
+                }
             } catch {
                 // Fail-soft; the next observation can recover.
             }
         }
 
-        guard nativeLiveRuntimeSurface?.prepareID == prepareID else {
+        guard changed,
+              nativeLiveRuntimeSurface?.prepareID == prepareID else {
             return
         }
         nativeLiveRuntimeSurface = surface

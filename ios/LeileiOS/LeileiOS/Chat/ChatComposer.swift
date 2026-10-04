@@ -87,17 +87,13 @@ struct ChatComposer: View {
                 .transition(.opacity)
             }
 
-            TextField(
-                "",
+            NativeLiveComposerTextInput(
                 text: $text,
-                prompt: Text("Write a message...")
-                    .foregroundStyle(Color.primary.opacity(0.64)),
-                axis: .vertical
+                textSnapshot: text,
+                isFocused: isFocused,
+                focusSnapshot: isFocused.wrappedValue
             )
-            .focused(isFocused)
-            .font(.system(size: 17.5, weight: .regular))
-            .foregroundStyle(.primary)
-            .lineLimit(1...6)
+            .equatable()
 
             HStack(spacing: 8) {
                 Menu {
@@ -411,6 +407,36 @@ struct ChatComposer: View {
                 }
             }
         )
+    }
+}
+
+
+private struct NativeLiveComposerTextInput: View, Equatable {
+    @Binding var text: String
+    let textSnapshot: String
+    var isFocused: FocusState<Bool>.Binding
+    let focusSnapshot: Bool
+
+    static func == (
+        lhs: NativeLiveComposerTextInput,
+        rhs: NativeLiveComposerTextInput
+    ) -> Bool {
+        lhs.textSnapshot == rhs.textSnapshot
+            && lhs.focusSnapshot == rhs.focusSnapshot
+    }
+
+    var body: some View {
+        TextField(
+            "",
+            text: $text,
+            prompt: Text("Write a message...")
+                .foregroundStyle(Color.primary.opacity(0.64)),
+            axis: .vertical
+        )
+        .focused(isFocused)
+        .font(.system(size: 17.5, weight: .regular))
+        .foregroundStyle(.primary)
+        .lineLimit(1...6)
     }
 }
 
