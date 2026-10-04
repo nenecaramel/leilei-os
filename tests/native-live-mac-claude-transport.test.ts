@@ -133,7 +133,11 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
   );
   assert.match(
     wakePrompt,
-    /Otherwise output exactly <quiet \/>\./u,
+    /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./u,
+  );
+  assert.match(
+    wakePrompt,
+    /Do not try to pass by returning an empty response; use the <quiet \/> marker explicitly\./u,
   );
 
   const transport = readFileSync(
