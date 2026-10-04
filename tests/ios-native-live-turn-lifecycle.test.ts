@@ -55,14 +55,18 @@ test("user interrupt unlocks send/edit without restoring the stopped draft", () 
 });
 
 
-test("composer typing owns focus without voice or root-view churn", () => {
+test("composer typing is isolated from unrelated chat churn", () => {
   const composer = fs.readFileSync(
     "ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift",
     "utf8",
   );
   assert.match(
     composer,
-    /TextField\([\s\S]{0,260}Write a message[\s\S]{0,260}\.focused\(isFocused\)/,
+    /NativeLiveComposerTextInput\([\s\S]{0,220}textSnapshot: text[\s\S]{0,220}focusSnapshot: isFocused\.wrappedValue[\s\S]{0,120}\.equatable\(\)/,
+  );
+  assert.match(
+    composer,
+    /private struct NativeLiveComposerTextInput: View, Equatable[\s\S]{0,900}TextField\([\s\S]{0,260}Write a message[\s\S]{0,260}\.focused\(isFocused\)/,
   );
   assert.doesNotMatch(
     composer,
@@ -95,8 +99,30 @@ test("composer typing owns focus without voice or root-view churn", () => {
     "ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift",
     "utf8",
   );
-  assert.match(
+  assert.doesNotMatch(
     surface,
     /\.scrollDismissesKeyboard\(\.interactively\)/,
+  );
+
+  const runtimeStore = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/NativeLiveRuntimeStore.swift",
+    "utf8",
+  );
+  assert.match(
+    runtimeStore,
+    /guard changed,[\s\S]{0,160}nativeLiveBackgroundRuntimeSurfaces\[prepareID\]/,
+  );
+  assert.match(
+    runtimeStore,
+    /guard changed,[\s\S]{0,160}nativeLiveRuntimeSurface\?\.prepareID == prepareID/,
+  );
+
+  const presentationStore = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/NativeLiveConversationPresentationStore.swift",
+    "utf8",
+  );
+  assert.match(
+    presentationStore,
+    /if rows != nativeLiveConversationRows \{[\s\S]{0,120}nativeLiveConversationRows = rows/,
   );
 });
