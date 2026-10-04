@@ -3,14 +3,14 @@ func historicalDuration(_ milliseconds: Any?, prepareID: Any = "p1") -> NativeLi
     var activity: [String: Any] = ["prepareId": prepareID, "events": [], "interactions": []]
     if let milliseconds { activity["durationMs"] = milliseconds }
     let decoded = try! JSONDecoder().decode(NativeLiveMessageActivitySnapshot.self, from: JSONSerialization.data(withJSONObject: activity))
-    return NativeLiveTurnActivityProjection(message: NativeLiveCurrentPathMessage(id: "m1", conversationId: "c1", parentMessageId: nil, role: "assistant", status: "completed", createdAt: "2000-01-01T00:00:00Z", completedAt: "2099-01-01T00:00:00Z", blocks: [block("tool_use", normalUse, 0), block("tool_result", ["tool_use_id": "read1", "output": "ok"], 1)], activity: decoded))
+    return NativeLiveTurnActivityProjection(message: NativeLiveCurrentPathMessage(id: "m1", conversationId: "c1", parentMessageId: nil, role: "assistant", status: "completed", createdAt: "2000-01-01T00:00:00Z", completedAt: "2099-01-01T00:00:00Z", blocks: [block("tool_use", normalUse, 0), block("tool_result", ["tool_use_id": "read1", "output": "ok"], 1)], activity: decoded), elapsed: (milliseconds as? Int).flatMap { $0 >= 0 ? max(1, Int((Double($0)/1000).rounded())) : nil })
 }
 let activityClockFormatter = ISO8601DateFormatter()
 activityClockFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-let activeEvent = NativeLiveRuntimeEventSnapshot(sequence: 1, event: .init(type: "tool_use", providerSessionID: nil, payload: value(normalUse).objectValue), createdAt: activityClockFormatter.string(from: Date().addingTimeInterval(-18)))
-let activeDuration = NativeLiveTurnActivityProjection(runtimeSurface: .init(prepareID: "p1", conversationID: UUID(), events: [activeEvent], interactions: [], controls: [], nextAfterSequence: 1))
+let activeEvent = NativeLiveRuntimeEventSnapshot(sequence: 1, event: .init(type: "tool_use", providerSessionID: nil, payload: value(normalUse).objectValue), createdAt: "2026-10-04T10:00:09.000Z")
+let activeDuration = NativeLiveTurnActivityProjection(runtimeSurface: .init(prepareID: "p1", conversationID: UUID(), events: [activeEvent], interactions: [], controls: [], nextAfterSequence: 1), elapsed: 18)
 precondition(activeDuration.summaryLabel.hasPrefix("Working for 18s"))
-let nativeFinal = NativeLiveTurnActivityProjection(runtimeSurface: .init(prepareID: "p1", conversationID: UUID(), events: [activeEvent, event("result", ["duration_ms": 18_000], 2)], interactions: [], controls: [], nextAfterSequence: 2))
+let nativeFinal = NativeLiveTurnActivityProjection(runtimeSurface: .init(prepareID: "p1", conversationID: UUID(), events: [activeEvent, event("result", ["duration_ms": 18_000], 2)], interactions: [], controls: [], nextAfterSequence: 2), elapsed: 18)
 let finalDuration = historicalDuration(18_000)
 precondition(nativeFinal.elapsedSeconds == 18 && finalDuration.elapsedSeconds == 18)
 precondition(finalDuration.summaryLabel == "Worked for 18s · 1 step")
@@ -22,11 +22,11 @@ for (milliseconds, label) in [(0, "1s"), (18_000, "18s"), (61_000, "1m 1s"), (3_
 for unknown in [nil, NSNull(), -1] as [Any?] {
     precondition(historicalDuration(unknown).summaryLabel == "1 step")
 }
-let noSteps = NativeLiveTurnActivityProjection(message: .init(id: "m1", conversationId: "c1", parentMessageId: nil, role: "assistant", status: "completed", createdAt: "", completedAt: nil, blocks: [], activity: try! JSONDecoder().decode(NativeLiveMessageActivitySnapshot.self, from: Data("{\"prepareId\":null,\"durationMs\":18000,\"events\":[],\"interactions\":[]}".utf8))))
-precondition(noSteps.hasContent && noSteps.activityCount == 0 && noSteps.summaryLabel == "Worked for 18s")
+let noSteps = NativeLiveTurnActivityProjection(message: .init(id: "m1", conversationId: "c1", parentMessageId: nil, role: "assistant", status: "completed", createdAt: "", completedAt: nil, blocks: [], activity: try! JSONDecoder().decode(NativeLiveMessageActivitySnapshot.self, from: Data("{\"prepareId\":null,\"durationMs\":18000,\"events\":[],\"interactions\":[]}".utf8))), elapsed: 18)
+precondition(noSteps.hasContent && noSteps.activityCount == 0 && noSteps.summaryLabel == "Thought for 18s")
 let longClock = NativeLiveRuntimeEventSnapshot(sequence: 1, event: activeEvent.event, createdAt: "2000-01-01T00:00:00Z")
 let authoritativeFinal = NativeLiveTurnActivityProjection(runtimeSurface: .init(prepareID: "p1", conversationID: UUID(), events: [longClock, event("result", ["duration_ms": 18_000], 2)], interactions: [], controls: [], nextAfterSequence: 2))
-precondition(authoritativeFinal.elapsedSeconds == 18)
+precondition(authoritativeFinal.elapsedSeconds == nil) // Projection cannot derive a second clock from tool time or duration_ms.
 precondition(finalDuration.lifecycle.isEmpty)
 
 func permissionHistory(_ status: String, _ decision: String?) -> NativeLiveRuntimeInteractionSnapshot {

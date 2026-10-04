@@ -786,7 +786,10 @@ export class NativeLiveMacDaemonLoop {
                       sequence: eventSequence,
                       event,
                     });
-                    if (pendingRuntimeEvents.length >= 8) {
+                    // Clock boundaries must reach the repository independently even on sparse turns.
+                    if (pendingRuntimeEvents.length >= 8
+                        || (event.type === "runtime" && event.payload?.kind === "provider_message_start")
+                        || event.type === "result" || event.type === "error") {
                       await flushRuntimeEvents();
                     }
                   },

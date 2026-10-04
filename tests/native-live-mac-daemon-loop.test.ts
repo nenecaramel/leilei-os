@@ -1085,3 +1085,24 @@ test("provider session deletion failure is receipted for bounded retry", async (
 });
 
 
+
+test("provider clock start and terminal are delivered before sparse foreground execution continues", async () => {
+  const relay = new FakeRuntimeEventRelay();
+  const batches = () => relay.calls.filter(c=>c.name === "appendRuntimeEvents").map(c=>(c.input as {events:Array<{sequence:number;event:NativeLiveNormalizedEvent}>}).events);
+  let atStart: string[][] = [], atTerminal: string[][] = [];
+  const executor: NativeLivePreparedCommandExecutor = {
+    async execute(_input, options) {
+      await options?.onNormalizedEvent?.({type:"session",payload:{}});
+      await options?.onNormalizedEvent?.({type:"runtime",payload:{kind:"provider_message_start"}});
+      atStart = batches().map(b=>b.map(e=>e.event.type));
+      await options?.onNormalizedEvent?.({type:"partial_text",payload:{delta:"Hello"}});
+      await options?.onNormalizedEvent?.({type:"result",payload:{duration_ms:17000}});
+      atTerminal = batches().map(b=>b.map(e=>e.event.type));
+      return success();
+    },
+  };
+  assert.equal((await new NativeLiveMacDaemonLoop(listenerInstanceId,relay,executor).runOnce()).outcome,"completed");
+  assert.deepEqual(atStart,[["session","runtime"]],"clock must arrive before any body/tool/result event");
+  assert.deepEqual(atTerminal,[["session","runtime"],["partial_text","result"]],"terminal timestamp cannot wait for executor teardown");
+  assert.deepEqual(batches().flat().map(e=>e.sequence),[1,2,3,4]);
+});

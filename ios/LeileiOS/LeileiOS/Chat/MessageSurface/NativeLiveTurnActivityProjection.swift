@@ -277,62 +277,7 @@ struct NativeLiveTurnActivityProjection: Equatable {
         return "\(value)s"
     }
 
-    private static func runtimeElapsedSeconds(
-        from events: [NativeLiveRuntimeEventSnapshot],
-        interactions: [NativeLiveRuntimeInteractionSnapshot],
-        turnIsActive: Bool
-    ) -> Int? {
-        if let durationMs = events.reversed().compactMap({ event -> Double? in
-            guard event.event.type == "result" else {
-                return nil
-            }
-            return event.event.payload?["duration_ms"]?.numberValue
-        }).first,
-           let seconds = providerDurationSeconds(durationMs) {
-            return seconds
-        }
-
-        guard turnIsActive else {
-            return nil
-        }
-
-        let timestamps =
-            events.map(\.createdAt)
-            + interactions.map(\.createdAt)
-        guard let earliest = timestamps.compactMap(parseISO8601)
-            .min() else {
-            return nil
-        }
-
-        return max(
-            0,
-            Int(Date().timeIntervalSince(earliest).rounded(.down))
-        )
-    }
-
-    private static func providerDurationSeconds(_ durationMs: Double?) -> Int? {
-        guard let durationMs, durationMs.isFinite, durationMs >= 0 else { return nil }
-        let seconds = (durationMs / 1_000).rounded()
-        guard seconds < Double(Int.max) else { return nil }
-        return max(1, Int(seconds))
-    }
-
-    nonisolated private static func parseISO8601(_ value: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds,
-        ]
-        if let date = fractional.date(from: value) {
-            return date
-        }
-
-        let standard = ISO8601DateFormatter()
-        standard.formatOptions = [.withInternetDateTime]
-        return standard.date(from: value)
-    }
-
-    init(runtimeSurface: NativeLiveRuntimeSurfaceState) {
+    init(runtimeSurface: NativeLiveRuntimeSurfaceState, elapsed: Int? = nil) {
         prepareID = runtimeSurface.prepareID
         lifecycle = Self.lifecycle(
             from: runtimeSurface.events
@@ -400,14 +345,10 @@ struct NativeLiveTurnActivityProjection: Equatable {
                         == "error"
                 )
         }
-        elapsedSeconds = Self.runtimeElapsedSeconds(
-            from: runtimeSurface.events,
-            interactions: runtimeSurface.interactions,
-            turnIsActive: projectedTurnIsActive
-        )
+        elapsedSeconds = elapsed
     }
 
-    init(message: NativeLiveCurrentPathMessage) {
+    init(message: NativeLiveCurrentPathMessage, elapsed: Int? = nil) {
         prepareID = message.activity?.prepareId
         lifecycle = []
         let projectedTasks = Self.tasks(
@@ -452,6 +393,6 @@ struct NativeLiveTurnActivityProjection: Equatable {
         interactions = projectedInteractions
         turnIsActive = false
         turnFailed = message.status == "error"
-        elapsedSeconds = Self.providerDurationSeconds(message.activity?.durationMs)
+        elapsedSeconds = elapsed
     }
 }

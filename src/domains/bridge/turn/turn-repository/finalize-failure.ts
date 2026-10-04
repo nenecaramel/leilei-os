@@ -74,10 +74,20 @@ export async function finalizeFailure(
           if (!conversation || !preparedUserMessage) {
             throw new Error("Failed turn user was not found.");
           }
-          const events = await transaction.select().from(nativeLiveRuntimeEvents).where(and(
+          let events = await transaction.select().from(nativeLiveRuntimeEvents).where(and(
             eq(nativeLiveRuntimeEvents.userId, input.userId),
             eq(nativeLiveRuntimeEvents.prepareId, row.id),
           )).orderBy(asc(nativeLiveRuntimeEvents.sequence));
+          // SDK throws/aborts can submit a failure envelope without a provider error.
+          // Give both the foreground reader and retained overlay the same durable boundary.
+          if (!events.some(event => ["result", "error"].includes(event.eventType))) {
+            const terminalEvents = await transaction.insert(nativeLiveRuntimeEvents).values({
+              userId: input.userId, prepareId: row.id,
+              sequence: (events.at(-1)?.sequence ?? 0) + 1,
+              eventType: "error", payload: { code: input.errorCode }, createdAt: finalizedAt,
+            }).returning();
+            events = [...events, ...terminalEvents];
+          }
           const interactions = await transaction.select().from(nativeLiveRuntimeInteractions).where(and(
             eq(nativeLiveRuntimeInteractions.userId, input.userId),
             eq(nativeLiveRuntimeInteractions.prepareId, row.id),
