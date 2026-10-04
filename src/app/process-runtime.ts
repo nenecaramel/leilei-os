@@ -503,7 +503,11 @@ export function createProcessRuntime(
     memoryDecayConfig,
   );
   const nativeLiveSilenceWakeService =
-    new NativeLiveSilenceWakeService(db);
+    new NativeLiveSilenceWakeService(
+      db,
+      () => new Date(),
+      nativeLiveWorkWakePublisher,
+    );
   const nativeLiveTurnWaitService =
     new NativeLiveTurnWaitService(
       nativeLiveTurnPort,
