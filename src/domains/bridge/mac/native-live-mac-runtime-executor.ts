@@ -1,3 +1,4 @@
+import type { NativeLiveMemeRuntimeHandlers } from "./native-live-mac-meme-sender.js";
 import type {
   NativeLiveClaudeRuntime,
   NativeLiveNormalizedEvent,
@@ -64,6 +65,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         sha256: string;
         kind: "image" | "file";
       }>;
+      memeHandlers?: NativeLiveMemeRuntimeHandlers;
       albumHandlers?: NativeLiveClaudeAlbumRuntimeHandlers;
       controlPump?: (
         controller: NativeLiveMacActiveTurnController,
@@ -136,6 +138,7 @@ export class NativeLiveMacRuntimeExecutor {
       ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null = null,
     private readonly albumToolClient:
       NativeLiveClaudeAlbumToolClient | null = null,
+    private readonly memeSender: NativeLiveMemeRuntimeHandlers | null = null,
   ) {
     if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
       this.runtime = null;
@@ -174,6 +177,22 @@ export class NativeLiveMacRuntimeExecutor {
       workspaceRoot: string;
     };
     const outputAttachmentIds: string[] = [];
+    let pendingOutputAttachments = 0;
+    async function sendOutput<T>(
+      send: () => Promise<T>,
+      attachmentId: (result: T) => string,
+      limitMessage: string,
+    ): Promise<T> {
+      if (outputAttachmentIds.length + pendingOutputAttachments >= 8) throw new Error(limitMessage);
+      pendingOutputAttachments += 1;
+      try {
+        const result = await send();
+        outputAttachmentIds.push(attachmentId(result));
+        return result;
+      } finally {
+        pendingOutputAttachments -= 1;
+      }
+    }
     try {
       const localAttachments =
         this.attachmentMaterializer
@@ -246,21 +265,15 @@ export class NativeLiveMacRuntimeExecutor {
                   path: string;
                   displayName: string | null;
                 }) => {
-                  if (outputAttachmentIds.length >= 8) {
-                    throw new Error(
-                      "send_file may send at most 8 files in one turn.",
-                    );
-                  }
-                  const attachment =
-                    await this.outputAttachmentSender!.sendFile({
+                  return sendOutput(
+                    () => this.outputAttachmentSender!.sendFile({
                       path: input.path,
                       displayName: input.displayName,
                       workspaceRoot: binding.workspaceRoot,
-                    });
-                  outputAttachmentIds.push(
-                    attachment.attachmentId,
+                    }),
+                    attachment => attachment.attachmentId,
+                    "send_file may send at most 8 files in one turn.",
                   );
-                  return attachment;
                 },
               }
             : {}),
@@ -318,20 +331,24 @@ export class NativeLiveMacRuntimeExecutor {
                   sendPhoto: async (input: {
                     photoId: string;
                   }) => {
-                    if (outputAttachmentIds.length >= 8) {
-                      throw new Error(
-                        "Album photo send would exceed the 8-file turn limit.",
-                      );
-                    }
-                    const result =
-                      await this.albumToolClient!.sendPhoto(
-                        input,
-                      );
-                    outputAttachmentIds.push(
-                      result.attachment.attachmentId,
+                    return sendOutput(
+                      () => this.albumToolClient!.sendPhoto(input),
+                      result => result.attachment.attachmentId,
+                      "Album photo send would exceed the 8-file turn limit.",
                     );
-                    return result;
                   },
+                },
+              }
+            : {}),
+          ...(this.memeSender
+            && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+            ? {
+                memeHandlers: {
+                  sendMeme: (input: { memeId: string }) => sendOutput(
+                    () => this.memeSender!.sendMeme(input),
+                    attachment => attachment.attachmentId,
+                    "Meme send would exceed the 8-file turn limit.",
+                  ),
                 },
               }
             : {}),

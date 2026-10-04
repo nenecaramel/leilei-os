@@ -1,3 +1,4 @@
+import { NativeLiveMacMemeSender } from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
 import "dotenv/config";
 import {
   NativeLiveMacDaemonLoop,
@@ -158,11 +159,12 @@ await silenceWakeScheduler.refresh().catch((error) => {
   );
 });
 
+const outputAttachmentSender = new NativeLiveMacOutputAttachmentSender(relay);
 const executor = new NativeLiveMacRuntimeExecutor(
   workspaceRuntimePool,
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
-  new NativeLiveMacOutputAttachmentSender(relay),
+  outputAttachmentSender,
   (diagnostics) => {
     process.stdout.write(
       JSON.stringify({
@@ -174,6 +176,7 @@ const executor = new NativeLiveMacRuntimeExecutor(
     );
   },
   relay,
+  new NativeLiveMacMemeSender(outputAttachmentSender),
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);

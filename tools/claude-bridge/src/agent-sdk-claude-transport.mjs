@@ -1,3 +1,4 @@
+import { createMemeMcpServer, MEME_SYSTEM_HINT } from "./send-meme-mcp.mjs";
 import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
@@ -14,6 +15,8 @@ import {
 import {
   normalizeAgentSdkExecutionReadback,
 } from "./agent-sdk-execution-readback.mjs";
+
+const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -585,11 +588,13 @@ function leileiosMcpQueryOptions(
   config,
   localSendFileServer = null,
   localAlbumServer = null,
+  localMemeServer = null,
 ) {
   if (
     !config
     && !localSendFileServer
     && !localAlbumServer
+    && !localMemeServer
   ) return {};
   return {
     mcpServers: {
@@ -597,6 +602,7 @@ function leileiosMcpQueryOptions(
       ...(localSendFileServer
         ? { leileios_local: localSendFileServer }
         : {}),
+      ...(localMemeServer ? { leileios_memes: localMemeServer } : {}),
       ...(localAlbumServer
         ? { leileios_album: localAlbumServer }
         : {}),
@@ -622,6 +628,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       createDefaultSendFileMcpServer,
     createAlbumMcpServerImpl =
       createDefaultAlbumMcpServer,
+    createMemeMcpServerImpl = createMemeMcpServer,
     environment = process.env,
     cwd = process.cwd(),
   } = {}) {
@@ -648,6 +655,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       createSendFileMcpServerImpl;
     this.createAlbumMcpServerImpl =
       createAlbumMcpServerImpl;
+    this.createMemeMcpServerImpl = createMemeMcpServerImpl;
     this.environment = {
       ...environment,
       DISABLE_AUTO_COMPACT: "1",
@@ -712,6 +720,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       trustedReadPaths = [],
       sendFileHandler = null,
       albumHandlers = null,
+      memeHandlers = null,
       controlPump = null,
     } = {},
   ) {
@@ -804,6 +813,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           )
         : null;
 
+    const localMemeServer = memeHandlers
+      ? await this.createMemeMcpServerImpl(memeHandlers)
+      : null;
+
     const handle = await createAgentSdkTurnHandle({
       prompt,
       mode,
@@ -821,13 +834,16 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n"),
+          append: memeHandlers
+            ? LEILEIOS_INTERACTIVE_SYSTEM_PROMPT + "\n\n" + MEME_SYSTEM_HINT
+            : LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
         },
         ...executionOptions,
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
           localSendFileServer,
           localAlbumServer,
+          localMemeServer,
         ),
         ...(this.sessionStore
           ? { sessionStore: this.sessionStore }
