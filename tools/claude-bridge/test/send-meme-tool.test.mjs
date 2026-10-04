@@ -16,7 +16,7 @@ test("local meme tool exposes only send_meme and passes an exact existing id",as
   assert.equal(JSON.stringify(result).includes("PRIVATE"),false);
   assert.equal(JSON.stringify(result).includes("BASE64"),false);
   assert.deepEqual(JSON.parse(result.content[0].text),{attachment_id:"attachment",filename:"meme_0001.webp",kind:"image"});
-  for(const input of [{meme_id:"../meme_0001"},{meme_id:"meme_0001\n"},{meme_id:"meme_0001",repo:"arbitrary"},{meme_id:"meme_0001",path:"arbitrary"}])await assert.rejects(server.tools[0].call(input));
+  for(const input of [{meme_id:"meme_1"},{meme_id:"../meme_0001"},{meme_id:"meme_0001\n"},{meme_id:"meme_0001",repo:"arbitrary"},{meme_id:"meme_0001",path:"arbitrary"}])await assert.rejects(server.tools[0].call(input));
 });
 
 test("meme handler errors become safe MCP isError",async()=>{

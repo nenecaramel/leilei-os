@@ -21,7 +21,7 @@ test("fixed authenticated gh bytes enter the existing output attachment upload/c
   assert.deepEqual(calls,[{file:"gh",args:["api","--hostname","github.com","repos/nenecaramel/leileios-album/contents/memes/meme_0001.webp?ref=main","-H","Accept: application/vnd.github.raw+json"],options:{maxBuffer:20*1024*1024,timeout:30_000}}]);
 });
 
-for(const memeId of ["../meme_0001","meme_0001/../../secret","meme_0001?ref=evil","meme_x","meme_0001.webp","","meme_0001\n","meme_"+"1".repeat(100)]){
+for(const memeId of ["meme_1","../meme_0001","meme_0001/../../secret","meme_0001?ref=evil","meme_x","meme_0001.webp","","meme_0001\n","meme_"+"1".repeat(100)]){
   test(`invalid meme id rejected before gh: ${JSON.stringify(memeId)}`,async()=>{
     let calls=0;
     const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},async()=>{calls++;return webp;});

@@ -16,7 +16,7 @@ type GhExecutor = (
 ) => Promise<Buffer>;
 
 const MAX_MEME_BYTES = 20 * 1024 * 1024;
-const MEME_ID_PATTERN = /^meme_[0-9]{1,32}(?![\s\S])/u;
+const MEME_ID_PATTERN = /^meme_[0-9]{4,32}(?![\s\S])/u;
 
 const runGh: GhExecutor = (file, args, options) => new Promise((resolve,reject) => {
   execFile(file,args,{...options,encoding:"buffer"},(error,stdout) => {

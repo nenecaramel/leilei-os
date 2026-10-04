@@ -9,7 +9,7 @@ export async function createMemeMcpServer(handlers, sdk = null) {
     tools: [sdk.tool(
       "send_meme",
       "Send one meme from the fixed LeileiOS meme repository. Use an exact existing meme ID discovered from album.json or meme metadata; do not invent IDs. The image is delivered through the existing LeileiOS attachment pipeline.",
-      { meme_id: z.string().regex(/^meme_[0-9]{1,32}(?![\s\S])/u) },
+      { meme_id: z.string().regex(/^meme_[0-9]{4,32}(?![\s\S])/u) },
       async ({ meme_id }) => {
         try {
           const attachment = await handlers.sendMeme({ memeId: meme_id });
