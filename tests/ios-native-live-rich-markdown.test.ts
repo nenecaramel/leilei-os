@@ -45,3 +45,17 @@ test("live streaming text enters the same rich presentation projection", () => {
   assert.match(source, /NativeLiveMessagePresentationProjector\.project/);
   assert.doesNotMatch(source, /ChatMarkdownView\(/);
 });
+
+
+test("source panels share message-copy icon semantics and visible success feedback", () => {
+  const source = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveCodeRenderer.swift",
+    "utf8",
+  );
+  assert.match(source, /"square\.on\.square"/);
+  assert.match(source, /isCopied \? "checkmark" : "square\.on\.square"/);
+  assert.match(source, /Text\("Copied"\)/);
+  assert.match(source, /UIPasteboard\.general\.string = copyText/);
+  assert.match(source, /Task\.sleep\(for: \.seconds\(2\)\)/);
+  assert.doesNotMatch(source, /"doc\.on\.doc"/);
+});
