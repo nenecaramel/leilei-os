@@ -31,3 +31,23 @@ test("only tool-bound history receives nested permission presentation and pendin
   assert.match(card, /Button\("Allow"\)/);
   assert.match(card, /Button\("Deny", role: \.destructive\)/);
 });
+
+
+test("send_meme UI display name is unified as Send Sticker", () => {
+  const source = fs.readFileSync(
+    surface + "NativeLiveRuntimeActivity.swift",
+    "utf8",
+  );
+  assert.match(
+    source,
+    /"mcp__leileios_memes__send_meme": "Send Sticker"/,
+  );
+  assert.match(
+    source,
+    /"Send Meme": "Send Sticker"/,
+  );
+  assert.match(
+    source,
+    /"mcp__leileios_memes__"/,
+  );
+});
