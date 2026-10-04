@@ -331,19 +331,46 @@ test("native live conversation head wait is owner-scoped and carries only the he
             "88888888-8888-4888-8888-888888888888",
         },
       });
-      assert.deepEqual(calls, [{
-        userId,
-        conversationId,
-        afterHeadMessageId: headMessageId,
-        timeoutMs: 25_000,
-        signal: calls[0]
-          && typeof calls[0] === "object"
-          ? (calls[0] as { signal?: unknown }).signal
-          : undefined,
-      }]);
-      const signal =
-        (calls[0] as { signal?: unknown }).signal;
-      assert.ok(signal instanceof AbortSignal);
+      const firstCall = calls[0] as {
+        userId: string;
+        conversationId: string;
+        afterHeadMessageId: string | null;
+        timeoutMs: number;
+        signal?: unknown;
+      };
+      assert.deepEqual(
+        {
+          userId: firstCall.userId,
+          conversationId: firstCall.conversationId,
+          afterHeadMessageId:
+            firstCall.afterHeadMessageId,
+          timeoutMs: firstCall.timeoutMs,
+        },
+        {
+          userId,
+          conversationId,
+          afterHeadMessageId: headMessageId,
+          timeoutMs: 25_000,
+        },
+      );
+      assert.ok(firstCall.signal instanceof AbortSignal);
+
+      const empty = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/head/wait`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            after_head_message_id: null,
+          }),
+        },
+      );
+      assert.equal(empty.status, 200);
+      assert.equal(
+        (calls[1] as { afterHeadMessageId: unknown })
+          .afterHeadMessageId,
+        null,
+      );
 
       const malformed = await fetch(
         `${baseUrl}/api/v1/native-live/conversations/${conversationId}/head/wait`,
@@ -356,7 +383,7 @@ test("native live conversation head wait is owner-scoped and carries only the he
         },
       );
       assert.equal(malformed.status, 400);
-      assert.equal(calls.length, 1);
+      assert.equal(calls.length, 2);
     },
     true,
     undefined,
