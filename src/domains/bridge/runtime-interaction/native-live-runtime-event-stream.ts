@@ -58,6 +58,7 @@ const EVENT_TYPES = new Set<NativeLiveNormalizedEventType>([
   "partial_text",
   "tool_use",
   "tool_result",
+  "search_result",
   "attachment",
   "task",
   "result",

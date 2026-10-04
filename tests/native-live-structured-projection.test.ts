@@ -50,3 +50,95 @@ test("durable structured envelopes preserve small semantic values through storag
  assert.equal(stored.structured.compatibility_payload.parts[1].value.citation.cited_text,"durable quote");
  assert.equal(stored.structured.compatibility_payload.parts[2].value.outer.inner,42);
 });
+
+
+test("top-level provider search events project into Chat without tool-result share authority", () => {
+  const event = {
+    type: "search_result" as const,
+    payload: {
+      provenance: {
+        provider: "claude_code",
+        raw_type: "web_search_tool_result",
+      },
+      structured: {
+        schema_version: 1,
+        parts: [{
+          type: "search_result",
+          value: {
+            type: "search_result",
+            title: "Provider result",
+            url: "https://example.test/provider",
+            source: "https://example.test/provider",
+            snippet: "Durable provider snippet",
+          },
+        }],
+      },
+    },
+  };
+
+  const result = canonicalizeNativeLiveEvents([event]);
+  assert.equal(result.error, null);
+  assert.deepEqual(
+    result.blocks.map((block) => block.kind),
+    ["canonical_tool_result"],
+  );
+  assert.equal(
+    result.blocks[0]?.payload?.projection_reason,
+    "provider_visible_search",
+  );
+  const structured =
+    result.blocks[0]?.payload?.structured as any;
+  assert.equal(
+    structured.compatibility_payload.parts[0].type,
+    "search_result",
+  );
+  assert.equal(
+    structured.compatibility_payload.parts[0].value.snippet,
+    "Durable provider snippet",
+  );
+});
+
+test("provider search projection rejects nested or mixed structured content", () => {
+  const searchPart = {
+    type: "search_result",
+    value: {
+      type: "search_result",
+      title: "Result",
+      url: "https://example.test",
+    },
+  };
+
+  const nested = canonicalizeNativeLiveEvents([{
+    type: "search_result",
+    payload: {
+      provenance: {
+        provider: "claude_code",
+        raw_type: "web_search_tool_result",
+        parent_agent_id: "researcher",
+      },
+      structured: {
+        schema_version: 1,
+        parts: [searchPart],
+      },
+    },
+  }]);
+  assert.deepEqual(nested.blocks, []);
+
+  const mixed = canonicalizeNativeLiveEvents([{
+    type: "search_result",
+    payload: {
+      provenance: {
+        provider: "claude_code",
+        raw_type: "web_search_tool_result",
+      },
+      structured: {
+        schema_version: 1,
+        parts: [
+          searchPart,
+          { type: "json", value: { secret: true } },
+        ],
+      },
+    },
+  }]);
+  assert.deepEqual(mixed.blocks, []);
+});
