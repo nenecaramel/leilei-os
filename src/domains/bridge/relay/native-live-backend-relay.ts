@@ -57,7 +57,7 @@ export interface NativeLiveBackendRelayPort {
     listenerInstanceId: string;
     reservationId: string;
   }): Promise<boolean>;
-  isDiscardedWakeReservation(input: {
+  isDiscardedWakeReservation?(input: {
     userId: string;
     reservationId: string;
   }): Promise<boolean>;
@@ -863,10 +863,10 @@ export class NativeLiveBackendRelayService {
     const owned = await this.repository.ownsSubmitReservation(input);
     if (!owned) {
       const discarded =
-        await this.repository.isDiscardedWakeReservation({
+        await this.repository.isDiscardedWakeReservation?.({
           userId: input.userId,
           reservationId: input.reservationId,
-        });
+        }) ?? false;
       if (discarded) {
         return {
           ok: true,
