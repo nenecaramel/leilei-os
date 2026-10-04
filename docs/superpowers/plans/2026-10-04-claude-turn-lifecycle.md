@@ -54,7 +54,7 @@
 - [x] A–G focused, voice/question/duration/ordinary-hidden-ambient Activity, current path/edit/retry/background/history/fork/attachment; relevant isolated PG.
 - [x] Runtime gate, complete bridge, typecheck/generated/build/Web gates/diff/unsigned Simulator.
 - [x] Fresh independent review; Important fixes RED→GREEN and relevant gates rerun.
-- [ ] Sequential exact-main baseline vs PR full suite; report totals and added/removed failure names.
+- [x] Sequential exact-main baseline vs PR full suite; report totals and added/removed failure names.
 - [ ] Open `refactor: unify Claude turn lifecycle rendering`, exact SHAs and all requested contract/acceptance evidence, no merge.
 - [ ] Commit/push/attach; hygiene and task-only temporary cleanup, stop for review.
 
@@ -86,7 +86,7 @@ Environment: Node 24.19.0; same dependencies and root test command/order for exa
 - Isolated Postgres: 14/14 pass (turn repository/checkpoints/current path/branches/history/content/D/#812/#813/#815/ordinary-hidden-ambient), plus attachment concurrent migration/retention 1/1 pass. No skips.
 - Production runtime gate: 405/405 root and 101/101 selected bridge tests. Complete bridge: 125/125.
 - Root typecheck, generated freshness, build and base-relative diff check pass. Node24 Web typecheck/build pass. Final unsigned arm64 Simulator build pass.
-- Full baseline: 2105 total, 2000 pass, 10 fail, 95 skip. Initial PR run: 2106 total, 2001 pass, 10 fail, 95 skip; added/removed failure names both empty. Final immutable-code full run pending below.
+- Full baseline: 2105 total, 2000 pass, 10 fail, 95 skip. Initial PR run: 2106 total, 2001 pass, 10 fail, 95 skip; added/removed failure names both empty. Final immutable implementation/test revision `45f68bc38636c76ee5af04c5155f4ff41fd92bd6`: 2106 total, 2001 pass, 10 fail, 95 skip; added failure names [], removed failure names []. The root suite itself reports 144 passing Swift frame assertions.
 
 Baseline historical failure names (not incidentally fixed):
 1. CI checks after a failed gate still run once their setup succeeds
@@ -100,4 +100,4 @@ Baseline historical failure names (not incidentally fixed):
 9. the app JSON parser remains bounded above 1mb
 10. unauthenticated Native Live internal JSON does not get the larger parser budget
 
-Final PR/head and final full-suite comparison will be recorded at closeout.
+Full-suite comparison is complete. PR link and closeout will be recorded after publication.
