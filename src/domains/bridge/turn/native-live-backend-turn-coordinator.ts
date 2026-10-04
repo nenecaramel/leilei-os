@@ -436,11 +436,16 @@ export class NativeLiveBackendTurnCoordinator {
 
     if (result.status === "failure") {
       if (preparation.operation === "wake") {
+        const providerSessionId =
+          wakeFailureProviderSessionId(
+            result.runtime_metadata ?? null,
+            preparation.parentProviderSessionId,
+          );
         try {
           await this.discardWake({
             userId,
             preparation,
-            providerSessionId: null,
+            providerSessionId,
           });
           return {
             ok: true,
@@ -448,7 +453,7 @@ export class NativeLiveBackendTurnCoordinator {
             requestId: preparation.requestId,
             operation: "wake",
             conversationId: preparation.conversationId,
-            providerSessionId: null,
+            providerSessionId,
           };
         } catch {
           return failureForResult(result, "INTERNAL_ERROR");
@@ -660,6 +665,20 @@ export function nativeLiveRuntimeCommandFromPreparation(
     prompt: preparation.prompt,
   };
   return command;
+}
+
+function wakeFailureProviderSessionId(
+  metadata: NativeLiveRuntimeMetadata | null,
+  parentProviderSessionId: string | null,
+): string | null {
+  const candidate = metadata?.session_store?.session_id;
+  return (
+    typeof candidate === "string"
+    && candidate.trim().length > 0
+    && candidate !== parentProviderSessionId
+  )
+    ? candidate
+    : null;
 }
 
 function isQuietWakeResult(
