@@ -91,6 +91,20 @@ test("Mind-like tags inside murmur are stripped instead of becoming semantic wri
   );
 });
 
+test("partial murmur tag suffixes are fail-closed", () => {
+  for (const text of [
+    "Visible <mur",
+    "Visible <MURMUR",
+    "Visible </mur",
+  ]) {
+    const result = extractNativeLiveMurmur([
+      { kind: "text", text },
+    ]);
+    assert.equal(result.visibleBlocks[0]?.text, "Visible");
+    assert.equal(result.murmurBlock, null);
+  }
+});
+
 test("malformed murmur markers never leak raw murmur tags into the main body", () => {
   const result = extractNativeLiveMurmur([
     {
