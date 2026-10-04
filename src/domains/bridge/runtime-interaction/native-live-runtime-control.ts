@@ -453,12 +453,29 @@ export class NativeLiveRuntimeControlService {
     }
   }
 
-  completeForListener(
+  async completeForListener(
     input: Parameters<
       DrizzleNativeLiveRuntimeControlRepository["completeForListener"]
     >[0],
   ) {
-    return this.repository.completeForListener(input);
+    const result =
+      await this.repository.completeForListener(input);
+    if (
+      result === "applied"
+      && input.outcome.status === "applied"
+      && Array.isArray(input.outcome.receipt.still_queued)
+    ) {
+      try {
+        await this.wakePublisher?.notify({
+          userId: input.userId,
+          kind: "turn_terminal",
+          prepareId: input.reservationId,
+        });
+      } catch {
+        // Applied control state is authoritative; wake delivery is advisory.
+      }
+    }
+    return result;
   }
 
   listForUser(

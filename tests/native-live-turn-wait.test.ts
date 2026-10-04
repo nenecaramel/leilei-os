@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import {
+  NativeLiveRuntimeControlService,
+} from "../src/domains/bridge/runtime-interaction/native-live-runtime-control.js";
 import type {
   NativeLiveBackendTurnReadModel,
 } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
@@ -235,4 +239,92 @@ test("turn wait self-recovers a stale delivery-unknown turn as terminal", async 
   );
   assert.equal(recoveries, 1);
   assert.equal(waits, 0);
+});
+
+
+test("applied interrupt control wakes bounded turn waiters", async () => {
+  const notifications = [];
+  const service = new NativeLiveRuntimeControlService(
+    {
+      async completeForListener() {
+        return "applied";
+      },
+    },
+    {
+      async notify(input) {
+        notifications.push(input);
+      },
+    },
+  );
+
+  const outcome = await service.completeForListener({
+    userId: "11111111-1111-4111-8111-111111111111",
+    listenerInstanceId: "22222222-2222-4222-8222-222222222222",
+    reservationId: "33333333-3333-4333-8333-333333333333",
+    controlId: "44444444-4444-4444-8444-444444444444",
+    outcome: {
+      status: "applied",
+      receipt: { still_queued: [] },
+    },
+  });
+
+  assert.equal(outcome, "applied");
+  assert.deepEqual(notifications, [{
+    userId: "11111111-1111-4111-8111-111111111111",
+    kind: "turn_terminal",
+    prepareId: "33333333-3333-4333-8333-333333333333",
+  }]);
+});
+
+test("mid-turn input application does not emit a false terminal wake", async () => {
+  const notifications = [];
+  const service = new NativeLiveRuntimeControlService(
+    {
+      async completeForListener() {
+        return "applied";
+      },
+    },
+    {
+      async notify(input) {
+        notifications.push(input);
+      },
+    },
+  );
+
+  await service.completeForListener({
+    userId: "11111111-1111-4111-8111-111111111111",
+    listenerInstanceId: "22222222-2222-4222-8222-222222222222",
+    reservationId: "33333333-3333-4333-8333-333333333333",
+    controlId: "44444444-4444-4444-8444-444444444444",
+    outcome: {
+      status: "applied",
+      receipt: {
+        status: "queued",
+        command_uuid: "44444444-4444-4444-8444-444444444444",
+      },
+    },
+  });
+
+  assert.deepEqual(notifications, []);
+});
+
+test("turn reads project an applied interrupt as terminal without mutating canonical storage", () => {
+  const source = fs.readFileSync(
+    "src/domains/bridge/turn/turn-repository/reads.ts",
+    "utf8",
+  );
+  assert.match(source, /nativeLiveRuntimeControls\.kind, "interrupt"/);
+  assert.match(source, /nativeLiveRuntimeControls\.status, "applied"/);
+  assert.match(
+    source,
+    /interrupted \? "finalized_failure" : row\.canonicalStatus/,
+  );
+  assert.match(
+    source,
+    /interrupted \? "INTERRUPTED" : row\.failureCode/,
+  );
+  assert.match(
+    source,
+    /return turn\?\.canonicalStatus === "prepared"[\s\S]*\? turn[\s\S]*: null/,
+  );
 });
