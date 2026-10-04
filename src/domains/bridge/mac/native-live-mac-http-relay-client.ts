@@ -1012,12 +1012,13 @@ implements NativeLiveMacDaemonRelayClient {
     canonicalOutcome: string | null;
   }> {
     const data = readRecord(
-      await this.postRetryable(
+      await this.postRetryableBounded(
         `/reservations/${encodeURIComponent(input.reservationId)}/result`,
         {
           listener_instance_id: input.listenerInstanceId,
           result: input.result,
         },
+        3,
       ),
     );
     return {
