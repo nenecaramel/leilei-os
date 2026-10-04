@@ -465,6 +465,11 @@ struct NativeLiveRuntimeSurfaceState:
     var interactions: [NativeLiveRuntimeInteractionSnapshot]
     var controls: [NativeLiveRuntimeControlSnapshot]
     var nextAfterSequence: Int
+    var requestID: String? = nil
+    var userMessageID: String? = nil
+    var operation: String? = nil
+    var startedAt: String? = nil
+    var terminalFailure: String? = nil
     var foregroundTurnCompleted = false
 
     var visibleBackgroundTaskIDs: Set<String> {

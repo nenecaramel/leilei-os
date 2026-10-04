@@ -64,18 +64,23 @@ final class AppModel: ObservableObject {
     @Published var nativeLiveArchivedConversations: [NativeLiveConversationSummary] = []
     @Published var nativeLiveArchivedConversationNextCursor: String?
     @Published var archivedConversationBootstrapState: ConversationBootstrapState = .idle
-    @Published var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot?
+    @Published var nativeLiveCurrentPath: NativeLiveCurrentPathSnapshot? { didSet { reconcileNativeLivePresentation() } }
     @Published var nativeLiveHistorySnapshot:
-        NativeLiveConversationHistorySnapshot?
+        NativeLiveConversationHistorySnapshot? { didSet { reconcileNativeLivePresentation() } }
     @Published var chatSyncState: ChatSyncState = .idle
     @Published var chatSendState: ChatSendState = .idle
     @Published var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
     @Published var activeNativeLiveWorkspaceID: String?
     @Published var activeNativeLiveWorkspaceRoot: String?
     @Published var nativeLiveRuntimeSurface:
-        NativeLiveRuntimeSurfaceState?
+        NativeLiveRuntimeSurfaceState? { didSet { reconcileNativeLivePresentation() } }
     @Published var nativeLiveBackgroundRuntimeSurfaces:
-        [String: NativeLiveRuntimeSurfaceState] = [:]
+        [String: NativeLiveRuntimeSurfaceState] = [:] { didSet { reconcileNativeLivePresentation() } }
+    @Published var nativeLivePendingOperation: NativeLivePendingOperation? { didSet { reconcileNativeLivePresentation() } }
+    @Published var nativeLiveConversationRows: [NativeLiveConversationRowPresentation] = []
+    @Published var nativeLiveMessageUIState = NativeLiveMessageUIStateStore()
+    var nativeLiveTurnIdentities = NativeLiveTurnIdentityCoordinator()
+    var nativeLivePresentationAssembler = NativeLiveConversationPresentationAssembler()
     @Published var mindWritesByMessageID:
         [String: MindProductMessageWriteProjection] = [:]
     @Published var albumSavesByUserMessageID:
@@ -155,6 +160,11 @@ final class AppModel: ObservableObject {
         nativeLiveBackgroundSurfaceOrder.removeAll()
         nativeLiveRuntimeSurface = nil
         nativeLiveBackgroundRuntimeSurfaces.removeAll()
+        nativeLivePendingOperation = nil
+        nativeLiveTurnIdentities = .init()
+        nativeLivePresentationAssembler = .init()
+        nativeLiveMessageUIState = .init()
+        nativeLiveConversationRows = []
         chatSyncState = .idle
         conversationPaginationInFlight = false
         archivedConversationBootstrapInFlight = false

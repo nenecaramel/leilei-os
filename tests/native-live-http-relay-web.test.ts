@@ -126,7 +126,8 @@ test("web prepare endpoint is user scoped and never returns the runtime prompt",
         "claude-opus-5-5",
       );
       assert.equal(readPayload.data.assistantMessage?.blocks[0]?.text, "VISIBLE");
-      assert.deepEqual(turnReader.calls, [{ userId, prepareId }]);
+      // Prepare projects the authoritative start time; the subsequent turn read is separately scoped.
+      assert.deepEqual(turnReader.calls, [{ userId, prepareId }, { userId, prepareId }]);
     },
   );
 });

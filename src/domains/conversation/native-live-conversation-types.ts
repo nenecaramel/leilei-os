@@ -28,6 +28,7 @@ export type NativeLiveContentBlock = {
 };
 
 export type NativeLiveMessageActivity = {
+  startedAt?: string;
   prepareId: string | null;
   durationMs?: number;
   events: Array<{

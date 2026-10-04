@@ -51,13 +51,16 @@ test("current-path reuses durable checkpoint duration through refresh and operat
   const before = await reader.readCurrentPath(input);
   const assistant = before?.messages.find((message) => message.id === finalized.assistantMessageId);
   assert.equal(assistant?.activity?.durationMs, 18000);
+  const turn = await new DrizzleNativeLiveBackendTurnPort(database.db).readTurn({ userId:user.id, prepareId:prepared.command.prepare_id });
+  assert.ok(turn?.startedAt, "actual preparation start is exposed");
+  assert.equal(assistant?.activity?.startedAt, turn.startedAt, "canonical start is preparation time, not finalization time");
   assert.equal(assistant?.activity?.prepareId, command.prepare_id);
   assert.deepEqual(assistant?.blocks.map((block) => block.kind), ["tool_use", "tool_result", "text"]);
   const refreshed = await new DrizzleNativeLiveCurrentPathReader(database.db).readCurrentPath(input);
   assert.equal(refreshed?.messages.at(-1)?.activity?.durationMs, 18000);
   await database.db.delete(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, command.prepare_id));
   const expired = await reader.readCurrentPath(input);
-  assert.deepEqual(expired?.messages.at(-1)?.activity, { prepareId: null, durationMs: 18000, events: [], interactions: [] });
+  assert.deepEqual(expired?.messages.at(-1)?.activity, { prepareId: null, durationMs: 18000, startedAt:turn.startedAt, events: [], interactions: [] });
   const foreign = await readNativeLiveMessageActivityByAssistantMessage(database.db, { ...input, userId: crypto.randomUUID(), messageRows: [{ id: finalized.assistantMessageId, role: "assistant" }] });
   assert.equal(foreign.size, 0);
   const otherConversation = await readNativeLiveMessageActivityByAssistantMessage(database.db, { ...input, conversationId: crypto.randomUUID(), messageRows: [{ id: finalized.assistantMessageId, role: "assistant" }] });

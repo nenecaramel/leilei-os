@@ -44,6 +44,7 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
   const durationRows = await db
     .select({
       messageId: conversationProviderSessionCheckpoints.canonicalMessageId,
+      startedAt: sql<unknown>`${conversationProviderSessionCheckpoints.runtimeMetadata} ->> 'turn_started_at'`,
       durationMs: sql<unknown>`${conversationProviderSessionCheckpoints.runtimeMetadata} -> 'result' -> 'duration_ms'`,
     })
     .from(conversationProviderSessionCheckpoints)
@@ -55,10 +56,13 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
     ));
   const activityByMessage = new Map<string, NativeLiveMessageActivity>();
   for (const row of durationRows) {
-    if (typeof row.durationMs !== "number" || !Number.isFinite(row.durationMs) || row.durationMs < 0) continue;
+    const durationMs = typeof row.durationMs === "number" && Number.isFinite(row.durationMs) && row.durationMs >= 0 ? row.durationMs : undefined;
+    const startedAt = typeof row.startedAt === "string" && Number.isFinite(Date.parse(row.startedAt)) ? row.startedAt : undefined;
+    if (durationMs === undefined && startedAt === undefined) continue;
     activityByMessage.set(row.messageId, {
       prepareId: null,
-      durationMs: row.durationMs,
+      ...(durationMs === undefined ? {} : { durationMs }),
+      ...(startedAt === undefined ? {} : { startedAt }),
       events: [],
       interactions: [],
     });
@@ -267,6 +271,7 @@ export async function readNativeLiveMessageActivityByAssistantMessage(
       activity.events.length === 0
       && activity.interactions.length === 0
       && activity.durationMs === undefined
+      && activity.startedAt === undefined
     ) {
       activityByMessage.delete(messageId);
     }

@@ -83,6 +83,7 @@ export async function readTurn(
     const [row] = await this.db
       .select({
         id: nativeLiveTurnPreparations.id,
+        createdAt: nativeLiveTurnPreparations.createdAt,
         requestId: nativeLiveTurnPreparations.requestId,
         conversationId: nativeLiveTurnPreparations.conversationId,
         operation: nativeLiveTurnPreparations.operation,
@@ -143,6 +144,7 @@ export async function readTurn(
 
     return {
       prepareId: row.id,
+      startedAt: row.createdAt.toISOString(),
       requestId: row.requestId,
       conversationId: row.conversationId,
       operation: row.operation,
@@ -250,6 +252,7 @@ export async function loadFinalizedSuccess(
 export function selection(this: TurnRepositoryContext) {
     return {
       id: nativeLiveTurnPreparations.id,
+      createdAt: nativeLiveTurnPreparations.createdAt,
       userId: nativeLiveTurnPreparations.userId,
       requestId: nativeLiveTurnPreparations.requestId,
       conversationId: nativeLiveTurnPreparations.conversationId,

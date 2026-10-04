@@ -181,17 +181,20 @@ struct NativeLiveMessageActivitySnapshot:
     let events: [NativeLiveRuntimeEventSnapshot]
     let interactions: [NativeLiveRuntimeInteractionSnapshot]
     let durationMs: Double?
+    let startedAt: String?
 
     init(
         prepareId: String?,
         events: [NativeLiveRuntimeEventSnapshot],
         interactions: [NativeLiveRuntimeInteractionSnapshot],
-        durationMs: Double? = nil
+        durationMs: Double? = nil,
+        startedAt: String? = nil
     ) {
         self.prepareId = prepareId
         self.events = events
         self.interactions = interactions
         self.durationMs = durationMs
+        self.startedAt = startedAt
     }
 }
 
@@ -366,6 +369,7 @@ struct NativeLiveExecutionSelection: Codable, Sendable, Equatable {
 }
 
 struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
+    var startedAt: String? = nil
     let outcome: String
     let semanticPending: Bool
     let prepareId: String
@@ -377,6 +381,7 @@ struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
 }
 
 struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
+    var startedAt: String? = nil
     let prepareId: String
     let requestId: String
     let conversationId: String

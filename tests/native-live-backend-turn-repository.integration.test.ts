@@ -300,7 +300,7 @@ test(
     );
     assert.deepEqual(
       firstDurableMetadata.runtimeMetadata,
-      runtimeMetadata,
+      { ...runtimeMetadata, turn_started_at: finalizedRead.startedAt },
     );
     assert.ok(firstDurableMetadata.observedAt);
 
@@ -406,10 +406,10 @@ test(
       secondDurableMetadata.sourceMessageId,
       oldSecondAssistantId,
     );
-    assert.equal(
+    assert.deepEqual(
       secondDurableMetadata.runtimeMetadata,
-      null,
-      "latest checkpoint without metadata must not fall back to stale older metadata",
+      { turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
+      "latest checkpoint carries its own turn start and must not inherit older provider metadata",
     );
 
     const causalStateId = crypto.randomUUID();

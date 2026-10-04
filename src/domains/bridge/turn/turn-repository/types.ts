@@ -30,6 +30,7 @@ export type Transaction = Parameters<Database["transaction"]>[0] extends (
 export type Executor = Database | Transaction;
 
 export type NativeLiveBackendTurnReadModel = {
+  startedAt?: string;
   prepareId: string;
   requestId: string;
   conversationId: string;
@@ -63,6 +64,7 @@ export type NativeLiveBackendTurnReadModel = {
 };
 
 export type PreparationRow = {
+  createdAt: Date;
   id: string;
   userId: string;
   requestId: string;
