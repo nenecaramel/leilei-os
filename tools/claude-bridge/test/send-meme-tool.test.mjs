@@ -21,7 +21,8 @@ test("local meme tool exposes only send_meme and passes an exact existing id",as
 
 test("meme handler stage errors become safe actionable MCP isError messages",async()=>{
   const expected=new Map([
-    ["MEME_GH_UNAVAILABLE","GitHub CLI is unavailable"],
+    ["MEME_GITHUB_AUTH_MISSING","authentication is missing"],
+    ["MEME_GITHUB_AUTH_FAILED","rejected the Mac daemon meme credential"],
     ["MEME_NOT_FOUND","not found"],
     ["MEME_GITHUB_FETCH_FAILED","GitHub fetch failed"],
     ["MEME_SOURCE_INVALID","invalid meme image bytes"],

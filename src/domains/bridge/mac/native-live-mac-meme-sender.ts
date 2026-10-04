@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import type {
   NativeLiveMacOutputAttachmentDescriptor,
@@ -10,7 +9,8 @@ export type NativeLiveMemeRuntimeHandlers = {
 };
 
 export type NativeLiveMemeSendErrorCode =
-  | "MEME_GH_UNAVAILABLE"
+  | "MEME_GITHUB_AUTH_MISSING"
+  | "MEME_GITHUB_AUTH_FAILED"
   | "MEME_NOT_FOUND"
   | "MEME_GITHUB_FETCH_FAILED"
   | "MEME_SOURCE_INVALID"
@@ -25,19 +25,8 @@ export class NativeLiveMemeSendError extends Error {
   }
 }
 
-type GhExecutor = (
-  file: string,
-  args: string[],
-  options: {
-    maxBuffer: number;
-    timeout: number;
-    env: NodeJS.ProcessEnv;
-  },
-) => Promise<Buffer>;
-
 export type NativeLiveMacMemeGitHubConfig = {
   githubToken: string | null;
-  ghPath: string | null;
 };
 
 export function consumeNativeLiveMacMemeGitHubConfig(
@@ -45,58 +34,25 @@ export function consumeNativeLiveMacMemeGitHubConfig(
 ): NativeLiveMacMemeGitHubConfig {
   const githubToken =
     environment.LEILEI_MEME_GITHUB_TOKEN?.trim() || null;
-  const ghPath =
-    environment.LEILEI_MEME_GH_PATH?.trim() || null;
   delete environment.LEILEI_MEME_GITHUB_TOKEN;
+  // Legacy variable from the gh-CLI implementation. Strip it too so an old
+  // local .env cannot leak irrelevant path configuration into Claude tools.
   delete environment.LEILEI_MEME_GH_PATH;
-  if (ghPath && !ghPath.startsWith("/")) {
-    throw new Error(
-      "LEILEI_MEME_GH_PATH must be an absolute path when configured.",
-    );
-  }
-  return { githubToken, ghPath };
+  return { githubToken };
 }
 
 const MAX_MEME_BYTES = 20 * 1024 * 1024;
 const MEME_ID_PATTERN = /^meme_[0-9]{4,32}(?![\s\S])/u;
-
-const runGh: GhExecutor = (file, args, options) => new Promise((resolve,reject) => {
-  execFile(file,args,{...options,encoding:"buffer"},(error,stdout,stderr) => {
-    if (!error) {
-      resolve(stdout);
-      return;
-    }
-    const record =
-      error && typeof error === "object"
-        ? error as Record<string, unknown>
-        : {};
-    if (record.code === "ENOENT") {
-      reject(new NativeLiveMemeSendError("MEME_GH_UNAVAILABLE"));
-      return;
-    }
-    const safeStderr =
-      Buffer.isBuffer(stderr)
-        ? stderr.toString("utf8")
-        : typeof stderr === "string"
-          ? stderr
-          : "";
-    if (/\b404\b|not found/iu.test(safeStderr)) {
-      reject(new NativeLiveMemeSendError("MEME_NOT_FOUND"));
-      return;
-    }
-    reject(new NativeLiveMemeSendError("MEME_GITHUB_FETCH_FAILED"));
-  });
-});
+const GITHUB_API_VERSION = "2022-11-28";
+const GITHUB_REPOSITORY = "nenecaramel/leileios-album";
 
 export class NativeLiveMacMemeSender implements NativeLiveMemeRuntimeHandlers {
   constructor(
     private readonly attachments: Pick<NativeLiveMacOutputAttachmentSender,"sendBytes">,
-    private readonly executeGh: GhExecutor = runGh,
     private readonly githubConfig: NativeLiveMacMemeGitHubConfig = {
       githubToken: null,
-      ghPath: null,
     },
-    private readonly environment: NodeJS.ProcessEnv = process.env,
+    private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
   async sendMeme(input: { memeId: string }): Promise<NativeLiveMacOutputAttachmentDescriptor> {
@@ -104,33 +60,7 @@ export class NativeLiveMacMemeSender implements NativeLiveMemeRuntimeHandlers {
       throw new Error("Meme id must be an existing meme_<digits> id.");
     }
 
-    let bytes: Buffer;
-    try {
-      // No shell, credential parsing, arbitrary repo/ref/path, clone or cache.
-      const childEnvironment = {
-        ...this.environment,
-        ...(this.githubConfig.githubToken
-          ? { GH_TOKEN: this.githubConfig.githubToken }
-          : {}),
-      };
-      bytes = await this.executeGh(
-        this.githubConfig.ghPath ?? "gh",
-        [
-          "api", "--hostname", "github.com",
-          `repos/nenecaramel/leileios-album/contents/memes/${input.memeId}.webp?ref=main`,
-          "-H", "Accept: application/vnd.github.raw+json",
-        ],
-        {
-          maxBuffer: MAX_MEME_BYTES,
-          timeout: 30_000,
-          env: childEnvironment,
-        },
-      );
-    } catch (error) {
-      if (error instanceof NativeLiveMemeSendError) throw error;
-      throw new NativeLiveMemeSendError("MEME_GITHUB_FETCH_FAILED");
-    }
-
+    const bytes = await this.fetchMemeBytes(input.memeId);
     if (!Buffer.isBuffer(bytes) || bytes.length < 20 || bytes.length > MAX_MEME_BYTES
       || bytes.toString("ascii",0,4) !== "RIFF"
       || bytes.toString("ascii",8,12) !== "WEBP"
@@ -154,12 +84,67 @@ export class NativeLiveMacMemeSender implements NativeLiveMemeRuntimeHandlers {
     }
     return attachment;
   }
+
+  private async fetchMemeBytes(memeId: string): Promise<Buffer> {
+    const token = this.githubConfig.githubToken;
+    if (!token) {
+      throw new NativeLiveMemeSendError("MEME_GITHUB_AUTH_MISSING");
+    }
+
+    const url =
+      `https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/memes/${memeId}.webp?ref=main`;
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url,{
+        method:"GET",
+        headers:{
+          Accept:"application/vnd.github.raw+json",
+          Authorization:`Bearer ${token}`,
+          "X-GitHub-Api-Version":GITHUB_API_VERSION,
+        },
+        signal:AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new NativeLiveMemeSendError("MEME_GITHUB_FETCH_FAILED");
+    }
+
+    if (response.status === 404) {
+      throw new NativeLiveMemeSendError("MEME_NOT_FOUND");
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new NativeLiveMemeSendError("MEME_GITHUB_AUTH_FAILED");
+    }
+    if (!response.ok) {
+      throw new NativeLiveMemeSendError("MEME_GITHUB_FETCH_FAILED");
+    }
+
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (
+      Number.isFinite(declaredLength)
+      && declaredLength > MAX_MEME_BYTES
+    ) {
+      throw new NativeLiveMemeSendError("MEME_SOURCE_INVALID");
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = Buffer.from(await response.arrayBuffer());
+    } catch {
+      throw new NativeLiveMemeSendError("MEME_GITHUB_FETCH_FAILED");
+    }
+    if (bytes.length > MAX_MEME_BYTES) {
+      throw new NativeLiveMemeSendError("MEME_SOURCE_INVALID");
+    }
+    return bytes;
+  }
 }
 
 function memeErrorMessage(code: NativeLiveMemeSendErrorCode): string {
   switch (code) {
-    case "MEME_GH_UNAVAILABLE":
-      return "GitHub CLI is unavailable in the Mac daemon environment.";
+    case "MEME_GITHUB_AUTH_MISSING":
+      return "Dedicated GitHub authentication is missing from the Mac daemon.";
+    case "MEME_GITHUB_AUTH_FAILED":
+      return "GitHub rejected the Mac daemon meme credential.";
     case "MEME_NOT_FOUND":
       return "Meme was not found in the fixed GitHub library.";
     case "MEME_GITHUB_FETCH_FAILED":
