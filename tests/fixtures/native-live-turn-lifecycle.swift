@@ -321,4 +321,67 @@ for flag in ["hidden_from_transcript","ambient"] {
     let suppressed = rows(snapshot([message("uA","user",text:"A")]),nil,suppressing).last!.assistant!
     expect(suppressed.stepCount == 0,"late hidden/ambient lineage never resurrects retained execution Activity")
 }
+// Snapshots emitted by real Postgres prepare/finalize and the production API serializer.
+struct BoundaryFixture: Decodable {
+    let operation: String
+    let before: NativeLiveCurrentPathSnapshot
+    let active: NativeLiveTurnSnapshot
+    let failed: NativeLiveCurrentPathSnapshot?
+    let reopened: NativeLiveCurrentPathSnapshot?
+    let canonical: NativeLiveCurrentPathSnapshot?
+}
+let fixtures = try! JSONDecoder().decode([BoundaryFixture].self,from:Data(contentsOf:URL(fileURLWithPath:ProcessInfo.processInfo.environment["LIFECYCLE_BOUNDARY_FIXTURES"] ?? "tests/fixtures/native-live-lifecycle-boundaries.json")))
+for fixture in fixtures {
+    assembler = .init(); identities = .init()
+    if let reopened = fixture.reopened {
+        let freshFailure = rows(reopened,nil,nil)
+        expect(freshFailure.last?.assistant?.phase == .failed && freshFailure.last?.assistant?.copyText == "Partial answer","durable failure owns fresh teardown frame without runtime or pending")
+        assembler = .init(); identities = .init()
+    }
+    let active = fixture.active
+    expect(fixture.operation == "retry" || !fixture.before.messages.contains(where:{$0.id == active.userMessageId}),"real Send/Edit prepared user absent from path")
+    var recovering = NativeLiveRuntimeSurfaceState(prepareID:active.prepareId,conversationID:UUID(uuidString:active.conversationId)!,events:[],interactions:[],controls:[],nextAfterSequence:0,
+        requestID:active.requestId,userMessageID:active.userMessageId,operation:active.operation,startedAt:active.startedAt,
+        preparedUserMessage:active.preparedUserMessage,replacementTargetUserMessageID:active.replacementTargetUserMessageId)
+    let pendingFrame = rows(fixture.before,nil,recovering)
+    expect(pendingFrame.filter{$0.userBacking?.id == active.userMessageId}.count == 1,"fresh recovery restores exactly one real user")
+    expect(pendingFrame.filter{$0.assistant?.prepareID == active.prepareId}.count == 1,"fresh recovery restores exactly one assistant")
+    expect(fixture.operation == "send" || !pendingFrame.contains(where:{$0.assistant?.copyText == "Old answer"}),"fresh replacement masks old answer")
+    if fixture.operation != "send" {
+        assembler = .init(); identities = .init()
+        var paginated = fixture.before
+        paginated = .init(conversationId:paginated.conversationId,title:nil,currentHeadMessageId:paginated.currentHeadMessageId,updatedAt:paginated.updatedAt,syncToken:paginated.syncToken,truncated:true,olderCursor:paginated.messages.last?.id,resetRequired:false,messages:Array(paginated.messages.suffix(1)))
+        let pageRows = rows(paginated,nil,recovering)
+        expect(pageRows.count == 2 && !pageRows.contains(where:{$0.assistant?.copyText == "Old answer"}),"fresh replacement masks descendants when exact user is outside current page")
+        assembler = .init(); identities = .init(); _ = rows(fixture.before,nil,recovering)
+    }
+    let ids = pendingFrame.map(\.id)
+    recovering.events = fixture.failed?.failedTurn?.events ?? [event("partial_text",["delta":.string("Partial answer")],1)]
+    let partial = rows(fixture.before,nil,recovering)
+    expect(partial.map(\.id) == ids && partial.last?.assistant?.copyText == "Partial answer","recovery runtime preserves row IDs and body")
+    if let failed = fixture.failed, let reopened = fixture.reopened {
+        recovering.foregroundTurnCompleted = true; recovering.terminalFailure = active.failureCode ?? "CLAUDE_PROCESS_FAILED"
+        let failure = rows(failed,nil,recovering)
+        let teardown = rows(failed,nil,nil)
+        expect(teardown.map(\.id) == failure.map(\.id),"terminal teardown cannot remove failure owner")
+        expect(teardown.last?.assistant?.phase == .failed && teardown.last?.assistant?.copyText == "Partial answer","teardown retains Failed partial body")
+        expect(teardown.last?.assistant?.activityProjection.tools.map(\.id) == ["tool"],"teardown retains tool Activity")
+        expect(fixture.operation == "send" || !teardown.contains(where:{$0.assistant?.copyText == "Old answer"}),"failed replacement cannot resurrect old answer")
+        assembler = .init(); identities = .init()
+        let fresh = rows(reopened,nil,nil)
+        expect(fresh.map(\.id) == ids && fresh.last?.assistant?.phase == .failed,"fresh reopened failure survives preparation retention")
+        expect(fresh.last?.assistant?.copyText == "Partial answer" && fresh.last?.assistant?.stepCount == 1,"fresh reopen restores body and tool step")
+        if fixture.operation == "retry" {
+            let again = NativeLivePendingOperation(kind:.retry(targetUserMessageID:active.userMessageId),baselineSyncToken:nil)
+            let retryFrame = rows(reopened,again,nil)
+            expect(retryFrame.last?.id == fresh.last?.id && retryFrame.last?.assistant?.copyText == nil,"retrying durable failure reuses visible slot and clears failed body")
+            expect(!retryFrame.contains(where:{$0.assistant?.copyText == "Old answer"}),"retrying durable failure cannot reveal superseded answer")
+        }
+    }
+    if let canonical = fixture.canonical {
+        let completed = rows(canonical,nil,nil)
+        expect(completed.map(\.id) == ids,"fresh recovered canonical handoff never changes IDs")
+        expect(completed.last?.assistant?.copyText == "Partial answer" && completed.last?.assistant?.phase == .completed,"canonical arrival owns exactly one final body")
+    }
+}
 print("Turn lifecycle PASS: \(checks) real Swift frame assertions")

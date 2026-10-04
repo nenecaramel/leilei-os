@@ -5,6 +5,7 @@ import {
 } from "drizzle-orm";
 import {
   nativeLiveTurnPreparations,
+  conversations,
   workspaceConversations,
   workspaces,
 } from "../../../../database/schema.js";
@@ -742,5 +743,15 @@ export async function insertPreparation(
       .returning(this.selection());
 
     if (!row) throw new Error("Native live turn preparation insert failed.");
+    // Replace visible presentation ownership atomically with preparation creation.
+    // The durable marker also prevents a delayed older failure from reclaiming this slot.
+    await executor.update(conversations).set({
+      providerMetadata: sql`jsonb_set(
+        ${conversations.providerMetadata} - 'native_live_failed_turn',
+        '{native_live_presentation_owner}',
+        jsonb_build_object('prepareId', ${input.prepareId}::text,
+          'anchorHeadMessageId', ${conversations.currentHeadMessageId})
+      )`,
+    }).where(and(eq(conversations.id,input.conversationId),eq(conversations.userId,input.userId)));
     return mapPreparation(row);
   }

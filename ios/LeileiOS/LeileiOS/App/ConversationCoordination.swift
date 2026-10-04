@@ -583,7 +583,8 @@ extension AppModel {
                     truncated: page.truncated,
                     olderCursor: page.olderCursor,
                     resetRequired: false,
-                    messages: olderMessages + latest.messages
+                    messages: olderMessages + latest.messages,
+                    failedTurn: latest.failedTurn
                 )
                 chatSyncState = .ready
             }
@@ -641,7 +642,8 @@ extension AppModel {
             truncated: existing.truncated,
             olderCursor: existing.olderCursor,
             resetRequired: false,
-            messages: preservedPrefix + refreshed.messages
+            messages: preservedPrefix + refreshed.messages,
+            failedTurn: refreshed.failedTurn
         )
     }
 
@@ -662,7 +664,8 @@ extension AppModel {
             truncated: existing.truncated,
             olderCursor: existing.olderCursor,
             resetRequired: false,
-            messages: existing.messages + appended
+            messages: existing.messages + appended,
+            failedTurn: delta.failedTurn
         )
     }
 

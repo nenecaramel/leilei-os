@@ -16,11 +16,12 @@ struct NativeLiveAssistantTurnPresentation: Equatable, Identifiable {
     let header: String
     let failure: String?
     var hasAuthoritativeDuration = false
+    var hasCanonicalRetryTarget = true
     var stepCount: Int { activityProjection.activityCount }
     var hasPendingInput: Bool { activityProjection.hasPendingInteraction }
     var copyText: String? { bodyPresentation.copyText }
     var canCopy: Bool { copyText != nil }
-    var canRetry: Bool { parentUserMessageID != nil && (phase == .completed || phase == .failed) }
+    var canRetry: Bool { hasCanonicalRetryTarget && parentUserMessageID != nil && (phase == .completed || phase == .failed) }
     var backgroundState: Bool { phase == .background }
 }
 

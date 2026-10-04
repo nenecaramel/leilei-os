@@ -469,6 +469,8 @@ struct NativeLiveRuntimeSurfaceState:
     var userMessageID: String? = nil
     var operation: String? = nil
     var startedAt: String? = nil
+    var preparedUserMessage: NativeLiveCurrentPathMessage? = nil
+    var replacementTargetUserMessageID: String? = nil
     var terminalFailure: String? = nil
     var foregroundTurnCompleted = false
 

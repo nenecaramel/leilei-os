@@ -101,3 +101,17 @@ Baseline historical failure names (not incidentally fixed):
 10. unauthenticated Native Live internal JSON does not get the larger parser budget
 
 Full-suite comparison is complete. PR: https://github.com/nenecaramel/leilei-os/pull/839 (open, no merge). Commit/push/attach and hygiene:finish completed. Task-owned disposable worktree/dependencies/build/cache/logs and stopped isolated test Postgres will be removed at closeout; owner checkout, running owner daemon and unrelated worktrees are preserved.
+
+
+## Review followup: terminal teardown and fresh recovery
+
+- Backend prepare intentionally leaves the canonical current head unchanged. Active/prepare reads now expose the owner-scoped `preparedUserMessage` and exact `replacementTargetUserMessageId`, including the real parent/block provenance. Fresh clients hydrate that user without pending operations, identity bindings or retained rows. Canonical completion keeps the recovered user/assistant presentation IDs.
+- Failure still writes no canonical assistant/checkpoint and advances no head. Its actual prepared user, request/prepare identity, operation, replacement lineage, start time, failure code, runtime events and interactions are atomically stored as `providerMetadata.native_live_failed_turn`. This is presentation evidence, not a sixth Chat product identity. It survives deletion of operational preparation/events and is returned by owner-scoped current-path reads as `failedTurn`.
+- Foreground observation can clear its in-memory surface once current path owns matching failure evidence. Nil pending + nil runtime, refresh and fresh reopen all reconstruct the unique Failed row, preserving partial body and tool Activity; failed Retry never re-exposes its superseded answer. Retry remains actionable only for a real canonical current-path user, matching the existing backend eligibility contract.
+- A new successful prepare atomically clears the old failure and writes `native_live_presentation_owner` with its prepare ID and unchanged head. Delayed older finalization cannot reclaim that ownership; a changed head prevents reanchoring. Idempotent failure replay cannot revive cleared evidence. Preparations created before this marker existed retain the existing compatibility fallback.
+- Current-path pagination carries failure evidence independently of its canonical page. When an exact replacement target/parent is outside that page, the assembler discards unknown descendants instead of showing the old branch. Conditional refresh includes the failure identity in ETag; absent evidence preserves the old ETag format, and clearing it invalidates the cached failure.
+- Ordinary execution remains Activity evidence. No canonical content/provider protocol, schema, E parser, G sandbox, C downloader, protected workflow/package files, production DB or owner daemon changes.
+- RED evidence: real Postgres active read omitted detached prepared users; previous production Swift assembler lost a fresh failure at nil runtime/pending. GREEN: real Postgres prepare/failure/success fixtures drive production Swift recovery, teardown, reopen, non-root truncated paths, canonical handoff and retry-slot checks.
+- Independent requesting-code-review review found the truncated-page descendant defect; fixed with a non-root fixture and re-reviewed with no remaining Important finding.
+
+Followup verification ledger will be recorded after all gates and exact-main name comparison finish.

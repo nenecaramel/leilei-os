@@ -5,9 +5,12 @@ struct NativeLiveConversationPresentationAssembler {
     private var previous: [String: NativeLiveAssistantTurnPresentation] = [:]
     private var generationOwners: [String:String] = [:]
     private var retainedUsers: [String:NativeLiveConversationRowPresentation] = [:]
+    private var visibleAssistantIDsByUser: [String:String] = [:]
     private var canonicalIDs: [String:String] = [:]
     func pendingIDs(_ operation: NativeLivePendingOperation, snapshot: NativeLiveCurrentPathSnapshot?, identities: NativeLiveTurnIdentityCoordinator) -> (user:String,assistant:String) {
         let ids = identities.pendingIDs(operation,snapshot:snapshot)
+        if identities.bindings[operation.id] == nil, let target = operation.targetUserMessageID,
+           let stable = visibleAssistantIDsByUser[target] { return (ids.user,stable) }
         guard identities.bindings[operation.id] == nil, let target = operation.targetUserMessageID,
               let assistant = snapshot?.messages.first(where:{ $0.role == "assistant" && $0.parentMessageId == target }),
               let stable = canonicalIDs[assistant.id] else { return ids }
@@ -19,7 +22,10 @@ struct NativeLiveConversationPresentationAssembler {
         var messages = pendingOperation?.isDraftConversation == true ? [] : snapshot?.messages ?? []
         let binding = pendingOperation.flatMap { identities.bindings[$0.id] }
         let conversationID = snapshot?.conversationId
-        let runtime = runtimeSurface.flatMap { surface -> NativeLiveRuntimeSurfaceState? in
+        let failure = snapshot?.failedTurn.flatMap { evidence in
+            evidence.anchorHeadMessageId == snapshot?.currentHeadMessageId ? evidence.runtimeSurface : nil
+        }
+        let runtime = (runtimeSurface ?? (pendingOperation == nil ? failure : nil)).flatMap { surface -> NativeLiveRuntimeSurfaceState? in
             guard conversationID == nil || surface.conversationID.uuidString.caseInsensitiveCompare(conversationID!) == .orderedSame else { return nil }
             if let pendingOperation { guard binding?.prepareID == surface.prepareID else { return nil }; _ = pendingOperation }
             return surface
@@ -34,6 +40,26 @@ struct NativeLiveConversationPresentationAssembler {
            !messages.contains(where:{ $0.activity?.prepareId == runtime.prepareID }),
            let user = runtime.userMessageID, let index = messages.firstIndex(where:{ $0.role == "user" && $0.id == user }) {
             messages = Array(messages.prefix(index+1))
+        }
+        // A prepared Send/Edit user is durable but intentionally detached from the current head.
+        // Hydrate only the backend's exact user and replacement lineage; never infer by text/time.
+        if pendingOperation == nil, let runtime,
+           !messages.contains(where:{ $0.activity?.prepareId == runtime.prepareID }),
+           let user = runtime.preparedUserMessage, user.id == runtime.userMessageID,
+           user.role == "user", user.conversationId.caseInsensitiveCompare(runtime.conversationID.uuidString) == .orderedSame,
+           !messages.contains(where:{ $0.id == user.id }) {
+            if let target = runtime.replacementTargetUserMessageID,
+               let index = messages.firstIndex(where:{ $0.id == target && $0.role == "user" }) {
+                messages = Array(messages.prefix(index))
+            } else if let parent = user.parentMessageId,
+                      let index = messages.firstIndex(where:{ $0.id == parent }) {
+                messages = Array(messages.prefix(index+1))
+            } else {
+                // The current page may contain only descendants of an older replacement.
+                // An absent exact target/parent is not permission to keep those stale siblings.
+                messages = []
+            }
+            messages.append(user)
         }
         let recoveredBinding = runtime.flatMap { identities.binding(prepareID:$0.prepareID) }
         if pendingOperation == nil, let runtime, !messages.contains(where:{ $0.id == runtime.userMessageID }),
@@ -95,8 +121,12 @@ struct NativeLiveConversationPresentationAssembler {
             let stable = identities.binding(prepareID:runtime.prepareID)?.stableAssistantID ?? "turn:prepare:\(runtime.prepareID)"
             // An active retry/edit owns its parent slot. Old siblings belong only to history.
             rows.removeAll { $0.assistant?.parentUserMessageID == user }
-            let turn = makeTurn(id:stable,message:nil,runtime:runtime,pending:nil,identities:identities,now:now)
+            var turn = makeTurn(id:stable,message:nil,runtime:runtime,pending:nil,identities:identities,now:now)
+            turn.hasCanonicalRetryTarget = snapshot?.messages.contains(where:{ $0.id == user && $0.role == "user" }) == true
             rows.append(.init(id:stable,user:nil,userBacking:nil,assistant:turn))
+        }
+        for row in rows {
+            if let turn = row.assistant, let user = turn.parentUserMessageID { visibleAssistantIDsByUser[user] = row.id }
         }
         for row in rows where row.user != nil { retainedUsers[row.id] = row }
         if previous.count > 2000 || retainedUsers.count > 2000 {
@@ -104,6 +134,7 @@ struct NativeLiveConversationPresentationAssembler {
             previous = previous.filter { live.contains($0.key) }
             retainedUsers = retainedUsers.filter { live.contains($0.key) }
             generationOwners = generationOwners.filter { live.contains($0.key) }
+            visibleAssistantIDsByUser = visibleAssistantIDsByUser.filter { live.contains($0.value) }
             canonicalIDs = canonicalIDs.filter { live.contains($0.value) }
         }
         return rows

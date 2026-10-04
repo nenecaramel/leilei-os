@@ -87,6 +87,7 @@ export async function readTurn(
         requestId: nativeLiveTurnPreparations.requestId,
         conversationId: nativeLiveTurnPreparations.conversationId,
         operation: nativeLiveTurnPreparations.operation,
+        replacementTargetUserMessageId: nativeLiveTurnPreparations.replacementTargetUserMessageId,
         canonicalUserMessageId:
           nativeLiveTurnPreparations.canonicalUserMessageId,
         workspaceId: nativeLiveTurnPreparations.workspaceId,
@@ -125,22 +126,11 @@ export async function readTurn(
       )
       .limit(1);
 
-    let assistantMessage: NativeLiveMessage | null = null;
-    if (row.assistantMessageId) {
-      const conversations =
-        new DrizzleNativeLiveConversationRepository(this.db);
-      const conversation = await conversations.getConversation({
-        userId: input.userId,
-        conversationId: row.conversationId,
-      });
-      assistantMessage =
-        conversation?.messages.find(
-          (message) => message.id === row.assistantMessageId,
-        ) ?? null;
-      if (!assistantMessage) {
-        throw new Error("Finalized assistant message was not found.");
-      }
-    }
+    const conversation = await new DrizzleNativeLiveConversationRepository(this.db).getConversation({ userId:input.userId,conversationId:row.conversationId });
+    const preparedUserMessage = conversation?.messages.find(message => message.id === row.canonicalUserMessageId && message.role === "user");
+    if (!preparedUserMessage) throw new Error("Prepared user message was not found.");
+    const assistantMessage = row.assistantMessageId ? conversation?.messages.find(message => message.id === row.assistantMessageId) ?? null : null;
+    if (row.assistantMessageId && !assistantMessage) throw new Error("Finalized assistant message was not found.");
 
     return {
       prepareId: row.id,
@@ -148,6 +138,8 @@ export async function readTurn(
       requestId: row.requestId,
       conversationId: row.conversationId,
       operation: row.operation,
+      preparedUserMessage,
+      replacementTargetUserMessageId: row.replacementTargetUserMessageId ?? (row.operation === "retry" ? row.canonicalUserMessageId : null),
       canonicalUserMessageId: row.canonicalUserMessageId,
       workspaceId: row.workspaceId,
       expectedWorkspaceRoot: row.expectedWorkspaceRoot,

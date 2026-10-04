@@ -45,7 +45,8 @@ extension AppModel {
     func beginNativeLiveRuntimeObservation(
         prepareID: String,
         conversationID: UUID,
-        requestID: String? = nil, userMessageID: String? = nil, operation: String? = nil, startedAt: String? = nil
+        requestID: String? = nil, userMessageID: String? = nil, operation: String? = nil, startedAt: String? = nil,
+        preparedUserMessage: NativeLiveCurrentPathMessage? = nil, replacementTargetUserMessageID: String? = nil
     ) {
         if let previous = nativeLiveRuntimeSurface,
            previous.prepareID != prepareID,
@@ -64,7 +65,8 @@ extension AppModel {
             interactions: [],
             controls: [],
             nextAfterSequence: 0,
-            requestID:requestID, userMessageID:userMessageID, operation:operation, startedAt:startedAt
+            requestID:requestID, userMessageID:userMessageID, operation:operation, startedAt:startedAt,
+            preparedUserMessage:preparedUserMessage, replacementTargetUserMessageID:replacementTargetUserMessageID
         )
 
         nativeLiveRuntimeObservationTask = Task { @MainActor [weak self] in
@@ -354,7 +356,8 @@ extension AppModel {
         // A failed/interrupted turn may have no canonical assistant. Retain its visible
         // body/evidence until authoritative replacement or conversation teardown.
         let hasCanonical = nativeLiveCurrentPath?.messages.contains { $0.role == "assistant" && $0.activity?.prepareId == prepareID } == true
-        if hasCanonical { nativeLiveRuntimeSurface = nil }
+        let hasDurableFailure = nativeLiveCurrentPath?.failedTurn?.prepareId == prepareID
+        if hasCanonical || hasDurableFailure { nativeLiveRuntimeSurface = nil }
         else { nativeLiveRuntimeSurface?.foregroundTurnCompleted = true }
     }
 

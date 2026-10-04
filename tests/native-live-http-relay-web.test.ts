@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import type { NativeLiveCurrentPathSnapshot } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import type {
   NativeLiveRelayPrepareResult,
 } from "../src/domains/bridge/relay/native-live-backend-relay-prepare.js";
@@ -718,4 +720,31 @@ test("web owner can create and list foreground mid-turn and interrupt controls",
       ]);
     },
   );
+});
+
+test("current-path ETag changes for durable failure and clearing without advancing canonical head", async () => {
+  const [fixture] = JSON.parse(fs.readFileSync("tests/fixtures/native-live-lifecycle-boundaries.json","utf8")) as Array<{before:NativeLiveCurrentPathSnapshot;failed:NativeLiveCurrentPathSnapshot}>;
+  let snapshot = fixture.before;
+  await withServer(app => {
+    app.use((request,_response,next) => { request.webUserId = userId; next(); });
+    app.use("/api/v1/native-live",createNativeLiveApiRouter({currentPathReader:{readCurrentPath:async()=>snapshot}}));
+  },async baseUrl => {
+    const url = `${baseUrl}/api/v1/native-live/conversations/${snapshot.conversationId}/current-path`;
+    const before = await fetch(url);
+    assert.equal(before.status,200);
+    const initialETag = before.headers.get("etag")!;
+    snapshot = fixture.failed;
+    assert.equal(snapshot.currentHeadMessageId,fixture.before.currentHeadMessageId);
+    assert.equal(snapshot.syncToken,fixture.before.syncToken);
+    const failed = await fetch(url,{headers:{"if-none-match":initialETag}});
+    assert.equal(failed.status,200,"failure evidence must invalidate same-head conditional refresh");
+    const failureETag = failed.headers.get("etag")!;
+    assert.notEqual(failureETag,initialETag);
+    assert.equal((await failed.json()).data.failedTurn.prepareId,snapshot.failedTurn?.prepareId);
+    assert.equal((await fetch(url,{headers:{"if-none-match":failureETag}})).status,304);
+    snapshot = {...fixture.before,failedTurn:null};
+    const cleared = await fetch(url,{headers:{"if-none-match":failureETag}});
+    assert.equal(cleared.status,200,"new preparation cannot leave a cached failure visible");
+    assert.equal(cleared.headers.get("etag"),initialETag,"absent overlay preserves the existing ETag contract");
+  });
 });

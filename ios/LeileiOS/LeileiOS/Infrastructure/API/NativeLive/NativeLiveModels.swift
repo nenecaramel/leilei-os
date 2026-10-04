@@ -171,6 +171,7 @@ struct NativeLiveCurrentPathSnapshot: Decodable, Sendable, Equatable {
     let olderCursor: String?
     let resetRequired: Bool
     let messages: [NativeLiveCurrentPathMessage]
+    var failedTurn: NativeLiveFailedTurnSnapshot? = nil
 }
 
 struct NativeLiveMessageActivitySnapshot:
@@ -369,6 +370,8 @@ struct NativeLiveExecutionSelection: Codable, Sendable, Equatable {
 }
 
 struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
+    var preparedUserMessage: NativeLiveCurrentPathMessage? = nil
+    var replacementTargetUserMessageId: String? = nil
     var startedAt: String? = nil
     let outcome: String
     let semanticPending: Bool
@@ -381,6 +384,8 @@ struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
 }
 
 struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
+    var preparedUserMessage: NativeLiveCurrentPathMessage? = nil
+    var replacementTargetUserMessageId: String? = nil
     var startedAt: String? = nil
     let prepareId: String
     let requestId: String
@@ -729,4 +734,31 @@ struct NativeLiveRuntimeExecutionReadback: Decodable, Sendable, Equatable {
 struct NativeLiveRuntimeExecutionApplied: Decodable, Sendable, Equatable {
     let model: String?
     let effort: String?
+}
+
+// Backend-owned evidence survives preparation/event retention without forging a Chat identity.
+struct NativeLiveFailedTurnSnapshot: Decodable, Sendable, Equatable {
+    let prepareId: String
+    let requestId: String
+    let conversationId: String
+    let operation: String
+    let userMessageId: String
+    let preparedUserMessage: NativeLiveCurrentPathMessage
+    let replacementTargetUserMessageId: String?
+    let anchorHeadMessageId: String?
+    let startedAt: String
+    let failureCode: String
+    let events: [NativeLiveRuntimeEventSnapshot]
+    let interactions: [NativeLiveRuntimeInteractionSnapshot]
+
+    var runtimeSurface: NativeLiveRuntimeSurfaceState? {
+        guard let conversation = UUID(uuidString:conversationId),
+              preparedUserMessage.id == userMessageId,
+              preparedUserMessage.conversationId == conversationId,
+              preparedUserMessage.role == "user" else { return nil }
+        return .init(prepareID:prepareId,conversationID:conversation,events:events,interactions:interactions,controls:[],
+            nextAfterSequence:events.last?.sequence ?? 0,requestID:requestId,userMessageID:userMessageId,operation:operation,
+            startedAt:startedAt,preparedUserMessage:preparedUserMessage,replacementTargetUserMessageID:replacementTargetUserMessageId,
+            terminalFailure:failureCode,foregroundTurnCompleted:true)
+    }
 }

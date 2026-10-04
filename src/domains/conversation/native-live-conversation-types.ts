@@ -106,3 +106,20 @@ export type NativeLiveProviderCheckpointInput = {
   providerCheckpointId?: string | null;
   runtimeMetadata?: Record<string, unknown> | null;
 };
+
+// Presentation evidence only: failure does not manufacture a canonical assistant/checkpoint.
+// Stored in owner-scoped conversation metadata, independently of operational retention.
+export type NativeLiveFailedTurnEvidence = {
+  prepareId: string;
+  requestId: string;
+  conversationId: string;
+  operation: "send" | "edit" | "retry";
+  userMessageId: string;
+  preparedUserMessage: NativeLiveMessage;
+  replacementTargetUserMessageId: string | null;
+  anchorHeadMessageId: string | null;
+  startedAt: string;
+  failureCode: string;
+  events: NativeLiveMessageActivity["events"];
+  interactions: NativeLiveMessageActivity["interactions"];
+};

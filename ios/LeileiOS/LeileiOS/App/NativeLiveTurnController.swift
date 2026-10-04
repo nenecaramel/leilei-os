@@ -236,7 +236,8 @@ extension AppModel {
             beginNativeLiveRuntimeObservation(
                 prepareID: turn.prepareId,
                 conversationID: conversationID,
-                requestID:turn.requestId, userMessageID:turn.userMessageId, operation:turn.operation, startedAt:turn.startedAt
+                requestID:turn.requestId, userMessageID:turn.userMessageId, operation:turn.operation, startedAt:turn.startedAt,
+                preparedUserMessage:turn.preparedUserMessage, replacementTargetUserMessageID:turn.replacementTargetUserMessageId
             )
             var shouldStopRuntimeObservation = true
             defer {
@@ -287,7 +288,8 @@ extension AppModel {
         beginNativeLiveRuntimeObservation(
             prepareID: prepared.prepareId,
             conversationID: conversationID,
-            requestID:prepared.requestId, userMessageID:prepared.userMessageId, startedAt:prepared.startedAt
+            requestID:prepared.requestId, userMessageID:prepared.userMessageId, startedAt:prepared.startedAt,
+            preparedUserMessage:prepared.preparedUserMessage, replacementTargetUserMessageID:prepared.replacementTargetUserMessageId
         )
         var shouldStopRuntimeObservation = true
         defer {
