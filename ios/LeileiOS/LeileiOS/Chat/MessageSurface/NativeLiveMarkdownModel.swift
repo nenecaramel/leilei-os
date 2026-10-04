@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 nonisolated struct NativeLiveMarkdownPresentation: Equatable, Sendable {
     enum Style: Equatable, Sendable {
@@ -12,10 +13,16 @@ nonisolated struct NativeLiveMarkdownPresentation: Equatable, Sendable {
         // HTML remains literal. Native inline parsing never grants link authority.
         guard !source.contains("<"), var value = try? AttributedString(markdown: source,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else { return AttributedString(source) }
-        for run in value.runs {
-            if let link = run.link, NativeLiveLinkCapability.openableURL(link.absoluteString) == nil {
+        let linkRuns = value.runs.compactMap { run in
+            run.link.map { (range: run.range, link: $0) }
+        }
+        for run in linkRuns {
+            guard NativeLiveLinkCapability.openableURL(run.link.absoluteString) != nil else {
                 value[run.range].link = nil
+                continue
             }
+            value[run.range].foregroundColor = .accentColor
+            value[run.range].underlineStyle = .single
         }
         return value
     }
