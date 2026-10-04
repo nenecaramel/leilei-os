@@ -45,6 +45,16 @@ export function extractNativeLiveMurmur(
     if (danglingOpen >= 0) {
       visibleText = visibleText.slice(0, danglingOpen);
     }
+    const marker = visibleText.lastIndexOf("<");
+    if (marker >= 0) {
+      const suffix = visibleText.slice(marker).toLowerCase();
+      if (
+        "<murmur>".startsWith(suffix)
+        || "</murmur>".startsWith(suffix)
+      ) {
+        visibleText = visibleText.slice(0, marker);
+      }
+    }
     visibleText = visibleText
       .replace(MURMUR_TAG_PATTERN, "")
       .trim();
