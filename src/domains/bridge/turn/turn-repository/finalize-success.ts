@@ -1,6 +1,9 @@
 import {
   and,
   eq,
+  gt,
+  ne,
+  or,
   sql,
 } from "drizzle-orm";
 import {
@@ -151,25 +154,50 @@ export async function finalizeSuccess(
 
             canonicalWritePhase = "wake_newer_user";
             const newerUser = sourceUser
-              ? await transaction.execute<{ id: string }>(sql`
-                  SELECT message.id
-                  FROM conversation_messages AS message
-                  JOIN conversations AS conversation
-                    ON conversation.id = message.conversation_id
-                   AND conversation.user_id = message.user_id
-                  WHERE message.user_id = ${input.userId}::uuid
-                    AND message.role = 'user'
-                    AND conversation.origin = 'native_live'
-                    AND conversation.lifecycle_status = 'active'
-                    AND (
-                      message.created_at > ${sourceUser.createdAt}
-                      OR (
-                        message.created_at = ${sourceUser.createdAt}
-                        AND message.id <> ${sourceUser.id}::uuid
-                      )
-                    )
-                  LIMIT 1
-                `)
+              ? await transaction
+                  .select({ id: conversationMessages.id })
+                  .from(conversationMessages)
+                  .innerJoin(
+                    conversationTable,
+                    and(
+                      eq(
+                        conversationTable.id,
+                        conversationMessages.conversationId,
+                      ),
+                      eq(
+                        conversationTable.userId,
+                        conversationMessages.userId,
+                      ),
+                    ),
+                  )
+                  .where(
+                    and(
+                      eq(conversationMessages.userId, input.userId),
+                      eq(conversationMessages.role, "user"),
+                      eq(conversationTable.origin, "native_live"),
+                      eq(
+                        conversationTable.lifecycleStatus,
+                        "active",
+                      ),
+                      or(
+                        gt(
+                          conversationMessages.createdAt,
+                          sourceUser.createdAt,
+                        ),
+                        and(
+                          eq(
+                            conversationMessages.createdAt,
+                            sourceUser.createdAt,
+                          ),
+                          ne(
+                            conversationMessages.id,
+                            sourceUser.id,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .limit(1)
               : [{ id: "missing-source-user" }];
 
             if (
