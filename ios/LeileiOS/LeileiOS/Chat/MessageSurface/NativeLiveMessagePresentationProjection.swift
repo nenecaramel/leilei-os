@@ -1,10 +1,12 @@
 import Foundation
 
 enum NativeLiveMessagePresentationProjector {
-    static func project(_ source: NativeLiveMessagePresentationSource) -> NativeLiveMessagePresentation {
+    static func project(_ source: NativeLiveMessagePresentationSource, presentationNamespace: String? = nil) -> NativeLiveMessagePresentation {
         let ordered = source.blocks.enumerated().sorted {
             $0.element.ordinal == $1.element.ordinal ? $0.offset < $1.offset : $0.element.ordinal < $1.element.ordinal
         }
+        var visibleIndexByKind: [String:Int] = [:]
+        var logicalTextOffset = 0
         let nodes: [NativeLiveVisualNode] = ordered.compactMap { _, block in
             // Activity reads original ledger rows independently of Chat projection.
             if block.kind == "tool_use" || block.kind == "tool_result" { return nil }
@@ -24,16 +26,37 @@ enum NativeLiveMessagePresentationProjector {
                 source: source.attachmentSources[block.id] ?? .authoritative) : nil
             var node = NativeLiveVisualNode(kind: kind, text: text, sourceBlock: block, attachment: attachment,
                          fallback: fallback(block, attachment: attachment))
+            if let presentationNamespace {
+                let index = visibleIndexByKind[block.kind,default:0]
+                visibleIndexByKind[block.kind] = index+1
+                node.presentationID = "\(presentationNamespace):block:\(block.kind):\(index)"
+            }
             if kind == .canonicalToolResult {
                 let (status,children) = NativeLiveStructuredToolResultProjector.project(block)
                 node.structuredStatus = status; node.children = children
             } else if block.kind == "text", source.role == "assistant" {
                 node.citations = NativeLiveCitationRelation.parse(block.payload?["citations"])
             }
-            if kind == .markdown { node.children = NativeLiveRichTextProjector.project(node) }
+            if kind == .markdown {
+                node.children = NativeLiveRichTextProjector.project(node)
+                if let presentationNamespace, source.role == "assistant" {
+                    node.children = namespaceRich(node.children,namespace:presentationNamespace,offset:logicalTextOffset)
+                    logicalTextOffset += (node.text?.utf16.count ?? 0) + 2
+                }
+            }
             return node
         }
         return .init(messageID: source.messageID, role: source.role, nodes: nodes)
+    }
+
+    private static func namespaceRich(_ children: [NativeLiveVisualNode],namespace: String,offset: Int) -> [NativeLiveVisualNode] {
+        children.map { value in
+            var child = value
+            let kind = child.rendersInlineChildren ? "inline" : child.kind.rawValue
+            child.presentationID = "\(namespace):rich:\(offset + (child.sourceRangeUTF16?.lowerBound ?? 0)):\(kind)"
+            child.children = namespaceRich(child.children,namespace:namespace,offset:offset)
+            return child
+        }
     }
 
     private static func normalizedText(_ text: String?) -> String? {

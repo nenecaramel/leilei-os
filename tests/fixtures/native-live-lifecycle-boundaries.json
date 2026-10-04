@@ -1,0 +1,2174 @@
+[
+  {
+    "operation": "send",
+    "before": {
+      "failedTurn": null,
+      "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+      "title": "send",
+      "currentHeadMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+      "updatedAt": "2026-10-04T02:06:29.103Z",
+      "syncToken": "head:98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "5ff08f19-8532-4e86-9c56-464410ed2757",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.088Z",
+          "completedAt": "2026-10-04T02:06:29.088Z",
+          "blocks": [
+            {
+              "id": "75631e8d-1d16-45ac-abe9-68a5c544ac1c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.090Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "e1e7c24a-3907-4a20-8118-855a07d075d8",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "5ff08f19-8532-4e86-9c56-464410ed2757",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.092Z",
+          "completedAt": "2026-10-04T02:06:29.091Z",
+          "blocks": [
+            {
+              "id": "aa9a3dc7-045a-425e-94af-d3998a314f3c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.097Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "ce7e02b7-4b8e-4236-84dd-f6f3c3b08793",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "e1e7c24a-3907-4a20-8118-855a07d075d8",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.099Z",
+          "completedAt": "2026-10-04T02:06:29.099Z",
+          "blocks": [
+            {
+              "id": "78e36ccf-7dc8-4e7b-8597-b1aca28d223d",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.100Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "ce7e02b7-4b8e-4236-84dd-f6f3c3b08793",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.101Z",
+          "completedAt": "2026-10-04T02:06:29.101Z",
+          "blocks": [
+            {
+              "id": "354f4ed5-2764-4b9b-a052-c6dee72acb82",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.102Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "active": {
+      "startedAt": "2026-10-04T02:06:29.106Z",
+      "prepareId": "c91f5d43-3abe-412d-a5a2-bf26e40bc34a",
+      "requestId": "fbe0c2bf-5f40-445e-82d6-bc27bab2efde",
+      "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+      "operation": "send",
+      "preparedUserMessage": {
+        "id": "001ee78a-5532-4346-98d0-068c6ff7b8fb",
+        "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+        "parentMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+        "role": "user",
+        "status": "completed",
+        "createdAt": "2026-10-04T02:06:29.106Z",
+        "completedAt": "2026-10-04T02:06:29.109Z",
+        "blocks": [
+          {
+            "id": "d05dcac4-473c-4f44-a056-a6a4b738a206",
+            "ordinal": 0,
+            "kind": "text",
+            "text": "New send",
+            "payload": null,
+            "rawType": "text",
+            "createdAt": "2026-10-04T02:06:29.106Z"
+          }
+        ]
+      },
+      "replacementTargetUserMessageId": null,
+      "userMessageId": "001ee78a-5532-4346-98d0-068c6ff7b8fb",
+      "workspaceId": null,
+      "expectedWorkspaceRoot": null,
+      "executionSelection": null,
+      "canonicalStatus": "prepared",
+      "dispatchStatus": "staged",
+      "semanticStatus": null,
+      "semanticFallbackCode": null,
+      "failureCode": null,
+      "runtimeMetadata": null,
+      "assistantMessage": null
+    },
+    "failed": {
+      "failedTurn": {
+        "events": [
+          {
+            "event": {
+              "type": "partial_text",
+              "payload": {
+                "delta": "Partial answer"
+              }
+            },
+            "sequence": 1,
+            "createdAt": "2026-10-04T02:06:29.116Z"
+          },
+          {
+            "event": {
+              "type": "tool_use",
+              "payload": {
+                "input": {
+                  "path": "a.ts"
+                },
+                "tool_name": "Read",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 2,
+            "createdAt": "2026-10-04T02:06:29.116Z"
+          },
+          {
+            "event": {
+              "type": "tool_result",
+              "payload": {
+                "output": "contents",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 3,
+            "createdAt": "2026-10-04T02:06:29.116Z"
+          }
+        ],
+        "operation": "send",
+        "prepareId": "c91f5d43-3abe-412d-a5a2-bf26e40bc34a",
+        "requestId": "fbe0c2bf-5f40-445e-82d6-bc27bab2efde",
+        "startedAt": "2026-10-04T02:06:29.106Z",
+        "failureCode": "CLAUDE_PROCESS_FAILED",
+        "interactions": [],
+        "userMessageId": "001ee78a-5532-4346-98d0-068c6ff7b8fb",
+        "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+        "anchorHeadMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+        "preparedUserMessage": {
+          "id": "001ee78a-5532-4346-98d0-068c6ff7b8fb",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "d05dcac4-473c-4f44-a056-a6a4b738a206",
+              "kind": "text",
+              "text": "New send",
+              "ordinal": 0,
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.106Z"
+            }
+          ],
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.106Z",
+          "completedAt": "2026-10-04T02:06:29.109Z",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3"
+        },
+        "replacementTargetUserMessageId": null
+      },
+      "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+      "title": "send",
+      "currentHeadMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+      "updatedAt": "2026-10-04T02:06:29.118Z",
+      "syncToken": "head:98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "5ff08f19-8532-4e86-9c56-464410ed2757",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.088Z",
+          "completedAt": "2026-10-04T02:06:29.088Z",
+          "blocks": [
+            {
+              "id": "75631e8d-1d16-45ac-abe9-68a5c544ac1c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.090Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "e1e7c24a-3907-4a20-8118-855a07d075d8",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "5ff08f19-8532-4e86-9c56-464410ed2757",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.092Z",
+          "completedAt": "2026-10-04T02:06:29.091Z",
+          "blocks": [
+            {
+              "id": "aa9a3dc7-045a-425e-94af-d3998a314f3c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.097Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "ce7e02b7-4b8e-4236-84dd-f6f3c3b08793",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "e1e7c24a-3907-4a20-8118-855a07d075d8",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.099Z",
+          "completedAt": "2026-10-04T02:06:29.099Z",
+          "blocks": [
+            {
+              "id": "78e36ccf-7dc8-4e7b-8597-b1aca28d223d",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.100Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "ce7e02b7-4b8e-4236-84dd-f6f3c3b08793",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.101Z",
+          "completedAt": "2026-10-04T02:06:29.101Z",
+          "blocks": [
+            {
+              "id": "354f4ed5-2764-4b9b-a052-c6dee72acb82",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.102Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "reopened": {
+      "failedTurn": {
+        "events": [
+          {
+            "event": {
+              "type": "partial_text",
+              "payload": {
+                "delta": "Partial answer"
+              }
+            },
+            "sequence": 1,
+            "createdAt": "2026-10-04T02:06:29.116Z"
+          },
+          {
+            "event": {
+              "type": "tool_use",
+              "payload": {
+                "input": {
+                  "path": "a.ts"
+                },
+                "tool_name": "Read",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 2,
+            "createdAt": "2026-10-04T02:06:29.116Z"
+          },
+          {
+            "event": {
+              "type": "tool_result",
+              "payload": {
+                "output": "contents",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 3,
+            "createdAt": "2026-10-04T02:06:29.116Z"
+          }
+        ],
+        "operation": "send",
+        "prepareId": "c91f5d43-3abe-412d-a5a2-bf26e40bc34a",
+        "requestId": "fbe0c2bf-5f40-445e-82d6-bc27bab2efde",
+        "startedAt": "2026-10-04T02:06:29.106Z",
+        "failureCode": "CLAUDE_PROCESS_FAILED",
+        "interactions": [],
+        "userMessageId": "001ee78a-5532-4346-98d0-068c6ff7b8fb",
+        "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+        "anchorHeadMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+        "preparedUserMessage": {
+          "id": "001ee78a-5532-4346-98d0-068c6ff7b8fb",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "d05dcac4-473c-4f44-a056-a6a4b738a206",
+              "kind": "text",
+              "text": "New send",
+              "ordinal": 0,
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.106Z"
+            }
+          ],
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.106Z",
+          "completedAt": "2026-10-04T02:06:29.109Z",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3"
+        },
+        "replacementTargetUserMessageId": null
+      },
+      "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+      "title": "send",
+      "currentHeadMessageId": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+      "updatedAt": "2026-10-04T02:06:29.118Z",
+      "syncToken": "head:98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "5ff08f19-8532-4e86-9c56-464410ed2757",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.088Z",
+          "completedAt": "2026-10-04T02:06:29.088Z",
+          "blocks": [
+            {
+              "id": "75631e8d-1d16-45ac-abe9-68a5c544ac1c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.090Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "e1e7c24a-3907-4a20-8118-855a07d075d8",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "5ff08f19-8532-4e86-9c56-464410ed2757",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.092Z",
+          "completedAt": "2026-10-04T02:06:29.091Z",
+          "blocks": [
+            {
+              "id": "aa9a3dc7-045a-425e-94af-d3998a314f3c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.097Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "ce7e02b7-4b8e-4236-84dd-f6f3c3b08793",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "e1e7c24a-3907-4a20-8118-855a07d075d8",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.099Z",
+          "completedAt": "2026-10-04T02:06:29.099Z",
+          "blocks": [
+            {
+              "id": "78e36ccf-7dc8-4e7b-8597-b1aca28d223d",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.100Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "98f5db7e-16b1-4108-a053-bf49f5cf74c3",
+          "conversationId": "f4319679-63e4-4248-8c48-9d6d41d513c8",
+          "parentMessageId": "ce7e02b7-4b8e-4236-84dd-f6f3c3b08793",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.101Z",
+          "completedAt": "2026-10-04T02:06:29.101Z",
+          "blocks": [
+            {
+              "id": "354f4ed5-2764-4b9b-a052-c6dee72acb82",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.102Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    }
+  },
+  {
+    "operation": "edit",
+    "before": {
+      "failedTurn": null,
+      "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+      "title": "edit",
+      "currentHeadMessageId": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+      "updatedAt": "2026-10-04T02:06:29.138Z",
+      "syncToken": "head:d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "b2116425-258f-4fe9-a98e-b8cbe7ba1700",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.128Z",
+          "completedAt": "2026-10-04T02:06:29.128Z",
+          "blocks": [
+            {
+              "id": "ae85c310-a3f5-457d-87fb-f792fa8b32d4",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.129Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "b2116425-258f-4fe9-a98e-b8cbe7ba1700",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.130Z",
+          "completedAt": "2026-10-04T02:06:29.130Z",
+          "blocks": [
+            {
+              "id": "8cd56de0-4567-4cd8-81a3-b493dd031095",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.130Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.132Z",
+          "completedAt": "2026-10-04T02:06:29.132Z",
+          "blocks": [
+            {
+              "id": "0dd242c4-8395-45bf-b309-37b0dff3d557",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.134Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.136Z",
+          "completedAt": "2026-10-04T02:06:29.135Z",
+          "blocks": [
+            {
+              "id": "aaee6e0a-4ec1-466e-8421-35d71d33e95b",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.136Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "active": {
+      "startedAt": "2026-10-04T02:06:29.138Z",
+      "prepareId": "d6b9ddb8-11c8-442d-855c-519b21c46347",
+      "requestId": "347d8f2e-810f-4c9c-a5c2-bdb6376d2b77",
+      "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+      "operation": "edit",
+      "preparedUserMessage": {
+        "id": "570c1a6c-64f0-4d10-9f18-3ccdcd77a796",
+        "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+        "parentMessageId": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+        "role": "user",
+        "status": "completed",
+        "createdAt": "2026-10-04T02:06:29.138Z",
+        "completedAt": "2026-10-04T02:06:29.141Z",
+        "blocks": [
+          {
+            "id": "2df4d728-aefd-46a7-ba22-0138d557c094",
+            "ordinal": 0,
+            "kind": "text",
+            "text": "Edited",
+            "payload": null,
+            "rawType": "text",
+            "createdAt": "2026-10-04T02:06:29.138Z"
+          }
+        ]
+      },
+      "replacementTargetUserMessageId": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+      "userMessageId": "570c1a6c-64f0-4d10-9f18-3ccdcd77a796",
+      "workspaceId": null,
+      "expectedWorkspaceRoot": null,
+      "executionSelection": null,
+      "canonicalStatus": "prepared",
+      "dispatchStatus": "staged",
+      "semanticStatus": null,
+      "semanticFallbackCode": null,
+      "failureCode": null,
+      "runtimeMetadata": null,
+      "assistantMessage": null
+    },
+    "failed": {
+      "failedTurn": {
+        "events": [
+          {
+            "event": {
+              "type": "partial_text",
+              "payload": {
+                "delta": "Partial answer"
+              }
+            },
+            "sequence": 1,
+            "createdAt": "2026-10-04T02:06:29.146Z"
+          },
+          {
+            "event": {
+              "type": "tool_use",
+              "payload": {
+                "input": {
+                  "path": "a.ts"
+                },
+                "tool_name": "Read",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 2,
+            "createdAt": "2026-10-04T02:06:29.146Z"
+          },
+          {
+            "event": {
+              "type": "tool_result",
+              "payload": {
+                "output": "contents",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 3,
+            "createdAt": "2026-10-04T02:06:29.146Z"
+          }
+        ],
+        "operation": "edit",
+        "prepareId": "d6b9ddb8-11c8-442d-855c-519b21c46347",
+        "requestId": "347d8f2e-810f-4c9c-a5c2-bdb6376d2b77",
+        "startedAt": "2026-10-04T02:06:29.138Z",
+        "failureCode": "CLAUDE_PROCESS_FAILED",
+        "interactions": [],
+        "userMessageId": "570c1a6c-64f0-4d10-9f18-3ccdcd77a796",
+        "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+        "anchorHeadMessageId": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+        "preparedUserMessage": {
+          "id": "570c1a6c-64f0-4d10-9f18-3ccdcd77a796",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "2df4d728-aefd-46a7-ba22-0138d557c094",
+              "kind": "text",
+              "text": "Edited",
+              "ordinal": 0,
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.138Z"
+            }
+          ],
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.138Z",
+          "completedAt": "2026-10-04T02:06:29.141Z",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "77da5c4c-7d5c-49a1-8ada-7f7372553598"
+        },
+        "replacementTargetUserMessageId": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d"
+      },
+      "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+      "title": "edit",
+      "currentHeadMessageId": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+      "updatedAt": "2026-10-04T02:06:29.147Z",
+      "syncToken": "head:d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "b2116425-258f-4fe9-a98e-b8cbe7ba1700",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.128Z",
+          "completedAt": "2026-10-04T02:06:29.128Z",
+          "blocks": [
+            {
+              "id": "ae85c310-a3f5-457d-87fb-f792fa8b32d4",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.129Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "b2116425-258f-4fe9-a98e-b8cbe7ba1700",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.130Z",
+          "completedAt": "2026-10-04T02:06:29.130Z",
+          "blocks": [
+            {
+              "id": "8cd56de0-4567-4cd8-81a3-b493dd031095",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.130Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.132Z",
+          "completedAt": "2026-10-04T02:06:29.132Z",
+          "blocks": [
+            {
+              "id": "0dd242c4-8395-45bf-b309-37b0dff3d557",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.134Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.136Z",
+          "completedAt": "2026-10-04T02:06:29.135Z",
+          "blocks": [
+            {
+              "id": "aaee6e0a-4ec1-466e-8421-35d71d33e95b",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.136Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "reopened": {
+      "failedTurn": {
+        "events": [
+          {
+            "event": {
+              "type": "partial_text",
+              "payload": {
+                "delta": "Partial answer"
+              }
+            },
+            "sequence": 1,
+            "createdAt": "2026-10-04T02:06:29.146Z"
+          },
+          {
+            "event": {
+              "type": "tool_use",
+              "payload": {
+                "input": {
+                  "path": "a.ts"
+                },
+                "tool_name": "Read",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 2,
+            "createdAt": "2026-10-04T02:06:29.146Z"
+          },
+          {
+            "event": {
+              "type": "tool_result",
+              "payload": {
+                "output": "contents",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 3,
+            "createdAt": "2026-10-04T02:06:29.146Z"
+          }
+        ],
+        "operation": "edit",
+        "prepareId": "d6b9ddb8-11c8-442d-855c-519b21c46347",
+        "requestId": "347d8f2e-810f-4c9c-a5c2-bdb6376d2b77",
+        "startedAt": "2026-10-04T02:06:29.138Z",
+        "failureCode": "CLAUDE_PROCESS_FAILED",
+        "interactions": [],
+        "userMessageId": "570c1a6c-64f0-4d10-9f18-3ccdcd77a796",
+        "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+        "anchorHeadMessageId": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+        "preparedUserMessage": {
+          "id": "570c1a6c-64f0-4d10-9f18-3ccdcd77a796",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "2df4d728-aefd-46a7-ba22-0138d557c094",
+              "kind": "text",
+              "text": "Edited",
+              "ordinal": 0,
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.138Z"
+            }
+          ],
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.138Z",
+          "completedAt": "2026-10-04T02:06:29.141Z",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "77da5c4c-7d5c-49a1-8ada-7f7372553598"
+        },
+        "replacementTargetUserMessageId": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d"
+      },
+      "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+      "title": "edit",
+      "currentHeadMessageId": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+      "updatedAt": "2026-10-04T02:06:29.147Z",
+      "syncToken": "head:d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "b2116425-258f-4fe9-a98e-b8cbe7ba1700",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.128Z",
+          "completedAt": "2026-10-04T02:06:29.128Z",
+          "blocks": [
+            {
+              "id": "ae85c310-a3f5-457d-87fb-f792fa8b32d4",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.129Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "b2116425-258f-4fe9-a98e-b8cbe7ba1700",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.130Z",
+          "completedAt": "2026-10-04T02:06:29.130Z",
+          "blocks": [
+            {
+              "id": "8cd56de0-4567-4cd8-81a3-b493dd031095",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.130Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "77da5c4c-7d5c-49a1-8ada-7f7372553598",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.132Z",
+          "completedAt": "2026-10-04T02:06:29.132Z",
+          "blocks": [
+            {
+              "id": "0dd242c4-8395-45bf-b309-37b0dff3d557",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.134Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "d5c5a0fc-ec17-4408-8a59-dcaafcb863ab",
+          "conversationId": "41930a2c-33e0-4b6a-bec1-d2e3a1998bab",
+          "parentMessageId": "d4bab1e7-1703-4d39-8f85-d8459e0ce25d",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.136Z",
+          "completedAt": "2026-10-04T02:06:29.135Z",
+          "blocks": [
+            {
+              "id": "aaee6e0a-4ec1-466e-8421-35d71d33e95b",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.136Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    }
+  },
+  {
+    "operation": "retry",
+    "before": {
+      "failedTurn": null,
+      "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+      "title": "retry",
+      "currentHeadMessageId": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+      "updatedAt": "2026-10-04T02:06:29.170Z",
+      "syncToken": "head:a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "32fe678a-d602-4dc5-9f44-21bb68178f5c",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.164Z",
+          "completedAt": "2026-10-04T02:06:29.164Z",
+          "blocks": [
+            {
+              "id": "56e0a65c-0ec1-4a68-91bb-b43e5dbcd276",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.164Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "2503ca26-4077-4131-900a-92c61c459feb",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "32fe678a-d602-4dc5-9f44-21bb68178f5c",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.165Z",
+          "completedAt": "2026-10-04T02:06:29.165Z",
+          "blocks": [
+            {
+              "id": "69711751-3fda-4287-86b9-fb4771721f61",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.166Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "2503ca26-4077-4131-900a-92c61c459feb",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.167Z",
+          "completedAt": "2026-10-04T02:06:29.167Z",
+          "blocks": [
+            {
+              "id": "1f4043de-ac2d-4140-a674-582f1ab33498",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.168Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.168Z",
+          "completedAt": "2026-10-04T02:06:29.168Z",
+          "blocks": [
+            {
+              "id": "103baa7c-d127-4802-bc34-0b65f9a583fb",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.169Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "active": {
+      "startedAt": "2026-10-04T02:06:29.171Z",
+      "prepareId": "69f2651e-484e-47ef-97de-a0735e63a31b",
+      "requestId": "66743ae0-b7ff-4cc7-9f07-609d563a7149",
+      "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+      "operation": "retry",
+      "preparedUserMessage": {
+        "id": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+        "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+        "parentMessageId": "2503ca26-4077-4131-900a-92c61c459feb",
+        "role": "user",
+        "status": "completed",
+        "createdAt": "2026-10-04T02:06:29.167Z",
+        "completedAt": "2026-10-04T02:06:29.167Z",
+        "blocks": [
+          {
+            "id": "1f4043de-ac2d-4140-a674-582f1ab33498",
+            "ordinal": 0,
+            "kind": "text",
+            "text": "Original",
+            "payload": null,
+            "rawType": "text",
+            "createdAt": "2026-10-04T02:06:29.168Z"
+          }
+        ]
+      },
+      "replacementTargetUserMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+      "userMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+      "workspaceId": null,
+      "expectedWorkspaceRoot": null,
+      "executionSelection": null,
+      "canonicalStatus": "prepared",
+      "dispatchStatus": "staged",
+      "semanticStatus": null,
+      "semanticFallbackCode": null,
+      "failureCode": null,
+      "runtimeMetadata": null,
+      "assistantMessage": null
+    },
+    "failed": {
+      "failedTurn": {
+        "events": [
+          {
+            "event": {
+              "type": "partial_text",
+              "payload": {
+                "delta": "Partial answer"
+              }
+            },
+            "sequence": 1,
+            "createdAt": "2026-10-04T02:06:29.177Z"
+          },
+          {
+            "event": {
+              "type": "tool_use",
+              "payload": {
+                "input": {
+                  "path": "a.ts"
+                },
+                "tool_name": "Read",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 2,
+            "createdAt": "2026-10-04T02:06:29.177Z"
+          },
+          {
+            "event": {
+              "type": "tool_result",
+              "payload": {
+                "output": "contents",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 3,
+            "createdAt": "2026-10-04T02:06:29.177Z"
+          }
+        ],
+        "operation": "retry",
+        "prepareId": "69f2651e-484e-47ef-97de-a0735e63a31b",
+        "requestId": "66743ae0-b7ff-4cc7-9f07-609d563a7149",
+        "startedAt": "2026-10-04T02:06:29.171Z",
+        "failureCode": "CLAUDE_PROCESS_FAILED",
+        "interactions": [],
+        "userMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+        "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+        "anchorHeadMessageId": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+        "preparedUserMessage": {
+          "id": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "1f4043de-ac2d-4140-a674-582f1ab33498",
+              "kind": "text",
+              "text": "Original",
+              "ordinal": 0,
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.168Z"
+            }
+          ],
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.167Z",
+          "completedAt": "2026-10-04T02:06:29.167Z",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "2503ca26-4077-4131-900a-92c61c459feb"
+        },
+        "replacementTargetUserMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a"
+      },
+      "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+      "title": "retry",
+      "currentHeadMessageId": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+      "updatedAt": "2026-10-04T02:06:29.178Z",
+      "syncToken": "head:a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "32fe678a-d602-4dc5-9f44-21bb68178f5c",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.164Z",
+          "completedAt": "2026-10-04T02:06:29.164Z",
+          "blocks": [
+            {
+              "id": "56e0a65c-0ec1-4a68-91bb-b43e5dbcd276",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.164Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "2503ca26-4077-4131-900a-92c61c459feb",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "32fe678a-d602-4dc5-9f44-21bb68178f5c",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.165Z",
+          "completedAt": "2026-10-04T02:06:29.165Z",
+          "blocks": [
+            {
+              "id": "69711751-3fda-4287-86b9-fb4771721f61",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.166Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "2503ca26-4077-4131-900a-92c61c459feb",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.167Z",
+          "completedAt": "2026-10-04T02:06:29.167Z",
+          "blocks": [
+            {
+              "id": "1f4043de-ac2d-4140-a674-582f1ab33498",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.168Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.168Z",
+          "completedAt": "2026-10-04T02:06:29.168Z",
+          "blocks": [
+            {
+              "id": "103baa7c-d127-4802-bc34-0b65f9a583fb",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.169Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "reopened": {
+      "failedTurn": {
+        "events": [
+          {
+            "event": {
+              "type": "partial_text",
+              "payload": {
+                "delta": "Partial answer"
+              }
+            },
+            "sequence": 1,
+            "createdAt": "2026-10-04T02:06:29.177Z"
+          },
+          {
+            "event": {
+              "type": "tool_use",
+              "payload": {
+                "input": {
+                  "path": "a.ts"
+                },
+                "tool_name": "Read",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 2,
+            "createdAt": "2026-10-04T02:06:29.177Z"
+          },
+          {
+            "event": {
+              "type": "tool_result",
+              "payload": {
+                "output": "contents",
+                "tool_use_id": "tool"
+              }
+            },
+            "sequence": 3,
+            "createdAt": "2026-10-04T02:06:29.177Z"
+          }
+        ],
+        "operation": "retry",
+        "prepareId": "69f2651e-484e-47ef-97de-a0735e63a31b",
+        "requestId": "66743ae0-b7ff-4cc7-9f07-609d563a7149",
+        "startedAt": "2026-10-04T02:06:29.171Z",
+        "failureCode": "CLAUDE_PROCESS_FAILED",
+        "interactions": [],
+        "userMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+        "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+        "anchorHeadMessageId": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+        "preparedUserMessage": {
+          "id": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "role": "user",
+          "blocks": [
+            {
+              "id": "1f4043de-ac2d-4140-a674-582f1ab33498",
+              "kind": "text",
+              "text": "Original",
+              "ordinal": 0,
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.168Z"
+            }
+          ],
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.167Z",
+          "completedAt": "2026-10-04T02:06:29.167Z",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "2503ca26-4077-4131-900a-92c61c459feb"
+        },
+        "replacementTargetUserMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a"
+      },
+      "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+      "title": "retry",
+      "currentHeadMessageId": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+      "updatedAt": "2026-10-04T02:06:29.178Z",
+      "syncToken": "head:a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "32fe678a-d602-4dc5-9f44-21bb68178f5c",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.164Z",
+          "completedAt": "2026-10-04T02:06:29.164Z",
+          "blocks": [
+            {
+              "id": "56e0a65c-0ec1-4a68-91bb-b43e5dbcd276",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.164Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "2503ca26-4077-4131-900a-92c61c459feb",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "32fe678a-d602-4dc5-9f44-21bb68178f5c",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.165Z",
+          "completedAt": "2026-10-04T02:06:29.165Z",
+          "blocks": [
+            {
+              "id": "69711751-3fda-4287-86b9-fb4771721f61",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.166Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "2503ca26-4077-4131-900a-92c61c459feb",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.167Z",
+          "completedAt": "2026-10-04T02:06:29.167Z",
+          "blocks": [
+            {
+              "id": "1f4043de-ac2d-4140-a674-582f1ab33498",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.168Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "a8ccd931-9020-48b0-9913-71b5ca77d7b1",
+          "conversationId": "4ac97834-22d0-432c-8cc1-691f1d9a6a59",
+          "parentMessageId": "156ff3f3-6c7e-46d4-af96-95261eccce9a",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.168Z",
+          "completedAt": "2026-10-04T02:06:29.168Z",
+          "blocks": [
+            {
+              "id": "103baa7c-d127-4802-bc34-0b65f9a583fb",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.169Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    }
+  },
+  {
+    "operation": "send",
+    "before": {
+      "failedTurn": null,
+      "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+      "title": "send",
+      "currentHeadMessageId": "9999a7d7-4ec9-4bef-b65d-5f31400985fe",
+      "updatedAt": "2026-10-04T02:06:29.210Z",
+      "syncToken": "head:9999a7d7-4ec9-4bef-b65d-5f31400985fe",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "5637734b-ff39-4d10-88fa-27c234ab3faf",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.205Z",
+          "completedAt": "2026-10-04T02:06:29.205Z",
+          "blocks": [
+            {
+              "id": "aad3e270-7c88-400f-b266-69e2ddafd05b",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.206Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "22b437e3-ecdc-4e41-ad40-53cdd9c1d427",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "5637734b-ff39-4d10-88fa-27c234ab3faf",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.206Z",
+          "completedAt": "2026-10-04T02:06:29.206Z",
+          "blocks": [
+            {
+              "id": "650eebbf-0003-403f-be98-9f4cc1690fc8",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.207Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "0684c001-5c07-4ce7-9a0f-ebb4f1142409",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "22b437e3-ecdc-4e41-ad40-53cdd9c1d427",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.208Z",
+          "completedAt": "2026-10-04T02:06:29.208Z",
+          "blocks": [
+            {
+              "id": "2d2cef23-847a-412b-9b34-4e28c4f170c2",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.208Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "9999a7d7-4ec9-4bef-b65d-5f31400985fe",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "0684c001-5c07-4ce7-9a0f-ebb4f1142409",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.209Z",
+          "completedAt": "2026-10-04T02:06:29.209Z",
+          "blocks": [
+            {
+              "id": "605a38c1-867e-4659-81a6-3e0d897740ef",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.209Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "active": {
+      "startedAt": "2026-10-04T02:06:29.211Z",
+      "prepareId": "714fe5b8-bebb-4058-9a78-a2cbac9b4be0",
+      "requestId": "2aa1b92b-53b6-414d-a152-6c4aab49ab36",
+      "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+      "operation": "send",
+      "preparedUserMessage": {
+        "id": "5cd40ded-367d-464f-86b6-5fed13c17d8e",
+        "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+        "parentMessageId": "9999a7d7-4ec9-4bef-b65d-5f31400985fe",
+        "role": "user",
+        "status": "completed",
+        "createdAt": "2026-10-04T02:06:29.211Z",
+        "completedAt": "2026-10-04T02:06:29.212Z",
+        "blocks": [
+          {
+            "id": "0f9ee47c-de4d-464b-b3e6-06b47103fcfa",
+            "ordinal": 0,
+            "kind": "text",
+            "text": "New send",
+            "payload": null,
+            "rawType": "text",
+            "createdAt": "2026-10-04T02:06:29.211Z"
+          }
+        ]
+      },
+      "replacementTargetUserMessageId": null,
+      "userMessageId": "5cd40ded-367d-464f-86b6-5fed13c17d8e",
+      "workspaceId": null,
+      "expectedWorkspaceRoot": null,
+      "executionSelection": null,
+      "canonicalStatus": "prepared",
+      "dispatchStatus": "staged",
+      "semanticStatus": null,
+      "semanticFallbackCode": null,
+      "failureCode": null,
+      "runtimeMetadata": null,
+      "assistantMessage": null
+    },
+    "canonical": {
+      "failedTurn": null,
+      "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+      "title": "send",
+      "currentHeadMessageId": "af1b755d-cc3a-4860-b153-4555fe0c04ea",
+      "updatedAt": "2026-10-04T02:06:29.218Z",
+      "syncToken": "head:af1b755d-cc3a-4860-b153-4555fe0c04ea",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "5637734b-ff39-4d10-88fa-27c234ab3faf",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.205Z",
+          "completedAt": "2026-10-04T02:06:29.205Z",
+          "blocks": [
+            {
+              "id": "aad3e270-7c88-400f-b266-69e2ddafd05b",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.206Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "22b437e3-ecdc-4e41-ad40-53cdd9c1d427",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "5637734b-ff39-4d10-88fa-27c234ab3faf",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.206Z",
+          "completedAt": "2026-10-04T02:06:29.206Z",
+          "blocks": [
+            {
+              "id": "650eebbf-0003-403f-be98-9f4cc1690fc8",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.207Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "0684c001-5c07-4ce7-9a0f-ebb4f1142409",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "22b437e3-ecdc-4e41-ad40-53cdd9c1d427",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.208Z",
+          "completedAt": "2026-10-04T02:06:29.208Z",
+          "blocks": [
+            {
+              "id": "2d2cef23-847a-412b-9b34-4e28c4f170c2",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.208Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "9999a7d7-4ec9-4bef-b65d-5f31400985fe",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "0684c001-5c07-4ce7-9a0f-ebb4f1142409",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.209Z",
+          "completedAt": "2026-10-04T02:06:29.209Z",
+          "blocks": [
+            {
+              "id": "605a38c1-867e-4659-81a6-3e0d897740ef",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.209Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "5cd40ded-367d-464f-86b6-5fed13c17d8e",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "9999a7d7-4ec9-4bef-b65d-5f31400985fe",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.211Z",
+          "completedAt": "2026-10-04T02:06:29.212Z",
+          "blocks": [
+            {
+              "id": "0f9ee47c-de4d-464b-b3e6-06b47103fcfa",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "New send",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.211Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "af1b755d-cc3a-4860-b153-4555fe0c04ea",
+          "conversationId": "f6fe608f-e8dc-469f-8d08-138cdfaeeee2",
+          "parentMessageId": "5cd40ded-367d-464f-86b6-5fed13c17d8e",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.216Z",
+          "completedAt": "2026-10-04T02:06:29.216Z",
+          "blocks": [
+            {
+              "id": "09e3589c-6f2c-495b-8a42-b3cbd0f7ed88",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Partial answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.216Z"
+            }
+          ],
+          "activity": {
+            "prepareId": "714fe5b8-bebb-4058-9a78-a2cbac9b4be0",
+            "startedAt": "2026-10-04T02:06:29.211Z",
+            "events": [],
+            "interactions": []
+          }
+        }
+      ]
+    }
+  },
+  {
+    "operation": "edit",
+    "before": {
+      "failedTurn": null,
+      "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+      "title": "edit",
+      "currentHeadMessageId": "5bf8e5ca-99da-481d-92b6-3561b9eb4f5c",
+      "updatedAt": "2026-10-04T02:06:29.227Z",
+      "syncToken": "head:5bf8e5ca-99da-481d-92b6-3561b9eb4f5c",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "42b26da1-a047-4cb5-bb70-c8516055a536",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.222Z",
+          "completedAt": "2026-10-04T02:06:29.222Z",
+          "blocks": [
+            {
+              "id": "fd0e7a6a-f7a8-4826-a1c3-2c726defbd23",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.222Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "5323332c-8495-4ad1-8f39-ff6d94cee620",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": "42b26da1-a047-4cb5-bb70-c8516055a536",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.223Z",
+          "completedAt": "2026-10-04T02:06:29.223Z",
+          "blocks": [
+            {
+              "id": "ae93d25b-d89b-4025-979a-ffa5c2de2a4c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.223Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "fc71587d-033b-4924-ba70-da40ce849a12",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": "5323332c-8495-4ad1-8f39-ff6d94cee620",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.225Z",
+          "completedAt": "2026-10-04T02:06:29.224Z",
+          "blocks": [
+            {
+              "id": "8bd204fa-6d7e-494f-bcdc-c721037b65fb",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.225Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "5bf8e5ca-99da-481d-92b6-3561b9eb4f5c",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": "fc71587d-033b-4924-ba70-da40ce849a12",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.226Z",
+          "completedAt": "2026-10-04T02:06:29.226Z",
+          "blocks": [
+            {
+              "id": "8f42613d-e5b7-4d12-8233-41a24051f229",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.226Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "active": {
+      "startedAt": "2026-10-04T02:06:29.227Z",
+      "prepareId": "81870f45-3891-4576-ac44-7f3fa431c875",
+      "requestId": "3600cc3d-5a0f-461a-bb6f-b1089ee99040",
+      "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+      "operation": "edit",
+      "preparedUserMessage": {
+        "id": "47f5b8e8-68b0-41ef-b209-ada18ca4c572",
+        "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+        "parentMessageId": "5323332c-8495-4ad1-8f39-ff6d94cee620",
+        "role": "user",
+        "status": "completed",
+        "createdAt": "2026-10-04T02:06:29.227Z",
+        "completedAt": "2026-10-04T02:06:29.229Z",
+        "blocks": [
+          {
+            "id": "40f67c50-e338-497c-ba13-6b78bd9f04f8",
+            "ordinal": 0,
+            "kind": "text",
+            "text": "Edited",
+            "payload": null,
+            "rawType": "text",
+            "createdAt": "2026-10-04T02:06:29.227Z"
+          }
+        ]
+      },
+      "replacementTargetUserMessageId": "fc71587d-033b-4924-ba70-da40ce849a12",
+      "userMessageId": "47f5b8e8-68b0-41ef-b209-ada18ca4c572",
+      "workspaceId": null,
+      "expectedWorkspaceRoot": null,
+      "executionSelection": null,
+      "canonicalStatus": "prepared",
+      "dispatchStatus": "staged",
+      "semanticStatus": null,
+      "semanticFallbackCode": null,
+      "failureCode": null,
+      "runtimeMetadata": null,
+      "assistantMessage": null
+    },
+    "canonical": {
+      "failedTurn": null,
+      "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+      "title": "edit",
+      "currentHeadMessageId": "1af0266f-abe1-4bb8-87f9-ba92317a4f1e",
+      "updatedAt": "2026-10-04T02:06:29.235Z",
+      "syncToken": "head:1af0266f-abe1-4bb8-87f9-ba92317a4f1e",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "42b26da1-a047-4cb5-bb70-c8516055a536",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.222Z",
+          "completedAt": "2026-10-04T02:06:29.222Z",
+          "blocks": [
+            {
+              "id": "fd0e7a6a-f7a8-4826-a1c3-2c726defbd23",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.222Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "5323332c-8495-4ad1-8f39-ff6d94cee620",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": "42b26da1-a047-4cb5-bb70-c8516055a536",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.223Z",
+          "completedAt": "2026-10-04T02:06:29.223Z",
+          "blocks": [
+            {
+              "id": "ae93d25b-d89b-4025-979a-ffa5c2de2a4c",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.223Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "47f5b8e8-68b0-41ef-b209-ada18ca4c572",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": "5323332c-8495-4ad1-8f39-ff6d94cee620",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.227Z",
+          "completedAt": "2026-10-04T02:06:29.229Z",
+          "blocks": [
+            {
+              "id": "40f67c50-e338-497c-ba13-6b78bd9f04f8",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Edited",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.227Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "1af0266f-abe1-4bb8-87f9-ba92317a4f1e",
+          "conversationId": "05fcac61-3edc-462f-94c4-2e942f30780e",
+          "parentMessageId": "47f5b8e8-68b0-41ef-b209-ada18ca4c572",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.233Z",
+          "completedAt": "2026-10-04T02:06:29.234Z",
+          "blocks": [
+            {
+              "id": "cc800581-95af-4972-b8f2-1b65a5708aca",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Partial answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.233Z"
+            }
+          ],
+          "activity": {
+            "prepareId": "81870f45-3891-4576-ac44-7f3fa431c875",
+            "startedAt": "2026-10-04T02:06:29.227Z",
+            "events": [],
+            "interactions": []
+          }
+        }
+      ]
+    }
+  },
+  {
+    "operation": "retry",
+    "before": {
+      "failedTurn": null,
+      "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+      "title": "retry",
+      "currentHeadMessageId": "9225ffb5-69b6-4d47-b95b-b9bb01e74307",
+      "updatedAt": "2026-10-04T02:06:29.246Z",
+      "syncToken": "head:9225ffb5-69b6-4d47-b95b-b9bb01e74307",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "da7f7545-9857-431b-b32e-3dcee16cf86c",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.242Z",
+          "completedAt": "2026-10-04T02:06:29.241Z",
+          "blocks": [
+            {
+              "id": "c0d6e5cc-f2f7-4331-839d-40e2b762fde7",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.242Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "5646b1d9-29f7-4007-9dd6-fc07a13e3b7c",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": "da7f7545-9857-431b-b32e-3dcee16cf86c",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.243Z",
+          "completedAt": "2026-10-04T02:06:29.242Z",
+          "blocks": [
+            {
+              "id": "a9f0d0f4-d737-419f-b90a-dee1e2edd64a",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.243Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "60120a26-dd87-40ae-b403-54de96f1ee07",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": "5646b1d9-29f7-4007-9dd6-fc07a13e3b7c",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.244Z",
+          "completedAt": "2026-10-04T02:06:29.244Z",
+          "blocks": [
+            {
+              "id": "d91c5b8c-d909-4f25-85f9-6fac5d8c460a",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.244Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "9225ffb5-69b6-4d47-b95b-b9bb01e74307",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": "60120a26-dd87-40ae-b403-54de96f1ee07",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.245Z",
+          "completedAt": "2026-10-04T02:06:29.245Z",
+          "blocks": [
+            {
+              "id": "9fc06658-2144-4b03-a4fe-854708b1c1c5",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Old answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.245Z"
+            }
+          ],
+          "activity": null
+        }
+      ]
+    },
+    "active": {
+      "startedAt": "2026-10-04T02:06:29.247Z",
+      "prepareId": "0d8139d6-ed26-44ce-a4b9-a16ae2d359e3",
+      "requestId": "d95f4f1d-6488-42fa-9a17-4bb7c6d85190",
+      "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+      "operation": "retry",
+      "preparedUserMessage": {
+        "id": "60120a26-dd87-40ae-b403-54de96f1ee07",
+        "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+        "parentMessageId": "5646b1d9-29f7-4007-9dd6-fc07a13e3b7c",
+        "role": "user",
+        "status": "completed",
+        "createdAt": "2026-10-04T02:06:29.244Z",
+        "completedAt": "2026-10-04T02:06:29.244Z",
+        "blocks": [
+          {
+            "id": "d91c5b8c-d909-4f25-85f9-6fac5d8c460a",
+            "ordinal": 0,
+            "kind": "text",
+            "text": "Original",
+            "payload": null,
+            "rawType": "text",
+            "createdAt": "2026-10-04T02:06:29.244Z"
+          }
+        ]
+      },
+      "replacementTargetUserMessageId": "60120a26-dd87-40ae-b403-54de96f1ee07",
+      "userMessageId": "60120a26-dd87-40ae-b403-54de96f1ee07",
+      "workspaceId": null,
+      "expectedWorkspaceRoot": null,
+      "executionSelection": null,
+      "canonicalStatus": "prepared",
+      "dispatchStatus": "staged",
+      "semanticStatus": null,
+      "semanticFallbackCode": null,
+      "failureCode": null,
+      "runtimeMetadata": null,
+      "assistantMessage": null
+    },
+    "canonical": {
+      "failedTurn": null,
+      "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+      "title": "retry",
+      "currentHeadMessageId": "aad1e70b-60fe-4eea-a1c5-ad34eef8dab5",
+      "updatedAt": "2026-10-04T02:06:29.254Z",
+      "syncToken": "head:aad1e70b-60fe-4eea-a1c5-ad34eef8dab5",
+      "truncated": false,
+      "olderCursor": null,
+      "resetRequired": false,
+      "messages": [
+        {
+          "id": "da7f7545-9857-431b-b32e-3dcee16cf86c",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": null,
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.242Z",
+          "completedAt": "2026-10-04T02:06:29.241Z",
+          "blocks": [
+            {
+              "id": "c0d6e5cc-f2f7-4331-839d-40e2b762fde7",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.242Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "5646b1d9-29f7-4007-9dd6-fc07a13e3b7c",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": "da7f7545-9857-431b-b32e-3dcee16cf86c",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.243Z",
+          "completedAt": "2026-10-04T02:06:29.242Z",
+          "blocks": [
+            {
+              "id": "a9f0d0f4-d737-419f-b90a-dee1e2edd64a",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Earlier answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.243Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "60120a26-dd87-40ae-b403-54de96f1ee07",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": "5646b1d9-29f7-4007-9dd6-fc07a13e3b7c",
+          "role": "user",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.244Z",
+          "completedAt": "2026-10-04T02:06:29.244Z",
+          "blocks": [
+            {
+              "id": "d91c5b8c-d909-4f25-85f9-6fac5d8c460a",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Original",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.244Z"
+            }
+          ],
+          "activity": null
+        },
+        {
+          "id": "aad1e70b-60fe-4eea-a1c5-ad34eef8dab5",
+          "conversationId": "a82e098c-811c-43dc-98f8-b3e628ae996a",
+          "parentMessageId": "60120a26-dd87-40ae-b403-54de96f1ee07",
+          "role": "assistant",
+          "status": "completed",
+          "createdAt": "2026-10-04T02:06:29.251Z",
+          "completedAt": "2026-10-04T02:06:29.253Z",
+          "blocks": [
+            {
+              "id": "c3ed318f-a468-4877-8bb1-ab3a16407d98",
+              "ordinal": 0,
+              "kind": "text",
+              "text": "Partial answer",
+              "payload": null,
+              "rawType": "text",
+              "createdAt": "2026-10-04T02:06:29.251Z"
+            }
+          ],
+          "activity": {
+            "prepareId": "0d8139d6-ed26-44ce-a4b9-a16ae2d359e3",
+            "startedAt": "2026-10-04T02:06:29.247Z",
+            "events": [],
+            "interactions": []
+          }
+        }
+      ]
+    }
+  }
+]

@@ -1,10 +1,14 @@
 import {
   and,
+  asc,
   eq,
   inArray,
   sql,
 } from "drizzle-orm";
 import {
+  conversationMessages,
+  conversationContentBlocks,
+  conversations,
   nativeLiveSemanticScoringRequests,
   nativeLiveTurnPreparations,
 } from "../../../../database/schema.js";
@@ -18,6 +22,7 @@ import { parseNativeLiveExecutionSelection } from "../native-live-execution-sele
 import type { NativeLiveRuntimeMetadata } from "../../protocol/native-live-runtime-protocol.js";
 import type { TurnRepositoryContext } from "./types.js";
 import { mapPreparation } from "./records.js";
+import { readableContentData } from "../../../conversation/native-live-content-contract.js";
 import type {
   NativeLiveBackendTurnReadModel,
   Executor,
@@ -83,9 +88,11 @@ export async function readTurn(
     const [row] = await this.db
       .select({
         id: nativeLiveTurnPreparations.id,
+        createdAt: nativeLiveTurnPreparations.createdAt,
         requestId: nativeLiveTurnPreparations.requestId,
         conversationId: nativeLiveTurnPreparations.conversationId,
         operation: nativeLiveTurnPreparations.operation,
+        replacementTargetUserMessageId: nativeLiveTurnPreparations.replacementTargetUserMessageId,
         canonicalUserMessageId:
           nativeLiveTurnPreparations.canonicalUserMessageId,
         workspaceId: nativeLiveTurnPreparations.workspaceId,
@@ -124,28 +131,81 @@ export async function readTurn(
       )
       .limit(1);
 
-    let assistantMessage: NativeLiveMessage | null = null;
-    if (row.assistantMessageId) {
-      const conversations =
-        new DrizzleNativeLiveConversationRepository(this.db);
-      const conversation = await conversations.getConversation({
-        userId: input.userId,
-        conversationId: row.conversationId,
+    // This is also the bounded-wait hot path. Read only this preparation's exact
+    // detached user and optional finalized assistant, never the whole conversation.
+    const messageIds = [row.canonicalUserMessageId, ...(row.assistantMessageId ? [row.assistantMessageId] : [])];
+    const messageRows = await this.db.select({
+      id: conversationMessages.id,
+      conversationId: conversationMessages.conversationId,
+      parentMessageId: conversationMessages.parentMessageId,
+      role: conversationMessages.role,
+      status: conversationMessages.status,
+      createdAt: conversationMessages.createdAt,
+      completedAt: conversationMessages.completedAt,
+    }).from(conversationMessages).innerJoin(conversations, and(
+      eq(conversations.id, conversationMessages.conversationId),
+      eq(conversations.userId, conversationMessages.userId),
+    )).where(and(
+      eq(conversationMessages.userId, input.userId),
+      eq(conversationMessages.conversationId, row.conversationId),
+      eq(conversations.origin, "native_live"),
+      inArray(conversationMessages.id, messageIds),
+    )).limit(2);
+    const userRow = messageRows.find(message => message.id === row.canonicalUserMessageId && message.role === "user");
+    const assistantRow = row.assistantMessageId
+      ? messageRows.find(message => message.id === row.assistantMessageId && message.role === "assistant") : null;
+    if (!userRow) throw new Error("Prepared user message was not found.");
+    if (row.assistantMessageId && !assistantRow) throw new Error("Finalized assistant message was not found.");
+
+    const blockRows = await this.db.select({
+      id: conversationContentBlocks.id,
+      messageId: conversationContentBlocks.messageId,
+      ordinal: conversationContentBlocks.ordinal,
+      kind: conversationContentBlocks.kind,
+      rawType: conversationContentBlocks.rawType,
+      text: conversationContentBlocks.text,
+      payload: conversationContentBlocks.payload,
+      createdAt: conversationContentBlocks.createdAt,
+    }).from(conversationContentBlocks).where(and(
+      eq(conversationContentBlocks.userId, input.userId),
+      inArray(conversationContentBlocks.messageId, messageRows.map(message => message.id)),
+    )).orderBy(asc(conversationContentBlocks.messageId), asc(conversationContentBlocks.ordinal));
+    const blocksByMessage = new Map<string, NativeLiveMessage["blocks"]>();
+    for (const block of blockRows) {
+      const blocks = blocksByMessage.get(block.messageId) ?? [];
+      blocks.push({
+        id: block.id,
+        ordinal: block.ordinal,
+        ...readableContentData(block.kind, block.rawType, block.text, block.payload),
+        rawType: block.rawType,
+        createdAt: block.createdAt.toISOString(),
       });
-      assistantMessage =
-        conversation?.messages.find(
-          (message) => message.id === row.assistantMessageId,
-        ) ?? null;
-      if (!assistantMessage) {
-        throw new Error("Finalized assistant message was not found.");
-      }
+      blocksByMessage.set(block.messageId, blocks);
     }
+    const message = (value: typeof userRow): NativeLiveMessage => {
+      if (value.role !== "user" && value.role !== "assistant") throw new Error("Unsupported turn message role.");
+      return {
+        id: value.id,
+        conversationId: value.conversationId,
+        parentMessageId: value.parentMessageId,
+        role: value.role,
+        status: value.status,
+        createdAt: value.createdAt.toISOString(),
+        completedAt: value.completedAt?.toISOString() ?? null,
+        blocks: blocksByMessage.get(value.id) ?? [],
+      };
+    };
+    const preparedUserMessage = message(userRow);
+    const assistantMessage = assistantRow ? message(assistantRow) : null;
 
     return {
       prepareId: row.id,
+      startedAt: row.createdAt.toISOString(),
       requestId: row.requestId,
       conversationId: row.conversationId,
       operation: row.operation,
+      preparedUserMessage,
+      replacementTargetUserMessageId: row.replacementTargetUserMessageId ?? (row.operation === "retry" ? row.canonicalUserMessageId : null),
       canonicalUserMessageId: row.canonicalUserMessageId,
       workspaceId: row.workspaceId,
       expectedWorkspaceRoot: row.expectedWorkspaceRoot,
@@ -250,6 +310,7 @@ export async function loadFinalizedSuccess(
 export function selection(this: TurnRepositoryContext) {
     return {
       id: nativeLiveTurnPreparations.id,
+      createdAt: nativeLiveTurnPreparations.createdAt,
       userId: nativeLiveTurnPreparations.userId,
       requestId: nativeLiveTurnPreparations.requestId,
       conversationId: nativeLiveTurnPreparations.conversationId,

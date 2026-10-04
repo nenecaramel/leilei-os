@@ -6,7 +6,8 @@ extension AppModel {
         inputMode: NativeLiveInputMode = .text,
         attachmentIDs: [String] = [],
         workspaceID: String? = nil,
-        execution: NativeLiveExecutionSelection? = nil
+        execution: NativeLiveExecutionSelection? = nil,
+        presentationOperation: NativeLivePendingOperation? = nil
     ) async throws {
         guard isAuthenticated,
               !chatSendInFlight,
@@ -55,6 +56,7 @@ extension AppModel {
                 activeNativeLiveWorkspaceRoot = root
             }
 
+            bindNativeLivePresentation(presentationOperation,prepared:prepared)
             try await completePreparedNativeLiveTurn(
                 prepared,
                 conversationID: conversationID
@@ -85,7 +87,8 @@ extension AppModel {
 
     func retryNativeLiveMessage(
         targetUserMessageID: String,
-        execution: NativeLiveExecutionSelection? = nil
+        execution: NativeLiveExecutionSelection? = nil,
+        presentationOperation: NativeLivePendingOperation? = nil
     ) async throws {
         guard isAuthenticated,
               !chatSendInFlight,
@@ -114,6 +117,7 @@ extension AppModel {
                 execution: execution
             )
 
+            bindNativeLivePresentation(presentationOperation,prepared:prepared)
             try await completePreparedNativeLiveTurn(
                 prepared,
                 conversationID: conversationID
@@ -137,7 +141,8 @@ extension AppModel {
         targetUserMessageID: String,
         text: String,
         attachmentIDs: [String]? = nil,
-        execution: NativeLiveExecutionSelection? = nil
+        execution: NativeLiveExecutionSelection? = nil,
+        presentationOperation: NativeLivePendingOperation? = nil
     ) async throws {
         guard isAuthenticated,
               !chatSendInFlight,
@@ -189,6 +194,7 @@ extension AppModel {
                 execution: execution
             )
 
+            bindNativeLivePresentation(presentationOperation,prepared:prepared)
             try await completePreparedNativeLiveTurn(
                 prepared,
                 conversationID: conversationID
@@ -212,7 +218,7 @@ extension AppModel {
         guard isAuthenticated,
               !chatSendInFlight,
               chatSendState != .sending,
-              nativeLiveRuntimeSurface == nil,
+              nativeLiveRuntimeSurface == nil || nativeLiveRuntimeSurface?.foregroundTurnCompleted == true,
               let conversationID = activeNativeLiveConversationID else {
             return
         }
@@ -229,7 +235,9 @@ extension AppModel {
             chatSendState = .sending
             beginNativeLiveRuntimeObservation(
                 prepareID: turn.prepareId,
-                conversationID: conversationID
+                conversationID: conversationID,
+                requestID:turn.requestId, userMessageID:turn.userMessageId, operation:turn.operation, startedAt:turn.startedAt,
+                preparedUserMessage:turn.preparedUserMessage, replacementTargetUserMessageID:turn.replacementTargetUserMessageId
             )
             var shouldStopRuntimeObservation = true
             defer {
@@ -279,7 +287,9 @@ extension AppModel {
 
         beginNativeLiveRuntimeObservation(
             prepareID: prepared.prepareId,
-            conversationID: conversationID
+            conversationID: conversationID,
+            requestID:prepared.requestId, userMessageID:prepared.userMessageId, startedAt:prepared.startedAt,
+            preparedUserMessage:prepared.preparedUserMessage, replacementTargetUserMessageID:prepared.replacementTargetUserMessageId
         )
         var shouldStopRuntimeObservation = true
         defer {
@@ -348,6 +358,9 @@ extension AppModel {
 
                     if turn.canonicalStatus == "finalized_failure"
                         || turn.dispatchStatus == "rejected" {
+                        nativeLiveRuntimeSurface?.foregroundTurnCompleted = true
+                        nativeLiveRuntimeSurface?.terminalFailure = turn.failureCode ?? "Turn failed"
+                        await refreshNativeLiveCurrentPath(force:true,surfaceTransientFailure:false)
                         throw NativeLiveSendError.failed(
                             code: turn.failureCode
                         )

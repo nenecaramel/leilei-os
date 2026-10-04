@@ -45,6 +45,7 @@ export function prepareNativeLiveTurnHandler(
       }
     }
 
+    const preparedTurn = await dependencies.turnReader.readTurn({ userId:request.webUserId!, prepareId:result.command.prepare_id }).catch(() => null);
     response
       .status(
         result.semanticPending
@@ -58,6 +59,11 @@ export function prepareNativeLiveTurnHandler(
         data: {
           outcome: result.outcome,
           semanticPending: result.semanticPending,
+          ...(preparedTurn?.preparedUserMessage ? {
+            preparedUserMessage: preparedTurn.preparedUserMessage,
+            replacementTargetUserMessageId: preparedTurn.replacementTargetUserMessageId ?? null,
+          } : {}),
+          ...(preparedTurn?.startedAt ? { startedAt:preparedTurn.startedAt } : {}),
           prepareId: result.command.prepare_id,
           requestId: result.command.request_id,
           conversationId: result.command.conversation_id,
@@ -300,14 +306,19 @@ export function waitNativeLiveTurnHandler(
   };
 }
 
-function nativeLiveTurnResponseData(
+export function nativeLiveTurnResponseData(
   turn: NativeLiveBackendTurnReadModel,
 ): Record<string, unknown> {
   return {
+    ...(turn.startedAt ? { startedAt:turn.startedAt } : {}),
     prepareId: turn.prepareId,
     requestId: turn.requestId,
     conversationId: turn.conversationId,
     operation: turn.operation,
+    ...(turn.preparedUserMessage ? {
+      preparedUserMessage: turn.preparedUserMessage,
+      replacementTargetUserMessageId: turn.replacementTargetUserMessageId ?? null,
+    } : {}),
     userMessageId: turn.canonicalUserMessageId,
     workspaceId: turn.workspaceId,
     expectedWorkspaceRoot: turn.expectedWorkspaceRoot,

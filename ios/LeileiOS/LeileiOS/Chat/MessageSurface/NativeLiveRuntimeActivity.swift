@@ -1,52 +1,6 @@
 import SwiftUI
 import Foundation
 
-struct NativeLiveRuntimeAssistantRow: View {
-    let runtimeSurface: NativeLiveRuntimeSurfaceState?
-    let onResolveInteraction:
-        (
-            NativeLiveRuntimeInteractionSnapshot,
-            [String: NativeLiveJSONValue]
-        ) async throws -> Void
-
-    var body: some View {
-        let text = runtimeSurface?.streamingText
-            .trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-        let projection = runtimeSurface.map {
-            NativeLiveTurnActivityProjection(
-                runtimeSurface: $0
-            )
-        }
-
-        VStack(alignment: .leading, spacing: 12) {
-            if let text,
-               !text.isEmpty {
-                NativeLiveMessagePresentationView(presentation:
-                    NativeLiveMessagePresentationProjector.project(.streaming(text)))
-            }
-
-            if let projection,
-               projection.hasContent {
-                NativeLiveTurnActivityView(
-                    projection: projection,
-                    onResolveInteraction: onResolveInteraction
-                )
-            }
-
-            if (text?.isEmpty ?? true)
-                && !(projection?.hasContent ?? false) {
-                AssistantTypingIndicatorRow()
-            }
-        }
-        .frame(
-            maxWidth: .infinity,
-            alignment: .leading
-        )
-    }
-}
-
 struct NativeLiveTurnActivityView: View {
     let projection: NativeLiveTurnActivityProjection
     let timestampText: String?
@@ -56,12 +10,13 @@ struct NativeLiveTurnActivityView: View {
             [String: NativeLiveJSONValue]
         ) async throws -> Void)?
 
-    @State private var isExpanded = false
-    @State private var expandedForPendingInteraction = false
+    @Binding var expansion: NativeLiveMessageUIStateStore.State
+    let header: String
 
     init(
         projection: NativeLiveTurnActivityProjection,
         timestampText: String? = nil,
+        header: String, expansion: Binding<NativeLiveMessageUIStateStore.State>,
         onResolveInteraction:
             ((
                 NativeLiveRuntimeInteractionSnapshot,
@@ -69,6 +24,7 @@ struct NativeLiveTurnActivityView: View {
             ) async throws -> Void)?
     ) {
         self.projection = projection
+        self.header = header; self._expansion = expansion
         self.timestampText = timestampText
         self.onResolveInteraction = onResolveInteraction
     }
@@ -76,12 +32,7 @@ struct NativeLiveTurnActivityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Button {
-                if projection.hasPendingInteraction {
-                    isExpanded = true
-                } else {
-                    isExpanded.toggle()
-                    expandedForPendingInteraction = false
-                }
+                expansion.toggleActivity()
             } label: {
                 HStack(
                     alignment: .firstTextBaseline,
@@ -98,7 +49,7 @@ struct NativeLiveTurnActivityView: View {
                             )
                     }
 
-                    Text(projection.summaryLabel)
+                    Text(header)
                         .font(.system(
                             size: 13.5,
                             weight: .medium
@@ -221,31 +172,10 @@ struct NativeLiveTurnActivityView: View {
                 .padding(.top, 4)
             }
         }
-        .onAppear {
-            if projection.hasPendingInteraction,
-               !isExpanded {
-                isExpanded = true
-                expandedForPendingInteraction = true
-            }
-        }
-        .onChange(
-            of: projection.pendingInteractionIDs
-        ) { _, ids in
-            if !ids.isEmpty {
-                if !isExpanded {
-                    isExpanded = true
-                    expandedForPendingInteraction = true
-                }
-            } else if expandedForPendingInteraction {
-                isExpanded = false
-                expandedForPendingInteraction = false
-            }
-        }
     }
 
-    private var effectiveExpanded: Bool {
-        isExpanded || projection.hasPendingInteraction
-    }
+    private var effectiveExpanded: Bool { expansion.isActivityExpanded }
+
 }
 
 private struct NativeLiveLifecycleActivityRow: View {
@@ -632,35 +562,6 @@ private struct NativeLiveInteractionHistoryRow: View {
     }
 }
 
-
-struct AssistantTypingIndicatorRow: View {
-    var body: some View {
-        TimelineView(
-            .animation(minimumInterval: 0.18)
-        ) { context in
-            let phase = Int(
-                context.date.timeIntervalSinceReferenceDate / 0.18
-            ) % 3
-
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { index in
-                    Circle()
-                        .fill(
-                            Color.secondary.opacity(
-                                phase == index ? 0.82 : 0.24
-                            )
-                        )
-                        .frame(width: 5, height: 5)
-                        .scaleEffect(
-                            phase == index ? 1.08 : 0.92
-                        )
-                }
-            }
-            .frame(height: 22)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
 
 enum NativeLiveToolCallState: Equatable {
     case running

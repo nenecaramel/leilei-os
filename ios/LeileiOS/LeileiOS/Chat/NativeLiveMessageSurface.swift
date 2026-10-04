@@ -3,91 +3,6 @@ import QuickLook
 import CryptoKit
 import UIKit
 
-struct NativeLivePendingOperation: Equatable {
-    enum Kind: Equatable {
-        case send(text: String)
-        case retry(targetUserMessageID: String)
-        case edit(targetUserMessageID: String, text: String)
-    }
-
-    let id: UUID
-    let kind: Kind
-    let baselineSyncToken: String?
-    let presentationAttachments: [NativeLiveAttachmentPresentationInput]
-    let inputMode: NativeLiveInputMode
-
-    init(
-        kind: Kind,
-        baselineSyncToken: String?,
-        presentationAttachments: [NativeLiveAttachmentPresentationInput] = [],
-        inputMode: NativeLiveInputMode = .text
-    ) {
-        self.id = UUID()
-        self.kind = kind
-        self.baselineSyncToken = baselineSyncToken
-        self.presentationAttachments = presentationAttachments
-        self.inputMode = inputMode
-    }
-
-    private init(
-        id: UUID,
-        kind: Kind,
-        baselineSyncToken: String?,
-        presentationAttachments: [NativeLiveAttachmentPresentationInput],
-        inputMode: NativeLiveInputMode
-    ) {
-        self.id = id
-        self.kind = kind
-        self.baselineSyncToken = baselineSyncToken
-        self.presentationAttachments = presentationAttachments
-        self.inputMode = inputMode
-    }
-
-    func rebased(
-        to syncToken: String?
-    ) -> NativeLivePendingOperation {
-        NativeLivePendingOperation(
-            id: id,
-            kind: kind,
-            baselineSyncToken: syncToken,
-            presentationAttachments: presentationAttachments,
-            inputMode: inputMode
-        )
-    }
-
-    var targetUserMessageID: String? {
-        switch kind {
-        case .send:
-            return nil
-        case .retry(let targetUserMessageID):
-            return targetUserMessageID
-        case .edit(let targetUserMessageID, _):
-            return targetUserMessageID
-        }
-    }
-
-    var editedText: String? {
-        guard case .edit(_, let text) = kind else {
-            return nil
-        }
-        return text
-    }
-
-    var sendText: String? {
-        guard case .send(let text) = kind else {
-            return nil
-        }
-        return text
-    }
-
-    var isSend: Bool {
-        if case .send = kind {
-            return true
-        }
-        return false
-    }
-}
-
 struct NativeLiveMessageSurface: View {
     let snapshot: NativeLiveCurrentPathSnapshot?
     let historySnapshot: NativeLiveConversationHistorySnapshot?
@@ -107,10 +22,14 @@ struct NativeLiveMessageSurface: View {
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
 
+    @EnvironmentObject private var appModel: AppModel
     private let bottomAnchorID = "native-live-chat-bottom"
-    @State private var isAwayFromBottom = false
-    @State private var latestAwayFromBottom = false
-    @State private var userScrollInteractionActive = false
+    @State private var scrollState = NativeLiveConversationScrollState()
+    @State private var scrollPosition = ScrollPosition()
+    @State private var rowFrames: [String:CGRect] = [:]
+    @State private var anchorReplacementID: String?
+    @State private var preservedAnchor: NativeLiveConversationScrollState.Anchor?
+    @State private var contentOffset: Double = 0
     @State private var copiedMessageID: String?
     @State private var copyFeedbackToken = UUID()
     @State private var isLoadingOlderMessages = false
@@ -123,30 +42,16 @@ struct NativeLiveMessageSurface: View {
                 messageList(snapshot)
             } else if !hasActiveConversation {
                 AppStateSurface(title: "Nothing here")
-            } else if snapshot != nil || historySnapshot != nil {
-                if (snapshot?.messages.isEmpty ?? true)
-                    && (historySnapshot?.messages.isEmpty ?? true) {
-                    Color.clear
-                } else {
-                    messageList(snapshot)
-                }
             } else {
-                switch syncState {
-                case .idle, .loading:
-                    Color.clear
-
-                case .ready:
-                    AppStateSurface(title: "Nothing here")
-
+                switch NativeLiveConversationLoadPresentation.project(
+                    hasSnapshot:snapshot != nil || historySnapshot != nil,
+                    hasRows:appModel.nativeLiveConversationRows.contains { !$0.isHistoryDivider },
+                    ready:syncState == .ready,failed:syncUnavailable) {
+                case .content: messageList(snapshot)
+                case .quietLoading: Color.clear
+                case .empty: AppStateSurface(title:"Nothing here")
                 case .unavailable:
-                    AppStateSurface(
-                        title: "Unavailable",
-                        actionTitle: "Retry"
-                    ) {
-                        Task {
-                            await onRefresh()
-                        }
-                    }
+                    AppStateSurface(title:"Unavailable",actionTitle:"Retry") { Task { await onRefresh() } }
                 }
             }
         }
@@ -154,45 +59,18 @@ struct NativeLiveMessageSurface: View {
         .background(Color(.systemBackground))
     }
 
+    private var syncUnavailable: Bool {
+        if case .unavailable = syncState { return true }
+        return false
+    }
+
     private func messageList(
         _ snapshot: NativeLiveCurrentPathSnapshot?
     ) -> some View {
-        let runtimeSurface =
-            matchingRuntimeSurface(for: snapshot)
-        let messages = snapshot?.messages ?? []
-        let pendingIsActive = pendingPresentationIsActive(snapshot)
-        let replacementAssistantID =
-            pendingIsActive
-                ? pendingAssistantMessageID(
-                    in: messages
-                )
-                : nil
-        let canonicalRuntimeAssistantID =
-            pendingOperation == nil
-                ? canonicalAssistantAfterLatestUserID(
-                    in: messages
-                )
-                : nil
-
+        let rows = appModel.nativeLiveConversationRows
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 21) {
-                    if let historySnapshot {
-                        ForEach(historySnapshot.messages) { message in
-                            NativeLiveHistorySnapshotRow(
-                                message: message,
-                                timeZone: historySnapshot.timeZone
-                            )
-                            .id(
-                                "history-"
-                                    + String(message.ordinal)
-                            )
-                        }
-
-                        NativeLiveHistoryForkDivider()
-                            .id("native-live-history-fork-divider")
-                    }
-
                     if snapshot?.olderCursor != nil {
                         Button {
                             guard !isLoadingOlderMessages,
@@ -200,6 +78,7 @@ struct NativeLiveMessageSurface: View {
                                 return
                             }
 
+                            captureAnchor()
                             isLoadingOlderMessages = true
                             Task {
                                 await onLoadOlder()
@@ -236,95 +115,17 @@ struct NativeLiveMessageSurface: View {
                         .id("native-live-load-older")
                     }
 
-                    ForEach(messages) { message in
-                        NativeLiveMessageRow(
-                            message: message,
-                            isCurrentHead:
-                                message.id
-                                    == snapshot?.currentHeadMessageId,
-                            presentationSource:
-                                presentationSource(
-                                    for: message,
-                                    pendingIsActive: pendingIsActive
-                                ),
-                            showPendingReplacement:
-                                message.id == replacementAssistantID,
-                            replacementRuntimeSurface:
-                                message.id == replacementAssistantID
-                                    ? runtimeSurface
-                                    : nil,
-                            activityRuntimeSurface:
-                                message.id == canonicalRuntimeAssistantID
-                                    ? runtimeSurface
-                                    : nil,
-                            onResolveReplacementInteraction:
-                                onResolveRuntimeInteraction,
-                            isTurnInFlight: isTurnInFlight,
-                            isCopied: copiedMessageID == message.id,
-                            onCopyMessage: { text in
-                                copyMessage(
-                                    text,
-                                    messageID: message.id
-                                )
-                            },
-                            onRetryMessage: onRetryMessage,
-                            onEditMessage: onEditMessage
-                        )
-                        .id(message.id)
-
-                        if pendingIsActive,
-                           replacementAssistantID == nil,
-                           let targetUserMessageID =
-                                pendingOperation?.targetUserMessageID,
-                           message.id == targetUserMessageID {
-                            NativeLiveRuntimeAssistantRow(
-                                runtimeSurface: runtimeSurface,
-                                onResolveInteraction:
-                                    onResolveRuntimeInteraction
-                            )
-                            .id(
-                                "pending-assistant-"
-                                    + (pendingOperation?.id.uuidString ?? "")
-                            )
-                        }
-                    }
-
-                    if pendingIsActive,
-                       let pendingOperation,
-                       let sendText = pendingOperation.sendText {
-                        NativeLiveOptimisticUserRow(
-                            source: .send(messageID: "pending-user-\(pendingOperation.id.uuidString)",
-                                          text: sendText, attachments: pendingOperation.presentationAttachments,
-                                          inputMode: pendingOperation.inputMode)
-                        )
-                        .id(
-                            "pending-user-"
-                                + pendingOperation.id.uuidString
-                        )
-
-                        NativeLiveRuntimeAssistantRow(
-                            runtimeSurface: runtimeSurface,
-                            onResolveInteraction:
-                                onResolveRuntimeInteraction
-                        )
-                        .id(
-                            "pending-assistant-"
-                                + pendingOperation.id.uuidString
-                        )
-                    }
-
-                    if pendingOperation == nil,
-                       let runtimeSurface,
-                       canonicalRuntimeAssistantID == nil {
-                        NativeLiveRuntimeAssistantRow(
-                            runtimeSurface: runtimeSurface,
-                            onResolveInteraction:
-                                onResolveRuntimeInteraction
-                        )
-                        .id(
-                            "recovered-runtime-assistant-"
-                                + runtimeSurface.prepareID
-                        )
+                    ForEach(rows) { row in
+                        NativeLiveMessageRow(row:row,
+                            isCurrentHead:row.assistant?.canonicalMessageID == snapshot?.currentHeadMessageId,
+                            isTurnInFlight:isTurnInFlight,isCopied:copiedMessageID == row.id,
+                            onCopyMessage:{ copyMessage($0,messageID:row.id) },onRetryMessage:onRetryMessage,
+                            onEditMessage:onEditMessage,onResolveInteraction:onResolveRuntimeInteraction)
+                            .id(row.id)
+                            .background(GeometryReader { geometry in
+                                Color.clear.preference(key:NativeLiveRowFramesKey.self,
+                                    value:[row.id:geometry.frame(in:.named("native-live-viewport"))])
+                            })
                     }
 
                     Color.clear
@@ -336,81 +137,43 @@ struct NativeLiveMessageSurface: View {
                 .padding(.bottom, 8)
             }
             .scrollClipDisabled()
-            .id(
-                snapshot?.conversationId
-                    ?? historySnapshot?.conversationId
-                    ?? "native-live-empty"
-            )
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
             .refreshable {
                 guard !isTurnInFlight else { return }
                 await onRefresh()
             }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.visibleRect.maxY
-                    < geometry.contentSize.height - 12
-            } action: { _, awayFromBottom in
-                latestAwayFromBottom = awayFromBottom
-
-                guard userScrollInteractionActive,
-                      awayFromBottom != isAwayFromBottom else {
-                    return
-                }
-
-                withAnimation(.easeInOut(duration: 0.16)) {
-                    isAwayFromBottom = awayFromBottom
+            .coordinateSpace(name:"native-live-viewport")
+            .scrollPosition($scrollPosition)
+            .onPreferenceChange(NativeLiveRowFramesKey.self) { frames in
+                if let operation = pendingOperation, !operation.isSend { captureReplacementAnchor(operation) }
+                rowFrames = frames
+                preservedAnchor = scrollState.preservedAnchor(before:preservedAnchor,survivingIDs:Set(rows.map(\.id)),replacementID:anchorReplacementID)
+                if let anchor = preservedAnchor, let frame = frames[anchor.stableID] {
+                    preservedAnchor = nil; anchorReplacementID = nil
+                    scrollPosition.scrollTo(y:max(0,contentOffset + frame.minY - anchor.relativeOffset))
                 }
             }
-            .onScrollPhaseChange { _, newPhase in
-                if newPhase == .tracking
-                    || newPhase == .interacting
-                    || newPhase == .decelerating {
-                    userScrollInteractionActive = true
-                    return
-                }
-
-                guard newPhase == .idle,
-                      userScrollInteractionActive else {
-                    return
-                }
-
-                userScrollInteractionActive = false
-
-                guard latestAwayFromBottom
-                        != isAwayFromBottom else {
-                    return
-                }
-
-                withAnimation(.easeInOut(duration: 0.16)) {
-                    isAwayFromBottom =
-                        latestAwayFromBottom
-                }
+            .onScrollGeometryChange(for:NativeLiveScrollMetrics.self) { geometry in
+                .init(nearBottom:geometry.visibleRect.maxY >= geometry.contentSize.height-12,
+                    offset:geometry.contentOffset.y,height:geometry.contentSize.height)
+            } action: { old, metrics in
+                contentOffset = metrics.offset
+                scrollState.geometryChanged(isNearBottom:metrics.nearBottom)
+                if old.height != metrics.height && scrollState.shouldFollowContent && preservedAnchor == nil { scrollToBottom(proxy) }
             }
-            .onChange(of: snapshot?.conversationId) { _, _ in
-                isAwayFromBottom = false
-                latestAwayFromBottom = false
-                userScrollInteractionActive = false
+            .onScrollPhaseChange { _, phase in
+                let interacting = phase == .tracking || phase == .interacting || phase == .decelerating
+                if interacting { preservedAnchor = nil; anchorReplacementID = nil }
+                scrollState.interactionChanged(interacting)
             }
-            .onChange(of: pendingOperation) { _, operation in
-                guard let operation,
-                      operation.isSend else {
-                    return
-                }
-                scrollToBottom(proxy)
+            .onChange(of:snapshot?.conversationId) { old, new in
+                guard old != new, pendingOperation?.isSend != true else { return }
+                scrollState = .init(); preservedAnchor = nil
             }
-            .onChange(of: snapshot?.syncToken) { _, _ in
-                guard pendingOperation?.isSend == true
-                        || !isAwayFromBottom else {
-                    return
-                }
-                scrollToBottom(proxy)
-            }
-            .onChange(of: runtimeSurface?.events.count) { _, _ in
-                guard pendingOperation != nil else {
-                    return
-                }
-                scrollToBottom(proxy)
+            .onChange(of:pendingOperation?.id) { _, _ in
+                if pendingOperation?.isSend == true { scrollState.sentNewMessage(); scrollToBottom(proxy) }
+                else if let operation = pendingOperation { captureReplacementAnchor(operation) }
             }
             .overlay(alignment: .top) {
                 if copiedMessageID != nil {
@@ -461,9 +224,9 @@ struct NativeLiveMessageSurface: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if isAwayFromBottom {
+                if scrollState.shouldShowReturnToBottom {
                     Button {
-                        isAwayFromBottom = false
+                        scrollState.returnToBottom()
                         withAnimation(.snappy) {
                             proxy.scrollTo(
                                 bottomAnchorID,
@@ -504,70 +267,16 @@ struct NativeLiveMessageSurface: View {
         }
     }
 
-    private func matchingRuntimeSurface(
-        for snapshot: NativeLiveCurrentPathSnapshot?
-    ) -> NativeLiveRuntimeSurfaceState? {
-        guard let runtimeSurface,
-              let snapshot,
-              UUID(uuidString: snapshot.conversationId)
-                == runtimeSurface.conversationID else {
-            return nil
-        }
-        return runtimeSurface
+    private func captureReplacementAnchor(_ operation: NativeLivePendingOperation) {
+        guard scrollState.beginReplacement(operation.id) else { return }
+        captureAnchor()
+        anchorReplacementID = appModel.nativeLivePresentationAssembler.pendingIDs(operation,snapshot:snapshot,identities:appModel.nativeLiveTurnIdentities).assistant
     }
 
-    private func canonicalAssistantAfterLatestUserID(
-        in messages: [NativeLiveCurrentPathMessage]
-    ) -> String? {
-        guard let latestUserIndex = messages.lastIndex(where: {
-            $0.role == "user"
-        }) else {
-            return nil
-        }
-
-        let tail = messages.suffix(
-            from: messages.index(after: latestUserIndex)
-        )
-        return tail.last(where: {
-            $0.role == "assistant"
-        })?.id
-    }
-
-    private func pendingPresentationIsActive(
-        _ snapshot: NativeLiveCurrentPathSnapshot?
-    ) -> Bool {
-        pendingOperation != nil
-    }
-
-    private func pendingAssistantMessageID(
-        in messages: [NativeLiveCurrentPathMessage]
-    ) -> String? {
-        guard let targetUserMessageID =
-                pendingOperation?.targetUserMessageID else {
-            return nil
-        }
-
-        return messages.first(where: {
-            $0.role == "assistant"
-                && $0.parentMessageId == targetUserMessageID
-        })?.id
-    }
-
-    private func presentationSource(
-        for message: NativeLiveCurrentPathMessage,
-        pendingIsActive: Bool
-    ) -> NativeLiveMessagePresentationSource {
-        guard pendingIsActive,
-              let pendingOperation,
-              case .edit(
-                  let targetUserMessageID,
-                  let text
-              ) = pendingOperation.kind,
-              message.id == targetUserMessageID else {
-            return .canonical(message)
-        }
-
-        return .edit(message, text: text, attachments: pendingOperation.presentationAttachments)
+    private func captureAnchor() {
+        guard !scrollState.followLatest,
+              let first = rowFrames.filter({ $0.value.maxY > 0 }).min(by:{ $0.value.minY < $1.value.minY }) else { return }
+        preservedAnchor = .init(stableID:first.key,relativeOffset:first.value.minY)
     }
 
     private func copyMessage(
@@ -596,10 +305,16 @@ struct NativeLiveMessageSurface: View {
     private func scrollToBottom(
         _ proxy: ScrollViewProxy
     ) {
-        isAwayFromBottom = false
         Task { @MainActor in
             await Task.yield()
+            guard scrollState.shouldFollowContent else { return }
             proxy.scrollTo(bottomAnchorID, anchor: .bottom)
         }
     }
 }
+
+private struct NativeLiveRowFramesKey: PreferenceKey {
+    static var defaultValue: [String:CGRect] { [:] }
+    static func reduce(value:inout [String:CGRect],nextValue:()->[String:CGRect]) { value.merge(nextValue()) { _,fresh in fresh } }
+}
+private struct NativeLiveScrollMetrics: Equatable { let nearBottom: Bool; let offset: Double; let height: Double }

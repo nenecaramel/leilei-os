@@ -41,7 +41,7 @@ test("rich projection caches exact input in a bounded cache outside SwiftUI body
 });
 
 test("live streaming text enters the same rich presentation projection", () => {
-  const source = fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift", "utf8");
+  const source = fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveConversationPresentationAssembler.swift", "utf8");
   assert.match(source, /NativeLiveMessagePresentationProjector\.project/);
   assert.doesNotMatch(source, /ChatMarkdownView\(/);
 });

@@ -14,6 +14,7 @@ import {
 } from "../../database/schema.js";
 import type {
   NativeLiveMessage,
+  NativeLiveFailedTurnEvidence,
 } from "./native-live-conversation-types.js";
 import {
   readNativeLiveMessageActivityByAssistantMessage,
@@ -25,6 +26,7 @@ export const DEFAULT_NATIVE_LIVE_CURRENT_PATH_LIMIT = 100;
 export const MAX_NATIVE_LIVE_CURRENT_PATH_LIMIT = 200;
 
 export type NativeLiveCurrentPathSnapshot = {
+  failedTurn?: NativeLiveFailedTurnEvidence | null;
   conversationId: string;
   title: string | null;
   currentHeadMessageId: string | null;
@@ -75,6 +77,7 @@ implements NativeLiveCurrentPathReader {
         currentHeadMessageId:
           conversations.currentHeadMessageId,
         updatedAt: conversations.updatedAt,
+        providerMetadata: conversations.providerMetadata,
       })
       .from(conversations)
       .where(
@@ -89,10 +92,16 @@ implements NativeLiveCurrentPathReader {
 
     if (!conversation) return null;
 
+    const evidence = conversation.providerMetadata?.native_live_failed_turn as NativeLiveFailedTurnEvidence | undefined;
+    const failedTurn = evidence
+      && evidence.conversationId === conversation.id
+      && evidence.anchorHeadMessageId === conversation.currentHeadMessageId
+        ? evidence : null;
     const headMessageId =
       conversation.currentHeadMessageId;
     if (!headMessageId) {
       return {
+        failedTurn,
         conversationId: conversation.id,
         title: conversation.title,
         currentHeadMessageId: null,
@@ -172,6 +181,7 @@ implements NativeLiveCurrentPathReader {
       }
       if (!cursor.parentMessageId) {
         return {
+          failedTurn,
           conversationId: conversation.id,
           title: conversation.title,
           currentHeadMessageId: headMessageId,
@@ -265,6 +275,7 @@ implements NativeLiveCurrentPathReader {
 
     if (messageIds.length === 0) {
       return {
+        failedTurn,
         conversationId: conversation.id,
         title: conversation.title,
         currentHeadMessageId: headMessageId,
@@ -401,6 +412,7 @@ implements NativeLiveCurrentPathReader {
     });
 
     return {
+      failedTurn,
       conversationId: conversation.id,
       title: conversation.title,
       currentHeadMessageId: headMessageId,

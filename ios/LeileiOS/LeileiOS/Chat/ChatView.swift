@@ -25,7 +25,10 @@ struct ChatView: View {
     @State private var thinking: NativeLiveThinkingMode = .adaptive
     @State private var effort: NativeLiveEffortLevel = .high
     @State private var editDraft: NativeLiveEditDraft?
-    @State private var pendingOperation: NativeLivePendingOperation?
+    private var pendingOperation: NativeLivePendingOperation? {
+        get { appModel.nativeLivePendingOperation }
+        nonmutating set { appModel.nativeLivePendingOperation = newValue }
+    }
     @State private var isDraftCommitInFlight = false
     @State private var isRuntimeControlInFlight = false
     @State private var pendingMidTurnDelivery:
@@ -479,7 +482,8 @@ struct ChatView: View {
             do {
                 try await appModel.retryNativeLiveMessage(
                     targetUserMessageID: targetUserMessageID,
-                    execution: executionSelection
+                    execution: executionSelection,
+                    presentationOperation: pendingOperation
                 )
             } catch {
             }
@@ -572,7 +576,8 @@ struct ChatView: View {
                             draft.targetUserMessageID,
                         text: pendingText,
                         attachmentIDs: attachmentIDs,
-                        execution: executionSelection
+                        execution: executionSelection,
+                        presentationOperation: pendingOperation
                     )
                     pendingOperation = nil
                 } catch {
@@ -623,6 +628,7 @@ struct ChatView: View {
             presentationAttachments: pendingAttachments.map(\.presentationInput),
             inputMode: inputMode
         )
+        pendingOperation?.isDraftConversation = shouldCreateConversation
         if inputMode == .text { messageText = "" }
         composerAttachments = []
         isComposerFocused = false
@@ -659,7 +665,8 @@ struct ChatView: View {
                         shouldBindWorkspace
                             ? selectedWorkspaceID
                             : nil,
-                    execution: executionSelection
+                    execution: executionSelection,
+                    presentationOperation: pendingOperation
                 )
                 pendingOperation = nil
             } catch {

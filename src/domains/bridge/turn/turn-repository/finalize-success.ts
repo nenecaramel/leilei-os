@@ -191,7 +191,7 @@ export async function finalizeSuccess(
               workspaceId: input.workspaceId,
               effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
               runtimeMetadata:
-                input.runtimeMetadata as Record<string, unknown> | null,
+                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), turn_started_at: row.createdAt.toISOString() },
             },
           });
 

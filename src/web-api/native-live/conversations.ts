@@ -570,7 +570,9 @@ export function readNativeLiveCurrentPathHandler(
         snapshot.syncToken,
         limit,
         { beforeMessageId, afterMessageId },
-        nativeLiveCurrentPathActivityRevision(snapshot.messages),
+        snapshot.failedTurn
+          ? `${nativeLiveCurrentPathActivityRevision(snapshot.messages) ?? "-"}:failed:${snapshot.failedTurn.prepareId}`
+          : nativeLiveCurrentPathActivityRevision(snapshot.messages),
       );
       response.setHeader("ETag", etag);
       if (ifNoneMatchContains(request.header("if-none-match"), etag)) {
@@ -591,6 +593,7 @@ export function readNativeLiveCurrentPathHandler(
           olderCursor: snapshot.olderCursor,
           resetRequired: snapshot.resetRequired,
           messages: snapshot.messages,
+          failedTurn: snapshot.failedTurn ?? null,
         },
       });
     } catch (error) {
