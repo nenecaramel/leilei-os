@@ -186,3 +186,19 @@ test("bitmap preview keeps download and decode failures distinct and has a Quick
     /catch \{[\s\S]*throw NativeLiveMediaError\.decodeFailed/,
   );
 });
+
+
+test("preview filename and lease stay nonisolated under Swift 6 default MainActor isolation", () => {
+  const source = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveFilePreviewLifecycle.swift",
+    "utf8",
+  );
+  assert.match(
+    source,
+    /nonisolated enum NativeLivePreviewFilename/,
+  );
+  assert.match(
+    source,
+    /nonisolated final class NativeLiveFilePreviewLease/,
+  );
+});
