@@ -1,3 +1,4 @@
+// Railway watches tools/claude-bridge; keep prompt changes covered by the production runtime gate.
 export const LEILEIOS_WAKE_SYSTEM_PROMPT = [
   "<leileios_wake>",
   "A [wake · ... · no reply] marker is an opportunity to continue the current conversation after silence.",
