@@ -150,10 +150,22 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
   );
   assert.match(
     transport,
-    /\[LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
+    /LEILEIOS_MURMUR_SYSTEM_PROMPT/u,
+  );
+  assert.match(
+    transport,
+    /\[LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
   );
   assert.doesNotMatch(
     transport,
     /\.join\("\\\\n\\\\n"\)/u,
   );
+
+  const murmurPrompt = readFileSync(
+    "tools/claude-bridge/src/leileios-murmur-system-prompt.mjs",
+    "utf8",
+  );
+  assert.match(murmurPrompt, /Optional and rare\. At most one per reply\./u);
+  assert.match(murmurPrompt, /<murmur>\.\.\.<\/murmur>/u);
+  assert.match(murmurPrompt, /It is not Mind and is not for recall\./u);
 });

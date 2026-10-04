@@ -249,6 +249,7 @@ struct NativeLiveCurrentPathMessage: Decodable, Sendable, Equatable, Identifiabl
 
     var displayText: String {
         blocks
+            .filter { $0.kind == "text" }
             .compactMap(\.text)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

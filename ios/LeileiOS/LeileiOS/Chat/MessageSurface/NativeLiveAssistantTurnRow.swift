@@ -12,9 +12,10 @@ struct NativeLiveAssistantTurnRow: View {
     let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
     var body: some View {
         VStack(alignment:.leading,spacing:6) {
-            if !turn.header.isEmpty {
+            if !turn.header.isEmpty || turn.murmurText != nil {
                 NativeLiveTurnActivityView(projection:turn.activityProjection,
                     timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,
+                    murmurText:turn.murmurText,
                     expansion:Binding(get:{ appModel.nativeLiveMessageUIState[turn.id] },set:{ appModel.nativeLiveMessageUIState[turn.id] = $0 }),
                     onResolveInteraction:onResolveInteraction)
             } else if let timestamp = turn.timestamp {

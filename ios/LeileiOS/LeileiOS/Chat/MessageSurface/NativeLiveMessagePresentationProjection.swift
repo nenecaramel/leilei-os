@@ -9,7 +9,11 @@ enum NativeLiveMessagePresentationProjector {
         var logicalTextOffset = 0
         let nodes: [NativeLiveVisualNode] = ordered.compactMap { _, block in
             // Activity reads original ledger rows independently of Chat projection.
-            if block.kind == "tool_use" || block.kind == "tool_result" { return nil }
+            if block.kind == "tool_use"
+                || block.kind == "tool_result"
+                || block.kind == "murmur" {
+                return nil
+            }
             let kind: NativeLiveVisualNodeKind
             var text: String?
             switch block.kind {

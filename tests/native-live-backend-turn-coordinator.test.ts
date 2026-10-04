@@ -400,6 +400,65 @@ test("successful finalize validates identity, canonicalizes events, and delegate
   });
 });
 
+test("murmur is stripped before Mind parsing and persisted as a separate assistant block", async () => {
+  const mind = new FakeMind();
+  const { port, coordinator } = setup({ mind });
+
+  const result = await coordinator.finalize(userId, {
+    protocol_version: 3,
+    prepare_id: prepareId,
+    request_id: requestId,
+    conversation_id: conversationId,
+    status: "success",
+    provider_session_id: "provider-child",
+    normalized_events: [
+      {
+        type: "text",
+        payload: {
+          text:
+            "Visible answer.\n\n<murmur><memory>never index this</memory> tiny aside</murmur>",
+        },
+      },
+      {
+        type: "result",
+        payload: {
+          status: "success",
+          final_text:
+            "Visible answer.\n\n<murmur><memory>never index this</memory> tiny aside</murmur>",
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(mind.parseCalls.length, 1);
+  assert.deepEqual(mind.parseCalls[0], [{
+    kind: "text",
+    rawType: "text",
+    text: "Visible answer.",
+  }]);
+
+  const call = port.finalizeSuccessCalls[0] as {
+    blocks: NativeLiveContentBlockInput[];
+  };
+  assert.deepEqual(call.blocks, [
+    {
+      kind: "text",
+      rawType: "text",
+      text: "Visible answer.",
+    },
+    {
+      kind: "murmur",
+      rawType: "murmur",
+      text: "never index this tiny aside",
+      payload: {
+        schema_version: 1,
+        identity: "murmur",
+      },
+    },
+  ]);
+});
+
 test("finalize accepts a v2 result for a preparation dispatched during rolling upgrade", async () => {
   const { port, coordinator } = setup();
 

@@ -3,6 +3,7 @@ import {
   canonicalizeNativeLiveEvents,
   type NativeLiveNormalizedEvent,
 } from "../../conversation/native-live-conversation-orchestrator.js";
+import { extractNativeLiveMurmur } from "./native-live-murmur.js";
 import type {
   NativeLiveContentBlockInput,
   NativeLiveMessage,
@@ -537,9 +538,17 @@ export class NativeLiveBackendTurnCoordinator {
       }
     }
 
+    const murmur = extractNativeLiveMurmur(canonical.blocks);
     const parsedMind = this.mind
-      ? this.mind.parseAssistantBlocks(canonical.blocks)
-      : { visibleBlocks: canonical.blocks, intents: [], actions: [] };
+      ? this.mind.parseAssistantBlocks(murmur.visibleBlocks)
+      : {
+          visibleBlocks: murmur.visibleBlocks,
+          intents: [],
+          actions: [],
+        };
+    const finalizedBlocks = murmur.murmurBlock
+      ? [...parsedMind.visibleBlocks, murmur.murmurBlock]
+      : parsedMind.visibleBlocks;
 
     let finalized: NativeLiveFinalizeSuccessPortResult;
     try {
@@ -549,7 +558,7 @@ export class NativeLiveBackendTurnCoordinator {
         providerSessionId: result.provider_session_id,
         workspaceId: result.workspace_id,
         effectiveWorkspaceRoot: result.effective_workspace_root,
-        blocks: parsedMind.visibleBlocks,
+        blocks: finalizedBlocks,
         outputAttachmentIds:
           result.output_attachment_ids ?? [],
         normalizedEvents: result.normalized_events,
