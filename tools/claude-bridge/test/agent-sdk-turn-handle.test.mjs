@@ -782,6 +782,49 @@ test("turn handle maps a successful graceful interrupt to INTERRUPTED", async ()
   );
 });
 
+test("turn handle interrupt cannot hang when the SDK iterator stays open", async () => {
+  let started;
+  const startedGate = new Promise((resolve) => {
+    started = resolve;
+  });
+  let closeCalls = 0;
+
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "long task",
+    environment: {},
+    queryImpl: () => ({
+      close() {
+        closeCalls += 1;
+      },
+      async interrupt() {
+        return { still_queued: [] };
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-interrupt-hang",
+        };
+        started();
+        await new Promise(() => {});
+      },
+    }),
+  });
+
+  const completion = handle.start();
+  await startedGate;
+  const receipt = await handle.interrupt();
+  assert.deepEqual(receipt, { still_queued: [] });
+
+  await assert.rejects(
+    completion,
+    (error) =>
+      error.runtimeCode === "INTERRUPTED"
+      && error.providerSessionId === "provider-interrupt-hang",
+  );
+  assert.equal(closeCalls, 1);
+});
+
 test("turn handle hard abort remains separate from graceful interrupt", async () => {
   let release;
   let started;

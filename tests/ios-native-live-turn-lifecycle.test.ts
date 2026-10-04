@@ -18,3 +18,38 @@ test("real Swift turn lifecycle reconciles every Send Edit Retry and recovery fr
     assert.match(ran.stdout,/Turn lifecycle PASS/); t.diagnostic(ran.stdout.trim());
   } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 });
+
+
+test("user interrupt unlocks send/edit without restoring the stopped draft", () => {
+  const controller = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/NativeLiveTurnController.swift",
+    "utf8",
+  );
+  assert.match(
+    controller,
+    /turn\.failureCode == "INTERRUPTED"[\s\S]*NativeLiveSendError\.interrupted/,
+  );
+  assert.match(
+    controller,
+    /catch NativeLiveSendError\.interrupted \{[\s\S]*chatSendState = \.idle/,
+  );
+
+  const appModel = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/App/AppModel.swift",
+    "utf8",
+  );
+  assert.match(appModel, /case interrupted/);
+
+  const chat = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/ChatView.swift",
+    "utf8",
+  );
+  const interruptedCatches =
+    chat.match(/catch NativeLiveSendError\.interrupted \{[\s\S]*?\n\s*\}/g)
+      ?? [];
+  assert.ok(interruptedCatches.length >= 2);
+  for (const block of interruptedCatches) {
+    assert.match(block, /pendingOperation = nil/);
+    assert.doesNotMatch(block, /messageText = pendingText|editDraft = draft/);
+  }
+});

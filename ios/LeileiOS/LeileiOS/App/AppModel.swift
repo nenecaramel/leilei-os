@@ -184,6 +184,7 @@ final class AppModel: ObservableObject {
 enum NativeLiveSendError: LocalizedError {
     case notReady
     case invalidText
+    case interrupted
     case failed(code: String?)
     case completionUnknown
 
@@ -193,6 +194,8 @@ enum NativeLiveSendError: LocalizedError {
             return "Conversation is not ready."
         case .invalidText:
             return "Message must contain between 1 and 4000 characters."
+        case .interrupted:
+            return "Turn interrupted."
         case .failed(let code):
             return code ?? "Failed"
         case .completionUnknown:
