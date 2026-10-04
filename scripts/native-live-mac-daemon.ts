@@ -1,4 +1,7 @@
-import { NativeLiveMacMemeSender } from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
+import {
+  consumeNativeLiveMacMemeGitHubConfig,
+  NativeLiveMacMemeSender,
+} from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
 import "dotenv/config";
 import {
   NativeLiveMacDaemonLoop,
@@ -48,6 +51,8 @@ import {
 } from "../src/domains/bridge/mac/native-live-mac-wake-broker-client.js";
 
 const daemonLock = acquireNativeLiveMacDaemonLock();
+const memeGitHubConfig =
+  consumeNativeLiveMacMemeGitHubConfig(process.env);
 
 const {
   relayBaseUrl,
@@ -176,7 +181,12 @@ const executor = new NativeLiveMacRuntimeExecutor(
     );
   },
   relay,
-  new NativeLiveMacMemeSender(outputAttachmentSender),
+  new NativeLiveMacMemeSender(
+    outputAttachmentSender,
+    undefined,
+    memeGitHubConfig,
+    process.env,
+  ),
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
