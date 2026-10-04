@@ -191,15 +191,16 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.doesNotMatch(runtimeModels, /Task in progress/);
   assert.doesNotMatch(runtimeModels, /Using a tool/);
 
-  assert.match(runtime, /Text\(projection\.summaryLabel\)/);
+  assert.match(runtime, /Text\(header\)/);
   assert.match(runtime, /let timestampText: String\?/);
+  assert.match(runtime, /let murmurText: String\?/);
   assert.match(
     runtime,
-    /Button \{[\s\S]*\} label: \{\s*HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 12\s*\)[\s\S]*Text\(timestampText\)[\s\S]*Text\(projection\.summaryLabel\)[\s\S]*Spacer\(minLength: 8\)[\s\S]*"chevron\.right"/,
+    /HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 8\s*\)[\s\S]*Text\(timestampText\)[\s\S]*Text\(header\)[\s\S]*Image\(systemName: "bubble\.left"\)[\s\S]*"chevron\.right"/,
   );
-  assert.doesNotMatch(
+  assert.match(
     runtime,
-    /HStack\(\s*alignment: \.firstTextBaseline,\s*spacing: 12\s*\) \{[\s\S]*Text\(timestampText\)[\s\S]*Button \{/,
+    /\.sheet\(isPresented: \$isShowingMurmur\)[\s\S]*NativeLiveMurmurSheet/,
   );
   assert.match(
     runtime,
