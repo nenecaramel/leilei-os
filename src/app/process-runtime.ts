@@ -154,7 +154,9 @@ import {
 import {
   NativeLiveTurnWaitService,
 } from "../domains/bridge/relay/native-live-turn-wait.js";
-import { NativeLiveConversationHeadWaitService } from "../domains/bridge/relay/native-live-conversation-head-wait.js";
+import {
+  NativeLiveConversationHeadWaitService,
+} from "../domains/bridge/relay/native-live-conversation-head-wait.js";
 import {
   DrizzleNativeLiveRuntimeEventRepository,
   NativeLiveRuntimeEventService,
