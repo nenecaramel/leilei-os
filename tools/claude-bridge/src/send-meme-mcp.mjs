@@ -1,7 +1,8 @@
-export const MEME_SYSTEM_HINT = "A small curated meme library is available in nenecaramel/leileios-album. You may inspect it with the existing `gh` CLI. When a reaction image genuinely fits, choose an existing meme ID and use send_meme. Use memes sparingly and naturally; do not force one into every reply and do not invent IDs.";
+export const MEME_SYSTEM_HINT = "A small curated meme library is available in nenecaramel/leileios-album. You may inspect it with your existing GitHub/Bash access. When a reaction image genuinely fits, choose an existing meme ID and use send_meme. Use memes sparingly and naturally; do not force one into every reply and do not invent IDs.";
 
 const SAFE_MEME_ERRORS = new Map([
-  ["MEME_GH_UNAVAILABLE", "GitHub CLI is unavailable in the Mac daemon environment."],
+  ["MEME_GITHUB_AUTH_MISSING", "Dedicated GitHub authentication is missing from the Mac daemon."],
+  ["MEME_GITHUB_AUTH_FAILED", "GitHub rejected the Mac daemon meme credential."],
   ["MEME_NOT_FOUND", "The meme was not found in the fixed GitHub library."],
   ["MEME_GITHUB_FETCH_FAILED", "GitHub fetch failed in the Mac daemon environment."],
   ["MEME_SOURCE_INVALID", "GitHub returned invalid meme image bytes."],

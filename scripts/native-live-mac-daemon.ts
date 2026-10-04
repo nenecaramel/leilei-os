@@ -183,9 +183,7 @@ const executor = new NativeLiveMacRuntimeExecutor(
   relay,
   new NativeLiveMacMemeSender(
     outputAttachmentSender,
-    undefined,
     memeGitHubConfig,
-    process.env,
   ),
 );
 const backgroundModelExecutor =

@@ -13,67 +13,56 @@ const webp=Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA
 const id="33333333-3333-4333-8333-333333333333";
 const descriptor={attachmentId:id,filename:"meme_0001.webp",mimeType:"image/webp",sizeBytes:webp.length,sha256:createHash("sha256").update(webp).digest("hex"),kind:"image" as const};
 
-test("fixed authenticated gh bytes enter the existing output attachment upload/complete path",async()=>{
-  const calls:unknown[]=[];
+test("fixed authenticated GitHub API bytes enter the existing output attachment upload/complete path",async()=>{
   let uploaded=false;
+  let request:{url:string;init?:RequestInit}|null=null;
   const relay={async createAttachmentUploadSlot(input:unknown){assert.deepEqual(input,{filename:"meme_0001.webp",mimeType:"image/webp",sizeBytes:42,sha256:descriptor.sha256,kind:"image"});return {attachment:descriptor,upload:{url:"https://bucket.example/upload",method:"PUT" as const,headers:{"content-type":"image/webp"}}};},async completeAttachmentUpload(input:unknown){assert.equal(uploaded,true);assert.deepEqual(input,{attachmentId:id});return descriptor;}};
   const attachments=new NativeLiveMacOutputAttachmentSender(relay,async(url,init)=>{assert.equal(String(url),"https://bucket.example/upload");assert.deepEqual(Buffer.from(init?.body as Uint8Array),webp);uploaded=true;return new Response(null,{status:200});});
   const sender=new NativeLiveMacMemeSender(
     attachments,
-    async(file,args,options)=>{
-      calls.push({
-        file,
-        args,
-        options:{
-          maxBuffer:options.maxBuffer,
-          timeout:options.timeout,
-          ghToken:options.env.GH_TOKEN,
-          path:options.env.PATH,
-        },
+    {githubToken:"dedicated-meme-token"},
+    async(url,init)=>{
+      request={url:String(url),init};
+      return new Response(new Uint8Array(webp),{
+        status:200,
+        headers:{"content-length":String(webp.length),"content-type":"image/webp"},
       });
-      return webp;
     },
-    {githubToken:"dedicated-meme-token",ghPath:"/opt/homebrew/bin/gh"},
-    {PATH:"/usr/bin"},
   );
   const result=await sender.sendMeme({memeId:"meme_0001"});
   assert.deepEqual(result,descriptor);
-  assert.equal(JSON.stringify(result).includes("github.com"),false);
-  assert.deepEqual(calls,[{file:"/opt/homebrew/bin/gh",args:["api","--hostname","github.com","repos/nenecaramel/leileios-album/contents/memes/meme_0001.webp?ref=main","-H","Accept: application/vnd.github.raw+json"],options:{maxBuffer:20*1024*1024,timeout:30_000,ghToken:"dedicated-meme-token",path:"/usr/bin"}}]);
+  assert.equal(request?.url,"https://api.github.com/repos/nenecaramel/leileios-album/contents/memes/meme_0001.webp?ref=main");
+  assert.equal(new Headers(request?.init?.headers).get("authorization"),"Bearer dedicated-meme-token");
+  assert.equal(new Headers(request?.init?.headers).get("accept"),"application/vnd.github.raw+json");
 });
 
 for(const memeId of ["meme_1","../meme_0001","meme_0001/../../secret","meme_0001?ref=evil","meme_x","meme_0001.webp","","meme_0001\n","meme_"+"1".repeat(100)]){
   test(`invalid meme id rejected before gh: ${JSON.stringify(memeId)}`,async()=>{
     let calls=0;
-    const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},async()=>{calls++;return webp;});
+    const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},{githubToken:"token"},async()=>{calls++;return new Response(new Uint8Array(webp),{status:200});});
     await assert.rejects(sender.sendMeme({memeId}));assert.equal(calls,0);
   });
 }
 
-test("gh failures preserve only a safe stage code",async()=>{
-  for(const failure of [
-    new Error("HTTP 404 PRIVATE_TOKEN"),
-    new Error("auth PRIVATE_TOKEN"),
-    new Error("network /secret/credential/path"),
-  ]){
-    const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},async()=>{throw failure;});
+test("GitHub API auth and transport failures are classified safely",async()=>{
+  const cases=[
+    {token:null,response:null,throws:null,code:"MEME_GITHUB_AUTH_MISSING"},
+    {token:"token",response:new Response(null,{status:401}),throws:null,code:"MEME_GITHUB_AUTH_FAILED"},
+    {token:"token",response:new Response(null,{status:403}),throws:null,code:"MEME_GITHUB_AUTH_FAILED"},
+    {token:"token",response:new Response(null,{status:404}),throws:null,code:"MEME_NOT_FOUND"},
+    {token:"token",response:new Response(null,{status:500}),throws:null,code:"MEME_GITHUB_FETCH_FAILED"},
+    {token:"token",response:null,throws:new Error("network /secret/path"),code:"MEME_GITHUB_FETCH_FAILED"},
+  ] as const;
+  for(const item of cases){
+    const sender=new NativeLiveMacMemeSender(
+      {async sendBytes(){throw new Error("must not upload");}},
+      {githubToken:item.token},
+      async()=>{if(item.throws)throw item.throws;return item.response!;},
+    );
     await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
       assert.ok(error instanceof NativeLiveMemeSendError);
-      assert.equal(error.code,"MEME_GITHUB_FETCH_FAILED");
-      assert.equal(String(error).includes("PRIVATE_TOKEN"),false);
-      assert.equal(String(error).includes("credential/path"),false);
-      assert.equal("cause" in error,false);
-      return true;
-    });
-  }
-});
-
-test("typed gh availability and not-found failures survive without secret detail",async()=>{
-  for(const code of ["MEME_GH_UNAVAILABLE","MEME_NOT_FOUND"] as const){
-    const sender=new NativeLiveMacMemeSender({async sendBytes(){throw new Error("must not upload");}},async()=>{throw new NativeLiveMemeSendError(code);});
-    await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
-      assert.ok(error instanceof NativeLiveMemeSendError);
-      assert.equal(error.code,code);
+      assert.equal(error.code,item.code);
+      assert.equal(String(error).includes("secret/path"),false);
       return true;
     });
   }
@@ -82,7 +71,7 @@ test("typed gh availability and not-found failures survive without secret detail
 for(const bytes of [Buffer.alloc(0),Buffer.from('{"content":"base64"}'),Buffer.from("not webp"),Buffer.concat([webp,Buffer.alloc(20*1024*1024)])]){
   test(`invalid source bytes report MEME_SOURCE_INVALID: ${bytes.length}`,async()=>{
     let uploads=0;
-    const sender=new NativeLiveMacMemeSender({async sendBytes(){uploads++;throw new Error("unused");}},async()=>bytes);
+    const sender=new NativeLiveMacMemeSender({async sendBytes(){uploads++;throw new Error("unused");}},{githubToken:"token"},async()=>new Response(new Uint8Array(bytes),{status:200}));
     await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
       assert.ok(error instanceof NativeLiveMemeSendError);
       assert.equal(error.code,"MEME_SOURCE_INVALID");
@@ -94,7 +83,7 @@ for(const bytes of [Buffer.alloc(0),Buffer.from('{"content":"base64"}'),Buffer.f
 
 test("attachment failure and image metadata mismatch report MEME_ATTACHMENT_FAILED safely",async()=>{
   for(const response of [new Error("signed-url PRIVATE_TOKEN"),{...descriptor,mimeType:"application/json"},{...descriptor,kind:"file" as const},{...descriptor,sizeBytes:1},{...descriptor,sha256:"a".repeat(64)}]){
-    const sender=new NativeLiveMacMemeSender({async sendBytes(){if(response instanceof Error)throw response;return response;}},async()=>webp);
+    const sender=new NativeLiveMacMemeSender({async sendBytes(){if(response instanceof Error)throw response;return response;}},{githubToken:"token"},async()=>new Response(new Uint8Array(webp),{status:200}));
     await assert.rejects(sender.sendMeme({memeId:"meme_0001"}),error=>{
       assert.ok(error instanceof NativeLiveMemeSendError);
       assert.equal(error.code,"MEME_ATTACHMENT_FAILED");
@@ -110,7 +99,7 @@ test("meme bytes complete the existing sender before runtime emits output_attach
   let complete=false;
   const relay={async createAttachmentUploadSlot(){return {attachment:descriptor,upload:{url:"https://bucket.example/upload",method:"PUT" as const,headers:{}}};},async completeAttachmentUpload(){complete=true;return descriptor;}};
   const attachments=new NativeLiveMacOutputAttachmentSender(relay,async()=>new Response(null,{status:200}));
-  const sender=new NativeLiveMacMemeSender(attachments,async()=>webp);
+  const sender=new NativeLiveMacMemeSender(attachments,{githubToken:"token"},async()=>new Response(new Uint8Array(webp),{status:200}));
   const unused=async()=>{throw new Error("unused");};
   const runtime={sendNew:unused,resume:unused,fork:unused,async executeTurn(_prompt:string,options:{memeHandlers?:{sendMeme(input:{memeId:string}):Promise<unknown>}}){
     await options.memeHandlers!.sendMeme({memeId:"meme_0001"});assert.equal(complete,true);
@@ -136,20 +125,8 @@ test("daemon consumes meme GitHub secrets before Claude runtime inheritance",()=
   const config=consumeNativeLiveMacMemeGitHubConfig(environment);
   assert.deepEqual(config,{
     githubToken:"secret-token",
-    ghPath:"/opt/homebrew/bin/gh",
   });
   assert.equal(environment.LEILEI_MEME_GITHUB_TOKEN,undefined);
   assert.equal(environment.LEILEI_MEME_GH_PATH,undefined);
   assert.equal(environment.PATH,"/usr/bin");
-});
-
-test("meme GitHub gh path override must be absolute",()=>{
-  const environment:NodeJS.ProcessEnv={
-    LEILEI_MEME_GH_PATH:"gh",
-  };
-  assert.throws(
-    ()=>consumeNativeLiveMacMemeGitHubConfig(environment),
-    /absolute path/,
-  );
-  assert.equal(environment.LEILEI_MEME_GH_PATH,undefined);
 });
