@@ -49,6 +49,18 @@ test("murmur is removed from visible assistant text and persisted separately", (
   });
 });
 
+test("murmur tags are parsed case-insensitively", () => {
+  const result = extractNativeLiveMurmur([
+    {
+      kind: "text",
+      text: "Main <Murmur>Aside</MURMUR>",
+    },
+  ]);
+
+  assert.equal(result.visibleBlocks[0]?.text, "Main");
+  assert.equal(result.murmurBlock?.text, "Aside");
+});
+
 test("only the first non-empty murmur is kept while all murmur segments stay out of main text", () => {
   const result = extractNativeLiveMurmur([
     {
