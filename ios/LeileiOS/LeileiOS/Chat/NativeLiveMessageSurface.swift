@@ -75,48 +75,8 @@ struct NativeLiveMessageSurface: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 21) {
-                    if snapshot?.olderCursor != nil {
-                        Button {
-                            guard !isLoadingOlderMessages,
-                                  !isTurnInFlight else {
-                                return
-                            }
-
-                            captureAnchor()
-                            isLoadingOlderMessages = true
-                            Task {
-                                await onLoadOlder()
-                                await MainActor.run {
-                                    isLoadingOlderMessages = false
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if isLoadingOlderMessages {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Image(systemName: "chevron.up")
-                                        .font(.system(size: 12, weight: .semibold))
-                                }
-
-                                Text(
-                                    isLoadingOlderMessages
-                                        ? "正在加载…"
-                                        : "还有更早消息"
-                                )
-                                .font(.footnote.weight(.medium))
-                            }
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(
-                            isLoadingOlderMessages
-                                || isTurnInFlight
-                        )
-                        .id("native-live-load-older")
+                    if !rows.contains(where: \.isHistoryDivider) {
+                        loadOlderButton(snapshot)
                     }
 
                     ForEach(rows) { row in
@@ -130,6 +90,10 @@ struct NativeLiveMessageSurface: View {
                                 Color.clear.preference(key:NativeLiveRowFramesKey.self,
                                     value:[row.id:geometry.frame(in:.named("native-live-viewport"))])
                             })
+
+                        if row.isHistoryDivider {
+                            loadOlderButton(snapshot)
+                        }
                     }
 
                     Color.clear
@@ -268,6 +232,55 @@ struct NativeLiveMessageSurface: View {
                     )
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func loadOlderButton(
+        _ snapshot: NativeLiveCurrentPathSnapshot?
+    ) -> some View {
+        if snapshot?.olderCursor != nil {
+            Button {
+                guard !isLoadingOlderMessages,
+                      !isTurnInFlight else {
+                    return
+                }
+
+                captureAnchor()
+                isLoadingOlderMessages = true
+                Task {
+                    await onLoadOlder()
+                    await MainActor.run {
+                        isLoadingOlderMessages = false
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if isLoadingOlderMessages {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+
+                    Text(
+                        isLoadingOlderMessages
+                            ? "正在加载…"
+                            : "还有更早消息"
+                    )
+                    .font(.footnote.weight(.medium))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                isLoadingOlderMessages
+                    || isTurnInFlight
+            )
+            .id("native-live-load-older")
         }
     }
 
