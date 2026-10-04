@@ -788,6 +788,7 @@ export class NativeLiveWorkWakeBroker {
       kind === "semantic"
       || kind === "foreground"
       || kind === "background_model"
+      || kind === "silence_wake"
     ) {
       this.signalKey(userWakeKey(userId));
     }
