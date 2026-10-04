@@ -781,6 +781,7 @@ export class NativeLiveWorkWakeBroker {
       this.signalKey(
         turnWakeKey(userId, prepareId),
       );
+      this.signalKey(userWakeKey(userId));
       return;
     }
 
