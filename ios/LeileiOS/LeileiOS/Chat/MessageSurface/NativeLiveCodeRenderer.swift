@@ -6,6 +6,7 @@ struct NativeLiveSourcePanel<Content: View>: View {
     let label: String
     let copyText: String
     @ViewBuilder let content: Content
+    @Environment(\.nativeLiveCopyFeedback) private var copyFeedback
     @State private var isCopied = false
     @State private var copyGeneration = 0
 
@@ -15,13 +16,16 @@ struct NativeLiveSourcePanel<Content: View>: View {
                 Text(label).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button { copy() } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: isCopied ? "checkmark" : "square.on.square")
-                        if isCopied {
-                            Text("Copied").font(.caption2)
-                        }
-                    }
+                    Image(
+                        systemName:
+                            isCopied
+                                ? "checkmark"
+                                : "square.on.square"
+                    )
+                    .font(.system(size: 15))
+                    .frame(width: 24, height: 24)
                 }
+                .foregroundStyle(.secondary)
                 .buttonStyle(.plain)
                 .accessibilityLabel(isCopied ? "Copied" : "Copy \(label)")
             }
@@ -36,6 +40,7 @@ struct NativeLiveSourcePanel<Content: View>: View {
 
     private func copy() {
         UIPasteboard.general.string = copyText
+        copyFeedback("Copied")
         copyGeneration += 1
         let generation = copyGeneration
         withAnimation(.easeInOut(duration: 0.16)) {

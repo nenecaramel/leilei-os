@@ -31,6 +31,7 @@ struct NativeLiveMessageSurface: View {
     @State private var preservedAnchor: NativeLiveConversationScrollState.Anchor?
     @State private var contentOffset: Double = 0
     @State private var copiedMessageID: String?
+    @State private var copyFeedbackText: String?
     @State private var copyFeedbackToken = UUID()
     @State private var isLoadingOlderMessages = false
 
@@ -57,6 +58,9 @@ struct NativeLiveMessageSurface: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+        .environment(\.nativeLiveCopyFeedback) { text in
+            showCopyFeedback(text)
+        }
     }
 
     private var syncUnavailable: Bool {
@@ -176,7 +180,7 @@ struct NativeLiveMessageSurface: View {
                 else if let operation = pendingOperation { captureReplacementAnchor(operation) }
             }
             .overlay(alignment: .top) {
-                if copiedMessageID != nil {
+                if let copyFeedbackText {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark")
                             .font(.system(
@@ -184,7 +188,7 @@ struct NativeLiveMessageSurface: View {
                                 weight: .semibold
                             ))
 
-                        Text("Message copied")
+                        Text(copyFeedbackText)
                             .font(.system(
                                 size: 14,
                                 weight: .regular
@@ -284,11 +288,21 @@ struct NativeLiveMessageSurface: View {
         messageID: String
     ) {
         UIPasteboard.general.string = text
+        showCopyFeedback(
+            "Message copied",
+            messageID: messageID
+        )
+    }
 
+    private func showCopyFeedback(
+        _ text: String,
+        messageID: String? = nil
+    ) {
         let token = UUID()
         copyFeedbackToken = token
 
         withAnimation(.easeInOut(duration: 0.16)) {
+            copyFeedbackText = text
             copiedMessageID = messageID
         }
 
@@ -297,6 +311,7 @@ struct NativeLiveMessageSurface: View {
             guard copyFeedbackToken == token else { return }
 
             withAnimation(.easeInOut(duration: 0.16)) {
+                copyFeedbackText = nil
                 copiedMessageID = nil
             }
         }
