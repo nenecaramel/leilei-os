@@ -49,6 +49,10 @@ struct ChatView: View {
 
             if isDraftConversation && pendingOperation == nil {
                 Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isComposerFocused = false
+                    }
             } else {
                 NativeLiveMessageSurface(
                     snapshot:
@@ -89,6 +93,9 @@ struct ChatView: View {
                     },
                     onEditMessage: { message in
                         beginEditing(message)
+                    },
+                    onDismissKeyboard: {
+                        isComposerFocused = false
                     }
                 )
             }
