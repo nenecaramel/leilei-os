@@ -249,7 +249,7 @@ test("applied interrupt control wakes bounded turn waiters", async () => {
       async completeForListener() {
         return "applied";
       },
-    },
+    } as never,
     {
       async notify(input) {
         notifications.push(input);
@@ -283,7 +283,7 @@ test("mid-turn input application does not emit a false terminal wake", async () 
       async completeForListener() {
         return "applied";
       },
-    },
+    } as never,
     {
       async notify(input) {
         notifications.push(input);
