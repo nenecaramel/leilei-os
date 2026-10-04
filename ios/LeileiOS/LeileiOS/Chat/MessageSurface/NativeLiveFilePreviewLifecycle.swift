@@ -1,7 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-enum NativeLivePreviewFilename {
+nonisolated enum NativeLivePreviewFilename {
     static func safe(_ filename: String, mimeType: String) -> String {
         let cleaned = filename.replacingOccurrences(of:"/",with:"_").replacingOccurrences(of:"\\",with:"_")
             .components(separatedBy:.controlCharacters).joined().trimmingCharacters(in:.whitespacesAndNewlines)
@@ -17,7 +17,7 @@ enum NativeLivePreviewFilename {
     }
 }
 
-final class NativeLiveFilePreviewLease: Identifiable {
+nonisolated final class NativeLiveFilePreviewLease: Identifiable {
     static let defaultRoot: URL = {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("LeileiOS-MediaPreview",isDirectory:true)
         // Only this app-owned preview area; recover from previews interrupted by process exit.
