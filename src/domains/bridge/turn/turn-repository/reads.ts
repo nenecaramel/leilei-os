@@ -97,7 +97,6 @@ export async function readTurn(
         replacementTargetUserMessageId: nativeLiveTurnPreparations.replacementTargetUserMessageId,
         canonicalUserMessageId:
           nativeLiveTurnPreparations.canonicalUserMessageId,
-        wakeContext: nativeLiveTurnPreparations.wakeContext,
         workspaceId: nativeLiveTurnPreparations.workspaceId,
         expectedWorkspaceRoot:
           nativeLiveTurnPreparations.expectedWorkspaceRoot,
@@ -226,7 +225,6 @@ export async function readTurn(
       conversationId: row.conversationId,
       operation: row.operation,
       ...(preparedUserMessage ? { preparedUserMessage } : {}),
-      wakeContext: row.wakeContext,
       replacementTargetUserMessageId: row.replacementTargetUserMessageId ?? (row.operation === "retry" ? row.canonicalUserMessageId : null),
       canonicalUserMessageId: row.canonicalUserMessageId,
       workspaceId: row.workspaceId,
