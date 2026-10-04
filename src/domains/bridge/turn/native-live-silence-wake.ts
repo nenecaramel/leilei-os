@@ -393,7 +393,23 @@ export class NativeLiveSilenceWakeService {
       workspace_id: string | null;
       effective_workspace_root: string | null;
     }>(sql`
-      WITH RECURSIVE current_path AS (
+      WITH RECURSIVE latest_user AS (
+        SELECT
+          message.conversation_id,
+          message.id AS user_message_id,
+          message.created_at AS user_activity_at
+        FROM conversation_messages AS message
+        JOIN conversations AS conversation
+          ON conversation.id = message.conversation_id
+         AND conversation.user_id = message.user_id
+        WHERE message.user_id = ${userId}::uuid
+          AND message.role = 'user'
+          AND conversation.origin = 'native_live'
+          AND conversation.lifecycle_status = 'active'
+        ORDER BY message.created_at DESC, message.id DESC
+        LIMIT 1
+      ),
+      current_path AS (
         SELECT
           conversation.id AS conversation_id,
           conversation.current_head_message_id AS current_head_message_id,
@@ -403,15 +419,17 @@ export class NativeLiveSilenceWakeService {
           message.status,
           message.created_at,
           message.completed_at
-        FROM conversations AS conversation
+        FROM latest_user AS source
+        JOIN conversations AS conversation
+          ON conversation.id = source.conversation_id
+         AND conversation.user_id = ${userId}::uuid
+         AND conversation.origin = 'native_live'
+         AND conversation.lifecycle_status = 'active'
         JOIN conversation_messages AS message
           ON message.id = conversation.current_head_message_id
          AND message.user_id = conversation.user_id
          AND message.conversation_id = conversation.id
-        WHERE conversation.user_id = ${userId}::uuid
-          AND conversation.origin = 'native_live'
-          AND conversation.lifecycle_status = 'active'
-          AND conversation.current_head_message_id IS NOT NULL
+        WHERE conversation.current_head_message_id IS NOT NULL
 
         UNION ALL
 
@@ -430,25 +448,8 @@ export class NativeLiveSilenceWakeService {
          AND parent.user_id = ${userId}::uuid
          AND parent.conversation_id = path.conversation_id
       ),
-      latest_user_per_conversation AS (
-        SELECT DISTINCT ON (conversation_id)
-          conversation_id,
-          current_head_message_id,
-          id AS user_message_id,
-          created_at AS user_activity_at
-        FROM current_path
-        WHERE role = 'user'
-        ORDER BY conversation_id, created_at DESC, id DESC
-      ),
-      latest_user AS (
-        SELECT *
-        FROM latest_user_per_conversation
-        ORDER BY user_activity_at DESC, user_message_id DESC
-        LIMIT 1
-      ),
       direct_reply AS (
-        SELECT DISTINCT ON (source.conversation_id)
-          source.conversation_id,
+        SELECT
           reply.completed_at AS assistant_completed_at
         FROM latest_user AS source
         JOIN current_path AS reply
@@ -457,31 +458,29 @@ export class NativeLiveSilenceWakeService {
          AND reply.role = 'assistant'
          AND reply.status = 'completed'
          AND reply.completed_at IS NOT NULL
-        ORDER BY source.conversation_id, reply.created_at ASC, reply.id ASC
+        ORDER BY reply.created_at ASC, reply.id ASC
+        LIMIT 1
       )
       SELECT
         source.conversation_id,
         source.user_message_id,
         source.user_activity_at,
         reply.assistant_completed_at,
-        source.current_head_message_id,
+        path.current_head_message_id,
         checkpoint.provider_session_id,
         checkpoint.workspace_id,
         checkpoint.effective_workspace_root
       FROM latest_user AS source
-      JOIN direct_reply AS reply
-        ON reply.conversation_id = source.conversation_id
-      JOIN conversation_messages AS head
-        ON head.id = source.current_head_message_id
-       AND head.user_id = ${userId}::uuid
-       AND head.conversation_id = source.conversation_id
-       AND head.role = 'assistant'
-       AND head.status = 'completed'
+      JOIN direct_reply AS reply ON TRUE
+      JOIN current_path AS path
+        ON path.id = path.current_head_message_id
+       AND path.role = 'assistant'
+       AND path.status = 'completed'
       JOIN conversation_provider_session_checkpoints AS checkpoint
         ON checkpoint.user_id = ${userId}::uuid
        AND checkpoint.conversation_id = source.conversation_id
        AND checkpoint.canonical_message_id =
-         source.current_head_message_id
+         path.current_head_message_id
        AND checkpoint.provider = 'claude_code'
       LIMIT 1
     `);
