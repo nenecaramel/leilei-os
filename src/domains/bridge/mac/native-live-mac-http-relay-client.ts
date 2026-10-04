@@ -1008,14 +1008,24 @@ implements NativeLiveMacDaemonRelayClient {
     listenerInstanceId: string;
     reservationId: string;
     result: NativeLiveRuntimeExecutionResult;
-  }): Promise<void> {
-    await this.postRetryable(
-      `/reservations/${encodeURIComponent(input.reservationId)}/result`,
-      {
-        listener_instance_id: input.listenerInstanceId,
-        result: input.result,
-      },
+  }): Promise<{
+    canonicalOutcome: string | null;
+  }> {
+    const data = readRecord(
+      await this.postRetryable(
+        `/reservations/${encodeURIComponent(input.reservationId)}/result`,
+        {
+          listener_instance_id: input.listenerInstanceId,
+          result: input.result,
+        },
+      ),
     );
+    return {
+      canonicalOutcome:
+        typeof data.canonicalOutcome === "string"
+          ? data.canonicalOutcome
+          : null,
+    };
   }
 
   async markResultDeliveryUnknown(input: {
