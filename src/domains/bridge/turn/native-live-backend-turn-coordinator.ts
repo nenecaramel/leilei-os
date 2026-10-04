@@ -699,15 +699,23 @@ function isQuietWakeResult(
     if (event?.type !== "result") continue;
     const finalText = event.payload?.final_text;
     if (typeof finalText === "string") {
-      return finalText.trim() === "<quiet />";
+      const trimmed = finalText.trim();
+      if (trimmed === "<quiet />") return true;
+      if (trimmed.length > 0) return false;
+      // A successful wake with an actually empty terminal response may be the
+      // provider representation of "say nothing". Fall through to canonical
+      // blocks so an empty wake can still be discarded instead of persisted.
+      break;
     }
   }
+  const nonTextBlocks = blocks.filter((block) => block.kind !== "text");
+  if (nonTextBlocks.length > 0) return false;
   const text = blocks
     .filter((block) => block.kind === "text" && typeof block.text === "string")
     .map((block) => block.text)
     .join("\n")
     .trim();
-  return text === "<quiet />";
+  return text === "<quiet />" || text.length === 0;
 }
 
 function failureForResult(
