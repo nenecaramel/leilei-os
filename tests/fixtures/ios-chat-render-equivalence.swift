@@ -139,14 +139,14 @@ extension View {
         var mismatch=CGRect.null
         for p in 0..<(lhs.width*lhs.height) {
             let i=p*4
-            guard !lhs.pixels[i..<i+4].elementsEqual(rhs.pixels[i..<i+4]) else {continue}
+            guard lhs.pixels[i] != rhs.pixels[i] || lhs.pixels[i+1] != rhs.pixels[i+1] || lhs.pixels[i+2] != rhs.pixels[i+2] || lhs.pixels[i+3] != rhs.pixels[i+3] else {continue}
             let point=CGPoint(x:p%lhs.width,y:p/lhs.width)
             if dynamic.contains(where:{$0.contains(point)}) || !ChatRenderFixtures.staticPass && composerGlass?.contains(point) == true {systemPixels+=1} else {staticPixels+=1;mismatch=mismatch.union(CGRect(x:point.x,y:point.y,width:1,height:1))}
         }
         var flatDifference=0
         for p in 0..<(lhs.width*lhs.height) {
             let i=p*4
-            if lhs.staticPixels[i..<i+4].elementsEqual(rhs.staticPixels[i..<i+4]) { continue }
+            if lhs.staticPixels[i] == rhs.staticPixels[i] && lhs.staticPixels[i+1] == rhs.staticPixels[i+1] && lhs.staticPixels[i+2] == rhs.staticPixels[i+2] && lhs.staticPixels[i+3] == rhs.staticPixels[i+3] { continue }
             let point=CGPoint(x:p%lhs.width,y:p/lhs.width)
             // Only system caret/keyboard and indeterminate progress remain
             // dynamic with an opaque backdrop. Static glyphs stay protected.
@@ -167,7 +167,9 @@ extension View {
         if ChatRenderFixtures.keyboardShown {
             guard let input=findInput(host.view) else { preconditionFailure("Real UIKit text input not found") }
             input.becomeFirstResponder()
-            try? await Task.sleep(for:.seconds(0.5))
+            // Wait for UIKit and SwiftUI keyboard avoidance presentation layers to settle.
+            try? await Task.sleep(for:.seconds(2))
+            host.view.layoutIfNeeded()
             precondition(hasFirstResponder(host.view),"Keyboard fixture must focus the real input")
             precondition(ChatRenderFixtures.keyboardFrame != nil,"Keyboard fixture must receive a real keyboard notification")
             store.frames["keyboard"] = ChatRenderFixtures.keyboardFrame
@@ -177,7 +179,7 @@ extension View {
         }
         if scroll,let view=findScroll(host.view) { view.setContentOffset(.zero,animated:false);try? await Task.sleep(for:.seconds(0.2)) }
         let pixels=raster(host.view,window.bounds,width,height)
-        let frames=store.frames;window.endEditing(true);window.isHidden=true;try? await Task.sleep(for:.seconds(0.1))
+        let frames=store.frames;window.endEditing(true);window.isHidden=true;try? await Task.sleep(for:.seconds(0.6))
         return .init(frames:frames,pixels:pixels,staticPixels:pixels,width:width,height:height)
     }
     static func raster(_ view:UIView,_ bounds:CGRect,_ width:Int,_ height:Int)->[UInt8] {

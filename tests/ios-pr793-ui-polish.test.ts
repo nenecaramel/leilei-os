@@ -24,15 +24,18 @@ const runtimeStore = readFileSync(
 );
 
 test("ported PR 793 composer polish preserves idle primary-action contrast", () => {
+  const presentation = readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/ComposerPresentationComponents.swift",
+    "utf8",
+  );
   assert.match(
     composer,
-    /ComposerPrimaryActionButtonStyle\([\s\S]*isVisuallyDimmed:[\s\S]*shouldDimPrimaryAction/,
+    /ComposerPrimaryActionButtonStyle\([\s\S]*isVisuallyDimmed:[\s\S]*actionPresentation\.isDimmed/,
   );
-  assert.match(composer, /private var shouldDimPrimaryAction: Bool/);
-  assert.match(
-    composer,
-    /private struct ComposerPrimaryActionButtonStyle: ButtonStyle/,
-  );
+  assert.match(presentation, /struct ComposerPrimaryActionButtonStyle: ButtonStyle/);
+  assert.match(presentation, /@Environment\(\\\.isEnabled\)/);
+  assert.match(presentation, /isVisuallyDimmed\s*\? 0\.35/);
+  assert.match(presentation, /configuration\.isPressed\s*&& isEnabled\s*\? 0\.72\s*: 1/);
 });
 
 test("ported PR 793 Claude Usage uses the Settings surface background", () => {
