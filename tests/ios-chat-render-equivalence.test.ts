@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, openSync, closeSync } from 'node:fs';
+import { existsSync, cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, openSync, closeSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import test from 'node:test';
@@ -22,13 +22,18 @@ function instrument(source: string, file: string) {
       }
     }\n`;
   }
-  if (file === 'ChatComposer.swift') {
+  if (file === 'ChatComposer.swift' || file === 'ComposerPresentationComponents.swift' || file === 'ComposerAttachmentStrip.swift') {
     source = source.replace('.frame(height: 34)', '.frame(height: 34)\n.chatFrame("edit")').replace('.frame(height: 54)', '.frame(height: 54)\n.chatFrame("attachment-chip")').replace('.equatable()', '.equatable()\n.chatFrame("input")')
-      .replace('weight: .light\n                    )', 'weight: .light\n                    ).chatFrame("plus")')
-      .replace('systemName: "chevron.down"\n                    )', 'systemName: "chevron.down"\n                    ).chatFrame("keyboard-dismiss")')
-      .replace('effort: effort.displayName\n                    )', 'effort: effort.displayName\n                    ).chatFrame("model")');
-    const pending = source.includes('private var actionPresentation:') ? 'actionPresentation.mode == .interruptPending' : 'isRuntimeTurnActive && interruptRequested && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty';
-    source += `\nextension ChatComposer { func fixtureAction() -> [String] { [composerActionSymbol,String(describing:composerActionWeight),String(shouldDimPrimaryAction),String(isVoiceActionMode),String(${pending})] } }\n`;
+      .replace(/ComposerCircleButton\(\s*systemName: "plus",\s*weight: \.light\s*\)/g, '$&.chatFrame("plus")')
+      .replace(/systemName: "chevron.down"\s*\)/g, '$&.chatFrame("keyboard-dismiss")')
+      .replace(/effort: effort.displayName\s*\)/g, '$&.chatFrame("model")');
+    if (file === 'ChatComposer.swift') {
+      const pending = source.includes('private var actionPresentation:') ? 'actionPresentation.mode == .interruptPending' : 'isRuntimeTurnActive && interruptRequested && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty';
+      const symbol = source.includes('private var composerActionSymbol:') ? 'composerActionSymbol' : 'actionPresentation.symbol';
+      const weight = source.includes('private var composerActionWeight:') ? 'composerActionWeight' : 'actionPresentation.weight';
+      const dimmed = source.includes('private var shouldDimPrimaryAction:') ? 'shouldDimPrimaryAction' : 'actionPresentation.isDimmed';
+      source += `\nextension ChatComposer { func fixtureAction() -> [String] { [${symbol},String(describing:${weight}),String(${dimmed}),String(isVoiceActionMode),String(${pending})] } }\n`;
+    }
     source = source.replace('private var voiceActionButton: some View {', 'private var measuredAction: some View { composerActionLabel.chatFrame("primary-action") }\n\n    private var voiceActionButton: some View {');
     source = source.replace(/(?<!var )\bcomposerActionLabel\n/g, 'measuredAction\n');
   }
@@ -62,6 +67,7 @@ test('Chat/Composer renders match pinned main and reject an incorrect composer p
   try {
     cpSync('ios/LeileiOS',path.join(dir,'ios'),{recursive:true,preserveTimestamps:true,filter:p=>!p.includes('xcuserdata')});
     const root = path.join(dir,'ios/LeileiOS');
+    for (const file of ['ComposerPresentationComponents.swift','ComposerAttachmentStrip.swift']) { const p=path.join(root,'Chat',file); if (existsSync(p)) writeFileSync(p,instrument(readFileSync(p,'utf8'),file)); }
     const original = files.map(f=>readFileSync('tests/fixtures/chat-main-2425b8b6/'+f,'utf8'));
     const names = new Set(original.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
     names.add('chatSoftFill');
@@ -82,8 +88,8 @@ test('Chat/Composer renders match pinned main and reject an incorrect composer p
     const app=path.join(dir,'build/Build/Products/Debug-iphonesimulator/LeileiOS.app');
     const install=spawnSync('xcrun',['simctl','install',simulator,app],{encoding:'utf8'}); assert.equal(install.status,0,install.stderr);
     const runLog=path.join(dir,'run.log'); const fd=openSync(runLog,'w');
-    const checked=spawnSync('xcrun',['simctl','launch','--console','--terminate-running-process',simulator,bundle],{encoding:'utf8',stdio:['ignore',fd,fd],timeout:300_000,maxBuffer:10_000_000,env:{...process.env,SIMCTL_CHILD_CHAT_NEGATIVE:process.env.UI_CHAT_NEGATIVE ?? '0'}});
-    closeSync(fd);const output=readFileSync(runLog,'utf8');console.info(output.trim()); assert.equal(checked.status,0,output); assert.match(output,/Chat render equivalence PASS/);
+    const checked=spawnSync('xcrun',['simctl','launch','--console','--terminate-running-process',simulator,bundle],{encoding:'utf8',stdio:['ignore',fd,fd],timeout:600_000,maxBuffer:10_000_000,env:{...process.env,SIMCTL_CHILD_CHAT_NEGATIVE:process.env.UI_CHAT_NEGATIVE ?? '0'}});
+    closeSync(fd);const output=readFileSync(runLog,'utf8');console.info(output.trim()); assert.ifError(checked.error); assert.equal(checked.status,0,output); assert.match(output,/Chat render equivalence PASS/);
   } finally {
     spawnSync('xcrun',['simctl','uninstall',simulator,bundle]); if (!process.env.UI_CHAT_RENDER_CACHE) rmSync(dir,{recursive:true,force:true});
   }

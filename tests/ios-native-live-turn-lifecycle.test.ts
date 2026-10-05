@@ -64,10 +64,15 @@ test("composer typing is isolated from unrelated chat churn", () => {
     composer,
     /NativeLiveComposerTextInput\([\s\S]{0,220}textSnapshot: text[\s\S]{0,220}focusSnapshot: isFocused\.wrappedValue[\s\S]{0,120}\.equatable\(\)/,
   );
-  assert.match(
-    composer,
-    /private struct NativeLiveComposerTextInput: View, Equatable[\s\S]{0,900}TextField\([\s\S]{0,260}Write a message[\s\S]{0,260}\.focused\(isFocused\)/,
+  const inputPresentation = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/ComposerPresentationComponents.swift",
+    "utf8",
   );
+  assert.match(
+    inputPresentation,
+    /struct NativeLiveComposerTextInput: View, Equatable[\s\S]{0,900}TextField\([\s\S]{0,260}Write a message[\s\S]{0,260}\.focused\(isFocused\)/,
+  );
+  assert.match(inputPresentation, /lhs\.textSnapshot == rhs\.textSnapshot[\s\S]{0,100}lhs\.focusSnapshot == rhs\.focusSnapshot/);
   assert.doesNotMatch(
     composer,
     /NativeLiveStableComposerTextView/,
