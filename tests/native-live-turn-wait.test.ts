@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import fs from "node:fs";
 import {
   NativeLiveRuntimeControlService,
 } from "../src/domains/bridge/runtime-interaction/native-live-runtime-control.js";
@@ -308,23 +307,5 @@ test("mid-turn input application does not emit a false terminal wake", async () 
   assert.deepEqual(notifications, []);
 });
 
-test("turn reads project an applied interrupt as terminal without mutating canonical storage", () => {
-  const source = fs.readFileSync(
-    "src/domains/bridge/turn/turn-repository/reads.ts",
-    "utf8",
-  );
-  assert.match(source, /nativeLiveRuntimeControls\.kind, "interrupt"/);
-  assert.match(source, /nativeLiveRuntimeControls\.status, "applied"/);
-  assert.match(
-    source,
-    /interrupted \? "finalized_failure" : row\.canonicalStatus/,
-  );
-  assert.match(
-    source,
-    /interrupted \? "INTERRUPTED" : row\.failureCode/,
-  );
-  assert.match(
-    source,
-    /return turn\?\.canonicalStatus === "prepared"[\s\S]*\? turn[\s\S]*: null/,
-  );
-});
+// The actual applied-interrupt read/storage contract is exercised against
+// PostgreSQL in native-live-stale-replacement.integration.test.ts.
