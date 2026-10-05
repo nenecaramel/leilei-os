@@ -1,0 +1,13 @@
+{
+  "commit": "8efd59775ce08cb1560e8f97d3ac939577fcd2c0",
+  "files": {
+    "NativeLiveRuntimeActivity.swift": "a3141c3c70bcb42c8d93a098eacb5b1d2f7d7aca",
+    "NativeLiveInteractions.swift": "f9cf50896490a17d5c9cc771c893bba7167b7eb1",
+    "NativeLiveInteractionHistoryPresentation.swift": "1ceaf5b2019c5b79d1345e1f02e8109821f44235",
+    "NativeLiveTurnActivityProjection+Lifecycle.swift": "2dc85c311f5493049ade71831881e7db25644761",
+    "NativeLiveTurnActivityProjection+Questions.swift": "41c23246a7863e80306384227da96333bd89aca6",
+    "NativeLiveTurnActivityProjection+Tasks.swift": "b45502eb98d33dbc5be86f27ab0a8a74f2efd307",
+    "NativeLiveTurnActivityProjection+Tools.swift": "15cccd2f400d644d8cfc669206aa4b26f7e4fc6e",
+    "NativeLiveTurnActivityProjection.swift": "d28e2cfdfacab4dcd34879d9e52ec9a19436ff72"
+  }
+}

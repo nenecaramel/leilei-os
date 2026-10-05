@@ -8,7 +8,7 @@ const surface = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
 test("real Swift Activity preserves final duration and explicitly presents nested permission", { skip: process.platform !== "darwin" }, () => {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "leilei-activity-swift-"));
   try {
-    const runtime = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
+    const runtime = fs.readFileSync(surface + "NativeLiveToolActivity.swift", "utf8");
     fs.writeFileSync(path.join(temporary, "State.swift"), runtime.slice(runtime.indexOf("enum NativeLiveToolCallState:"), runtime.indexOf("struct NativeLiveToolCallCard:")));
     fs.writeFileSync(path.join(temporary, "main.swift"), fs.readFileSync("tests/fixtures/native-live-question-activity.swift", "utf8") + "\n" + fs.readFileSync("tests/fixtures/native-live-activity-finish.swift", "utf8"));
     const projections = fs.readdirSync(surface).filter((name) => name.startsWith("NativeLiveTurnActivityProjection") && name.endsWith(".swift")).map((name) => surface + name);
@@ -22,8 +22,8 @@ test("real Swift Activity preserves final duration and explicitly presents neste
   } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 });
 test("only tool-bound history receives nested permission presentation and pending cards are preserved", () => {
-  const source = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
-  const toolRow = source.slice(source.indexOf("private struct NativeLiveToolActivityRow"), source.indexOf("private struct NativeLiveQuestionActivityRow"));
+  const source = fs.readFileSync(surface + "NativeLiveToolActivity.swift", "utf8");
+  const toolRow = source.slice(source.indexOf("struct NativeLiveToolActivityRow"), source.indexOf("enum NativeLiveToolCallState"));
   assert.match(toolRow, /NativeLiveInteractionHistoryRow\([\s\S]*presentation: \.nestedPermission/);
   assert.equal((source.match(/presentation: \.nestedPermission/g) ?? []).length, 1);
   assert.match(toolRow, /interaction\.isPending,[\s\S]*NativeLivePermissionInteractionCard/);
@@ -35,7 +35,7 @@ test("only tool-bound history receives nested permission presentation and pendin
 
 test("send_meme UI display name is unified as Send Sticker", () => {
   const source = fs.readFileSync(
-    surface + "NativeLiveRuntimeActivity.swift",
+    surface + "NativeLiveToolPresentation.swift",
     "utf8",
   );
   assert.match(
