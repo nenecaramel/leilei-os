@@ -38,7 +38,7 @@ test("backend durable rows feed unchanged Swift historical Activity and assistan
       return [name, blocks.map((block, ordinal) => ({ id: `b${ordinal}`, ordinal, kind: block.kind, rawType: block.rawType ?? block.kind, text: block.text ?? null, payload: block.payload ?? null, createdAt: "" }))];
     }));
     fs.writeFileSync(path.join(temporary, "blocks.json"), JSON.stringify(fixtures));
-    const runtime = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
+    const runtime = fs.readFileSync(surface + "NativeLiveToolActivity.swift", "utf8");
     fs.writeFileSync(path.join(temporary, "State.swift"), runtime.slice(runtime.indexOf("enum NativeLiveToolCallState:"), runtime.indexOf("struct NativeLiveToolCallCard:")));
     // Exercise the shared Chat projector while Activity still reads ledger rows.
     fs.writeFileSync(path.join(temporary, "Body.swift"), `import Foundation

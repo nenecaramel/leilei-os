@@ -16,7 +16,7 @@ const modelsPath =
   "ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveModels.swift";
 
 test("murmur is a separate activity-row bubble that opens a sheet", () => {
-  const activity = fs.readFileSync(activityPath, "utf8");
+  const activity = fs.readFileSync(activityPath, "utf8") + fs.readFileSync(activityPath.replace("NativeLiveRuntimeActivity.swift", "NativeLiveActivitySheets.swift"), "utf8");
   const row = fs.readFileSync(rowPath, "utf8");
 
   assert.match(row, /!turn\.header\.isEmpty \|\| turn\.murmurText != nil/u);

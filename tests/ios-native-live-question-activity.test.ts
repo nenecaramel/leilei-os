@@ -8,7 +8,7 @@ const surface = "ios/LeileiOS/LeileiOS/Chat/MessageSurface/";
 test("real Swift Activity projection keeps one durable question across runtime retention and task hierarchy", { skip: process.platform !== "darwin" }, () => {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "leilei-question-swift-"));
   try {
-    const runtime = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
+    const runtime = fs.readFileSync(surface + "NativeLiveToolActivity.swift", "utf8");
     const state = runtime.slice(runtime.indexOf("enum NativeLiveToolCallState:"), runtime.indexOf("struct NativeLiveToolCallCard:"));
     fs.writeFileSync(path.join(temporary, "State.swift"), state);
     fs.copyFileSync("tests/fixtures/native-live-question-activity.swift", path.join(temporary, "main.swift"));
@@ -21,7 +21,7 @@ test("real Swift Activity projection keeps one durable question across runtime r
   } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 });
 test("question presentation preserves the interactive card and uses Question / Response historical details", () => {
-  const source = fs.readFileSync(surface + "NativeLiveRuntimeActivity.swift", "utf8");
+  const source = fs.readFileSync(surface + "NativeLiveRuntimeInteractions.swift", "utf8");
   assert.match(source, /struct NativeLiveQuestionActivityRow/);
   assert.match(source, /NativeLiveQuestionInteractionCard/);
   assert.match(source, /Text\("Asked user"\)/);

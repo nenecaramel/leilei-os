@@ -101,7 +101,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.equal(fs.existsSync(runtimeActivityLifecyclePath), true);
   assert.equal(fs.existsSync(runtimeActivityToolsPath), true);
   assert.equal(fs.existsSync(runtimeActivityTasksPath), true);
-  const runtime = readExisting(runtimeActivityPath);
+  const runtime = [runtimeActivityPath, ...["NativeLiveTaskActivity.swift", "NativeLiveToolActivity.swift", "NativeLiveRuntimeInteractions.swift", "NativeLiveActivitySheets.swift", "NativeLiveToolPresentation.swift"].map(name => runtimeActivityPath.replace("NativeLiveRuntimeActivity.swift", name))].map(readExisting).join("\n");
   const projection = readExisting(runtimeActivityProjectionPath);
   const lifecycleProjection = readExisting(runtimeActivityLifecyclePath);
   const toolProjection = readExisting(runtimeActivityToolsPath);
