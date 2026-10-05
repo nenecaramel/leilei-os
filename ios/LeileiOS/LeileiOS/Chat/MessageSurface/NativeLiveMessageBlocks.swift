@@ -30,12 +30,12 @@ struct NativeLiveUserMessagePresentationView: View {
             }
             if !presentation.textNodes.isEmpty {
                 textBubble
-                    .padding(.horizontal,14).padding(.vertical,12)
-                    .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:18,style:.continuous))
+                    .padding(.horizontal,ChatPresentationLayout.bubbleHorizontalInset).padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)
+                    .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:ChatPresentationLayout.bubbleRadius,style:.continuous))
                     .overlay {
                         if let onEdit {
                             LightweightContextMenuInteraction(title:"Edit",copyText:presentation.copyText,isDisabled:isDisabled,
-                                cornerRadius:18,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
+                                cornerRadius:ChatPresentationLayout.bubbleRadius,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
                         }
                     }
                     .onTapGesture { if onEdit == nil { toggleVoice() } }

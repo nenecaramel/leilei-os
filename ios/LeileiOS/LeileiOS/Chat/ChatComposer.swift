@@ -31,12 +31,12 @@ struct ChatComposer: View {
 
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: ChatPresentationLayout.composerSectionSpacing) {
             if let voiceStatus {
                 Text(voiceStatus).font(.footnote).foregroundStyle(.secondary)
             }
             if isEditing {
-                HStack(spacing: 8) {
+                HStack(spacing: ChatPresentationLayout.composerRowSpacing) {
                     Text("Edit message")
                         .font(.system(size: 13.5, weight: .regular))
                         .foregroundStyle(.secondary)
@@ -69,7 +69,7 @@ struct ChatComposer: View {
 
             if !attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: ChatPresentationLayout.composerRowSpacing) {
                         ForEach(attachments) { attachment in
                             NativeLiveComposerAttachmentChip(
                                 attachment: attachment,
@@ -95,7 +95,7 @@ struct ChatComposer: View {
             )
             .equatable()
 
-            HStack(spacing: 8) {
+            HStack(spacing: ChatPresentationLayout.composerRowSpacing) {
                 Menu {
                     Button {
                         onPickPhoto?()
@@ -239,9 +239,9 @@ struct ChatComposer: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 15)
-        .padding(.bottom, 12)
+        .padding(.horizontal, ChatPresentationLayout.composerHorizontalInset)
+        .padding(.top, ChatPresentationLayout.composerTopInset)
+        .padding(.bottom, ChatPresentationLayout.composerBottomInset)
         .glassEffect(
             .regular,
             in: RoundedRectangle(
@@ -258,12 +258,22 @@ struct ChatComposer: View {
         }
     }
 
+    // Read-only paint derivation. Action dispatch and disabled guards below
+    // continue to use the original inputs and callbacks.
+    private var actionPresentation: ComposerPrimaryActionPresentation {
+        ComposerPrimaryActionPresentation(
+            hasText: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasAttachments: !attachments.isEmpty,
+            attachmentsReady: attachmentsReady,
+            isRuntimeTurnActive: isRuntimeTurnActive,
+            isRuntimeControlInFlight: isRuntimeControlInFlight,
+            interruptRequested: interruptRequested,
+            isSending: isSending
+        )
+    }
+
     private var isVoiceActionMode: Bool {
-        !isRuntimeTurnActive
-            && text.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            ).isEmpty
-            && attachments.isEmpty
+        actionPresentation.mode == .voice
     }
 
     private var composerActionLabel: some View {
@@ -272,11 +282,7 @@ struct ChatComposer: View {
                 .fill(.black)
                 .frame(width: LeileiUI.ControlGeometry.compact, height: LeileiUI.ControlGeometry.compact)
 
-            if isRuntimeTurnActive,
-               interruptRequested,
-               text.trimmingCharacters(
-                   in: .whitespacesAndNewlines
-               ).isEmpty {
+            if actionPresentation.mode == .interruptPending {
                 ProgressView()
                     .controlSize(.small)
                     .tint(.white)
@@ -311,46 +317,15 @@ struct ChatComposer: View {
     }
 
     private var composerActionSymbol: String {
-        let normalized = text.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        if isRuntimeTurnActive {
-            return normalized.isEmpty
-                ? "square.fill"
-                : "arrow.up"
-        }
-
-        return normalized.isEmpty && attachments.isEmpty
-            ? "waveform"
-            : "arrow.up"
+        actionPresentation.symbol
     }
 
     private var composerActionWeight: Font.Weight {
-        let normalized = text.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        if isRuntimeTurnActive,
-           normalized.isEmpty {
-            return .regular
-        }
-
-        return normalized.isEmpty && attachments.isEmpty
-            ? .semibold
-            : .regular
+        actionPresentation.weight
     }
 
     private var shouldDimPrimaryAction: Bool {
-        isRuntimeControlInFlight
-            || (
-                isSending
-                && !isRuntimeTurnActive
-            )
-            || (
-                !isRuntimeTurnActive
-                && !attachmentsReady
-            )
+        actionPresentation.isDimmed
     }
 
     private var hasSendableContent: Bool {

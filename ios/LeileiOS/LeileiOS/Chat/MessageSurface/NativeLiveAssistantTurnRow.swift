@@ -11,7 +11,7 @@ struct NativeLiveAssistantTurnRow: View {
     let onRetryMessage: (String) -> Void
     let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
     var body: some View {
-        VStack(alignment:.leading,spacing:6) {
+        VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             if !turn.header.isEmpty || turn.murmurText != nil {
                 NativeLiveTurnActivityView(projection:turn.activityProjection,
                     timestampText:turn.timestamp.map { MessageTimestampFormatter.string(from:$0) },header:turn.header,
@@ -24,14 +24,14 @@ struct NativeLiveAssistantTurnRow: View {
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
             MindWriteIndicator(items:mindWrites)
             AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)
-            HStack(spacing:12) {
+            HStack(spacing:ChatPresentationLayout.actionSpacing) {
                 if let text = turn.copyText {
-                    Button { onCopyMessage(text) } label: { Image(systemName:isCopied ? "checkmark" : "square.on.square").frame(width:22,height:22) }
+                    Button { onCopyMessage(text) } label: { Image(systemName:isCopied ? "checkmark" : "square.on.square").frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }
                 }
                 if turn.canRetry, let user = turn.parentUserMessageID {
-                    Button { onRetryMessage(user) } label: { Image(systemName:"arrow.clockwise").frame(width:22,height:22) }.disabled(isTurnInFlight)
+                    Button { onRetryMessage(user) } label: { Image(systemName:"arrow.clockwise").frame(width:ChatPresentationLayout.actionDiameter,height:ChatPresentationLayout.actionDiameter) }.disabled(isTurnInFlight)
                 }
-            }.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,7)
+            }.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,ChatPresentationLayout.actionTopInset)
         }
         .frame(maxWidth:.infinity,alignment:.leading)
         .task(id:turn.canonicalMessageID) {

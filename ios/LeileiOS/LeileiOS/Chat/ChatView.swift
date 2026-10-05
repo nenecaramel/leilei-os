@@ -236,13 +236,13 @@ struct ChatView: View {
             ) {
                 sendMessage()
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 18)
-            .padding(.bottom, 10)
+            .padding(.horizontal, ChatPresentationLayout.composerOuterHorizontal)
+            .padding(.top, ChatPresentationLayout.composerOuterTop)
+            .padding(.bottom, ChatPresentationLayout.composerOuterBottom)
             .offset(
                 y: isSystemKeyboardVisible
                     ? 0
-                    : 10
+                    : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
             )
         }
         .photosPicker(

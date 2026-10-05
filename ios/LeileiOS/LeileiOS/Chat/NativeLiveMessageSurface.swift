@@ -74,7 +74,7 @@ struct NativeLiveMessageSurface: View {
         let rows = appModel.nativeLiveConversationRows
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 21) {
+                LazyVStack(spacing: ChatPresentationLayout.turnSpacing) {
                     if !rows.contains(where: \.isHistoryDivider) {
                         loadOlderButton(snapshot)
                     }
@@ -100,9 +100,9 @@ struct NativeLiveMessageSurface: View {
                         .frame(height: 1)
                         .id(bottomAnchorID)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.horizontal, ChatPresentationLayout.messageGutter)
+                .padding(.top, ChatPresentationLayout.messageVerticalInset)
+                .padding(.bottom, ChatPresentationLayout.messageVerticalInset)
             }
             .scrollClipDisabled()
             .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -210,7 +210,7 @@ struct NativeLiveMessageSurface: View {
                             .foregroundStyle(
                                 Color.primary.opacity(0.78)
                             )
-                            .frame(width: 38, height: 38)
+                            .frame(width: ChatPresentationLayout.scrollActionDiameter, height: ChatPresentationLayout.scrollActionDiameter)
                             .glassEffect(
                                 .regular,
                                 in: Circle()
@@ -225,7 +225,7 @@ struct NativeLiveMessageSurface: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Scroll to latest")
-                    .offset(y: 22)
+                    .offset(y: ChatPresentationLayout.scrollActionPaintOffset)
                     .transition(
                         .scale(scale: 0.9)
                             .combined(with: .opacity)
