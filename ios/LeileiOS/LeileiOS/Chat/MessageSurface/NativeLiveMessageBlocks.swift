@@ -12,53 +12,9 @@ struct NativeLiveMessagePresentationView: View {
     }
 }
 
-struct NativeLiveUserMessagePresentationView: View {
-    let presentation: NativeLiveMessagePresentation
-    @Binding var isVoiceTranscriptRevealed: Bool
-    var onEdit: (() -> Void)? = nil
-    var onCopy: (String) -> Void = { _ in }
-    var isDisabled = false
 
-    var body: some View {
-        VStack(alignment:.trailing,spacing:10) {
-            if !presentation.mediaNodes.isEmpty {
-                NativeLiveMediaRenderer(inputs:presentation.attachmentInputs)
-                    .contextMenu { if let onEdit { Button("Edit",action:onEdit).disabled(isDisabled) } }
-            }
-            if !presentation.nonTextBodyNodes.isEmpty {
-                NativeLiveVisualNodesView(nodes:presentation.nonTextBodyNodes,role:presentation.role)
-            }
-            if !presentation.textNodes.isEmpty {
-                textBubble
-                    .padding(.horizontal,ChatPresentationLayout.bubbleHorizontalInset).padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)
-                    .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:ChatPresentationLayout.bubbleRadius,style:.continuous))
-                    .overlay {
-                        if let onEdit {
-                            LightweightContextMenuInteraction(title:"Edit",copyText:presentation.copyText,isDisabled:isDisabled,
-                                cornerRadius:ChatPresentationLayout.bubbleRadius,onCopy:onCopy,onTap:toggleVoice,action:onEdit)
-                        }
-                    }
-                    .onTapGesture { if onEdit == nil { toggleVoice() } }
-            }
-        }
-    }
-    @ViewBuilder private var textBubble: some View {
-        if presentation.isVoiceInput {
-            VStack(alignment:.leading,spacing:10) {
-                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)
-                if isVoiceTranscriptRevealed {
-                    NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role)
-                }
-            }
-        } else { NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role) }
-    }
-    private func toggleVoice() {
-        guard presentation.isVoiceInput, presentation.copyText != nil else { return }
-        withAnimation(.easeInOut(duration:0.16)) { isVoiceTranscriptRevealed.toggle() }
-    }
-}
 
-private struct NativeLiveVisualNodesView: View {
+struct NativeLiveVisualNodesView: View {
     let nodes: [NativeLiveVisualNode]
     let role: String
 
@@ -159,25 +115,5 @@ private struct NativeLiveVisualFallbackView: View {
         .padding(10)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct NativeLiveVoiceMessageBubbleVisual: View {
-    let isExpanded: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(.primary)
-            Spacer(minLength: 4)
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 68, alignment: .leading)
-        .frame(height: 21, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isExpanded ? "Voice message, transcript shown" : "Voice message, tap to show transcript")
     }
 }

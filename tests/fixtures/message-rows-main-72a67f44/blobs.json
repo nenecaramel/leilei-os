@@ -1,0 +1,9 @@
+{
+  "commit": "72a67f4422368156dca75f44e3b97fc2143123c4",
+  "files": {
+    "NativeLiveMessageRows.swift": "fc21dd162856ce0de60ed6255e7c928fff422237",
+    "NativeLiveAssistantTurnRow.swift": "f72fffda3d6e8ec54140c6024b06b82ff44858f9",
+    "NativeLiveMessageBlocks.swift": "0d404e1e66c471465522af075eafa9cb30fd5e14",
+    "NativeLiveMessageActions.swift": "2b32e680a8f42f04ce6a79ebc541ed8b6f41fbd4"
+  }
+}

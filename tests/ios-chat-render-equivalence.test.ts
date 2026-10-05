@@ -52,7 +52,7 @@ function instrument(source: string, file: string) {
       }
     }\n`;
   }
-  if (file === 'MessageSurface/NativeLiveMessageBlocks.swift') source = source.replace('.onTapGesture { if onEdit == nil', '.chatFrame("user-bubble")\n.onTapGesture { if onEdit == nil');
+  if (file === 'MessageSurface/NativeLiveMessageBlocks.swift' || file === 'MessageSurface/NativeLiveUserMessageRow.swift') source = source.replace('.onTapGesture { if onEdit == nil', '.chatFrame("user-bubble")\n.onTapGesture { if onEdit == nil');
   if (file === 'MessageSurface/NativeLiveAssistantTurnRow.swift') source = source.replace('.task(id:turn.canonicalMessageID)', '.chatFrame("assistant")\n.task(id:turn.canonicalMessageID)');
   return source.replace(/\.glassEffect\(/g, ".chatTestGlass(");
 }
@@ -67,7 +67,7 @@ test('Chat/Composer renders match pinned main and reject an incorrect composer p
   try {
     cpSync('ios/LeileiOS',path.join(dir,'ios'),{recursive:true,preserveTimestamps:true,filter:p=>!p.includes('xcuserdata')});
     const root = path.join(dir,'ios/LeileiOS');
-    for (const file of ['ComposerPresentationComponents.swift','ComposerAttachmentStrip.swift','MessageSurface/NativeLiveMessageList.swift','MessageSurface/NativeLiveMessageSurfaceChrome.swift']) { const p=path.join(root,'Chat',file); if (existsSync(p)) writeFileSync(p,instrument(readFileSync(p,'utf8'),file)); }
+    for (const file of ['ComposerPresentationComponents.swift','ComposerAttachmentStrip.swift','MessageSurface/NativeLiveMessageList.swift','MessageSurface/NativeLiveMessageSurfaceChrome.swift','MessageSurface/NativeLiveUserMessageRow.swift']) { const p=path.join(root,'Chat',file); if (existsSync(p)) writeFileSync(p,instrument(readFileSync(p,'utf8'),file)); }
     const original = files.map(f=>readFileSync('tests/fixtures/chat-main-2425b8b6/'+f,'utf8'));
     const names = new Set(original.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
     names.add('chatSoftFill');
