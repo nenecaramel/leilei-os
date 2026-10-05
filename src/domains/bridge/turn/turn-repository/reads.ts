@@ -4,6 +4,7 @@ import {
   eq,
   inArray,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import {
@@ -24,6 +25,7 @@ import { parseNativeLiveExecutionSelection } from "../native-live-execution-sele
 import type { NativeLiveRuntimeMetadata } from "../../protocol/native-live-runtime-protocol.js";
 import type { TurnRepositoryContext } from "./types.js";
 import { mapPreparation } from "./records.js";
+import { matchesPresentationOwner } from "./presentation-owner.js";
 import { readableContentData } from "../../../conversation/native-live-content-contract.js";
 import type {
   NativeLiveBackendTurnReadModel,
@@ -48,27 +50,35 @@ export async function readActiveTurn(
     userId: string;
     conversationId: string;
   }): Promise<NativeLiveBackendTurnReadModel | null> {
-    const [active] = await this.db
+    const eligible = and(
+      eq(nativeLiveTurnPreparations.userId, input.userId),
+      eq(
+        nativeLiveTurnPreparations.conversationId,
+        input.conversationId,
+      ),
+      eq(nativeLiveTurnPreparations.status, "prepared"),
+      ne(nativeLiveTurnPreparations.operation, "wake"),
+      inArray(nativeLiveTurnPreparations.dispatchStatus, [
+        "staged",
+        "pending",
+        "reserved",
+        "executing",
+        "delivery_unknown",
+      ]),
+      or(
+        eq(nativeLiveTurnPreparations.operation, "send"),
+        matchesPresentationOwner(sql`${nativeLiveTurnPreparations.id}`),
+      ),
+    );
+    const candidates = () => this.db
       .select({ id: nativeLiveTurnPreparations.id })
       .from(nativeLiveTurnPreparations)
-      .where(
-        and(
-          eq(nativeLiveTurnPreparations.userId, input.userId),
-          eq(
-            nativeLiveTurnPreparations.conversationId,
-            input.conversationId,
-          ),
-          eq(nativeLiveTurnPreparations.status, "prepared"),
-          ne(nativeLiveTurnPreparations.operation, "wake"),
-          inArray(nativeLiveTurnPreparations.dispatchStatus, [
-            "staged",
-            "pending",
-            "reserved",
-            "executing",
-            "delivery_unknown",
-          ]),
-        ),
-      )
+      .innerJoin(conversations, and(
+        eq(conversations.id, nativeLiveTurnPreparations.conversationId),
+        eq(conversations.userId, nativeLiveTurnPreparations.userId),
+      ));
+    const [active] = await candidates()
+      .where(eligible)
       .orderBy(
         sql`${nativeLiveTurnPreparations.createdAt} DESC`,
         sql`${nativeLiveTurnPreparations.id} DESC`,
@@ -80,9 +90,13 @@ export async function readActiveTurn(
       userId: input.userId,
       prepareId: active.id,
     });
-    return turn?.canonicalStatus === "prepared"
-      ? turn
-      : null;
+    if (turn?.canonicalStatus !== "prepared") return null;
+    // Ownership/head can move while readTurn loads detached messages/blocks.
+    const [stillActive] = await candidates().where(and(
+      eligible,
+      eq(nativeLiveTurnPreparations.id, active.id),
+    )).limit(1);
+    return stillActive ? turn : null;
   }
 
 export async function readTurn(

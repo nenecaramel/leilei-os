@@ -44,6 +44,7 @@ import type {
   PreparationRow,
 } from "./types.js";
 import { discardWakeLocked } from "./discard-wake.js";
+import { matchesPresentationOwner } from "./presentation-owner.js";
 
 export async function finalizeSuccess(
   this: TurnRepositoryContext,
@@ -193,6 +194,22 @@ export async function finalizeSuccess(
             row.operation === "retry"
             || row.operation === "edit"
           ) {
+            canonicalWritePhase = "replacement_ownership";
+            // Lock/check the authoritative surface in this canonical transaction,
+            // before planning descendants or writing any canonical artifact.
+            // Serializable isolation also rejects a writer that changed this row
+            // after our snapshot, rather than purging from an outdated snapshot.
+            const [surface] = await transaction.select({
+              ownsPresentation: matchesPresentationOwner(row.id),
+            }).from(conversationTable).where(and(
+              eq(conversationTable.userId, input.userId),
+              eq(conversationTable.id, row.conversationId),
+              eq(conversationTable.origin, "native_live"),
+              eq(conversationTable.lifecycleStatus, "active"),
+            )).for("update").limit(1);
+            if (!surface?.ownsPresentation) {
+              return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+            }
             const conversation = await conversations.getConversation({
               userId: input.userId,
               conversationId: row.conversationId,
