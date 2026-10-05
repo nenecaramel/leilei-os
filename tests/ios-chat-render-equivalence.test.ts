@@ -37,12 +37,12 @@ function instrument(source: string, file: string) {
     source = source.replace('private var voiceActionButton: some View {', 'private var measuredAction: some View { composerActionLabel.chatFrame("primary-action") }\n\n    private var voiceActionButton: some View {');
     source = source.replace(/(?<!var )\bcomposerActionLabel\n/g, 'measuredAction\n');
   }
-  if (file === 'NativeLiveMessageSurface.swift') {
+  if (file === 'NativeLiveMessageSurface.swift' || file === 'MessageSurface/NativeLiveMessageList.swift') {
     source = source.replace('.id(row.id)', '.chatFrame("row.\\(row.id)")\n.id(row.id)')
       .replace('.id("native-live-load-older")', '.chatFrame("load-older")\n.id("native-live-load-older")')
       .replace('.accessibilityLabel("Scroll to latest")', '.accessibilityLabel("Scroll to latest")\n.chatFrame("scroll-action")')
       .replace('.transition(\n                        .move(edge: .top)', '.chatFrame("copy-feedback")\n.transition(\n                        .move(edge: .top)');
-    source += `\nextension NativeLiveMessageSurface {
+    if (file === 'NativeLiveMessageSurface.swift') source += `\nextension NativeLiveMessageSurface {
       static func fixture(_ name:String) -> NativeLiveMessageSurface {
         var view = NativeLiveMessageSurface(snapshot:ChatRenderFixtures.snapshot(name),historySnapshot:nil,syncState:.ready,isAuthenticated:true,hasActiveConversation:true,isTurnInFlight:false,pendingOperation:nil,runtimeSurface:nil,onResolveRuntimeInteraction:{_,_ in},onRefresh:{},onLoadOlder:{},onRetryMessage:{_ in},onEditMessage:{_ in})
         if name == "copy" { view._copyFeedbackText = State(initialValue:"Message copied"); view._copiedMessageID = State(initialValue:"assistant") }
@@ -67,7 +67,7 @@ test('Chat/Composer renders match pinned main and reject an incorrect composer p
   try {
     cpSync('ios/LeileiOS',path.join(dir,'ios'),{recursive:true,preserveTimestamps:true,filter:p=>!p.includes('xcuserdata')});
     const root = path.join(dir,'ios/LeileiOS');
-    for (const file of ['ComposerPresentationComponents.swift','ComposerAttachmentStrip.swift']) { const p=path.join(root,'Chat',file); if (existsSync(p)) writeFileSync(p,instrument(readFileSync(p,'utf8'),file)); }
+    for (const file of ['ComposerPresentationComponents.swift','ComposerAttachmentStrip.swift','MessageSurface/NativeLiveMessageList.swift','MessageSurface/NativeLiveMessageSurfaceChrome.swift']) { const p=path.join(root,'Chat',file); if (existsSync(p)) writeFileSync(p,instrument(readFileSync(p,'utf8'),file)); }
     const original = files.map(f=>readFileSync('tests/fixtures/chat-main-2425b8b6/'+f,'utf8'));
     const names = new Set(original.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
     names.add('chatSoftFill');

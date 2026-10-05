@@ -6,6 +6,10 @@ const surface = fs.readFileSync(
   "ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift",
   "utf8",
 );
+const paginationPresentation = fs.readFileSync(
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageSurfaceChrome.swift",
+  "utf8",
+);
 const conversationCoordination = fs.readFileSync(
   "ios/LeileiOS/LeileiOS/App/ConversationCoordination.swift",
   "utf8",
@@ -14,8 +18,10 @@ const conversationCoordination = fs.readFileSync(
 test("iOS chat makes truncated Native Live history explicit", () => {
   assert.match(
     surface,
-    /if snapshot\?\.olderCursor != nil \{[\s\S]*Text\([\s\S]*"还有更早消息"/,
+    /if snapshot\?\.olderCursor != nil \{[\s\S]*NativeLivePaginationLabel\(isLoadingOlderMessages: isLoadingOlderMessages\)/,
   );
+  assert.match(paginationPresentation, /struct NativeLivePaginationLabel:[\s\S]*Text\([\s\S]*"还有更早消息"/);
+  assert.match(paginationPresentation, /isLoadingOlderMessages[\s\S]*\? "Loading…"[\s\S]*: "还有更早消息"/);
   assert.match(
     surface,
     /await onLoadOlder\(\)/,
