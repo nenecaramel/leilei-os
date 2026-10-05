@@ -74,36 +74,20 @@ struct NativeLiveMessageSurface: View {
         let rows = appModel.nativeLiveConversationRows
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: ChatPresentationLayout.turnSpacing) {
-                    if !rows.contains(where: \.isHistoryDivider) {
-                        loadOlderButton(snapshot)
-                    }
-
-                    ForEach(rows) { row in
-                        NativeLiveMessageRow(row:row,
-                            isCurrentHead:row.assistant?.canonicalMessageID == snapshot?.currentHeadMessageId,
-                            isTurnInFlight:isTurnInFlight,isCopied:copiedMessageID == row.id,
-                            onCopyMessage:{ copyMessage($0,messageID:row.id) },onRetryMessage:onRetryMessage,
-                            onEditMessage:onEditMessage,onResolveInteraction:onResolveRuntimeInteraction)
-                            .id(row.id)
-                            .background(GeometryReader { geometry in
-                                Color.clear.preference(key:NativeLiveRowFramesKey.self,
-                                    value:[row.id:geometry.frame(in:.named("native-live-viewport"))])
-                            })
-
-                        if row.isHistoryDivider {
-                            loadOlderButton(snapshot)
-                        }
-                    }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .id(bottomAnchorID)
-                }
-                .padding(.horizontal, ChatPresentationLayout.messageGutter)
-                .padding(.top, ChatPresentationLayout.messageVerticalInset)
-                .padding(.bottom, ChatPresentationLayout.messageVerticalInset)
+                nativeLiveMessageList(
+                    rows: rows,
+                    currentHeadMessageID: snapshot?.currentHeadMessageId,
+                    isTurnInFlight: isTurnInFlight,
+                    copiedMessageID: copiedMessageID,
+                    bottomAnchorID: bottomAnchorID,
+                    onCopyMessage: { copyMessage($0, messageID: $1) },
+                    onRetryMessage: onRetryMessage,
+                    onEditMessage: onEditMessage,
+                    onResolveRuntimeInteraction: onResolveRuntimeInteraction,
+                    pagination: { loadOlderButton(snapshot) }
+                )
             }
+            // Scroll observation and lifecycle: order and owner intentionally unchanged.
             .scrollClipDisabled()
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
@@ -143,48 +127,10 @@ struct NativeLiveMessageSurface: View {
                 if pendingOperation?.isSend == true { scrollState.sentNewMessage(); scrollToBottom(proxy) }
                 else if let operation = pendingOperation { captureReplacementAnchor(operation) }
             }
+            // Surface overlays: visibility and actions remain owned here.
             .overlay(alignment: .top) {
                 if let copyFeedbackText {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark")
-                            .font(.system(
-                                size: 12,
-                                weight: .semibold
-                            ))
-
-                        Text(copyFeedbackText)
-                            .font(.system(
-                                size: 14,
-                                weight: .regular
-                            ))
-
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 14)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 40
-                    )
-                    .glassEffect(
-                        .regular,
-                        in: RoundedRectangle(
-                            cornerRadius: 14,
-                            style: .continuous
-                        )
-                    )
-                    .overlay {
-                        RoundedRectangle(
-                            cornerRadius: 14,
-                            style: .continuous
-                        )
-                        .stroke(
-                            Color.primary.opacity(0.08),
-                            lineWidth: 0.6
-                        )
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 10)
+                    NativeLiveCopyFeedbackBanner(text: copyFeedbackText)
                     .transition(
                         .move(edge: .top)
                             .combined(with: .opacity)
@@ -202,26 +148,7 @@ struct NativeLiveMessageSurface: View {
                             )
                         }
                     } label: {
-                        Image(systemName: "arrow.down")
-                            .font(.system(
-                                size: 16,
-                                weight: .light
-                            ))
-                            .foregroundStyle(
-                                Color.primary.opacity(0.78)
-                            )
-                            .frame(width: ChatPresentationLayout.scrollActionDiameter, height: ChatPresentationLayout.scrollActionDiameter)
-                            .glassEffect(
-                                .regular,
-                                in: Circle()
-                            )
-                            .overlay {
-                                Circle()
-                                    .stroke(
-                                        Color.primary.opacity(0.08),
-                                        lineWidth: 0.6
-                                    )
-                            }
+                        NativeLiveReturnToBottomGlyph()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Scroll to latest")
@@ -255,25 +182,7 @@ struct NativeLiveMessageSurface: View {
                     }
                 }
             } label: {
-                HStack(spacing: 8) {
-                    if isLoadingOlderMessages {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-
-                    Text(
-                        isLoadingOlderMessages
-                            ? "Loading…"
-                            : "还有更早消息"
-                    )
-                    .font(.footnote.weight(.medium))
-                }
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
+                NativeLivePaginationLabel(isLoadingOlderMessages: isLoadingOlderMessages)
             }
             .buttonStyle(.plain)
             .disabled(
@@ -341,8 +250,4 @@ struct NativeLiveMessageSurface: View {
     }
 }
 
-private struct NativeLiveRowFramesKey: PreferenceKey {
-    static var defaultValue: [String:CGRect] { [:] }
-    static func reduce(value:inout [String:CGRect],nextValue:()->[String:CGRect]) { value.merge(nextValue()) { _,fresh in fresh } }
-}
 private struct NativeLiveScrollMetrics: Equatable { let nearBottom: Bool; let offset: Double; let height: Double }
