@@ -377,14 +377,10 @@ struct PageContainer: View {
 
     private var pageBackground: Color {
         if selectedPage == .universe {
-            return Color(
-                red: 11.0 / 255.0,
-                green: 12.0 / 255.0,
-                blue: 18.0 / 255.0
-            )
+            return UniversePalette.background
         }
 
-        return Color(.systemBackground)
+        return LeileiUI.Color.pageBackground
     }
 
     private var pageTitle: String {
