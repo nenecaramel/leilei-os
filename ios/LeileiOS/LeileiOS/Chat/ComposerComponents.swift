@@ -45,3 +45,38 @@ struct CombinedModelCapsule: View {
         )
     }
 }
+
+/// Pure presentation only. It neither owns runtime state nor authorizes an
+/// action; ChatComposer retains its existing callbacks and disabled predicates.
+struct ComposerPrimaryActionPresentation {
+    enum Mode { case voice, send, midTurnSend, interrupt, interruptPending, disabledSend }
+    let mode: Mode
+    let isDimmed: Bool
+
+    init(hasText: Bool, hasAttachments: Bool, attachmentsReady: Bool,
+         isRuntimeTurnActive: Bool, isRuntimeControlInFlight: Bool,
+         interruptRequested: Bool, isSending: Bool) {
+        isDimmed = isRuntimeControlInFlight
+            || (isSending && !isRuntimeTurnActive)
+            || (!isRuntimeTurnActive && !attachmentsReady)
+        if isRuntimeTurnActive {
+            mode = hasText ? .midTurnSend : (interruptRequested ? .interruptPending : .interrupt)
+        } else if !hasText && !hasAttachments {
+            mode = .voice
+        } else {
+            mode = isDimmed ? .disabledSend : .send
+        }
+    }
+
+    var symbol: String {
+        switch mode {
+        case .voice: "waveform"
+        case .interrupt, .interruptPending: "square.fill"
+        case .send, .midTurnSend, .disabledSend: "arrow.up"
+        }
+    }
+
+    var weight: Font.Weight {
+        mode == .voice ? .semibold : .regular
+    }
+}
