@@ -60,7 +60,7 @@ struct ChatComposer: View {
                 .background(
                     Color.chatSoftFill,
                     in: RoundedRectangle(
-                        cornerRadius: 12,
+                        cornerRadius: LeileiUI.Radius.card,
                         style: .continuous
                     )
                 )
@@ -245,13 +245,13 @@ struct ChatComposer: View {
         .glassEffect(
             .regular,
             in: RoundedRectangle(
-                cornerRadius: 30,
+                cornerRadius: LeileiUI.Radius.composer,
                 style: .continuous
             )
         )
         .overlay {
             RoundedRectangle(
-                cornerRadius: 30,
+                cornerRadius: LeileiUI.Radius.composer,
                 style: .continuous
             )
             .stroke(Color.primary.opacity(0.08), lineWidth: 0.6)
@@ -270,7 +270,7 @@ struct ChatComposer: View {
         ZStack {
             Circle()
                 .fill(.black)
-                .frame(width: 36, height: 36)
+                .frame(width: LeileiUI.ControlGeometry.compact, height: LeileiUI.ControlGeometry.compact)
 
             if isRuntimeTurnActive,
                interruptRequested,
@@ -282,10 +282,7 @@ struct ChatComposer: View {
                     .tint(.white)
             } else {
                 Image(systemName: composerActionSymbol)
-                    .font(.system(
-                        size: 15,
-                        weight: composerActionWeight
-                    ))
+                    .font(LeileiUI.Typography.controlGlyph(weight: composerActionWeight))
                     .foregroundStyle(.white)
             }
         }
@@ -309,7 +306,7 @@ struct ChatComposer: View {
                 }
             )
         }
-        .frame(width: 36, height: 36)
+        .frame(width: LeileiUI.ControlGeometry.compact, height: LeileiUI.ControlGeometry.compact)
         .opacity(voiceEnabled ? 1 : 0.35)
     }
 

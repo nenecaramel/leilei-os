@@ -56,17 +56,13 @@ struct AppShell: View {
     }
 
     private var universeBackground: Color {
-        Color(
-            red: 11.0 / 255.0,
-            green: 12.0 / 255.0,
-            blue: 18.0 / 255.0
-        )
+        UniversePalette.background
     }
 
     private var shellBackground: Color {
         isUniverseTheme
             ? universeBackground
-            : Color(.systemBackground)
+            : LeileiUI.Color.pageBackground
     }
 
     private var sidebarBackground: Color {
@@ -381,14 +377,10 @@ private struct MainPageLayer: View {
 
     private var pageBackground: Color {
         if selectedPage == .universe {
-            return Color(
-                red: 11.0 / 255.0,
-                green: 12.0 / 255.0,
-                blue: 18.0 / 255.0
-            )
+            return UniversePalette.background
         }
 
-        return Color(.systemBackground)
+        return LeileiUI.Color.pageBackground
     }
 
     var body: some View {

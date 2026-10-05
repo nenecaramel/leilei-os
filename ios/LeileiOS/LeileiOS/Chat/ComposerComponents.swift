@@ -2,7 +2,7 @@ import SwiftUI
 
 extension Color {
     static var chatSoftFill: Color {
-        Color(uiColor: .quaternarySystemFill)
+        LeileiUI.Color.softFill
     }
 }
 
@@ -14,13 +14,10 @@ struct ComposerCircleButton: View {
         ZStack {
             Circle()
                 .fill(Color.chatSoftFill)
-                .frame(width: 36, height: 36)
+                .frame(width: LeileiUI.ControlGeometry.compact, height: LeileiUI.ControlGeometry.compact)
 
             Image(systemName: systemName)
-                .font(.system(
-                    size: 15,
-                    weight: weight
-                ))
+                .font(LeileiUI.Typography.controlGlyph(weight: weight))
                 .foregroundStyle(.primary)
         }
     }
@@ -41,7 +38,7 @@ struct CombinedModelCapsule: View {
                 .foregroundStyle(.primary.opacity(0.55))
         }
         .padding(.horizontal, 10)
-        .frame(height: 36)
+        .frame(height: LeileiUI.ControlGeometry.compact)
         .background(
             Capsule()
                 .fill(Color.chatSoftFill)

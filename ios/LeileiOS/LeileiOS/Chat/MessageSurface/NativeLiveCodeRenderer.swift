@@ -43,13 +43,13 @@ struct NativeLiveSourcePanel<Content: View>: View {
         copyFeedback("Copied")
         copyGeneration += 1
         let generation = copyGeneration
-        withAnimation(.easeInOut(duration: 0.16)) {
+        withAnimation(LeileiUI.Motion.feedback) {
             isCopied = true
         }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             guard copyGeneration == generation else { return }
-            withAnimation(.easeInOut(duration: 0.16)) {
+            withAnimation(LeileiUI.Motion.feedback) {
                 isCopied = false
             }
         }
