@@ -83,7 +83,6 @@ struct DiaryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
         .searchable(text: $query, prompt: "Search")
         .navigationDestination(isPresented: $archivePresented) {
             DiaryArchiveView {

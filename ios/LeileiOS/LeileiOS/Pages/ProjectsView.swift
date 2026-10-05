@@ -53,9 +53,6 @@ struct WorkspacesView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .background(Color(.systemBackground))
-        .navigationTitle("Workspaces")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

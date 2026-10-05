@@ -92,7 +92,7 @@ struct DaySpaceView: View {
                         content
                     }
                     .frame(maxWidth: 860)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, LeileiUI.Gutter.canvas)
                     .padding(.top, 8)
                     .padding(.bottom, 28)
                     .frame(maxWidth: .infinity)
@@ -100,7 +100,6 @@ struct DaySpaceView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
         .searchable(text: $query, prompt: "Search")
         .toolbar {
             if #available(iOS 26.0, *) {

@@ -32,6 +32,8 @@ struct PageContainer: View {
     let onUniverseTargetConsumed: () -> Void
 
     var body: some View {
+        // Single navigation and edge-background owner for all main pages.
+        // Content keeps its safe area; only the backdrop extends beyond it.
         NavigationStack {
             pageContent
             .navigationTitle(selectedPage == .chat ? "" : pageTitle)
