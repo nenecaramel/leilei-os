@@ -59,12 +59,6 @@ struct AppShell: View {
         UniversePalette.background
     }
 
-    private var shellBackground: Color {
-        isUniverseTheme
-            ? universeBackground
-            : LeileiUI.Color.pageBackground
-    }
-
     private var sidebarBackground: Color {
         isUniverseTheme
             ? universeBackground
@@ -100,6 +94,8 @@ struct AppShell: View {
         }
     }
 
+    // Device chrome owns reveal geometry and the Sidebar backdrop. The
+    // PageContainer owns the main page/navigation background on both devices.
     private var iPhoneLayout: some View {
         GeometryReader { proxy in
             let revealOffset = min(proxy.size.width * 0.77, 330)
@@ -140,7 +136,7 @@ struct AppShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .safeAreaPadding()
 
-                MainPageLayer(
+                PageContainer(
                     selectedPage: selectedPage,
                     diaryTarget: diaryTarget,
                     daySpaceTarget: daySpaceTarget,
@@ -181,7 +177,6 @@ struct AppShell: View {
                     }
                 )
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .background(shellBackground)
                 .clipShape(
                     UnevenRoundedRectangle(
                         topLeadingRadius: cardCornerRadius,
@@ -353,57 +348,6 @@ struct AppShell: View {
                 onUniverseTargetConsumed: {
                     universeTargetNodeID = nil
                 }
-            )
-        }
-    }
-}
-
-private struct MainPageLayer: View {
-    let selectedPage: AppPage
-    let diaryTarget: DiaryNavigationTarget?
-    let daySpaceTarget: DaySpaceNavigationTarget?
-    let universeTargetNodeID: String?
-    let isDraftConversation: Bool
-    let draftConversationID: UUID
-    let onDraftCommitted: () -> Void
-    let onMenu: () -> Void
-    let onOpenConversation: () -> Void
-    let onOpenDiary: (DiaryNavigationTarget) -> Void
-    let onDiaryTargetConsumed: () -> Void
-    let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
-    let onDaySpaceTargetConsumed: () -> Void
-    let onOpenUniverseNode: (String) -> Void
-    let onUniverseTargetConsumed: () -> Void
-
-    private var pageBackground: Color {
-        if selectedPage == .universe {
-            return UniversePalette.background
-        }
-
-        return LeileiUI.Color.pageBackground
-    }
-
-    var body: some View {
-        ZStack {
-            pageBackground
-                .ignoresSafeArea()
-
-            PageContainer(
-                selectedPage: selectedPage,
-                diaryTarget: diaryTarget,
-                daySpaceTarget: daySpaceTarget,
-                universeTargetNodeID: universeTargetNodeID,
-                isDraftConversation: isDraftConversation,
-                draftConversationID: draftConversationID,
-                onDraftCommitted: onDraftCommitted,
-                onMenu: onMenu,
-                onOpenConversation: onOpenConversation,
-                onOpenDiary: onOpenDiary,
-                onDiaryTargetConsumed: onDiaryTargetConsumed,
-                onOpenDaySpace: onOpenDaySpace,
-                onDaySpaceTargetConsumed: onDaySpaceTargetConsumed,
-                onOpenUniverseNode: onOpenUniverseNode,
-                onUniverseTargetConsumed: onUniverseTargetConsumed
             )
         }
     }

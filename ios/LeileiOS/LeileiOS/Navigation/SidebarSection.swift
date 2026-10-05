@@ -6,19 +6,17 @@ struct SidebarSection: View {
 
     @Binding var selectedPage: AppPage
 
-    let textLeadingOffset: CGFloat
-    let selectedBackgroundLeadingOffset: CGFloat
     let onSelect: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: SidebarLayout.rowSpacing) {
             if let title {
                 Text(title)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .offset(y: 2)
+                    .padding(.horizontal, SidebarLayout.sectionLabelHorizontalInset)
+                    .offset(y: SidebarLayout.rowTextPaintOffset.height)
             }
 
             ForEach(pages) { page in
@@ -36,18 +34,14 @@ struct SidebarSection: View {
 
                         Spacer()
                     }
-                    .offset(x: textLeadingOffset, y: 2)
+                    .offset(SidebarLayout.rowTextPaintOffset)
                     .foregroundStyle(.primary)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, SidebarLayout.rowHorizontalInset)
+                    .frame(maxWidth: .infinity, minHeight: SidebarLayout.rowMinimumHeight, alignment: .leading)
                     .contentShape(Rectangle())
                     .background {
                         if selectedPage == page {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.primary.opacity(0.05))
-                                .padding(.leading, selectedBackgroundLeadingOffset)
-                                .padding(.trailing, 3)
-                                .offset(y: 2)
+                            SidebarSelectionBackground()
                         }
                     }
                 }

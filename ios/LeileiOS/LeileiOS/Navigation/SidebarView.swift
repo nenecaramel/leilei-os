@@ -11,23 +11,18 @@ struct SidebarView: View {
     let onOpenConversation: (NativeLiveConversationSummary) -> Void
     let onSettings: (() -> Void)?
     let onSelect: () -> Void
-    private let topContentOffset: CGFloat = 18
-    private let titleHorizontalOffset: CGFloat = -10
-    private let navigationRowHorizontalInset: CGFloat = 12
-    private let floatingControlDiameter: CGFloat = 44
-    private let trailingFloatingControlCenterInset: CGFloat = 52
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topTrailing) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: SidebarLayout.sectionSpacing) {
                         Text("Leilei OS")
                             .font(.system(size: 22, weight: .regular))
-                            .padding(.top, 18)
-                            .offset(x: titleHorizontalOffset - 5, y: 20)
+                            .padding(.top, SidebarLayout.titleTopInset)
+                            .offset(SidebarLayout.titlePaintOffset)
 
-                        VStack(alignment: .leading, spacing: 28) {
+                        VStack(alignment: .leading, spacing: SidebarLayout.sectionSpacing) {
                             SidebarSection(
                                 title: nil,
                                 pages: [
@@ -38,21 +33,19 @@ struct SidebarView: View {
                                     .universe
                                 ],
                                 selectedPage: $selectedPage,
-                                textLeadingOffset: titleHorizontalOffset - navigationRowHorizontalInset,
-                                selectedBackgroundLeadingOffset: titleHorizontalOffset - 16,
                                 onSelect: onSelect
                             )
-                            .offset(y: 9)
+                            .offset(y: SidebarLayout.navigationPaintOffsetY)
 
                             recentConversations
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .offset(y: 7)
+                        .offset(y: SidebarLayout.sectionsPaintOffsetY)
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 92)
+                    .padding(.horizontal, SidebarLayout.contentHorizontalInset)
+                    .padding(.bottom, SidebarLayout.scrollBottomClearance)
                 }
-                .padding(.top, topContentOffset)
+                .padding(.top, SidebarLayout.scrollTopInset)
 
                 FloatingGlassButton(
                     symbol: "magnifyingglass",
@@ -63,11 +56,11 @@ struct SidebarView: View {
                 }
                 .position(
                     x: proxy.size.width
-                        - trailingFloatingControlCenterInset,
+                        - SidebarLayout.trailingFloatingControlCenterInset,
                     y: localY(
                         menuButtonCenterY,
                         in: proxy,
-                        fallback: 22
+                        fallback: SidebarLayout.searchFallbackCenterY
                     )
                 )
             }
@@ -94,25 +87,21 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .padding(.leading, 16)
-                .padding(
-                    .trailing,
-                    trailingFloatingControlCenterInset
-                        - floatingControlDiameter / 2
-                )
-                .padding(.bottom, 16)
+                .padding(.leading, SidebarLayout.footerLeadingInset)
+                .padding(.trailing, SidebarLayout.footerTrailingInset)
+                .padding(.bottom, SidebarLayout.footerBottomInset)
             }
         }
     }
 
 
     private var recentConversations: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: SidebarLayout.rowSpacing) {
             Text("Recents")
                 .font(.system(size: 14.5, weight: .medium))
                 .foregroundStyle(.secondary.opacity(0.9))
-                .padding(.horizontal, 10)
-                .offset(x: titleHorizontalOffset - 14, y: 2)
+                .padding(.horizontal, SidebarLayout.sectionLabelHorizontalInset)
+                .offset(SidebarLayout.recentLabelPaintOffset)
 
             ForEach(Array(conversations.prefix(50))) { conversation in
                 Button {
@@ -124,31 +113,21 @@ struct SidebarView: View {
                         Text(displayTitle(for: conversation))
                             .font(.system(size: 17.5, weight: .regular))
                             .lineLimit(1)
-                            .offset(
-                                x: titleHorizontalOffset - navigationRowHorizontalInset,
-                                y: 2
-                            )
+                            .offset(SidebarLayout.rowTextPaintOffset)
 
                         Spacer()
                     }
                     .foregroundStyle(.primary)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, SidebarLayout.rowHorizontalInset)
                     .frame(
                         maxWidth: .infinity,
-                        minHeight: 44,
+                        minHeight: SidebarLayout.rowMinimumHeight,
                         alignment: .leading
                     )
                     .contentShape(Rectangle())
                     .background {
                         if isActiveConversation(conversation) {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.primary.opacity(0.05))
-                                .padding(
-                                    .leading,
-                                    titleHorizontalOffset - 16
-                                )
-                                .padding(.trailing, 3)
-                                .offset(y: 2)
+                            SidebarSelectionBackground()
                         }
                     }
                 }
@@ -159,7 +138,7 @@ struct SidebarView: View {
                 selectedPage = .conversations
                 onSelect()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: SidebarLayout.rowSpacing) {
                     Text("View all")
                         .font(.system(
                             size: 14.5,
@@ -177,14 +156,11 @@ struct SidebarView: View {
                 .foregroundStyle(
                     .secondary.opacity(0.9)
                 )
-                .padding(.horizontal, 10)
-                .offset(
-                    x: titleHorizontalOffset - 14,
-                    y: 2
-                )
+                .padding(.horizontal, SidebarLayout.sectionLabelHorizontalInset)
+                .offset(SidebarLayout.recentLabelPaintOffset)
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: 36,
+                    minHeight: SidebarLayout.viewAllMinimumHeight,
                     alignment: .leading
                 )
                 .contentShape(Rectangle())
@@ -234,7 +210,7 @@ struct FloatingGlassButton: View {
             accessibilityLabel: accessibilityLabel,
             action: action
         )
-        .frame(width: 44, height: 44)
+        .frame(width: SidebarLayout.floatingControlDiameter, height: SidebarLayout.floatingControlDiameter)
     }
 }
 

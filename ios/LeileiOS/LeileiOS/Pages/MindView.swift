@@ -32,7 +32,6 @@ struct MindView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

@@ -23,7 +23,7 @@ struct ConversationsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .padding(.horizontal, 16)
+            .padding(.horizontal, LeileiUI.Gutter.page)
             .padding(.top, 8)
             .padding(.bottom, 10)
 
@@ -43,7 +43,6 @@ struct ConversationsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
         .task {
             guard appModel.isAuthenticated else { return }
             await refreshCurrentScope()
