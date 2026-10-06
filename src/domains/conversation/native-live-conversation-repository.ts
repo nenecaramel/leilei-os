@@ -536,20 +536,7 @@ implements NativeLiveConversationRepository {
         const activeTurns = await transaction
           .select({ id: nativeLiveTurnPreparations.id })
           .from(nativeLiveTurnPreparations)
-          .where(and(
-            eq(nativeLiveTurnPreparations.userId, input.userId),
-            eq(
-              nativeLiveTurnPreparations.conversationId,
-              input.conversationId,
-            ),
-            inArray(nativeLiveTurnPreparations.dispatchStatus, [
-              "staged",
-              "pending",
-              "reserved",
-              "executing",
-              "delivery_unknown",
-            ]),
-          ))
+          .where(inFlightConversationTurns(input))
           .limit(1);
         if (activeTurns.length > 0) return { outcome: "busy" as const };
 
@@ -662,19 +649,7 @@ implements NativeLiveConversationRepository {
         const activeTurns = await transaction
           .select({ id: nativeLiveTurnPreparations.id })
           .from(nativeLiveTurnPreparations)
-          .where(and(
-            eq(nativeLiveTurnPreparations.userId, input.userId),
-            eq(
-              nativeLiveTurnPreparations.conversationId,
-              input.conversationId,
-            ),
-            inArray(nativeLiveTurnPreparations.dispatchStatus, [
-              "staged",
-              "pending",
-              "reserved",
-              "executing",
-            ]),
-          ))
+          .where(inFlightConversationTurns(input))
           .limit(1);
         if (activeTurns.length > 0) return { outcome: "busy" as const };
 
@@ -1246,4 +1221,16 @@ export function parseNativeLiveConversationListCursor(
   } catch {
     throw new RangeError("Native live conversation cursor is invalid.");
   }
+}
+
+
+/** Archive and true Delete must protect exactly the same recovery evidence. */
+function inFlightConversationTurns(input: { userId: string; conversationId: string }) {
+  return and(
+    eq(nativeLiveTurnPreparations.userId, input.userId),
+    eq(nativeLiveTurnPreparations.conversationId, input.conversationId),
+    inArray(nativeLiveTurnPreparations.dispatchStatus, [
+      "staged", "pending", "reserved", "executing", "delivery_unknown",
+    ]),
+  );
 }
