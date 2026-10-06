@@ -694,10 +694,9 @@ export class AgentSdkTurnHandle {
 
         if (message?.type === "result") {
           terminalResult = message;
+          terminalFailure =
+            sdkResultFailed(message) ? message : null;
           this.inputQueue?.end();
-        }
-        if (sdkResultFailed(message)) {
-          terminalFailure = message;
         }
       }
     } catch (cause) {
