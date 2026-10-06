@@ -36,8 +36,8 @@ struct NativeLiveUserMessagePresentationView: View {
             }
             if !presentation.textNodes.isEmpty {
                 textBubble
-                    .padding(.leading, presentation.isVoiceInput ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)
-                    .padding(.trailing, presentation.isVoiceInput ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)
+                    .padding(.leading, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)
+                    .padding(.trailing, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)
                     .padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)
                     .background(Color.chatSoftFill,in:RoundedRectangle(cornerRadius:ChatPresentationLayout.bubbleRadius,style:.continuous))
                     .overlay {
@@ -50,6 +50,10 @@ struct NativeLiveUserMessagePresentationView: View {
             }
         }
     }
+    private var usesCompactVoiceInsets: Bool {
+        presentation.isVoiceInput && !isVoiceTranscriptRevealed
+    }
+
     @ViewBuilder private var textBubble: some View {
         if presentation.isVoiceInput {
             VStack(alignment:.trailing,spacing:10) {

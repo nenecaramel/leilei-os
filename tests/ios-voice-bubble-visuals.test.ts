@@ -54,3 +54,12 @@ test('assistant audio is one 45pt row with total-seconds label and no time text;
  assert.match(geometry,/audioMinimumWaveformWidth: CGFloat = 28/);
  assert.match(audio,/Button \{ playOrPause\(\) \}/);assert.match(audio,/Button \{ open\(\) \}/);
 });
+
+
+test('expanded user voice transcript inherits normal user text bubble layout',()=>{
+ const user=readFileSync(root+'NativeLiveUserMessageRow.swift','utf8');
+ assert.match(user,/private var usesCompactVoiceInsets: Bool[\s\S]*presentation\.isVoiceInput && !isVoiceTranscriptRevealed/);
+ assert.match(user,/\.padding\(\.leading, usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userLeadingInset : ChatPresentationLayout\.bubbleHorizontalInset\)/);
+ assert.match(user,/\.padding\(\.trailing, usesCompactVoiceInsets \? NativeLiveVoiceBubbleGeometry\.userTrailingInset : ChatPresentationLayout\.bubbleHorizontalInset\)/);
+ assert.match(user,/NativeLiveVisualNodesView\(nodes:presentation\.textNodes,role:presentation\.role\)/);
+});
