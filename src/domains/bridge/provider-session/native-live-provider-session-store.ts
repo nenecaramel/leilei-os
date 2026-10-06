@@ -4,6 +4,9 @@ import { nativeLiveProviderSessionEntries } from "../../../database/schema.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
+const MAX_SESSION_STORE_ENTRY_BYTES = 24_000_000;
+const MAX_SESSION_STORE_APPEND_BYTES = 28_000_000;
+
 export type NativeLiveProviderSessionStoreKey = {
   sessionId: string;
   subpath?: string;
@@ -226,7 +229,7 @@ export class NativeLiveProviderSessionStoreService {
       totalBytes += Buffer.byteLength(encoded, "utf8");
       return normalized;
     });
-    if (totalBytes > 7_000_000) {
+    if (totalBytes > MAX_SESSION_STORE_APPEND_BYTES) {
       throw new NativeLiveProviderSessionStoreError(
         "BATCH_TOO_LARGE",
         "SessionStore append batch is too large.",
@@ -378,7 +381,7 @@ function normalizeEntry(
     );
   }
   const encoded = JSON.stringify(value);
-  if (Buffer.byteLength(encoded, "utf8") > 6_500_000) {
+  if (Buffer.byteLength(encoded, "utf8") > MAX_SESSION_STORE_ENTRY_BYTES) {
     throw new NativeLiveProviderSessionStoreError(
       "BATCH_TOO_LARGE",
       "SessionStore entry is too large.",
