@@ -1,0 +1,13 @@
+{
+  "commit": "f98414a902ed62e514e95053cdb0723630cf5255",
+  "files": {
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift": "dd66a158981a2b8f2b86c943bbe1b3fb47dd9cd3",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSVGRenderer.swift": "852b6d397927e1869b742e81b2056164c16b5c86",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveToolActivity.swift": "e2d56543e1bac76f6f9655145446e569cc6084bf",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection.swift": "d28e2cfdfacab4dcd34879d9e52ec9a19436ff72",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tools.swift": "15cccd2f400d644d8cfc669206aa4b26f7e4fc6e",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveInteractions.swift": "f9cf50896490a17d5c9cc771c893bba7167b7eb1",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveStructuredToolResult.swift": "a4297ebbf3544df2c48dea264baa6d44d567ac45",
+    "ios/LeileiOS/LeileiOS/App/NativeLiveAttachmentCoordination.swift": "283e86fa9ff7ac3e44345cb1873225cbf41bf271"
+  }
+}

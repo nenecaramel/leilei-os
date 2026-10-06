@@ -13,6 +13,10 @@ struct NativeLiveToolActivityRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if tool.state != .running,
+               let spotify = NativeLiveSpotifyProjector.project(providerToolName: tool.providerToolName, output: tool.output) {
+                NativeLiveSpotifyCard(presentation: spotify, tool: tool)
+            } else {
             NativeLiveToolCallCard(
                 toolName: tool.toolName,
                 detail: nativeLiveJSONDetail(tool.input),
@@ -25,6 +29,7 @@ struct NativeLiveToolActivityRow: View {
                         ),
                 state: tool.state
             )
+            }
 
             ForEach(permissionInteractions) { interaction in
                 if interaction.isPending,

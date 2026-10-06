@@ -28,6 +28,11 @@ function expected(names: string[]) {
   }).join('\n\n') + '\n';
 }
 function conserve(file: string, source: string) {
+  // Stage 6 permits exactly this provider-specific presentation seam. The
+  // generic card, permission subtree and all other complete blocks remain pinned.
+  if (file === 'NativeLiveToolActivity.swift') source = source
+    .replace(/            if tool.state != \.running,[\s\S]*?            \} else \{\n/, '')
+    .replace(/\n            \}\n\n            ForEach/, '\n\n            ForEach');
   assert.equal(normalize(source), normalize(expected(boundaries[file])), file);
 }
 test('Runtime Activity baseline fixtures are exact 8efd5977 Git blobs', () => {

@@ -2,7 +2,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 enum NativeLiveAttachmentSource: String, Sendable { case authoritative, draft, retainedEdit, providerCandidate }
-enum NativeLiveMediaKind: Sendable { case bitmap, svg, file }
+enum NativeLiveMediaKind: Sendable { case bitmap, svg, audio, file }
 enum NativeLiveMediaState: String, Sendable { case uploading, ready, loading, loaded, failed, integrityFailed = "integrity_failed", unavailable }
 
 enum NativeLiveMediaError: Error, LocalizedError, Equatable {
@@ -30,10 +30,18 @@ extension NativeLiveAttachmentPresentationInput {
     var mediaKind: NativeLiveMediaKind {
         let mime = mimeType.split(separator:";",maxSplits:1).first.map(String.init)?.lowercased() ?? mimeType.lowercased()
         let ext = (filename as NSString).pathExtension.lowercased()
+        let mimeParts = mime.split(separator: "/", omittingEmptySubsequences: false)
+        let tokenCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~")
+        let validAudioMIME = mimeParts.count == 2 && mimeParts[0] == "audio"
+            && !mimeParts[1].isEmpty
+            && mimeParts[1].unicodeScalars.allSatisfy { tokenCharacters.contains($0) }
+        if UTType(mimeType: mime)?.conforms(to: .audio) == true || validAudioMIME { return .audio }
         if mime == "image/svg+xml" || ext == "svg" { return .svg }
         let mimeType = UTType(mimeType:mime)
         let extensionType = UTType(filenameExtension:ext)
         if mimeType?.conforms(to:.image) == true || extensionType?.conforms(to:.image) == true || kind == "image" { return .bitmap }
+        // Extension fallback is for absent/generic MIME, never an explicit non-audio type.
+        if (mime.isEmpty || mime == "application/octet-stream"), extensionType?.conforms(to: .audio) == true { return .audio }
         return .file
     }
     var isMemeSticker: Bool {
