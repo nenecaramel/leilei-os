@@ -464,6 +464,13 @@ function sdkResultFailed(message) {
   return typeof message.subtype === "string" && message.subtype !== "success";
 }
 
+function isClaudeCodeTeardownExit(cause) {
+  return cause instanceof Error
+    && /^Claude Code process exited with code \d+$/u.test(
+      cause.message,
+    );
+}
+
 function sdkMirrorFailed(message) {
   return message?.subtype === "mirror_error";
 }
@@ -1915,7 +1922,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         terminalResult?.subtype === "success"
         && terminalResult.is_error !== true
         && !terminalFailure
-        && !this.abortRequested;
+        && !this.abortRequested
+        && isClaudeCodeTeardownExit(cause);
       if (!terminalSuccess) {
         const completionState =
           await this.#completePortability(
