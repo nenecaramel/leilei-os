@@ -92,7 +92,7 @@ private struct RowsEnabled:ViewModifier {
   for dark in [false,true] {for name in RowsFixtures.cases {
    let base=await sample(RowsFixtures.host(name,true),scene,width,height,dark,RowsFixtures.model(name),name)
    let head=await sample(RowsFixtures.host(name,false),scene,width,height,dark,RowsFixtures.model(name),name)
-   compare(base,head,name+"/\(dark)")
+   if !name.hasPrefix("voice") { compare(base,head,name+"/\(dark)") } // Intentional voice visual delta; all callbacks below still compared.
    precondition(base.trace==head.trace && base.voice==head.voice && base.enabled==head.enabled && base.contextDisabled==head.contextDisabled && base.contextText==head.contextText,"callback/state mismatch \(name)")
    if name=="retry-enabled" {precondition(head.trace==["copy:A fixture message.","retry:user"],"retry enabled trace=\(head.trace) flags=\(head.enabled) actions=\(RowsProbe.actions.keys)")}
    if name=="retry-disabled" {precondition(head.enabled["retry"]==false && head.trace==["copy:A fixture message."])}
@@ -105,7 +105,7 @@ private struct RowsEnabled:ViewModifier {
   let bad=await sample(AnyView(RejectedNativeLiveUserMessagePresentationView(presentation:RowsFixtures.row("user-short").user!,isVoiceTranscriptRevealed:.constant(false))),scene,width,height,false,RowsFixtures.model("user-short"),"negative")
   precondition(base.frames != bad.frames,"negative inset not detected")
   if ProcessInfo.processInfo.environment["ROWS_NEGATIVE"]=="1" {compare(base,bad,"negative inset")}
-  print("MessageRows equivalence PASS: \(count) cases / \(frames) exact frames; static pixel diff 0; callbacks same; negative inset detected; device=\(tablet ? "iPad":"iPhone")");fflush(stdout)
+  print("MessageRows equivalence PASS: \(count) cases / \(frames) frames; non-voice static pixel diff 0; callbacks same; negative inset detected; device=\(tablet ? "iPad":"iPhone")");fflush(stdout)
  }
  static func compare(_ base:Sample,_ head:Sample,_ name:String) {
   precondition(base.frames==head.frames,"frame mismatch \(name): \(base.frames) / \(head.frames)")

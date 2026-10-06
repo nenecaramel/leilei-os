@@ -45,7 +45,8 @@ extension View {
     static func reset() { actions = [:]; loads = 0; coversLoaded = 0; previewCreations = 0; mode = "ok"; lease = nil; dismiss = nil; urls = []; resolved = [] }
 }
 @MainActor enum Stage6Fixtures {
-    static let audio = ["idle","loading","ready","playing","paused","near-end","finished","failed","unavailable","integrity","short","long","uploading"]
+    static let voice = ["short-collapsed","medium-collapsed","long-collapsed","short-expanded","long-expanded"]
+    static let audio = ["1s","8s","30s","idle","loading","ready","playing","paused","near-end","finished","failed","unavailable","integrity","short","long","uploading"]
     static let spotify = ["one","five","long","currently","empty","error","no-url","cover","bad-cover","permission"]
     static let ordinary = ["png","jpeg","gif","webp","sticker","svg","pdf","text","binary","tool","unknown-spotify","malformed","running","permission"]
     static func input(_ kind: String) -> NativeLiveAttachmentPresentationInput {
@@ -69,12 +70,12 @@ extension View {
         case "loading": state.phase = .loading
         case "playing", "near-end": state.phase = .playing
         case "paused": state.phase = .paused
-        case "ready", "finished", "short", "long": state.phase = .ready
+        case "1s", "8s", "30s", "ready", "finished", "short", "long": state.phase = .ready
         case "failed": state.phase = .failed; state.error = "Could not play audio. Try again."
         default: break
         }
-        if ["ready","playing","paused","near-end","finished","short","long"].contains(name) {
-            state.duration = name == "short" ? 0.8 : name == "long" ? 3661 : 62
+        if ["1s","8s","30s","ready","playing","paused","near-end","finished","short","long"].contains(name) {
+            state.duration = name == "1s" ? 1 : name == "8s" ? 8 : name == "30s" ? 30 : name == "short" ? 0.8 : name == "long" ? 3661 : 62
             state.currentTime = name == "finished" ? 62 : name == "near-end" ? 61 : name == "paused" || name == "playing" ? 15 : 0
         }
         return state
@@ -110,7 +111,14 @@ struct Stage6Host: View {
     let model = AppModel()
     var body: some View {
         Group {
-            if name.hasPrefix("audio-") {
+            if name.hasPrefix("voice-") {
+                let text = String(repeating: "语", count: name.contains("short") ? 1 : name.contains("medium") ? 15 : 240)
+                let message = NativeLiveCurrentPathMessage(id:"voice",conversationId:"fixture",parentMessageId:nil,role:"user",status:"completed",createdAt:"",completedAt:nil,blocks:[.init(id:"text",ordinal:0,kind:"text",rawType:"text",text:text,payload:["input_mode":.string("voice")],createdAt:"")])
+                HStack(spacing: 0) {
+                    Spacer(minLength: ChatPresentationLayout.userLeadingClearance)
+                    NativeLiveUserMessagePresentationView(presentation:NativeLiveMessagePresentationProjector.project(.canonical(message)),isVoiceTranscriptRevealed:.constant(name.hasSuffix("expanded")))
+                }
+            } else if name.hasPrefix("audio-") {
                 NativeLiveAudioAttachmentBubble(stage6Input: Stage6Fixtures.input(String(name.dropFirst(6))), state: state)
             } else if name == "spotify-sdk-row" {
                 NativeLiveToolActivityRow(tool: Stage6Fixtures.sdkTool, permissionInteractions: [], onResolveInteraction: nil)
@@ -155,13 +163,14 @@ struct Stage6Host: View {
         let output = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Stage6Snapshots")
         try! FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         for dark in [false,true] {
+            if focus.isEmpty { await voiceGeometry(scene, width, height, dark) }
             for name in (focus.isEmpty ? Stage6Fixtures.ordinary : []) {
                 let a = await sample(name, true, scene, width, height, dark), b = await sample(name, false, scene, width, height, dark)
                 precondition(a.frames == b.frames, "Non-target geometry changed \(name): \(a.frames) vs \(b.frames)")
                 precondition(a.pixels == b.pixels, "Non-target static pixels changed \(name)")
                 exact += 1; print("non-target \(name)/\(dark): exact frames + static pixels"); fflush(stdout)
             }
-            for name in (Stage6Fixtures.audio.map({ "audio-"+$0 }) + Stage6Fixtures.spotify.map({ "spotify-"+$0 })).filter({ focus.isEmpty || $0 == focus }) {
+            for name in (Stage6Fixtures.voice.map({ "voice-"+$0 }) + Stage6Fixtures.audio.map({ "audio-"+$0 }) + Stage6Fixtures.spotify.map({ "spotify-"+$0 })).filter({ focus.isEmpty || $0 == focus }) {
                 let result = await sample(name, false, scene, width, height, dark)
                 let key = name + (dark ? "-dark" : "-light")
                 manifest[key] = ["frames": result.frames.mapValues { [$0.origin.x,$0.origin.y,$0.size.width,$0.size.height] }, "staticSHA256": SHA256.hash(data: result.pixels).map { String(format: "%02x", $0) }.joined()]
@@ -172,6 +181,22 @@ struct Stage6Host: View {
         if focus.isEmpty { await behavior(scene, width, height) }
         print("Stage6 render PASS: \(cases) Audio/Spotify snapshots; \(exact) exact-main non-target cases; device=\(tablet ? "iPad" : "iPhone")"); fflush(stdout)
     }
+    static func voiceGeometry(_ scene: UIWindowScene, _ width: Int, _ height: Int, _ dark: Bool) async {
+        let short = await sample("voice-short-collapsed", false, scene, width, height, dark)
+        let long = await sample("voice-long-collapsed", false, scene, width, height, dark)
+        let expandedShort = await sample("voice-short-expanded", false, scene, width, height, dark)
+        let expandedLong = await sample("voice-long-expanded", false, scene, width, height, dark)
+        // SwiftUI frame arithmetic can differ by ~1e-13pt; no pixel/layout tolerance.
+        for key in ["voice-bubble", "voice-controls", "voice-waveform", "voice-chevron"] {
+            let frames = [short, long, expandedShort, expandedLong].map { $0.frames[key]! }
+            precondition(frames.allSatisfy { abs($0.maxX - frames[0].maxX) < 1e-9 }, "right anchor drift \(key): \(frames)")
+            if key == "voice-waveform" || key == "voice-chevron" { precondition(frames.allSatisfy { abs($0.minX - frames[0].minX) < 1e-9 }, "icon drift \(key)") }
+        }
+        precondition(short.frames["voice-bubble"]!.minX != long.frames["voice-bubble"]!.minX)
+        precondition(short.frames["voice-controls"]!.width < long.frames["voice-controls"]!.width)
+        precondition(Stage6Probe.loads == 0, "geometry must not download audio")
+        print("Voice right anchor PASS: bubble/control right and waveform/chevron X exact; only left extends; collapsed/expanded; dark=\(dark)"); fflush(stdout)
+    }
     static func sample(_ name: String, _ baseline: Bool, _ scene: UIWindowScene, _ width: Int, _ height: Int, _ dark: Bool) async -> Sample {
         Stage6Probe.reset()
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
@@ -180,6 +205,12 @@ struct Stage6Host: View {
         let host = UIHostingController(rootView: Stage6Host(name: name, baseline: baseline, state: state).environment(\.colorScheme, dark ? .dark : .light).onPreferenceChange(Stage6Frames.self) { store.values = $0 })
         let window = UIWindow(windowScene: scene); window.frame = CGRect(x: 0,y: 0,width: width,height: height); window.overrideUserInterfaceStyle = dark ? .dark : .light; window.rootViewController = host; window.makeKeyAndVisible(); host.view.frame = window.bounds
         host.view.layoutIfNeeded(); try? await Task.sleep(for: .milliseconds(350)); host.view.layoutIfNeeded()
+        // Await the real localhost cover response under simulator/build load.
+        // The same cover pixels are still compared to the untouched Stage 6 golden.
+        if name == "spotify-cover" {
+            for _ in 0..<40 where Stage6Probe.coversLoaded == 0 { try? await Task.sleep(for: .milliseconds(50)) }
+            host.view.layoutIfNeeded()
+        }
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in host.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
         var bytes = [UInt8](repeating: 0, count: width*height*4)
         bytes.withUnsafeMutableBytes { raw in CGContext(data: raw.baseAddress,width: width,height: height,bitsPerComponent: 8,bytesPerRow: width*4,space: CGColorSpaceCreateDeviceRGB(),bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.draw(image.cgImage!, in: window.bounds) }
@@ -187,6 +218,13 @@ struct Stage6Host: View {
         func inspect(_ view: UIView) { if view is UIActivityIndicatorView { spinners.append(view.convert(view.bounds,to:host.view)) }; for child in view.subviews { inspect(child) } }
         inspect(host.view)
         var frames=store.values
+        if name.hasPrefix("audio-") {
+            let input = Stage6Fixtures.input(String(name.dropFirst(6)))
+            let expected = NativeLiveVoiceBubbleGeometry.audioWidth(duration: state.duration, sizeBytes: input.sizeBytes)
+            precondition(abs(frames["content"]!.width - expected) < 1e-9, "rendered audio width differs from duration rule")
+            precondition(frames["play"]!.maxX <= frames["open"]!.minX, "Play and Open overlap")
+            precondition(Stage6Probe.loads == 0, "render must never preload bytes for width")
+        }
         for (index,frame) in spinners.enumerated() {
             frames["spinner\(index)"] = frame
             let rect=frame.insetBy(dx:-2,dy:-2)

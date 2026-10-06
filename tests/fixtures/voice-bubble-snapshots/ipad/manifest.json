@@ -1,0 +1,1112 @@
+{
+  "audio-1s-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        164.4532413158944,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        110.45324131589439,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "5d87bcd014997bf9a2ad1994e8c5135d6296a56690c2a9361af7a2f6855e3f55"
+  },
+  "audio-1s-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        164.4532413158944,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        110.45324131589439,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "61a70cf7028365eaeb13c140a3b909f28b0faf639c6903e03bdbe2578334de21"
+  },
+  "audio-8s-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        195.81569099913264,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        141.81569099913264,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "bf327770de5c033c2243d2c953c5da2a112324153276014fa8d42dd53d883571"
+  },
+  "audio-8s-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        195.81569099913264,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        141.81569099913264,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "0d2d0505aecfc7d5e5585a797efb93eabfcaed076d64e861b38cfbc69f06e3f5"
+  },
+  "audio-30s-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        221.60419480033514,
+        54.5
+      ],
+      "open": [
+        61.999999999999986,
+        56,
+        167.6041948003351,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "62a7709fae672cf9931289107603dbd62a345234cee95288b640e532df86d7fd"
+  },
+  "audio-30s-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        221.60419480033514,
+        54.5
+      ],
+      "open": [
+        61.999999999999986,
+        56,
+        167.6041948003351,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "65371d96c17c66891cc619477d3fe4a2860efe38993bcd1d7fdbf4960bf88ef4"
+  },
+  "audio-failed-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        95.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "b9553853dbd59e9eac0892b0353797e28bab7594aaa5dfc76d7167a594221ab7"
+  },
+  "audio-failed-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        95.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "ed677e2c42a4efd5ff290ade3c0abccc1210a5fd51378cac1ff2b10a39ed4805"
+  },
+  "audio-finished-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "4345ded5f04db19d8ccfa8bc45379661d4cad8b788b9eb750999103f81f6cd34"
+  },
+  "audio-finished-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "d5837d862f47fb13a62263854f5b2ddae3026be2eccd1d6cc48503e5209094e5"
+  },
+  "audio-idle-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "f835c98eef5f764cb3c816a085b22cd5a77beca60e03e66c1491505aa8ec7738"
+  },
+  "audio-idle-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "6342ae8bfbbc9289d02b8c2d47f94199e9414f54909f5927b741857bf21deb04"
+  },
+  "audio-integrity-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        111.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "c7caca4414dd88147777b8089ffb0105ccfdb0d60409d9cc9ed1aada15ef8b1d"
+  },
+  "audio-integrity-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        111.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "1baa21d363d74378ec06a5c4d35e8c539cbb3cebfa85c42cab1bbf89d17983e4"
+  },
+  "audio-loading-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ],
+      "spinner0": [
+        29,
+        65.5,
+        20,
+        20
+      ]
+    },
+    "staticSHA256": "7d3ab5c9cc6a1e4be3deda5cc71a143e33bb6f60918416fd2a1fa9de53bbffbf"
+  },
+  "audio-loading-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ],
+      "spinner0": [
+        29,
+        65.5,
+        20,
+        20
+      ]
+    },
+    "staticSHA256": "5712788f85d03302aeb3e1b8606a83d8f197b591ec762c5ea4f51a0bdfd68e3c"
+  },
+  "audio-long-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        250,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        196,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "864f2fdc68cae83bbf70c1380b4787c69fce82033593889253fb1b22ffdec713"
+  },
+  "audio-long-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        250,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        196,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "acdbc912dbc43541a0cc6a3f080479be6a43656800283f41984db3c0a3f6714f"
+  },
+  "audio-near-end-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "352193bbb1b0e79a86e092036c012e613fca6ba2b20e72365d0095d5eb7fe43b"
+  },
+  "audio-near-end-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "14da5e725796e32ce4c5ba440aa1f528b5bbf704b33a5c492a9ba3951f3190de"
+  },
+  "audio-paused-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "e871cef7b8da53e35e3705735db02f11bc8322aa1cebaa558f618cab375deca8"
+  },
+  "audio-paused-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "49db185ed3e278da3f2c1f3324ce12fd0955eb23f162bf933aba2e2932378e1d"
+  },
+  "audio-playing-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "9d31c97ee22d31d90d8f3632853a1bb40c52dcdddb6b6141d5eb08062916d126"
+  },
+  "audio-playing-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "1a8438c0f4c6a103a45206d57573363ecd15d0f507a6508c6adcc402ce612c30"
+  },
+  "audio-ready-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "67c07b2ad92032444087ccbb5edfae99fb441a64befc3bf8ae2f6321629ee30b"
+  },
+  "audio-ready-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        236.39106914699505,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        182.39106914699505,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "d1b9f017703b8cf71b894046b8bcb04470ba336165993a245db1d33bfc52ee20"
+  },
+  "audio-short-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        162.25630392557065,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        108.25630392557065,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "1713b19e9af69b5fbe9bcbbd4994bbc9e3c287b3352addf4bba0de08f8e7a90b"
+  },
+  "audio-short-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        162.25630392557065,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        108.25630392557065,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "1b77f716a50a91f4b7f477b71e283701f718607f3dc14b222f4748e9c9e41ad2"
+  },
+  "audio-unavailable-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        95.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "b266e44d8ecb16c02c115ee05774021c9b81dc714351b3c94893a7bb97c5654c"
+  },
+  "audio-unavailable-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        95.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ]
+    },
+    "staticSHA256": "f6852d056f6372e37b4a77a68a13158741286906fa0d5622e3861a312b130eec"
+  },
+  "audio-uploading-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ],
+      "spinner0": [
+        29,
+        65.5,
+        20,
+        20
+      ]
+    },
+    "staticSHA256": "e49eea75d0b02825dff58aae10428deae5dd47e1750546c684ac4c1beedaf87e"
+  },
+  "audio-uploading-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        200,
+        54.5
+      ],
+      "open": [
+        62,
+        56,
+        146,
+        38.5
+      ],
+      "play": [
+        24,
+        60.25,
+        30,
+        30
+      ],
+      "spinner0": [
+        29,
+        65.5,
+        20,
+        20
+      ]
+    },
+    "staticSHA256": "c22f6a7682ad9ffe1c1e4008556f50af4b02fbe595635538e9f941dc76f29adf"
+  },
+  "voice-long-collapsed-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        45
+      ],
+      "voice-bubble": [
+        855,
+        48,
+        153,
+        45
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        869,
+        60,
+        125,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "ac89ac3b7148ba11ada3b252aa2c80d1e66c562ac536c61538033c2962677a44"
+  },
+  "voice-long-collapsed-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        45
+      ],
+      "voice-bubble": [
+        855,
+        48,
+        153,
+        45
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        869,
+        60,
+        125,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "e5fd7020a9d7c2e8ba8e75bb3bb8bd4a93e003e50314bf8437296ba6d6a2c3ae"
+  },
+  "voice-long-expanded-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        176.5
+      ],
+      "voice-bubble": [
+        70,
+        48,
+        938,
+        176.5
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        869,
+        60,
+        125,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "67d9a345bc8e90a7391938bb804b63c5cfe5768059878142faa74b4a35e114b2"
+  },
+  "voice-long-expanded-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        176.5
+      ],
+      "voice-bubble": [
+        70,
+        48,
+        938,
+        176.5
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        869,
+        60,
+        125,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "775d3eb12e4044a76b8f5818bad3602f1987984ee04e6afc59cb5c662cb49a9e"
+  },
+  "voice-medium-collapsed-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        45
+      ],
+      "voice-bubble": [
+        883.1862519097697,
+        48,
+        124.81374809023032,
+        45
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        897.1862519097697,
+        60,
+        96.81374809023032,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "2a30c3ec3822c72b6a6eb148896dc0dfbc55d488dc5942dd781dc05d3142d810"
+  },
+  "voice-medium-collapsed-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        45
+      ],
+      "voice-bubble": [
+        883.1862519097697,
+        48,
+        124.81374809023032,
+        45
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        897.1862519097697,
+        60,
+        96.81374809023032,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "7d2f13202f842d0cfc4a6654bbb8d2e3d0c9c6bba0a082b4b72783e46065ce45"
+  },
+  "voice-short-collapsed-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        45
+      ],
+      "voice-bubble": [
+        904.7965629774424,
+        48,
+        103.20343702255764,
+        45
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        918.7965629774424,
+        60,
+        75.20343702255764,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "a534a1b169e1aae03f8b371ef0dc07f8e00edc472ee70bc6f9a8f6d5b8142aa6"
+  },
+  "voice-short-collapsed-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        45
+      ],
+      "voice-bubble": [
+        904.7965629774424,
+        48,
+        103.20343702255764,
+        45
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        918.7965629774424,
+        60,
+        75.20343702255764,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "1418fc318b9069438666f34ee31fd9dd1ac66188754263398bf107cdebfbc99f"
+  },
+  "voice-short-expanded-dark": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        75.5
+      ],
+      "voice-bubble": [
+        904.7965629774424,
+        48,
+        103.20343702255764,
+        75.5
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        918.7965629774424,
+        60,
+        75.20343702255764,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "0c9e3851e8483dda9ea43e76c5191984eaf51fda74b1d4ddacb625c8bc6ce580"
+  },
+  "voice-short-expanded-light": {
+    "frames": {
+      "content": [
+        16,
+        48,
+        992,
+        75.5
+      ],
+      "voice-bubble": [
+        904.7965629774424,
+        48,
+        103.20343702255764,
+        75.5
+      ],
+      "voice-chevron": [
+        984,
+        67,
+        10,
+        7
+      ],
+      "voice-controls": [
+        918.7965629774424,
+        60,
+        75.20343702255764,
+        21
+      ],
+      "voice-waveform": [
+        955.5,
+        59.75,
+        20.5,
+        21.5
+      ]
+    },
+    "staticSHA256": "24093d3f1c556573232546589b4c0dadadd7a05dbda0880c740e20bd1ceea81d"
+  }
+}

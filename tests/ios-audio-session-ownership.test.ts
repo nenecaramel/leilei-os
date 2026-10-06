@@ -29,12 +29,12 @@ test('AudioSession fix leaves VoiceInputController and every other production fi
  assert.doesNotMatch(readFileSync(source,'utf8'), /\.set(?:Category|Active)\s*\(/, "Borrower must never mutate process session configuration or activation");
  const unchanged={
   "ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift": "41fca49bfdd61d703af06331b669aa74f513e62c29f54a240362c6803e9f76f7",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift": "32656bcaab981d3ac7445522c60cefe0cc58961665df6daf26113fa647844354",
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift": "0f72414c8dcdd14d98c27783ffa6aa2105256b7ba93a750f5fecb076966c5e43",
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaPresentation.swift": "128ed1b27c661b96a088701bf633d0bf768c2cc73447ed3a100b8d6664554bf8",
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift": "3e8135e44bd4d2e7245938652b27989bf7e4f1dd88de9264ec31f8be69d4d5d7",
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveToolActivity.swift": "493ab18ea911102b6cf00cb21fd705c35908b1224bb9d6f06e3c2c2270e80a20",
   "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyCard.swift": "e09a6002e6cf8ac083e4ee0ee490871fc870ffdb1de240530d68a0593a983875",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyPresentation.swift": "50dae7de939f084ccf0765ac86c7949a37134f005a637b363581e498eed3a1ab"
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyPresentation.swift": "6a4de7a315406ce3a72ed72a4a3dfdcef9120f1b9f438075aa9f906a4f569ccb"
 };
  for(const [file,sha] of Object.entries(unchanged)) assert.equal(createHash("sha256").update(readFileSync(file)).digest("hex"),sha,file);
  const bubble=readFileSync('ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift','utf8');
