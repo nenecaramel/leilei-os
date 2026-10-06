@@ -367,6 +367,7 @@ function parseManualCompactResultBody(
         status: "success";
         result: {
           providerSessionId: string;
+          providerCheckpointId?: string | null;
           contextUsage: import("../../domains/bridge/protocol/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
           boundary: Record<string, unknown> | null;
           summary: string | null;
@@ -407,6 +408,8 @@ function parseManualCompactResultBody(
     || !result.provider_session_id.trim()
   ) return null;
 
+  if (result.provider_checkpoint_id != null && !isUuid(result.provider_checkpoint_id)) return null;
+
   const contextUsage =
     result.context_usage === null
       ? null
@@ -435,6 +438,7 @@ function parseManualCompactResultBody(
       status: "success",
       result: {
         providerSessionId: result.provider_session_id,
+        providerCheckpointId: typeof result.provider_checkpoint_id === "string" ? result.provider_checkpoint_id : null,
         contextUsage,
         boundary,
         summary:

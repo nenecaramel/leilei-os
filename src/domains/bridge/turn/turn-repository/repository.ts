@@ -234,19 +234,21 @@ implements NativeLiveBackendTurnPort {
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
+    continuation: "send" | "replacement" = "replacement",
   ): Promise<
     | {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
         expectedWorkingDirectory: string | null;
+        parentProviderCheckpointId?: string | null;
       }
     | {
         ok: false;
         result: NativeLivePreparePortResult;
       }
   > {
-    return resolveRuntimeParent.call(this.context, executor, conversations, userId, conversationId, parentMessageId);
+    return resolveRuntimeParent.call(this.context, executor, conversations, userId, conversationId, parentMessageId, continuation);
   }
 
   private insertPreparation(
@@ -260,9 +262,10 @@ implements NativeLiveBackendTurnPort {
       requestHash: string;
       canonicalUserMessageId: string;
       replacementTargetUserMessageId: string | null;
-      runtimeMode: "new" | "fork";
+      runtimeMode: "new" | "resume" | "fork";
       parentProviderSessionId: string | null;
       expectedWorkingDirectory: string | null;
+      parentProviderCheckpointId?: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       attachments: NativeLiveRuntimeAttachment[];
       prompt: string;

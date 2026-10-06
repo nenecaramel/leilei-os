@@ -221,6 +221,7 @@ export async function createAgentSdkTurnHandle({
   parentProviderSessionId = null,
   resume = null,
   forkSession = false,
+  resumeSessionAt = null,
   queryImpl = null,
   loadQuery = loadDefaultQuery,
   environment = process.env,
@@ -380,6 +381,7 @@ export async function createAgentSdkTurnHandle({
     ),
     ...(resume ? { resume } : {}),
     ...(forkSession ? { forkSession: true } : {}),
+    ...(resumeSessionAt ? { resumeSessionAt } : {}),
   };
 
   let query;

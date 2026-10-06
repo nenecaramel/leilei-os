@@ -33,10 +33,12 @@ export type NativeLiveManualCompactReservation = {
   sourceMessageId: string;
   providerSessionId: string;
   effectiveWorkingDirectory: string | null;
+  providerCheckpointId?: string | null;
 };
 
 export type NativeLiveManualCompactSuccess = {
   providerSessionId: string;
+  providerCheckpointId?: string | null;
   contextUsage: NativeLiveRuntimeContextUsage | null;
   boundary: Record<string, unknown> | null;
   summary: string | null;
@@ -402,6 +404,13 @@ export class NativeLiveManualCompactService {
           request.effective_working_directory
       `);
       const row = rows[0];
+      const checkpoint = row ? await tx.execute<{ provider_checkpoint_id: string | null }>(sql`
+        SELECT provider_checkpoint_id FROM conversation_provider_session_checkpoints
+        WHERE user_id = ${input.userId}::uuid
+          AND canonical_message_id = ${row.source_message_id}::uuid
+          AND provider_session_id = ${row.provider_session_id}
+          AND provider = 'claude_code'
+      `) : [];
       return row
         ? {
             reservationId: row.id,
@@ -412,6 +421,7 @@ export class NativeLiveManualCompactService {
             providerSessionId: row.provider_session_id,
             effectiveWorkingDirectory:
               row.effective_working_directory,
+            providerCheckpointId: checkpoint[0]?.provider_checkpoint_id ?? null,
           }
         : null;
     });
@@ -515,6 +525,25 @@ export class NativeLiveManualCompactService {
         return "stale" as const;
       }
 
+      const checkpoint = await tx.execute<{ provider_checkpoint_id: string | null }>(sql`
+        SELECT provider_checkpoint_id FROM conversation_provider_session_checkpoints
+        WHERE user_id = ${input.userId}::uuid
+          AND canonical_message_id = ${current.source_message_id}::uuid
+          AND provider = 'claude_code'
+          AND provider_session_id = ${current.provider_session_id}
+        FOR UPDATE
+      `);
+      if (checkpoint[0]?.provider_checkpoint_id && !input.outcome.result.providerCheckpointId) {
+        await tx.execute(sql`
+          UPDATE native_live_manual_compactions
+          SET status = 'failed', failure_code = 'NO_PROVIDER_SESSION',
+              reserved_by = NULL, reserved_at = NULL, reservation_expires_at = NULL,
+              completed_at = now(), updated_at = now()
+          WHERE id = ${input.reservationId}::uuid AND user_id = ${input.userId}::uuid
+        `);
+        return "failed" as const;
+      }
+
       const compactedAt = new Date().toISOString();
       const metadata = {
         ...(input.outcome.result.contextUsage
@@ -532,7 +561,8 @@ export class NativeLiveManualCompactService {
       };
       const updated = await tx.execute<{ id: string }>(sql`
         UPDATE conversation_provider_session_checkpoints
-        SET runtime_metadata =
+        SET provider_checkpoint_id = COALESCE(${input.outcome.result.providerCheckpointId ?? null}, provider_checkpoint_id),
+          runtime_metadata =
           COALESCE(runtime_metadata, '{}'::jsonb)
           || ${JSON.stringify(metadata)}::jsonb
         WHERE user_id = ${input.userId}::uuid

@@ -36,6 +36,8 @@ export type NativeLiveMacActiveTurnController = {
 export type NativeLiveMacInteractiveTurnOptions = {
   mode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
+  parentProviderCheckpointId?: string | null;
+  requireProviderCheckpoint?: boolean;
   streaming: boolean;
   userMessageUuid?: string | null;
   execution?: NativeLiveExecutionSelection | null;
@@ -100,6 +102,7 @@ export type NativeLiveMacClaudeTransport =
     compact?(
       sessionId: string,
       execution?: NativeLiveExecutionSelection | null,
+      parentProviderCheckpointId?: string | null,
     ): Promise<NativeLiveRuntimeResult & {
       contextUsage?: NativeLiveRuntimeContextUsage | null;
       compaction?: {

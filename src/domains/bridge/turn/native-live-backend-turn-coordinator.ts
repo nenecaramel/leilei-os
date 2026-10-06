@@ -46,6 +46,7 @@ export type NativeLivePreparedTurn = {
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
   expectedWorkingDirectory: string | null;
+  parentProviderCheckpointId?: string | null;
   executionSelection?: NativeLiveExecutionSelection | null;
   attachments?: NativeLiveRuntimeAttachment[];
   prompt: string;
@@ -225,6 +226,7 @@ export interface NativeLiveBackendTurnPort {
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
     effectiveWorkingDirectory: string | null;
+    providerCheckpointId?: string | null;
     blocks: NativeLiveContentBlockInput[];
     outputAttachmentIds: readonly string[];
     outputAttachmentMetadata?:
@@ -422,6 +424,9 @@ export class NativeLiveBackendTurnCoordinator {
         preparation,
         result.protocol_version,
       );
+      if ((preparation.parentProviderCheckpointId !== undefined || preparation.runtimeMode === "resume") && result.status === "success" && !result.provider_checkpoint_id) {
+        throw new NativeLiveRuntimeProtocolError("Checkpoint-addressed turn cannot accept a legacy result.");
+      }
       assertRuntimeResultMatchesCommand(command, result);
     } catch (error) {
       if (error instanceof NativeLiveRuntimeProtocolError) {
@@ -552,6 +557,7 @@ export class NativeLiveBackendTurnCoordinator {
         preparation,
         providerSessionId: result.provider_session_id,
         effectiveWorkingDirectory: result.effective_working_directory,
+        providerCheckpointId: result.provider_checkpoint_id ?? null,
         blocks: finalizedBlocks,
         outputAttachmentIds:
           result.output_attachment_ids ?? [],
@@ -659,6 +665,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
     parent_provider_session_id: preparation.parentProviderSessionId,
     expected_working_directory:
       preparation.expectedWorkingDirectory ?? null,
+    ...(preparation.parentProviderCheckpointId !== undefined ? { parent_provider_checkpoint_id: preparation.parentProviderCheckpointId } : {}),
     execution_selection: preparation.executionSelection ?? null,
     ...(attachments.length > 0
       ? { attachments }

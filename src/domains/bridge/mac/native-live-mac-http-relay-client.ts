@@ -528,6 +528,7 @@ implements NativeLiveMacDaemonRelayClient {
         typeof record.effectiveWorkingDirectory === "string"
           ? record.effectiveWorkingDirectory
           : null,
+      ...(Object.hasOwn(record, "providerCheckpointId") ? { providerCheckpointId: typeof record.providerCheckpointId === "string" ? record.providerCheckpointId : null } : {}),
     };
   }
 
@@ -539,6 +540,7 @@ implements NativeLiveMacDaemonRelayClient {
           status: "success";
           result: {
             providerSessionId: string;
+            providerCheckpointId?: string | null;
             contextUsage: unknown;
             boundary: Record<string, unknown> | null;
             summary: string | null;
@@ -558,6 +560,7 @@ implements NativeLiveMacDaemonRelayClient {
             result: {
               provider_session_id:
                 input.outcome.result.providerSessionId,
+              provider_checkpoint_id: input.outcome.result.providerCheckpointId ?? null,
               context_usage:
                 input.outcome.result.contextUsage,
               boundary: input.outcome.result.boundary,

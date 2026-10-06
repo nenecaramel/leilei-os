@@ -56,10 +56,10 @@ export class NativeLiveMacWorkingDirectoryRuntimePool implements NativeLiveWorki
     return sessions.sort((a,b) => (b.lastModified ?? 0) - (a.lastModified ?? 0)).filter((session, index, all) => all.findIndex(candidate => candidate.sessionId === session.sessionId) === index);
   }
 
-  async compactSession(sessionId: string, expectedWorkingDirectory: string | null) {
+  async compactSession(sessionId: string, expectedWorkingDirectory: string | null, providerCheckpointId: string | null = null) {
     const { runtime } = await this.resolveWorkingDirectoryRuntime({ expectedWorkingDirectory });
     if (!runtime.compact) throw Object.assign(new Error("Native Live runtime does not expose compact."), { runtimeCode: "RUNTIME_UNAVAILABLE" });
-    return runtime.compact(sessionId);
+    return runtime.compact(sessionId, null, providerCheckpointId);
   }
   async deleteSession(sessionId: string, expectedWorkingDirectory: string | null): Promise<void> {
     const { runtime } = await this.resolveWorkingDirectoryRuntime({ expectedWorkingDirectory });

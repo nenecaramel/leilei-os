@@ -26,3 +26,18 @@ test("directory pool keeps durable paths outside the default, canonicalizes, and
     await assert.rejects(pool.resolveWorkingDirectoryRuntime({ expectedWorkingDirectory }), (error: any) => error.runtimeCode === "WORKING_DIRECTORY_UNAVAILABLE");
   }
 });
+
+
+test("directory pool forwards the canonical compact checkpoint without changing provider identity", async (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "directory-compact-checkpoint-test-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const checkpoint = "11111111-1111-4111-8111-111111111111";
+  const next = "22222222-2222-4222-8222-222222222222";
+  const runtime = { abort() {}, async deleteSession() {}, async compact(id: string, execution: unknown, cp: string | null) {
+    assert.equal(id, "A"); assert.equal(execution, null); assert.equal(cp, checkpoint);
+    return { providerSessionId: id, providerCheckpointId: next };
+  } };
+  const pool = new Pool({}, root, async () => ({ kind: "agent_sdk", runtime }));
+  const result = await pool.compactSession("A", root, checkpoint);
+  assert.equal(result.providerSessionId, "A"); assert.equal(result.providerCheckpointId, next);
+});

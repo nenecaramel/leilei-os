@@ -21,7 +21,7 @@ import {
 } from "./conversation.js";
 
 export type NativeLiveTurnOperation = "send" | "retry" | "edit" | "wake";
-export type NativeLiveTurnRuntimeMode = "new" | "fork";
+export type NativeLiveTurnRuntimeMode = "new" | "resume" | "fork";
 export type NativeLiveTurnPreparationStatus =
   | "prepared"
   | "finalized_success"
@@ -59,6 +59,7 @@ export const nativeLiveTurnPreparations = pgTable(
       .notNull(),
     parentProviderSessionId: text("parent_provider_session_id"),
     expectedWorkingDirectory: text("expected_working_directory"),
+    parentProviderCheckpointId: text("parent_provider_checkpoint_id"),
     executionSelection: jsonb("execution_selection").$type<Record<string, unknown> | null>(),
     attachments: jsonb("attachments")
       .$type<Array<Record<string, unknown>>>()
@@ -177,12 +178,18 @@ export const nativeLiveTurnPreparations = pgTable(
     ),
     check(
       "native_live_turn_preparations_runtime_mode_allowed",
-      sql`${table.runtimeMode} IN ('new', 'fork')`,
+      sql`${table.runtimeMode} IN ('new', 'resume', 'fork')`,
     ),
     check(
       "native_live_turn_preparations_runtime_parent_consistency",
       sql`(${table.runtimeMode} = 'new' AND ${table.parentProviderSessionId} IS NULL)
-        OR (${table.runtimeMode} = 'fork' AND ${table.parentProviderSessionId} IS NOT NULL AND char_length(btrim(${table.parentProviderSessionId})) > 0)`,
+        OR (${table.runtimeMode} IN ('fork', 'resume') AND ${table.parentProviderSessionId} IS NOT NULL AND char_length(btrim(${table.parentProviderSessionId})) > 0)`,
+    ),
+    check(
+      "native_live_turn_preparations_checkpoint_consistency",
+      sql`(${table.runtimeMode} <> 'new' OR ${table.parentProviderCheckpointId} IS NULL)
+        AND (${table.runtimeMode} <> 'resume' OR ${table.parentProviderCheckpointId} IS NOT NULL)
+        AND (${table.parentProviderCheckpointId} IS NULL OR ${table.parentProviderCheckpointId} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')`,
     ),
     check(
       "native_live_turn_preparations_execution_selection_object",

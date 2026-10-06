@@ -16,8 +16,9 @@ import type {
   NativeLiveDaemonRejectCode,
   NativeLiveDaemonReservation,
 } from "../mac/native-live-mac-daemon-loop.js";
-import type {
-  NativeLiveRuntimeExecutionResult,
+import {
+  NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+  type NativeLiveRuntimeExecutionResult,
 } from "../protocol/native-live-runtime-protocol.js";
 import { parseNativeLiveExecutionSelection } from "../turn/native-live-execution-selection.js";
 import { hasDiscardedWakeReceipt } from "../turn/turn-repository/discard-wake.js";
@@ -105,6 +106,7 @@ const preparationSelection = {
     nativeLiveTurnPreparations.parentProviderSessionId,
   expectedWorkingDirectory:
     nativeLiveTurnPreparations.expectedWorkingDirectory,
+  parentProviderCheckpointId: nativeLiveTurnPreparations.parentProviderCheckpointId,
   executionSelection: nativeLiveTurnPreparations.executionSelection,
   attachments: nativeLiveTurnPreparations.attachments,
   prompt: nativeLiveTurnPreparations.prompt,
@@ -121,9 +123,10 @@ type SelectedRelayPreparationRow = {
   operation: "send" | "retry" | "edit" | "wake";
   canonicalUserMessageId: string | null;
   wakeContext: Record<string, unknown> | null;
-  runtimeMode: "new" | "fork";
+  runtimeMode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
   expectedWorkingDirectory: string | null;
+  parentProviderCheckpointId?: string | null;
   executionSelection: Record<string, unknown> | null;
   attachments: Array<Record<string, unknown>>;
   prompt: string;
@@ -878,11 +881,16 @@ export class NativeLiveBackendRelayService {
       listenerInstanceId: input.listenerInstanceId,
     });
     if (!preparation) return null;
+    // A persisted checkpoint field marks a modern preparation, including a new
+    // turn with a null parent. Preserve its checkpoint-aware command on reserve.
     return {
       reservationId: preparation.prepareId,
       command: nativeLiveRuntimeCommandFromPreparation(
         preparation,
-        this.runtimeProtocolVersion,
+        preparation.parentProviderCheckpointId !== undefined
+          || preparation.runtimeMode === "resume"
+          ? NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+          : this.runtimeProtocolVersion,
         this.outputAttachmentsEnabled,
       ),
     };

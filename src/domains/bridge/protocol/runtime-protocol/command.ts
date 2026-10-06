@@ -39,6 +39,7 @@ export function parseNativeLiveRuntimeCommand(
     "expected_working_directory",
     "attachments",
     "output_attachments_enabled",
+    "parent_provider_checkpoint_id",
   ]);
 
   if (body.output_attachments_enabled !== undefined && typeof body.output_attachments_enabled !== "boolean") {
@@ -55,7 +56,7 @@ export function parseNativeLiveRuntimeCommand(
     throw new NativeLiveRuntimeProtocolError("Runtime operation is invalid.");
   }
   const runtimeMode = body.runtime_mode;
-  if (runtimeMode !== "new" && runtimeMode !== "fork") {
+  if (runtimeMode !== "new" && runtimeMode !== "fork" && runtimeMode !== "resume") {
     throw new NativeLiveRuntimeProtocolError("Runtime mode is invalid.");
   }
 
@@ -63,6 +64,17 @@ export function parseNativeLiveRuntimeCommand(
     body.parent_provider_session_id === null
       ? null
       : requireNonblank(body.parent_provider_session_id, "parent_provider_session_id");
+  if (protocolVersion < 4 && (runtimeMode === "resume" || body.parent_provider_checkpoint_id !== undefined)) {
+    throw new NativeLiveRuntimeProtocolError("Runtime checkpoints/resume require protocol v4.");
+  }
+  const parentProviderCheckpointId = body.parent_provider_checkpoint_id == null
+    ? null : requireUuid(body.parent_provider_checkpoint_id, "parent_provider_checkpoint_id");
+  if (runtimeMode === "new" && parentProviderCheckpointId !== null) {
+    throw new NativeLiveRuntimeProtocolError("New runtime command cannot include a parent checkpoint.");
+  }
+  if (runtimeMode === "resume" && parentProviderCheckpointId === null) {
+    throw new NativeLiveRuntimeProtocolError("Resume runtime command requires a parent checkpoint.");
+  }
   const expectedWorkingDirectory =
     body.expected_working_directory === undefined
       || body.expected_working_directory === null
@@ -77,7 +89,7 @@ export function parseNativeLiveRuntimeCommand(
       "New runtime command must not include a parent provider session.",
     );
   }
-  if (runtimeMode === "fork" && parentProviderSessionId === null) {
+  if (runtimeMode !== "new" && parentProviderSessionId === null) {
     throw new NativeLiveRuntimeProtocolError(
       "Fork runtime command requires a parent provider session.",
     );
@@ -114,6 +126,7 @@ export function parseNativeLiveRuntimeCommand(
     runtime_mode: runtimeMode,
     parent_provider_session_id: parentProviderSessionId,
     expected_working_directory: expectedWorkingDirectory,
+    ...(Object.hasOwn(body, "parent_provider_checkpoint_id") ? { parent_provider_checkpoint_id: parentProviderCheckpointId } : {}),
     execution_selection:
       body.execution_selection === undefined
         || body.execution_selection === null

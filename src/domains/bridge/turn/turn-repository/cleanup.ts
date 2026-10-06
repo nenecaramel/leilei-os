@@ -1,3 +1,4 @@
+import {providerSessionUnreferenced} from "../../provider-session/native-live-provider-session-references.js";
 import {
   and,
   eq,
@@ -90,18 +91,21 @@ export async function purgeReplacementArtifacts(
             conversationProviderSessionCheckpoints.userId,
             row.userId,
           ),
-          eq(
-            conversationProviderSessionCheckpoints.conversationId,
-            row.conversationId,
-          ),
         ),
       );
 
-    const providerSessionIds =
+    const exclusiveSessionIds =
       planExclusiveProviderSessionCleanup({
         purgeMessageIds,
         checkpoints,
       });
+    const providerSessionIds: string[] = [];
+    for (const sessionId of exclusiveSessionIds) {
+      const safe = await transaction.execute<{ safe: boolean }>(sql`SELECT ${providerSessionUnreferenced({
+        userId: row.userId, providerSessionId: sessionId, excludeMessageIds: [...purgeMessageIds],
+      })} AS safe`);
+      if (safe[0]?.safe) providerSessionIds.push(sessionId);
+    }
     if (providerSessionIds.length > 0) {
       await transaction
         .insert(nativeLiveProviderSessionCleanups)

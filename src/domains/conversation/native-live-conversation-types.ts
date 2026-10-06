@@ -94,6 +94,7 @@ export type NativeLiveProviderCheckpoint = {
   providerSessionId: string;
   effectiveWorkingDirectory: string | null;
   providerCheckpointId: string | null;
+  runtimeMetadata?: Record<string, unknown> | null;
   createdAt: string;
 };
 

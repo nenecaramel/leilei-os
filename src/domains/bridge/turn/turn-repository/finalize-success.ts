@@ -53,6 +53,7 @@ export async function finalizeSuccess(
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
     effectiveWorkingDirectory: string | null;
+    providerCheckpointId?: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     outputAttachmentIds: readonly string[];
     outputAttachmentMetadata?:
@@ -66,6 +67,7 @@ export async function finalizeSuccess(
       status: "success",
       providerSessionId: input.providerSessionId,
       effectiveWorkingDirectory: input.effectiveWorkingDirectory,
+      ...(input.providerCheckpointId ? { providerCheckpointId: input.providerCheckpointId } : {}),
       normalizedEvents: input.normalizedEvents,
       outputAttachmentIds: input.outputAttachmentIds,
       ...(input.outputAttachmentMetadata?.length
@@ -331,8 +333,9 @@ export async function finalizeSuccess(
               provider: "claude_code",
               providerSessionId: input.providerSessionId,
               effectiveWorkingDirectory: input.effectiveWorkingDirectory,
+              providerCheckpointId: input.providerCheckpointId ?? null,
               runtimeMetadata:
-                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
+                { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), ...(input.providerCheckpointId ? { provider_checkpoint_version: 1 } : {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },
           });
 

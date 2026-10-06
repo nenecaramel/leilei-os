@@ -44,7 +44,7 @@ async function fixture(t: test.TestContext) {
   };
   const finalize = (command: Awaited<ReturnType<typeof prepare>>) => coordinator.finalize(user.id, {
     protocol_version: command.protocol_version, prepare_id: command.prepare_id, request_id: command.request_id, conversation_id: conversation.id,
-    status: "success", provider_session_id: `final-${command.prepare_id}`, normalized_events: [{ type: "text", payload: { text: "New answer" } }, { type: "result", payload: { status: "success" } }],
+    status: "success", provider_session_id: `final-${command.prepare_id}`, provider_checkpoint_id: command.prepare_id, normalized_events: [{ type: "text", payload: { text: "New answer" } }, { type: "result", payload: { status: "success" } }],
   });
   return { database, repository, port, coordinator, user, conversation, target, answer, scope, prepare, finalize };
 }

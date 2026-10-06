@@ -354,8 +354,10 @@ export interface NativeLiveManualCompactExecutor {
   compactSession(
     sessionId: string,
     expectedWorkingDirectory: string | null,
+    providerCheckpointId?: string | null,
   ): Promise<{
     providerSessionId: string;
+    providerCheckpointId?: string | null;
     contextUsage?: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
     compaction?: {
       boundary?: Record<string, unknown> | null;
@@ -560,6 +562,7 @@ export class NativeLiveMacDaemonLoop {
                 await this.manualCompactExecutor.compactSession(
                   compact.providerSessionId,
                   compact.effectiveWorkingDirectory,
+                  compact.providerCheckpointId ?? null,
                 );
             } catch (error) {
               try {
@@ -602,6 +605,7 @@ export class NativeLiveMacDaemonLoop {
                   result: {
                     providerSessionId:
                       result.providerSessionId,
+                    providerCheckpointId: result.providerCheckpointId ?? null,
                     contextUsage:
                       result.contextUsage ?? null,
                     boundary:

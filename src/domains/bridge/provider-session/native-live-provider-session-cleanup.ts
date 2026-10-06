@@ -1,3 +1,4 @@
+import {providerSessionUnreferenced} from "./native-live-provider-session-references.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
@@ -87,10 +88,11 @@ export class DrizzleNativeLiveProviderSessionCleanupRepository {
       }>(sql`
         WITH candidate AS (
           SELECT id
-          FROM native_live_provider_session_cleanups
+          FROM native_live_provider_session_cleanups AS queued
           WHERE user_id = ${input.userId}::uuid
             AND status = 'pending'
             AND attempt < ${MAX_CLEANUP_ATTEMPTS}
+            AND ${providerSessionUnreferenced({userId: input.userId,providerSessionId: sql`queued.provider_session_id`})}
           ORDER BY created_at ASC, id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
