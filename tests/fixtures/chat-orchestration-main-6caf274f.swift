@@ -1,0 +1,935 @@
+import SwiftUI
+import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
+
+private struct NativeLivePendingMidTurnDelivery:
+    Equatable {
+    let controlID: String
+    let text: String
+}
+
+struct ChatView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
+
+    let isDraftConversation: Bool
+    let draftConversationID: UUID
+    @Binding var selectedWorkspaceID: String?
+    let onDraftCommitted: () -> Void
+
+    @StateObject private var voiceInput = VoiceInputController()
+    @State private var voiceLanguage: VoiceInputLanguage = .english
+    @State private var messageText = ""
+    @State private var model: NativeLiveClaudeModel = .opus55
+    @State private var thinking: NativeLiveThinkingMode = .adaptive
+    @State private var effort: NativeLiveEffortLevel = .high
+    @State private var editDraft: NativeLiveEditDraft?
+    private var pendingOperation: NativeLivePendingOperation? {
+        get { appModel.nativeLivePendingOperation }
+        nonmutating set { appModel.nativeLivePendingOperation = newValue }
+    }
+    @State private var isDraftCommitInFlight = false
+    @State private var isRuntimeControlInFlight = false
+    @State private var pendingMidTurnDelivery:
+        NativeLivePendingMidTurnDelivery?
+    @State private var isSystemKeyboardVisible = false
+    @State private var composerAttachments:
+        [NativeLiveComposerAttachmentDraft] = []
+    @State private var isPhotoPickerPresented = false
+    @State private var photoPickerItems: [PhotosPickerItem] = []
+    @State private var isFileImporterPresented = false
+    @State private var isCameraPresented = false
+    @FocusState private var isComposerFocused: Bool
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+
+            if isDraftConversation && pendingOperation == nil {
+                Color.clear
+            } else {
+                NativeLiveMessageSurface(
+                    snapshot:
+                        isDraftConversation
+                            ? nil
+                            : appModel.nativeLiveCurrentPath,
+                    historySnapshot:
+                        isDraftConversation
+                            ? nil
+                            : appModel.nativeLiveHistorySnapshot,
+                    syncState: appModel.chatSyncState,
+                    isAuthenticated: appModel.isAuthenticated,
+                    hasActiveConversation:
+                        !isDraftConversation
+                            && appModel.activeNativeLiveConversationID != nil,
+                    isTurnInFlight:
+                        appModel.chatSendState == .sending
+                            || pendingOperation != nil
+                            || isRuntimeTurnActive,
+                    pendingOperation: pendingOperation,
+                    runtimeSurface: visibleRuntimeSurface,
+                    onResolveRuntimeInteraction: {
+                        interaction,
+                        response in
+                        try await appModel.resolveNativeLiveRuntimeInteraction(
+                            interaction,
+                            response: response
+                        )
+                    },
+                    onRefresh: {
+                        await appModel.refreshNativeLiveCurrentPath(force: true)
+                    },
+                    onLoadOlder: {
+                        await appModel.loadOlderNativeLiveMessages()
+                    },
+                    onRetryMessage: { targetUserMessageID in
+                        retryMessage(targetUserMessageID)
+                    },
+                    onEditMessage: { message in
+                        beginEditing(message)
+                    }
+                )
+            }
+        }
+        .task(id: appModel.activeNativeLiveConversationID) {
+            guard !isDraftConversation else { return }
+            await appModel.refreshNativeLiveConversationHistorySnapshot()
+            await appModel.refreshNativeLiveCurrentPath()
+            if let conversationID =
+                    appModel.activeNativeLiveConversationID {
+                appModel.beginNativeLiveConversationHeadObservation(
+                    conversationID: conversationID
+                )
+            }
+            await appModel.recoverActiveNativeLiveTurn()
+        }
+        .task(id: appModel.isAuthenticated) {
+            guard appModel.isAuthenticated else { return }
+            await appModel.refreshNativeLiveConversations()
+            guard !isDraftConversation else { return }
+            await appModel.refreshNativeLiveConversationHistorySnapshot()
+            await appModel.refreshNativeLiveCurrentPath()
+            if let conversationID =
+                    appModel.activeNativeLiveConversationID {
+                appModel.beginNativeLiveConversationHeadObservation(
+                    conversationID: conversationID
+                )
+            }
+        }
+        .onDisappear {
+            voiceInput.cancel()
+            appModel.stopNativeLiveConversationHeadObservation()
+        }
+        .onChange(of: voiceEnabled) { _, enabled in
+            guard !enabled, voiceInput.isActive else { return }
+            voiceInput.cancel()
+        }
+        .onChange(of: appModel.activeNativeLiveConversationID) { _, _ in
+            voiceInput.cancel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                voiceInput.cancel()
+                appModel.stopNativeLiveConversationHeadObservation()
+            }
+            guard phase == .active else { return }
+            Task {
+                await appModel.refreshNativeLiveConversations()
+                guard !isDraftConversation else { return }
+                await appModel.refreshNativeLiveConversationHistorySnapshot()
+                await appModel.refreshNativeLiveCurrentPath()
+                if let conversationID =
+                        appModel.activeNativeLiveConversationID {
+                    appModel.beginNativeLiveConversationHeadObservation(
+                        conversationID: conversationID
+                    )
+                }
+            }
+        }
+        .onChange(of: draftConversationID) { _, _ in
+            voiceInput.cancel()
+            messageText = ""
+            composerAttachments = []
+            editDraft = nil
+            pendingOperation = nil
+            pendingMidTurnDelivery = nil
+            isComposerFocused = false
+        }
+        .onChange(of: isDraftConversation) { wasDraft, isDraft in
+            if wasDraft && !isDraft && !isDraftCommitInFlight {
+                messageText = ""
+            }
+        }
+        .onChange(of: pendingMidTurnDeliverySignal) { _, signal in
+            reconcilePendingMidTurnDelivery(signal)
+        }
+        .onChange(of: visibleRuntimeSurface?.prepareID) { oldID, newID in
+            guard pendingMidTurnDelivery != nil,
+                  oldID != newID else {
+                return
+            }
+            // If the active turn disappears or changes before exact provider
+            // acceptance is observed, keep the typed text and unlock retry.
+            pendingMidTurnDelivery = nil
+        }
+        .safeAreaInset(edge: .bottom) {
+            ChatComposer(
+                text: $messageText,
+                model: $model,
+                thinking: $thinking,
+                effort: $effort,
+                voiceLanguage: $voiceLanguage,
+                isFocused: $isComposerFocused,
+                isSending:
+                    appModel.chatSendState == .sending
+                        || voiceInput.isActive
+                        || isDraftCommitInFlight
+                        || pendingOperation != nil
+                        || isRuntimeTurnActive,
+                isRuntimeTurnActive:
+                    isRuntimeTurnActive,
+                isRuntimeControlInFlight:
+                    isRuntimeControlInFlight
+                        || pendingMidTurnDelivery != nil,
+                interruptRequested:
+                    runtimeInterruptRequested,
+                isEditing: editDraft != nil,
+                attachments: composerAttachments,
+                onCancelEdit: cancelEditing,
+                onPickPhoto: {
+                    isPhotoPickerPresented = true
+                },
+                onTakePhoto: {
+                    isCameraPresented = true
+                },
+                onPickFile: {
+                    isFileImporterPresented = true
+                },
+                onRemoveAttachment: { id in
+                    composerAttachments.removeAll {
+                        $0.id == id
+                    }
+                },
+                onRetryAttachment: { id in
+                    retryAttachmentUpload(id)
+                },
+                onInterrupt: {
+                    interruptCurrentTurn()
+                },
+                onMidTurnInput: { text in
+                    sendMidTurnInput(text)
+                },
+                voiceEnabled: voiceEnabled,
+                voiceStatus: voiceInput.status,
+                onVoiceInteractionBegin: {
+                    voiceInput.dismissStatusMessage()
+                },
+                onVoicePress: {
+                    voiceInput.begin(
+                        language: voiceLanguage,
+                        onTranscript: sendVoiceMessage
+                    )
+                },
+                onVoiceRelease: { voiceInput.release() }
+            ) {
+                sendMessage()
+            }
+            .padding(.horizontal, ChatPresentationLayout.composerOuterHorizontal)
+            .padding(.top, ChatPresentationLayout.composerOuterTop)
+            .padding(.bottom, ChatPresentationLayout.composerOuterBottom)
+            .offset(
+                y: isSystemKeyboardVisible
+                    ? 0
+                    : ChatPresentationLayout.composerHiddenKeyboardPaintOffset
+            )
+        }
+        .photosPicker(
+            isPresented: $isPhotoPickerPresented,
+            selection: $photoPickerItems,
+            maxSelectionCount:
+                max(1, 8 - composerAttachments.count),
+            matching: .images
+        )
+        .onChange(of: photoPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task { @MainActor in
+                await importPhotos(items)
+                photoPickerItems = []
+            }
+        }
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: true
+        ) { result in
+            Task { @MainActor in
+                await importFiles(result)
+            }
+        }
+        .sheet(isPresented: $isCameraPresented) {
+            NativeLiveCameraPicker { data in
+                isCameraPresented = false
+                guard let data else { return }
+                addAttachment(
+                    data: data,
+                    filename:
+                        "Camera-"
+                        + UUID().uuidString.lowercased()
+                        + ".jpg",
+                    mimeType: "image/jpeg",
+                    kind: .image
+                )
+            }
+            .ignoresSafeArea()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillShowNotification
+            )
+        ) { _ in
+            isSystemKeyboardVisible = true
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillHideNotification
+            )
+        ) { _ in
+            isSystemKeyboardVisible = false
+        }
+        .overlay {
+            if isConversationLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    private var visibleRuntimeSurface:
+        NativeLiveRuntimeSurfaceState? {
+        guard let surface = appModel.nativeLiveRuntimeSurface,
+              surface.conversationID
+                == appModel.activeNativeLiveConversationID else {
+            return nil
+        }
+        return surface
+    }
+
+    private var isRuntimeTurnActive: Bool {
+        if let nativeState =
+            visibleRuntimeSurface?.providerTurnActive {
+            return nativeState
+        }
+        if visibleRuntimeSurface?.foregroundTurnCompleted == true {
+            return false
+        }
+        return visibleRuntimeSurface != nil
+    }
+
+    private var pendingMidTurnDeliverySignal: String? {
+        guard let pending = pendingMidTurnDelivery,
+              let surface = visibleRuntimeSurface else {
+            return nil
+        }
+
+        if let state = surface.commandLifecycleState(
+            for: pending.controlID
+        ) {
+            return "lifecycle:\(state)"
+        }
+
+        if surface.hasUserMessageAttribution(
+            pending.controlID
+        ) {
+            return "attributed"
+        }
+
+        if let control = surface.controls.first(where: {
+            $0.controlID == pending.controlID
+        }) {
+            if control.providerQueueAccepted {
+                return "receipt:queued"
+            }
+            if control.status == "failed" {
+                return "failed:"
+                    + (control.failureCode ?? "unknown")
+            }
+        }
+
+        return nil
+    }
+
+    private var runtimeInterruptRequested: Bool {
+        visibleRuntimeSurface?.controls.contains {
+            $0.kind == "interrupt"
+                && $0.status != "failed"
+        } == true
+    }
+
+    private func sendMidTurnInput(
+        _ text: String
+    ) {
+        let normalized = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty,
+              !isRuntimeControlInFlight,
+              pendingMidTurnDelivery == nil,
+              isRuntimeTurnActive else {
+            return
+        }
+
+        isRuntimeControlInFlight = true
+
+        Task { @MainActor in
+            defer {
+                isRuntimeControlInFlight = false
+            }
+
+            do {
+                let controlID =
+                    try await appModel.sendNativeLiveMidTurnInput(
+                        normalized
+                    )
+                pendingMidTurnDelivery =
+                    NativeLivePendingMidTurnDelivery(
+                        controlID: controlID,
+                        text: normalized
+                    )
+                reconcilePendingMidTurnDelivery(
+                    pendingMidTurnDeliverySignal
+                )
+                isComposerFocused = true
+            } catch {
+                // Preserve the typed text. The control may be retried
+                // explicitly by the user; never blind-retry an ambiguous send.
+            }
+        }
+    }
+
+    private func reconcilePendingMidTurnDelivery(
+        _ signal: String?
+    ) {
+        guard let pending = pendingMidTurnDelivery,
+              let signal else {
+            return
+        }
+
+        let accepted =
+            signal == "receipt:queued"
+            || signal == "attributed"
+            || signal == "lifecycle:queued"
+            || signal == "lifecycle:started"
+            || signal == "lifecycle:completed"
+
+        let rejected =
+            signal.hasPrefix("failed:")
+            || signal == "lifecycle:cancelled"
+            || signal == "lifecycle:discarded"
+            || signal == "lifecycle:refused"
+
+        guard accepted || rejected else {
+            return
+        }
+
+        if accepted,
+           messageText.trimmingCharacters(
+               in: .whitespacesAndNewlines
+           ) == pending.text {
+            messageText = ""
+        }
+
+        pendingMidTurnDelivery = nil
+    }
+
+    private func interruptCurrentTurn() {
+        guard !isRuntimeControlInFlight,
+              !runtimeInterruptRequested,
+              isRuntimeTurnActive else {
+            return
+        }
+
+        isRuntimeControlInFlight = true
+
+        Task { @MainActor in
+            defer {
+                isRuntimeControlInFlight = false
+            }
+
+            do {
+                try await appModel.interruptNativeLiveTurn()
+            } catch {
+                // Never blind-retry an interrupt with unknown delivery.
+            }
+        }
+    }
+
+    private var isConversationLoading: Bool {
+        guard pendingOperation == nil,
+              !isDraftConversation,
+              appModel.isAuthenticated,
+              appModel.activeNativeLiveConversationID != nil,
+              appModel.nativeLiveCurrentPath == nil else {
+            return false
+        }
+
+        return appModel.chatSyncState == .idle
+            || appModel.chatSyncState == .loading
+    }
+
+    private func retryMessage(
+        _ targetUserMessageID: String
+    ) {
+        guard pendingOperation == nil,
+              appModel.chatSendState != .sending else {
+            return
+        }
+
+        pendingOperation = NativeLivePendingOperation(
+            kind: .retry(
+                targetUserMessageID: targetUserMessageID
+            ),
+            baselineSyncToken:
+                appModel.nativeLiveCurrentPath?.syncToken
+        )
+
+        Task { @MainActor in
+            do {
+                try await appModel.retryNativeLiveMessage(
+                    targetUserMessageID: targetUserMessageID,
+                    execution: executionSelection,
+                    presentationOperation: pendingOperation
+                )
+            } catch {
+            }
+
+            pendingOperation = nil
+        }
+    }
+
+    private func beginEditing(
+        _ message: NativeLiveCurrentPathMessage
+    ) {
+        guard message.role == "user",
+              pendingOperation == nil,
+              appModel.chatSendState != .sending else {
+            return
+        }
+
+        let text = NativeLiveMessagePresentationProjector.project(.canonical(message)).copyText ?? ""
+        let existingAttachments = NativeLiveMessagePresentationProjector.project(.canonical(message))
+            .attachmentInputs.compactMap(\.retainedComposerDraft)
+        guard !text.isEmpty || !existingAttachments.isEmpty else {
+            return
+        }
+
+        editDraft = NativeLiveEditDraft(
+            targetUserMessageID: message.id,
+            text: text
+        )
+        messageText = text
+        composerAttachments = existingAttachments
+
+        Task { @MainActor in
+            await Task.yield()
+            isComposerFocused = true
+        }
+    }
+
+    private func cancelEditing() {
+        editDraft = nil
+        messageText = ""
+        composerAttachments = []
+        isComposerFocused = false
+    }
+
+    private var executionSelection: NativeLiveExecutionSelection {
+        NativeLiveExecutionSelection(
+            model: model,
+            thinking: thinking,
+            effort: effort
+        )
+    }
+
+    private func sendMessage() {
+        let pendingText = messageText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let pendingAttachments = composerAttachments
+        let attachmentIDs =
+            pendingAttachments.compactMap(\.remoteAttachmentID)
+        guard (
+                !pendingText.isEmpty
+                || !pendingAttachments.isEmpty
+              ),
+              attachmentIDs.count == pendingAttachments.count,
+              pendingOperation == nil,
+              !isDraftCommitInFlight,
+              appModel.chatSendState != .sending else {
+            return
+        }
+
+        if let draft = editDraft {
+            pendingOperation = NativeLivePendingOperation(
+                kind: .edit(
+                    targetUserMessageID: draft.targetUserMessageID,
+                    text: pendingText
+                ),
+                baselineSyncToken:
+                    appModel.nativeLiveCurrentPath?.syncToken,
+                presentationAttachments: pendingAttachments.map(\.presentationInput)
+            )
+            editDraft = nil
+            messageText = ""
+            composerAttachments = []
+            isComposerFocused = false
+
+            Task { @MainActor in
+                do {
+                    try await appModel.editNativeLiveMessage(
+                        targetUserMessageID:
+                            draft.targetUserMessageID,
+                        text: pendingText,
+                        attachmentIDs: attachmentIDs,
+                        execution: executionSelection,
+                        presentationOperation: pendingOperation
+                    )
+                    pendingOperation = nil
+                } catch NativeLiveSendError.interrupted {
+                    pendingOperation = nil
+                } catch {
+                    pendingOperation = nil
+                    editDraft = draft
+                    composerAttachments = pendingAttachments
+
+                    if messageText.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty {
+                        messageText = pendingText
+                    }
+
+                    isComposerFocused = true
+                }
+            }
+            return
+        }
+
+        sendNewMessage(pendingText: pendingText, pendingAttachments: pendingAttachments)
+    }
+
+    private var voiceEnabled: Bool {
+        editDraft == nil && !isRuntimeTurnActive && pendingOperation == nil
+            && !isDraftCommitInFlight && appModel.chatSendState != .sending
+            && composerAttachments.isEmpty && messageText.isEmpty
+            && appModel.isAuthenticated && scenePhase == .active
+    }
+
+    private func sendVoiceMessage(_ transcript: String) {
+        guard voiceEnabled else { return }
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        sendNewMessage(pendingText: text, pendingAttachments: [], inputMode: .voice)
+    }
+
+    private func sendNewMessage(
+        pendingText: String,
+        pendingAttachments: [NativeLiveComposerAttachmentDraft],
+        inputMode: NativeLiveInputMode = .text
+    ) {
+        let attachmentIDs = pendingAttachments.compactMap(\.remoteAttachmentID)
+        let shouldCreateConversation = isDraftConversation
+        pendingOperation = NativeLivePendingOperation(
+            kind: .send(text: pendingText),
+            baselineSyncToken:
+                appModel.nativeLiveCurrentPath?.syncToken,
+            presentationAttachments: pendingAttachments.map(\.presentationInput),
+            inputMode: inputMode
+        )
+        pendingOperation?.isDraftConversation = shouldCreateConversation
+        if inputMode == .text { messageText = "" }
+        composerAttachments = []
+        isComposerFocused = false
+
+        Task { @MainActor in
+            do {
+                if shouldCreateConversation {
+                    isDraftCommitInFlight = true
+                    _ = try await appModel.createNativeLiveConversation(
+                        title: "New Conversation"
+                    )
+
+                    if let pendingOperation {
+                        self.pendingOperation =
+                            pendingOperation.rebased(
+                                to:
+                                    appModel.nativeLiveCurrentPath?
+                                        .syncToken
+                            )
+                    }
+
+                    onDraftCommitted()
+                }
+
+                let shouldBindWorkspace =
+                    shouldCreateConversation
+                    || appModel.nativeLiveCurrentPath?
+                        .currentHeadMessageId == nil
+                try await appModel.sendNativeLiveMessage(
+                    pendingText,
+                    inputMode: inputMode,
+                    attachmentIDs: attachmentIDs,
+                    workspaceID:
+                        shouldBindWorkspace
+                            ? selectedWorkspaceID
+                            : nil,
+                    execution: executionSelection,
+                    presentationOperation: pendingOperation
+                )
+                pendingOperation = nil
+            } catch NativeLiveSendError.interrupted {
+                pendingOperation = nil
+            } catch {
+                pendingOperation = nil
+                if inputMode == .voice {
+                    voiceInput.reportSendFailure()
+                } else {
+                    composerAttachments = pendingAttachments
+
+                    if messageText.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty {
+                        messageText = pendingText
+                    }
+                }
+            }
+
+            isDraftCommitInFlight = false
+        }
+    }
+
+    private func addAttachment(
+        data: Data,
+        filename: String,
+        mimeType: String,
+        kind: NativeLiveComposerAttachmentKind
+    ) {
+        guard composerAttachments.count < 8,
+              !data.isEmpty,
+              data.count <= 20 * 1024 * 1024 else {
+            return
+        }
+        let draft = NativeLiveComposerAttachmentDraft(
+            filename: filename,
+            mimeType: mimeType,
+            kind: kind,
+            data: data
+        )
+        composerAttachments.append(draft)
+        uploadAttachment(draft.id)
+    }
+
+    private func retryAttachmentUpload(_ id: UUID) {
+        guard let index = composerAttachments.firstIndex(
+            where: { $0.id == id }
+        ),
+        composerAttachments[index].data != nil else {
+            return
+        }
+        composerAttachments[index].state = .uploading
+        uploadAttachment(id)
+    }
+
+    private func uploadAttachment(_ id: UUID) {
+        guard let draft = composerAttachments.first(
+            where: { $0.id == id }
+        ),
+        let data = draft.data else {
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let ready =
+                    try await appModel.uploadNativeLiveAttachment(
+                        data: data,
+                        filename: draft.filename,
+                        mimeType: draft.mimeType,
+                        kind: draft.kind
+                    )
+                guard let index =
+                        composerAttachments.firstIndex(
+                            where: { $0.id == id }
+                        ) else {
+                    return
+                }
+                composerAttachments[index].presentationMetadata = ready.presentationMetadata
+                composerAttachments[index].state = .ready(ready.attachmentId)
+            } catch {
+                guard let index =
+                        composerAttachments.firstIndex(
+                            where: { $0.id == id }
+                        ) else {
+                    return
+                }
+                composerAttachments[index].state =
+                    .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private func importPhotos(
+        _ items: [PhotosPickerItem]
+    ) async {
+        for item in items.prefix(
+            max(0, 8 - composerAttachments.count)
+        ) {
+            guard let data = try? await item.loadTransferable(
+                type: Data.self
+            ) else {
+                continue
+            }
+            let contentType =
+                item.supportedContentTypes.first
+                ?? .jpeg
+            let mimeType =
+                contentType.preferredMIMEType
+                ?? "image/jpeg"
+            let fileExtension =
+                contentType.preferredFilenameExtension
+                ?? "jpg"
+            addAttachment(
+                data: data,
+                filename:
+                    "Photo-"
+                    + UUID().uuidString.lowercased()
+                    + "."
+                    + fileExtension,
+                mimeType: mimeType,
+                kind: .image
+            )
+        }
+    }
+
+    private func importFiles(
+        _ result: Result<[URL], Error>
+    ) async {
+        guard case .success(let urls) = result else {
+            return
+        }
+
+        for url in urls.prefix(
+            max(0, 8 - composerAttachments.count)
+        ) {
+            let scoped =
+                url.startAccessingSecurityScopedResource()
+            defer {
+                if scoped {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            guard let data = try? Data(contentsOf: url),
+                  !data.isEmpty,
+                  data.count <= 20 * 1024 * 1024 else {
+                continue
+            }
+            let values = try? url.resourceValues(
+                forKeys: [
+                    .contentTypeKey,
+                    .nameKey,
+                ]
+            )
+            let contentType =
+                values?.contentType ?? .data
+            addAttachment(
+                data: data,
+                filename:
+                    values?.name
+                    ?? (
+                        url.lastPathComponent.isEmpty
+                            ? "Attachment"
+                            : url.lastPathComponent
+                    ),
+                mimeType:
+                    contentType.preferredMIMEType
+                    ?? "application/octet-stream",
+                kind:
+                    contentType.conforms(to: .image)
+                        ? .image
+                        : .file
+            )
+        }
+    }
+
+
+}
+
+
+private struct NativeLiveEditDraft {
+    let targetUserMessageID: String
+    let text: String
+}
+
+
+private struct NativeLiveCameraPicker:
+    UIViewControllerRepresentable {
+    let onComplete: (Data?) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onComplete: onComplete)
+    }
+
+    func makeUIViewController(
+        context: Context
+    ) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType =
+            UIImagePickerController.isSourceTypeAvailable(.camera)
+                ? .camera
+                : .photoLibrary
+        picker.delegate = context.coordinator
+        picker.allowsEditing = false
+        return picker
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIImagePickerController,
+        context: Context
+    ) {}
+
+    final class Coordinator:
+        NSObject,
+        UIImagePickerControllerDelegate,
+        UINavigationControllerDelegate {
+        let onComplete: (Data?) -> Void
+
+        init(onComplete: @escaping (Data?) -> Void) {
+            self.onComplete = onComplete
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info:
+                [UIImagePickerController.InfoKey: Any]
+        ) {
+            let image =
+                info[.originalImage] as? UIImage
+            onComplete(
+                image?.jpegData(
+                    compressionQuality: 0.92
+                )
+            )
+        }
+
+        func imagePickerControllerDidCancel(
+            _ picker: UIImagePickerController
+        ) {
+            onComplete(nil)
+        }
+    }
+}

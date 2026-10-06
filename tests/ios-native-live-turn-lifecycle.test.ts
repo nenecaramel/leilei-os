@@ -43,7 +43,7 @@ test("user interrupt unlocks send/edit without restoring the stopped draft", () 
   const chat = fs.readFileSync(
     "ios/LeileiOS/LeileiOS/Chat/ChatView.swift",
     "utf8",
-  );
+  ) + fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView+MessageMutation.swift", "utf8");
   const interruptedCatches =
     chat.match(/catch NativeLiveSendError\.interrupted \{[\s\S]*?\n\s*\}/g)
       ?? [];

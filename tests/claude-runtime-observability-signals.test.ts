@@ -304,7 +304,7 @@ test("session_state_changed stays runtime-only and iOS prefers it with legacy fa
     "utf8",
   );
   const chat = readFileSync(
-    new URL("../ios/LeileiOS/LeileiOS/Chat/ChatView.swift", import.meta.url),
+    new URL("../ios/LeileiOS/LeileiOS/Chat/ChatView+RuntimeControl.swift", import.meta.url),
     "utf8",
   );
 

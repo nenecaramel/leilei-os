@@ -5,7 +5,8 @@ import test from "node:test";
 const chatView = fs.readFileSync(
   "ios/LeileiOS/LeileiOS/Chat/ChatView.swift",
   "utf8",
-);
+) + fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView+RuntimeControl.swift", "utf8")
+  + fs.readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView+ConversationLifecycle.swift", "utf8");
 
 test("iOS chat does not keep production awake with foreground current-path polling", () => {
   assert.doesNotMatch(chatView, /\.task\(id: foregroundSyncTaskID\)/);
