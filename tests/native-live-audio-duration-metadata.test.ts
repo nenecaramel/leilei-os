@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   mkdtemp,
   mkdir,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -83,6 +84,7 @@ test("Mac output sender probes audio duration without making probe failure fatal
 
   const audioPath = join(workspace, "voice.mp3");
   await writeFile(audioPath, Buffer.from("audio"));
+  const canonicalAudioPath = await realpath(audioPath);
   const observed: Array<Record<string, unknown>> = [];
   let probeCalls = 0;
   const sender = new NativeLiveMacOutputAttachmentSender(
@@ -91,7 +93,7 @@ test("Mac output sender probes audio duration without making probe failure fatal
     20 * 1024 * 1024,
     async (filePath) => {
       probeCalls += 1;
-      assert.equal(filePath, audioPath);
+      assert.equal(filePath, canonicalAudioPath);
       return 3.42;
     },
   );
