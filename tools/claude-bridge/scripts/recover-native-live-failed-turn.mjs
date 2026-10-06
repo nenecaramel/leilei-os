@@ -65,10 +65,10 @@ async function main(argv = process.argv.slice(2)) {
     }) + "\n",
   );
 
-  const store = new RemoteSessionStore(client);
+  const capture = new CaptureSessionStore();
   await importSessionToStore(
     sessionId,
-    store,
+    capture,
     {
       dir: workingDirectory,
       includeSubagents: true,
@@ -76,23 +76,36 @@ async function main(argv = process.argv.slice(2)) {
     },
   );
 
-  const transcript = await store.load({
+  const sessionKey = {
     projectKey: workingDirectory,
     sessionId,
-  });
-  if (!Array.isArray(transcript) || transcript.length === 0) {
+  };
+  const capturedTranscript = await capture.load(sessionKey);
+  if (
+    !Array.isArray(capturedTranscript)
+    || capturedTranscript.length === 0
+  ) {
     throw new Error(
-      "Local transcript backfill produced no readable remote transcript.",
+      "Local Claude transcript could not be captured; remote state was not changed.",
     );
   }
+
+  const store = new RemoteSessionStore(client);
+  await store.delete(sessionKey);
+  await store.markIncomplete(sessionId);
+  await replayCapturedSession(capture, store, sessionKey);
+  await verifyCapturedSession(capture, store, sessionKey);
   await store.markComplete(sessionId);
 
   process.stdout.write(
     JSON.stringify({
-      outcome: "provider_transcript_backfilled",
+      outcome: "provider_transcript_rebuilt",
       prepareId,
       sessionId,
-      entryCount: transcript.length,
+      entryCount: capturedTranscript.length,
+      subkeyCount: (
+        await capture.listSubkeys(sessionKey)
+      ).length,
     }) + "\n",
   );
 
@@ -157,6 +170,33 @@ class InternalClient {
   }
 }
 
+class CaptureSessionStore {
+  constructor() {
+    this.entries = new Map();
+  }
+
+  async append(key, entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    const storageKey = captureStorageKey(key);
+    const current = this.entries.get(storageKey) ?? [];
+    this.entries.set(storageKey, [...current, ...entries]);
+  }
+
+  async load(key) {
+    const entries = this.entries.get(captureStorageKey(key));
+    return entries ? [...entries] : null;
+  }
+
+  async listSubkeys({ sessionId }) {
+    const prefix = sessionId + "\u0000";
+    return [...this.entries.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => key.slice(prefix.length))
+      .filter(Boolean)
+      .sort();
+  }
+}
+
 class RemoteSessionStore {
   constructor(client) {
     this.client = client;
@@ -182,6 +222,13 @@ class RemoteSessionStore {
       { key: remoteKey(key) },
     );
     return data.entries;
+  }
+
+  async delete(key) {
+    await this.client.post(
+      "/internal/native-live-session-store/delete",
+      { key: remoteKey(key) },
+    );
   }
 
   async markComplete(sessionId) {
@@ -213,6 +260,113 @@ class RemoteSessionStore {
     );
     return data.subkeys;
   }
+}
+
+async function replayCapturedSession(
+  capture,
+  remote,
+  sessionKey,
+) {
+  const main = await capture.load(sessionKey);
+  if (main?.length) {
+    await remote.append(sessionKey, main);
+  }
+  const subkeys = await capture.listSubkeys(sessionKey);
+  for (const subpath of subkeys) {
+    const key = { ...sessionKey, subpath };
+    const entries = await capture.load(key);
+    if (entries?.length) {
+      await remote.append(key, entries);
+    }
+  }
+}
+
+async function verifyCapturedSession(
+  capture,
+  remote,
+  sessionKey,
+) {
+  const expectedMain = await capture.load(sessionKey);
+  const actualMain = await remote.load(sessionKey);
+  assertTranscriptEqual(
+    actualMain,
+    expectedMain,
+    "main transcript",
+  );
+
+  const expectedSubkeys =
+    await capture.listSubkeys(sessionKey);
+  const actualSubkeys =
+    (await remote.listSubkeys(sessionKey)).slice().sort();
+  if (
+    JSON.stringify(actualSubkeys)
+    !== JSON.stringify(expectedSubkeys)
+  ) {
+    throw new Error(
+      "Remote SessionStore subkeys do not match local Claude transcript.",
+    );
+  }
+  for (const subpath of expectedSubkeys) {
+    const key = { ...sessionKey, subpath };
+    assertTranscriptEqual(
+      await remote.load(key),
+      await capture.load(key),
+      "subagent transcript " + subpath,
+    );
+  }
+}
+
+function assertTranscriptEqual(actual, expected, label) {
+  if (
+    !Array.isArray(actual)
+    || !Array.isArray(expected)
+    || actual.length !== expected.length
+  ) {
+    throw new Error(
+      "Remote " + label + " length does not match local Claude transcript.",
+    );
+  }
+  for (let index = 0; index < expected.length; index += 1) {
+    if (
+      canonicalJson(actual[index])
+      !== canonicalJson(expected[index])
+    ) {
+      throw new Error(
+        "Remote " + label + " differs from local Claude transcript at entry "
+          + index + ".",
+      );
+    }
+  }
+}
+
+function canonicalJson(value) {
+  return JSON.stringify(sortJson(value));
+}
+
+function sortJson(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortJson);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0
+      )
+      .map(([key, nested]) => [key, sortJson(nested)]),
+  );
+}
+
+function captureStorageKey(key) {
+  return stringField(key?.sessionId, "sessionId")
+    + "\u0000"
+    + (
+      key?.subpath === undefined
+        ? ""
+        : stringField(key.subpath, "subpath")
+    );
 }
 
 function remoteKey(key) {
