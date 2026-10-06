@@ -162,6 +162,7 @@ test(
 
     const finalized = await coordinator.finalize(userId, {
       protocol_version: 4,
+      provider_checkpoint_id: crypto.randomUUID(),
       prepare_id: prepared.command.prepare_id,
       request_id: requestId,
       conversation_id: conversation.id,
@@ -381,13 +382,17 @@ test(
       "native schedule commands bypass Mind Context Assembly",
     );
 
+    assert.equal(schedulePrepared.command.runtime_mode, "resume");
+    assert.equal(schedulePrepared.command.parent_provider_session_id, "followup-provider-1");
+    assert.ok(schedulePrepared.command.parent_provider_checkpoint_id);
     const scheduleFinalized = await coordinator.finalize(userId, {
       protocol_version: 4,
+      provider_checkpoint_id: crypto.randomUUID(),
       prepare_id: schedulePrepared.command.prepare_id,
       request_id: scheduleRequestId,
       conversation_id: conversation.id,
       status: "success",
-      provider_session_id: "followup-provider-schedule",
+      provider_session_id: "followup-provider-1",
       normalized_events: [
         {
           type: "text",
@@ -476,7 +481,7 @@ test(
     assert.ok(compactReservation);
     assert.equal(
       compactReservation.providerSessionId,
-      "followup-provider-schedule",
+      "followup-provider-1",
     );
 
     assert.equal(
@@ -487,7 +492,8 @@ test(
         outcome: {
           status: "success",
           result: {
-            providerSessionId: "followup-provider-schedule",
+            providerSessionId: "followup-provider-1",
+            providerCheckpointId: crypto.randomUUID(),
             contextUsage: null,
             boundary: { source: "test" },
             summary: "test compact",
@@ -542,6 +548,9 @@ test(
       "the relevant Memory is available again in the fresh epoch",
     );
 
+    assert.equal(nextPrepared.command.runtime_mode, "resume");
+    assert.equal(nextPrepared.command.parent_provider_session_id, "followup-provider-1");
+    assert.ok(nextPrepared.command.parent_provider_checkpoint_id);
     const nextFailure = await coordinator.finalize(userId, {
       protocol_version: 4,
       prepare_id: nextPrepared.command.prepare_id,

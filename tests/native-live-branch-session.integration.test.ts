@@ -65,12 +65,15 @@ test('five linear sends share session A; Retry/Edit fork exact parent and contin
             throw Error('edit failed');
         assert.equal(edit.command.runtime_mode, 'fork');
         assert.equal(edit.command.parent_provider_checkpoint_id, cps[0]);
-        await finish(edit.command, 'C');
+        const edited = await finish(edit.command, 'C');
         const finalCleanups = await database.db.select().from(nativeLiveProviderSessionCleanups).where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
         assert.equal(finalCleanups.some(x => x.providerSessionId === 'A'), false);
         assert.equal(finalCleanups.some(x => x.providerSessionId === 'B'), true);
         const remaining = await database.db.select().from(conversationProviderSessionCheckpoints).where(eq(conversationProviderSessionCheckpoints.userId, user.id));
         assert.equal(remaining.filter(x => x.providerSessionId === 'A').length, 1);
+        await database.db.update(conversationProviderSessionCheckpoints).set({providerCheckpointId:null}).where(eq(conversationProviderSessionCheckpoints.canonicalMessageId,edited.head));
+        const missingModern = await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:edited.head,text:'cannot downgrade'});
+        assert.equal(missingModern.ok,false);if(!missingModern.ok)assert.equal(missingModern.code,'BRANCH_POINT_INVALID');
     }
     finally {
         await database.close();
