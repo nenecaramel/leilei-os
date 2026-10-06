@@ -52,6 +52,10 @@ import {
   readSilenceWakeScheduleHandler,
   fireSilenceWakeHandler,
 } from "./silence-wake.js";
+import {
+  inspectFailedTurnRecoveryHandler,
+  recoverFailedTurnHandler,
+} from "./failed-turn-recovery.js";
 
 export function createNativeLiveRelayInternalRouter(
   dependencies: NativeLiveRelayInternalDependencies,
@@ -157,6 +161,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/album/photos/:photoId/send",
       sendAlbumPhotoHandler(dependencies),
+    );
+  }
+  if (dependencies.failedTurnRecoveryService) {
+    router.post(
+      "/failed-turn-recovery/:prepareId/inspect",
+      inspectFailedTurnRecoveryHandler(dependencies),
+    );
+    router.post(
+      "/failed-turn-recovery/:prepareId/recover",
+      recoverFailedTurnHandler(dependencies),
     );
   }
   if (dependencies.providerSessionCleanupService) {

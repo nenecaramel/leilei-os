@@ -14,6 +14,7 @@ import type { NativeLiveExternalSessionBridgeService } from "../../domains/bridg
 import type { NativeLiveAttachmentService } from "../../domains/bridge/attachment/native-live-attachment-service.js";
 import type { ClaudePhotoAlbumService } from "../../domains/album/claude-photo-album-service.js";
 import type { ClaudeAlbumPhotoAttachmentSender } from "../../domains/album/claude-photo-album-output-sender.js";
+import type { NativeLiveFailedTurnRecoveryService } from "../../domains/bridge/turn/native-live-failed-turn-recovery.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -89,5 +90,9 @@ export type NativeLiveRelayInternalDependencies = {
   photoAlbumSender?: Pick<
     ClaudeAlbumPhotoAttachmentSender,
     "sendPhoto"
+  >;
+  failedTurnRecoveryService?: Pick<
+    NativeLiveFailedTurnRecoveryService,
+    "inspect" | "recover"
   >;
 };

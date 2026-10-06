@@ -64,7 +64,8 @@
     "agent:status": "node scripts/agent-status.mjs",
     "agent:verify": "node scripts/agent-verify.mjs",
     "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts",
-    "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current"
+    "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current",
+    "runtime:native-live-recover-failed-turn": "pnpm --dir tools/claude-bridge exec node scripts/recover-native-live-failed-turn.mjs"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
