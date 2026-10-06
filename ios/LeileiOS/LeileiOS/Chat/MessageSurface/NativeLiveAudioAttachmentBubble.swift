@@ -23,30 +23,30 @@ struct NativeLiveAudioAttachmentBubble: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: NativeLiveVoiceBubbleGeometry.controlGap) {
                 // Sibling buttons: playing can never open a Quick Look lease.
                 Button { playOrPause() } label: {
                     Group {
-                        if uploading || playback.phase == .loading { ProgressView() }
+                        if uploading || playback.phase == .loading { ProgressView().controlSize(.small) }
                         else { Image(systemName: playback.phase == .playing ? "pause.fill" : "play.fill") }
                     }
-                    .frame(width: 30, height: 30)
-                    .contentShape(Circle())
+                    .frame(width: NativeLiveVoiceBubbleGeometry.audioPlayWidth, height: NativeLiveVoiceBubbleGeometry.contentHeight)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(uploading || playback.phase == .loading)
                 .accessibilityLabel(playback.phase == .playing ? "Pause audio" : "Play audio")
 
                 Button { open() } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        NativeLiveAudioWaveform(progress: playback.progress, heights: waveform)
-                        HStack(spacing: 4) {
-                            Text(statusLabel)
-                            Spacer(minLength: 0)
+                    HStack(spacing: NativeLiveVoiceBubbleGeometry.controlGap) {
+                        NativeLiveAudioWaveform(progress: playback.progress, identity: waveformIdentity)
+                        Group {
                             if isOpening { ProgressView().controlSize(.mini) }
+                            else { Text(durationLabel).lineLimit(1).fixedSize() }
                         }
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .frame(width: labelWidth, alignment: .trailing)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -54,17 +54,20 @@ struct NativeLiveAudioAttachmentBubble: View {
                 .buttonStyle(.plain)
                 .disabled(isOpening || uploading)
                 .accessibilityLabel("Open audio file")
+                .accessibilityValue(durationLabel)
             }
+            .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight)
             if let failure {
                 Text(failure).font(.caption).foregroundStyle(.secondary)
                 Button("Retry") { retry() }.font(.caption).buttonStyle(.borderless)
                     .disabled(uploading || isOpening || playback.phase == .loading)
             }
         }
-        .padding(8)
+        .padding(.horizontal, NativeLiveVoiceBubbleGeometry.horizontalInset)
+        .padding(.vertical, NativeLiveVoiceBubbleGeometry.verticalInset)
         .frame(width: bubbleWidth, alignment: .leading)
         .animation(.easeInOut(duration: 0.16), value: bubbleWidth)
-        .background(Color.chatSoftFill, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.chatSoftFill, in: RoundedRectangle(cornerRadius: ChatPresentationLayout.bubbleRadius, style: .continuous))
         .onDisappear { playback.deactivate() }
         .sheet(item: $lease, onDismiss: { lease?.cleanup(); lease = nil }) {
             NativeLiveFileOpenView(lease: $0)
@@ -72,25 +75,27 @@ struct NativeLiveAudioAttachmentBubble: View {
     }
 
     private var bubbleWidth: CGFloat {
-        NativeLiveVoiceBubbleGeometry.audioWidth(duration: playback.duration, sizeBytes: input.sizeBytes)
+        NativeLiveVoiceBubbleGeometry.audioWidth(duration: effectiveDuration ?? 0, sizeBytes: input.sizeBytes,
+            playWidth: NativeLiveVoiceBubbleGeometry.audioPlayWidth, labelWidth: labelWidth)
     }
 
-    private var waveform: [CGFloat] {
-        NativeLiveVoiceBubbleGeometry.waveform(identity: NativeLiveVoiceBubbleGeometry.identity(
-            entityID: input.entityID, sha256: input.sha256, draftID: input.draftID, filename: input.filename), width: bubbleWidth)
+    private var labelWidth: CGFloat { NativeLiveVoiceBubbleMetrics.durationLabelWidth(durationLabel) }
+
+    private var waveformIdentity: String {
+        NativeLiveVoiceBubbleGeometry.identity(
+            entityID: input.entityID, sha256: input.sha256, draftID: input.draftID, filename: input.filename)
     }
 
-    private var statusLabel: String {
-        if uploading { return "Uploading…" }
-        if playback.phase == .loading { return "Loading…" }
-        guard playback.duration > 0 else { return "--:--" }
-        if playback.phase != .playing && playback.phase != .paused { return time(playback.duration) }
-        return "\(time(playback.currentTime)) / \(time(playback.duration))"
+    private var effectiveDuration: TimeInterval? {
+        if playback.duration.isFinite, playback.duration > 0 {
+            return playback.duration
+        }
+        return input.durationSeconds
     }
 
-    private func time(_ seconds: TimeInterval) -> String {
-        let value = Int(max(0, seconds).rounded(.down))
-        return String(format: "%d:%02d", value / 60, value % 60)
+    private var durationLabel: String {
+        guard let duration = effectiveDuration else { return "—" }
+        return NativeLiveVoiceBubbleGeometry.durationLabel(seconds: duration)
     }
 
     private func playOrPause() {
@@ -122,20 +127,19 @@ struct NativeLiveAudioAttachmentBubble: View {
 
 private struct NativeLiveAudioWaveform: View {
     let progress: Double
-    let heights: [CGFloat]
+    let identity: String
     var body: some View {
         GeometryReader { geometry in
-            let spacing: CGFloat = 2
-            let width = max(1, (geometry.size.width - spacing * CGFloat(heights.count - 1)) / CGFloat(heights.count))
-            HStack(alignment: .center, spacing: spacing) {
+            let heights = NativeLiveVoiceBubbleGeometry.waveform(identity: identity, width: geometry.size.width)
+            HStack(alignment: .center, spacing: NativeLiveVoiceBubbleGeometry.waveformBarSpacing) {
                 ForEach(heights.indices, id: \.self) { index in
                     Capsule().fill(Color.primary.opacity(NativeLiveVoiceBubbleGeometry.isFilled(index: index, count: heights.count, progress: progress) ? 0.75 : 0.2))
-                        .frame(width: width, height: heights[index])
+                        .frame(width: NativeLiveVoiceBubbleGeometry.waveformBarWidth, height: heights[index])
                 }
             }
-            .frame(height: 22)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
         }
-        .frame(height: 22)
+        .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight)
         .accessibilityLabel("Playback progress")
         .accessibilityValue("\(Int(progress * 100)) percent")
     }

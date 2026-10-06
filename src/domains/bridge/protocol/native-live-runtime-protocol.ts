@@ -19,6 +19,7 @@ export type { NativeLiveRuntimeResultPermissionDenial } from "./runtime-protocol
 export type { NativeLiveRuntimeResultLatency } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeResultTelemetry } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeOutputResource } from "./runtime-protocol/types.js";
+export type { NativeLiveRuntimeOutputAttachmentMetadata } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeVcsChange } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeSessionStoreHealth } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeMetadata } from "./runtime-protocol/types.js";

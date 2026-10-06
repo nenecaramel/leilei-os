@@ -436,6 +436,10 @@ export class DrizzleNativeLiveAttachmentBinding {
     userId: string;
     messageId: string;
     attachmentIds: readonly string[];
+    attachmentMetadata?: readonly {
+      attachment_id: string;
+      duration_seconds: number;
+    }[];
     allowPreviouslyBound?: boolean;
     startOrdinal?: number;
     contentOrigin?: "user_send" | "provider_send";
@@ -445,6 +449,34 @@ export class DrizzleNativeLiveAttachmentBinding {
       this.maxPerTurn,
     );
     if (attachmentIds.length === 0) return [];
+
+    const attachmentIdSet = new Set(attachmentIds);
+    const durationSecondsByAttachmentId = new Map<string, number>();
+    for (const metadata of input.attachmentMetadata ?? []) {
+      if (
+        attachmentIdSet.has(metadata.attachment_id)
+        && Number.isFinite(metadata.duration_seconds)
+        && metadata.duration_seconds > 0
+      ) {
+        durationSecondsByAttachmentId.set(
+          metadata.attachment_id,
+          metadata.duration_seconds,
+        );
+      }
+    }
+    const durationPayloadFor = (
+      attachment: NativeLiveRuntimeAttachment,
+    ): Record<string, number> => {
+      const durationSeconds =
+        attachment.mime_type.startsWith("audio/")
+          ? durationSecondsByAttachmentId.get(
+              attachment.attachment_id,
+            )
+          : undefined;
+      return durationSeconds === undefined
+        ? {}
+        : { duration_seconds: durationSeconds };
+    };
 
     const rows = await this.db
       .select()
@@ -535,6 +567,7 @@ export class DrizzleNativeLiveAttachmentBinding {
               sha256: attachment.sha256,
               kind: attachment.kind,
               storage: "native_live_attachment",
+              ...durationPayloadFor(attachment),
             },
           })),
         );
@@ -565,6 +598,7 @@ export class DrizzleNativeLiveAttachmentBinding {
               sha256: attachment.sha256,
               kind: attachment.kind,
               storage: "native_live_attachment",
+              ...durationPayloadFor(attachment),
             },
           })),
         );
