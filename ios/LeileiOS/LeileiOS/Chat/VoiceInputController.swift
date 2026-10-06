@@ -5,6 +5,7 @@ import Speech
 enum VoiceInputLanguage: String, CaseIterable, Identifiable, Sendable {
     case english = "en-US"
     case chinese = "zh-CN"
+    case korean = "ko-KR"
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum VoiceInputLanguage: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .english: return "English"
         case .chinese: return "中文"
+        case .korean: return "한국어"
         }
     }
 
