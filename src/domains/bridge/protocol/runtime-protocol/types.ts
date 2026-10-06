@@ -18,6 +18,11 @@ export type NativeLiveRuntimeAttachment = {
   kind: "image" | "file";
 };
 
+export type NativeLiveRuntimeOutputAttachmentMetadata = {
+  attachment_id: string;
+  duration_seconds: number;
+};
+
 export type NativeLiveRuntimeCommand = {
   protocol_version: 1 | 2 | 3;
   dispatch_target: "claude_code";
@@ -249,6 +254,7 @@ export type NativeLiveRuntimeExecutionResult =
       effective_workspace_root: string | null;
       normalized_events: NativeLiveNormalizedEvent[];
       output_attachment_ids?: string[];
+      output_attachment_metadata?: NativeLiveRuntimeOutputAttachmentMetadata[];
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
