@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { NativeLiveMacResultOutbox } from "../src/domains/bridge/mac/native-live-mac-result-outbox.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -1115,4 +1119,29 @@ test("provider clock start and terminal are delivered before sparse foreground e
   assert.deepEqual(atStart,[["session","runtime"]],"clock must arrive before any body/tool/result event");
   assert.deepEqual(atTerminal,[["session","runtime"],["partial_text","result"]],"terminal timestamp cannot wait for executor teardown");
   assert.deepEqual(batches().flat().map(e=>e.sequence),[1,2,3,4]);
+});
+
+
+test("production loop persists before submit and restarted daemon replays without another execution", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "leilei-loop-outbox-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const relay = new FakeRelay();
+  relay.reservation!.reservationId = prepareId;
+  const executor = new FakeExecutor();
+  const outbox = new NativeLiveMacResultOutbox(directory);
+  relay.submitResult = async (input: unknown) => {
+    assert.equal((await new NativeLiveMacResultOutbox(directory).list()).length, 1, "receipt must precede HTTP");
+    relay.calls.push({ name: "submitResult", input });
+    throw new Error("server unavailable");
+  };
+  const loop = new NativeLiveMacDaemonLoop(listenerInstanceId, relay, executor, null, null, null, null, null, null, outbox);
+  assert.equal((await loop.runOnce()).outcome, "delivery_unknown");
+  relay.submitResult = async (input: unknown) => {
+    assert.deepEqual(input, { listenerInstanceId, reservationId: prepareId, result: success() });
+    return undefined;
+  };
+  const restarted = new NativeLiveMacDaemonLoop(crypto.randomUUID(), relay, executor, null, null, null, null, null, null, new NativeLiveMacResultOutbox(directory));
+  assert.equal((await restarted.runOnce()).outcome, "completed");
+  assert.equal(executor.calls.length, 1);
+  assert.deepEqual(await outbox.list(), []);
 });

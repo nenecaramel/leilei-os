@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { NativeLiveMacResultOutbox } from "../src/domains/bridge/mac/native-live-mac-result-outbox.js";
 import {
   consumeNativeLiveMacMemeGitHubConfig,
   NativeLiveMacMemeSender,
@@ -194,6 +198,8 @@ const loop = new NativeLiveMacDaemonLoop(
   workingDirectoryRuntimePool,
   workingDirectoryRuntimePool,
   workingDirectoryRuntimePool,
+  new NativeLiveMacResultOutbox(join(homedir(), ".leileios", "terminal-results",
+    createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex"))),
 );
 
 let stopping = false;

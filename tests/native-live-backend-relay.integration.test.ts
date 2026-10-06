@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
+  conversationMessages,
   nativeLiveRuntimeListenerLeases,
   nativeLiveTurnPreparations,
   users,
@@ -254,7 +255,7 @@ test(
     await database.db
       .update(nativeLiveTurnPreparations)
       .set({
-        deliveryUnknownAt: new Date(Date.now() - 31_000),
+        deliveryUnknownAt: new Date(Date.now() - 86_400_000),
       })
       .where(
         eq(
@@ -294,13 +295,36 @@ test(
       reservedBy: listenerA,
       dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN",
     });
-    // Heartbeat only renews the listener. Reservation performs ambiguity expiry.
+    // Execution ambiguity must survive an arbitrarily long outage, preserving the original owner.
     assert.equal(await relay.reserveNext({ userId: user.id, listenerInstanceId: listenerA, dispatchTarget: "claude_code" }), null);
     const [expiredUnknown] = await database.db.select({
       dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
       reservedBy: nativeLiveTurnPreparations.reservedBy,
       dispatchErrorCode: nativeLiveTurnPreparations.dispatchErrorCode,
     }).from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, reReserved.reservationId));
-    assert.deepEqual(expiredUnknown, { dispatchStatus: "rejected", reservedBy: null, dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN" });
+    assert.deepEqual(expiredUnknown, { dispatchStatus: "delivery_unknown", reservedBy: listenerA, dispatchErrorCode: "RESULT_DELIVERY_UNKNOWN" });
+    const result = {
+      protocol_version: 4 as const,
+      prepare_id: second.command.prepare_id,
+      request_id: secondRequestId,
+      conversation_id: conversation.id,
+      status: "success" as const,
+      provider_session_id: "durable-provider",
+      provider_checkpoint_id: crypto.randomUUID(),
+      normalized_events: [{ type: "result" as const, payload: { status: "success", final_text: "recovered" } }],
+    };
+    const submit = () => relay.submitResult({ userId: user.id, listenerInstanceId: listenerA, reservationId: reReserved.reservationId, result });
+    // Server committed, but the first HTTP response never reached the Mac.
+    const firstCommit = await submit();
+    assert.equal(firstCommit.ok, true);
+    const retry = await submit();
+    assert.equal(retry.ok, true);
+    if (!firstCommit.ok || !retry.ok || !("assistantMessageId" in firstCommit) || !("assistantMessageId" in retry)) throw new Error("expected canonical completion");
+    assert.equal(retry.assistantMessageId, firstCommit.assistantMessageId);
+    const messages = await database.db.select().from(conversationMessages).where(eq(conversationMessages.conversationId, conversation.id));
+    assert.equal(messages.filter((row) => row.role === "assistant").length, 1);
+    const [head] = await database.db.select({ id: conversations.currentHeadMessageId }).from(conversations).where(eq(conversations.id, conversation.id));
+    assert.equal(head.id, firstCommit.assistantMessageId);
+
   },
 );
