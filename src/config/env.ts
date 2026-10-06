@@ -54,6 +54,7 @@ const baseEnvSchema = z.object({
   NATIVE_LIVE_RELAY_AUTH_TOKEN: z.string().min(32).optional(),
   NATIVE_LIVE_WAKE_BROKER_URL: httpsUrl.optional(),
   NATIVE_LIVE_WAKE_BROKER_AUTH_TOKEN: z.string().min(32).optional(),
+  NATIVE_LIVE_SILENCE_WAKE_ENABLED: booleanEnv.optional(),
   MCP_USER_ID: z.string().uuid().optional(),
   MCP_SERVER_URL: httpsUrl.optional(),
   AUTH0_ISSUER: httpsUrl.optional(),
