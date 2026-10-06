@@ -93,6 +93,7 @@ function logSilenceWakeFailure(
     error && typeof error === "object"
       ? error as Record<string, unknown>
       : {};
+  const cause = errorRecord(record.cause);
   process.stderr.write(
     JSON.stringify({
       level: "error",
@@ -104,12 +105,61 @@ function logSilenceWakeFailure(
           ? error.name
           : "UnknownError",
       ...(
+        error instanceof Error && error.message
+          ? { errorMessage: diagnosticText(error.message) }
+          : {}
+      ),
+      ...(
         typeof record.code === "string"
           ? { errorCode: record.code }
           : {}
       ),
+      ...(
+        typeof record.detail === "string"
+          ? { errorDetail: diagnosticText(record.detail) }
+          : {}
+      ),
+      ...(
+        typeof record.constraint_name === "string"
+          ? { errorConstraint: diagnosticText(record.constraint_name) }
+          : typeof record.constraint === "string"
+            ? { errorConstraint: diagnosticText(record.constraint) }
+            : {}
+      ),
+      ...(
+        cause
+          ? {
+              causeName:
+                typeof cause.name === "string"
+                  ? cause.name
+                  : undefined,
+              causeCode:
+                typeof cause.code === "string"
+                  ? cause.code
+                  : undefined,
+              causeMessage:
+                typeof cause.message === "string"
+                  ? diagnosticText(cause.message)
+                  : undefined,
+            }
+          : {}
+      ),
     }) + "\n",
   );
+}
+
+function diagnosticText(value: string): string {
+  return value.length <= 500
+    ? value
+    : value.slice(0, 497) + "...";
+}
+
+function errorRecord(
+  value: unknown,
+): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function parseFireBody(value: unknown): {
