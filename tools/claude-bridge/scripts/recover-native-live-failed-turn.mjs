@@ -8,106 +8,109 @@ import { importSessionToStore } from "@anthropic-ai/claude-agent-sdk";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const MAX_APPEND_CHUNK_BYTES = 6_000_000;
-const prepareId = process.argv[2]?.trim() ?? "";
+async function main(argv = process.argv.slice(2)) {
+  const prepareId =
+    argv.find((value) => value !== "--")?.trim() ?? "";
 
-if (!UUID.test(prepareId)) {
-  throw new Error(
-    "Usage: pnpm runtime:native-live-recover-failed-turn -- <prepare-id>",
+  if (!UUID.test(prepareId)) {
+    throw new Error(
+      "Usage: pnpm runtime:native-live-recover-failed-turn -- <prepare-id>",
+    );
+  }
+
+  const repoRoot = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../..",
   );
-}
-
-const repoRoot = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../..",
-);
-const railway = loadRailwayVariables(repoRoot);
-const relayBaseUrl = firstNonBlank(
-  process.env.LEILEI_NATIVE_LIVE_RELAY_URL,
-  process.env.MCP_SERVER_URL,
-  railway.MCP_SERVER_URL,
-) ?? "https://leilei-os-production.up.railway.app";
-const relayToken = firstNonBlank(
-  process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
-  railway.NATIVE_LIVE_RELAY_AUTH_TOKEN,
-);
-if (!relayToken) {
-  throw new Error(
-    "Native Live relay token is unavailable. Link/authenticate Railway CLI or set LEILEI_NATIVE_LIVE_RELAY_TOKEN.",
+  const railway = loadRailwayVariables(repoRoot);
+  const relayBaseUrl = firstNonBlank(
+    process.env.LEILEI_NATIVE_LIVE_RELAY_URL,
+    process.env.MCP_SERVER_URL,
+    railway.MCP_SERVER_URL,
+  ) ?? "https://leilei-os-production.up.railway.app";
+  const relayToken = firstNonBlank(
+    process.env.LEILEI_NATIVE_LIVE_RELAY_TOKEN,
+    railway.NATIVE_LIVE_RELAY_AUTH_TOKEN,
   );
-}
+  if (!relayToken) {
+    throw new Error(
+      "Native Live relay token is unavailable. Link/authenticate Railway CLI or set LEILEI_NATIVE_LIVE_RELAY_TOKEN.",
+    );
+  }
 
-const client = new InternalClient(relayBaseUrl, relayToken);
-const inspection = await client.post(
-  `/internal/native-live-relay/failed-turn-recovery/${prepareId}/inspect`,
-  {},
-);
-if (inspection.recoverable !== true) {
-  throw new Error("The failed turn is not recoverable.");
-}
-const sessionId = stringField(
-  inspection.providerSessionId,
-  "providerSessionId",
-);
-const workingDirectory =
-  nonblank(inspection.expectedWorkingDirectory)
-  ?? nonblank(process.env.LEILEI_NATIVE_LIVE_WORKING_DIRECTORY)
-  ?? homedir();
+  const client = new InternalClient(relayBaseUrl, relayToken);
+  const inspection = await client.post(
+    `/internal/native-live-relay/failed-turn-recovery/${prepareId}/inspect`,
+    {},
+  );
+  if (inspection.recoverable !== true) {
+    throw new Error("The failed turn is not recoverable.");
+  }
+  const sessionId = stringField(
+    inspection.providerSessionId,
+    "providerSessionId",
+  );
+  const workingDirectory =
+    nonblank(inspection.expectedWorkingDirectory)
+    ?? nonblank(process.env.LEILEI_NATIVE_LIVE_WORKING_DIRECTORY)
+    ?? homedir();
 
-process.stdout.write(
-  JSON.stringify({
-    outcome: "failed_turn_recovery_inspected",
-    prepareId,
+  process.stdout.write(
+    JSON.stringify({
+      outcome: "failed_turn_recovery_inspected",
+      prepareId,
+      sessionId,
+      workingDirectory,
+      eventCount: inspection.eventCount,
+    }) + "\n",
+  );
+
+  const store = new RemoteSessionStore(client);
+  await importSessionToStore(
     sessionId,
-    workingDirectory,
-    eventCount: inspection.eventCount,
-  }) + "\n",
-);
+    store,
+    {
+      dir: workingDirectory,
+      includeSubagents: true,
+      batchSize: 500,
+    },
+  );
 
-const store = new RemoteSessionStore(client);
-await importSessionToStore(
-  sessionId,
-  store,
-  {
-    dir: workingDirectory,
-    includeSubagents: true,
-    batchSize: 500,
-  },
-);
+  const transcript = await store.load({
+    projectKey: workingDirectory,
+    sessionId,
+  });
+  if (!Array.isArray(transcript) || transcript.length === 0) {
+    throw new Error(
+      "Local transcript backfill produced no readable remote transcript.",
+    );
+  }
+  await store.markComplete(sessionId);
 
-const transcript = await store.load({
-  projectKey: workingDirectory,
-  sessionId,
-});
-if (!Array.isArray(transcript) || transcript.length === 0) {
-  throw new Error(
-    "Local transcript backfill produced no readable remote transcript.",
+  process.stdout.write(
+    JSON.stringify({
+      outcome: "provider_transcript_backfilled",
+      prepareId,
+      sessionId,
+      entryCount: transcript.length,
+    }) + "\n",
+  );
+
+  const recovered = await client.post(
+    `/internal/native-live-relay/failed-turn-recovery/${prepareId}/recover`,
+    {},
+  );
+  process.stdout.write(
+    JSON.stringify({
+      outcome: "failed_turn_recovered",
+      prepareId,
+      conversationId: recovered.conversationId,
+      assistantMessageId: recovered.assistantMessageId,
+      providerSessionId: recovered.providerSessionId,
+      providerCheckpointId: recovered.providerCheckpointId,
+    }) + "\n",
   );
 }
-await store.markComplete(sessionId);
-
-process.stdout.write(
-  JSON.stringify({
-    outcome: "provider_transcript_backfilled",
-    prepareId,
-    sessionId,
-    entryCount: transcript.length,
-  }) + "\n",
-);
-
-const recovered = await client.post(
-  `/internal/native-live-relay/failed-turn-recovery/${prepareId}/recover`,
-  {},
-);
-process.stdout.write(
-  JSON.stringify({
-    outcome: "failed_turn_recovered",
-    prepareId,
-    conversationId: recovered.conversationId,
-    assistantMessageId: recovered.assistantMessageId,
-    providerSessionId: recovered.providerSessionId,
-    providerCheckpointId: recovered.providerCheckpointId,
-  }) + "\n",
-);
 
 class InternalClient {
   constructor(baseUrl, token) {
@@ -339,3 +342,6 @@ function stringField(value, name) {
   }
   return normalized;
 }
+
+
+await main();
