@@ -543,9 +543,11 @@ export class DrizzleNativeLiveAttachmentBinding {
         .values(
           descriptors.map((attachment, index) => {
             const durationSeconds =
-              durationSecondsByAttachmentId.get(
-                attachment.attachment_id,
-              );
+              attachment.mime_type.startsWith("audio/")
+                ? durationSecondsByAttachmentId.get(
+                    attachment.attachment_id,
+                  )
+                : undefined;
             return {
               userId: input.userId,
               messageId: input.messageId,
@@ -571,9 +573,11 @@ export class DrizzleNativeLiveAttachmentBinding {
         .values(
           descriptors.map((attachment, index) => {
             const durationSeconds =
-              durationSecondsByAttachmentId.get(
-                attachment.attachment_id,
-              );
+              attachment.mime_type.startsWith("audio/")
+                ? durationSecondsByAttachmentId.get(
+                    attachment.attachment_id,
+                  )
+                : undefined;
             return {
               userId: input.userId,
               messageId: input.messageId,
