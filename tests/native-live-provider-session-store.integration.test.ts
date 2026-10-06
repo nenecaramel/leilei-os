@@ -256,3 +256,38 @@ test(
     );
   },
 );
+
+test("Mac restart after committed append with lost response leaves the real remote transcript unduplicated", { skip: !enabled }, async (t) => {
+  const { NativeLiveMacProviderSessionStore } = await import("../src/domains/bridge/mac/native-live-mac-provider-session-store.js");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = mkdtempSync(join(tmpdir(), "leilei-session-db-fault-test-"));
+  const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
+  const [user] = await database.db.insert(users).values({ email: `append-fault-${crypto.randomUUID()}@example.com`, displayName: "Append fault" }).returning({ id: users.id });
+  t.after(async () => {
+    await database.db.delete(nativeLiveProviderSessionEntries).where(eq(nativeLiveProviderSessionEntries.userId, user.id));
+    await database.db.delete(users).where(eq(users.id, user.id));
+    await database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const service = new NativeLiveProviderSessionStoreService(new DrizzleNativeLiveProviderSessionStoreRepository(database.db));
+  let loseResponse = true;
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    await service.append({ userId: user.id, key: { sessionId: body.key.session_id, subpath: body.key.subpath }, appendBatchId: body.append_batch_id, entries: body.entries });
+    if (loseResponse) throw new Error("HTTP response lost after Postgres commit");
+    return new Response(JSON.stringify({ success: true, data: null }));
+  };
+  const key = { projectKey: "/local", sessionId: crypto.randomUUID() };
+  const entries = [{ type: "assistant", uuid: crypto.randomUUID(), text: "same content" }];
+  await assert.rejects(new NativeLiveMacProviderSessionStore("https://relay.test", "test-token", fetchImpl, directory).append(key, entries), /response lost/u);
+  loseResponse = false;
+  const restarted = new NativeLiveMacProviderSessionStore("https://relay.test", "test-token", fetchImpl, directory);
+  await restarted.append(key, entries);
+  await new NativeLiveMacProviderSessionStore("https://relay.test", "test-token", fetchImpl, directory).append(key, entries);
+  assert.deepEqual(await service.load({ userId: user.id, key: { sessionId: key.sessionId } }), entries);
+  const distinct = [{ ...entries[0], uuid: crypto.randomUUID() }];
+  await restarted.append(key, distinct);
+  assert.deepEqual(await service.load({ userId: user.id, key: { sessionId: key.sessionId } }), [...entries, ...distinct]);
+});

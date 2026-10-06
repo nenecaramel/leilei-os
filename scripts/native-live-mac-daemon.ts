@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   consumeNativeLiveMacMemeGitHubConfig,
   NativeLiveMacMemeSender,
@@ -118,6 +120,8 @@ const workingDirectoryRuntimePool =
       new NativeLiveMacProviderSessionStore(
         relayBaseUrl,
         relayToken,
+        undefined,
+        join(homedir(), ".leileios", "session-store-append-receipts"),
       ),
     {
       type: "http",

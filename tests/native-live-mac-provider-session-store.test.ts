@@ -295,3 +295,86 @@ test("Mac SessionStore exposes fail-closed completeness state", async () => {
     });
   }
 });
+
+test("Mac SessionStore keeps append receipts across restart, including partially committed chunks", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = mkdtempSync(join(tmpdir(), "leilei-append-receipt-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const remote = new Map<string, unknown[]>();
+  let loseResponse = true;
+  let calls = 0;
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    const identity = JSON.stringify([body.key, body.append_batch_id]);
+    if (!remote.has(identity)) remote.set(identity, body.entries);
+    calls += 1;
+    if (loseResponse && calls === 2) throw new Error("committed second chunk, lost response");
+    return new Response(JSON.stringify({ success: true, data: null }));
+  };
+  const key = { projectKey: "/local", sessionId: "restart", subpath: "subagents/a" };
+  const entries = [
+    { type: "assistant", uuid: "logical-1", text: "x".repeat(3_100_000) },
+    { type: "assistant", uuid: "logical-2", text: "x".repeat(3_100_000) },
+  ];
+  const first = new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory);
+  await assert.rejects(first.append(key, entries), /lost response/u);
+  loseResponse = false;
+  const restarted = new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory);
+  await restarted.append(key, entries);
+  assert.equal(remote.size, 2, "restart must reuse both committed chunk IDs");
+  await new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory).append(key,
+    entries.map((entry) => ({ text: entry.text, uuid: entry.uuid, type: entry.type })));
+  assert.equal(remote.size, 2, "JSONB key ordering cannot change append identity");
+  assert.equal([...remote.values()].flat().length, 2, "remote transcript must not duplicate");
+  // Re-delivery after ACK/receipt cleanup is still the same logical append.
+  await restarted.append(key, entries);
+  assert.equal(remote.size, 2);
+  // Same content with new SDK UUIDs is a genuinely distinct logical append.
+  await restarted.append(key, entries.map((entry) => ({ ...entry, uuid: `${entry.uuid}-new` })));
+  assert.equal(remote.size, 4);
+  await restarted.append({ ...key, subpath: "subagents/b" }, entries);
+  await restarted.append({ ...key, sessionId: "other" }, entries);
+  assert.equal(remote.size, 8, "session/subpath isolate identities");
+});
+
+test("identical legitimate appends with explicit distinct intent IDs are never swallowed while a receipt is pending", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = mkdtempSync(join(tmpdir(), "leilei-marker-intent-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const remote = new Set<string>();
+  let lose = true;
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    remote.add(body.append_batch_id);
+    if (lose) throw new Error("response lost");
+    return new Response(JSON.stringify({ success: true, data: null }));
+  };
+  const key = { projectKey: "/local", sessionId: "marker-session" };
+  const entries = [{ type: "custom-title", title: "same content" }];
+  const first = new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory);
+  await assert.rejects(first.append(key, entries, "intent-one"), /response lost/u);
+  lose = false;
+  const restarted = new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory);
+  await restarted.append(key, entries, "intent-two");
+  await restarted.append(key, entries, "intent-one");
+  assert.equal(remote.size, 2);
+});
+
+test("UUID-less pending restart ambiguity fails closed without falsely deduplicating a new append", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = mkdtempSync(join(tmpdir(), "leilei-marker-ambiguity-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => { calls += 1; throw new Error("response lost"); };
+  const key = { projectKey: "/local", sessionId: "marker" };
+  const entries = [{ type: "custom-title", title: "same" }];
+  await assert.rejects(new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory).append(key, entries), /response lost/u);
+  await assert.rejects(new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory).append(key, entries), /logicalAppendId/u);
+  assert.equal(calls, 1, "no speculative write/dedup of ambiguous marker");
+});

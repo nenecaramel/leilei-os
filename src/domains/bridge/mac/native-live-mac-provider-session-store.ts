@@ -1,3 +1,5 @@
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 type FetchLike = typeof fetch;
 
@@ -21,6 +23,7 @@ export class NativeLiveMacProviderSessionStore {
     baseUrl: string,
     private readonly token: string,
     private readonly fetchImpl: FetchLike = fetch,
+    private readonly receiptDirectory: string | null = null,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/u, "");
     if (!this.baseUrl) {
@@ -34,21 +37,32 @@ export class NativeLiveMacProviderSessionStore {
   async append(
     key: NativeLiveMacSessionStoreKey,
     entries: NativeLiveMacSessionStoreEntry[],
+    logicalAppendId?: string,
   ): Promise<void> {
     if (entries.length === 0) return;
+    if (logicalAppendId !== undefined && (!logicalAppendId.trim() || logicalAppendId.length > 256)) {
+      throw new Error("SessionStore logical append id is invalid.");
+    }
     const remoteKey = this.remoteKey(key);
     const chunks = chunkAppendEntries(entries);
-    const signature = appendSignature(remoteKey, entries);
-    const pending = this.retryAppendBatches.get(signature);
+    const signature = appendSignature(remoteKey, entries, logicalAppendId);
+    const stableIntent = Boolean(logicalAppendId) || entries.some((entry) => typeof entry.uuid === "string" && entry.uuid.trim());
+    const inProcess = this.retryAppendBatches.get(signature);
+    const recovered = inProcess ? undefined : this.readReceipt(signature);
+    if (recovered && !stableIntent) {
+      // The SDK supplies no operation identity for UUID-less markers. Reusing a
+      // content-matched receipt could swallow a genuinely new identical append.
+      throw new Error("Ambiguous UUID-less append recovery requires a logicalAppendId.");
+    }
+    const pending = inProcess ?? recovered;
     const receipt =
       pending
       ?? {
-        batchIds: chunks.map(() => randomUUID()),
+        batchIds: chunks.map((_, index) => stableIntent ? stableAppendBatchId(signature, index) : randomUUID()),
         sessionId: remoteKey.session_id,
       };
-    if (!pending) {
-      this.retryAppendBatches.set(signature, receipt);
-    }
+    if (!pending) this.writeReceipt(signature, receipt);
+    this.retryAppendBatches.set(signature, receipt);
 
     for (let index = 0; index < chunks.length; index += 1) {
       await this.post("/append", {
@@ -59,11 +73,15 @@ export class NativeLiveMacProviderSessionStore {
     }
 
     if (this.retryAppendBatches.get(signature) === receipt) {
+      this.removeReceipt(signature);
       this.retryAppendBatches.delete(signature);
     }
   }
 
   discardPendingAppends(sessionId: string): void {
+    // SDK mirror_error proves neither rollback nor non-commit. Durable receipts
+    // must survive it; a later exact retry still needs the original chunk IDs.
+    if (this.receiptDirectory) return;
     const normalized = normalizeSessionId(sessionId);
     for (const [signature, pending] of this.retryAppendBatches) {
       if (pending.sessionId === normalized) {
@@ -161,6 +179,46 @@ export class NativeLiveMacProviderSessionStore {
       throw new Error("Native Live session store subkeys response is invalid.");
     }
     return data.subkeys as string[];
+  }
+
+  private receiptPath(signature: string): string | null {
+    if (!this.receiptDirectory) return null;
+    const scope = createHash("sha256").update(JSON.stringify([this.baseUrl, this.token])).digest("hex");
+    return join(this.receiptDirectory, scope, `${signature}.json`);
+  }
+
+  private readReceipt(signature: string): { batchIds: string[]; sessionId: string } | undefined {
+    const path = this.receiptPath(signature);
+    if (!path || !existsSync(path)) return undefined;
+    const receipt = JSON.parse(readFileSync(path, "utf8"));
+    if (!Array.isArray(receipt.batchIds) || receipt.batchIds.some((id: unknown) => typeof id !== "string" || !/^[a-f0-9-]{36}$/u.test(id)) || typeof receipt.sessionId !== "string") {
+      throw new Error("Invalid durable SessionStore append receipt.");
+    }
+    return receipt;
+  }
+
+  private writeReceipt(signature: string, receipt: { batchIds: string[]; sessionId: string }): void {
+    const path = this.receiptPath(signature);
+    if (!path) return;
+    const directory = join(path, "..");
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    const fd = openSync(temporary, "wx", 0o600);
+    try { writeFileSync(fd, JSON.stringify(receipt)); fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(temporary, path);
+    this.syncReceiptDirectory(directory);
+  }
+
+  private removeReceipt(signature: string): void {
+    const path = this.receiptPath(signature);
+    if (!path) return;
+    unlinkSync(path);
+    this.syncReceiptDirectory(join(path, ".."));
+  }
+
+  private syncReceiptDirectory(directory: string): void {
+    const fd = openSync(directory, "r");
+    try { fsyncSync(fd); } finally { closeSync(fd); }
   }
 
   private async markStatus(
@@ -286,8 +344,32 @@ function chunkAppendEntries(
 function appendSignature(
   key: { session_id: string; subpath?: string },
   entries: NativeLiveMacSessionStoreEntry[],
+  logicalAppendId?: string,
 ): string {
   return createHash("sha256")
-    .update(JSON.stringify({ key, entries }))
+    .update(stableJson({ key, entries, ...(logicalAppendId ? { logicalAppendId } : {}) }))
     .digest("hex");
+}
+
+
+// A stable SDK UUID (or explicit caller intent) names a logical append, so ACK
+// delivery and even receipt cleanup cannot change its server idempotency keys.
+function stableAppendBatchId(signature: string, index: number): string {
+  const hex = createHash("sha256").update(JSON.stringify(["native-live-append-v1", signature, index])).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+
+function stableJson(value: unknown): string {
+  // Postgres JSONB/SDK reload may reorder object keys without changing an entry.
+  const normalized = JSON.parse(JSON.stringify(value));
+  const sort = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(sort);
+    if (item && typeof item === "object") {
+      const record = item as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(record).sort().map((key) => [key, sort(record[key])]));
+    }
+    return item;
+  };
+  return JSON.stringify(sort(normalized));
 }
