@@ -1,0 +1,1108 @@
+{
+  "audio-failed-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        110
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "4762705a0308cccc57d54acc039a3e627a5d2bb862baf63ce6b4a3f38ee334f3"
+  },
+  "audio-failed-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        110
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "90287a6ae41af15e8dc5add582466d45239f21b83128c8335e575ed5cb84b566"
+  },
+  "audio-finished-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "2634d4ac7dabff5d141fa543b5fbcde35f438c248b5141a5f5b7691e8e61036d"
+  },
+  "audio-finished-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "5955618eceb184e2df0dcb06858ce8fe6b57258f415b07bda52508b914a39db5"
+  },
+  "audio-idle-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "75107d053c6b379644aa3d2c935b4111eb977b24ed54c948d72ce5feb75a1a07"
+  },
+  "audio-idle-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "613f39e0699cfdd39cd3dba0de0a41e2996614d716c47306d9f95cdda8d6ac14"
+  },
+  "audio-integrity-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        110
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "3c76ac77bcf2d9b34289bea93ee8f9be4896f346535260388de77ce2e560814a"
+  },
+  "audio-integrity-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        110
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "b710b0e1352a9da5b47d3e7486d5b04a5e39f9c2f852dcba7bbb2a36bf79dcd2"
+  },
+  "audio-loading-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ],
+      "spinner0" : [
+        35,
+        102.66666666666666,
+        20,
+        20
+      ]
+    },
+    "staticSHA256" : "8987d0941a25e2228d02986c71fb554a5539e8541cee46583ea9c094cef4f1c6"
+  },
+  "audio-loading-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ],
+      "spinner0" : [
+        35,
+        102.66666666666666,
+        20,
+        20
+      ]
+    },
+    "staticSHA256" : "f0107c907d338c664302e99ca4d4caae0ae233faf6e646355b5977367b0963ba"
+  },
+  "audio-long-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "329fb26b283822d82cdec1df7883ce069ccc5a00f373bd3649fb6317072731e7"
+  },
+  "audio-long-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "ed6a7ae625798a4479eacf412247d1d2942da9cd48bc9cee6c4f70bd7b15ace1"
+  },
+  "audio-near-end-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "0d7bc6ca3a5a47edc63be13ba946e2b69b50bb77509df906b295c6516d519ed3"
+  },
+  "audio-near-end-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "f36cb02cc228ff417052c3f6cc962aa34fe1adf21ab32ec8ddb9a27ea9f6ccaf"
+  },
+  "audio-paused-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "da823e6fae946576abced638e087b1a17e8793ec78931862a1fc54c8b6786458"
+  },
+  "audio-paused-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "a1c85ed3f8d21f05778e4fd94b36008cdb83f6ebff06177b15d035f9ef099bd4"
+  },
+  "audio-playing-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "4dcbd489301ea8978552f44ebb64dda391bdfa0bf736ce6f662054f692bd8134"
+  },
+  "audio-playing-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "c856bff5d4f33ff4029e8e0898c961021a65c15942d72191888601807b48fea7"
+  },
+  "audio-ready-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "d3bff69de4bc0853e0fb9506beab7240952148cc21d47496b5eac0054378c52b"
+  },
+  "audio-ready-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "9b91003e8a76f181a960de1062df4920f16028d028654e6f23f6dd9397b42970"
+  },
+  "audio-short-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "61a9b3a5ad2d365b25af18f141185358192842b3c90167602de646ba57f4bec2"
+  },
+  "audio-short-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "97f0f4ce7ca6f3ee83c5b9bea24cc975d68e87cb432b63ffbfe9076d76579a27"
+  },
+  "audio-unavailable-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        110
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "0a598b1de9595476fe213122f77abc2bd6458517924da70c68c3ead6ea44cca0"
+  },
+  "audio-unavailable-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        110
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ]
+    },
+    "staticSHA256" : "c992ced5c8c7ac59073dab474e043a3702d78b8d557f35148f64575aa6abfc18"
+  },
+  "audio-uploading-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ],
+      "spinner0" : [
+        35,
+        102.66666666666666,
+        20,
+        20
+      ]
+    },
+    "staticSHA256" : "a0eb444f96670841856080965f81a8cf12eea094c42aa323d7081ceed199a4b6"
+  },
+  "audio-uploading-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        280,
+        69.333333333333314
+      ],
+      "open" : [
+        73,
+        89,
+        212,
+        47.333333333333314
+      ],
+      "play" : [
+        27,
+        94.666666666666657,
+        36,
+        36
+      ],
+      "spinner0" : [
+        35,
+        102.66666666666666,
+        20,
+        20
+      ]
+    },
+    "staticSHA256" : "2a95da4e8332984331853d2359029f949956d37511695d9dd813082bc6d555b7"
+  },
+  "spotify-bad-cover-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "8153f1eef483daec1b53ac57ce725cc23f213944229380aaae5d018ea55f8426"
+  },
+  "spotify-bad-cover-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "588eeebe158cf6184c1481f8b88a5ee3f3281b7de26ae494e9f561b7d8afab74"
+  },
+  "spotify-cover-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "05eaf20084de5298cf719e080a422134e77d15746155658c65a436dca840babf"
+  },
+  "spotify-cover-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "4620032ce46958b76c01d8f999ac96bae937e1adc1fe202d845207a8ebd019ca"
+  },
+  "spotify-currently-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "8153f1eef483daec1b53ac57ce725cc23f213944229380aaae5d018ea55f8426"
+  },
+  "spotify-currently-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "588eeebe158cf6184c1481f8b88a5ee3f3281b7de26ae494e9f561b7d8afab74"
+  },
+  "spotify-empty-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        59
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ]
+    },
+    "staticSHA256" : "f389875934eba76a46a98e724622d5729c2b5f264ed27745b74f3f430cf71e10"
+  },
+  "spotify-empty-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        59
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ]
+    },
+    "staticSHA256" : "9d469adba9b4ac1ff6f69a7b55f8de08249c28728a3469c441fca85aa8a4486f"
+  },
+  "spotify-error-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        77.999999999999986,
+        358,
+        102.66666666666664
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ]
+    },
+    "staticSHA256" : "b1d46f9898b82f383e2528f0dcb9294035828fc94565d6caf30ac86310c12c5d"
+  },
+  "spotify-error-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        77.999999999999986,
+        358,
+        102.66666666666664
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ]
+    },
+    "staticSHA256" : "2f66916c455de383fbd7eba0af22eb202d1d5007506d3ca9fc76fa083832d568"
+  },
+  "spotify-five-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        373
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-album 1" : [
+        27,
+        178,
+        336,
+        60
+      ],
+      "url-audiobook 4" : [
+        27,
+        382,
+        336,
+        60
+      ],
+      "url-playlist 2" : [
+        27,
+        246,
+        336,
+        60
+      ],
+      "url-show 3" : [
+        27,
+        314,
+        336,
+        60
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "9ed14e514d02f8c8d6b9580875d74d806d7c08eaa43c0d7095bcb71ff6638810"
+  },
+  "spotify-five-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        373
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-album 1" : [
+        27,
+        178,
+        336,
+        60
+      ],
+      "url-audiobook 4" : [
+        27,
+        382,
+        336,
+        60
+      ],
+      "url-playlist 2" : [
+        27,
+        246,
+        336,
+        60
+      ],
+      "url-show 3" : [
+        27,
+        314,
+        336,
+        60
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "82ee298cbcc07060e4124c19c77c39c36abf17168e77744a8f5d4dd34827dc83"
+  },
+  "spotify-long-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title " : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "e5919bc555d8ccfbefedc0a08a595d866986d3a493719c8ff4fe6bcce3f01701"
+  },
+  "spotify-long-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title Long song title " : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "238cc50845dd8487c66dd4d0272cd557bd7c8329354998daac3a40e18eb6b755"
+  },
+  "spotify-no-url-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "2a9e64bb0228e11c1965ac6e0c2cebc4e1e6a66147b4dd4efd7a66b311258d27"
+  },
+  "spotify-no-url-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "3be8bddbc960786ff152e5b718194579256ef438fd8723557bdc1c6c6f2a5587"
+  },
+  "spotify-one-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "8153f1eef483daec1b53ac57ce725cc23f213944229380aaae5d018ea55f8426"
+  },
+  "spotify-one-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        101
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "588eeebe158cf6184c1481f8b88a5ee3f3281b7de26ae494e9f561b7d8afab74"
+  },
+  "spotify-permission-dark" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        244
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "c161ad200dcba7a46853242f4a86411f3533df6fa60f6613077b8ef3553d8913"
+  },
+  "spotify-permission-light" : {
+    "frames" : {
+      "content" : [
+        16,
+        78,
+        358,
+        244
+      ],
+      "details" : [
+        348,
+        87,
+        15,
+        15
+      ],
+      "url-track 0" : [
+        27,
+        110,
+        336,
+        60
+      ]
+    },
+    "staticSHA256" : "2bfb3431d5a1a04d055fc3d08123e142de8a75e4dced7ad650ba6ca772fa2bab"
+  }
+}

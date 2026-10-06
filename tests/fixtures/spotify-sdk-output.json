@@ -1,0 +1,54 @@
+{
+  "source_note": "Synthetic witness using the existing Agent SDK user/tool_result fixture format, checked against the production normalizer. No production transcript or user data.",
+  "raw": [
+    {
+      "type": "system",
+      "subtype": "init",
+      "session_id": "fixture"
+    },
+    {
+      "type": "assistant",
+      "session_id": "fixture",
+      "message": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "sdk-search",
+            "name": "mcp__Spotify__search",
+            "input": {
+              "query": "fixture"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "user",
+      "session_id": "fixture",
+      "message": {
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "sdk-search",
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"entities\":[{\"name\":\"SDK Song\",\"uri\":\"spotify:track:sdk\",\"url\":\"https://open.spotify.com/track/sdk\"}]}"
+              }
+            ],
+            "is_error": false
+          }
+        ]
+      }
+    }
+  ],
+  "expected": {
+    "providerToolName": "mcp__Spotify__search",
+    "output": [
+      {
+        "type": "text",
+        "text": "{\"entities\":[{\"name\":\"SDK Song\",\"uri\":\"spotify:track:sdk\",\"url\":\"https://open.spotify.com/track/sdk\"}]}"
+      }
+    ]
+  }
+}

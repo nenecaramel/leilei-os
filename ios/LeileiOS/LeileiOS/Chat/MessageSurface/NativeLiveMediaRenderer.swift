@@ -127,7 +127,12 @@ struct NativeLiveMediaCard: View {
     @State private var openError: String?
     @State private var ownGallery: NativeLiveGallerySelection?
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if input.mediaKind == .audio { NativeLiveAudioAttachmentBubble(input: input) }
+        else { ordinaryBody }
+    }
+
+    private var ordinaryBody: some View {
         VStack(alignment:.leading,spacing:6) {
             if stickerImage || input.isMemeSticker {
                 stickerTile
