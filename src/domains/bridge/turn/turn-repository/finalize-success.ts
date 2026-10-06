@@ -56,6 +56,8 @@ export async function finalizeSuccess(
     effectiveWorkspaceRoot: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     outputAttachmentIds: readonly string[];
+    outputAttachmentMetadata:
+      Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["outputAttachmentMetadata"];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp:
@@ -68,6 +70,7 @@ export async function finalizeSuccess(
       effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
       normalizedEvents: input.normalizedEvents,
       outputAttachmentIds: input.outputAttachmentIds,
+      outputAttachmentMetadata: input.outputAttachmentMetadata,
       ...(input.runtimeMetadata
         ? { runtimeMetadata: input.runtimeMetadata }
         : {}),
@@ -294,6 +297,7 @@ export async function finalizeSuccess(
               userId: input.userId,
               messageId: assistantMessage.id,
               attachmentIds: input.outputAttachmentIds,
+              attachmentMetadata: input.outputAttachmentMetadata,
               startOrdinal: blocks.length,
               contentOrigin: "provider_send",
             });
