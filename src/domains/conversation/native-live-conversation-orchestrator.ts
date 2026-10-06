@@ -25,6 +25,7 @@ export type NativeLiveNormalizedEvent = {
 
 export type NativeLiveRuntimeResult = {
   providerSessionId: string | null;
+  providerCheckpointId?: string | null;
   normalizedEvents: readonly NativeLiveNormalizedEvent[];
 };
 

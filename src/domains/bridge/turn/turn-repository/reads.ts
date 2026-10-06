@@ -117,6 +117,7 @@ export async function readTurn(
           nativeLiveTurnPreparations.canonicalUserMessageId,
         expectedWorkingDirectory:
           nativeLiveTurnPreparations.expectedWorkingDirectory,
+        parentProviderCheckpointId: nativeLiveTurnPreparations.parentProviderCheckpointId,
         executionSelection:
           nativeLiveTurnPreparations.executionSelection,
         canonicalStatus: nativeLiveTurnPreparations.status,
@@ -382,6 +383,7 @@ export function selection(this: TurnRepositoryContext) {
         nativeLiveTurnPreparations.parentProviderSessionId,
       expectedWorkingDirectory:
         nativeLiveTurnPreparations.expectedWorkingDirectory,
+      parentProviderCheckpointId: nativeLiveTurnPreparations.parentProviderCheckpointId,
       executionSelection: nativeLiveTurnPreparations.executionSelection,
       attachments: nativeLiveTurnPreparations.attachments,
       prompt: nativeLiveTurnPreparations.prompt,

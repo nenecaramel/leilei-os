@@ -76,9 +76,10 @@ export type PreparationRow = {
   canonicalUserMessageId: string | null;
   replacementTargetUserMessageId: string | null;
   wakeContext: Record<string, unknown> | null;
-  runtimeMode: "new" | "fork";
+  runtimeMode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
   expectedWorkingDirectory: string | null;
+  parentProviderCheckpointId?: string | null;
   executionSelection: Record<string, unknown> | null;
   attachments: Array<Record<string, unknown>>;
   prompt: string;
@@ -112,12 +113,14 @@ export type TurnRepositoryContext = {
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
+    continuation?: "send" | "replacement",
   ): Promise<
     | {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
         expectedWorkingDirectory: string | null;
+        parentProviderCheckpointId?: string | null;
       }
     | {
         ok: false;
@@ -135,9 +138,10 @@ export type TurnRepositoryContext = {
       requestHash: string;
       canonicalUserMessageId: string;
       replacementTargetUserMessageId: string | null;
-      runtimeMode: "new" | "fork";
+      runtimeMode: "new" | "resume" | "fork";
       parentProviderSessionId: string | null;
       expectedWorkingDirectory: string | null;
+      parentProviderCheckpointId?: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       attachments: NativeLiveRuntimeAttachment[];
       prompt: string;

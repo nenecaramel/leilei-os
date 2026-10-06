@@ -5,7 +5,7 @@ export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 4 as const;
 
 export const NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION = 2 as const;
 
-export type NativeLiveRuntimeMode = "new" | "fork";
+export type NativeLiveRuntimeMode = "new" | "resume" | "fork";
 
 export type NativeLiveRuntimeAttachment = {
   attachment_id: string;
@@ -32,6 +32,7 @@ export type NativeLiveRuntimeCommand = {
   runtime_mode: NativeLiveRuntimeMode;
   parent_provider_session_id: string | null;
   expected_working_directory: string | null;
+  parent_provider_checkpoint_id?: string | null;
   execution_selection?: NativeLiveExecutionSelection | null;
   attachments?: NativeLiveRuntimeAttachment[];
   output_attachments_enabled?: boolean;
@@ -249,6 +250,7 @@ export type NativeLiveRuntimeExecutionResult =
       status: "success";
       provider_session_id: string;
       effective_working_directory: string | null;
+      provider_checkpoint_id?: string | null;
       normalized_events: NativeLiveNormalizedEvent[];
       output_attachment_ids?: string[];
       output_attachment_metadata?: NativeLiveRuntimeOutputAttachmentMetadata[];

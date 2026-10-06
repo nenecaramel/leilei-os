@@ -244,6 +244,7 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
     runtime_mode: "fork",
     parent_provider_session_id: "provider-parent",
     expected_working_directory: null,
+    parent_provider_checkpoint_id: null,
     execution_selection: null,
     prompt: "hello",
   });

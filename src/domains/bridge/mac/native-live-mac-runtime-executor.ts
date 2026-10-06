@@ -37,8 +37,10 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
   executeTurn?: (
     prompt: string,
     options: {
-      mode: "new" | "fork";
+      mode: "new" | "resume" | "fork";
       parentProviderSessionId: string | null;
+      parentProviderCheckpointId?: string | null;
+      requireProviderCheckpoint?: boolean;
       streaming: boolean;
       userMessageUuid?: string | null;
       execution?: NativeLiveExecutionSelection | null;
@@ -229,6 +231,10 @@ export class NativeLiveMacRuntimeExecutor {
           mode: command.runtime_mode,
           parentProviderSessionId:
             command.parent_provider_session_id,
+          ...(command.protocol_version >= 4 ? {
+            parentProviderCheckpointId: command.parent_provider_checkpoint_id ?? null,
+            requireProviderCheckpoint: true,
+          } : {}),
           streaming: true,
           userMessageUuid:
             command.canonical_user_message_id,
@@ -265,7 +271,7 @@ export class NativeLiveMacRuntimeExecutor {
           ...(this.outputAttachmentSender
             && command.output_attachments_enabled !== false
             && command.protocol_version
-              === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+              >= 3
             ? {
                 sendFileHandler: async (input: {
                   path: string;
@@ -296,7 +302,7 @@ export class NativeLiveMacRuntimeExecutor {
             : {}),
           ...(this.albumToolClient
             && command.protocol_version
-              === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+              >= 3
             ? {
                 albumHandlers: {
                   savePhoto: async (
@@ -358,7 +364,7 @@ export class NativeLiveMacRuntimeExecutor {
               }
             : {}),
           ...(this.memeSender
-            && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+            && command.protocol_version >= 3
             ? {
                 memeHandlers: {
                   sendMeme: (input: { memeId: string }) => sendOutput(
@@ -392,6 +398,9 @@ export class NativeLiveMacRuntimeExecutor {
           );
         }
       } else {
+        if (command.protocol_version >= 4) {
+          throw Object.assign(new Error("Checkpoint-addressable runtime requires executeTurn support."), { runtimeCode: "RUNTIME_UNAVAILABLE" });
+        }
         runtimeResult = command.runtime_mode === "new"
           ? await runtime.sendNew(runtimePrompt)
           : await runtime.fork(
@@ -438,6 +447,12 @@ export class NativeLiveMacRuntimeExecutor {
       return failure(command, "PROVIDER_SESSION_CONFLICT");
     }
 
+    if (command.runtime_mode === "resume" && runtimeResult.providerSessionId !== command.parent_provider_session_id) {
+      return failure(command, "PROVIDER_SESSION_CONFLICT");
+    }
+    if (command.protocol_version >= 4 && !runtimeResult.providerCheckpointId) {
+      return failure(command, "NO_PROVIDER_SESSION");
+    }
     const runtimeMetadata = await this.buildRuntimeMetadata(
       command,
       runtimeResult,
@@ -452,6 +467,7 @@ export class NativeLiveMacRuntimeExecutor {
       status: "success",
       provider_session_id: runtimeResult.providerSessionId,
       effective_working_directory: binding.workingDirectory,
+      ...(command.protocol_version >= 4 ? { provider_checkpoint_id: runtimeResult.providerCheckpointId! } : {}),
       normalized_events:
         terminalFallbackEvents(runtimeResult.normalizedEvents),
       ...(outputAttachmentIds.length > 0

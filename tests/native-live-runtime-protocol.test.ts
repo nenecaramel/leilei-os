@@ -1051,3 +1051,20 @@ test("runtime metadata accepts the bounded system/init environment projection", 
     /Unexpected runtime protocol field: arbitrary_raw_payload/,
   );
 });
+
+test('v4 resume uses exact parent checkpoint and keeps session identity',()=>{
+ const command=parseNativeLiveRuntimeCommand({protocol_version:4,dispatch_target:'claude_code',prepare_id:prepareId,request_id:requestId,operation:'send',conversation_id:conversationId,canonical_user_message_id:userMessageId,runtime_mode:'resume',parent_provider_session_id:'A',parent_provider_checkpoint_id:requestId,prompt:'next'});
+ assert.equal(command.runtime_mode,'resume');
+ const result=parseNativeLiveRuntimeExecutionResult({protocol_version:4,prepare_id:prepareId,request_id:requestId,conversation_id:conversationId,status:'success',provider_session_id:'A',provider_checkpoint_id:prepareId,normalized_events:[]});
+ assert.doesNotThrow(()=>assertRuntimeResultMatchesCommand(command,result));
+ assert.throws(()=>assertRuntimeResultMatchesCommand(command,{...result,provider_session_id:'B'}),/session/i);
+ assert.throws(()=>parseNativeLiveRuntimeCommand({...command,parent_provider_checkpoint_id:null}),/checkpoint/i);
+ assert.throws(()=>parseNativeLiveRuntimeExecutionResult({...result,provider_checkpoint_id:undefined}),/checkpoint/i);
+});
+test('v4 exact fork carries historical UUID; legacy whole-session fork stays explicit',()=>{
+ const shape={protocol_version:4,dispatch_target:'claude_code',prepare_id:prepareId,request_id:requestId,operation:'retry',conversation_id:conversationId,canonical_user_message_id:userMessageId,runtime_mode:'fork',parent_provider_session_id:'A',parent_provider_checkpoint_id:requestId,prompt:'again'};
+ assert.equal(parseNativeLiveRuntimeCommand(shape).parent_provider_checkpoint_id,requestId);
+ assert.equal(parseNativeLiveRuntimeCommand({...shape,parent_provider_checkpoint_id:null}).parent_provider_checkpoint_id,null);
+ assert.throws(()=>parseNativeLiveRuntimeCommand({...shape,protocol_version:3}),/checkpoint|protocol/i);
+ assert.throws(()=>parseNativeLiveRuntimeCommand({...shape,runtime_mode:'new',parent_provider_session_id:null}),/checkpoint/i);
+});

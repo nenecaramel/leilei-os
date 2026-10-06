@@ -773,6 +773,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         portability = await this.#prepareSessionForTurn(
           parentProviderSessionId,
           mode,
+          parentProviderCheckpointId !== null,
         );
       } catch (cause) {
         throw attachSessionStoreHealth(
@@ -1005,6 +1006,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           mirrorFailureReason,
           mode === "resume" && portability.canComplete,
         );
+      if (requireProviderCheckpoint && this.sessionStore && completionState.statusAfter !== "complete") {
+        throw runtimeError("Claude provider checkpoint did not become durable and complete.", {
+          runtimeCode: "RUNTIME_UNAVAILABLE", ...result,
+        });
+      }
       const sessionStoreObservability =
         sessionStoreHealthSnapshot({
           configured: Boolean(this.sessionStore),
@@ -1060,7 +1066,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     }
   }
 
-  async compact(sessionId, execution = null) {
+  async compact(sessionId, execution = null, parentProviderCheckpointId = null) {
     const lifecycle = {
       preCompact: [],
       postCompact: [],
@@ -1103,6 +1109,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
 
     const result = await this.#run("/compact", {
+      parentProviderCheckpointId,
+      requireProviderCheckpoint: parentProviderCheckpointId !== null,
       mode: "resume",
       parentProviderSessionId: sessionId,
       resume: sessionId,
@@ -1362,7 +1370,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
   }
 
-  async #prepareSessionForTurn(sessionId, mode) {
+  async #prepareSessionForTurn(sessionId, mode, exactCheckpoint = false) {
     const id = nonblankString(sessionId);
     const preflight = await this.#requireSession(id);
     let status = preflight.status;
@@ -1371,7 +1379,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     if (
       preflight.localAvailable
-      && status === null
+      && (status === null || (status === "incomplete" && exactCheckpoint))
     ) {
       const backfill = await this.#tryBackfillLocalSession(id);
       status = backfill.status;
@@ -1379,6 +1387,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       backfillFailureReason = backfill.failureReason;
     }
 
+    if (exactCheckpoint && this.sessionStore && status !== "complete") {
+      throw runtimeError("Exact Claude checkpoint parent could not be made durable and complete.", {
+        runtimeCode: "RUNTIME_UNAVAILABLE", parentSessionId: id,
+      });
+    }
     const canComplete = status === "complete";
 
     if (mode === "resume" && canComplete) {
@@ -1655,6 +1668,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     {
       mode = "new",
       parentProviderSessionId = null,
+      parentProviderCheckpointId = null,
+      requireProviderCheckpoint = false,
       resume = null,
       forkSession = false,
       execution = null,
@@ -1670,6 +1685,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
+    if (parentProviderCheckpointId !== null) {
+      await this.#requireCheckpoint(parentProviderSessionId, parentProviderCheckpointId);
+    }
     let portability = {
       canComplete: true,
       parentLocalAvailable: null,
@@ -1682,6 +1700,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         portability = await this.#prepareSessionForTurn(
           parentProviderSessionId,
           mode,
+          parentProviderCheckpointId !== null,
         );
       } catch (cause) {
         throw attachSessionStoreHealth(
@@ -1726,6 +1745,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ...executionOptions,
       ...leileiosMcpQueryOptions(this.mcpServerConfig),
       ...(resume ? { resume } : {}),
+      ...(parentProviderCheckpointId ? { resumeSessionAt: parentProviderCheckpointId } : {}),
       ...(forkSession ? { forkSession: true } : {}),
       ...(this.sessionStore
         ? { sessionStore: this.sessionStore }
@@ -1955,7 +1975,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         runtimeCode: "PROVIDER_SESSION_CONFLICT", providerSessionId,
       });
     }
-    const providerCheckpointId = mirrorFailureReason ? null : await this.#completedCheckpoint(providerSessionId, false, null);
+    if (requireProviderCheckpoint && mirrorFailureReason) {
+      throw runtimeError("Compact checkpoint transcript mirror failed.", {runtimeCode: "RUNTIME_UNAVAILABLE"});
+    }
+    const providerCheckpointId = mirrorFailureReason ? null : await this.#completedCheckpoint(providerSessionId, requireProviderCheckpoint, parentProviderCheckpointId);
     const completionState =
       await this.#completePortability(
         providerSessionId,
@@ -1963,6 +1986,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         mirrorFailureReason,
         mode === "resume" && portability.canComplete,
       );
+    if (requireProviderCheckpoint && this.sessionStore && completionState.statusAfter !== "complete") {
+      throw runtimeError("Compact checkpoint did not become durable and complete.", {runtimeCode: "RUNTIME_UNAVAILABLE"});
+    }
     const sessionStoreObservability =
       sessionStoreHealthSnapshot({
         configured: Boolean(this.sessionStore),

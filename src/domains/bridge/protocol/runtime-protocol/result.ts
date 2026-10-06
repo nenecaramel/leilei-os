@@ -46,6 +46,7 @@ export function parseNativeLiveRuntimeExecutionResult(
       [
         "runtime_metadata",
         "effective_working_directory",
+        "provider_checkpoint_id",
         "output_attachment_ids",
         "output_attachment_metadata",
       ],
@@ -54,6 +55,11 @@ export function parseNativeLiveRuntimeExecutionResult(
     const protocolVersion = parseProtocolVersion(
       body.protocol_version,
     );
+    if (protocolVersion < 4 && body.provider_checkpoint_id !== undefined) {
+      throw new NativeLiveRuntimeProtocolError("Provider checkpoint requires protocol v4.");
+    }
+    const providerCheckpointId = protocolVersion >= 4
+      ? requireUuid(body.provider_checkpoint_id, "provider_checkpoint_id") : null;
     if (!Array.isArray(body.normalized_events)) {
       throw new NativeLiveRuntimeProtocolError("normalized_events must be an array.");
     }
@@ -62,7 +68,7 @@ export function parseNativeLiveRuntimeExecutionResult(
         body.output_attachment_ids !== undefined
         || body.output_attachment_metadata !== undefined
       )
-      && protocolVersion !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+      && protocolVersion < 3
     ) {
       throw new NativeLiveRuntimeProtocolError(
         "output attachment fields require runtime protocol v3.",
@@ -92,6 +98,7 @@ export function parseNativeLiveRuntimeExecutionResult(
         body.provider_session_id,
         "provider_session_id",
       ),
+      ...(providerCheckpointId ? { provider_checkpoint_id: providerCheckpointId } : {}),
       effective_working_directory:
         body.effective_working_directory === undefined
           || body.effective_working_directory === null
@@ -195,6 +202,10 @@ export function assertRuntimeResultMatchesCommand(
     );
   }
 
+  if (result.status === "success" && command.runtime_mode === "resume"
+    && result.provider_session_id !== command.parent_provider_session_id) {
+    throw new NativeLiveRuntimeProtocolError("Resume result must preserve provider session identity.");
+  }
   if (
     result.status === "success"
     && command.runtime_mode === "fork"

@@ -105,6 +105,7 @@ const preparationSelection = {
     nativeLiveTurnPreparations.parentProviderSessionId,
   expectedWorkingDirectory:
     nativeLiveTurnPreparations.expectedWorkingDirectory,
+  parentProviderCheckpointId: nativeLiveTurnPreparations.parentProviderCheckpointId,
   executionSelection: nativeLiveTurnPreparations.executionSelection,
   attachments: nativeLiveTurnPreparations.attachments,
   prompt: nativeLiveTurnPreparations.prompt,
@@ -121,9 +122,10 @@ type SelectedRelayPreparationRow = {
   operation: "send" | "retry" | "edit" | "wake";
   canonicalUserMessageId: string | null;
   wakeContext: Record<string, unknown> | null;
-  runtimeMode: "new" | "fork";
+  runtimeMode: "new" | "resume" | "fork";
   parentProviderSessionId: string | null;
   expectedWorkingDirectory: string | null;
+  parentProviderCheckpointId?: string | null;
   executionSelection: Record<string, unknown> | null;
   attachments: Array<Record<string, unknown>>;
   prompt: string;

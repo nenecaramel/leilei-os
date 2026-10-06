@@ -187,6 +187,7 @@ type SilenceWakeSource = {
   currentHeadMessageId: string;
   providerSessionId: string;
   effectiveWorkingDirectory: string | null;
+  providerCheckpointId: string | null;
 };
 
 export class NativeLiveSilenceWakeService {
@@ -374,6 +375,7 @@ export class NativeLiveSilenceWakeService {
           runtimeMode: "fork",
           parentProviderSessionId: source.providerSessionId,
           expectedWorkingDirectory: source.effectiveWorkingDirectory,
+          parentProviderCheckpointId: source.providerCheckpointId,
           executionSelection: null,
           attachments: [],
           prompt: marker,
@@ -440,6 +442,7 @@ export class NativeLiveSilenceWakeService {
       current_head_message_id: string;
       provider_session_id: string;
       effective_working_directory: string | null;
+      provider_checkpoint_id: string | null;
     }>(sql`
       WITH RECURSIVE latest_user AS (
         SELECT
@@ -516,7 +519,8 @@ export class NativeLiveSilenceWakeService {
         reply.assistant_completed_at,
         path.current_head_message_id,
         checkpoint.provider_session_id,
-        checkpoint.effective_working_directory
+        checkpoint.effective_working_directory,
+        checkpoint.provider_checkpoint_id
       FROM latest_user AS source
       JOIN direct_reply AS reply ON TRUE
       JOIN current_path AS path
@@ -547,6 +551,7 @@ export class NativeLiveSilenceWakeService {
           currentHeadMessageId: row.current_head_message_id,
           providerSessionId: row.provider_session_id,
           effectiveWorkingDirectory: row.effective_working_directory,
+          providerCheckpointId: row.provider_checkpoint_id,
         }
       : null;
   }

@@ -1,3 +1,4 @@
+import {providerSessionUnreferenced} from "../bridge/provider-session/native-live-provider-session-references.js";
 import { readableContentData, storedContentKind, storedContentPayload } from './native-live-content-contract.js';
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
@@ -699,16 +700,10 @@ implements NativeLiveConversationRepository {
           FROM conversation_provider_session_checkpoints AS checkpoint
           WHERE checkpoint.user_id = ${input.userId}::uuid
             AND checkpoint.conversation_id = ${input.conversationId}::uuid
-            AND NOT EXISTS (
-              SELECT 1
-              FROM conversation_provider_session_checkpoints AS surviving
-              WHERE surviving.user_id = checkpoint.user_id
-                AND surviving.provider = checkpoint.provider
-                AND surviving.provider_session_id =
-                  checkpoint.provider_session_id
-                AND surviving.conversation_id <>
-                  checkpoint.conversation_id
-            )
+            AND ${providerSessionUnreferenced({
+              userId: input.userId, providerSessionId: sql`checkpoint.provider_session_id`,
+              excludeConversationId: input.conversationId,
+            })}
           ON CONFLICT (user_id, provider, provider_session_id)
           DO NOTHING
         `);
@@ -1097,6 +1092,7 @@ implements NativeLiveConversationRepository {
           conversationProviderSessionCheckpoints.effectiveWorkingDirectory,
         providerCheckpointId:
           conversationProviderSessionCheckpoints.providerCheckpointId,
+        runtimeMetadata: conversationProviderSessionCheckpoints.runtimeMetadata,
         createdAt: conversationProviderSessionCheckpoints.createdAt,
       })
       .from(conversationProviderSessionCheckpoints)
@@ -1142,6 +1138,7 @@ implements NativeLiveConversationRepository {
           providerSessionId: row.providerSessionId,
           effectiveWorkingDirectory: row.effectiveWorkingDirectory,
           providerCheckpointId: row.providerCheckpointId,
+          runtimeMetadata: row.runtimeMetadata,
           createdAt: row.createdAt.toISOString(),
         }
       : null;

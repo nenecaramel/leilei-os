@@ -102,6 +102,7 @@ export async function prepareSend(
           input.userId,
           input.conversationId,
           conversation.currentHeadMessageId,
+          "send",
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -151,6 +152,7 @@ export async function prepareSend(
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           expectedWorkingDirectory: runtimeParent.expectedWorkingDirectory,
+          parentProviderCheckpointId: runtimeParent.parentProviderCheckpointId ?? null,
           executionSelection: input.executionSelection,
           attachments,
           prompt:
@@ -271,6 +273,7 @@ export async function prepareRetry(
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           expectedWorkingDirectory: runtimeParent.expectedWorkingDirectory,
+          parentProviderCheckpointId: runtimeParent.parentProviderCheckpointId ?? null,
           executionSelection: input.executionSelection,
           attachments,
           prompt,
@@ -426,6 +429,7 @@ export async function prepareEdit(
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
           expectedWorkingDirectory: runtimeParent.expectedWorkingDirectory,
+          parentProviderCheckpointId: runtimeParent.parentProviderCheckpointId ?? null,
           executionSelection: input.executionSelection,
           attachments,
           prompt:
@@ -534,12 +538,14 @@ export async function resolveRuntimeParent(
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
+    continuation: "send" | "replacement" = "replacement",
   ): Promise<
     | {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
         expectedWorkingDirectory: string | null;
+        parentProviderCheckpointId?: string | null;
       }
     | {
         ok: false;
@@ -593,11 +599,16 @@ export async function resolveRuntimeParent(
         result: { ok: false, code: "CHECKPOINT_NOT_FOUND" },
       };
     }
+    if (!checkpoint.providerCheckpointId && checkpoint.runtimeMetadata?.provider_checkpoint_version === 1) {
+      return { ok: false, result: { ok: false, code: "BRANCH_POINT_INVALID" } };
+    }
+
     return {
       ok: true,
-      runtimeMode: "fork",
+      runtimeMode: continuation === "send" && checkpoint.providerCheckpointId ? "resume" : "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
       expectedWorkingDirectory: checkpoint.effectiveWorkingDirectory,
+      parentProviderCheckpointId: checkpoint.providerCheckpointId,
     };
   }
 
@@ -613,9 +624,10 @@ export async function insertPreparation(
       requestHash: string;
       canonicalUserMessageId: string;
       replacementTargetUserMessageId: string | null;
-      runtimeMode: "new" | "fork";
+      runtimeMode: "new" | "resume" | "fork";
       parentProviderSessionId: string | null;
       expectedWorkingDirectory: string | null;
+      parentProviderCheckpointId?: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       attachments: NativeLiveRuntimeAttachment[];
       prompt: string;
@@ -635,6 +647,7 @@ export async function insertPreparation(
         runtimeMode: input.runtimeMode,
         parentProviderSessionId: input.parentProviderSessionId,
         expectedWorkingDirectory: input.expectedWorkingDirectory,
+        parentProviderCheckpointId: input.parentProviderCheckpointId ?? null,
         executionSelection: input.executionSelection,
         attachments: input.attachments,
         prompt: input.prompt,

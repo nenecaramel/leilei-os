@@ -31,6 +31,7 @@ export function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
     expectedWorkingDirectory: row.expectedWorkingDirectory,
+    parentProviderCheckpointId: row.parentProviderCheckpointId ?? null,
     executionSelection: row.executionSelection === null
       ? null
       : parseNativeLiveExecutionSelection(row.executionSelection),
