@@ -63,8 +63,15 @@ test('Audio/Spotify actual simulator snapshots, compiled actions and non-target 
   audio += '\nextension NativeLiveAudioAttachmentBubble { init(stage6Input: NativeLiveAttachmentPresentationInput, state: NativeLiveAudioPlaybackState) { input = stage6Input; _playback = StateObject(wrappedValue: state) } }\n';
   audio=audio.replace('.onDisappear { playback.deactivate() }','.onDisappear { playback.deactivate() }.onAppear { Stage6Probe.lease = { lease }; Stage6Probe.dismiss = { lease?.cleanup(); lease = nil } }');
   if(process.env.UI_STAGE6_MUTATION==='play-open') audio=audio.replace('Button(action: Stage6Probe.capture("play", scope: probeScope, { playOrPause() }), label:','Button(action: Stage6Probe.capture("play", scope: probeScope, { open() }), label:');
-  if(process.env.UI_STAGE6_MUTATION==='padding') audio=audio.replace('.padding(11)','.padding(12)');
+  if(process.env.UI_STAGE6_MUTATION==='padding') audio=audio.replace('.padding(8)','.padding(9)');
   writeFileSync(path.join(root,'NativeLiveAudioAttachmentBubble.swift'),audio);
+  let user=readFileSync(media+'NativeLiveUserMessageRow.swift','utf8')
+    .replace('.foregroundStyle(.primary)', '.foregroundStyle(.primary).stage6Frame("voice-waveform")')
+    .replace('.foregroundStyle(.secondary)', '.foregroundStyle(.secondary).stage6Frame("voice-chevron")')
+    .replace('.accessibilityElement(children: .ignore)', '.stage6Frame("voice-controls").accessibilityElement(children: .ignore)')
+    .replace('.background(Color.chatSoftFill,in:', '.stage6Frame("voice-bubble").background(Color.chatSoftFill,in:');
+  const anchored=process.env.VOICE_VISUAL_MUTATION==='user-anchor' ? user.replace('Image(systemName: isExpanded ?', 'Spacer(minLength: 0); Image(systemName: isExpanded ?').replace('.frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript), alignment: .trailing)', '.frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript), alignment: .leading)') : user;
+  writeFileSync(path.join(root,'NativeLiveUserMessageRow.swift'),anchored);
   writeFileSync(path.join(root,'NativeLiveAudioPlaybackState.swift'),readFileSync(media+'NativeLiveAudioPlaybackState.swift','utf8').replace(/private\(set\)/g,''));
   writeFileSync(path.join(root,'NativeLiveSpotifyCard.swift'),instrument(readFileSync(media+'NativeLiveSpotifyCard.swift','utf8').replace('image.resizable().scaledToFill()', 'image.resizable().scaledToFill().onAppear { Stage6Probe.coversLoaded += 1 }')));
   cpSync('tests/fixtures/spotify-sdk-output.json',path.join(dir,'ios/LeileiOS/spotify-sdk-output.json'));
@@ -82,8 +89,21 @@ test('Audio/Spotify actual simulator snapshots, compiled actions and non-target 
   const recorded=JSON.parse(readFileSync(path.join(snapshotRoot,'manifest.json'),'utf8'));
   const approved='tests/fixtures/stage6-snapshots/'+device;
   assert.ok(!(process.env.UI_STAGE6_RECORD==='1' && process.env.UI_STAGE6_FOCUS),'Record requires the full matrix');
-  if(process.env.UI_STAGE6_RECORD==='1') { mkdirSync(approved,{recursive:true}); cpSync(snapshotRoot,approved,{recursive:true}); }
-  else { const all=JSON.parse(readFileSync(path.join(approved,'manifest.json'),'utf8')); const expected=process.env.UI_STAGE6_FOCUS ? Object.fromEntries(Object.entries(all).filter(([key])=>key.startsWith(process.env.UI_STAGE6_FOCUS!+'-'))) : all; assert.deepEqual(recorded,expected,'Audio/Spotify approved geometry/static pixels changed'); }
+  const original=JSON.parse(readFileSync(path.join(approved,'manifest.json'),'utf8'));
+  // Every Spotify golden stays pinned to Stage 6. Only these two visuals have new approval.
+  const nonTarget=Object.fromEntries(Object.entries(recorded).filter(([key])=>key.startsWith('spotify-')));
+  assert.deepEqual(nonTarget,Object.fromEntries(Object.entries(original).filter(([key])=>key.startsWith('spotify-') && (!process.env.UI_STAGE6_FOCUS || key.startsWith(process.env.UI_STAGE6_FOCUS+'-')))),'Spotify must remain pixel/frame identical');
+  const visualRoot='tests/fixtures/voice-bubble-snapshots/'+device;
+  const targets=Object.fromEntries(Object.entries(recorded).filter(([key])=>!key.startsWith('spotify-')));
+  if(process.env.UI_STAGE6_RECORD==='1') {
+    mkdirSync(visualRoot,{recursive:true});
+    for(const key of Object.keys(targets)) cpSync(path.join(snapshotRoot,key+'.png'),path.join(visualRoot,key+'.png'));
+    writeFileSync(path.join(visualRoot,'manifest.json'),JSON.stringify(targets,null,2)+'\n');
+  } else {
+    const all=JSON.parse(readFileSync(path.join(visualRoot,'manifest.json'),'utf8'));
+    const expected=process.env.UI_STAGE6_FOCUS ? Object.fromEntries(Object.entries(all).filter(([key])=>key.startsWith(process.env.UI_STAGE6_FOCUS!+'-'))) : all;
+    assert.deepEqual(targets,expected,'Voice/audio approved geometry/static pixels changed');
+  }
   cpSync(snapshotRoot,path.join(dir,'snapshots'),{recursive:true});
  } finally {
   server.kill();

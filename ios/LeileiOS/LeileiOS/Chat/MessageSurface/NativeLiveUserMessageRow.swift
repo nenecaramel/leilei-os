@@ -50,8 +50,8 @@ struct NativeLiveUserMessagePresentationView: View {
     }
     @ViewBuilder private var textBubble: some View {
         if presentation.isVoiceInput {
-            VStack(alignment:.leading,spacing:10) {
-                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)
+            VStack(alignment:.trailing,spacing:10) {
+                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)
                 if isVoiceTranscriptRevealed {
                     NativeLiveVisualNodesView(nodes:presentation.textNodes,role:presentation.role)
                 }
@@ -66,18 +66,18 @@ struct NativeLiveUserMessagePresentationView: View {
 
 private struct NativeLiveVoiceMessageBubbleVisual: View {
     let isExpanded: Bool
+    let transcript: String?
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: "waveform")
                 .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(.primary)
-            Spacer(minLength: 4)
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 68, alignment: .leading)
+        .frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript), alignment: .trailing)
         .frame(height: 21, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isExpanded ? "Voice message, transcript shown" : "Voice message, tap to show transcript")

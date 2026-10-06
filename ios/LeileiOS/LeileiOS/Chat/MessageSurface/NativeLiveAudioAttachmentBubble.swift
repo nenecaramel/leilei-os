@@ -23,14 +23,14 @@ struct NativeLiveAudioAttachmentBubble: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 // Sibling buttons: playing can never open a Quick Look lease.
                 Button { playOrPause() } label: {
                     Group {
                         if uploading || playback.phase == .loading { ProgressView() }
                         else { Image(systemName: playback.phase == .playing ? "pause.fill" : "play.fill") }
                     }
-                    .frame(width: 36, height: 36)
+                    .frame(width: 30, height: 30)
                     .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -38,8 +38,8 @@ struct NativeLiveAudioAttachmentBubble: View {
                 .accessibilityLabel(playback.phase == .playing ? "Pause audio" : "Play audio")
 
                 Button { open() } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        NativeLiveAudioWaveform(progress: playback.progress)
+                    VStack(alignment: .leading, spacing: 2) {
+                        NativeLiveAudioWaveform(progress: playback.progress, heights: waveform)
                         HStack(spacing: 4) {
                             Text(statusLabel)
                             Spacer(minLength: 0)
@@ -61,8 +61,9 @@ struct NativeLiveAudioAttachmentBubble: View {
                     .disabled(uploading || isOpening || playback.phase == .loading)
             }
         }
-        .padding(11)
-        .frame(maxWidth: 280, alignment: .leading)
+        .padding(8)
+        .frame(width: bubbleWidth, alignment: .leading)
+        .animation(.easeInOut(duration: 0.16), value: bubbleWidth)
         .background(Color.chatSoftFill, in: RoundedRectangle(cornerRadius: 18))
         .onDisappear { playback.deactivate() }
         .sheet(item: $lease, onDismiss: { lease?.cleanup(); lease = nil }) {
@@ -70,10 +71,20 @@ struct NativeLiveAudioAttachmentBubble: View {
         }
     }
 
+    private var bubbleWidth: CGFloat {
+        NativeLiveVoiceBubbleGeometry.audioWidth(duration: playback.duration, sizeBytes: input.sizeBytes)
+    }
+
+    private var waveform: [CGFloat] {
+        NativeLiveVoiceBubbleGeometry.waveform(identity: NativeLiveVoiceBubbleGeometry.identity(
+            entityID: input.entityID, sha256: input.sha256, draftID: input.draftID, filename: input.filename), width: bubbleWidth)
+    }
+
     private var statusLabel: String {
         if uploading { return "Uploading…" }
         if playback.phase == .loading { return "Loading…" }
-        guard playback.duration > 0 else { return "Audio" }
+        guard playback.duration > 0 else { return "--:--" }
+        if playback.phase != .playing && playback.phase != .paused { return time(playback.duration) }
         return "\(time(playback.currentTime)) / \(time(playback.duration))"
     }
 
@@ -111,22 +122,20 @@ struct NativeLiveAudioAttachmentBubble: View {
 
 private struct NativeLiveAudioWaveform: View {
     let progress: Double
-    // Stable voice bars, not an amplitude measurement. Only the filled fraction
-    // represents live AVAudioPlayer progress.
-    private let heights: [CGFloat] = [8, 14, 20, 11, 24, 17, 9, 21, 28, 16, 23, 12, 18, 26, 10, 19, 24, 14, 8, 20, 12, 25, 17, 10]
+    let heights: [CGFloat]
     var body: some View {
         GeometryReader { geometry in
-            let spacing: CGFloat = 3
+            let spacing: CGFloat = 2
             let width = max(1, (geometry.size.width - spacing * CGFloat(heights.count - 1)) / CGFloat(heights.count))
             HStack(alignment: .center, spacing: spacing) {
                 ForEach(heights.indices, id: \.self) { index in
-                    Capsule().fill(Color.primary.opacity(Double(index) / Double(heights.count) < progress ? 0.75 : 0.2))
+                    Capsule().fill(Color.primary.opacity(NativeLiveVoiceBubbleGeometry.isFilled(index: index, count: heights.count, progress: progress) ? 0.75 : 0.2))
                         .frame(width: width, height: heights[index])
                 }
             }
-            .frame(height: 28)
+            .frame(height: 22)
         }
-        .frame(height: 28)
+        .frame(height: 22)
         .accessibilityLabel("Playback progress")
         .accessibilityValue("\(Int(progress * 100)) percent")
     }
