@@ -290,4 +290,15 @@ test("Mac restart after committed append with lost response leaves the real remo
   const distinct = [{ ...entries[0], uuid: crypto.randomUUID() }];
   await restarted.append(key, distinct);
   assert.deepEqual(await service.load({ userId: user.id, key: { sessionId: key.sessionId } }), [...entries, ...distinct]);
+  const markerKey = { ...key, sessionId: crypto.randomUUID() };
+  const marker = [{ type: "custom-title", title: "identical marker" }];
+  loseResponse = true;
+  await assert.rejects(restarted.append(markerKey, marker), /response lost/u);
+  loseResponse = false;
+  const markerRestart = new NativeLiveMacProviderSessionStore("https://relay.test", "test-token", fetchImpl, directory);
+  await markerRestart.recoverPendingAppends();
+  assert.deepEqual(await service.load({ userId: user.id, key: { sessionId: markerKey.sessionId } }), marker);
+  await markerRestart.append(markerKey, marker);
+  assert.deepEqual(await service.load({ userId: user.id, key: { sessionId: markerKey.sessionId } }), [...marker, ...marker]);
+
 });

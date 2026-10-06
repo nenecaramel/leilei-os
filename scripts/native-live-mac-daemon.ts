@@ -1,10 +1,10 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import {
   consumeNativeLiveMacMemeGitHubConfig,
   NativeLiveMacMemeSender,
 } from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
 import "dotenv/config";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   NativeLiveMacDaemonLoop,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
@@ -111,18 +111,18 @@ const companionScheduler = new NativeLiveMacCompanionScheduler(
 );
 const claudeTransportKind =
   resolveNativeLiveMacClaudeTransportKind(process.env);
+const providerSessionStore = new NativeLiveMacProviderSessionStore(
+  relayBaseUrl,
+  relayToken,
+  undefined,
+  join(homedir(), ".leileios", "session-store-append-receipts"),
+);
 const workingDirectoryRuntimePool =
   new NativeLiveMacWorkingDirectoryRuntimePool(
     process.env,
     defaultWorkingDirectory,
     undefined,
-    () =>
-      new NativeLiveMacProviderSessionStore(
-        relayBaseUrl,
-        relayToken,
-        undefined,
-        join(homedir(), ".leileios", "session-store-append-receipts"),
-      ),
+    () => providerSessionStore,
     {
       type: "http",
       url: relayBaseUrl + "/internal/native-live-mcp",
@@ -373,6 +373,9 @@ function isWakeTerminalOutcome(
 
 while (!stopping) {
   try {
+    // Restore original append intents before any new SDK query is allowed.
+    // Existing daemon retry/backoff handles an unavailable backend here.
+    await providerSessionStore.recoverPendingAppends();
     const outcome = await loop.runOnce();
     consecutiveWakeErrors = 0;
     const wakeTerminalOutcome =

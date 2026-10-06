@@ -1,4 +1,4 @@
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 type FetchLike = typeof fetch;
@@ -12,11 +12,21 @@ export type NativeLiveMacSessionStoreKey = {
 export type NativeLiveMacSessionStoreEntry =
   Record<string, unknown> & { type: string };
 
+type AppendReceipt = {
+  batchIds: string[];
+  sessionId: string;
+  key: { session_id: string; subpath?: string };
+  entries: NativeLiveMacSessionStoreEntry[];
+  logicalAppendId?: string;
+  order: number;
+};
+
 export class NativeLiveMacProviderSessionStore {
   private readonly baseUrl: string;
+  private operationTail: Promise<void> = Promise.resolve();
   private readonly retryAppendBatches = new Map<
     string,
-    { batchIds: string[]; sessionId: string }
+    AppendReceipt
   >();
 
   constructor(
@@ -34,7 +44,11 @@ export class NativeLiveMacProviderSessionStore {
     }
   }
 
-  async append(
+  append(key: NativeLiveMacSessionStoreKey, entries: NativeLiveMacSessionStoreEntry[], logicalAppendId?: string): Promise<void> {
+    return this.enqueue(() => this.appendOrdered(key, entries, logicalAppendId));
+  }
+
+  private async appendOrdered(
     key: NativeLiveMacSessionStoreKey,
     entries: NativeLiveMacSessionStoreEntry[],
     logicalAppendId?: string,
@@ -46,7 +60,7 @@ export class NativeLiveMacProviderSessionStore {
     const remoteKey = this.remoteKey(key);
     const chunks = chunkAppendEntries(entries);
     const signature = appendSignature(remoteKey, entries, logicalAppendId);
-    const stableIntent = Boolean(logicalAppendId) || entries.some((entry) => typeof entry.uuid === "string" && entry.uuid.trim());
+    const stableIntent = Boolean(logicalAppendId) || entries.every((entry) => typeof entry.uuid === "string" && entry.uuid.trim());
     const inProcess = this.retryAppendBatches.get(signature);
     const recovered = inProcess ? undefined : this.readReceipt(signature);
     if (recovered && !stableIntent) {
@@ -60,9 +74,19 @@ export class NativeLiveMacProviderSessionStore {
       ?? {
         batchIds: chunks.map((_, index) => stableIntent ? stableAppendBatchId(signature, index) : randomUUID()),
         sessionId: remoteKey.session_id,
+        key: remoteKey,
+        entries,
+        ...(logicalAppendId ? { logicalAppendId } : {}),
+        order: this.nextReceiptOrder(),
       };
     if (!pending) this.writeReceipt(signature, receipt);
     this.retryAppendBatches.set(signature, receipt);
+    if (this.receiptDirectory) {
+      // Persist this intent first, then replay all pending intents in original
+      // order. A later append cannot overtake an earlier failed chunk.
+      await this.recoverPendingAppendsOrdered();
+      return;
+    }
 
     for (let index = 0; index < chunks.length; index += 1) {
       await this.post("/append", {
@@ -78,10 +102,31 @@ export class NativeLiveMacProviderSessionStore {
     }
   }
 
+  /** Replay saved operations, never infer retry identity from a new callback. */
+  recoverPendingAppends(): Promise<void> {
+    return this.enqueue(() => this.recoverPendingAppendsOrdered());
+  }
+
+  private async recoverPendingAppendsOrdered(): Promise<void> {
+    const directory = this.scopedReceiptDirectory();
+    if (!directory || !existsSync(directory)) return;
+    const pending = readdirSync(directory).filter((name) => /^[a-f0-9]{64}\.json$/u.test(name))
+      .map((name) => ({ signature: name.slice(0, -5), receipt: this.readReceipt(name.slice(0, -5))! }))
+      .sort((a, b) => a.receipt.order - b.receipt.order);
+    for (const { signature, receipt } of pending) {
+      const chunks = chunkAppendEntries(receipt.entries);
+      if (chunks.length !== receipt.batchIds.length) throw new Error("Durable append chunk boundary mismatch.");
+      for (let index = 0; index < chunks.length; index += 1) {
+        await this.post("/append", { key: receipt.key, append_batch_id: receipt.batchIds[index], entries: chunks[index] });
+      }
+      this.removeReceipt(signature);
+      this.retryAppendBatches.delete(signature);
+    }
+  }
+
   discardPendingAppends(sessionId: string): void {
     // SDK mirror_error proves neither rollback nor non-commit. Durable receipts
     // must survive it; a later exact retry still needs the original chunk IDs.
-    if (this.receiptDirectory) return;
     const normalized = normalizeSessionId(sessionId);
     for (const [signature, pending] of this.retryAppendBatches) {
       if (pending.sessionId === normalized) {
@@ -181,23 +226,42 @@ export class NativeLiveMacProviderSessionStore {
     return data.subkeys as string[];
   }
 
-  private receiptPath(signature: string): string | null {
-    if (!this.receiptDirectory) return null;
-    const scope = createHash("sha256").update(JSON.stringify([this.baseUrl, this.token])).digest("hex");
-    return join(this.receiptDirectory, scope, `${signature}.json`);
+  private enqueue(operation: () => Promise<void>): Promise<void> {
+    const result = this.operationTail.then(operation);
+    this.operationTail = result.then(() => undefined, () => undefined);
+    return result;
   }
 
-  private readReceipt(signature: string): { batchIds: string[]; sessionId: string } | undefined {
+  private nextReceiptOrder(): number {
+    const directory = this.scopedReceiptDirectory();
+    if (!directory || !existsSync(directory)) return 1;
+    const orders = readdirSync(directory).filter((name) => /^[a-f0-9]{64}\.json$/u.test(name))
+      .map((name) => this.readReceipt(name.slice(0, -5))!.order);
+    return Math.max(0, ...orders) + 1;
+  }
+
+  private scopedReceiptDirectory(): string | null {
+    if (!this.receiptDirectory) return null;
+    const scope = createHash("sha256").update(JSON.stringify([this.baseUrl, this.token])).digest("hex");
+    return join(this.receiptDirectory, scope);
+  }
+
+  private receiptPath(signature: string): string | null {
+    const directory = this.scopedReceiptDirectory();
+    return directory ? join(directory, `${signature}.json`) : null;
+  }
+
+  private readReceipt(signature: string): AppendReceipt | undefined {
     const path = this.receiptPath(signature);
     if (!path || !existsSync(path)) return undefined;
     const receipt = JSON.parse(readFileSync(path, "utf8"));
-    if (!Array.isArray(receipt.batchIds) || receipt.batchIds.some((id: unknown) => typeof id !== "string" || !/^[a-f0-9-]{36}$/u.test(id)) || typeof receipt.sessionId !== "string") {
+    if (!Array.isArray(receipt.batchIds) || receipt.batchIds.some((id: unknown) => typeof id !== "string" || !/^[a-f0-9-]{36}$/u.test(id)) || typeof receipt.sessionId !== "string" || receipt.key?.session_id !== receipt.sessionId || !Array.isArray(receipt.entries) || !Number.isSafeInteger(receipt.order) || receipt.order < 1 || appendSignature(receipt.key, receipt.entries, receipt.logicalAppendId) !== signature) {
       throw new Error("Invalid durable SessionStore append receipt.");
     }
     return receipt;
   }
 
-  private writeReceipt(signature: string, receipt: { batchIds: string[]; sessionId: string }): void {
+  private writeReceipt(signature: string, receipt: AppendReceipt): void {
     const path = this.receiptPath(signature);
     if (!path) return;
     const directory = join(path, "..");
