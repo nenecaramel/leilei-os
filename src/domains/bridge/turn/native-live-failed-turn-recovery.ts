@@ -1,8 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
-  conversationMessages,
-  conversations,
   nativeLiveRuntimeEvents,
   nativeLiveRuntimeInteractions,
   nativeLiveTurnPreparations,
@@ -12,26 +10,16 @@ import {
   type NativeLiveNormalizedEvent,
 } from "../../conversation/native-live-conversation-orchestrator.js";
 import {
-  DrizzleNativeLiveConversationRepository,
-} from "../../conversation/native-live-conversation-repository.js";
-import {
   withCanonicalQuestionActivity,
 } from "../../conversation/native-live-question-activity.js";
 import type {
   NativeLiveProviderSessionStoreService,
 } from "../provider-session/native-live-provider-session-store.js";
-import {
-  hashJson,
-  RESULT_HASH_VERSION,
-} from "./turn-repository/records.js";
+import type {
+  DrizzleNativeLiveBackendTurnPort,
+} from "./native-live-backend-turn-repository.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
-type Transaction = Parameters<Database["transaction"]>[0] extends (
-  tx: infer T,
-) => unknown
-  ? T
-  : never;
-
 
 export class NativeLiveFailedTurnRecoveryError extends Error {
   constructor(
@@ -53,9 +41,10 @@ export type NativeLiveFailedTurnRecoveryInspection = {
   prepareId: string;
   conversationId: string;
   userMessageId: string;
+  operation: "edit";
   providerSessionId: string;
   expectedWorkingDirectory: string | null;
-  failureCode: string;
+  failureCode: "RUNTIME_UNAVAILABLE";
   eventCount: number;
   recoverable: boolean;
 };
@@ -67,6 +56,10 @@ export class NativeLiveFailedTurnRecoveryService {
       NativeLiveProviderSessionStoreService,
       "getStatus" | "load"
     >,
+    private readonly turnPort: Pick<
+      DrizzleNativeLiveBackendTurnPort,
+      "getPreparation" | "recoverFinalizedFailureSuccess"
+    >,
   ) {}
 
   async inspect(input: {
@@ -74,18 +67,17 @@ export class NativeLiveFailedTurnRecoveryService {
     prepareId: string;
   }): Promise<NativeLiveFailedTurnRecoveryInspection> {
     const snapshot = await this.readSnapshot(
-      this.db,
       input.userId,
       input.prepareId,
-      false,
     );
     return {
       prepareId: snapshot.prepareId,
       conversationId: snapshot.conversationId,
       userMessageId: snapshot.userMessageId,
+      operation: "edit",
       providerSessionId: snapshot.providerSessionId,
       expectedWorkingDirectory: snapshot.expectedWorkingDirectory,
-      failureCode: snapshot.failureCode,
+      failureCode: "RUNTIME_UNAVAILABLE",
       eventCount: snapshot.events.length,
       recoverable: snapshot.recoverable,
     };
@@ -100,22 +92,20 @@ export class NativeLiveFailedTurnRecoveryService {
     providerCheckpointId: string;
     conversationId: string;
   }> {
-    const initial = await this.readSnapshot(
-      this.db,
+    const snapshot = await this.readSnapshot(
       input.userId,
       input.prepareId,
-      false,
     );
-    if (!initial.recoverable) {
+    if (!snapshot.recoverable) {
       throw new NativeLiveFailedTurnRecoveryError(
         "NOT_RECOVERABLE",
-        "Failed turn does not contain a recoverable successful runtime result.",
+        "Failed edit does not contain one recoverable successful runtime result.",
       );
     }
 
     const status = await this.sessionStore.getStatus({
       userId: input.userId,
-      sessionId: initial.providerSessionId,
+      sessionId: snapshot.providerSessionId,
     });
     if (status !== "complete") {
       throw new NativeLiveFailedTurnRecoveryError(
@@ -126,10 +116,10 @@ export class NativeLiveFailedTurnRecoveryService {
 
     const transcript = await this.sessionStore.load({
       userId: input.userId,
-      key: { sessionId: initial.providerSessionId },
+      key: { sessionId: snapshot.providerSessionId },
     });
     const providerCheckpointId =
-      completedCheckpointId(transcript ?? [], initial.finalText);
+      completedCheckpointId(transcript ?? [], snapshot.finalText);
     if (!providerCheckpointId) {
       throw new NativeLiveFailedTurnRecoveryError(
         "CHECKPOINT_NOT_FOUND",
@@ -137,267 +127,134 @@ export class NativeLiveFailedTurnRecoveryService {
       );
     }
 
-    return this.db.transaction(
-      async (transaction) => {
-        const snapshot = await this.readSnapshot(
-          transaction as Transaction,
-          input.userId,
-          input.prepareId,
-          true,
-        );
-        if (
-          snapshot.providerSessionId !== initial.providerSessionId
-          || snapshot.finalText !== initial.finalText
-        ) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "CONFLICT",
-            "Failed turn changed while recovery was being prepared.",
-          );
-        }
+    const canonical = canonicalizeNativeLiveEvents(snapshot.events);
+    if (canonical.error || canonical.blocks.length === 0) {
+      throw new NativeLiveFailedTurnRecoveryError(
+        "NOT_RECOVERABLE",
+        "Failed edit events cannot be projected into a successful assistant message.",
+      );
+    }
 
-        const [conversation] = await transaction
+    const questionInteractions = canonical.blocks.some(
+      (block) =>
+        block.kind === "tool_use"
+        && block.payload?.tool_name === "AskUserQuestion",
+    )
+      ? await this.db
           .select({
-            currentHeadMessageId: conversations.currentHeadMessageId,
+            kind: nativeLiveRuntimeInteractions.kind,
+            status: nativeLiveRuntimeInteractions.status,
+            request: nativeLiveRuntimeInteractions.request,
+            response: nativeLiveRuntimeInteractions.response,
           })
-          .from(conversations)
+          .from(nativeLiveRuntimeInteractions)
           .where(
             and(
-              eq(conversations.userId, input.userId),
-              eq(conversations.id, snapshot.conversationId),
-              eq(conversations.origin, "native_live"),
-              eq(conversations.lifecycleStatus, "active"),
+              eq(nativeLiveRuntimeInteractions.userId, input.userId),
+              eq(
+                nativeLiveRuntimeInteractions.prepareId,
+                snapshot.prepareId,
+              ),
+              eq(nativeLiveRuntimeInteractions.kind, "question"),
             ),
           )
-          .for("update")
-          .limit(1);
-        if (!conversation) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "NOT_FOUND",
-            "Conversation was not found.",
-          );
-        }
+      : [];
+    const blocks = withCanonicalQuestionActivity(
+      canonical.blocks,
+      questionInteractions,
+    );
 
-        const [preparedUser] = await transaction
-          .select({
-            id: conversationMessages.id,
-            parentMessageId: conversationMessages.parentMessageId,
-            role: conversationMessages.role,
-          })
-          .from(conversationMessages)
-          .where(
-            and(
-              eq(conversationMessages.userId, input.userId),
-              eq(conversationMessages.conversationId, snapshot.conversationId),
-              eq(conversationMessages.id, snapshot.userMessageId),
-            ),
-          )
-          .limit(1);
-        if (
-          !preparedUser
-          || preparedUser.role !== "user"
-          || preparedUser.parentMessageId !== conversation.currentHeadMessageId
-        ) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "STALE_HEAD",
-            "Prepared user message no longer branches from the current head.",
-          );
-        }
+    const preparation = await this.turnPort.getPreparation({
+      userId: input.userId,
+      prepareId: input.prepareId,
+    });
+    if (
+      !preparation
+      || preparation.operation !== "edit"
+      || preparation.canonicalUserMessageId !== snapshot.userMessageId
+      || preparation.conversationId !== snapshot.conversationId
+    ) {
+      throw new NativeLiveFailedTurnRecoveryError(
+        "CONFLICT",
+        "Failed edit preparation changed before recovery.",
+      );
+    }
 
-        const [existingAssistant] = await transaction
-          .select({ id: conversationMessages.id })
-          .from(conversationMessages)
-          .where(
-            and(
-              eq(conversationMessages.userId, input.userId),
-              eq(conversationMessages.conversationId, snapshot.conversationId),
-              eq(conversationMessages.parentMessageId, snapshot.userMessageId),
-              eq(conversationMessages.role, "assistant"),
-            ),
-          )
-          .limit(1);
-        if (existingAssistant) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "CONFLICT",
-            "Failed turn already has an assistant child.",
-          );
-        }
-
-        const canonical = canonicalizeNativeLiveEvents(snapshot.events);
-        if (canonical.error || canonical.blocks.length === 0) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "NOT_RECOVERABLE",
-            "Failed turn events cannot be projected into a successful assistant message.",
-          );
-        }
-
-        const questionInteractions = canonical.blocks.some(
-          (block) =>
-            block.kind === "tool_use"
-            && block.payload?.tool_name === "AskUserQuestion",
-        )
-          ? await transaction
-              .select({
-                kind: nativeLiveRuntimeInteractions.kind,
-                status: nativeLiveRuntimeInteractions.status,
-                request: nativeLiveRuntimeInteractions.request,
-                response: nativeLiveRuntimeInteractions.response,
-              })
-              .from(nativeLiveRuntimeInteractions)
-              .where(
-                and(
-                  eq(nativeLiveRuntimeInteractions.userId, input.userId),
-                  eq(nativeLiveRuntimeInteractions.prepareId, snapshot.prepareId),
-                  eq(nativeLiveRuntimeInteractions.kind, "question"),
-                ),
-              )
-          : [];
-        const blocks = withCanonicalQuestionActivity(
-          canonical.blocks,
-          questionInteractions,
-        );
-
-        const repository =
-          new DrizzleNativeLiveConversationRepository(
-            transaction as Transaction,
-          );
-        const assistantMessage = await repository.appendAssistantMessage({
-          userId: input.userId,
-          conversationId: snapshot.conversationId,
-          parentMessageId: snapshot.userMessageId,
-        });
-        for (const [ordinal, block] of blocks.entries()) {
-          await repository.appendContentBlock({
-            userId: input.userId,
-            conversationId: snapshot.conversationId,
-            messageId: assistantMessage.id,
-            ordinal,
-            block,
-          });
-        }
-
-        const runtimeMetadata = {
-          provider_checkpoint_version: 1,
+    const result =
+      await this.turnPort.recoverFinalizedFailureSuccess({
+        userId: input.userId,
+        preparation,
+        providerSessionId: snapshot.providerSessionId,
+        effectiveWorkingDirectory:
+          snapshot.expectedWorkingDirectory,
+        providerCheckpointId,
+        blocks,
+        normalizedEvents: snapshot.events,
+        runtimeMetadata: {
           recovered_failed_turn: true,
           recovered_prepare_id: snapshot.prepareId,
-        };
-        await repository.bindProviderCheckpoint({
-          userId: input.userId,
-          conversationId: snapshot.conversationId,
-          canonicalMessageId: assistantMessage.id,
-          checkpoint: {
-            provider: "claude_code",
-            providerSessionId: snapshot.providerSessionId,
-            effectiveWorkingDirectory:
-              snapshot.expectedWorkingDirectory,
-            providerCheckpointId,
-            runtimeMetadata,
-          },
-        });
-        await repository.setCurrentHead({
-          userId: input.userId,
-          conversationId: snapshot.conversationId,
-          messageId: assistantMessage.id,
-        });
+        },
+      });
 
-        const recoveredAt = new Date();
-        const resultHash = hashJson(RESULT_HASH_VERSION, {
-          status: "success",
-          providerSessionId: snapshot.providerSessionId,
-          effectiveWorkingDirectory: snapshot.expectedWorkingDirectory,
-          providerCheckpointId,
-          normalizedEvents: snapshot.events,
-          outputAttachmentIds: [],
-          runtimeMetadata,
-        });
-        const updated = await transaction
-          .update(nativeLiveTurnPreparations)
-          .set({
-            status: "finalized_success",
-            resultHash,
-            providerSessionId: snapshot.providerSessionId,
-            runtimeMetadata,
-            assistantMessageId: assistantMessage.id,
-            failureCode: null,
-            finalizedAt: recoveredAt,
-            updatedAt: recoveredAt,
-          })
-          .where(
-            and(
-              eq(nativeLiveTurnPreparations.userId, input.userId),
-              eq(nativeLiveTurnPreparations.id, snapshot.prepareId),
-              eq(nativeLiveTurnPreparations.status, "finalized_failure"),
-              eq(nativeLiveTurnPreparations.failureCode, "RUNTIME_UNAVAILABLE"),
-            ),
-          )
-          .returning({ id: nativeLiveTurnPreparations.id });
-        if (updated.length !== 1) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "CONFLICT",
-            "Failed turn status changed before recovery commit.",
-          );
-        }
+    if (!result.ok) {
+      throw new NativeLiveFailedTurnRecoveryError(
+        result.code === "FINALIZE_CONFLICT"
+          ? "STALE_HEAD"
+          : "CONFLICT",
+        result.code === "FINALIZE_CONFLICT"
+          ? "Conversation advanced or the edited branch is no longer recoverable."
+          : "Canonical failed edit recovery could not be committed.",
+      );
+    }
+    if (result.outcome === "wake_discarded" || !result.record) {
+      throw new NativeLiveFailedTurnRecoveryError(
+        "CONFLICT",
+        "Failed edit recovery returned an invalid canonical outcome.",
+      );
+    }
 
-        return {
-          assistantMessageId: assistantMessage.id,
-          providerSessionId: snapshot.providerSessionId,
-          providerCheckpointId,
-          conversationId: snapshot.conversationId,
-        };
-      },
-      { isolationLevel: "serializable" },
-    );
+    return {
+      assistantMessageId: result.record.assistantMessage.id,
+      providerSessionId: snapshot.providerSessionId,
+      providerCheckpointId,
+      conversationId: snapshot.conversationId,
+    };
   }
 
   private async readSnapshot(
-    executor: Database | Transaction,
     userId: string,
     prepareId: string,
-    lock: boolean,
   ): Promise<{
     prepareId: string;
     conversationId: string;
     userMessageId: string;
     expectedWorkingDirectory: string | null;
-    failureCode: string;
     providerSessionId: string;
     finalText: string;
     events: NativeLiveNormalizedEvent[];
     recoverable: boolean;
   }> {
-    const selection = {
-      id: nativeLiveTurnPreparations.id,
-      conversationId: nativeLiveTurnPreparations.conversationId,
-      canonicalUserMessageId:
-        nativeLiveTurnPreparations.canonicalUserMessageId,
-      expectedWorkingDirectory:
-        nativeLiveTurnPreparations.expectedWorkingDirectory,
-      status: nativeLiveTurnPreparations.status,
-      operation: nativeLiveTurnPreparations.operation,
-      failureCode: nativeLiveTurnPreparations.failureCode,
-    };
-    const rows = lock
-      ? await executor
-          .select(selection)
-          .from(nativeLiveTurnPreparations)
-          .where(
-            and(
-              eq(nativeLiveTurnPreparations.userId, userId),
-              eq(nativeLiveTurnPreparations.id, prepareId),
-            ),
-          )
-          .for("update")
-          .limit(1)
-      : await executor
-          .select(selection)
-          .from(nativeLiveTurnPreparations)
-          .where(
-            and(
-              eq(nativeLiveTurnPreparations.userId, userId),
-              eq(nativeLiveTurnPreparations.id, prepareId),
-            ),
-          )
-          .limit(1);
-    const row = rows[0];
+    const [row] = await this.db
+      .select({
+        id: nativeLiveTurnPreparations.id,
+        conversationId: nativeLiveTurnPreparations.conversationId,
+        canonicalUserMessageId:
+          nativeLiveTurnPreparations.canonicalUserMessageId,
+        expectedWorkingDirectory:
+          nativeLiveTurnPreparations.expectedWorkingDirectory,
+        status: nativeLiveTurnPreparations.status,
+        operation: nativeLiveTurnPreparations.operation,
+        failureCode: nativeLiveTurnPreparations.failureCode,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, userId),
+          eq(nativeLiveTurnPreparations.id, prepareId),
+        ),
+      )
+      .limit(1);
+
     if (!row || !row.canonicalUserMessageId) {
       throw new NativeLiveFailedTurnRecoveryError(
         "NOT_FOUND",
@@ -406,16 +263,16 @@ export class NativeLiveFailedTurnRecoveryService {
     }
     if (
       row.status !== "finalized_failure"
-      || row.operation !== "send"
+      || row.operation !== "edit"
       || row.failureCode !== "RUNTIME_UNAVAILABLE"
     ) {
       throw new NativeLiveFailedTurnRecoveryError(
         "NOT_RECOVERABLE",
-        "Only failed foreground send turns with RUNTIME_UNAVAILABLE are recoverable.",
+        "Only failed edit turns with RUNTIME_UNAVAILABLE are recoverable by this tool.",
       );
     }
 
-    const eventRows = await executor
+    const eventRows = await this.db
       .select({
         eventType: nativeLiveRuntimeEvents.eventType,
         providerSessionId:
@@ -430,6 +287,7 @@ export class NativeLiveFailedTurnRecoveryService {
         ),
       )
       .orderBy(asc(nativeLiveRuntimeEvents.sequence));
+
     const events: NativeLiveNormalizedEvent[] = eventRows.map((event) => ({
       type: event.eventType,
       ...(event.providerSessionId
@@ -447,6 +305,8 @@ export class NativeLiveFailedTurnRecoveryService {
       typeof terminalResult?.payload?.final_text === "string"
         ? terminalResult.payload.final_text.trim()
         : "";
+    const terminalSuccess =
+      terminalResult?.payload?.status === "success";
     const hasError = eventRows.some(
       (event) =>
         event.eventType === "error"
@@ -461,13 +321,12 @@ export class NativeLiveFailedTurnRecoveryService {
       conversationId: row.conversationId,
       userMessageId: row.canonicalUserMessageId,
       expectedWorkingDirectory: row.expectedWorkingDirectory,
-      failureCode: row.failureCode,
       providerSessionId,
       finalText,
       events,
       recoverable:
         providerSessionId.length > 0
-        && resultEvents.length >= 1
+        && terminalSuccess
         && finalText.length > 0
         && !hasError
         && !events.some((event) => event.type === "attachment"),
