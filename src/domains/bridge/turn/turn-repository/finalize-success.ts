@@ -70,7 +70,12 @@ export async function finalizeSuccess(
       effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
       normalizedEvents: input.normalizedEvents,
       outputAttachmentIds: input.outputAttachmentIds,
-      outputAttachmentMetadata: input.outputAttachmentMetadata,
+      ...(input.outputAttachmentMetadata?.length
+        ? {
+            outputAttachmentMetadata:
+              input.outputAttachmentMetadata,
+          }
+        : {}),
       ...(input.runtimeMetadata
         ? { runtimeMetadata: input.runtimeMetadata }
         : {}),
