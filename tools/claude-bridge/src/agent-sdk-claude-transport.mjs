@@ -464,6 +464,13 @@ function sdkResultFailed(message) {
   return typeof message.subtype === "string" && message.subtype !== "success";
 }
 
+function isClaudeCodeTeardownExit(cause) {
+  return cause instanceof Error
+    && /^Claude Code process exited with code \d+$/u.test(
+      cause.message,
+    );
+}
+
 function sdkMirrorFailed(message) {
   return message?.subtype === "mirror_error";
 }
@@ -1808,6 +1815,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       parentProviderSessionId,
     });
     let providerSessionId = null;
+    let terminalResult = null;
     let terminalFailure = null;
     let rawContextUsage = null;
     let contextUsageError = null;
@@ -1886,6 +1894,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           }
         }
 
+        if (message?.type === "result") {
+          terminalResult = message;
+        }
         if (sdkResultFailed(message)) {
           terminalFailure = message;
         }
@@ -1908,28 +1919,46 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         }
       }
     } catch (cause) {
-      const completionState =
-        await this.#completePortability(
-          providerSessionId,
-          false,
+      const terminalSuccess =
+        terminalResult?.subtype === "success"
+        && terminalResult.is_error !== true
+        && !terminalFailure
+        && !this.abortRequested
+        && isClaudeCodeTeardownExit(cause);
+      if (!terminalSuccess) {
+        const completionState =
+          await this.#completePortability(
+            providerSessionId,
+            false,
+            mirrorFailureReason,
+            mode === "resume" && portability.canComplete,
+          );
+        const health = sessionStoreHealthSnapshot({
+          configured: Boolean(this.sessionStore),
+          mode,
+          cwd: this.cwd,
+          sessionId: providerSessionId,
+          parentSessionId: parentProviderSessionId,
+          portability,
+          completion: completionState,
           mirrorFailureReason,
-          mode === "resume" && portability.canComplete,
-        );
-      const health = sessionStoreHealthSnapshot({
-        configured: Boolean(this.sessionStore),
-        mode,
-        cwd: this.cwd,
-        sessionId: providerSessionId,
-        parentSessionId: parentProviderSessionId,
-        portability,
-        completion: completionState,
-        mirrorFailureReason,
-      });
-      if (this.abortRequested) {
+        });
+        if (this.abortRequested) {
+          throw runtimeError(
+            "Claude Agent SDK turn was aborted.",
+            {
+              runtimeCode: "ABORTED",
+              cause,
+              events: parsedEvents,
+              normalizedEvents,
+              sessionStoreObservability: health,
+            },
+          );
+        }
         throw runtimeError(
-          "Claude Agent SDK turn was aborted.",
+          `Claude Agent SDK query failed: ${cause instanceof Error ? cause.message : String(cause)}`,
           {
-            runtimeCode: "ABORTED",
+            runtimeCode: "CLAUDE_PROCESS_FAILED",
             cause,
             events: parsedEvents,
             normalizedEvents,
@@ -1937,16 +1966,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           },
         );
       }
-      throw runtimeError(
-        `Claude Agent SDK query failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-        {
-          runtimeCode: "CLAUDE_PROCESS_FAILED",
-          cause,
-          events: parsedEvents,
-          normalizedEvents,
-          sessionStoreObservability: health,
-        },
-      );
+      // Preserve an authoritative successful result through the known
+      // Claude Code non-zero teardown quirk. Mirror/checkpoint durability
+      // checks below still decide whether the turn can commit.
     } finally {
       if (this.activeQuery === activeQuery) {
         this.activeQuery = null;

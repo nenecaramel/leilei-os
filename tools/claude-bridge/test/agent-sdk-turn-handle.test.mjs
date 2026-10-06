@@ -113,6 +113,68 @@ test("turn handle preserves terminal success when the SDK process exits during t
   assert.equal(result.result?.result, "READY");
 });
 
+test("turn handle keeps session-limit result fatal even when subtype is success", async () => {
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-session-limit",
+        };
+        yield {
+          type: "rate_limit_event",
+          session_id: "provider-session-limit",
+          rate_limit_info: {
+            status: "rejected",
+            rateLimitType: "five_hour",
+            resetsAt: 1_800_000_000,
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: true,
+          session_id: "provider-session-limit",
+          result: "You've hit your session limit",
+        };
+        throw new Error("Claude Code process exited with code 1");
+      },
+    }),
+  });
+
+  await assert.rejects(
+    handle.start(),
+    (error) => error.runtimeCode === "CLAUDE_PROCESS_FAILED",
+  );
+});
+
+test("turn handle does not mask arbitrary errors after terminal success", async () => {
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        for (const message of successMessages("provider-post-success-bug")) {
+          yield message;
+        }
+        throw new Error("unexpected host callback failure");
+      },
+    }),
+  });
+
+  await assert.rejects(
+    handle.start(),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /unexpected host callback failure/u.test(error.message),
+  );
+});
+
 test("turn handle forwards bidirectional query options without owning permission policy", async () => {
   let call;
   const canUseTool = async (_toolName, toolInput) => ({
