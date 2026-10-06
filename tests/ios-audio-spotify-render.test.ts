@@ -86,6 +86,7 @@ test('Audio/Spotify actual simulator snapshots, compiled actions and non-target 
   const container=spawnSync('xcrun',['simctl','get_app_container',sim,bundle,'data'],{encoding:'utf8'}); assert.equal(container.status,0);
   const snapshotRoot=path.join(container.stdout.trim(),'Documents/Stage6Snapshots');
   const device=output.includes('device=iPad')?'ipad':'iphone';
+  cpSync(snapshotRoot,path.join(dir,'snapshots'),{recursive:true});
   const recorded=JSON.parse(readFileSync(path.join(snapshotRoot,'manifest.json'),'utf8'));
   const approved='tests/fixtures/stage6-snapshots/'+device;
   assert.ok(!(process.env.UI_STAGE6_RECORD==='1' && process.env.UI_STAGE6_FOCUS),'Record requires the full matrix');
@@ -104,7 +105,6 @@ test('Audio/Spotify actual simulator snapshots, compiled actions and non-target 
     const expected=process.env.UI_STAGE6_FOCUS ? Object.fromEntries(Object.entries(all).filter(([key])=>key.startsWith(process.env.UI_STAGE6_FOCUS!+'-'))) : all;
     assert.deepEqual(targets,expected,'Voice/audio approved geometry/static pixels changed');
   }
-  cpSync(snapshotRoot,path.join(dir,'snapshots'),{recursive:true});
  } finally {
   server.kill();
   spawnSync('xcrun',['simctl','uninstall',sim,bundle]);

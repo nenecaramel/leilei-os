@@ -13,6 +13,7 @@ struct NativeLiveAssistantTurnRow: View {
     var body: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             activityArea
+            spotifyResultArea
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
             MindWriteIndicator(items:mindWrites)
             AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)
@@ -35,6 +36,12 @@ struct NativeLiveAssistantTurnRow: View {
                 onResolveInteraction:onResolveInteraction)
         } else if let timestamp = turn.timestamp {
             Text(MessageTimestampFormatter.string(from:timestamp)).font(.system(size:13.5)).foregroundStyle(.secondary)
+        }
+    }
+    @ViewBuilder private var spotifyResultArea: some View {
+        let items = NativeLiveSpotifyResultSurfaceProjector.project(tools: turn.activityProjection.tools)
+        if !items.isEmpty {
+            NativeLiveSpotifyResultSurface(items: items)
         }
     }
     private var mindWrites: [MindWriteIndicatorItem] {

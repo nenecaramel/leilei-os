@@ -1,0 +1,16 @@
+{
+  "ref": "41bf880f24a5d42dd48fb39603c47080b3ec75bd",
+  "sha256": {
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Lifecycle.swift": "cf955130eb1e663f3d0cbd20f4f41cae87b5d476f7a2d75f4e6b2ae057c4ef88",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Questions.swift": "5412044ef4386233aabe0a39a945c4e16b6e5fff67caade42592f3a615a7a24f",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tasks.swift": "eb3fb46abbf09f80e0dbe1219e8b9319230416394fe4433c27bb152f9217e53b",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tools.swift": "826e809807557f90469b21c2442302e020ab9bae8e01c76fc9bc7ee41fe1f89a",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection.swift": "a4fcdb17097d15e809593dbe5f58c8fcc5675a54db057dfea161723c9e27c6b0",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAssistantTurnPresentation.swift": "d0e1f6a1dfc1c5b9c45c69f9e9b95a07aa78fb797ec3dd9ee0e3bfc72558db68",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveInteractions.swift": "ef2a41a31d11f4ceddca4fa050d5923ec7ebc741e22b5effc0c50d5c72ca45ce",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyPresentation.swift": "6a4de7a315406ce3a72ed72a4a3dfdcef9120f1b9f438075aa9f906a4f569ccb",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyCard.swift": "e09a6002e6cf8ac083e4ee0ee490871fc870ffdb1de240530d68a0593a983875",
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioPlaybackState.swift": "67d4e73b131341624084315a5f812a000069a7fa2f34bc9bd7fcfef49a1af376",
+    "ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift": "9907eb5c2d0913cfe9fac1dd4aade82e121aa02cf27784c6974543dc1df463b0"
+  }
+}

@@ -1065,22 +1065,22 @@
         16,
         78,
         358,
-        244
+        285
       ],
       "details" : [
         348,
-        87,
+        271,
         15,
         15
       ],
       "url-track 0" : [
         27,
-        110,
+        294,
         336,
         60
       ]
     },
-    "staticSHA256" : "c161ad200dcba7a46853242f4a86411f3533df6fa60f6613077b8ef3553d8913"
+    "staticSHA256" : "942b0db300f93f616f41a22ee7fa226cce13aa7adf0d1176f93431163df4a0f8"
   },
   "spotify-permission-light" : {
     "frames" : {
@@ -1088,21 +1088,21 @@
         16,
         78,
         358,
-        244
+        285
       ],
       "details" : [
         348,
-        87,
+        271,
         15,
         15
       ],
       "url-track 0" : [
         27,
-        110,
+        294,
         336,
         60
       ]
     },
-    "staticSHA256" : "2bfb3431d5a1a04d055fc3d08123e142de8a75e4dced7ad650ba6ca772fa2bab"
+    "staticSHA256" : "8c2a22680276f8fbf8c35f5d93791d360bcbc46f902a130545edfc3f3c2bfafc"
   }
 }
