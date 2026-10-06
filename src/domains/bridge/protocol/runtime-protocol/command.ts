@@ -5,7 +5,6 @@ import {
 } from "../../turn/native-live-execution-selection.js";
 import {
   type NativeLiveRuntimeCommand,
-  NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
   NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION,
   type NativeLiveRuntimeAttachment,
 } from "./types.js";
@@ -37,22 +36,17 @@ export function parseNativeLiveRuntimeCommand(
     "prompt",
   ], [
     "execution_selection",
-    "workspace_id",
-    "expected_workspace_root",
+    "expected_working_directory",
     "attachments",
+    "output_attachments_enabled",
   ]);
 
+  if (body.output_attachments_enabled !== undefined && typeof body.output_attachments_enabled !== "boolean") {
+    throw new NativeLiveRuntimeProtocolError("Output attachment capability must be boolean.");
+  }
   const protocolVersion = parseProtocolVersion(
     body.protocol_version,
   );
-  if (
-    protocolVersion === NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
-    && body.attachments !== undefined
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "Runtime protocol v1 does not support attachments.",
-    );
-  }
   if (body.dispatch_target !== "claude_code") {
     throw new NativeLiveRuntimeProtocolError("Runtime command target must be Claude Code.");
   }
@@ -69,17 +63,13 @@ export function parseNativeLiveRuntimeCommand(
     body.parent_provider_session_id === null
       ? null
       : requireNonblank(body.parent_provider_session_id, "parent_provider_session_id");
-  const workspaceId =
-    body.workspace_id === undefined || body.workspace_id === null
-      ? null
-      : requireUuid(body.workspace_id, "workspace_id");
-  const expectedWorkspaceRoot =
-    body.expected_workspace_root === undefined
-      || body.expected_workspace_root === null
+  const expectedWorkingDirectory =
+    body.expected_working_directory === undefined
+      || body.expected_working_directory === null
       ? null
       : requireNonblank(
-          body.expected_workspace_root,
-          "expected_workspace_root",
+          body.expected_working_directory,
+          "expected_working_directory",
         );
 
   if (runtimeMode === "new" && parentProviderSessionId !== null) {
@@ -100,6 +90,7 @@ export function parseNativeLiveRuntimeCommand(
 
   return {
     protocol_version: protocolVersion,
+    ...(body.output_attachments_enabled !== undefined ? { output_attachments_enabled: body.output_attachments_enabled as boolean } : {}),
     dispatch_target: "claude_code",
     prepare_id: requireUuid(body.prepare_id, "prepare_id"),
     request_id: requireUuid(body.request_id, "request_id"),
@@ -122,8 +113,7 @@ export function parseNativeLiveRuntimeCommand(
           ),
     runtime_mode: runtimeMode,
     parent_provider_session_id: parentProviderSessionId,
-    workspace_id: workspaceId,
-    expected_workspace_root: expectedWorkspaceRoot,
+    expected_working_directory: expectedWorkingDirectory,
     execution_selection:
       body.execution_selection === undefined
         || body.execution_selection === null

@@ -80,7 +80,7 @@ test("internal relay reserve and result endpoints preserve listener ownership da
           body: JSON.stringify({
             listener_instance_id: listenerId,
             result: {
-              protocol_version: 1,
+              protocol_version: 4,
               prepare_id: prepareId,
               request_id: requestId,
               conversation_id: conversationId,

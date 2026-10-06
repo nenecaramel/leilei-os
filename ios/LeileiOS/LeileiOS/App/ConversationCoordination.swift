@@ -384,8 +384,6 @@ extension AppModel {
             nativeLiveHistorySnapshot = nil
             nativeLiveRuntimeMetadata =
                 nativeLiveRuntimeMetadataByConversationID[conversationID]
-            activeNativeLiveWorkspaceID = nil
-            activeNativeLiveWorkspaceRoot = nil
             chatSyncState = .idle
         }
 
@@ -784,8 +782,6 @@ extension AppModel {
         nativeLiveCurrentPath = nil
         nativeLiveHistorySnapshot = nil
         nativeLiveRuntimeMetadata = nil
-        activeNativeLiveWorkspaceID = nil
-        activeNativeLiveWorkspaceRoot = nil
         chatSyncState = .idle
         UserDefaults.standard.removeObject(
             forKey: Self.activeNativeLiveConversationDefaultsKey

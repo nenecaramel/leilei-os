@@ -319,8 +319,7 @@ function externalSessionRequestPayload(input: {
     gitBranch: string | null;
     lastModified: number | null;
     createdAt: number | null;
-    workspaceId: string | null;
-    workspaceRoot: string;
+    workingDirectory: string;
   }>;
   createdAt: string;
   completedAt: string | null;

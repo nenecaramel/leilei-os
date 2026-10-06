@@ -25,7 +25,7 @@ test('actual hosted ChatView actions retain state, identity, attachments, voice 
       writeFileSync(p, s.slice(0, open + 1) + '\n' + body + '\n' + s.slice(end - 1));
     }
     for (const name of ['sendNativeLiveMessage', 'editNativeLiveMessage', 'retryNativeLiveMessage']) {
-      const args = name === 'retryNativeLiveMessage' ? 'targetUserMessageID, nil, [], nil, execution, presentationOperation' : name === 'editNativeLiveMessage' ? 'targetUserMessageID, text, attachmentIDs ?? [], nil, execution, presentationOperation' : 'nil, text, attachmentIDs, workspaceID, execution, presentationOperation, inputMode: inputMode';
+      const args = name === 'retryNativeLiveMessage' ? 'targetUserMessageID, nil, [], nil, execution, presentationOperation' : name === 'editNativeLiveMessage' ? 'targetUserMessageID, text, attachmentIDs ?? [], nil, execution, presentationOperation' : 'nil, text, attachmentIDs, nil, execution, presentationOperation, inputMode: inputMode';
       replace('NativeLiveTurnController.swift', name, `try await OrchestrationProbe.operation("${name}", ${args})`);
     }
     replace('NativeLiveTurnController.swift', 'recoverActiveNativeLiveTurn', 'OrchestrationProbe.lifecycle.append("recover")');

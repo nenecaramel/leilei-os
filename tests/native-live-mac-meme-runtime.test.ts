@@ -19,7 +19,7 @@ test("meme output shares eight slots with files and private photos, including co
     await assert.rejects(options.memeHandlers.sendMeme({memeId:"meme_0001"}),/8-file/);
     return {providerSessionId:"provider-limit",normalizedEvents:[]};
   }};
-  const result=await new NativeLiveMacRuntimeExecutor(runtime,"/workspace",null,{sendFile:output},null,album,memeSender).execute(command({protocol_version:3}));
+  const result=await new NativeLiveMacRuntimeExecutor(runtime,"/workspace",null,{sendFile:output},null,album,memeSender).execute(command({protocol_version:4}));
   assert.equal(result.status,"success");if(result.status!=="success")throw new Error(JSON.stringify(result));
   assert.equal(sends,8);assert.equal(result.output_attachment_ids?.length,8);
 });
@@ -33,9 +33,9 @@ test("failed meme sends release quota and ordinary turns have no meme output",as
     await assert.rejects(options.memeHandlers.sendMeme({memeId:"meme_0001"}),/8-file/);
     return {providerSessionId:"provider",normalizedEvents:[]};
   }};
-  const result=await new NativeLiveMacRuntimeExecutor(runtime,"/workspace",null,null,null,null,memes).execute(command({protocol_version:3}));
+  const result=await new NativeLiveMacRuntimeExecutor(runtime,"/workspace",null,null,null,null,memes).execute(command({protocol_version:4}));
   assert.equal(result.status,"success");if(result.status!=="success")throw new Error(JSON.stringify(result));assert.equal(result.output_attachment_ids?.length,8);
   const normal={...runtime,async executeTurn(){return {providerSessionId:"ordinary",normalizedEvents:[]};}};
-  const ordinary=await new NativeLiveMacRuntimeExecutor(normal,"/workspace",null,null,null,null,memes).execute(command({protocol_version:3}));
+  const ordinary=await new NativeLiveMacRuntimeExecutor(normal,"/workspace",null,null,null,null,memes).execute(command({protocol_version:4}));
   assert.equal(ordinary.status,"success");if(ordinary.status!=="success")throw new Error();assert.equal(ordinary.output_attachment_ids,undefined);assert.equal(calls,9);
 });

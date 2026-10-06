@@ -121,10 +121,6 @@ function createRepository(calls: string[] = []): ExportRepository {
       calls.push(`todo:${userId}`);
       return todo;
     },
-    async listWorkspaces(userId) {
-      calls.push(`workspaces:${userId}`);
-      return workspaces;
-    },
     async listMind(userId) {
       calls.push(`mind:${userId}`);
       return mind;
@@ -186,7 +182,6 @@ test("ExportService emits the owner-bound v4 contract", async () => {
     diary,
     diary_comments: diaryComments,
     todo,
-    workspaces,
     mind,
     mind_continuity: mindContinuity,
     conversations,
@@ -217,7 +212,6 @@ test("ExportService reads the full portable v4 scope", async () => {
       "diary",
       "diary_comments",
       "todo",
-      "workspaces",
       "mind",
       "mind_continuity",
       "conversations",
@@ -231,7 +225,6 @@ test("ExportService reads the full portable v4 scope", async () => {
     `todo:${USER_ID}`,
     `turn_quiescence:${USER_ID}`,
     `mind_quiescence:${USER_ID}`,
-    `workspaces:${USER_ID}`,
     `mind:${USER_ID}`,
     `mind_continuity:${USER_ID}`,
     `conversations:${USER_ID}`,

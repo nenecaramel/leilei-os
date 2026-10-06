@@ -92,7 +92,7 @@ test("send_file uploads the exact explicit workspace file", async (t) => {
   const attachment = await sender.sendFile({
     path: "out/report.pdf",
     displayName: "result.pdf",
-    workspaceRoot: workspace,
+    workingDirectory: workspace,
   });
 
   assert.equal(attachment.attachmentId, attachmentId);
@@ -105,7 +105,7 @@ test("send_file uploads the exact explicit workspace file", async (t) => {
   assert.match(declared.sha256, /^[0-9a-f]{64}$/u);
 });
 
-test("send_file rejects workspace escape including symlinks", async (t) => {
+test("send_file rejects working directory escape including symlinks", async (t) => {
   const root = await mkdtemp(
     join(tmpdir(), "leileios-send-file-escape-"),
   );
@@ -134,16 +134,16 @@ test("send_file rejects workspace escape including symlinks", async (t) => {
   await assert.rejects(
     () => sender.sendFile({
       path: "../secret.txt",
-      workspaceRoot: workspace,
+      workingDirectory: workspace,
     }),
-    /active workspace/u,
+    /active working directory/u,
   );
   await assert.rejects(
     () => sender.sendFile({
       path: "linked.txt",
-      workspaceRoot: workspace,
+      workingDirectory: workspace,
     }),
-    /active workspace/u,
+    /active working directory/u,
   );
   assert.equal(relayCalls, 0);
 });

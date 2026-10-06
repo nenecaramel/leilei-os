@@ -1,6 +1,5 @@
 export { NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION } from "./runtime-protocol/types.js";
 export { NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION } from "./runtime-protocol/types.js";
-export { NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeMode } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeAttachment } from "./runtime-protocol/types.js";
 export type { NativeLiveRuntimeCommand } from "./runtime-protocol/types.js";

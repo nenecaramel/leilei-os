@@ -1,7 +1,6 @@
 import SwiftUI
 
 enum AppPage: String, Identifiable {
-    case workspaces = "Workspaces"
     case chat = "Chat"
     case diary = "Diary"
     case daySpace = "Day Space"

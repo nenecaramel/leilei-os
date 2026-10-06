@@ -64,7 +64,7 @@ export function command(
   input: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return {
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -73,8 +73,7 @@ export function command(
     canonical_user_message_id: userMessageId,
     runtime_mode: "new",
     parent_provider_session_id: null,
-    workspace_id: null,
-    expected_workspace_root: null,
+    expected_working_directory: null,
     prompt: "hello",
     ...input,
   };

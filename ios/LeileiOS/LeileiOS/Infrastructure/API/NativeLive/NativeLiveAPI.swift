@@ -230,7 +230,6 @@ extension LeileiAPIClient {
         text: String,
         inputMode: NativeLiveInputMode = .text,
         attachmentIDs: [String] = [],
-        workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil,
         requestID: UUID = UUID()
     ) async throws -> NativeLivePrepareResult {
@@ -241,7 +240,6 @@ extension LeileiAPIClient {
                 operation: "send",
                 conversationId: conversationID.uuidString.lowercased(),
                 expectedHeadMessageId: expectedHeadMessageID,
-                workspaceId: workspaceID,
                 text: text,
                 attachmentIds: attachmentIDs,
                 execution: execution,
@@ -936,7 +934,6 @@ private struct NativeLiveSendBody: Encodable, Sendable {
     let operation: String
     let conversationId: String
     let expectedHeadMessageId: String?
-    let workspaceId: String?
     let text: String
     let attachmentIds: [String]
     let execution: NativeLiveExecutionSelection?
@@ -948,7 +945,6 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         case operation
         case conversationId = "conversation_id"
         case expectedHeadMessageId = "expected_head_message_id"
-        case workspaceId = "workspace_id"
         case text
         case attachmentIds = "attachment_ids"
         case inputMode = "input_mode"
@@ -969,7 +965,6 @@ private struct NativeLiveSendBody: Encodable, Sendable {
         } else {
             try container.encodeNil(forKey: .expectedHeadMessageId)
         }
-        try container.encodeIfPresent(workspaceId, forKey: .workspaceId)
         try container.encode(text, forKey: .text)
         if !attachmentIds.isEmpty {
             try container.encode(
@@ -1028,7 +1023,6 @@ private struct NativeLiveCurrentPathEnvelope: Decodable, Sendable {
     let success: Bool
     let data: NativeLiveCurrentPathSnapshot
 }
-
 
 private struct NativeLiveConversationHeadWaitBody: Encodable {
     let afterHeadMessageID: String?

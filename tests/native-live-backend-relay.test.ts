@@ -37,7 +37,7 @@ function prepared(): NativeLivePreparedTurn {
 
 function failureResult(): NativeLiveRuntimeExecutionResult {
   return {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -128,7 +128,7 @@ class FakeWake {
   }
 }
 
-function setup(runtimeProtocolVersion: 2 | 3 = 3) {
+function setup(runtimeProtocolVersion: 4 = 4) {
   const port = new FakePort();
   const coordinator = new FakeCoordinator();
   const wake = new FakeWake();
@@ -152,7 +152,7 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
   assert.deepEqual(reservation, {
     reservationId: prepareId,
     command: {
-      protocol_version: 3,
+      protocol_version: 4,
       dispatch_target: "claude_code",
       prepare_id: prepareId,
       request_id: requestId,
@@ -161,23 +161,22 @@ test("reserve emits the persisted prepared command without rebuilding it on the 
       canonical_user_message_id: userMessageId,
       runtime_mode: "new",
       parent_provider_session_id: null,
-      workspace_id: null,
-      expected_workspace_root: null,
+      expected_working_directory: null,
       execution_selection: null,
       prompt: "hello",
     },
   });
 });
 
-test("reserve can stay on protocol v2 during a rolling daemon upgrade", async () => {
-  const { service } = setup(2);
+test("reserve uses protocol v4 after namespace retirement", async () => {
+  const { service } = setup(4);
   const reservation = await service.reserveNext({
     userId,
     listenerInstanceId,
     dispatchTarget: "claude_code",
   });
 
-  assert.equal(reservation?.command.protocol_version, 2);
+  assert.equal(reservation?.command.protocol_version, 4);
 });
 
 test("runtime failure is a valid terminal callback, closes the reservation, and wakes turn waiters", async () => {
@@ -216,7 +215,7 @@ test("discarded wake result replay is idempotent after the invisible preparation
     listenerInstanceId,
     reservationId: prepareId,
     result: {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: prepareId,
       request_id: requestId,
       conversation_id: conversationId,

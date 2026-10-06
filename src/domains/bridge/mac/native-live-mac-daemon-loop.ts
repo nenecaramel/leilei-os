@@ -34,8 +34,7 @@ export type NativeLiveDaemonReservation = {
 export type NativeLiveProviderSessionCleanupReservation = {
   reservationId: string;
   providerSessionId: string;
-  workspaceId: string | null;
-  effectiveWorkspaceRoot: string | null;
+  effectiveWorkingDirectory: string | null;
 };
 
 export type NativeLiveBackgroundModelReservation = {
@@ -171,8 +170,7 @@ export interface NativeLiveMacDaemonRelayClient {
             gitBranch: string | null;
             lastModified: number | null;
             createdAt: number | null;
-            workspaceId: string | null;
-            workspaceRoot: string;
+            workingDirectory: string;
           }>;
         }
       | {
@@ -348,16 +346,14 @@ export interface NativeLiveExternalSessionExecutor {
     gitBranch: string | null;
     lastModified: number | null;
     createdAt: number | null;
-    workspaceId: string | null;
-    workspaceRoot: string;
+    workingDirectory: string;
   }>>;
 }
 
 export interface NativeLiveManualCompactExecutor {
   compactSession(
     sessionId: string,
-    workspaceId: string | null,
-    expectedWorkspaceRoot: string | null,
+    expectedWorkingDirectory: string | null,
   ): Promise<{
     providerSessionId: string;
     contextUsage?: import("../protocol/native-live-runtime-protocol.js").NativeLiveRuntimeContextUsage | null;
@@ -373,8 +369,7 @@ export interface NativeLiveManualCompactExecutor {
 export interface NativeLiveProviderSessionCleanupExecutor {
   deleteSession(
     sessionId: string,
-    workspaceId: string | null,
-    expectedWorkspaceRoot: string | null,
+    expectedWorkingDirectory: string | null,
   ): Promise<void>;
 }
 
@@ -564,8 +559,7 @@ export class NativeLiveMacDaemonLoop {
               result =
                 await this.manualCompactExecutor.compactSession(
                   compact.providerSessionId,
-                  compact.workspaceId,
-                  compact.effectiveWorkspaceRoot,
+                  compact.effectiveWorkingDirectory,
                 );
             } catch (error) {
               try {
@@ -643,8 +637,7 @@ export class NativeLiveMacDaemonLoop {
             try {
               await this.providerSessionCleanupExecutor.deleteSession(
                 cleanup.providerSessionId,
-                cleanup.workspaceId,
-                cleanup.effectiveWorkspaceRoot,
+                cleanup.effectiveWorkingDirectory,
               );
             } catch {
               try {
@@ -1043,8 +1036,6 @@ function semanticFallbackCode(
     ? "E5_PROVIDER_UNAVAILABLE"
     : "E5_SCORING_FAILED";
 }
-
-
 
 function externalSessionFailureCode(error: unknown): string {
   if (

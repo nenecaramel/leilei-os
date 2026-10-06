@@ -105,7 +105,7 @@ test("meme bytes complete the existing sender before runtime emits output_attach
     await options.memeHandlers!.sendMeme({memeId:"meme_0001"});assert.equal(complete,true);
     return {providerSessionId:"provider-meme",normalizedEvents:[]};
   }};
-  const result=await new NativeLiveMacRuntimeExecutor(runtime,"/workspace",null,attachments,null,null,sender).execute(command({protocol_version:3}));
+  const result=await new NativeLiveMacRuntimeExecutor(runtime,"/workspace",null,attachments,null,null,sender).execute(command({protocol_version:4}));
   assert.equal(result.status,"success");if(result.status!=="success")throw new Error(JSON.stringify(result));assert.deepEqual(result.output_attachment_ids,[id]);
 });
 

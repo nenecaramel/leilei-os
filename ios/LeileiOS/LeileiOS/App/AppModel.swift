@@ -70,8 +70,6 @@ final class AppModel: ObservableObject {
     @Published var chatSyncState: ChatSyncState = .idle
     @Published var chatSendState: ChatSendState = .idle
     @Published var nativeLiveRuntimeMetadata: NativeLiveRuntimeMetadata?
-    @Published var activeNativeLiveWorkspaceID: String?
-    @Published var activeNativeLiveWorkspaceRoot: String?
     @Published var nativeLiveRuntimeSurface:
         NativeLiveRuntimeSurfaceState? { didSet { reconcileNativeLivePresentation() } }
     @Published var nativeLiveBackgroundRuntimeSurfaces:
@@ -144,8 +142,6 @@ final class AppModel: ObservableObject {
         nativeLiveCurrentPath = nil
         nativeLiveHistorySnapshot = nil
         nativeLiveRuntimeMetadata = nil
-        activeNativeLiveWorkspaceID = nil
-        activeNativeLiveWorkspaceRoot = nil
         nativeLiveRuntimeMetadataByConversationID.removeAll()
         mindWritesByMessageID.removeAll()
         mindWriteRequestsInFlight.removeAll()

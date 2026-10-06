@@ -115,9 +115,8 @@ export async function readTurn(
         replacementTargetUserMessageId: nativeLiveTurnPreparations.replacementTargetUserMessageId,
         canonicalUserMessageId:
           nativeLiveTurnPreparations.canonicalUserMessageId,
-        workspaceId: nativeLiveTurnPreparations.workspaceId,
-        expectedWorkspaceRoot:
-          nativeLiveTurnPreparations.expectedWorkspaceRoot,
+        expectedWorkingDirectory:
+          nativeLiveTurnPreparations.expectedWorkingDirectory,
         executionSelection:
           nativeLiveTurnPreparations.executionSelection,
         canonicalStatus: nativeLiveTurnPreparations.status,
@@ -263,8 +262,7 @@ export async function readTurn(
       ...(preparedUserMessage ? { preparedUserMessage } : {}),
       replacementTargetUserMessageId: row.replacementTargetUserMessageId ?? (row.operation === "retry" ? row.canonicalUserMessageId : null),
       canonicalUserMessageId: row.canonicalUserMessageId,
-      workspaceId: row.workspaceId,
-      expectedWorkspaceRoot: row.expectedWorkspaceRoot,
+      expectedWorkingDirectory: row.expectedWorkingDirectory,
       executionSelection:
         row.executionSelection === null
           ? null
@@ -382,9 +380,8 @@ export function selection(this: TurnRepositoryContext) {
       runtimeMode: nativeLiveTurnPreparations.runtimeMode,
       parentProviderSessionId:
         nativeLiveTurnPreparations.parentProviderSessionId,
-      workspaceId: nativeLiveTurnPreparations.workspaceId,
-      expectedWorkspaceRoot:
-        nativeLiveTurnPreparations.expectedWorkspaceRoot,
+      expectedWorkingDirectory:
+        nativeLiveTurnPreparations.expectedWorkingDirectory,
       executionSelection: nativeLiveTurnPreparations.executionSelection,
       attachments: nativeLiveTurnPreparations.attachments,
       prompt: nativeLiveTurnPreparations.prompt,

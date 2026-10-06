@@ -33,22 +33,22 @@ test("Mac daemon Claude transport rejects retired selectors", () => {
   );
 });
 
-test("Mac daemon transport requires an explicit absolute workspace root", async () => {
+test("Mac daemon transport requires an explicit absolute working directory", async () => {
   await assert.rejects(
     createNativeLiveMacClaudeTransport({}),
-    /explicit absolute workspace root/u,
+    /explicit absolute working directory/u,
   );
   await assert.rejects(
     createNativeLiveMacClaudeTransport({}, "./relative"),
-    /explicit absolute workspace root/u,
+    /explicit absolute working directory/u,
   );
 });
 
-test("Mac daemon transport factory creates the Agent SDK adapter at the configured workspace root", async () => {
-  const workspaceRoot = process.cwd();
+test("Mac daemon transport factory creates the Agent SDK adapter at the configured working directory", async () => {
+  const workingDirectory = process.cwd();
   const agent = await createNativeLiveMacClaudeTransport(
     {},
-    workspaceRoot,
+    workingDirectory,
   );
   assert.equal(agent.kind, "agent_sdk");
   assert.equal(typeof agent.runtime.sendNew, "function");
@@ -58,10 +58,9 @@ test("Mac daemon transport factory creates the Agent SDK adapter at the configur
   assert.equal(typeof agent.runtime.executeTurn, "function");
   assert.equal(
     (agent.runtime as unknown as { cwd: string }).cwd,
-    workspaceRoot,
+    workingDirectory,
   );
 });
-
 
 test("Mac daemon strips LeileiOS credentials from Claude Code environment", () => {
   assert.deepEqual(
@@ -80,13 +79,13 @@ test("Mac daemon strips LeileiOS credentials from Claude Code environment", () =
 });
 
 test("Mac daemon transport carries MCP config outside the Claude environment", async () => {
-  const workspaceRoot = process.cwd();
+  const workingDirectory = process.cwd();
   const agent = await createNativeLiveMacClaudeTransport(
     {
       HOME: "/Users/leilei",
       LEILEI_NATIVE_LIVE_RELAY_TOKEN: "must-not-reach-bash",
     },
-    workspaceRoot,
+    workingDirectory,
     null,
     {
       type: "http",
@@ -116,7 +115,6 @@ test("Mac daemon transport carries MCP config outside the Claude environment", a
     },
   });
 });
-
 
 test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks", () => {
   const wakePrompt = readFileSync(

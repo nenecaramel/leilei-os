@@ -19,7 +19,7 @@ for (const terminal of [false,true]) test(`turn read targets only exact ${termin
     {id:m.id+":1",messageId:m.id,ordinal:1,kind:"tool_use",rawType:"tool_use",text:null,payload:{tool_use_id:"tool",input:{path:"a"}},createdAt:date},
   ]);
   const queries: Array<{table:string;where?:SQL;joins:SQL[]}> = [];
-  const preparation = {id:"prepare",createdAt:date,requestId:"request",conversationId,operation:"send",canonicalUserMessageId:userId,replacementTargetUserMessageId:null,assistantMessageId:terminal ? assistantId:null,workspaceId:null,expectedWorkspaceRoot:null,executionSelection:null,canonicalStatus:terminal ? "finalized_success":"prepared",dispatchStatus:terminal ? "completed":"executing",failureCode:null,runtimeMetadata:null};
+  const preparation = {id:"prepare",createdAt:date,requestId:"request",conversationId,operation:"send",canonicalUserMessageId:userId,replacementTargetUserMessageId:null,assistantMessageId:terminal ? assistantId:null,expectedWorkingDirectory:null,executionSelection:null,canonicalStatus:terminal ? "finalized_success":"prepared",dispatchStatus:terminal ? "completed":"executing",failureCode:null,runtimeMetadata:null};
   const results: Record<string,unknown[]> = {native_live_turn_preparations:[preparation],native_live_semantic_scoring_requests:[],conversation_messages:messages,conversation_content_blocks:blocks};
   const db = {select:()=>({from:(table:Parameters<typeof getTableName>[0])=>{
     const query = {table:getTableName(table),joins:[] as SQL[],where:undefined as SQL|undefined}; queries.push(query);

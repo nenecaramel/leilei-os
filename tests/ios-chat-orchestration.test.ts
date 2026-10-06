@@ -10,6 +10,10 @@ const root = process.env.CHAT_ORCHESTRATION_ROOT ?? 'ios/LeileiOS/LeileiOS/Chat/
 const baseline = readFileSync('tests/fixtures/chat-orchestration-main-6caf274f.swift', 'utf8');
 const read = (file: string) => readFileSync(root + file, 'utf8');
 const compact = (s: string) => s.replace(/\s/g, '');
+const withoutRetiredBinding = (s: string) => s
+  .replace(/    @Binding var selectedWorkspaceID: String\?\n/g, '')
+  .replace(/                let shouldBindWorkspace =[\s\S]*?(?=                try await appModel.sendNativeLiveMessage)/g, '')
+  .replace(/                    workspaceID:[\s\S]*?(?=                    execution:)/g, '');
 function block(s: string, marker: string) {
   const start = s.indexOf(marker); assert.notEqual(start, -1, marker);
   const open = s.indexOf('{', start); let depth = 1, end = open + 1;
@@ -31,7 +35,7 @@ test('responsibility boundaries preserve complete action bodies and Task ownersh
     assert.doesNotMatch(source, /ObservableObject|\bactor\b|@State|@FocusState/);
     for (const name of names) {
       const marker = /:$/.test(name) ? 'var ' + name : 'func ' + name;
-      assert.equal(compact(block(source, marker)), compact(block(baseline, marker)), `${file}: ${name}`);
+      assert.equal(compact(block(source, marker)), compact(withoutRetiredBinding(block(baseline, marker))), `${file}: ${name}`);
     }
   }
   assert.equal(compact(block(read('NativeLiveCameraPicker.swift'), 'struct NativeLiveCameraPicker:')), compact(block(baseline, 'struct NativeLiveCameraPicker:')));
@@ -40,7 +44,7 @@ test('page retains state wrappers, lifecycle installation and exact UI/scroll wi
   assert.ok(existsSync(root + 'ChatView+ConversationLifecycle.swift'), 'Conversation refresh boundary must exist');
   const current = read('ChatView.swift');
   const stateSection = (s: string) => compact(s.slice(s.indexOf('struct ChatView:'), s.indexOf('var body:')).replace(/\bprivate\s+/g, ''));
-  assert.equal(stateSection(current), stateSection(baseline), 'All page state and AppModel pending-operation ownership stay in place');
+  assert.equal(stateSection(current), stateSection(withoutRetiredBinding(baseline)), 'All page state and AppModel pending-operation ownership stay in place');
   const lifecycle = read('ChatView+ConversationLifecycle.swift');
   const sequence = block(lifecycle, 'func refreshConversationPage()');
   const expandedBody = block(current, 'var body:').replace(/await refreshConversationPage\(\)/g, sequence);

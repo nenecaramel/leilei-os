@@ -15,7 +15,7 @@ func snapshot(_ messages: [NativeLiveCurrentPathMessage]) -> NativeLiveCurrentPa
     .init(conversationId:conversation,title:nil,currentHeadMessageId:messages.last?.id,updatedAt:start,syncToken:messages.last?.id ?? "empty",truncated:false,olderCursor:nil,resetRequired:false,messages:messages)
 }
 func prepared(_ id: String, user: String) -> NativeLivePrepareResult {
-    .init(outcome:"created",semanticPending:false,prepareId:id,requestId:"request-"+id,conversationId:conversation,userMessageId:user,workspaceId:nil,expectedWorkspaceRoot:nil)
+    .init(outcome:"created",semanticPending:false,prepareId:id,requestId:"request-"+id,conversationId:conversation,userMessageId:user,expectedWorkingDirectory:nil)
 }
 func surface(_ prepare: String, user: String, text: String = "", terminal: Bool = false) -> NativeLiveRuntimeSurfaceState {
     var value = NativeLiveRuntimeSurfaceState(prepareID:prepare,conversationID:UUID(uuidString:conversation)!,events:[],interactions:[],controls:[],nextAfterSequence:0)
@@ -430,7 +430,7 @@ for fixture in fixtures {
             : .retry(targetUserMessageID:active.userMessageId)
         let boundOperation = NativeLivePendingOperation(kind:kind,baselineSyncToken:nil)
         let preparation = NativeLivePrepareResult(preparedUserMessage:active.preparedUserMessage,replacementTargetUserMessageId:active.replacementTargetUserMessageId,
-            startedAt:active.startedAt,outcome:"created",semanticPending:false,prepareId:active.prepareId,requestId:active.requestId,conversationId:active.conversationId,userMessageId:active.userMessageId,workspaceId:nil,expectedWorkspaceRoot:nil)
+            startedAt:active.startedAt,outcome:"created",semanticPending:false,prepareId:active.prepareId,requestId:active.requestId,conversationId:active.conversationId,userMessageId:active.userMessageId,expectedWorkingDirectory:nil)
         identities.bind(boundOperation,prepared:preparation,snapshot:fixture.before)
         var terminal = recovering; terminal.foregroundTurnCompleted = true; terminal.terminalFailure = "CLAUDE_PROCESS_FAILED"
         let beforeStop = rows(failed,boundOperation,terminal)

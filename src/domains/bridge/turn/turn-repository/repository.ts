@@ -101,7 +101,6 @@ implements NativeLiveBackendTurnPort {
     text: string;
     inputMode?: "voice";
     attachmentIds: readonly string[];
-    workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     return prepareSend.call(this.context, input);
@@ -171,8 +170,7 @@ implements NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
-    workspaceId: string | null;
-    effectiveWorkspaceRoot: string | null;
+    effectiveWorkingDirectory: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     outputAttachmentIds: readonly string[];
     outputAttachmentMetadata?:
@@ -236,21 +234,19 @@ implements NativeLiveBackendTurnPort {
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
-    requestedWorkspaceId: string | null = null,
   ): Promise<
     | {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
-        workspaceId: string | null;
-        expectedWorkspaceRoot: string | null;
+        expectedWorkingDirectory: string | null;
       }
     | {
         ok: false;
         result: NativeLivePreparePortResult;
       }
   > {
-    return resolveRuntimeParent.call(this.context, executor, conversations, userId, conversationId, parentMessageId, requestedWorkspaceId);
+    return resolveRuntimeParent.call(this.context, executor, conversations, userId, conversationId, parentMessageId);
   }
 
   private insertPreparation(
@@ -266,8 +262,7 @@ implements NativeLiveBackendTurnPort {
       replacementTargetUserMessageId: string | null;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
-      workspaceId: string | null;
-      expectedWorkspaceRoot: string | null;
+      expectedWorkingDirectory: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       attachments: NativeLiveRuntimeAttachment[];
       prompt: string;

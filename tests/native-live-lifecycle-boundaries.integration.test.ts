@@ -26,12 +26,12 @@ test("real prepare exposes detached Send/Edit users and failure evidence survive
     await repository.appendContentBlock({userId:user.id,conversationId:conversation.id,messageId:earlierUser.id,ordinal:0,block:{kind:"text",text:"Earlier"}});
     const earlierAnswer = await repository.appendAssistantMessage({userId:user.id,conversationId:conversation.id,parentMessageId:earlierUser.id});
     await repository.appendContentBlock({userId:user.id,conversationId:conversation.id,messageId:earlierAnswer.id,ordinal:0,block:{kind:"text",text:"Earlier answer"}});
-    await repository.bindProviderCheckpoint({userId:user.id,conversationId:conversation.id,canonicalMessageId:earlierAnswer.id,checkpoint:{provider:"claude_code",providerSessionId:`earlier-${conversation.id}`,workspaceId:null,effectiveWorkspaceRoot:null}});
+    await repository.bindProviderCheckpoint({userId:user.id,conversationId:conversation.id,canonicalMessageId:earlierAnswer.id,checkpoint:{provider:"claude_code",providerSessionId:`earlier-${conversation.id}`,effectiveWorkingDirectory:null}});
     const parent = await repository.appendUserMessage({userId:user.id,conversationId:conversation.id,parentMessageId:earlierAnswer.id});
     await repository.appendContentBlock({userId:user.id,conversationId:conversation.id,messageId:parent.id,ordinal:0,block:{kind:"text",text:"Original"}});
     const oldAnswer = await repository.appendAssistantMessage({userId:user.id,conversationId:conversation.id,parentMessageId:parent.id});
     await repository.appendContentBlock({userId:user.id,conversationId:conversation.id,messageId:oldAnswer.id,ordinal:0,block:{kind:"text",text:"Old answer"}});
-    await repository.bindProviderCheckpoint({userId:user.id,conversationId:conversation.id,canonicalMessageId:oldAnswer.id,checkpoint:{provider:"claude_code",providerSessionId:`session-${conversation.id}`,workspaceId:null,effectiveWorkspaceRoot:null}});
+    await repository.bindProviderCheckpoint({userId:user.id,conversationId:conversation.id,canonicalMessageId:oldAnswer.id,checkpoint:{provider:"claude_code",providerSessionId:`session-${conversation.id}`,effectiveWorkingDirectory:null}});
     await repository.setCurrentHead({userId:user.id,conversationId:conversation.id,messageId:oldAnswer.id});
     const result = await coordinator.prepare(user.id,{dispatch_target:"claude_code",request_id:crypto.randomUUID(),operation,conversation_id:conversation.id,...(operation === "send" ? {expected_head_message_id:oldAnswer.id,text:"New send"} : operation === "edit" ? {target_user_message_id:parent.id,text:"Edited"} : {target_user_message_id:parent.id})});
     assert.ok(result.ok,JSON.stringify(result)); if (!result.ok) throw Error("prepare");

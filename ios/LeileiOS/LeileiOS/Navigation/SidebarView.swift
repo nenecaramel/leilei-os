@@ -26,7 +26,6 @@ struct SidebarView: View {
                             SidebarSection(
                                 title: nil,
                                 pages: [
-                                    .workspaces,
                                     .diary,
                                     .daySpace,
                                     .mind,
@@ -93,7 +92,6 @@ struct SidebarView: View {
             }
         }
     }
-
 
     private var recentConversations: some View {
         VStack(alignment: .leading, spacing: SidebarLayout.rowSpacing) {

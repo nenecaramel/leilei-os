@@ -68,9 +68,8 @@ export function prepareNativeLiveTurnHandler(
           requestId: result.command.request_id,
           conversationId: result.command.conversation_id,
           userMessageId: result.command.canonical_user_message_id,
-          workspaceId: result.command.workspace_id ?? null,
-          expectedWorkspaceRoot:
-            result.command.expected_workspace_root ?? null,
+          expectedWorkingDirectory:
+            result.command.expected_working_directory ?? null,
         },
       });
   };
@@ -86,12 +85,9 @@ function sendPrepareFailure(
       : result.code === "CONVERSATION_NOT_FOUND"
         || result.code === "BRANCH_POINT_INVALID"
         || result.code === "CHECKPOINT_NOT_FOUND"
-        || result.code === "WORKSPACE_NOT_FOUND"
         ? 404
         : result.code === "STALE_HEAD"
           || result.code === "REQUEST_CONFLICT"
-          || result.code === "WORKSPACE_BINDING_AMBIGUOUS"
-          || result.code === "WORKSPACE_BINDING_CONFLICT"
           ? 409
           : 503;
 
@@ -104,12 +100,6 @@ function sendPrepareFailure(
           ? "Conversation head changed before the turn was prepared."
           : result.code === "REQUEST_CONFLICT"
             ? "Request id conflicts with an existing prepared turn."
-            : result.code === "WORKSPACE_NOT_FOUND"
-              ? "Workspace was not found."
-              : result.code === "WORKSPACE_BINDING_AMBIGUOUS"
-                ? "Conversation has multiple Workspace references; select one explicitly."
-                : result.code === "WORKSPACE_BINDING_CONFLICT"
-                  ? "The current provider branch is already bound to another Workspace."
                   : result.code === "INVALID_REQUEST"
                     ? "Native live turn request is invalid."
                     : result.code === "INTERNAL_ERROR"
@@ -320,8 +310,7 @@ export function nativeLiveTurnResponseData(
       replacementTargetUserMessageId: turn.replacementTargetUserMessageId ?? null,
     } : {}),
     userMessageId: turn.canonicalUserMessageId,
-    workspaceId: turn.workspaceId,
-    expectedWorkspaceRoot: turn.expectedWorkspaceRoot,
+    expectedWorkingDirectory: turn.expectedWorkingDirectory,
     executionSelection: turn.executionSelection,
     canonicalStatus: turn.canonicalStatus,
     dispatchStatus: turn.dispatchStatus,

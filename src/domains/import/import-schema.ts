@@ -5,9 +5,8 @@ import {
   UniverseValidationError,
   validateUniverseSnapshot,
 } from "../universe/universe-validation.js";
-import {
-  PROJECT_RESOURCE_KINDS,
-} from "../project-workspace/project-workspace-types.js";
+// Historical archive parser only; the retired module can never be restored.
+const PROJECT_RESOURCE_KINDS = ["file", "instructions", "settings", "skill", "agent", "mcp", "hook", "plugin"] as const;
 import type {
   RestorableExportDocument,
 } from "../export/export-types.js";
@@ -258,19 +257,25 @@ const conversationAttachmentRecord = z.object({
   payload: z.record(z.string(), z.unknown()),
 }).strict();
 
-const conversationProviderCheckpointRecord = z.object({
+const conversationProviderCheckpointRecord = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const { workspace_id: retiredId, effective_workspace_root: historicalDirectory, ...record } = value as Record<string, unknown>;
+  // Old backups retain their continuation directory without reviving the
+  // deleted Product Workspace binding. Conflicting dual evidence is rejected.
+  if (historicalDirectory !== undefined && record.effective_working_directory !== undefined && historicalDirectory !== record.effective_working_directory) return value;
+  return { ...record, effective_working_directory: record.effective_working_directory ?? historicalDirectory ?? null };
+}, z.object({
   id: uuid,
   conversation_id: uuid,
   canonical_message_id: uuid,
   provider: z.literal("claude_code"),
   provider_session_id: nonBlankString(),
-  workspace_id: uuid.nullable().optional().default(null),
-  effective_workspace_root:
+  effective_working_directory:
     nonBlankString().nullable().optional().default(null),
   runtime_metadata: z.record(z.string(), z.unknown()).nullable(),
   provider_checkpoint_id: nonBlankString().nullable(),
   created_at: isoDateTime,
-}).strict();
+}).strict());
 
 const conversationsBundle = z.object({
   conversations: z.array(conversationRecord)
@@ -824,6 +829,10 @@ export function parseImportPackage(input: Uint8Array): ParsedImportPackage {
   }
 
   const document = parsed.data as RestorableExportDocument;
+  const retired = document.schema_version === 3 ? document.data.projects : document.schema_version === 4 ? document.data.workspaces : undefined;
+  if (retired && Object.values(retired).some(records => records.length > 0)) {
+    throw new ImportValidationError("INVALID_IMPORT_FILE", "This backup contains retired Product Workspace data and cannot be restored. Export the remaining modules separately.");
+  }
   assertBusinessInvariants(document);
 
   return {

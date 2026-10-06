@@ -6,7 +6,6 @@ const root = "ios/LeileiOS/LeileiOS/Infrastructure/";
 const surfaces = [
   ["NativeLive", "NativeLiveConversationSummary", "nativeLiveConversationPage"],
   ["Mind", "MindProductItem", "mindPage"],
-  ["Workspace", "WorkspaceSummary", "workspaces"],
   ["System", "SystemConnectionsSnapshot", "systemConnections"],
   ["Import", "ImportPreviewSnapshot", "previewImport"],
 ] as const;

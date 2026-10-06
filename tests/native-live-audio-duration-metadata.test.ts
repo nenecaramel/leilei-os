@@ -99,7 +99,7 @@ test("Mac output sender probes audio duration without making probe failure fatal
   );
   const attachment = await sender.sendFile({
     path: "voice.mp3",
-    workspaceRoot: workspace,
+    workingDirectory: workspace,
   });
   assert.equal(probeCalls, 1);
   assert.equal(attachment.mimeType, "audio/mpeg");
@@ -118,7 +118,7 @@ test("Mac output sender probes audio duration without making probe failure fatal
   assert.equal(
     (await nonAudio.sendFile({
       path: "note.txt",
-      workspaceRoot: workspace,
+      workingDirectory: workspace,
     })).durationSeconds,
     undefined,
   );
@@ -132,7 +132,7 @@ test("Mac output sender probes audio duration without making probe failure fatal
     );
     const result = await fallback.sendFile({
       path: "voice.mp3",
-      workspaceRoot: workspace,
+      workingDirectory: workspace,
     });
     assert.equal(result.durationSeconds, undefined);
   }
@@ -148,7 +148,7 @@ test("Mac output sender probes audio duration without making probe failure fatal
   assert.equal(
     (await failedProbe.sendFile({
       path: "voice.mp3",
-      workspaceRoot: workspace,
+      workingDirectory: workspace,
     })).durationSeconds,
     undefined,
   );
@@ -181,7 +181,7 @@ test("Mac output sender recognizes common audio MIME types", async (t) => {
     );
     const result = await sender.sendFile({
       path: name,
-      workspaceRoot: workspace,
+      workingDirectory: workspace,
     });
     assert.equal(result.mimeType, mimeType);
     assert.equal(result.durationSeconds, 1);
@@ -253,7 +253,7 @@ test("runtime result round-trips output audio duration metadata", async () => {
     "/workspace",
     null,
     sender,
-  ).execute(command({ protocol_version: 3 }));
+  ).execute(command({ protocol_version: 4 }));
   assert.equal(result.status, "success");
   if (result.status !== "success") {
     throw new Error("expected success");
@@ -277,7 +277,7 @@ test("runtime result round-trips output audio duration metadata", async () => {
 
 test("runtime protocol keeps duration metadata optional and rejects unsafe metadata", () => {
   const base = {
-    protocol_version: 3 as const,
+    protocol_version: 4 as const,
     prepare_id: "11111111-1111-4111-8111-111111111111",
     request_id: "22222222-2222-4222-8222-222222222222",
     conversation_id: "33333333-3333-4333-8333-333333333333",

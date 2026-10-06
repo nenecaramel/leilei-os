@@ -25,8 +25,8 @@ import {
   resolveNativeLiveMacClaudeTransportKind,
 } from "../src/domains/bridge/mac/native-live-mac-claude-transport.js";
 import {
-  NativeLiveMacWorkspaceRuntimePool,
-} from "../src/domains/bridge/mac/native-live-mac-workspace-runtime.js";
+  NativeLiveMacWorkingDirectoryRuntimePool,
+} from "../src/domains/bridge/mac/native-live-mac-working-directory-runtime.js";
 import {
   NativeLiveMacProviderSessionStore,
 } from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
@@ -60,8 +60,7 @@ const {
   wakeBroker,
   listenerInstanceId,
   companionBackgroundIntervalMs,
-  baseWorkspaceRoot,
-  workspaceRoots,
+  defaultWorkingDirectory,
 } = resolveNativeLiveMacDaemonConfig(process.env);
 
 if (process.env.ANTHROPIC_API_KEY) {
@@ -110,17 +109,15 @@ const companionScheduler = new NativeLiveMacCompanionScheduler(
 );
 const claudeTransportKind =
   resolveNativeLiveMacClaudeTransportKind(process.env);
-const workspaceRuntimePool =
-  new NativeLiveMacWorkspaceRuntimePool(
+const workingDirectoryRuntimePool =
+  new NativeLiveMacWorkingDirectoryRuntimePool(
     process.env,
-    baseWorkspaceRoot,
-    workspaceRoots,
+    defaultWorkingDirectory,
     undefined,
-    (workspaceId) =>
+    () =>
       new NativeLiveMacProviderSessionStore(
         relayBaseUrl,
         relayToken,
-        workspaceId,
       ),
     {
       type: "http",
@@ -131,9 +128,8 @@ const workspaceRuntimePool =
     },
   );
 const { runtime } =
-  await workspaceRuntimePool.resolveWorkspaceRuntime({
-    workspaceId: null,
-    expectedWorkspaceRoot: null,
+  await workingDirectoryRuntimePool.resolveWorkingDirectoryRuntime({
+    expectedWorkingDirectory: null,
   });
 
 process.stdout.write(
@@ -141,9 +137,8 @@ process.stdout.write(
     at: new Date().toISOString(),
     outcome: "daemon_config",
     claudeTransport: claudeTransportKind,
-    baseWorkspaceRoot,
-    workspaceMappingCount: Object.keys(workspaceRoots).length,
-    providerSessionStore: "remote_workspace_scoped",
+    defaultWorkingDirectory,
+    providerSessionStore: "remote_user_session_scoped",
     leileiosMcp: "http_auto_recover",
     wakeMode:
       wakeBrokerClient
@@ -166,7 +161,7 @@ await silenceWakeScheduler.refresh().catch((error) => {
 
 const outputAttachmentSender = new NativeLiveMacOutputAttachmentSender(relay);
 const executor = new NativeLiveMacRuntimeExecutor(
-  workspaceRuntimePool,
+  workingDirectoryRuntimePool,
   "/",
   new NativeLiveMacAttachmentMaterializer(relay),
   outputAttachmentSender,
@@ -196,9 +191,9 @@ const loop = new NativeLiveMacDaemonLoop(
   semanticScorer,
   companionScheduler,
   backgroundModelExecutor,
-  workspaceRuntimePool,
-  workspaceRuntimePool,
-  workspaceRuntimePool,
+  workingDirectoryRuntimePool,
+  workingDirectoryRuntimePool,
+  workingDirectoryRuntimePool,
 );
 
 let stopping = false;
@@ -206,7 +201,7 @@ let activeWorkWaitController: AbortController | null = null;
 const stop = () => {
   stopping = true;
   activeWorkWaitController?.abort();
-  workspaceRuntimePool.abortAll();
+  workingDirectoryRuntimePool.abortAll();
 };
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);

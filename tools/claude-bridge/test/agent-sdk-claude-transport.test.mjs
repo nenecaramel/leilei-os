@@ -1856,7 +1856,7 @@ test("deleteSession delegates to Agent SDK with the daemon cwd", async () => {
 });
 
 
-test("listSessions reads the current workspace without mutating any session", async () => {
+test("listSessions reads the current working directory without mutating any session", async () => {
   let options;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
@@ -2185,4 +2185,15 @@ test("without meme handler no meme server or hint is added",async()=>{
   await transport.executeTurn("hello",{mode:"new",parentProviderSessionId:null,streaming:true});
   assert.equal(call.options.mcpServers,undefined);assert.equal(call.options.systemPrompt.append.includes("send_meme"),false);
   assert.match(call.options.systemPrompt.append,/To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+});
+
+ test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {
+  let options;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: "/default", listSessionsImpl: async input => {
+    options = input;
+    return [{sessionId: "historical", cwd: "/historical"}, {sessionId: "unknown"}];
+  }});
+  const rows = await transport.listSessions({allDirectories: true});
+  assert.equal(Object.hasOwn(options, "dir"), false);
+  assert.deepEqual(rows.map(row => [row.sessionId, row.cwd]), [["historical", "/historical"]]);
 });

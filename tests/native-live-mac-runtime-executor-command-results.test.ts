@@ -34,14 +34,13 @@ test("new command invokes sendNew and returns a correlated success envelope", as
 
   assert.deepEqual(calls, [["new", "hello"]]);
   assert.deepEqual(result, {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-new",
-    workspace_id: null,
-    effective_workspace_root: "/",
+    effective_working_directory: "/",
     normalized_events: [
       { type: "result", payload: { status: "success", final_text: "READY" } },
     ],
@@ -143,7 +142,7 @@ test("durably projects Agent SDK result telemetry without changing canonical fal
 
   const result =
     await new NativeLiveMacRuntimeExecutor(runtime).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
     );
 
   assert.equal(result.status, "success");
@@ -193,7 +192,7 @@ test("provider terminal failures retain bounded result telemetry in the failure 
 
   const result =
     await new NativeLiveMacRuntimeExecutor(runtime).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
     );
 
   assert.equal(result.status, "failure");
@@ -258,7 +257,7 @@ test("fork propagates missing local parent session as NO_PROVIDER_SESSION", asyn
   );
 
   assert.deepEqual(result, {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -283,7 +282,7 @@ test("missing provider session returns a safe NO_PROVIDER_SESSION failure", asyn
   const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(command());
 
   assert.deepEqual(result, {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -331,7 +330,7 @@ test("tagged local transport failures map to their bounded runtime code without 
   const result = await new NativeLiveMacRuntimeExecutor(runtime).execute(command());
 
   assert.deepEqual(result, {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,

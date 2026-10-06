@@ -279,7 +279,6 @@ test("parseImportPackage enforces active-module collection limits before plannin
   }
 });
 
-
 test("parseImportPackage enforces Mind continuity database string constraints", () => {
   const valid = {
     drive_satisfaction_events: [{
@@ -354,7 +353,6 @@ test("parseImportPackage enforces Mind continuity database string constraints", 
     );
   }
 });
-
 
 test("parseImportPackage validates conversation continuation checkpoints", () => {
   const checkpoint = {
@@ -434,8 +432,7 @@ test("parseImportPackage validates conversation continuation checkpoints", () =>
   }
 });
 
-
-test("parseImportPackage accepts v4 single-layer Workspace backups", () => {
+test("parseImportPackage rejects retired Workspace backups explicitly", () => {
   const workspaceId =
     "00000000-0000-4000-8000-000000000201";
   const resourceId =
@@ -465,14 +462,7 @@ test("parseImportPackage accepts v4 single-layer Workspace backups", () => {
       conversations: [],
     },
   }));
-  const parsed = parseImportPackage(raw);
-  assert.equal(parsed.document.schema_version, 4);
-  assert.deepEqual(
-    parsed.document.schema_version === 4
-      ? parsed.document.data.workspaces?.items.map((item) => item.id)
-      : [],
-    [workspaceId],
-  );
+  assert.throws(() => parseImportPackage(raw), /retired Product Workspace data/);
 });
 
 test("v4 rejects legacy projects and v3 rejects future workspaces", () => {

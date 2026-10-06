@@ -694,6 +694,13 @@
       "when": 1791125000000,
       "tag": "0098_native_live_search_result_event",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1791125000001,
+      "tag": "0099_retire_product_workspace",
+      "breakpoints": true
     }
   ]
 }

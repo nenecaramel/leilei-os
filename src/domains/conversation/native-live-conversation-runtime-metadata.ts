@@ -14,8 +14,7 @@ export type NativeLiveConversationRuntimeMetadataSnapshot = {
   conversationId: string;
   currentHeadMessageId: string | null;
   sourceMessageId: string | null;
-  workspaceId: string | null;
-  effectiveWorkspaceRoot: string | null;
+  effectiveWorkingDirectory: string | null;
   runtimeMetadata: NativeLiveRuntimeMetadata | null;
   observedAt: string | null;
 };
@@ -52,13 +51,11 @@ implements NativeLiveConversationRuntimeMetadataReader {
     if (!conversation) return null;
     if (!conversation.currentHeadMessageId) {
       const bootstrapRows = await this.db.execute<{
-        workspace_id: string | null;
-        effective_workspace_root: string;
+        effective_working_directory: string;
         created_at: string;
       }>(sql`
         SELECT
-          workspace_id,
-          effective_workspace_root,
+          effective_working_directory,
           created_at::text
         FROM native_live_conversation_provider_bootstraps
         WHERE user_id = ${input.userId}::uuid
@@ -72,9 +69,8 @@ implements NativeLiveConversationRuntimeMetadataReader {
         conversationId: conversation.id,
         currentHeadMessageId: null,
         sourceMessageId: null,
-        workspaceId: bootstrap?.workspace_id ?? null,
-        effectiveWorkspaceRoot:
-          bootstrap?.effective_workspace_root ?? null,
+        effectiveWorkingDirectory:
+          bootstrap?.effective_working_directory ?? null,
         runtimeMetadata: null,
         observedAt: bootstrap
           ? new Date(bootstrap.created_at).toISOString()
@@ -84,8 +80,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
 
     const rows = await this.db.execute<{
       source_message_id: string;
-      workspace_id: string | null;
-      effective_workspace_root: string | null;
+      effective_working_directory: string | null;
       runtime_metadata: Record<string, unknown> | null;
       observed_at: string;
     }>(sql`
@@ -116,8 +111,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
       )
       SELECT
         checkpoint.canonical_message_id AS source_message_id,
-        checkpoint.workspace_id,
-        checkpoint.effective_workspace_root,
+        checkpoint.effective_working_directory,
         checkpoint.runtime_metadata,
         checkpoint.created_at::text AS observed_at
       FROM current_path AS path
@@ -137,8 +131,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
         conversationId: conversation.id,
         currentHeadMessageId: conversation.currentHeadMessageId,
         sourceMessageId: null,
-        workspaceId: null,
-        effectiveWorkspaceRoot: null,
+        effectiveWorkingDirectory: null,
         runtimeMetadata: null,
         observedAt: null,
       };
@@ -148,8 +141,7 @@ implements NativeLiveConversationRuntimeMetadataReader {
       conversationId: conversation.id,
       currentHeadMessageId: conversation.currentHeadMessageId,
       sourceMessageId: latest.source_message_id,
-      workspaceId: latest.workspace_id,
-      effectiveWorkspaceRoot: latest.effective_workspace_root,
+      effectiveWorkingDirectory: latest.effective_working_directory,
       runtimeMetadata:
         latest.runtime_metadata as NativeLiveRuntimeMetadata | null,
       observedAt: new Date(latest.observed_at).toISOString(),

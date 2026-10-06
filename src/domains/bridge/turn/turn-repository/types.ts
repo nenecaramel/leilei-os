@@ -39,8 +39,7 @@ export type NativeLiveBackendTurnReadModel = {
   operation: "send" | "retry" | "edit" | "wake";
   canonicalUserMessageId: string | null;
   wakeContext?: Record<string, unknown> | null;
-  workspaceId: string | null;
-  expectedWorkspaceRoot: string | null;
+  expectedWorkingDirectory: string | null;
   executionSelection: NativeLiveExecutionSelection | null;
   canonicalStatus:
     | "prepared"
@@ -79,8 +78,7 @@ export type PreparationRow = {
   wakeContext: Record<string, unknown> | null;
   runtimeMode: "new" | "fork";
   parentProviderSessionId: string | null;
-  workspaceId: string | null;
-  expectedWorkspaceRoot: string | null;
+  expectedWorkingDirectory: string | null;
   executionSelection: Record<string, unknown> | null;
   attachments: Array<Record<string, unknown>>;
   prompt: string;
@@ -114,14 +112,12 @@ export type TurnRepositoryContext = {
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
-    requestedWorkspaceId?: string | null,
   ): Promise<
     | {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
-        workspaceId: string | null;
-        expectedWorkspaceRoot: string | null;
+        expectedWorkingDirectory: string | null;
       }
     | {
         ok: false;
@@ -141,8 +137,7 @@ export type TurnRepositoryContext = {
       replacementTargetUserMessageId: string | null;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
-      workspaceId: string | null;
-      expectedWorkspaceRoot: string | null;
+      expectedWorkingDirectory: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       attachments: NativeLiveRuntimeAttachment[];
       prompt: string;

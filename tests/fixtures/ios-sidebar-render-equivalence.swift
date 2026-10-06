@@ -36,7 +36,7 @@ struct SidebarEquivalenceChecks {
         var cases = 0
         for width in [300, 280] {
             for dark in [false, true] {
-                for page in [AppPage.workspaces, .diary, .daySpace, .mind, .universe, .chat] {
+                for page in [AppPage.diary, .daySpace, .mind, .universe, .chat] {
                     let baseline = sample(AnyView(BaselineSidebarView(
                         selectedPage: .constant(page), menuButtonCenterY: nil,
                         onNewSession: {}, newSessionEnabled: true, conversations: conversations,

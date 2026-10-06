@@ -22,7 +22,7 @@ import {
 
 if (process.platform !== "darwin") {
   throw new Error(
-    "Workspace config convergence smoke must run on macOS.",
+    "Working directory config convergence smoke must run on macOS.",
   );
 }
 
@@ -50,7 +50,7 @@ function finalText(message) {
 
 async function run() {
   const root = await mkdtemp(
-    path.join(tmpdir(), "leileios-workspace-config-"),
+    path.join(tmpdir(), "leileios-working-directory-config-"),
   );
 
   const memorySentinel = token("LEILEIOS_CLAUDE_MD");
@@ -67,7 +67,7 @@ async function run() {
     await writeFile(
       path.join(root, "CLAUDE.md"),
       [
-        "# LeileiOS Workspace config convergence fixture",
+        "# LeileiOS Working directory config convergence fixture",
         "",
         `The exact project-memory sentinel is: ${memorySentinel}`,
         "Treat this as already-loaded project instructions.",
@@ -118,7 +118,7 @@ async function run() {
     });
     const transportResult = await transport.sendNew(
       [
-        "This is a deterministic LeileiOS Workspace-config smoke.",
+        "This is a deterministic LeileiOS Working directory-config smoke.",
         "Do not use tools.",
         "Reply with exactly the project-memory sentinel from CLAUDE.md and nothing else.",
       ].join("\n"),
@@ -146,7 +146,7 @@ async function run() {
     // Stage B: verify the exact Claude project/local setting sources used by
     // the LeileiOS transport actually resolve in the same directory.
     const prompt = [
-      "This is a deterministic LeileiOS Workspace-config smoke.",
+      "This is a deterministic LeileiOS Working directory-config smoke.",
       "Use the Read tool exactly once to read ./fixture.txt.",
       "Use the Bash tool exactly once to run:",
       "printf '%s|%s|LEILEIOS_BASH_OK' \"$LEILEIOS_PROJECT_SETTING\" \"$LEILEIOS_LOCAL_SETTING\"",
@@ -177,7 +177,7 @@ async function run() {
     );
 
     const normalizer = new ClaudeEventNormalizer({
-      logicalConversationId: "workspace-config-smoke",
+      logicalConversationId: "working-directory-config-smoke",
       mode: "new",
     });
 
@@ -299,7 +299,7 @@ async function run() {
           outcome: "PASS",
           sdk: "@anthropic-ai/claude-agent-sdk@0.3.281",
           auth: "existing_claude_subscription_login",
-          workspaceRoot: root,
+          workingDirectory: root,
           leileiTransport: {
             cwdProjectMemory: true,
             providerSessionId: transportSessionId,

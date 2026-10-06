@@ -230,12 +230,11 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
     expectedHeadMessageId: headId,
     text: "hello",
     attachmentIds: [],
-    workspaceId: null,
     executionSelection: null,
   }]);
   if (!result.ok) throw new Error("expected success");
   assert.deepEqual(result.command, {
-    protocol_version: 3,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -244,8 +243,7 @@ test("prepare Send forwards stale-head precondition and emits a fork command fro
     canonical_user_message_id: userMessageId,
     runtime_mode: "fork",
     parent_provider_session_id: "provider-parent",
-    workspace_id: null,
-    expected_workspace_root: null,
+    expected_working_directory: null,
     execution_selection: null,
     prompt: "hello",
   });
@@ -362,7 +360,7 @@ test("successful finalize validates identity, canonicalizes events, and delegate
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -405,7 +403,7 @@ test("murmur is stripped before Mind parsing and persisted as a separate assista
   const { port, coordinator } = setup({ mind });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -463,7 +461,7 @@ test("finalize accepts a v2 result for a preparation dispatched during rolling u
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 2,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -482,7 +480,7 @@ test("runtime failure finalizes only the failed preparation and never creates an
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -530,7 +528,7 @@ test("quiet silence wake is discarded without canonical assistant finalization",
   });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -581,7 +579,7 @@ test("empty successful silence wake is also discarded without creating an assist
   });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -628,7 +626,7 @@ test("failed silence wake is invisible and uses the same discard path", async ()
   });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -665,7 +663,7 @@ test("visible silence wake finalizes as a normal assistant continuation with no 
   });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -697,7 +695,7 @@ test("mismatched callback identity is rejected before either finalize mutation r
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: "99999999-9999-4999-8999-999999999999",
     conversation_id: conversationId,
@@ -720,7 +718,7 @@ test("success envelope carrying normalized runtime error is recorded as protocol
   const { port, coordinator } = setup();
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -750,7 +748,6 @@ test("success envelope carrying normalized runtime error is recorded as protocol
     code: "RUNTIME_PROTOCOL_ERROR",
   });
 });
-
 
 test("Mind-aware prepare persists one assembled prompt before emitting the runtime command", async () => {
   const mind = new FakeMind();
@@ -838,7 +835,7 @@ test("Mind-aware finalize strips hidden Mind tags before canonical write and run
   port.preparation = prepared({ mindPrepared: true });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -869,7 +866,7 @@ test("durable post-finalize runner owns Mind follow-up and failures never rewrit
   port.preparation = prepared({ mindPrepared: true });
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -900,7 +897,7 @@ test("idempotent finalize never duplicates Mind writes or branch reconciliation"
   port.finalizeOutcome = "idempotent";
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -914,7 +911,6 @@ test("idempotent finalize never duplicates Mind writes or branch reconciliation"
   assert.equal(result.ok, true);
   assert.equal(mind.finalizeCalls.length, 0);
 });
-
 
 test("runtime context metadata is handed to durable finalization", async () => {
   const { port, coordinator } = setup();
@@ -931,7 +927,7 @@ test("runtime context metadata is handed to durable finalization", async () => {
   };
 
   const result = await coordinator.finalize(userId, {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,

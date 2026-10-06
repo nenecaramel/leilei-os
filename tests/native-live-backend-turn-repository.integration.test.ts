@@ -13,8 +13,6 @@ import {
   nativeLiveProviderSessionCleanups,
   nativeLiveTurnPreparations,
   conversations,
-  workspaceConversations,
-  workspaces,
   runtimeDistillationWatermarks,
   runtimeSubjectStates,
   users,
@@ -216,7 +214,7 @@ test(
       });
 
     const firstFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -305,7 +303,7 @@ test(
     assert.ok(firstDurableMetadata.observedAt);
 
     const finalizeReplay = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -330,7 +328,7 @@ test(
     );
 
     const conflictingFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: firstPrepare.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: conversation.id,
@@ -375,7 +373,7 @@ test(
     const secondUserId = secondPrepare.command.canonical_user_message_id;
 
     const secondFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: secondPrepare.command.prepare_id,
       request_id: secondRequestId,
       conversation_id: conversation.id,
@@ -698,7 +696,7 @@ test(
     assert.equal(retry.command.prompt, "second");
 
     const retryFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: retry.command.prepare_id,
       request_id: retryRequestId,
       conversation_id: conversation.id,
@@ -870,7 +868,7 @@ test(
 
     const editedUserId = edit.command.canonical_user_message_id;
     const editFinalize = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: edit.command.prepare_id,
       request_id: editRequestId,
       conversation_id: conversation.id,
@@ -977,7 +975,7 @@ test(
       },
     };
     const failure = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: failurePrepare.command.prepare_id,
       request_id: failureRequestId,
       conversation_id: conversation.id,
@@ -1025,9 +1023,8 @@ test(
   },
 );
 
-
 test(
-  "Workspace execution binding persists one durable cwd authority and rejects ambiguous legacy membership",
+  "new sessions persist their effective directory and the next turn forks in that durable directory",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -1038,17 +1035,14 @@ test(
     const [user] = await database.db
       .insert(users)
       .values({
-        email: `native-live-workspace-${suffix}@example.com`,
-        displayName: "Native Live Workspace",
+        email: `native-live-directory-${suffix}@example.com`,
+        displayName: "Native Live Directory",
       })
       .returning({ id: users.id });
     assert.ok(user);
 
     t.after(async () => {
       try {
-        await database.db
-          .delete(workspaces)
-          .where(eq(workspaces.userId, user.id));
         await database.db
           .delete(nativeLiveProviderSessionCleanups)
           .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
@@ -1067,23 +1061,8 @@ test(
     const boundConversation =
       await conversationService.createConversation({
         userId: user.id,
-        title: "Workspace-bound conversation",
+        title: "Directory-bound conversation",
       });
-
-    const [workspace] = await database.db
-      .insert(workspaces)
-      .values({
-        userId: user.id,
-        name: "Execution Workspace",
-      })
-      .returning({ id: workspaces.id });
-    assert.ok(workspace);
-
-    await database.db.insert(workspaceConversations).values({
-      userId: user.id,
-      workspaceId: workspace.id,
-      conversationId: boundConversation.id,
-    });
 
     const coordinator = new NativeLiveBackendTurnCoordinator(
       new DrizzleNativeLiveBackendTurnPort(database.db),
@@ -1097,37 +1076,35 @@ test(
       operation: "send",
       conversation_id: boundConversation.id,
       expected_head_message_id: null,
-      text: "workspace hello",
+      text: "directory hello",
     });
     assert.equal(first.ok, true);
-    if (!first.ok) throw new Error("expected Workspace prepare");
+    if (!first.ok) throw new Error("expected Directory prepare");
     assert.equal(first.command.runtime_mode, "new");
-    assert.equal(first.command.workspace_id, workspace.id);
-    assert.equal(first.command.expected_workspace_root, null);
+    assert.equal(first.command.expected_working_directory, null);
 
-    const root = "/Users/leilei/Projects/workspace-demo";
+    const root = "/Users/leilei/Projects/directory-demo";
     const finalized = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: first.command.prepare_id,
       request_id: firstRequestId,
       conversation_id: boundConversation.id,
       status: "success",
-      provider_session_id: "provider-workspace-first",
-      workspace_id: workspace.id,
-      effective_workspace_root: root,
+      provider_session_id: "provider-directory-first",
+      effective_working_directory: root,
       normalized_events: [
-        { type: "text", payload: { text: "workspace answer" } },
+        { type: "text", payload: { text: "directory answer" } },
         {
           type: "result",
           payload: {
             status: "success",
-            final_text: "workspace answer",
+            final_text: "directory answer",
           },
         },
       ],
     });
     assert.equal(finalized.ok, true);
-    if (!finalized.ok) throw new Error("expected Workspace finalize");
+    if (!finalized.ok) throw new Error("expected Directory finalize");
 
     const checkpoint =
       await conversationService.getProviderCheckpointForHead({
@@ -1136,8 +1113,7 @@ test(
         canonicalMessageId: finalized.assistantMessageId,
       });
     assert.ok(checkpoint);
-    assert.equal(checkpoint.workspaceId, workspace.id);
-    assert.equal(checkpoint.effectiveWorkspaceRoot, root);
+    assert.equal(checkpoint.effectiveWorkingDirectory, root);
 
     const second = await coordinator.prepare(user.id, {
       dispatch_target: "claude_code",
@@ -1145,167 +1121,21 @@ test(
       operation: "send",
       conversation_id: boundConversation.id,
       expected_head_message_id: finalized.assistantMessageId,
-      text: "continue in same workspace",
+      text: "continue in same directory",
     });
     assert.equal(second.ok, true);
-    if (!second.ok) throw new Error("expected Workspace continuation");
+    if (!second.ok) throw new Error("expected Directory continuation");
     assert.equal(second.command.runtime_mode, "fork");
     assert.equal(
       second.command.parent_provider_session_id,
-      "provider-workspace-first",
+      "provider-directory-first",
     );
-    assert.equal(second.command.workspace_id, workspace.id);
-    assert.equal(second.command.expected_workspace_root, root);
+    assert.equal(second.command.expected_working_directory, root);
 
-    const explicitConversation =
-      await conversationService.createConversation({
-        userId: user.id,
-        title: "Explicit Workspace selection",
-      });
-    const explicitRequestId = crypto.randomUUID();
-    const explicit = await coordinator.prepare(user.id, {
-      dispatch_target: "claude_code",
-      request_id: explicitRequestId,
-      operation: "send",
-      conversation_id: explicitConversation.id,
-      expected_head_message_id: null,
-      workspace_id: workspace.id,
-      text: "explicit workspace hello",
-    });
-    assert.equal(explicit.ok, true);
-    if (!explicit.ok) throw new Error("expected explicit Workspace prepare");
-    assert.equal(explicit.command.workspace_id, workspace.id);
-    assert.equal(explicit.command.runtime_mode, "new");
-
-    const explicitMemberships = await database.db
-      .select({ workspaceId: workspaceConversations.workspaceId })
-      .from(workspaceConversations)
-      .where(eq(workspaceConversations.conversationId, explicitConversation.id));
-    assert.deepEqual(explicitMemberships, [{ workspaceId: workspace.id }]);
-
-    const missingWorkspace = await coordinator.prepare(user.id, {
-      dispatch_target: "claude_code",
-      request_id: crypto.randomUUID(),
-      operation: "send",
-      conversation_id: (
-        await conversationService.createConversation({
-          userId: user.id,
-          title: "Missing Workspace selection",
-        })
-      ).id,
-      expected_head_message_id: null,
-      workspace_id: "77777777-7777-4777-8777-777777777777",
-      text: "must fail closed",
-    });
-    assert.equal(missingWorkspace.ok, false);
-    if (missingWorkspace.ok) throw new Error("expected missing Workspace failure");
-    assert.equal(missingWorkspace.code, "WORKSPACE_NOT_FOUND");
-
-    const explicitFinalized = await coordinator.finalize(user.id, {
-      protocol_version: 3,
-      prepare_id: explicit.command.prepare_id,
-      request_id: explicitRequestId,
-      conversation_id: explicitConversation.id,
-      status: "success",
-      provider_session_id: "provider-explicit-workspace",
-      workspace_id: workspace.id,
-      effective_workspace_root: root,
-      normalized_events: [
-        { type: "text", payload: { text: "explicit answer" } },
-        {
-          type: "result",
-          payload: {
-            status: "success",
-            final_text: "explicit answer",
-          },
-        },
-      ],
-    });
-    assert.equal(explicitFinalized.ok, true);
-    if (!explicitFinalized.ok) {
-      throw new Error("expected explicit Workspace finalize");
-    }
-
-    const explicitMetadata =
-      await new DrizzleNativeLiveConversationRuntimeMetadataReader(
-        database.db,
-      ).readLatest({
-        userId: user.id,
-        conversationId: explicitConversation.id,
-      });
-    assert.ok(explicitMetadata);
-    assert.equal(explicitMetadata.workspaceId, workspace.id);
-    assert.equal(explicitMetadata.effectiveWorkspaceRoot, root);
-    assert.equal(
-      explicitMetadata.sourceMessageId,
-      explicitFinalized.assistantMessageId,
-    );
-
-    const [otherWorkspaceForConflict] = await database.db
-      .insert(workspaces)
-      .values({
-        userId: user.id,
-        name: "Conflicting Execution Workspace",
-      })
-      .returning({ id: workspaces.id });
-    assert.ok(otherWorkspaceForConflict);
-
-    const workspaceSwitch = await coordinator.prepare(user.id, {
-      dispatch_target: "claude_code",
-      request_id: crypto.randomUUID(),
-      operation: "send",
-      conversation_id: explicitConversation.id,
-      expected_head_message_id: explicitFinalized.assistantMessageId,
-      workspace_id: otherWorkspaceForConflict.id,
-      text: "do not move cwd",
-    });
-    assert.equal(workspaceSwitch.ok, false);
-    if (workspaceSwitch.ok) {
-      throw new Error("expected Workspace binding conflict");
-    }
-    assert.equal(workspaceSwitch.code, "WORKSPACE_BINDING_CONFLICT");
-
-    const ambiguousConversation =
-      await conversationService.createConversation({
-        userId: user.id,
-        title: "Ambiguous legacy membership",
-      });
-    const [otherWorkspace] = await database.db
-      .insert(workspaces)
-      .values({
-        userId: user.id,
-        name: "Other Execution Workspace",
-      })
-      .returning({ id: workspaces.id });
-    assert.ok(otherWorkspace);
-
-    await database.db.insert(workspaceConversations).values([
-      {
-        userId: user.id,
-        workspaceId: workspace.id,
-        conversationId: ambiguousConversation.id,
-      },
-      {
-        userId: user.id,
-        workspaceId: otherWorkspace.id,
-        conversationId: ambiguousConversation.id,
-      },
-    ]);
-
-    const ambiguous = await coordinator.prepare(user.id, {
-      dispatch_target: "claude_code",
-      request_id: crypto.randomUUID(),
-      operation: "send",
-      conversation_id: ambiguousConversation.id,
-      expected_head_message_id: null,
-      text: "do not guess",
-    });
-    assert.equal(ambiguous.ok, false);
-    if (ambiguous.ok) throw new Error("expected ambiguous Workspace failure");
-    assert.equal(ambiguous.code, "WORKSPACE_BINDING_AMBIGUOUS");
+    const metadata = await new DrizzleNativeLiveConversationRuntimeMetadataReader(database.db).readLatest({ userId: user.id, conversationId: boundConversation.id });
+    assert.equal(metadata?.effectiveWorkingDirectory, root);
   },
 );
-
 
 test(
   "external Claude session bootstrap forks the first LeileiOS turn without importing provider history",
@@ -1344,7 +1174,7 @@ test(
       title: "Forked Claude session",
     });
     const sourceSessionId = "external-claude-session-source";
-    const workspaceRoot = "/Users/leilei/Projects/leilei-os";
+    const workingDirectory = "/Users/leilei/Projects/leilei-os";
 
     await database.db.execute(sql`
       INSERT INTO native_live_conversation_provider_bootstraps (
@@ -1352,15 +1182,13 @@ test(
         user_id,
         provider,
         source_provider_session_id,
-        workspace_id,
-        effective_workspace_root
+        effective_working_directory
       ) VALUES (
         ${conversation.id}::uuid,
         ${user.id}::uuid,
         'claude_code',
         ${sourceSessionId},
-        NULL,
-        ${workspaceRoot}
+        ${workingDirectory}
       )
     `);
 
@@ -1397,10 +1225,9 @@ test(
       prepared.command.parent_provider_session_id,
       sourceSessionId,
     );
-    assert.equal(prepared.command.workspace_id, null);
     assert.equal(
-      prepared.command.expected_workspace_root,
-      workspaceRoot,
+      prepared.command.expected_working_directory,
+      workingDirectory,
     );
 
     const afterPrepare = await conversationService.getConversation({
@@ -1416,14 +1243,13 @@ test(
     );
 
     const finalized = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: prepared.command.prepare_id,
       request_id: requestId,
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "leileios-forked-provider-session",
-      workspace_id: null,
-      effective_workspace_root: workspaceRoot,
+      effective_working_directory: workingDirectory,
       normalized_events: [
         {
           type: "text",

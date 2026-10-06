@@ -40,10 +40,6 @@ import {
   type MindApiDependencies,
 } from "./mind-router.js";
 import {
-  createProjectWorkspaceApiRouter,
-  type ProjectWorkspaceApiDependencies,
-} from "./project-workspace-router.js";
-import {
   createAlbumApiRouter,
   type AlbumApiDependencies,
 } from "./album-router.js";
@@ -59,7 +55,6 @@ export type WebApiRouterDependencies = {
   universe?: UniverseApiDependencies;
   mind?: MindApiDependencies;
   album?: AlbumApiDependencies;
-  projects?: ProjectWorkspaceApiDependencies;
   nativeLive?: NativeLiveApiDependencies;
 };
 
@@ -107,7 +102,6 @@ export function createWebApiRouter(
   if (dependencies.universe) router.use("/universe", createUniverseApiRouter(dependencies.universe));
   if (dependencies.mind) router.use("/mind", createMindApiRouter(dependencies.mind));
   if (dependencies.album) router.use("/album", createAlbumApiRouter(dependencies.album));
-  if (dependencies.projects) router.use("/", createProjectWorkspaceApiRouter(dependencies.projects));
   if (dependencies.nativeLive) router.use("/native-live", createNativeLiveApiRouter(dependencies.nativeLive));
 
   return router;

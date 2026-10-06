@@ -4,9 +4,7 @@ import {
   NativeLiveMacProviderSessionStore,
 } from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
 
-const workspaceId = "55555555-5555-4555-8555-555555555555";
-
-test("Mac SessionStore maps the Agent SDK contract onto one durable Workspace", async () => {
+test("Mac SessionStore maps the Agent SDK contract onto a user-scoped provider session", async () => {
   const calls: Array<{ url: string; body: unknown; auth: string | null }> = [];
   const responses = [
     { success: true, data: null },
@@ -33,7 +31,6 @@ test("Mac SessionStore maps the Agent SDK contract onto one durable Workspace", 
   const store = new NativeLiveMacProviderSessionStore(
     "https://relay.example/",
     "secret-token",
-    workspaceId,
     fakeFetch,
   );
   const key = {
@@ -68,7 +65,6 @@ test("Mac SessionStore maps the Agent SDK contract onto one durable Workspace", 
     entries: unknown;
   };
   assert.deepEqual(appendBody.key, {
-    workspace_id: workspaceId,
     session_id: "s1",
   });
   assert.match(
@@ -97,7 +93,6 @@ test("Mac SessionStore preserves subpath identity and null load semantics", asyn
   const store = new NativeLiveMacProviderSessionStore(
     "https://relay.example",
     "secret-token",
-    workspaceId,
     fakeFetch,
   );
   assert.equal(
@@ -110,13 +105,11 @@ test("Mac SessionStore preserves subpath identity and null load semantics", asyn
   );
   assert.deepEqual(bodies, [{
     key: {
-      workspace_id: workspaceId,
       session_id: "s1",
       subpath: "subagents/x",
     },
   }]);
 });
-
 
 test("Mac SessionStore reuses one append batch id after ambiguous delivery", async () => {
   const bodies: Array<Record<string, unknown>> = [];
@@ -138,7 +131,6 @@ test("Mac SessionStore reuses one append batch id after ambiguous delivery", asy
   const store = new NativeLiveMacProviderSessionStore(
     "https://relay.example",
     "secret-token",
-    workspaceId,
     fakeFetch,
   );
   const key = { projectKey: "/local/path", sessionId: "s1" };
@@ -170,7 +162,6 @@ test("Mac SessionStore keeps one receipt until mirror_error discards it", async 
   const store = new NativeLiveMacProviderSessionStore(
     "https://relay.example",
     "secret-token",
-    workspaceId,
     fakeFetch,
   );
   const key = { projectKey: "/local/path", sessionId: "s1" };
@@ -218,7 +209,6 @@ test("Mac SessionStore exposes fail-closed completeness state", async () => {
   const store = new NativeLiveMacProviderSessionStore(
     "https://relay.example",
     "secret-token",
-    workspaceId,
     fakeFetch,
   );
 
@@ -240,7 +230,6 @@ test("Mac SessionStore exposes fail-closed completeness state", async () => {
   );
   for (const call of calls) {
     assert.deepEqual(call.body, {
-      workspace_id: workspaceId,
       session_id: "s1",
     });
   }

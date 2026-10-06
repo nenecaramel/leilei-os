@@ -7,7 +7,7 @@ import {
   command,
 } from "./helpers/native-live-mac-runtime-executor-fixtures.js";
 
-test("protocol v3 collects explicit send_file output attachment ids", async () => {
+test("protocol v4 collects explicit send_file output attachment ids", async () => {
   const attachmentId =
     "66666666-6666-4666-8666-666666666666";
   const sent: unknown[] = [];
@@ -47,7 +47,7 @@ test("protocol v3 collects explicit send_file output attachment ids", async () =
     async sendFile(input: {
       path: string;
       displayName?: string | null;
-      workspaceRoot: string;
+      workingDirectory: string;
     }) {
       sent.push(input);
       return {
@@ -68,7 +68,7 @@ test("protocol v3 collects explicit send_file output attachment ids", async () =
       null,
       sender,
     ).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
     );
 
   assert.equal(result.status, "success");
@@ -78,7 +78,7 @@ test("protocol v3 collects explicit send_file output attachment ids", async () =
   assert.deepEqual(sent, [{
     path: "out/report.pdf",
     displayName: "report.pdf",
-    workspaceRoot: "/workspace",
+    workingDirectory: "/workspace",
   }]);
   assert.deepEqual(
     result.output_attachment_ids,
@@ -183,7 +183,7 @@ test("protocol v3 album save is bound to canonical user identity and emits album
       null,
       albumClient,
     ).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
       {
         onNormalizedEvent: async (event) => {
           events.push(event);
@@ -193,7 +193,7 @@ test("protocol v3 album save is bound to canonical user identity and emits album
 
   assert.equal(result.status, "success");
   const expectedUserMessageId =
-    command({ protocol_version: 3 })
+    command({ protocol_version: 4 })
       .canonical_user_message_id;
   assert.deepEqual(observed, [{
     sourceAttachmentId:
@@ -309,7 +309,7 @@ test("protocol v3 album save retry does not emit a duplicate album_saved event",
       null,
       albumClient,
     ).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
       {
         onNormalizedEvent: async (event) => {
           events.push(event);
@@ -425,7 +425,7 @@ test("protocol v3 album send contributes to output attachment ids", async () => 
       null,
       albumClient,
     ).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
     );
 
   assert.equal(result.status, "success");
@@ -438,7 +438,7 @@ test("protocol v3 album send contributes to output attachment ids", async () => 
   );
 });
 
-test("legacy runtime turns do not expose send_file", async () => {
+test("retired protocol turns fail before runtime execution", async () => {
   const runtime = {
     async sendNew() { throw new Error("unused"); },
     async resume() { throw new Error("unused"); },
@@ -462,17 +462,35 @@ test("legacy runtime turns do not expose send_file", async () => {
     },
   };
 
-  const result =
-    await new NativeLiveMacRuntimeExecutor(
-      runtime,
-      "/workspace",
-      null,
-      sender,
-    ).execute(command({ protocol_version: 2 }));
+  await assert.rejects(
+    new NativeLiveMacRuntimeExecutor(runtime, "/directory", null, sender).execute(command({ protocol_version: 3 })),
+    /Unsupported runtime protocol version/,
+  );
+});
+test("protocol v4 preserves the disabled send_file capability", async () => {
+  const runtime = {
+    async sendNew() { throw new Error("unused"); },
+    async resume() { throw new Error("unused"); },
+    async fork() { throw new Error("unused"); },
+    async executeTurn(
+      _prompt: string,
+      options: {
+        sendFileHandler?: unknown;
+      },
+    ) {
+      assert.equal(options.sendFileHandler, undefined);
+      return {
+        providerSessionId: "provider-legacy",
+        normalizedEvents: [],
+      };
+    },
+  };
+  const sender = {
+    async sendFile() {
+      throw new Error("legacy turn must not send files");
+    },
+  };
 
+  const result = await new NativeLiveMacRuntimeExecutor(runtime, "/directory", null, sender).execute(command({ protocol_version: 4, output_attachments_enabled: false }));
   assert.equal(result.status, "success");
-  if (result.status !== "success") {
-    throw new Error("expected success");
-  }
-  assert.equal(result.output_attachment_ids, undefined);
 });

@@ -5,7 +5,6 @@ struct NativeLiveEditDraft {
     let text: String
 }
 
-
 extension ChatView {
     func retryMessage(
         _ targetUserMessageID: String
@@ -200,18 +199,10 @@ extension ChatView {
                     onDraftCommitted()
                 }
 
-                let shouldBindWorkspace =
-                    shouldCreateConversation
-                    || appModel.nativeLiveCurrentPath?
-                        .currentHeadMessageId == nil
                 try await appModel.sendNativeLiveMessage(
                     pendingText,
                     inputMode: inputMode,
                     attachmentIDs: attachmentIDs,
-                    workspaceID:
-                        shouldBindWorkspace
-                            ? selectedWorkspaceID
-                            : nil,
                     execution: executionSelection,
                     presentationOperation: pendingOperation
                 )

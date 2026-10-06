@@ -30,8 +30,7 @@ export function mapPreparation(row: PreparationRow): NativeLivePreparedTurn {
     wakeContext: row.wakeContext,
     runtimeMode: row.runtimeMode,
     parentProviderSessionId: row.parentProviderSessionId,
-    workspaceId: row.workspaceId,
-    expectedWorkspaceRoot: row.expectedWorkspaceRoot,
+    expectedWorkingDirectory: row.expectedWorkingDirectory,
     executionSelection: row.executionSelection === null
       ? null
       : parseNativeLiveExecutionSelection(row.executionSelection),

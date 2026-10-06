@@ -75,6 +75,7 @@ export type NativeLiveMacClaudeTransport =
     abort(): void;
     deleteSession(sessionId: string): Promise<void>;
     listSessions?(input?: {
+      allDirectories?: boolean;
       limit?: number;
       offset?: number;
     }): Promise<Array<{
@@ -129,20 +130,20 @@ export function resolveNativeLiveMacClaudeTransportKind(
 
 export async function createNativeLiveMacClaudeTransport(
   environment: NodeJS.ProcessEnv = process.env,
-  workspaceRoot?: string,
+  workingDirectory?: string,
   sessionStore: unknown = null,
   mcpServerConfig: NativeLiveMacMcpServerConfig | null = null,
 ): Promise<{
   kind: NativeLiveMacClaudeTransportKind;
   runtime: NativeLiveMacClaudeTransport;
 }> {
-  const normalizedWorkspaceRoot = workspaceRoot?.trim();
+  const normalizedWorkingDirectory = workingDirectory?.trim();
   if (
-    !normalizedWorkspaceRoot
-    || !isAbsolute(normalizedWorkspaceRoot)
+    !normalizedWorkingDirectory
+    || !isAbsolute(normalizedWorkingDirectory)
   ) {
     throw new Error(
-      "Native Live Mac Claude transport requires an explicit absolute workspace root.",
+      "Native Live Mac Claude transport requires an explicit absolute working directory.",
     );
   }
 
@@ -165,7 +166,7 @@ export async function createNativeLiveMacClaudeTransport(
     kind,
     runtime: new AgentSdkClaudeTransport({
       environment: sanitizeNativeLiveClaudeEnvironment(environment),
-      cwd: normalizedWorkspaceRoot,
+      cwd: normalizedWorkingDirectory,
       ...(sessionStore ? { sessionStore } : {}),
       ...(mcpServerConfig ? { mcpServerConfig } : {}),
     }),

@@ -216,7 +216,6 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
   assert.match(surface, /payload\?\["display_name"\]/);
 });
 
-
 test("Agent SDK transport enables native session state events for every turn", async () => {
   const { AgentSdkClaudeTransport } = await import(
     "../tools/claude-bridge/src/agent-sdk-claude-transport.mjs"
@@ -418,7 +417,7 @@ test("iOS Context reads durable system/init environment from runtime metadata", 
     "utf8",
   );
   const context = readFileSync(
-    new URL("../ios/LeileiOS/LeileiOS/Pages/ProjectsView.swift", import.meta.url),
+    new URL("../ios/LeileiOS/LeileiOS/Pages/ContextOverviewSheet.swift", import.meta.url),
     "utf8",
   );
 

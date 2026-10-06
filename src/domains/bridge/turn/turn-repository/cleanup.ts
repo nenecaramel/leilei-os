@@ -80,10 +80,8 @@ export async function purgeReplacementArtifacts(
           conversationProviderSessionCheckpoints.provider,
         providerSessionId:
           conversationProviderSessionCheckpoints.providerSessionId,
-        workspaceId:
-          conversationProviderSessionCheckpoints.workspaceId,
-        effectiveWorkspaceRoot:
-          conversationProviderSessionCheckpoints.effectiveWorkspaceRoot,
+        effectiveWorkingDirectory:
+          conversationProviderSessionCheckpoints.effectiveWorkingDirectory,
       })
       .from(conversationProviderSessionCheckpoints)
       .where(
@@ -116,15 +114,14 @@ export async function purgeReplacementArtifacts(
             const bindings = new Map(
               sessionCheckpoints.map((checkpoint) => [
                 JSON.stringify([
-                  checkpoint.workspaceId,
-                  checkpoint.effectiveWorkspaceRoot,
+                  checkpoint.effectiveWorkingDirectory,
                 ]),
                 checkpoint,
               ]),
             );
             if (bindings.size > 1) {
               throw new Error(
-                "Provider session is bound to multiple workspace roots.",
+                "Provider session is bound to multiple working directories.",
               );
             }
             const binding = bindings.values().next().value;
@@ -132,9 +129,8 @@ export async function purgeReplacementArtifacts(
               userId: row.userId,
               provider: "claude_code" as const,
               providerSessionId,
-              workspaceId: binding?.workspaceId ?? null,
-              effectiveWorkspaceRoot:
-                binding?.effectiveWorkspaceRoot ?? null,
+              effectiveWorkingDirectory:
+                binding?.effectiveWorkingDirectory ?? null,
               status: "pending" as const,
             };
           }),

@@ -3,10 +3,6 @@ import { execFileSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { isAbsolute } from "node:path";
-import {
-  loadNativeLiveMacWorkspaceRegistry,
-  nativeLiveMacWorkspaceRegistryPath,
-} from "./native-live-mac-workspace-registry.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -30,9 +26,7 @@ export type NativeLiveMacDaemonConfig = {
   } | null;
   listenerInstanceId: string;
   companionBackgroundIntervalMs: number;
-  baseWorkspaceRoot: string;
-  workspaceRegistryPath: string;
-  workspaceRoots: Readonly<Record<string, string>>;
+  defaultWorkingDirectory: string;
 };
 
 export function resolveNativeLiveMacDaemonConfig(
@@ -44,10 +38,6 @@ export function resolveNativeLiveMacDaemonConfig(
   railwayVariablesLoader: () => Record<string, string> =
     loadRailwayProductionVariables,
   filesystem: NativeLiveMacFilesystem = nativeFilesystem,
-  workspaceRegistryLoader: (
-    registryPath: string,
-  ) => Readonly<Record<string, string>> =
-    loadNativeLiveMacWorkspaceRegistry,
 ): NativeLiveMacDaemonConfig {
   let railwayVariables: Record<string, string> | null = null;
   const readRailwayVariables = () => {
@@ -157,20 +147,10 @@ export function resolveNativeLiveMacDaemonConfig(
       "LEILEI_NATIVE_LIVE_COMPANION_BACKGROUND_INTERVAL_SECONDS",
     );
 
-  const baseWorkspaceRoot = resolveNativeLiveMacBaseWorkspaceRoot(
+  const defaultWorkingDirectory = resolveNativeLiveMacDefaultWorkingDirectory(
     environment,
     machine,
     filesystem,
-  );
-  const workspaceRegistryPath =
-    resolveNativeLiveMacWorkspaceRegistryPath(
-      environment,
-      machine,
-    );
-  const workspaceRoots = resolveNativeLiveMacWorkspaceRoots(
-    environment,
-    filesystem,
-    workspaceRegistryLoader(workspaceRegistryPath),
   );
 
   return {
@@ -180,117 +160,23 @@ export function resolveNativeLiveMacDaemonConfig(
     listenerInstanceId,
     companionBackgroundIntervalMs:
       companionBackgroundIntervalSeconds * 1_000,
-    baseWorkspaceRoot,
-    workspaceRegistryPath,
-    workspaceRoots,
+    defaultWorkingDirectory,
   };
 }
 
-export function resolveNativeLiveMacWorkspaceRoots(
-  environment: NodeJS.ProcessEnv,
-  filesystem: NativeLiveMacFilesystem = nativeFilesystem,
-  registryRoots: Readonly<Record<string, string>> = {},
-): Readonly<Record<string, string>> {
-  const raw = firstNonBlank(
-    environment.LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON,
-  );
-
-  let environmentRoots: Record<string, unknown> = {};
-  if (raw) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(
-        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be valid JSON.",
-      );
-    }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error(
-        "LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON must be a JSON object.",
-      );
-    }
-    environmentRoots = parsed as Record<string, unknown>;
-  }
-
-  const merged: Record<string, unknown> = {
-    ...registryRoots,
-    ...environmentRoots,
-  };
-  const result: Record<string, string> = {};
-  for (const [workspaceId, value] of Object.entries(merged)) {
-    if (!UUID_PATTERN.test(workspaceId)) {
-      throw new Error(
-        "Workspace mapping keys must be Workspace UUIDs.",
-      );
-    }
-    if (typeof value !== "string" || !value.trim()) {
-      throw new Error(
-        "Workspace mapping values must be nonblank paths.",
-      );
-    }
-    const candidate = value.trim();
-    if (!isAbsolute(candidate)) {
-      throw new Error(
-        "Workspace roots must be absolute paths.",
-      );
-    }
-
-    let canonical: string;
-    try {
-      canonical = filesystem.realpath(candidate);
-    } catch {
-      throw new Error(
-        "Workspace roots must resolve to existing directories.",
-      );
-    }
-    let directory = false;
-    try {
-      directory = filesystem.isDirectory(canonical);
-    } catch {
-      directory = false;
-    }
-    if (!directory) {
-      throw new Error(
-        "Workspace roots must resolve to existing directories.",
-      );
-    }
-    result[workspaceId] = canonical;
-  }
-  return Object.freeze(result);
-}
-
-export function resolveNativeLiveMacWorkspaceRegistryPath(
-  environment: NodeJS.ProcessEnv,
-  machine: { homedir: () => string } = { homedir },
-): string {
-  const configured = firstNonBlank(
-    environment.LEILEI_NATIVE_LIVE_WORKSPACE_REGISTRY_PATH,
-  );
-  const registryPath =
-    configured
-    ?? nativeLiveMacWorkspaceRegistryPath(machine.homedir());
-  if (!isAbsolute(registryPath)) {
-    throw new Error(
-      "LEILEI_NATIVE_LIVE_WORKSPACE_REGISTRY_PATH must be an absolute path.",
-    );
-  }
-  return registryPath;
-}
-
-export function resolveNativeLiveMacBaseWorkspaceRoot(
+export function resolveNativeLiveMacDefaultWorkingDirectory(
   environment: NodeJS.ProcessEnv,
   machine: { homedir: () => string } = { homedir },
   filesystem: NativeLiveMacFilesystem = nativeFilesystem,
 ): string {
   const configured = firstNonBlank(
-    environment.LEILEI_NATIVE_LIVE_WORKSPACE_ROOT,
+    environment.LEILEI_NATIVE_LIVE_WORKING_DIRECTORY,
   );
   const candidate = configured ?? machine.homedir();
 
   if (!isAbsolute(candidate)) {
     throw new Error(
-      "LEILEI_NATIVE_LIVE_WORKSPACE_ROOT must be an absolute path.",
+      "LEILEI_NATIVE_LIVE_WORKING_DIRECTORY must be an absolute path.",
     );
   }
 
@@ -299,7 +185,7 @@ export function resolveNativeLiveMacBaseWorkspaceRoot(
     canonical = filesystem.realpath(candidate);
   } catch {
     throw new Error(
-      "Native Live base workspace root must resolve to an existing directory.",
+      "Native Live default working directory must resolve to an existing directory.",
     );
   }
 
@@ -311,7 +197,7 @@ export function resolveNativeLiveMacBaseWorkspaceRoot(
   }
   if (!directory) {
     throw new Error(
-      "Native Live base workspace root must resolve to an existing directory.",
+      "Native Live default working directory must resolve to an existing directory.",
     );
   }
 

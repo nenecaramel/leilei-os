@@ -420,9 +420,7 @@ test("native live conversation runtime metadata is read authoritatively by curre
           "77777777-7777-4777-8777-777777777777",
         sourceMessageId:
           "77777777-7777-4777-8777-777777777777",
-        workspaceId:
-          "88888888-8888-4888-8888-888888888888",
-        effectiveWorkspaceRoot:
+        effectiveWorkingDirectory:
           "/Users/leilei/Projects/runtime-metadata",
         runtimeMetadata: {
           context_usage: {
@@ -450,9 +448,7 @@ test("native live conversation runtime metadata is read authoritatively by curre
             "77777777-7777-4777-8777-777777777777",
           sourceMessageId:
             "77777777-7777-4777-8777-777777777777",
-          workspaceId:
-            "88888888-8888-4888-8888-888888888888",
-          effectiveWorkspaceRoot:
+          effectiveWorkingDirectory:
             "/Users/leilei/Projects/runtime-metadata",
           runtimeMetadata: {
             context_usage: {
@@ -537,7 +533,6 @@ test("native live bootstrap rejects blank titles and unauthenticated access", as
     false,
   );
 });
-
 
 test("native live bootstrap lists archived conversations through explicit scope", async () => {
   const service = new FakeConversationService();
@@ -642,7 +637,6 @@ test("native live true delete rejects busy, missing, and invalid ids", async () 
   });
 });
 
-
 test("native live bootstrap renames an owner conversation and trims title", async () => {
   const service = new FakeConversationService();
   await withServer(service, async (baseUrl) => {
@@ -713,7 +707,6 @@ test("native live bootstrap rename rejects missing, blank, invalid, and extra fi
     assert.equal(service.renameCalls.length, 1);
   });
 });
-
 
 test("native live current-path ETag changes when activity changes under the same head", async () => {
   const service = new FakeConversationService();

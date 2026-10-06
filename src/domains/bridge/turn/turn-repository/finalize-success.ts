@@ -52,8 +52,7 @@ export async function finalizeSuccess(
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
-    workspaceId: string | null;
-    effectiveWorkspaceRoot: string | null;
+    effectiveWorkingDirectory: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     outputAttachmentIds: readonly string[];
     outputAttachmentMetadata?:
@@ -66,8 +65,7 @@ export async function finalizeSuccess(
     const resultHash = hashJson(RESULT_HASH_VERSION, {
       status: "success",
       providerSessionId: input.providerSessionId,
-      workspaceId: input.workspaceId,
-      effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
+      effectiveWorkingDirectory: input.effectiveWorkingDirectory,
       normalizedEvents: input.normalizedEvents,
       outputAttachmentIds: input.outputAttachmentIds,
       ...(input.outputAttachmentMetadata?.length
@@ -332,8 +330,7 @@ export async function finalizeSuccess(
             checkpoint: {
               provider: "claude_code",
               providerSessionId: input.providerSessionId,
-              workspaceId: input.workspaceId,
-              effectiveWorkspaceRoot: input.effectiveWorkspaceRoot,
+              effectiveWorkingDirectory: input.effectiveWorkingDirectory,
               runtimeMetadata:
                 { ...(input.runtimeMetadata as Record<string, unknown> | null ?? {}), turn_started_at: row.createdAt.toISOString(), ...(timingEvents.length ? { native_live_turn_timing_events: timingEvents } : {}) },
             },

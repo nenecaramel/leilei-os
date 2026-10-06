@@ -72,8 +72,7 @@ export async function discardWakeLocked(
         userId: row.userId,
         provider: "claude_code",
         providerSessionId,
-        workspaceId: row.workspaceId,
-        effectiveWorkspaceRoot: row.expectedWorkspaceRoot,
+        effectiveWorkingDirectory: row.expectedWorkingDirectory,
         status: "pending",
       })
       .onConflictDoNothing();

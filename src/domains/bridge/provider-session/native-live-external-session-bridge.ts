@@ -17,8 +17,7 @@ export type NativeLiveExternalSession = {
   gitBranch: string | null;
   lastModified: number | null;
   createdAt: number | null;
-  workspaceId: string | null;
-  workspaceRoot: string;
+  workingDirectory: string;
 };
 
 export type NativeLiveExternalSessionRequestStatus =
@@ -477,16 +476,14 @@ export class NativeLiveExternalSessionBridgeService {
           user_id,
           provider,
           source_provider_session_id,
-          workspace_id,
-          effective_workspace_root,
+          effective_working_directory,
           source_request_id
         ) VALUES (
           ${conversation.id}::uuid,
           ${input.userId}::uuid,
           'claude_code',
           ${source.sessionId},
-          ${source.workspaceId}::uuid,
-          ${source.workspaceRoot},
+          ${source.workingDirectory},
           ${input.requestId}::uuid
         )
       `);
@@ -516,21 +513,6 @@ export class NativeLiveExternalSessionBridgeService {
             ${historySnapshot.firstMessageAt}::timestamptz,
             ${historySnapshot.lastMessageAt}::timestamptz
           )
-        `);
-      }
-
-      if (source.workspaceId) {
-        await tx.execute(sql`
-          INSERT INTO workspace_conversations (
-            user_id,
-            workspace_id,
-            conversation_id
-          ) VALUES (
-            ${input.userId}::uuid,
-            ${source.workspaceId}::uuid,
-            ${conversation.id}::uuid
-          )
-          ON CONFLICT DO NOTHING
         `);
       }
 
@@ -640,8 +622,8 @@ function normalizeSessions(value: unknown): NativeLiveExternalSession[] {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const row = item as Record<string, unknown>;
     const sessionId = normalizeString(row.sessionId);
-    const workspaceRoot = normalizeString(row.workspaceRoot);
-    if (!sessionId || !workspaceRoot || seen.has(sessionId)) continue;
+    const workingDirectory = normalizeString(row.workingDirectory);
+    if (!sessionId || !workingDirectory || seen.has(sessionId)) continue;
     seen.add(sessionId);
     sessions.push({
       sessionId,
@@ -651,8 +633,7 @@ function normalizeSessions(value: unknown): NativeLiveExternalSession[] {
       gitBranch: normalizeString(row.gitBranch),
       lastModified: finiteNumber(row.lastModified),
       createdAt: finiteNumber(row.createdAt),
-      workspaceId: normalizeString(row.workspaceId),
-      workspaceRoot,
+      workingDirectory,
     });
   }
   return sessions

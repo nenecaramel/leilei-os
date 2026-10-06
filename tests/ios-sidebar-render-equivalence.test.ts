@@ -57,8 +57,8 @@ test("Sidebar renders identically to pinned main; rejects the former unified gut
   const simulator = process.env.UI_TOKEN_SIMULATOR_ID;
   try {
     const sources: string[] = [];
-    const originalView = readFileSync(baseline + "SidebarView.swift", "utf8");
-    const originalSection = readFileSync(baseline + "SidebarSection.swift", "utf8");
+    const originalView = readFileSync(baseline + "SidebarView.swift", "utf8").replace(/\s*\.workspaces,/g, "");
+    const originalSection = readFileSync(baseline + "SidebarSection.swift", "utf8").replace(/        case \.workspaces:\n            return "folder"\n/g, "");
     const bad = rejectedGutter(originalView, originalSection);
     for (const [prefix, view, section] of [
       ["Baseline", originalView, originalSection], ["Rejected", bad[0], bad[1]],

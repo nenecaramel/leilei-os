@@ -42,8 +42,7 @@ struct NativeLiveConversationRuntimeMetadataSnapshot:
     let conversationId: String
     let currentHeadMessageId: String?
     let sourceMessageId: String?
-    let workspaceId: String?
-    let effectiveWorkspaceRoot: String?
+    let effectiveWorkingDirectory: String?
     let runtimeMetadata: NativeLiveRuntimeMetadata?
     let observedAt: String?
 }
@@ -90,8 +89,7 @@ struct NativeLiveExternalClaudeSession:
     let gitBranch: String?
     let lastModified: Double?
     let createdAt: Double?
-    let workspaceId: String?
-    let workspaceRoot: String
+    let workingDirectory: String
 
     var id: String { sessionId }
 }
@@ -395,8 +393,7 @@ struct NativeLivePrepareResult: Decodable, Sendable, Equatable {
     let requestId: String
     let conversationId: String
     let userMessageId: String
-    let workspaceId: String?
-    let expectedWorkspaceRoot: String?
+    let expectedWorkingDirectory: String?
 }
 
 struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
@@ -408,8 +405,7 @@ struct NativeLiveTurnSnapshot: Decodable, Sendable, Equatable {
     let conversationId: String
     let operation: String
     let userMessageId: String
-    let workspaceId: String?
-    let expectedWorkspaceRoot: String?
+    let expectedWorkingDirectory: String?
     let canonicalStatus: String
     let dispatchStatus: String
     let semanticStatus: String?

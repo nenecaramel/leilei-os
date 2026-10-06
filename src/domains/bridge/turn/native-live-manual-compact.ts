@@ -32,8 +32,7 @@ export type NativeLiveManualCompactReservation = {
   expectedHeadMessageId: string;
   sourceMessageId: string;
   providerSessionId: string;
-  workspaceId: string | null;
-  effectiveWorkspaceRoot: string | null;
+  effectiveWorkingDirectory: string | null;
 };
 
 export type NativeLiveManualCompactSuccess = {
@@ -186,8 +185,7 @@ export class NativeLiveManualCompactService {
       const checkpoints = await tx.execute<{
         source_message_id: string;
         provider_session_id: string;
-        workspace_id: string | null;
-        effective_workspace_root: string | null;
+        effective_working_directory: string | null;
       }>(sql`
         WITH RECURSIVE current_path AS (
           SELECT
@@ -217,8 +215,7 @@ export class NativeLiveManualCompactService {
         SELECT
           checkpoint.canonical_message_id AS source_message_id,
           checkpoint.provider_session_id,
-          checkpoint.workspace_id,
-          checkpoint.effective_workspace_root
+          checkpoint.effective_working_directory
         FROM current_path AS path
         INNER JOIN conversation_provider_session_checkpoints AS checkpoint
           ON checkpoint.canonical_message_id = path.id
@@ -251,8 +248,7 @@ export class NativeLiveManualCompactService {
           expected_head_message_id,
           source_message_id,
           provider_session_id,
-          workspace_id,
-          effective_workspace_root,
+          effective_working_directory,
           expires_at
         ) VALUES (
           ${input.userId}::uuid,
@@ -260,8 +256,7 @@ export class NativeLiveManualCompactService {
           ${conversation.current_head_message_id}::uuid,
           ${checkpoint.source_message_id}::uuid,
           ${checkpoint.provider_session_id},
-          ${checkpoint.workspace_id}::uuid,
-          ${checkpoint.effective_workspace_root},
+          ${checkpoint.effective_working_directory},
           now() + ${REQUEST_TTL_MS} * interval '1 millisecond'
         )
         RETURNING
@@ -376,8 +371,7 @@ export class NativeLiveManualCompactService {
         expected_head_message_id: string;
         source_message_id: string;
         provider_session_id: string;
-        workspace_id: string | null;
-        effective_workspace_root: string | null;
+        effective_working_directory: string | null;
       }>(sql`
         WITH candidate AS (
           SELECT id
@@ -405,8 +399,7 @@ export class NativeLiveManualCompactService {
           request.expected_head_message_id,
           request.source_message_id,
           request.provider_session_id,
-          request.workspace_id,
-          request.effective_workspace_root
+          request.effective_working_directory
       `);
       const row = rows[0];
       return row
@@ -417,9 +410,8 @@ export class NativeLiveManualCompactService {
               row.expected_head_message_id,
             sourceMessageId: row.source_message_id,
             providerSessionId: row.provider_session_id,
-            workspaceId: row.workspace_id,
-            effectiveWorkspaceRoot:
-              row.effective_workspace_root,
+            effectiveWorkingDirectory:
+              row.effective_working_directory,
           }
         : null;
     });
