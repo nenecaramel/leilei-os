@@ -418,6 +418,8 @@ implements NativeLiveBackendRelayPort {
 
       // Foreground user intent always wins over a silence opportunity,
       // including a cross-conversation race between /fire and a new send.
+      // A staged row that predates the assistant head which created this wake
+      // is stranded historical work, not current foreground intent.
       await transaction.execute(sql`
         UPDATE native_live_turn_preparations AS wake
         SET dispatch_status = 'rejected',
@@ -437,12 +439,28 @@ implements NativeLiveBackendRelayPort {
             WHERE foreground.user_id = wake.user_id
               AND foreground.operation <> 'wake'
               AND foreground.status = 'prepared'
-              AND foreground.dispatch_status IN (
-                'staged',
-                'pending',
-                'reserved',
-                'executing',
-                'delivery_unknown'
+              AND (
+                foreground.dispatch_status IN (
+                  'pending',
+                  'reserved',
+                  'executing',
+                  'delivery_unknown'
+                )
+                OR (
+                  foreground.dispatch_status = 'staged'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM conversation_messages AS wake_source
+                    WHERE wake_source.user_id = wake.user_id
+                      AND wake_source.conversation_id =
+                        wake.conversation_id
+                      AND wake_source.id =
+                        (wake.wake_context ->> 'source_head_message_id')::uuid
+                      AND wake_source.completed_at IS NOT NULL
+                      AND foreground.created_at >=
+                        wake_source.completed_at
+                  )
+                )
               )
           )
       `);
