@@ -100,3 +100,35 @@ test('modern compact starts from canonical checkpoint and requires durable compl
  const broken=fixture();broken.store.markComplete=async()=>{throw new Error('unavailable')};
  await assert.rejects(broken.transport.compact(broken.a,null,broken.cp),e=>e.runtimeCode==='RUNTIME_UNAVAILABLE');
 });
+
+test('exact fork loads only the canonical prefix without changing the durable source', async () => {
+  const a=randomUUID(), b=randomUUID(), cp=randomUUID(), u=randomUUID(), tail=randomUUID();
+  const source=[{type:'assistant',uuid:cp,parentUuid:null,sessionId:a},
+   {type:'user',uuid:u,parentUuid:cp,sessionId:a},
+   {type:'assistant',uuid:randomUUID(),parentUuid:u,sessionId:a},
+   {type:'system',subtype:'compact_boundary',uuid:randomUUID(),parentUuid:u,sessionId:a}];
+  const before=structuredClone(source), rows=new Map([[a,source]]);
+  const subpath=[{type:'assistant',uuid:randomUUID()}];
+  const store={load:async k=>k.subpath?subpath:rows.get(k.sessionId)??null,
+   append:async(k,v)=>rows.set(k.sessionId,[...(rows.get(k.sessionId)??[]),...v]),
+   getStatus:async()=> 'complete',markIncomplete:async()=>{},markComplete:async()=>{}};
+  const transport=new AgentSdkClaudeTransport({environment:{},cwd:'/private/tmp/provider-checkpoint-test',sessionStore:store,
+   sessionMessagesImpl:async()=>[],queryImpl:({options})=>({close(){},async *[Symbol.asyncIterator](){
+    assert.equal(options.resume,a);assert.equal(options.resumeSessionAt,cp);
+    const loaded=await options.sessionStore.load({projectKey:'sdk-normalized',sessionId:a});
+    assert.deepEqual(loaded,[before[0]],'Failed user UUID/tail and later compact must not be materialized into this query');
+    assert.deepEqual(await options.sessionStore.load({projectKey:'sdk-normalized',sessionId:a,subpath:'agent-test'}),subpath);
+    await options.sessionStore.append({projectKey:'sdk-normalized',sessionId:b},[{type:'assistant',uuid:tail,parentUuid:cp,sessionId:b}]);
+    yield {type:'result',subtype:'success',session_id:b,result:'ok'};
+   }})});
+  const result=await transport.executeTurn('prompt',{mode:'fork',parentProviderSessionId:a,parentProviderCheckpointId:cp,requireProviderCheckpoint:true,userMessageUuid:u});
+  assert.equal(result.providerCheckpointId,tail);
+  assert.deepEqual(rows.get(a).slice(0,before.length),before,'Durable history is retained');
+  assert.equal(rows.get(a).length,before.length);
+});
+
+test('ordinary exact resume retains the SDK user-UUID replay/idempotency store', async()=>{
+ const f=fixture();const original=f.transport.queryImpl;
+ f.transport.queryImpl=input=>{assert.equal(input.options.sessionStore,f.store);return original(input)};
+ await f.run();
+});

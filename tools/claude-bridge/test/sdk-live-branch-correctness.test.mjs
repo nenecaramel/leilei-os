@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { query, InMemorySessionStore, deleteSession } from '@anthropic-ai/claude-agent-sdk';
+import { query, InMemorySessionStore, deleteSession, getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 
 const live = { skip: process.env.RUN_SDK_BRANCH_CORRECTNESS_LIVE !== '1', timeout: 360000 };
@@ -100,6 +100,52 @@ test('live same canonical user UUID survives interrupted exact resume and redeli
   } finally { await f.cleanup(); }
 });
 
+test('live same canonical user UUID delivery-unknown recovery returns one correctly parented turn', live, async () => {
+  const f = await fixture();
+  try {
+    const parent = await f.run('Reply only DELIVERY_PARENT_OK.');
+    const u = randomUUID();
+    const prompt = 'Reply only DELIVERY_RETRY_OK.';
+    const undelivered = await f.run(prompt, parent, 'resume', u);
+    // Simulate result delivery unknown: provider succeeded, but no canonical finalize
+    // happened. Canonical parent remains frozen at parent, not undelivered.
+    const oldRows = await f.entries(parent.providerSessionId);
+    assert.ok(oldRows.some(e => e.type === 'assistant' && JSON.stringify(e.message).includes('DELIVERY_RETRY_OK')),
+      'A real completed but undelivered provider answer must exist');
+    const result = await f.run(prompt, parent, 'resume', u);
+    assert.equal(result.providerSessionId, parent.providerSessionId);
+    // Reusing the correctly correlated completed result is valid idempotent recovery.
+    // A new assistant UUID is not required: canonical lineage and one U are required.
+    assert.notEqual(result.providerCheckpointId, parent.providerCheckpointId);
+    assert.equal(undelivered.providerSessionId, parent.providerSessionId);
+    const terminal = result.events.findLast(e => e.type === 'result');
+    assert.ok(terminal && !terminal.is_error);
+    assert.equal(terminal.num_turns, 1);
+    assert.equal(terminal.user_message_uuid, u);
+    assert.equal(terminal.result.trim(), 'DELIVERY_RETRY_OK');
+    const rows = await f.entries(result.providerSessionId);
+    const byId = new Map(rows.filter(e => e.uuid).map(e => [e.uuid, e]));
+    let cursor = result.providerCheckpointId, userCount = 0, answerCount = 0;
+    const seen = new Set();
+    while (cursor) {
+      assert.equal(seen.has(cursor), false); seen.add(cursor);
+      const row = byId.get(cursor); assert.ok(row);
+      if (row.type === 'user' && row.uuid === u) {
+        userCount++;
+        assert.equal(row.parentUuid, parent.providerCheckpointId, 'U must descend from the exact canonical parent');
+      }
+      if (row.type === 'assistant' && JSON.stringify(row.message).includes('DELIVERY_RETRY_OK')) answerCount++;
+      cursor = row.parentUuid;
+    }
+    assert.equal(userCount, 1);
+    assert.equal(answerCount, 1, 'Recovery must not duplicate the delivered assistant answer');
+    assert.equal(await f.store.getStatus(result.providerSessionId), 'complete');
+    assert.deepEqual(f.calls.slice(-2).map(c => [c.resume, c.resumeSessionAt]),
+      Array(2).fill([parent.providerSessionId, parent.providerCheckpointId]));
+    console.info('LIVE same-UUID delivery-unknown redelivery PASS');
+  } finally { await f.cleanup(); }
+});
+
 test('live production query fork is exact before and after compact and resumes the new branch', live, async () => {
   const f = await fixture();
   try {
@@ -108,10 +154,13 @@ test('live production query fork is exact before and after compact and resumes t
     assert.equal(second.providerSessionId, first.providerSessionId);
     const compact = await f.transport.compact(second.providerSessionId, null, second.providerCheckpointId);
     assert.equal(compact.providerSessionId, first.providerSessionId);
-    assert.ok((await f.entries(first.providerSessionId)).some(e => e.type === 'system' && e.subtype === 'compact_boundary'), 'Require a real compact');
+    const compactRows = await f.entries(first.providerSessionId);
+    assert.ok(compactRows.some(e => e.type === 'system' && e.subtype === 'compact_boundary'), 'Require a real compact');
+    assert.ok(compactRows.some(e => e.uuid === first.providerCheckpointId), 'Historical checkpoint must remain persisted');
     const tail = await f.run('Reply only POST_COMPACT_FUTURE_MARKER.', compact);
     assert.equal(tail.providerSessionId, first.providerSessionId);
     const source = JSON.stringify(await f.entries(first.providerSessionId));
+    const localSource = await getSessionMessages(first.providerSessionId, { dir: f.dir, limit: 500 });
     for (const checkpoint of [first, compact]) {
       const fork = await f.run('Reply only FORK_OK.', checkpoint, 'fork');
       assert.notEqual(fork.providerSessionId, first.providerSessionId);
@@ -126,6 +175,8 @@ test('live production query fork is exact before and after compact and resumes t
         assert.ok(raw.includes('compact_boundary'), 'Post-compact fork retains the compact boundary');
       }
       assert.equal(JSON.stringify(await f.entries(first.providerSessionId)), source, 'Fork must not mutate A');
+      assert.deepEqual(await getSessionMessages(first.providerSessionId, { dir: f.dir, limit: 500 }),
+        localSource, 'Fork must not alter the source local provider messages either');
       const resumed = await f.run('Reply only BRANCH_RESUME_OK.', fork);
       assert.equal(resumed.providerSessionId, fork.providerSessionId);
       assert.equal(await f.store.getStatus(resumed.providerSessionId), 'complete');

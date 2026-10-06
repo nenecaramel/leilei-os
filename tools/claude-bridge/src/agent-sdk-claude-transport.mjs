@@ -22,6 +22,31 @@ function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
 }
 
+function checkpointForkSessionStore(store, sessionId, checkpointId) {
+  if (!store || !sessionId || !checkpointId) return store;
+  // The CLI applies the latest compact boundary before resolving resumeSessionAt.
+  // Materialize only the canonical fork source prefix so a later compact cannot
+  // hide a historical checkpoint that still exists in the raw transcript.
+  // This is a query-local read view: durable entries and mirror writes stay intact.
+  return new Proxy(store, {
+    get(target, property) {
+      if (property === "load") return async (key) => {
+        const entries = await target.load(key);
+        if (key.sessionId !== sessionId || key.subpath) return entries;
+        const index = Array.isArray(entries)
+          ? entries.findLastIndex(entry => !entry.isSidechain && entry.uuid === checkpointId)
+          : -1;
+        if (index < 0) throw runtimeError("Claude historical provider checkpoint is not present in the transcript.", {
+          runtimeCode: "NO_PROVIDER_SESSION", parentSessionId: sessionId,
+        });
+        return entries.slice(0, index + 1);
+      };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 async function loadDefaultListSessions() {
   const sdk = await import("@anthropic-ai/claude-agent-sdk");
   if (typeof sdk.listSessions !== "function") {
@@ -854,7 +879,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           localMemeServer,
         ),
         ...(this.sessionStore
-          ? { sessionStore: this.sessionStore }
+          ? { sessionStore: mode === "fork"
+            ? checkpointForkSessionStore(this.sessionStore, parentProviderSessionId, parentProviderCheckpointId)
+            : this.sessionStore }
           : {}),
       },
       streaming,
@@ -1748,7 +1775,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ...(parentProviderCheckpointId ? { resumeSessionAt: parentProviderCheckpointId } : {}),
       ...(forkSession ? { forkSession: true } : {}),
       ...(this.sessionStore
-        ? { sessionStore: this.sessionStore }
+        ? { sessionStore: forkSession
+          ? checkpointForkSessionStore(this.sessionStore, resume, parentProviderCheckpointId)
+          : this.sessionStore }
         : {}),
       ...(hooks ? { hooks } : {}),
     };
