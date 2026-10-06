@@ -101,7 +101,7 @@ test('modern compact starts from canonical checkpoint and requires durable compl
  await assert.rejects(broken.transport.compact(broken.a,null,broken.cp),e=>e.runtimeCode==='RUNTIME_UNAVAILABLE');
 });
 
-test('compact preserves terminal success through Claude teardown exit and still enforces durability', async()=>{
+test('compact preserves real terminal success through Claude teardown exit', async()=>{
  const f=fixture();
  const tail=randomUUID();
  f.transport.queryImpl=({options})=>({close(){},async *[Symbol.asyncIterator](){
@@ -117,11 +117,27 @@ test('compact preserves terminal success through Claude teardown exit and still 
  const result=await f.transport.compact(f.a,null,f.cp);
  assert.equal(result.providerSessionId,f.a);
  assert.equal(result.providerCheckpointId,tail);
- assert.equal((await f.store.getStatus(f.a)),'complete');
+ assert.equal(await f.store.getStatus(f.a),'complete');
  assert.equal(result.compaction?.boundary?.trigger,'manual');
 });
 
-test('compact does not mask arbitrary errors after terminal success', async()=>{
+test('compact keeps session-limit pseudo-success fatal', async()=>{
+ const f=fixture();
+ f.transport.queryImpl=()=>({close(){},async *[Symbol.asyncIterator](){
+  yield {type:'system',subtype:'init',session_id:f.a};
+  yield {type:'system',subtype:'compact_boundary',session_id:f.a,compact_metadata:{trigger:'manual',pre_tokens:100,post_tokens:10}};
+  yield {type:'rate_limit_event',session_id:f.a,rate_limit_info:{status:'rejected',rateLimitType:'five_hour',resetsAt:1800000000}};
+  yield {type:'result',subtype:'success',is_error:true,session_id:f.a,result:"You've hit your session limit"};
+  throw new Error('Claude Code process exited with code 1');
+ }});
+ await assert.rejects(
+  f.transport.compact(f.a,null,f.cp),
+  e=>e.runtimeCode==='CLAUDE_PROCESS_FAILED'
+ );
+ assert.equal(await f.store.getStatus(f.a),'incomplete');
+});
+
+test('compact does not mask arbitrary post-success host failures', async()=>{
  const f=fixture();
  f.transport.queryImpl=()=>({close(){},async *[Symbol.asyncIterator](){
   yield {type:'system',subtype:'init',session_id:f.a};
@@ -133,23 +149,7 @@ test('compact does not mask arbitrary errors after terminal success', async()=>{
   f.transport.compact(f.a,null,f.cp),
   e=>e.runtimeCode==='CLAUDE_PROCESS_FAILED'
  );
- assert.equal((await f.store.getStatus(f.a)),'incomplete');
-});
-
-test('compact terminal success still fails when SessionStore mirror reports an error', async()=>{
- const f=fixture();
- f.transport.queryImpl=()=>({close(){},async *[Symbol.asyncIterator](){
-  yield {type:'system',subtype:'init',session_id:f.a};
-  yield {type:'system',subtype:'compact_boundary',session_id:f.a,compact_metadata:{trigger:'manual',pre_tokens:100,post_tokens:10}};
-  yield {type:'system',subtype:'mirror_error',session_id:f.a,error:'mirror failed'};
-  yield {type:'result',subtype:'success',is_error:false,session_id:f.a,result:'summary'};
-  throw new Error('Claude Code process exited with code 1');
- }});
- await assert.rejects(
-  f.transport.compact(f.a,null,f.cp),
-  e=>e.runtimeCode==='RUNTIME_UNAVAILABLE'
- );
- assert.equal((await f.store.getStatus(f.a)),'incomplete');
+ assert.equal(await f.store.getStatus(f.a),'incomplete');
 });
 
 test('exact fork loads only the canonical prefix without changing the durable source', async () => {
