@@ -175,6 +175,8 @@ implements NativeLiveBackendTurnPort {
     effectiveWorkspaceRoot: string | null;
     blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
     outputAttachmentIds: readonly string[];
+    outputAttachmentMetadata:
+      Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["outputAttachmentMetadata"];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp:
