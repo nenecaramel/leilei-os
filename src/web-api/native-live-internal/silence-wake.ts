@@ -93,6 +93,7 @@ function logSilenceWakeFailure(
     error && typeof error === "object"
       ? error as Record<string, unknown>
       : {};
+  const cause = errorRecord(record.cause);
   process.stderr.write(
     JSON.stringify({
       level: "error",
@@ -126,21 +127,19 @@ function logSilenceWakeFailure(
             : {}
       ),
       ...(
-        errorRecord(record.cause)
+        cause
           ? {
               causeName:
-                typeof errorRecord(record.cause)?.name === "string"
-                  ? errorRecord(record.cause)?.name
+                typeof cause.name === "string"
+                  ? cause.name
                   : undefined,
               causeCode:
-                typeof errorRecord(record.cause)?.code === "string"
-                  ? errorRecord(record.cause)?.code
+                typeof cause.code === "string"
+                  ? cause.code
                   : undefined,
               causeMessage:
-                typeof errorRecord(record.cause)?.message === "string"
-                  ? diagnosticText(
-                      errorRecord(record.cause)?.message as string,
-                    )
+                typeof cause.message === "string"
+                  ? diagnosticText(cause.message)
                   : undefined,
             }
           : {}
