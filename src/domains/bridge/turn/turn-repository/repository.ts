@@ -183,6 +183,27 @@ implements NativeLiveBackendTurnPort {
     return finalizeSuccess.call(this.context, input);
   }
 
+  recoverFinalizedFailureSuccess(input: {
+    userId: string;
+    preparation: NativeLivePreparedTurn;
+    providerSessionId: string;
+    effectiveWorkingDirectory: string | null;
+    providerCheckpointId: string;
+    blocks: Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["blocks"];
+    normalizedEvents: readonly NativeLiveNormalizedEvent[];
+    runtimeMetadata: NativeLiveRuntimeMetadata | null;
+  }): Promise<NativeLiveFinalizeSuccessPortResult> {
+    return finalizeSuccess.call(this.context, {
+      ...input,
+      outputAttachmentIds: [],
+      mindFollowUp: null,
+      recovery: {
+        expectedFailureCode: "RUNTIME_UNAVAILABLE",
+        expectedOperation: "edit",
+      },
+    });
+  }
+
   private persistFinalizedContextLineage(
     transaction: Transaction,
     row: PreparationRow,
