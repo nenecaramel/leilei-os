@@ -190,10 +190,7 @@ export class NativeLiveFailedTurnRecoveryService {
         providerCheckpointId,
         blocks,
         normalizedEvents: snapshot.events,
-        runtimeMetadata: {
-          recovered_failed_turn: true,
-          recovered_prepare_id: snapshot.prepareId,
-        },
+        runtimeMetadata: null,
       });
 
     if (!result.ok) {
