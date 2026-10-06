@@ -363,24 +363,8 @@ implements NativeLiveBackendRelayPort {
           AND execution_started_at IS NULL
       `);
 
-      await transaction.execute(sql`
-        UPDATE native_live_turn_preparations
-        SET dispatch_status = 'rejected',
-            reserved_by = NULL,
-            reserved_at = NULL,
-            reservation_expires_at = NULL,
-            execution_started_at = NULL,
-            dispatch_error_code = COALESCE(
-              dispatch_error_code,
-              'RESULT_DELIVERY_UNKNOWN'
-            ),
-            updated_at = now()
-        WHERE user_id = ${input.userId}::uuid
-          AND status = 'prepared'
-          AND dispatch_status = 'delivery_unknown'
-          AND delivery_unknown_at IS NOT NULL
-          AND delivery_unknown_at <= now() - interval '30 seconds'
-      `);
+      // Once execution starts, lease expiry cannot prove provider failure.
+      // Preserve owner and recovery evidence for idempotent late result submission.
 
       await transaction.execute(sql`
         UPDATE native_live_turn_preparations AS older

@@ -1,3 +1,4 @@
+import type { NativeLiveMacResultOutbox } from "./native-live-mac-result-outbox.js";
 import type {
   NativeLiveRuntimeCommand,
   NativeLiveRuntimeExecutionResult,
@@ -399,6 +400,7 @@ export class NativeLiveMacDaemonLoop {
       NativeLiveManualCompactExecutor | null = null,
     private readonly externalSessionExecutor:
       NativeLiveExternalSessionExecutor | null = null,
+    private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -410,6 +412,18 @@ export class NativeLiveMacDaemonLoop {
 
     this.running = true;
     try {
+      const pending = (await this.resultOutbox?.list())?.[0];
+      if (pending) {
+        let receipt: NativeLiveResultSubmissionReceipt | void;
+        try {
+          receipt = await this.relay.submitResult(pending);
+        } catch {
+          return { outcome: "delivery_unknown", reservationId: pending.reservationId, result: pending.result };
+        }
+        await this.resultOutbox!.acknowledge(pending);
+        return { outcome: "completed", reservationId: pending.reservationId, result: pending.result,
+          ...(receipt?.canonicalOutcome ? { canonicalOutcome: receipt.canonicalOutcome } : {}) };
+      }
       const lease = await this.relay.renewLease({
         listenerInstanceId: this.listenerInstanceId,
         dispatchTarget: "claude_code",
@@ -843,7 +857,6 @@ export class NativeLiveMacDaemonLoop {
               : {}),
           },
         );
-        await flushRuntimeEvents();
       } catch {
         await flushRuntimeEvents();
         await this.bestEffortReject(reservation.reservationId, "INVALID_COMMAND");
@@ -854,6 +867,13 @@ export class NativeLiveMacDaemonLoop {
         };
       }
 
+      const pendingResult = {
+        listenerInstanceId: this.listenerInstanceId,
+        reservationId: reservation.reservationId,
+        result,
+      };
+      await this.resultOutbox?.save(pendingResult);
+      await flushRuntimeEvents();
       let submission:
         NativeLiveResultSubmissionReceipt | void;
       try {
@@ -881,6 +901,7 @@ export class NativeLiveMacDaemonLoop {
         };
       }
 
+      await this.resultOutbox?.acknowledge(pendingResult);
       return {
         outcome: "completed",
         reservationId: reservation.reservationId,
