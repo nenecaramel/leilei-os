@@ -1,4 +1,7 @@
 import {
+  execFile,
+} from "node:child_process";
+import {
   createHash,
 } from "node:crypto";
 import {
@@ -17,6 +20,9 @@ import {
   resolve,
   sep,
 } from "node:path";
+import {
+  promisify,
+} from "node:util";
 
 export type NativeLiveMacOutputAttachmentDescriptor = {
   attachmentId: string;
@@ -25,7 +31,12 @@ export type NativeLiveMacOutputAttachmentDescriptor = {
   sizeBytes: number;
   sha256: string;
   kind: "image" | "file";
+  durationSeconds?: number;
 };
+
+export type NativeLiveAudioDurationProbe = (
+  filePath: string,
+) => Promise<number | null | undefined>;
 
 export interface NativeLiveMacOutputAttachmentRelay {
   createAttachmentUploadSlot(input: {
@@ -52,6 +63,8 @@ export class NativeLiveMacOutputAttachmentSender {
     private readonly relay: NativeLiveMacOutputAttachmentRelay,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly maxFileBytes = 20 * 1024 * 1024,
+    private readonly durationProbe:
+      NativeLiveAudioDurationProbe = probeAudioDurationWithAfinfo,
   ) {}
 
   async sendFile(input: {
@@ -106,12 +119,21 @@ export class NativeLiveMacOutputAttachmentSender {
       mimeType.startsWith("image/")
         ? "image" as const
         : "file" as const;
+    const durationSeconds =
+      mimeType.startsWith("audio/")
+        ? normalizeDurationSeconds(
+            await this.durationProbe(filePath).catch(() => null),
+          )
+        : undefined;
     const sha256 = await sha256File(filePath);
 
-    return this.uploadBytes({
+    const attachment = await this.uploadBytes({
       filename, mimeType, sizeBytes: fileStat.size, sha256, kind,
       bytes: await readFile(filePath),
     });
+    return durationSeconds === undefined
+      ? attachment
+      : { ...attachment, durationSeconds };
   }
 
   // Internal runtime entrypoint; does not add a Claude-visible arbitrary bytes tool.
@@ -231,6 +253,20 @@ function mimeTypeForFilename(filename: string): string {
       return "image/heic";
     case ".heif":
       return "image/heif";
+    case ".mp3":
+      return "audio/mpeg";
+    case ".m4a":
+      return "audio/mp4";
+    case ".wav":
+      return "audio/wav";
+    case ".aac":
+      return "audio/aac";
+    case ".flac":
+      return "audio/flac";
+    case ".ogg":
+      return "audio/ogg";
+    case ".opus":
+      return "audio/opus";
     case ".pdf":
       return "application/pdf";
     case ".txt":
@@ -260,4 +296,28 @@ function mimeTypeForFilename(filename: string): string {
     default:
       return "application/octet-stream";
   }
+}
+
+const execFileAsync = promisify(execFile);
+
+async function probeAudioDurationWithAfinfo(
+  filePath: string,
+): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/afinfo",
+      [filePath],
+      { timeout: 2_000, maxBuffer: 256 * 1024, encoding: "utf8" },
+    );
+    const match = /^\\s*estimated duration:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*sec\\b/imu.exec(stdout);
+    return normalizeDurationSeconds(match ? Number(match[1]) : null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDurationSeconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
 }
