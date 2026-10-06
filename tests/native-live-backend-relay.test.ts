@@ -141,6 +141,39 @@ function setup(runtimeProtocolVersion: 4 = 4) {
   return { port, coordinator, wake, service };
 }
 
+test("reserve preserves v4 for a persisted modern new preparation despite the v3 attachment setting", async () => {
+  const { port, service } = setup(3);
+  port.preparation = { ...prepared(), parentProviderCheckpointId: null };
+  const reserved = await service.reserveNext({
+    userId,
+    listenerInstanceId,
+    dispatchTarget: "claude_code",
+  });
+  assert.equal(reserved?.command.protocol_version, 4);
+  assert.equal(reserved?.command.parent_provider_checkpoint_id, null);
+});
+
+for (const runtimeMode of ["resume", "fork"] as const) {
+  test(`reserve retains the exact canonical checkpoint for modern ${runtimeMode}`, async () => {
+    const { port, service } = setup(3);
+    const checkpoint = "77777777-7777-4777-8777-777777777777";
+    port.preparation = {
+      ...prepared(),
+      runtimeMode,
+      parentProviderSessionId: "branch-A",
+      parentProviderCheckpointId: checkpoint,
+    };
+    const reserved = await service.reserveNext({
+      userId,
+      listenerInstanceId,
+      dispatchTarget: "claude_code",
+    });
+    assert.equal(reserved?.command.protocol_version, 4);
+    assert.equal(reserved?.command.runtime_mode, runtimeMode);
+    assert.equal(reserved?.command.parent_provider_checkpoint_id, checkpoint);
+  });
+}
+
 test("reserve emits the persisted prepared command without rebuilding it on the Mac", async () => {
   const { service } = setup();
   const reservation = await service.reserveNext({

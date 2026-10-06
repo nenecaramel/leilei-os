@@ -16,8 +16,9 @@ import type {
   NativeLiveDaemonRejectCode,
   NativeLiveDaemonReservation,
 } from "../mac/native-live-mac-daemon-loop.js";
-import type {
-  NativeLiveRuntimeExecutionResult,
+import {
+  NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+  type NativeLiveRuntimeExecutionResult,
 } from "../protocol/native-live-runtime-protocol.js";
 import { parseNativeLiveExecutionSelection } from "../turn/native-live-execution-selection.js";
 import { hasDiscardedWakeReceipt } from "../turn/turn-repository/discard-wake.js";
@@ -880,11 +881,16 @@ export class NativeLiveBackendRelayService {
       listenerInstanceId: input.listenerInstanceId,
     });
     if (!preparation) return null;
+    // A persisted checkpoint field marks a modern preparation, including a new
+    // turn with a null parent. Attachment rollout settings must not strip v4.
     return {
       reservationId: preparation.prepareId,
       command: nativeLiveRuntimeCommandFromPreparation(
         preparation,
-        this.runtimeProtocolVersion,
+        preparation.parentProviderCheckpointId !== undefined
+          || preparation.runtimeMode === "resume"
+          ? NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
+          : this.runtimeProtocolVersion,
         this.outputAttachmentsEnabled,
       ),
     };

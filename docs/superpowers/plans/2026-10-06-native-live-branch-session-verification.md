@@ -3,6 +3,42 @@
 Base: `origin/main@7be4401ac6d10d26fc97c9a37a44e9b3c740227c`.
 Branch: `feat/native-live-branch-session-resume`. PR: #908 (Draft).
 
+## Current approval state
+
+The candidate `dabda76d` was pushed to #908 by explicit user authorization. PR
+remains **Draft**, unmerged and undeployed. The **production-query compact
+historical fork live gate remains UNVERIFIED**. Earlier exported-fork evidence
+below does not pass that gate. Same-canonical-U interrupted exact resume passed
+on 0.3.286 before the user's live-test stop; it has not been rerun.
+
+The current follow-up is strictly local: both `RUN_SDK_BRANCH_CHECKPOINT_LIVE`
+and `RUN_SDK_BRANCH_CORRECTNESS_LIVE` were forced to `0`. **No Claude live calls**
+were made in this follow-up. SDK stays **0.3.286**.
+
+Fresh Node 22.23.3 results: bridge **155 pass / 0 fail / 4 opt-in live skips**;
+runtime gate **539 pass / 0 fail**; isolated Postgres regression **60 pass / 0 fail**;
+additional branch-session/bootstrap DB cases **7 pass / 0 fail**; relay unit
+regressions **10 pass / 0 fail**; root typecheck/build and diff checks **PASS**.
+
+The full isolated DB gate first exposed two PR-related RED witnesses, then passed
+after minimal fixes: reserve was stripping modern commands to v3, and a nested
+`checkpoint` alias shadowed the outer session identity during true-delete cleanup.
+Modern preparation reserves now keep v4/null-or-exact parent checkpoint while
+unaddressed legacy fixtures retain configured v2/v3. Cleanup's surviving-checkpoint
+alias stays correlated with the outer source. Shared-session protection was kept,
+not weakened. Three added relay regressions were RED then GREEN.
+
+Postgres was exclusively task-created `127.0.0.1:55448/leilei_908_regression`, with
+TLS enabled locally to honor the existing bootstrap test's SSL requirement.
+Migrations 0000–0099 and ledger checks ran only there. The pnpm launcher refused
+to reinstall symlinked dependencies; direct Node/Drizzle/tsx equivalents ran the
+same isolated gate flags and file list. No canonical dependencies were reinstalled.
+
+See [the detailed additional-gate ledger](2026-10-06-branch-session-correctness-gates-pending.md)
+for the prior genuine fork RED, candidate mitigation, interrupted-U evidence and
+quota-blocked live attempt. Do not merge until the remaining gate is independently
+approved; this local follow-up does not substitute for it.
+
 ## Lifecycle contract
 
 - Old resolveRuntimeParent selected fork for every non-empty foreground parent; checkpoints normally held only a session ID.

@@ -7,17 +7,19 @@ export function providerSessionUnreferenced(input: {
     excludeConversationId?: string;
 }): SQL {
     const excluded = input.excludeMessageIds ?? [];
-    const messageFilter = excluded.length ? sql `AND checkpoint.canonical_message_id NOT IN (${sql.join(excluded.map(id => sql `${id}::uuid`), sql `, `)})` : sql ``;
-    const checkpointConversation = input.excludeConversationId ? sql `AND checkpoint.conversation_id <> ${input.excludeConversationId}::uuid` : sql ``;
+    // Callers may pass an outer checkpoint.provider_session_id. Do not shadow
+    // that correlated alias inside the surviving-checkpoint subquery.
+    const messageFilter = excluded.length ? sql `AND surviving_checkpoint.canonical_message_id NOT IN (${sql.join(excluded.map(id => sql `${id}::uuid`), sql `, `)})` : sql ``;
+    const checkpointConversation = input.excludeConversationId ? sql `AND surviving_checkpoint.conversation_id <> ${input.excludeConversationId}::uuid` : sql ``;
     const bootstrapConversation = input.excludeConversationId ? sql `AND bootstrap.conversation_id <> ${input.excludeConversationId}::uuid` : sql ``;
     const preparationConversation = input.excludeConversationId ? sql `AND preparation.conversation_id <> ${input.excludeConversationId}::uuid` : sql ``;
     const compactConversation = input.excludeConversationId ? sql `AND compact.conversation_id <> ${input.excludeConversationId}::uuid` : sql ``;
     return sql `
  NOT EXISTS (
-   SELECT 1 FROM conversation_provider_session_checkpoints AS checkpoint
-   WHERE checkpoint.user_id = ${input.userId}::uuid
-     AND checkpoint.provider = 'claude_code'
-     AND checkpoint.provider_session_id = ${input.providerSessionId}
+   SELECT 1 FROM conversation_provider_session_checkpoints AS surviving_checkpoint
+   WHERE surviving_checkpoint.user_id = ${input.userId}::uuid
+     AND surviving_checkpoint.provider = 'claude_code'
+     AND surviving_checkpoint.provider_session_id = ${input.providerSessionId}
      ${messageFilter} ${checkpointConversation}
  ) AND NOT EXISTS (
    SELECT 1 FROM native_live_conversation_provider_bootstraps AS bootstrap

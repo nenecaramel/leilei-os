@@ -1,7 +1,16 @@
 # PR #908 additional correctness gates — pending live verification
 
-PR head remains `f8339c69772eab13b3c9ee1af496f7c6b6d1bd57`. Do not merge or deploy.
+Initial PR head was `f8339c69772eab13b3c9ee1af496f7c6b6d1bd57`. The user later
+authorized pushing candidate `dabda76d`, which is now on #908. Do not merge or deploy.
 SDK remains exactly `@anthropic-ai/claude-agent-sdk@0.3.286`.
+
+**Latest local-only follow-up:** zero Claude live calls; opt-in live switches forced
+off. Production-query compact historical fork remains **UNVERIFIED**, as explicitly
+requested. Node 22 local bridge 155/155 (4 live skips), runtime gate 539/539,
+isolated DB 60/60 plus branch/bootstrap 7/7, relay regressions 10/10, typecheck/build
+and diff check PASS. The DB-discovered v4 dispatch/cleanup alias regressions were
+reproduced RED and corrected without changing production config or weakening
+shared-session protection. The older attempts below are historical records.
 
 ## Added opt-in real SDK cases
 
