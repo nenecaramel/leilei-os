@@ -502,6 +502,11 @@ while (!stopping) {
                     ? { slot: fired.slot }
                     : {}
                 ),
+                ...(
+                  fired.reason
+                    ? { reason: fired.reason }
+                    : {}
+                ),
               }) + "\n",
             );
             if (fired.outcome === "queued") break;

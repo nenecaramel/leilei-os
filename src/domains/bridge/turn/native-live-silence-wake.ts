@@ -23,6 +23,23 @@ export type NativeLiveSilenceWakeSchedule = {
   longIdleConsumed: boolean;
 };
 
+export type NativeLiveSilenceWakeIgnoredReason =
+  | "source_changed"
+  | "slot_not_due"
+  | "foreground_active"
+  | "already_consumed";
+
+export type NativeLiveSilenceWakeFireResult =
+  | {
+      outcome: "queued";
+      schedule: NativeLiveSilenceWakeSchedule | null;
+    }
+  | {
+      outcome: "ignored";
+      reason: NativeLiveSilenceWakeIgnoredReason;
+      schedule: NativeLiveSilenceWakeSchedule | null;
+    };
+
 const POST_TURN_MIN_MS = 5 * 60_000;
 const POST_TURN_SPAN_MS = 5 * 60_000;
 const LONG_IDLE_MIN_MS = 90 * 60_000;
@@ -195,10 +212,7 @@ export class NativeLiveSilenceWakeService {
     userId: string;
     epochId: string;
     slot: NativeLiveSilenceWakeSlot;
-  }): Promise<{
-    outcome: "queued" | "ignored";
-    schedule: NativeLiveSilenceWakeSchedule | null;
-  }> {
+  }): Promise<NativeLiveSilenceWakeFireResult> {
     const firedAt = this.now();
     const result = await this.db.transaction(
       async (transaction) => {
@@ -209,6 +223,7 @@ export class NativeLiveSilenceWakeService {
         if (!source || source.epochId !== input.epochId) {
           return {
             outcome: "ignored" as const,
+            reason: "source_changed" as const,
             schedule: source
               ? await this.scheduleForSource(
                   transaction as SilenceWakeTransaction,
@@ -231,6 +246,7 @@ export class NativeLiveSilenceWakeService {
         if (dueSlot !== input.slot) {
           return {
             outcome: "ignored" as const,
+            reason: "slot_not_due" as const,
             schedule,
           };
         }
@@ -243,14 +259,22 @@ export class NativeLiveSilenceWakeService {
               eq(nativeLiveTurnPreparations.userId, input.userId),
               eq(nativeLiveTurnPreparations.status, "prepared"),
               ne(nativeLiveTurnPreparations.operation, "wake"),
-              sql`${nativeLiveTurnPreparations.dispatchStatus}
-                IN ('staged', 'pending', 'reserved', 'executing', 'delivery_unknown')`,
+              sql`(
+                ${nativeLiveTurnPreparations.dispatchStatus}
+                  IN ('pending', 'reserved', 'executing', 'delivery_unknown')
+                OR (
+                  ${nativeLiveTurnPreparations.dispatchStatus} = 'staged'
+                  AND ${nativeLiveTurnPreparations.createdAt}
+                    >= ${source.assistantCompletedAt}
+                )
+              )`,
             ),
           )
           .limit(1);
         if (foreground) {
           return {
             outcome: "ignored" as const,
+            reason: "foreground_active" as const,
             schedule: null,
           };
         }
@@ -286,11 +310,15 @@ export class NativeLiveSilenceWakeService {
               ),
             )
             .limit(1);
+          if (existing?.status === "prepared") {
+            return {
+              outcome: "queued" as const,
+              schedule: markConsumed(schedule, input.slot),
+            };
+          }
           return {
-            outcome:
-              existing?.status === "prepared"
-                ? "queued" as const
-                : "ignored" as const,
+            outcome: "ignored" as const,
+            reason: "already_consumed" as const,
             schedule: markConsumed(schedule, input.slot),
           };
         }

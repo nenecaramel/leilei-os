@@ -17,6 +17,8 @@ test("Mac daemon prints canonical wake terminal outcomes directly", () => {
     source,
     /daemonOutcome: outcome\.outcome/u,
   );
+  assert.match(source, /reason: fired\.reason/u);
+
   for (const value of [
     "wake_quiet",
     "wake_stale",

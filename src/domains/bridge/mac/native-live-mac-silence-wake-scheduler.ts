@@ -1,6 +1,7 @@
 import {
   chooseDueSilenceWakeSlot,
   nextSilenceWakeDeadline,
+  type NativeLiveSilenceWakeIgnoredReason,
   type NativeLiveSilenceWakeSchedule,
   type NativeLiveSilenceWakeSlot,
 } from "../turn/native-live-silence-wake.js";
@@ -15,6 +16,7 @@ export interface NativeLiveMacSilenceWakeClient {
   }): Promise<{
     outcome: "queued" | "ignored";
     schedule: NativeLiveSilenceWakeSchedule | null;
+    reason?: NativeLiveSilenceWakeIgnoredReason;
   }>;
 }
 
@@ -23,6 +25,7 @@ export class NativeLiveMacSilenceWakeScheduler {
   private firePromise: Promise<{
     outcome: "queued" | "ignored" | "not_due";
     slot?: NativeLiveSilenceWakeSlot;
+    reason?: NativeLiveSilenceWakeIgnoredReason;
   }> | null = null;
 
   constructor(
@@ -42,6 +45,7 @@ export class NativeLiveMacSilenceWakeScheduler {
   fireDue(): Promise<{
     outcome: "queued" | "ignored" | "not_due";
     slot?: NativeLiveSilenceWakeSlot;
+    reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     if (this.firePromise) return this.firePromise;
     const promise = this.fireDueOnce().finally(() => {
@@ -54,6 +58,7 @@ export class NativeLiveMacSilenceWakeScheduler {
   private async fireDueOnce(): Promise<{
     outcome: "queued" | "ignored" | "not_due";
     slot?: NativeLiveSilenceWakeSlot;
+    reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     const slot = chooseDueSilenceWakeSlot(this.schedule, this.now());
     if (!slot || !this.schedule) return { outcome: "not_due" };
@@ -61,6 +66,10 @@ export class NativeLiveMacSilenceWakeScheduler {
     const epochId = this.schedule.epochId;
     const result = await this.client.fireSilenceWake({ epochId, slot });
     this.schedule = result.schedule;
-    return { outcome: result.outcome, slot };
+    return {
+      outcome: result.outcome,
+      slot,
+      ...(result.reason ? { reason: result.reason } : {}),
+    };
   }
 }

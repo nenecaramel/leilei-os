@@ -81,3 +81,39 @@ test("new epoch from the backend replaces all old local deadlines", async () => 
   await scheduler.refresh();
   assert.equal(scheduler.nextDeadlineAt(), Date.parse("2026-10-04T04:08:00.000Z"));
 });
+
+
+test("Mac silence scheduler propagates backend ignored reason", async () => {
+  const schedule = {
+    epochId,
+    conversationId,
+    postTurnDueAt: "2026-10-04T01:08:00.000Z",
+    longIdleDueAt: "2026-10-04T02:40:00.000Z",
+    postTurnConsumed: false,
+    longIdleConsumed: false,
+  };
+  const client: NativeLiveMacSilenceWakeClient = {
+    async readSilenceWakeSchedule() {
+      return schedule;
+    },
+    async fireSilenceWake() {
+      return {
+        outcome: "ignored",
+        reason: "foreground_active",
+        schedule: null,
+      };
+    },
+  };
+  const scheduler = new NativeLiveMacSilenceWakeScheduler(
+    client,
+    () => Date.parse("2026-10-04T01:08:00.000Z"),
+  );
+  await scheduler.refresh();
+
+  assert.deepEqual(await scheduler.fireDue(), {
+    outcome: "ignored",
+    slot: "post_turn_idle",
+    reason: "foreground_active",
+  });
+  assert.equal(scheduler.nextDeadlineAt(), null);
+});

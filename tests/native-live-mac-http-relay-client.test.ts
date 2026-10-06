@@ -1248,3 +1248,37 @@ test("Mac HTTP relay runtime event batch does not retry durable 409 conflicts", 
   );
   assert.equal(calls, 1);
 });
+
+
+test("Mac HTTP relay client parses silence wake ignore reason", async () => {
+  const fakeFetch: typeof fetch = async () =>
+    new Response(JSON.stringify({
+      success: true,
+      data: {
+        outcome: "ignored",
+        reason: "foreground_active",
+        schedule: null,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  assert.deepEqual(
+    await client.fireSilenceWake({
+      epochId: userMessageId,
+      slot: "post_turn_idle",
+    }),
+    {
+      outcome: "ignored",
+      reason: "foreground_active",
+      schedule: null,
+    },
+  );
+});

@@ -21,6 +21,7 @@ import type {
   ClaudeAlbumToolPhoto,
 } from "../../album/claude-photo-album-tool-contract.js";
 import type {
+  NativeLiveSilenceWakeIgnoredReason,
   NativeLiveSilenceWakeSchedule,
   NativeLiveSilenceWakeSlot,
 } from "../turn/native-live-silence-wake.js";
@@ -723,6 +724,7 @@ implements NativeLiveMacDaemonRelayClient {
   }): Promise<{
     outcome: "queued" | "ignored";
     schedule: NativeLiveSilenceWakeSchedule | null;
+    reason?: NativeLiveSilenceWakeIgnoredReason;
   }> {
     const data = readRecord(
       await this.post(
@@ -741,12 +743,31 @@ implements NativeLiveMacDaemonRelayClient {
         "Native live silence wake outcome is invalid.",
       );
     }
+
+    const reason =
+      data.reason === "source_changed"
+        || data.reason === "slot_not_due"
+        || data.reason === "foreground_active"
+        || data.reason === "already_consumed"
+        ? data.reason
+        : undefined;
+    if (
+      data.outcome === "ignored"
+      && data.reason !== undefined
+      && !reason
+    ) {
+      throw new Error(
+        "Native live silence wake ignore reason is invalid.",
+      );
+    }
+
     return {
       outcome: data.outcome,
       schedule:
         data.schedule === null
           ? null
           : parseSilenceWakeSchedule(data.schedule),
+      ...(reason ? { reason } : {}),
     };
   }
 
