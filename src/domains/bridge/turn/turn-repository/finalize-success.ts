@@ -62,6 +62,10 @@ export async function finalizeSuccess(
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp:
       Parameters<NativeLiveBackendTurnPort["finalizeSuccess"]>[0]["mindFollowUp"];
+    recovery?: {
+      expectedFailureCode: "RUNTIME_UNAVAILABLE";
+      expectedOperation: "edit";
+    };
   }): Promise<NativeLiveFinalizeSuccessPortResult> {
     const resultHash = hashJson(RESULT_HASH_VERSION, {
       status: "success",
@@ -110,7 +114,16 @@ export async function finalizeSuccess(
               record,
             };
           }
-          if (row.status !== "prepared") {
+          const recoveringFailedEdit = Boolean(input.recovery);
+          if (recoveringFailedEdit) {
+            if (
+              row.status !== "finalized_failure"
+              || row.failureCode !== input.recovery?.expectedFailureCode
+              || row.operation !== input.recovery?.expectedOperation
+            ) {
+              return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+            }
+          } else if (row.status !== "prepared") {
             return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
           }
 
@@ -209,14 +222,47 @@ export async function finalizeSuccess(
             // after our snapshot, rather than purging from an outdated snapshot.
             const [surface] = await transaction.select({
               ownsPresentation: matchesPresentationOwner(row.id),
+              currentHeadMessageId:
+                conversationTable.currentHeadMessageId,
             }).from(conversationTable).where(and(
               eq(conversationTable.userId, input.userId),
               eq(conversationTable.id, row.conversationId),
               eq(conversationTable.origin, "native_live"),
               eq(conversationTable.lifecycleStatus, "active"),
             )).for("update").limit(1);
-            if (!surface?.ownsPresentation) {
+            if (!surface) {
               return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+            }
+            if (!recoveringFailedEdit && !surface.ownsPresentation) {
+              return { ok: false as const, code: "FINALIZE_CONFLICT" as const };
+            }
+            if (
+              recoveringFailedEdit
+              && surface.currentHeadMessageId
+            ) {
+              const [head] = await transaction
+                .select({ createdAt: conversationMessages.createdAt })
+                .from(conversationMessages)
+                .where(
+                  and(
+                    eq(conversationMessages.userId, input.userId),
+                    eq(
+                      conversationMessages.conversationId,
+                      row.conversationId,
+                    ),
+                    eq(
+                      conversationMessages.id,
+                      surface.currentHeadMessageId,
+                    ),
+                  ),
+                )
+                .limit(1);
+              if (!head || head.createdAt > row.createdAt) {
+                return {
+                  ok: false as const,
+                  code: "FINALIZE_CONFLICT" as const,
+                };
+              }
             }
             const conversation = await conversations.getConversation({
               userId: input.userId,
@@ -242,6 +288,29 @@ export async function finalizeSuccess(
               throw new Error(
                 "Replacement finalization target is no longer on the current path.",
               );
+            }
+            if (recoveringFailedEdit) {
+              const editedUser = conversation.messages.find(
+                (message) =>
+                  message.id === row.canonicalUserMessageId
+                  && message.role === "user",
+              );
+              const existingAssistant = conversation.messages.find(
+                (message) =>
+                  message.role === "assistant"
+                  && message.parentMessageId === row.canonicalUserMessageId,
+              );
+              if (
+                !editedUser
+                || editedUser.parentMessageId
+                  !== replacementPurgePlan.branchParentMessageId
+                || existingAssistant
+              ) {
+                return {
+                  ok: false as const,
+                  code: "FINALIZE_CONFLICT" as const,
+                };
+              }
             }
           }
 
@@ -387,7 +456,22 @@ export async function finalizeSuccess(
               and(
                 eq(nativeLiveTurnPreparations.id, row.id),
                 eq(nativeLiveTurnPreparations.userId, input.userId),
-                eq(nativeLiveTurnPreparations.status, "prepared"),
+                eq(
+                  nativeLiveTurnPreparations.status,
+                  recoveringFailedEdit
+                    ? "finalized_failure"
+                    : "prepared",
+                ),
+                ...(
+                  recoveringFailedEdit
+                    ? [
+                        eq(
+                          nativeLiveTurnPreparations.failureCode,
+                          input.recovery!.expectedFailureCode,
+                        ),
+                      ]
+                    : []
+                ),
               ),
             )
             .returning({ id: nativeLiveTurnPreparations.id });
