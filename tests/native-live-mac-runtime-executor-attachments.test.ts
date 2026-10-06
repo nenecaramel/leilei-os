@@ -84,6 +84,10 @@ test("protocol v3 collects explicit send_file output attachment ids", async () =
     result.output_attachment_ids,
     [attachmentId],
   );
+  assert.equal(
+    result.output_attachment_metadata,
+    undefined,
+  );
 });
 
 test("protocol v3 album save is bound to canonical user identity and emits album_saved", async () => {
