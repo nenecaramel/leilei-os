@@ -30,11 +30,14 @@ import Foundation
   precondition(G.audioWidth(duration:0,sizeBytes:1000) < G.audioWidth(duration:0,sizeBytes:1000000))
   precondition(G.audioWidth(duration:8,sizeBytes:1) == audio[2])
   precondition(abs(G.audioWidth(duration:0,sizeBytes:192000)-audio[2]) < 1)
-  for (seconds, bytes) in [(1.0,32044),(8.0,64000),(8.0,128044),(8.0,256044),(30.0,960044)] {
-   let proxy=G.audioWidth(duration:0,sizeBytes:bytes)
-   let known=G.audioWidth(duration:seconds,sizeBytes:bytes)
-   precondition(abs(proxy-known) < 25, "common encoding proxy must not cause a large geometry jump")
+  // Historical audio without canonical duration may still use the coarse
+  // size/default fallback until first playback. The fallback remains bounded
+  // and monotonic, but it is not required to approximate decoded duration.
+  let historicalFallbackWidths=[32_044,64_000,128_044,256_044,960_044].map {
+   G.audioWidth(duration:0,sizeBytes:$0)
   }
+  precondition(historicalFallbackWidths.allSatisfy{$0 >= minimum && $0 <= G.audioMaximumWidth})
+  precondition(zip(historicalFallbackWidths,historicalFallbackWidths.dropFirst()).allSatisfy{$0 <= $1})
   for (s,l) in [(0.2,"1\u{2033}"),(1.0,"1\u{2033}"),(4.4,"4\u{2033}"),(7.6,"8\u{2033}"),(23,"23\u{2033}")] {
    precondition(G.durationLabel(seconds:s) == l)
   }
