@@ -61,6 +61,9 @@ async function main(argv = process.argv.slice(2)) {
       prepareId,
       sessionId,
       workingDirectory,
+      runtimeMode: inspection.runtimeMode,
+      parentProviderSessionId: inspection.parentProviderSessionId,
+      parentProviderCheckpointId: inspection.parentProviderCheckpointId,
       eventCount: inspection.eventCount,
     }) + "\n",
   );
