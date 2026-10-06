@@ -113,6 +113,29 @@ test("turn handle preserves terminal success when the SDK process exits during t
   assert.equal(result.result?.result, "READY");
 });
 
+test("turn handle does not mask arbitrary errors after terminal success", async () => {
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        for (const message of successMessages("provider-post-success-bug")) {
+          yield message;
+        }
+        throw new Error("unexpected host callback failure");
+      },
+    }),
+  });
+
+  await assert.rejects(
+    handle.start(),
+    (error) =>
+      error.runtimeCode === "CLAUDE_PROCESS_FAILED"
+      && /unexpected host callback failure/u.test(error.message),
+  );
+});
+
 test("turn handle lets a later terminal success supersede an earlier failed result", async () => {
   const handle = await createAgentSdkTurnHandle({
     prompt: "hello",
