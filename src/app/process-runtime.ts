@@ -97,6 +97,7 @@ import {
 import { DrizzleNativeLiveBackendTurnPort } from "../domains/bridge/turn/native-live-backend-turn-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { NativeLiveSilenceWakeService } from "../domains/bridge/turn/native-live-silence-wake.js";
+import { NativeLiveFailedTurnRecoveryService } from "../domains/bridge/turn/native-live-failed-turn-recovery.js";
 import { NativeLiveBackendRelayPrepareCoordinator } from "../domains/bridge/relay/native-live-backend-relay-prepare.js";
 import {
   DrizzleNativeLiveBackendRelayRepository,
@@ -556,6 +557,11 @@ export function createProcessRuntime(
     new NativeLiveProviderSessionStoreService(
       new DrizzleNativeLiveProviderSessionStoreRepository(db),
     );
+  const nativeLiveFailedTurnRecoveryService =
+    new NativeLiveFailedTurnRecoveryService(
+      db,
+      nativeLiveProviderSessionStoreService,
+    );
   const nativeLiveRuntimeEventService =
     new NativeLiveRuntimeEventService(
       new DrizzleNativeLiveRuntimeEventRepository(db),
@@ -834,6 +840,8 @@ export function createProcessRuntime(
             nativeLiveExternalSessionBridgeService,
           providerSessionStoreService:
             nativeLiveProviderSessionStoreService,
+          failedTurnRecoveryService:
+            nativeLiveFailedTurnRecoveryService,
           ...(nativeLiveAttachmentService
             ? {
                 attachmentService:
