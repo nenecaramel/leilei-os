@@ -16,7 +16,7 @@ and `RUN_SDK_BRANCH_CORRECTNESS_LIVE` were forced to `0`. **No Claude live calls
 were made in this follow-up. SDK stays **0.3.286**.
 
 Fresh Node 22.23.3 results: bridge **155 pass / 0 fail / 4 opt-in live skips**;
-runtime gate **539 pass / 0 fail**; isolated Postgres regression **60 pass / 0 fail**;
+runtime gate **539 pass / 0 fail**; isolated Postgres regression **66 pass / 0 fail** (now includes the six branch-session cases);
 additional branch-session/bootstrap DB cases **7 pass / 0 fail**; relay unit
 regressions **10 pass / 0 fail**; root typecheck/build and diff checks **PASS**.
 
@@ -38,6 +38,24 @@ See [the detailed additional-gate ledger](2026-10-06-branch-session-correctness-
 for the prior genuine fork RED, candidate mitigation, interrupted-U evidence and
 quota-blocked live attempt. Do not merge until the remaining gate is independently
 approved; this local follow-up does not substitute for it.
+
+
+### Final local canonical delta (Node 22.23.3)
+
+Against exact pre-follow-up PR head f8339c69, with identical dependencies/JSX/CSS
+flags: candidate **2106 tests, 1923 pass / 53 fail / 130 skip**; base **2103 tests,
+1920 pass / 53 fail / 130 skip**. **0 new failure titles**, 0 base-only. The three
+added relay unit cases account for the additional passes. The 53 shared failures
+include pre-existing source/governance/render assertions and missing Web React
+dependencies in both disposable worktrees. This is not a green full canonical
+suite claim, and is not directly comparable with the older fully installed Web
+run. All failure names are recorded in the additional-gate ledger.
+
+The standard isolated Postgres regression script now includes
+`native-live-branch-session.integration.test.ts` so these six branch/cleanup/compact
+DB cases cannot silently skip from that gate. The full script passed **66/66**;
+the separate branch/bootstrap run passed **7/7**, overlapping those six branch
+cases and adding one TLS bootstrap case (67 distinct DB cases total).
 
 ## Lifecycle contract
 

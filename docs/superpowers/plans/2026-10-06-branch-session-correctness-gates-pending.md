@@ -7,7 +7,7 @@ SDK remains exactly `@anthropic-ai/claude-agent-sdk@0.3.286`.
 **Latest local-only follow-up:** zero Claude live calls; opt-in live switches forced
 off. Production-query compact historical fork remains **UNVERIFIED**, as explicitly
 requested. Node 22 local bridge 155/155 (4 live skips), runtime gate 539/539,
-isolated DB 60/60 plus branch/bootstrap 7/7, relay regressions 10/10, typecheck/build
+isolated DB 66/66 (including six branch cases) plus branch/bootstrap 7/7, relay regressions 10/10, typecheck/build
 and diff check PASS. The DB-discovered v4 dispatch/cleanup alias regressions were
 reproduced RED and corrected without changing production config or weakening
 shared-session protection. The older attempts below are historical records.
@@ -180,3 +180,20 @@ Failures present in both exact-head and candidate runs:
 - `tests/universe-paper-ui.test.ts`
 - `Web component tests use the same automatic JSX runtime as the Web build`
 - `tests/web-unsaved-changes.test.ts`
+
+### Final local canonical delta (Node 22.23.3)
+
+Against exact pre-follow-up PR head f8339c69, with identical dependencies/JSX/CSS
+flags: candidate **2106 tests, 1923 pass / 53 fail / 130 skip**; base **2103 tests,
+1920 pass / 53 fail / 130 skip**. **0 new failure titles**, 0 base-only. The three
+added relay unit cases account for the additional passes. The 53 shared failures
+include pre-existing source/governance/render assertions and missing Web React
+dependencies in both disposable worktrees. This is not a green full canonical
+suite claim, and is not directly comparable with the older fully installed Web
+run. All failure names are recorded in the additional-gate ledger.
+
+The standard isolated Postgres regression script now includes
+`native-live-branch-session.integration.test.ts` so these six branch/cleanup/compact
+DB cases cannot silently skip from that gate. The full script passed **66/66**;
+the separate branch/bootstrap run passed **7/7**, overlapping those six branch
+cases and adding one TLS bootstrap case (67 distinct DB cases total).
