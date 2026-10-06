@@ -26,7 +26,14 @@ enum NativeLiveSpotifyProjector {
     static let allowedProviderTools: Set<String> = [
         "mcp__Spotify__search",
         "mcp__Spotify__generate_playlist",
-        "mcp__Spotify__get_currently_playing"
+        "mcp__Spotify__get_currently_playing",
+        "mcp__claude_ai_Spotify__search",
+        "mcp__claude_ai_Spotify__generate_playlist",
+        "mcp__claude_ai_Spotify__get_currently_playing"
+    ]
+    private static let currentlyPlayingProviderTools: Set<String> = [
+        "mcp__Spotify__get_currently_playing",
+        "mcp__claude_ai_Spotify__get_currently_playing"
     ]
 
     static func project(providerToolName: String, output: NativeLiveJSONValue?) -> NativeLiveSpotifyResultPresentation? {
@@ -40,7 +47,7 @@ enum NativeLiveSpotifyProjector {
             return .init(errorTitle: title, errorMessage: message, errorCode: code)
         }
         if object["is_error"] != nil && object["is_error"]?.boolValue == nil { return nil }
-        if providerToolName == "mcp__Spotify__get_currently_playing" {
+        if currentlyPlayingProviderTools.contains(providerToolName) {
             guard let value = object["currently_playing_entity"] else { return nil }
             if value == .null { return .init(isEmpty: true) }
             guard let entity = entity(value) else { return nil }

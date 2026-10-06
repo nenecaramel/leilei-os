@@ -4,7 +4,7 @@ import Foundation
  static func main() {
   let entity = value(#"{"name":"Song","uri":"spotify:track:abc","url":"https://open.spotify.com/track/abc","entity_type":"track","creators":[{"name":"Artist"}],"parent":{"name":"Album"},"display":{"type_label":"Track","covers":[{"url":"https://example.invalid/small.png","size":"SMALL"},{"url":"https://example.invalid/large.png","size":"LARGE"}]}}"#)
   let output = NativeLiveJSONValue.object(["entities":.array([entity])])
-  for identity in ["mcp__Spotify__search","mcp__Spotify__generate_playlist"] {
+  for identity in ["mcp__Spotify__search","mcp__Spotify__generate_playlist","mcp__claude_ai_Spotify__search","mcp__claude_ai_Spotify__generate_playlist"] {
    let result = NativeLiveSpotifyProjector.project(providerToolName:identity,output:output)!
    precondition(result.entities.count == 1)
    precondition(result.entities[0].name == "Song" && result.entities[0].creator == "Artist")
@@ -30,9 +30,11 @@ import Foundation
   let limited = NativeLiveSpotifyProjector.project(providerToolName:"mcp__Spotify__search",output:.object(["entities":.array(mixed)]))!
   precondition(limited.entities.map(\.name) == Array(names.prefix(5)))
   precondition(limited.entities.allSatisfy { $0.url == nil && $0.coverURL == nil })
-  let playing = NativeLiveSpotifyProjector.project(providerToolName:"mcp__Spotify__get_currently_playing",output:.object(["currently_playing_entity":entity]))!
-  precondition(playing.entities[0].name == "Song")
-  precondition(NativeLiveSpotifyProjector.project(providerToolName:"mcp__Spotify__get_currently_playing",output:.object(["currently_playing_entity":.null]))?.isEmpty == true)
+  for identity in ["mcp__Spotify__get_currently_playing","mcp__claude_ai_Spotify__get_currently_playing"] {
+   let playing = NativeLiveSpotifyProjector.project(providerToolName:identity,output:.object(["currently_playing_entity":entity]))!
+   precondition(playing.entities[0].name == "Song")
+   precondition(NativeLiveSpotifyProjector.project(providerToolName:identity,output:.object(["currently_playing_entity":.null]))?.isEmpty == true)
+  }
   let error = NativeLiveSpotifyProjector.project(providerToolName:"mcp__Spotify__search",output:value(#"{"is_error":true,"error":{"title":"Provider title","message":"Exact cause","error_code":"E42"}}"#))!
   precondition(error.errorTitle == "Provider title" && error.errorMessage == "Exact cause" && error.errorCode == "E42")
   for malformed in [#"{}"#,#"{"entities":{}}"#,#"{"entities":[{"uri":"spotify:track:x"}]}"#,#"{"entities":[{"name":"bad"}]}"#,#"{"entities":[{"name":"bad","url":"javascript:alert(1)"}]}"#,#"{"entities":[{"name":"bad","uri":"garbage"}]}"#,#"{"entities":[5]}"#,#"{"entities":[],"future":true}"#] {
