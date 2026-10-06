@@ -121,13 +121,16 @@ struct Stage6Host: View {
             } else if name.hasPrefix("audio-") {
                 NativeLiveAudioAttachmentBubble(stage6Input: Stage6Fixtures.input(String(name.dropFirst(6))), state: state)
             } else if name == "spotify-sdk-row" {
-                NativeLiveToolActivityRow(tool: Stage6Fixtures.sdkTool, permissionInteractions: [], onResolveInteraction: nil)
+                NativeLiveSpotifyResultSurface(items: NativeLiveSpotifyResultSurfaceProjector.project(tools: [Stage6Fixtures.sdkTool]))
             } else if name == "spotify-permission" {
+                VStack(alignment: .leading, spacing: ChatPresentationLayout.assistantSpacing) {
                 NativeLiveToolActivityRow(tool: Stage6Fixtures.tool("one"), permissionInteractions: [Stage6Fixtures.permission], onResolveInteraction: { interaction, response in
                     Stage6Probe.resolved.append("start:\(interaction.id):\(nativeLiveJSONDetail(.object(response))!)")
                     await Task.yield()
                     Stage6Probe.resolved.append("finish:\(interaction.id)")
                 })
+                NativeLiveSpotifyResultSurface(items: NativeLiveSpotifyResultSurfaceProjector.project(tools: [Stage6Fixtures.tool("one")]))
+                }
             } else if name.hasPrefix("spotify-") {
                 let n = String(name.dropFirst(8)), tool = Stage6Fixtures.tool(n)
                 NativeLiveSpotifyCard(presentation: NativeLiveSpotifyProjector.project(providerToolName: tool.providerToolName, output: tool.output)!, tool: tool)
@@ -170,7 +173,7 @@ struct Stage6Host: View {
                 precondition(a.pixels == b.pixels, "Non-target static pixels changed \(name)")
                 exact += 1; print("non-target \(name)/\(dark): exact frames + static pixels"); fflush(stdout)
             }
-            for name in (Stage6Fixtures.voice.map({ "voice-"+$0 }) + Stage6Fixtures.audio.map({ "audio-"+$0 }) + Stage6Fixtures.spotify.map({ "spotify-"+$0 })).filter({ focus.isEmpty || $0 == focus }) {
+            for name in (Stage6Fixtures.voice.map({ "voice-"+$0 }) + Stage6Fixtures.audio.map({ "audio-"+$0 }) + Stage6Fixtures.spotify.map({ "spotify-"+$0 })).filter({ focus.isEmpty || $0 == focus || $0.hasPrefix(focus + "-") }) {
                 let result = await sample(name, false, scene, width, height, dark)
                 let key = name + (dark ? "-dark" : "-light")
                 manifest[key] = ["frames": result.frames.mapValues { [$0.origin.x,$0.origin.y,$0.size.width,$0.size.height] }, "staticSHA256": SHA256.hash(data: result.pixels).map { String(format: "%02x", $0) }.joined()]
@@ -287,7 +290,7 @@ struct Stage6Host: View {
         let sdkHost=UIHostingController(rootView:Stage6Host(name:"spotify-sdk-row",baseline:false,state:NativeLiveAudioPlaybackState()))
         window.rootViewController=sdkHost; Stage6Probe.activeScope=sdkHost.rootView.scope; window.makeKeyAndVisible(); sdkHost.view.frame=window.bounds
         try? await Task.sleep(for:.milliseconds(250)); await Stage6Probe.click("url-SDK Song")
-        precondition(Stage6Probe.urls == ["https://open.spotify.com/track/sdk"], "SDK envelope did not reach specialized ToolActivityRow")
+        precondition(Stage6Probe.urls == ["https://open.spotify.com/track/sdk"], "SDK envelope did not reach standalone result surface")
         await Stage6Probe.click("details"); precondition(sdkHost.presentedViewController != nil)
         sdkHost.dismiss(animated:false); window.isHidden=true; window.rootViewController=nil
         for action in ["allow","deny"] {
