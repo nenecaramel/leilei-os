@@ -112,6 +112,13 @@ function sdkResultFailed(message) {
     && message.subtype !== "success";
 }
 
+function isClaudeCodeTeardownExit(cause) {
+  return cause instanceof Error
+    && /^Claude Code process exited with code \d+$/u.test(
+      cause.message,
+    );
+}
+
 export async function waitForAgentSdkMcpServer(
   query,
   serverName,
@@ -730,6 +737,7 @@ export class AgentSdkTurnHandle {
         terminalResult?.subtype === "success"
         && terminalResult.is_error !== true
         && !terminalFailure
+        && isClaudeCodeTeardownExit(cause)
       ) {
         // The SDK can surface a terminal success result before its child
         // process finishes tearing down. A later non-zero process exit must
