@@ -113,6 +113,54 @@ test("turn handle preserves terminal success when the SDK process exits during t
   assert.equal(result.result?.result, "READY");
 });
 
+test("turn handle lets a later terminal success supersede an earlier failed result", async () => {
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "provider-result-recovery",
+        };
+        yield {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          session_id: "provider-result-recovery",
+          errors: ["transient provider terminal"],
+        };
+        yield {
+          type: "assistant",
+          session_id: "provider-result-recovery",
+          message: {
+            content: [{ type: "text", text: "RECOVERED" }],
+          },
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          session_id: "provider-result-recovery",
+          result: "RECOVERED",
+        };
+        throw new Error("Claude Code process exited with code 1");
+      },
+    }),
+  });
+
+  const result = await handle.start();
+  assert.equal(
+    result.providerSessionId,
+    "provider-result-recovery",
+  );
+  assert.equal(result.result?.subtype, "success");
+  assert.equal(result.result?.is_error, false);
+  assert.equal(result.result?.result, "RECOVERED");
+});
+
 test("turn handle forwards bidirectional query options without owning permission policy", async () => {
   let call;
   const canUseTool = async (_toolName, toolInput) => ({
