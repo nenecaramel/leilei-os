@@ -1289,7 +1289,7 @@ test(
 );
 
 test(
-  "Delete ignores terminal delivery-unknown turns but still blocks executing turns",
+  "Delete protects unresolved delivery-unknown and executing turns",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -1336,7 +1336,7 @@ test(
 
     const deliveryUnknownConversation = await service.createConversation({
       userId,
-      title: "Delivery unknown may be deleted",
+      title: "Delivery unknown stays protected",
     });
     const deliveryUnknownUser = await service.appendUserMessage({
       userId,
@@ -1372,7 +1372,7 @@ test(
         userId,
         conversationId: deliveryUnknownConversation.id,
       })).outcome,
-      "deleted",
+      "busy",
     );
 
     const executingConversation = await service.createConversation({
@@ -1413,3 +1413,31 @@ test(
     );
   },
 );
+
+test("Archive and true Delete share every in-flight dispatch guard and retain delivery-unknown evidence", { skip: !enabled }, async (t) => {
+  const database = createDatabase(process.env.DATABASE_URL!, { ssl: false });
+  const [user] = await database.db.insert(users).values({ email: `delete-guard-${crypto.randomUUID()}@example.com`, displayName: "Delete guard" }).returning({ id: users.id });
+  t.after(async () => {
+    await database.db.delete(conversations).where(eq(conversations.userId, user.id));
+    await database.db.delete(users).where(eq(users.id, user.id));
+    await database.close();
+  });
+  const service = new NativeLiveConversationService(new DrizzleNativeLiveConversationRepository(database.db));
+  for (const dispatchStatus of ["staged", "pending", "reserved", "executing", "delivery_unknown", "completed", "rejected"] as const) {
+    const conversation = await service.createConversation({ userId: user.id, title: dispatchStatus });
+    const message = await service.appendUserMessage({ userId: user.id, conversationId: conversation.id, parentMessageId: null, blocks: [{ kind: "text", text: "evidence" }] });
+    const [preparation] = await database.db.insert(nativeLiveTurnPreparations).values({
+      id: crypto.randomUUID(), userId: user.id, requestId: crypto.randomUUID(), conversationId: conversation.id, operation: "send", requestHash: "a".repeat(64),
+      ...(["reserved", "executing", "delivery_unknown", "completed"].includes(dispatchStatus) ? { reservedBy: crypto.randomUUID(), reservedAt: new Date(), reservationExpiresAt: new Date(Date.now() + 60_000) } : {}),
+      ...(["executing", "delivery_unknown", "completed"].includes(dispatchStatus) ? { executionStartedAt: new Date() } : {}),
+      ...(dispatchStatus === "delivery_unknown" ? { deliveryUnknownAt: new Date() } : {}),
+      ...(dispatchStatus === "completed" ? { failureCode: "CLAUDE_PROCESS_FAILED", resultHash: "b".repeat(64), finalizedAt: new Date() } : {}),
+      canonicalUserMessageId: message.id, runtimeMode: "new", prompt: "evidence", status: dispatchStatus === "completed" ? "finalized_failure" : "prepared", dispatchStatus,
+    }).returning({ id: nativeLiveTurnPreparations.id });
+    const busy = dispatchStatus !== "completed" && dispatchStatus !== "rejected";
+    assert.equal((await service.archiveConversation({ userId: user.id, conversationId: conversation.id })).outcome, busy ? "busy" : "archived", `archive ${dispatchStatus}`);
+    assert.equal((await service.deleteConversation({ userId: user.id, conversationId: conversation.id })).outcome, busy ? "busy" : "deleted", `delete ${dispatchStatus}`);
+    const evidence = await database.db.select({ id: nativeLiveTurnPreparations.id }).from(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, preparation.id));
+    assert.equal(evidence.length, busy ? 1 : 0, `recovery evidence ${dispatchStatus}`);
+  }
+});
