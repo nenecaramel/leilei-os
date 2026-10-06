@@ -36,7 +36,6 @@ export const nativeLiveProviderSessionEntries = pgTable(
         onDelete: "cascade",
         onUpdate: "cascade",
       }),
-    workspaceId: uuid("workspace_id").notNull(),
     providerSessionId: text("provider_session_id").notNull(),
     subpath: text("subpath").default("").notNull(),
     appendBatchId: uuid("append_batch_id").notNull(),
@@ -49,21 +48,18 @@ export const nativeLiveProviderSessionEntries = pgTable(
   (table) => [
     index("native_live_provider_session_entries_load_idx").on(
       table.userId,
-      table.workspaceId,
       table.providerSessionId,
       table.subpath,
       table.id,
     ),
     index("native_live_provider_session_entries_sessions_idx").on(
       table.userId,
-      table.workspaceId,
       table.subpath,
       table.createdAt.desc(),
       table.providerSessionId,
     ),
     uniqueIndex("native_live_provider_session_entries_batch_ordinal_uidx").on(
       table.userId,
-      table.workspaceId,
       table.providerSessionId,
       table.subpath,
       table.appendBatchId,
@@ -101,7 +97,6 @@ export const nativeLiveProviderSessionStoreStatus = pgTable(
         onDelete: "cascade",
         onUpdate: "cascade",
       }),
-    workspaceId: uuid("workspace_id").notNull(),
     providerSessionId: text("provider_session_id").notNull(),
     state: varchar("state", { length: 16 })
       .$type<"complete" | "incomplete">()
@@ -114,7 +109,6 @@ export const nativeLiveProviderSessionStoreStatus = pgTable(
     primaryKey({
       columns: [
         table.userId,
-        table.workspaceId,
         table.providerSessionId,
       ],
       name: "native_live_provider_session_store_status_pk",
@@ -153,8 +147,7 @@ export const nativeLiveProviderSessionCleanups = pgTable(
       .$type<ConversationRuntimeProvider>()
       .notNull(),
     providerSessionId: text("provider_session_id").notNull(),
-    workspaceId: uuid("workspace_id"),
-    effectiveWorkspaceRoot: text("effective_workspace_root"),
+    effectiveWorkingDirectory: text("effective_working_directory"),
     status: varchar("status", { length: 32 })
       .$type<NativeLiveProviderSessionCleanupStatus>()
       .default("pending")
@@ -190,14 +183,6 @@ export const nativeLiveProviderSessionCleanups = pgTable(
       table.createdAt,
       table.id,
     ),
-    index(
-      "native_live_provider_session_cleanups_workspace_idx",
-    ).on(
-      table.userId,
-      table.workspaceId,
-      table.createdAt,
-      table.id,
-    ),
     check(
       "native_live_provider_session_cleanups_provider_allowed",
       sql`${table.provider} = 'claude_code'`,
@@ -207,8 +192,8 @@ export const nativeLiveProviderSessionCleanups = pgTable(
       sql`char_length(btrim(${table.providerSessionId})) > 0`,
     ),
     check(
-      "native_live_provider_session_cleanups_workspace_root_not_blank",
-      sql`${table.effectiveWorkspaceRoot} IS NULL OR char_length(btrim(${table.effectiveWorkspaceRoot})) > 0`,
+      "native_live_provider_cleanups_directory_not_blank",
+      sql`${table.effectiveWorkingDirectory} IS NULL OR char_length(btrim(${table.effectiveWorkingDirectory})) > 0`,
     ),
     check(
       "native_live_provider_session_cleanups_attempt_bounds",

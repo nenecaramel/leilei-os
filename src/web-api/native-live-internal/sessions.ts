@@ -265,8 +265,7 @@ function parseExternalSessionResultBody(
           gitBranch: string | null;
           lastModified: number | null;
           createdAt: number | null;
-          workspaceId: string | null;
-          workspaceRoot: string;
+          workingDirectory: string;
         }>;
       }
     | {
@@ -302,21 +301,14 @@ function parseExternalSessionResultBody(
     if (
       typeof row.session_id !== "string"
       || !row.session_id.trim()
-      || typeof row.workspace_root !== "string"
-      || !row.workspace_root.trim()
+      || typeof row.working_directory !== "string"
+      || !row.working_directory.trim()
       || !nullableString(row.summary)
       || !nullableString(row.custom_title)
       || !nullableString(row.first_prompt)
       || !nullableString(row.git_branch)
-      || !nullableString(row.workspace_id)
       || !nullableFiniteNumberValue(row.last_modified)
       || !nullableFiniteNumberValue(row.created_at)
-    ) {
-      return null;
-    }
-    if (
-      typeof row.workspace_id === "string"
-      && !isUuid(row.workspace_id)
     ) {
       return null;
     }
@@ -344,11 +336,7 @@ function parseExternalSessionResultBody(
         typeof row.created_at === "number"
           ? row.created_at
           : null,
-      workspaceId:
-        typeof row.workspace_id === "string"
-          ? row.workspace_id
-          : null,
-      workspaceRoot: row.workspace_root,
+      workingDirectory: row.working_directory,
     });
   }
   return {

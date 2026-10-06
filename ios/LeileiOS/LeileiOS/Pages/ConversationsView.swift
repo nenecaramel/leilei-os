@@ -660,7 +660,6 @@ struct ConversationCreateSheet: View {
     }
 }
 
-
 struct ClaudeSessionForkSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -903,8 +902,8 @@ struct ClaudeSessionForkSheet: View {
     private func detailText(
         _ session: NativeLiveExternalClaudeSession
     ) -> String {
-        let workspace = URL(
-            fileURLWithPath: session.workspaceRoot
+        let directoryName = URL(
+            fileURLWithPath: session.workingDirectory
         ).lastPathComponent
         let branch = session.gitBranch?
             .trimmingCharacters(
@@ -913,9 +912,9 @@ struct ClaudeSessionForkSheet: View {
 
         let shortID = String(session.sessionId.prefix(8))
         if let branch, !branch.isEmpty {
-            return workspace + " · " + branch + " · " + shortID
+            return directoryName + " · " + branch + " · " + shortID
         }
-        return workspace + " · " + shortID
+        return directoryName + " · " + shortID
     }
 
     private func importHistory(

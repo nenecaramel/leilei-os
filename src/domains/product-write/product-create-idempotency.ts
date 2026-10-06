@@ -10,13 +10,9 @@ export const PRODUCT_CREATE_FINGERPRINT_VERSION =
   "leilei-os:product-create:v1";
 
 export type ProductCreateOperation =
-  | "workspace_create"
-  | "workspace_resource_create"
   | "mind_manual_create";
 
 export type ProductCreateResourceType =
-  | "workspace"
-  | "workspace_resource"
   | "mind_state";
 
 export type ProductCreateIdempotencyRecord = {

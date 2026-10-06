@@ -10,14 +10,12 @@ import {
   toolCalls,
   universeNodes,
   users,
-  workspaces,
 } from "../../database/schema.js";
 
 export type SystemDataSummary = {
   diary: { active: number; archived: number };
   diary_comments: { count: number };
   todo: { active: number; count: number };
-  workspaces: { count: number };
   conversations: { active: number; archived: number };
   mind: { count: number };
   universe: { nodes: number };
@@ -81,7 +79,6 @@ export class DrizzleSystemRepository implements SystemRepository {
       diaryRows,
       diaryCommentRows,
       todoRows,
-      workspaceRows,
       conversationRows,
       mindRows,
       universeRows,
@@ -99,10 +96,6 @@ export class DrizzleSystemRepository implements SystemRepository {
         .select({ count: count() })
         .from(todoPapers)
         .where(eq(todoPapers.userId, userId)),
-      this.db
-        .select({ count: count() })
-        .from(workspaces)
-        .where(eq(workspaces.userId, userId)),
       this.db
         .select({
           status: conversations.lifecycleStatus,
@@ -136,9 +129,6 @@ export class DrizzleSystemRepository implements SystemRepository {
       todo: {
         active: Number(todoRows[0]?.count ?? 0),
         count: Number(todoRows[0]?.count ?? 0),
-      },
-      workspaces: {
-        count: Number(workspaceRows[0]?.count ?? 0),
       },
       conversations: {
         active: readCount(conversationRows, "active"),

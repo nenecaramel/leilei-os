@@ -1,5 +1,4 @@
 import {
-  NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
   NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION,
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
 } from "./types.js";
@@ -16,17 +15,9 @@ export class NativeLiveRuntimeProtocolError extends Error {
   }
 }
 
-export function parseProtocolVersion(
-  value: unknown,
-): 1 | 2 | 3 {
-  if (
-    value !== NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
-    && value !== NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION
-    && value !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "Unsupported runtime protocol version.",
-    );
+export function parseProtocolVersion(value: unknown): 4 {
+  if (value !== NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new NativeLiveRuntimeProtocolError("Unsupported runtime protocol version.");
   }
   return value;
 }

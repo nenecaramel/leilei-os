@@ -9,9 +9,9 @@ import {
 test("product create idempotency keys are normalized and bounded", () => {
   assert.equal(
     normalizeProductCreateIdempotencyKey(
-      "  workspace-create-0001  ",
+      "  mind-create-0001  ",
     ),
-    "workspace-create-0001",
+    "mind-create-0001",
   );
 
   for (const value of [
@@ -31,8 +31,7 @@ test("product create idempotency keys are normalized and bounded", () => {
 
 test("product create request fingerprints are canonical by object key order", () => {
   const left = hashProductCreateRequest({
-    operation: "workspace_resource_create",
-    workspaceId: "22222222-2222-4222-8222-222222222222",
+    operation: "mind_manual_create",
     metadata: {
       beta: [true, null, 2],
       alpha: "one",
@@ -43,12 +42,10 @@ test("product create request fingerprints are canonical by object key order", ()
       alpha: "one",
       beta: [true, null, 2],
     },
-    workspaceId: "22222222-2222-4222-8222-222222222222",
-    operation: "workspace_resource_create",
+    operation: "mind_manual_create",
   });
   const changed = hashProductCreateRequest({
-    operation: "workspace_resource_create",
-    workspaceId: "22222222-2222-4222-8222-222222222222",
+    operation: "mind_manual_create",
     metadata: {
       beta: [true, null, 3],
       alpha: "one",

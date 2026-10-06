@@ -6,8 +6,6 @@ import {
 import {
   nativeLiveTurnPreparations,
   conversations,
-  workspaceConversations,
-  workspaces,
 } from "../../../../database/schema.js";
 import { DrizzleNativeLiveConversationRepository } from "../../../conversation/native-live-conversation-repository.js";
 import type {
@@ -45,7 +43,6 @@ export async function prepareSend(
     text: string;
     inputMode?: "voice";
     attachmentIds: readonly string[];
-    workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult> {
     const requestHash = hashJson(REQUEST_HASH_VERSION, {
@@ -56,9 +53,6 @@ export async function prepareSend(
       ...(input.inputMode === "voice" ? { inputMode: "voice" } : {}),
       ...(input.attachmentIds.length > 0
         ? { attachmentIds: input.attachmentIds }
-        : {}),
-      ...(input.workspaceId
-        ? { workspaceId: input.workspaceId }
         : {}),
       ...(input.executionSelection
         ? { executionSelection: input.executionSelection }
@@ -108,7 +102,6 @@ export async function prepareSend(
           input.userId,
           input.conversationId,
           conversation.currentHeadMessageId,
-          input.workspaceId,
         );
         if (!runtimeParent.ok) return runtimeParent.result;
 
@@ -157,8 +150,7 @@ export async function prepareSend(
           replacementTargetUserMessageId: null,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
-          workspaceId: runtimeParent.workspaceId,
-          expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
+          expectedWorkingDirectory: runtimeParent.expectedWorkingDirectory,
           executionSelection: input.executionSelection,
           attachments,
           prompt:
@@ -278,8 +270,7 @@ export async function prepareRetry(
           replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
-          workspaceId: runtimeParent.workspaceId,
-          expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
+          expectedWorkingDirectory: runtimeParent.expectedWorkingDirectory,
           executionSelection: input.executionSelection,
           attachments,
           prompt,
@@ -434,8 +425,7 @@ export async function prepareEdit(
           replacementTargetUserMessageId: target.id,
           runtimeMode: runtimeParent.runtimeMode,
           parentProviderSessionId: runtimeParent.parentProviderSessionId,
-          workspaceId: runtimeParent.workspaceId,
-          expectedWorkspaceRoot: runtimeParent.expectedWorkspaceRoot,
+          expectedWorkingDirectory: runtimeParent.expectedWorkingDirectory,
           executionSelection: input.executionSelection,
           attachments,
           prompt:
@@ -544,14 +534,12 @@ export async function resolveRuntimeParent(
     userId: string,
     conversationId: string,
     parentMessageId: string | null,
-    requestedWorkspaceId: string | null = null,
   ): Promise<
     | {
         ok: true;
         runtimeMode: NativeLiveRuntimeMode;
         parentProviderSessionId: string | null;
-        workspaceId: string | null;
-        expectedWorkspaceRoot: string | null;
+        expectedWorkingDirectory: string | null;
       }
     | {
         ok: false;
@@ -561,13 +549,11 @@ export async function resolveRuntimeParent(
     if (!parentMessageId) {
       const bootstrapRows = await executor.execute<{
         source_provider_session_id: string;
-        workspace_id: string | null;
-        effective_workspace_root: string;
+        effective_working_directory: string;
       }>(sql`
         SELECT
           source_provider_session_id,
-          workspace_id,
-          effective_workspace_root
+          effective_working_directory
         FROM native_live_conversation_provider_bootstraps
         WHERE user_id = ${userId}::uuid
           AND conversation_id = ${conversationId}::uuid
@@ -577,91 +563,22 @@ export async function resolveRuntimeParent(
       `);
       const bootstrap = bootstrapRows[0];
       if (bootstrap) {
-        if (
-          requestedWorkspaceId !== null
-          && requestedWorkspaceId !== bootstrap.workspace_id
-        ) {
-          return {
-            ok: false,
-            result: {
-              ok: false,
-              code: "WORKSPACE_BINDING_CONFLICT",
-            },
-          };
-        }
         return {
           ok: true,
           runtimeMode: "fork",
           parentProviderSessionId:
             bootstrap.source_provider_session_id,
-          workspaceId: bootstrap.workspace_id,
-          expectedWorkspaceRoot:
-            bootstrap.effective_workspace_root,
+
+          expectedWorkingDirectory:
+            bootstrap.effective_working_directory,
         };
       }
 
-      if (requestedWorkspaceId) {
-        const [workspace] = await executor
-          .select({ id: workspaces.id })
-          .from(workspaces)
-          .where(
-            and(
-              eq(workspaces.userId, userId),
-              eq(workspaces.id, requestedWorkspaceId),
-            ),
-          )
-          .limit(1);
-        if (!workspace) {
-          return {
-            ok: false,
-            result: {
-              ok: false,
-              code: "WORKSPACE_NOT_FOUND",
-            },
-          };
-        }
-        await executor
-          .insert(workspaceConversations)
-          .values({
-            userId,
-            workspaceId: requestedWorkspaceId,
-            conversationId,
-          })
-          .onConflictDoNothing();
-        return {
-          ok: true,
-          runtimeMode: "new",
-          parentProviderSessionId: null,
-          workspaceId: requestedWorkspaceId,
-          expectedWorkspaceRoot: null,
-        };
-      }
-
-      const workspaceRows = await executor
-        .select({ workspaceId: workspaceConversations.workspaceId })
-        .from(workspaceConversations)
-        .where(
-          and(
-            eq(workspaceConversations.userId, userId),
-            eq(workspaceConversations.conversationId, conversationId),
-          ),
-        )
-        .limit(2);
-      if (workspaceRows.length > 1) {
-        return {
-          ok: false,
-          result: {
-            ok: false,
-            code: "WORKSPACE_BINDING_AMBIGUOUS",
-          },
-        };
-      }
       return {
         ok: true,
         runtimeMode: "new",
         parentProviderSessionId: null,
-        workspaceId: workspaceRows[0]?.workspaceId ?? null,
-        expectedWorkspaceRoot: null,
+        expectedWorkingDirectory: null,
       };
     }
 
@@ -676,25 +593,11 @@ export async function resolveRuntimeParent(
         result: { ok: false, code: "CHECKPOINT_NOT_FOUND" },
       };
     }
-    if (
-      requestedWorkspaceId !== null
-      && requestedWorkspaceId !== checkpoint.workspaceId
-    ) {
-      return {
-        ok: false,
-        result: {
-          ok: false,
-          code: "WORKSPACE_BINDING_CONFLICT",
-        },
-      };
-    }
-
     return {
       ok: true,
       runtimeMode: "fork",
       parentProviderSessionId: checkpoint.providerSessionId,
-      workspaceId: checkpoint.workspaceId,
-      expectedWorkspaceRoot: checkpoint.effectiveWorkspaceRoot,
+      expectedWorkingDirectory: checkpoint.effectiveWorkingDirectory,
     };
   }
 
@@ -712,8 +615,7 @@ export async function insertPreparation(
       replacementTargetUserMessageId: string | null;
       runtimeMode: "new" | "fork";
       parentProviderSessionId: string | null;
-      workspaceId: string | null;
-      expectedWorkspaceRoot: string | null;
+      expectedWorkingDirectory: string | null;
       executionSelection: NativeLiveExecutionSelection | null;
       attachments: NativeLiveRuntimeAttachment[];
       prompt: string;
@@ -732,8 +634,7 @@ export async function insertPreparation(
         replacementTargetUserMessageId: input.replacementTargetUserMessageId,
         runtimeMode: input.runtimeMode,
         parentProviderSessionId: input.parentProviderSessionId,
-        workspaceId: input.workspaceId,
-        expectedWorkspaceRoot: input.expectedWorkspaceRoot,
+        expectedWorkingDirectory: input.expectedWorkingDirectory,
         executionSelection: input.executionSelection,
         attachments: input.attachments,
         prompt: input.prompt,

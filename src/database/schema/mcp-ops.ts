@@ -20,7 +20,6 @@ import {
   diaryEntries,
 } from "./diary.js";
 
-
 export const toolCallStatusEnum = pgEnum("tool_call_status", [
   "success",
   "rejected",
@@ -185,15 +184,13 @@ export const productCreateIdempotency = pgTable(
       }),
     operation: varchar("operation", { length: 64 })
       .$type<
-        | "workspace_create"
-        | "workspace_resource_create"
         | "mind_manual_create"
       >()
       .notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     resourceType: varchar("resource_type", { length: 32 })
-      .$type<"workspace" | "workspace_resource" | "mind_state">()
+      .$type<"mind_state">()
       .notNull(),
     resourceId: text("resource_id").notNull(),
     response: jsonb("response")
@@ -219,7 +216,7 @@ export const productCreateIdempotency = pgTable(
     ),
     check(
       "product_create_idempotency_operation_allowed",
-      sql`${table.operation} IN ('workspace_create','workspace_resource_create','mind_manual_create')`,
+      sql`${table.operation} IN ('mind_manual_create')`,
     ),
     check(
       "product_create_idempotency_key_format",
@@ -231,7 +228,7 @@ export const productCreateIdempotency = pgTable(
     ),
     check(
       "product_create_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('workspace','workspace_resource','mind_state')`,
+      sql`${table.resourceType} IN ('mind_state')`,
     ),
     check(
       "product_create_idempotency_response_object",

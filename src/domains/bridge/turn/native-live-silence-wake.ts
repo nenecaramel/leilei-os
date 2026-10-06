@@ -170,7 +170,6 @@ function stableOffset(
   return digest.readUInt32BE(0) % (spanMs + 1);
 }
 
-
 type SilenceWakeDatabase = ReturnType<typeof createDatabase>["db"];
 type SilenceWakeTransaction =
   Parameters<SilenceWakeDatabase["transaction"]>[0] extends (
@@ -187,8 +186,7 @@ type SilenceWakeSource = {
   assistantCompletedAt: Date;
   currentHeadMessageId: string;
   providerSessionId: string;
-  workspaceId: string | null;
-  effectiveWorkspaceRoot: string | null;
+  effectiveWorkingDirectory: string | null;
 };
 
 export class NativeLiveSilenceWakeService {
@@ -375,8 +373,7 @@ export class NativeLiveSilenceWakeService {
           },
           runtimeMode: "fork",
           parentProviderSessionId: source.providerSessionId,
-          workspaceId: source.workspaceId,
-          expectedWorkspaceRoot: source.effectiveWorkspaceRoot,
+          expectedWorkingDirectory: source.effectiveWorkingDirectory,
           executionSelection: null,
           attachments: [],
           prompt: marker,
@@ -442,8 +439,7 @@ export class NativeLiveSilenceWakeService {
       assistant_completed_at: Date | string;
       current_head_message_id: string;
       provider_session_id: string;
-      workspace_id: string | null;
-      effective_workspace_root: string | null;
+      effective_working_directory: string | null;
     }>(sql`
       WITH RECURSIVE latest_user AS (
         SELECT
@@ -520,8 +516,7 @@ export class NativeLiveSilenceWakeService {
         reply.assistant_completed_at,
         path.current_head_message_id,
         checkpoint.provider_session_id,
-        checkpoint.workspace_id,
-        checkpoint.effective_workspace_root
+        checkpoint.effective_working_directory
       FROM latest_user AS source
       JOIN direct_reply AS reply ON TRUE
       JOIN current_path AS path
@@ -551,8 +546,7 @@ export class NativeLiveSilenceWakeService {
           ),
           currentHeadMessageId: row.current_head_message_id,
           providerSessionId: row.provider_session_id,
-          workspaceId: row.workspace_id,
-          effectiveWorkspaceRoot: row.effective_workspace_root,
+          effectiveWorkingDirectory: row.effective_working_directory,
         }
       : null;
   }

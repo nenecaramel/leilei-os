@@ -21,7 +21,6 @@ import {
   type NativeLiveRelayRequest,
 } from "../protocol/native-live-relay-contract.js";
 import {
-  NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION,
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   NativeLiveRuntimeProtocolError,
   assertRuntimeResultMatchesCommand,
@@ -46,8 +45,7 @@ export type NativeLivePreparedTurn = {
   replacementTargetUserMessageId?: string | null;
   runtimeMode: NativeLiveRuntimeMode;
   parentProviderSessionId: string | null;
-  workspaceId: string | null;
-  expectedWorkspaceRoot: string | null;
+  expectedWorkingDirectory: string | null;
   executionSelection?: NativeLiveExecutionSelection | null;
   attachments?: NativeLiveRuntimeAttachment[];
   prompt: string;
@@ -60,9 +58,6 @@ export type NativeLivePrepareFailureCode =
   | "STALE_HEAD"
   | "BRANCH_POINT_INVALID"
   | "CHECKPOINT_NOT_FOUND"
-  | "WORKSPACE_NOT_FOUND"
-  | "WORKSPACE_BINDING_AMBIGUOUS"
-  | "WORKSPACE_BINDING_CONFLICT"
   | "REQUEST_CONFLICT"
   | "INTERNAL_ERROR";
 
@@ -191,7 +186,6 @@ export interface NativeLiveBackendTurnPort {
     text: string;
     inputMode?: "voice";
     attachmentIds: readonly string[];
-    workspaceId: string | null;
     executionSelection: NativeLiveExecutionSelection | null;
   }): Promise<NativeLivePreparePortResult>;
 
@@ -230,8 +224,7 @@ export interface NativeLiveBackendTurnPort {
     userId: string;
     preparation: NativeLivePreparedTurn;
     providerSessionId: string;
-    workspaceId: string | null;
-    effectiveWorkspaceRoot: string | null;
+    effectiveWorkingDirectory: string | null;
     blocks: NativeLiveContentBlockInput[];
     outputAttachmentIds: readonly string[];
     outputAttachmentMetadata?:
@@ -302,7 +295,6 @@ export class NativeLiveBackendTurnCoordinator {
           text: request.text,
           ...(request.input_mode === "voice" ? { inputMode: "voice" as const } : {}),
           attachmentIds: request.attachment_ids ?? [],
-          workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
         });
       } else if (request.operation === "retry") {
@@ -559,8 +551,7 @@ export class NativeLiveBackendTurnCoordinator {
         userId,
         preparation,
         providerSessionId: result.provider_session_id,
-        workspaceId: result.workspace_id,
-        effectiveWorkspaceRoot: result.effective_workspace_root,
+        effectiveWorkingDirectory: result.effective_working_directory,
         blocks: finalizedBlocks,
         outputAttachmentIds:
           result.output_attachment_ids ?? [],
@@ -652,19 +643,12 @@ export function nativeLiveRuntimeCommandFromPreparation(
   preparation: NativeLivePreparedTurn,
   protocolVersion: NativeLiveRuntimeCommand["protocol_version"] =
     NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
+  outputAttachmentsEnabled = true,
 ): NativeLiveRuntimeCommand {
   const attachments = preparation.attachments ?? [];
-  const hasAttachments = attachments.length > 0;
-  if (
-    protocolVersion === NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION
-    && hasAttachments
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "Runtime protocol v1 cannot dispatch prepared attachments.",
-    );
-  }
   const command: NativeLiveRuntimeCommand = {
     protocol_version: protocolVersion,
+    ...(outputAttachmentsEnabled ? {} : { output_attachments_enabled: false }),
     dispatch_target: "claude_code",
     prepare_id: preparation.prepareId,
     request_id: preparation.requestId,
@@ -673,11 +657,10 @@ export function nativeLiveRuntimeCommandFromPreparation(
     canonical_user_message_id: preparation.canonicalUserMessageId,
     runtime_mode: preparation.runtimeMode,
     parent_provider_session_id: preparation.parentProviderSessionId,
-    workspace_id: preparation.workspaceId ?? null,
-    expected_workspace_root:
-      preparation.expectedWorkspaceRoot ?? null,
+    expected_working_directory:
+      preparation.expectedWorkingDirectory ?? null,
     execution_selection: preparation.executionSelection ?? null,
-    ...(hasAttachments
+    ...(attachments.length > 0
       ? { attachments }
       : {}),
     prompt: preparation.prompt,

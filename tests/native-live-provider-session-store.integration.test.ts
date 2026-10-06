@@ -15,7 +15,7 @@ const enabled =
   process.env.RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST === "1";
 
 test(
-  "provider SessionStore preserves SDK ordering, tenant isolation, Workspace isolation, and delete semantics",
+  "provider SessionStore preserves SDK ordering, tenant isolation, provider-session isolation, and delete semantics",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -39,8 +39,6 @@ test(
     assert.equal(created.length, 2);
     const userA = created[0]!.id;
     const userB = created[1]!.id;
-    const workspaceA = crypto.randomUUID();
-    const workspaceB = crypto.randomUUID();
 
     t.after(async () => {
       try {
@@ -61,7 +59,6 @@ test(
       new DrizzleNativeLiveProviderSessionStoreRepository(database.db),
     );
     const main = {
-      workspaceId: workspaceA,
       sessionId: "shared-session",
     };
     const sub = {
@@ -93,11 +90,10 @@ test(
     await service.append({
       userId: userA,
       key: {
-        workspaceId: workspaceB,
-        sessionId: "shared-session",
+        sessionId: "other-session",
       },
       appendBatchId: crypto.randomUUID(),
-      entries: [{ type: "user", workspace: "b" }],
+      entries: [{ type: "user", session: "b" }],
     });
     await service.append({
       userId: userB,
@@ -134,33 +130,28 @@ test(
     assert.equal(
       await service.getStatus({
         userId: userA,
-        workspaceId: workspaceA,
         sessionId: "shared-session",
       }),
       null,
     );
     await service.markIncomplete({
       userId: userA,
-      workspaceId: workspaceA,
       sessionId: "shared-session",
     });
     assert.equal(
       await service.getStatus({
         userId: userA,
-        workspaceId: workspaceA,
         sessionId: "shared-session",
       }),
       "incomplete",
     );
     await service.markComplete({
       userId: userA,
-      workspaceId: workspaceA,
       sessionId: "shared-session",
     });
     assert.equal(
       await service.getStatus({
         userId: userA,
-        workspaceId: workspaceA,
         sessionId: "shared-session",
       }),
       "complete",
@@ -173,11 +164,10 @@ test(
       await service.load({
         userId: userA,
         key: {
-          workspaceId: workspaceB,
-          sessionId: "shared-session",
+          sessionId: "other-session",
         },
       }),
-      [{ type: "user", workspace: "b" }],
+      [{ type: "user", session: "b" }],
     );
     assert.deepEqual(
       await service.load({ userId: userB, key: main }),
@@ -187,7 +177,6 @@ test(
       await service.load({
         userId: userA,
         key: {
-          workspaceId: workspaceA,
           sessionId: "missing",
         },
       }),
@@ -196,18 +185,16 @@ test(
 
     const sessions = await service.listSessions({
       userId: userA,
-      workspaceId: workspaceA,
     });
     assert.deepEqual(
-      sessions.map((entry) => entry.sessionId),
-      ["shared-session"],
+      sessions.map((entry) => entry.sessionId).sort(),
+      ["other-session", "shared-session"],
       "subagent-only keys must not appear as sessions",
     );
     assert.ok(sessions[0]!.mtime > 1_000_000_000_000);
     assert.deepEqual(
       await service.listSubkeys({
         userId: userA,
-        workspaceId: workspaceA,
         sessionId: "shared-session",
       }),
       ["subagents/research"],
@@ -242,7 +229,6 @@ test(
     assert.equal(
       await service.getStatus({
         userId: userA,
-        workspaceId: workspaceA,
         sessionId: "shared-session",
       }),
       null,
@@ -257,12 +243,11 @@ test(
       await service.load({
         userId: userA,
         key: {
-          workspaceId: workspaceB,
-          sessionId: "shared-session",
+          sessionId: "other-session",
         },
       }),
-      [{ type: "user", workspace: "b" }],
-      "main deletion must not cross Workspace identity",
+      [{ type: "user", session: "b" }],
+      "main deletion must not cross provider-session identity",
     );
     assert.deepEqual(
       await service.load({ userId: userB, key: main }),

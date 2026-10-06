@@ -76,7 +76,6 @@ struct SystemDataSummarySnapshot: Decodable, Sendable, Equatable {
     let diary: Diary
     let diaryComments: Count
     let todo: Count
-    let workspaces: Count
     let conversations: Conversations
     let mind: Count
     let universe: Universe
@@ -85,7 +84,6 @@ struct SystemDataSummarySnapshot: Decodable, Sendable, Equatable {
         case diary
         case diaryComments = "diary_comments"
         case todo
-        case workspaces
         case conversations
         case mind
         case universe

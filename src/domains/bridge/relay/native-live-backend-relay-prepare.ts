@@ -85,7 +85,6 @@ export class NativeLiveBackendRelayPrepareCoordinator {
             ? { inputMode: "voice" as const }
             : {}),
           attachmentIds: request.attachment_ids ?? [],
-          workspaceId: request.workspace_id ?? null,
           executionSelection: request.execution ?? null,
         });
       } else if (request.operation === "retry") {

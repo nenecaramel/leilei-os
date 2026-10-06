@@ -78,7 +78,6 @@ enum SettingsRestoreModule: String, Identifiable, Hashable {
     case diary
     case diaryComments = "diary_comments"
     case todo
-    case workspaces
     case conversations
     case mind
     case universe
@@ -90,7 +89,6 @@ enum SettingsRestoreModule: String, Identifiable, Hashable {
         case .diary: "Diary"
         case .diaryComments: "Diary comments"
         case .todo: "Todo"
-        case .workspaces: "Workspaces"
         case .conversations: "Conversation records"
         case .mind: "Mind records"
         case .universe: "Universe"
@@ -148,7 +146,6 @@ struct SettingsDataSummary {
     let diaryArchived: Int
     let diaryComments: Int
     let todo: Int
-    let workspaces: Int
     let conversationsActive: Int
     let conversationsArchived: Int
     let mind: Int
@@ -168,7 +165,6 @@ struct SettingsActivityRecord: Identifiable {
     let source: String
     let result: String
 }
-
 
 final class LeileiSettingsDataService: SettingsDataService {
     private let api: LeileiAPIClient
@@ -241,7 +237,6 @@ final class LeileiSettingsDataService: SettingsDataService {
             diaryArchived: summary.diary.archived,
             diaryComments: summary.diaryComments.count,
             todo: summary.todo.count,
-            workspaces: summary.workspaces.count,
             conversationsActive: summary.conversations.active,
             conversationsArchived: summary.conversations.archived,
             mind: summary.mind.count,
@@ -314,8 +309,6 @@ final class LeileiSettingsDataService: SettingsDataService {
                 counts = summary.diaryComments
             case .todo:
                 counts = summary.todo
-            case .workspaces:
-                counts = summary.workspaces
             case .conversations:
                 counts = summary.conversations
             case .mind:
@@ -350,7 +343,6 @@ final class LeileiSettingsDataService: SettingsDataService {
     }
 
 }
-
 
 func settingsDataErrorMessage(_ error: Error) -> String {
     guard let apiError = error as? LeileiAPIError else {

@@ -5,7 +5,6 @@ extension AppModel {
         _ text: String,
         inputMode: NativeLiveInputMode = .text,
         attachmentIDs: [String] = [],
-        workspaceID: String? = nil,
         execution: NativeLiveExecutionSelection? = nil,
         presentationOperation: NativeLivePendingOperation? = nil
     ) async throws {
@@ -40,7 +39,6 @@ extension AppModel {
                 text: normalized,
                 inputMode: inputMode,
                 attachmentIDs: attachmentIDs,
-                workspaceID: workspaceID,
                 execution: execution
             )
 
@@ -48,12 +46,6 @@ extension AppModel {
                 conversationID.uuidString
             ) == .orderedSame else {
                 throw LeileiAPIError.invalidResponse
-            }
-            if let workspaceID = prepared.workspaceId {
-                activeNativeLiveWorkspaceID = workspaceID
-            }
-            if let root = prepared.expectedWorkspaceRoot {
-                activeNativeLiveWorkspaceRoot = root
             }
 
             bindNativeLivePresentation(presentationOperation,prepared:prepared)
@@ -351,9 +343,6 @@ extension AppModel {
 
                     if turn.canonicalStatus == "finalized_success" {
                         nativeLiveRuntimeMetadata = turn.runtimeMetadata
-                        activeNativeLiveWorkspaceID = turn.workspaceId
-                        activeNativeLiveWorkspaceRoot =
-                            turn.expectedWorkspaceRoot
                         if let metadata = turn.runtimeMetadata {
                             nativeLiveRuntimeMetadataByConversationID[
                                 conversationID

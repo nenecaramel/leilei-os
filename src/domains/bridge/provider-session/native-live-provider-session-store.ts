@@ -5,7 +5,6 @@ import { nativeLiveProviderSessionEntries } from "../../../database/schema.js";
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export type NativeLiveProviderSessionStoreKey = {
-  workspaceId: string;
   sessionId: string;
   subpath?: string;
 };
@@ -50,7 +49,6 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       .values(
         input.entries.map((entry, appendOrdinal) => ({
           userId: input.userId,
-          workspaceId: input.key.workspaceId,
           providerSessionId: input.key.sessionId,
           subpath: input.key.subpath ?? "",
           appendBatchId: input.appendBatchId,
@@ -71,7 +69,6 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       SELECT entry
       FROM native_live_provider_session_entries
       WHERE user_id = ${input.userId}::uuid
-        AND workspace_id = ${input.key.workspaceId}::uuid
         AND provider_session_id = ${input.key.sessionId}
         AND subpath = ${input.key.subpath ?? ""}
       ORDER BY id ASC
@@ -83,7 +80,6 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
 
   async listSessions(input: {
     userId: string;
-    workspaceId: string;
   }): Promise<NativeLiveProviderSessionStoreListEntry[]> {
     const rows = await this.db.execute<{
       session_id: string;
@@ -94,7 +90,6 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
         floor(extract(epoch from max(created_at)) * 1000)::bigint AS mtime
       FROM native_live_provider_session_entries
       WHERE user_id = ${input.userId}::uuid
-        AND workspace_id = ${input.workspaceId}::uuid
         AND subpath = ''
       GROUP BY provider_session_id
       ORDER BY max(created_at) DESC, provider_session_id ASC
@@ -113,7 +108,6 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       await this.db.execute(sql`
         DELETE FROM native_live_provider_session_entries
         WHERE user_id = ${input.userId}::uuid
-          AND workspace_id = ${input.key.workspaceId}::uuid
           AND provider_session_id = ${input.key.sessionId}
           AND subpath = ${input.key.subpath}
       `);
@@ -123,13 +117,11 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       await transaction.execute(sql`
         DELETE FROM native_live_provider_session_entries
         WHERE user_id = ${input.userId}::uuid
-          AND workspace_id = ${input.key.workspaceId}::uuid
           AND provider_session_id = ${input.key.sessionId}
       `);
       await transaction.execute(sql`
         DELETE FROM native_live_provider_session_store_status
         WHERE user_id = ${input.userId}::uuid
-          AND workspace_id = ${input.key.workspaceId}::uuid
           AND provider_session_id = ${input.key.sessionId}
       `);
     });
@@ -137,14 +129,12 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
 
   async getStatus(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
   }): Promise<NativeLiveProviderSessionStoreState | null> {
     const rows = await this.db.execute<{ state: NativeLiveProviderSessionStoreState }>(sql`
       SELECT state
       FROM native_live_provider_session_store_status
       WHERE user_id = ${input.userId}::uuid
-        AND workspace_id = ${input.workspaceId}::uuid
         AND provider_session_id = ${input.sessionId}
       LIMIT 1
     `);
@@ -153,26 +143,23 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
 
   async setStatus(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
     state: NativeLiveProviderSessionStoreState;
   }): Promise<void> {
     await this.db.execute(sql`
       INSERT INTO native_live_provider_session_store_status (
         user_id,
-        workspace_id,
         provider_session_id,
         state,
         updated_at
       )
       VALUES (
         ${input.userId}::uuid,
-        ${input.workspaceId}::uuid,
         ${input.sessionId},
         ${input.state},
         now()
       )
-      ON CONFLICT (user_id, workspace_id, provider_session_id)
+      ON CONFLICT (user_id, provider_session_id)
       DO UPDATE SET
         state = EXCLUDED.state,
         updated_at = now()
@@ -181,14 +168,12 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
 
   async listSubkeys(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
   }): Promise<string[]> {
     const rows = await this.db.execute<{ subpath: string }>(sql`
       SELECT DISTINCT subpath
       FROM native_live_provider_session_entries
       WHERE user_id = ${input.userId}::uuid
-        AND workspace_id = ${input.workspaceId}::uuid
         AND provider_session_id = ${input.sessionId}
         AND subpath <> ''
       ORDER BY subpath ASC
@@ -267,11 +252,9 @@ export class NativeLiveProviderSessionStoreService {
 
   listSessions(input: {
     userId: string;
-    workspaceId: string;
   }): Promise<NativeLiveProviderSessionStoreListEntry[]> {
     return this.repository.listSessions({
       userId: input.userId,
-      workspaceId: normalizeWorkspaceId(input.workspaceId),
     });
   }
 
@@ -287,36 +270,30 @@ export class NativeLiveProviderSessionStoreService {
 
   listSubkeys(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
   }): Promise<string[]> {
     return this.repository.listSubkeys({
       userId: input.userId,
-      workspaceId: normalizeWorkspaceId(input.workspaceId),
       sessionId: normalizeSessionId(input.sessionId),
     });
   }
 
   getStatus(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
   }): Promise<NativeLiveProviderSessionStoreState | null> {
     return this.repository.getStatus({
       userId: input.userId,
-      workspaceId: normalizeWorkspaceId(input.workspaceId),
       sessionId: normalizeSessionId(input.sessionId),
     });
   }
 
   markIncomplete(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
   }): Promise<void> {
     return this.repository.setStatus({
       userId: input.userId,
-      workspaceId: normalizeWorkspaceId(input.workspaceId),
       sessionId: normalizeSessionId(input.sessionId),
       state: "incomplete",
     });
@@ -324,23 +301,14 @@ export class NativeLiveProviderSessionStoreService {
 
   markComplete(input: {
     userId: string;
-    workspaceId: string;
     sessionId: string;
   }): Promise<void> {
     return this.repository.setStatus({
       userId: input.userId,
-      workspaceId: normalizeWorkspaceId(input.workspaceId),
       sessionId: normalizeSessionId(input.sessionId),
       state: "complete",
     });
   }
-}
-
-function normalizeWorkspaceId(value: string): string {
-  return normalizeUuid(
-    value,
-    "SessionStore workspace id is invalid.",
-  );
 }
 
 function normalizeUuid(value: string, message: string): string {
@@ -374,10 +342,9 @@ function normalizeSessionId(value: string): string {
 function normalizeKey(
   value: NativeLiveProviderSessionStoreKey,
 ): NativeLiveProviderSessionStoreKey {
-  const workspaceId = normalizeWorkspaceId(value?.workspaceId);
   const sessionId = normalizeSessionId(value?.sessionId);
   if (value.subpath === undefined) {
-    return { workspaceId, sessionId };
+    return { sessionId };
   }
   if (
     typeof value.subpath !== "string"
@@ -390,7 +357,6 @@ function normalizeKey(
     );
   }
   return {
-    workspaceId,
     sessionId,
     subpath: value.subpath,
   };

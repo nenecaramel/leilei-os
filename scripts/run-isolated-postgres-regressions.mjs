@@ -45,7 +45,6 @@ const env = {
   RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST: "1",
   RUN_RUNTIME_BREATH_DATABASE_TEST: "1",
   RUN_RUNTIME_MIND_PRODUCT_DATABASE_TEST: "1",
-  RUN_PROJECT_WORKSPACE_DATABASE_TEST: "1",
   RUN_RUNTIME_LIFECYCLE_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_SEMANTIC_DATABASE_TEST: "1",
@@ -54,6 +53,7 @@ const env = {
   RUN_RUNTIME_THOUGHT_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_RELAY_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_PROVIDER_SESSION_STORE_DATABASE_TEST: "1",
+  RUN_RETIRE_WORKSPACE_DATABASE_TEST: "1",
   RUN_NATIVE_LIVE_EXTERNAL_HISTORY_DATABASE_TEST: "1",
   RUN_CLAUDE_ACCOUNT_USAGE_DATABASE_TEST: "1",
 };
@@ -80,7 +80,6 @@ run([
   "tests/native-live-conversation-repository.integration.test.ts",
   "tests/runtime-breath-recall-repository.integration.test.ts",
   "tests/mind-product-repository.integration.test.ts",
-  "tests/project-workspace-repository.integration.test.ts",
   "tests/runtime-memory-lifecycle-repository.integration.test.ts",
   "tests/native-live-mind-followup.integration.test.ts",
   "tests/native-live-semantic-handshake.integration.test.ts",
@@ -93,6 +92,8 @@ run([
   "tests/mind-thought-flow.integration.test.ts",
   "tests/native-live-background-model-queue.integration.test.ts",
   "tests/native-live-provider-session-store.integration.test.ts",
+  "tests/retire-product-workspace-migration.test.ts",
+  "tests/retire-product-workspace-schema.integration.test.ts",
   "tests/native-live-external-history.integration.test.ts",
   "tests/claude-account-usage.integration.test.ts",
 ]);

@@ -14,7 +14,6 @@ export type NativeLiveRelaySendRequest = {
   expected_head_message_id: string | null;
   text: string;
   input_mode?: "voice";
-  workspace_id?: string;
   execution?: NativeLiveExecutionSelection;
   attachment_ids?: string[];
 };
@@ -78,7 +77,7 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
       "conversation_id",
       "expected_head_message_id",
       "text",
-    ], ["execution", "workspace_id", "attachment_ids", "input_mode"]);
+    ], ["execution", "attachment_ids", "input_mode"]);
     if ("input_mode" in body && body.input_mode !== "voice") {
       throw new NativeLiveRelayContractError("input_mode must be voice.");
     }
@@ -100,9 +99,6 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
         attachmentIds.length > 0,
       ),
       ...(body.input_mode === "voice" ? { input_mode: "voice" as const } : {}),
-      ...(body.workspace_id === undefined
-        ? {}
-        : { workspace_id: requireUuid(body.workspace_id, "workspace_id") }),
       ...(body.execution === undefined
         ? {}
         : { execution: parseExecution(body.execution) }),
@@ -168,7 +164,6 @@ export function parseNativeLiveRelayRequest(value: unknown): NativeLiveRelayRequ
 
   throw new NativeLiveRelayContractError("Native live relay operation is invalid.");
 }
-
 
 function parseAttachmentIds(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 8) {

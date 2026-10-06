@@ -99,7 +99,7 @@ function listSessionsHandler(
     const userId = requireInternalUser(response, request.mcpUserId);
     if (!userId) return;
     const body = readRecord(request.body);
-    if (!body || typeof body.workspace_id !== "string") {
+    if (!body || Object.keys(body).length !== 0) {
       sendInvalid(response);
       return;
     }
@@ -107,7 +107,6 @@ function listSessionsHandler(
       const sessions =
         await dependencies.providerSessionStoreService.listSessions({
           userId,
-          workspaceId: body.workspace_id,
         });
       response.json({ success: true, data: { sessions } });
     } catch (error) {
@@ -149,8 +148,8 @@ function listSubkeysHandler(
     const body = readRecord(request.body);
     if (
       !body
-      || typeof body.workspace_id !== "string"
-      || typeof body.session_id !== "string"
+      || Object.keys(body).some(key => key !== "session_id")
+    || typeof body.session_id !== "string"
     ) {
       sendInvalid(response);
       return;
@@ -159,7 +158,6 @@ function listSubkeysHandler(
       const subkeys =
         await dependencies.providerSessionStoreService.listSubkeys({
           userId,
-          workspaceId: body.workspace_id,
           sessionId: body.session_id,
         });
       response.json({ success: true, data: { subkeys } });
@@ -238,17 +236,16 @@ function markStatusHandler(
 
 function parseSessionIdentity(
   value: unknown,
-): { workspaceId: string; sessionId: string } | null {
+): { sessionId: string } | null {
   const body = readRecord(value);
   if (
     !body
-    || typeof body.workspace_id !== "string"
+    || Object.keys(body).some(key => key !== "session_id")
     || typeof body.session_id !== "string"
   ) {
     return null;
   }
   return {
-    workspaceId: body.workspace_id,
     sessionId: body.session_id,
   };
 }
@@ -257,7 +254,7 @@ function parseKey(value: unknown): NativeLiveProviderSessionStoreKey | null {
   const record = readRecord(value);
   if (
     !record
-    || typeof record.workspace_id !== "string"
+    || Object.keys(record).some(key => key !== "session_id" && key !== "subpath")
     || typeof record.session_id !== "string"
     || (
       record.subpath !== undefined
@@ -268,7 +265,6 @@ function parseKey(value: unknown): NativeLiveProviderSessionStoreKey | null {
     return null;
   }
   return {
-    workspaceId: record.workspace_id,
     sessionId: record.session_id,
     ...(typeof record.subpath === "string"
       ? { subpath: record.subpath }

@@ -67,29 +67,29 @@ export class NativeLiveMacOutputAttachmentSender {
   async sendFile(input: {
     path: string;
     displayName?: string | null;
-    workspaceRoot: string;
+    workingDirectory: string;
   }): Promise<NativeLiveMacOutputAttachmentDescriptor> {
     const requestedPath = input.path.trim();
     if (!requestedPath) {
       throw new Error("send_file requires a nonblank file path.");
     }
 
-    const workspaceRoot = await realpath(input.workspaceRoot);
+    const workingDirectory = await realpath(input.workingDirectory);
     const candidatePath = isAbsolute(requestedPath)
       ? requestedPath
-      : resolve(workspaceRoot, requestedPath);
+      : resolve(workingDirectory, requestedPath);
     const filePath = await realpath(candidatePath);
-    const workspaceRelativePath = relative(
-      workspaceRoot,
+    const directoryRelativePath = relative(
+      workingDirectory,
       filePath,
     );
     if (
-      workspaceRelativePath === ".."
-      || workspaceRelativePath.startsWith(".." + sep)
-      || isAbsolute(workspaceRelativePath)
+      directoryRelativePath === ".."
+      || directoryRelativePath.startsWith(".." + sep)
+      || isAbsolute(directoryRelativePath)
     ) {
       throw new Error(
-        "send_file may only send files inside the active workspace.",
+        "send_file may only send files inside the active working directory.",
       );
     }
 

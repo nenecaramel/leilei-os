@@ -72,8 +72,7 @@ test(
           gitBranch: "main",
           lastModified: 1790710000000,
           createdAt: 1790200000000,
-          workspaceId: null,
-          workspaceRoot: "/Users/leilei/Projects/leilei-os",
+          workingDirectory: "/Users/leilei/Projects/leilei-os",
         }])}::jsonb,
         now()
       )

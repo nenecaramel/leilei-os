@@ -6,7 +6,6 @@ import * as protocol from "../src/domains/bridge/protocol/native-live-runtime-pr
 test("runtime protocol facade retains its exact runtime export surface", () => {
   assert.deepEqual(Object.keys(protocol).sort(), [
   "NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION",
-  "NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION",
   "NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION",
   "NativeLiveRuntimeProtocolError",
   "assertRuntimeResultMatchesCommand",
@@ -18,9 +17,8 @@ test("runtime protocol facade retains its exact runtime export surface", () => {
   "parseNativeLiveRuntimeSessionStoreHealth",
   "parseNativeLiveRuntimeVcsChanges"
 ]);
-  assert.equal(protocol.NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION, 3);
+  assert.equal(protocol.NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION, 4);
   assert.equal(protocol.NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION, 2);
-  assert.equal(protocol.NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION, 1);
 });
 
 test("runtime protocol parsing has focused boundaries behind the compatibility facade", () => {

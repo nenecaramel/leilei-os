@@ -45,8 +45,7 @@ export function parseNativeLiveRuntimeExecutionResult(
       ],
       [
         "runtime_metadata",
-        "workspace_id",
-        "effective_workspace_root",
+        "effective_working_directory",
         "output_attachment_ids",
         "output_attachment_metadata",
       ],
@@ -93,17 +92,13 @@ export function parseNativeLiveRuntimeExecutionResult(
         body.provider_session_id,
         "provider_session_id",
       ),
-      workspace_id:
-        body.workspace_id === undefined || body.workspace_id === null
-          ? null
-          : requireUuid(body.workspace_id, "workspace_id"),
-      effective_workspace_root:
-        body.effective_workspace_root === undefined
-          || body.effective_workspace_root === null
+      effective_working_directory:
+        body.effective_working_directory === undefined
+          || body.effective_working_directory === null
           ? null
           : requireNonblank(
-              body.effective_workspace_root,
-              "effective_workspace_root",
+              body.effective_working_directory,
+              "effective_working_directory",
             ),
       normalized_events:
         body.normalized_events as NativeLiveNormalizedEvent[],
@@ -192,24 +187,11 @@ export function assertRuntimeResultMatchesCommand(
 
   if (
     result.status === "success"
-    && command.workspace_id !== null
-    && (
-      result.workspace_id !== command.workspace_id
-      || result.effective_workspace_root === null
-    )
+    && command.expected_working_directory !== null
+    && result.effective_working_directory !== command.expected_working_directory
   ) {
     throw new NativeLiveRuntimeProtocolError(
-      "Runtime result workspace does not match the prepared command.",
-    );
-  }
-
-  if (
-    result.status === "success"
-    && command.expected_workspace_root !== null
-    && result.effective_workspace_root !== command.expected_workspace_root
-  ) {
-    throw new NativeLiveRuntimeProtocolError(
-      "Runtime result workspace root does not match the prepared command.",
+      "Runtime result working directory does not match the prepared command.",
     );
   }
 
@@ -380,8 +362,8 @@ function isFailureCode(value: unknown): value is NativeLiveRuntimeFailureCode {
     || value === "INTERRUPTED"
     || value === "NO_PROVIDER_SESSION"
     || value === "PROVIDER_SESSION_CONFLICT"
-    || value === "WORKSPACE_UNAVAILABLE"
-    || value === "WORKSPACE_ROOT_MISMATCH"
+    || value === "WORKING_DIRECTORY_UNAVAILABLE"
+    || value === "WORKING_DIRECTORY_MISMATCH"
     || value === "ATTACHMENT_UNAVAILABLE"
     || value === "RUNTIME_UNAVAILABLE"
   );

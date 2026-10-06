@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  resolveNativeLiveMacBaseWorkspaceRoot,
+  resolveNativeLiveMacDefaultWorkingDirectory,
   resolveNativeLiveMacDaemonConfig,
-  resolveNativeLiveMacWorkspaceRoots,
   stableListenerInstanceId,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-config.js";
 
@@ -20,7 +19,7 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
       LEILEI_NATIVE_LIVE_RELAY_TOKEN: " dedicated-token ",
       LEILEI_NATIVE_LIVE_LISTENER_ID:
         "11111111-1111-4111-8111-111111111111",
-      LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: root,
+      LEILEI_NATIVE_LIVE_WORKING_DIRECTORY: root,
       MCP_SERVER_URL: "https://fallback.example",
       MCP_AUTH_TOKEN: "fallback-token",
     },
@@ -39,9 +38,7 @@ test("Mac daemon config prefers dedicated Native Live variables", () => {
     listenerInstanceId:
       "11111111-1111-4111-8111-111111111111",
     companionBackgroundIntervalMs: 3_600_000,
-    baseWorkspaceRoot: root,
-    workspaceRegistryPath: config.workspaceRegistryPath,
-    workspaceRoots: {},
+    defaultWorkingDirectory: root,
   });
 });
 
@@ -79,15 +76,15 @@ test("Mac daemon config uses a dedicated relay token and derives a stable listen
     "relay-token-that-is-long-enough-for-production",
   );
   assert.equal(first.listenerInstanceId, second.listenerInstanceId);
-  assert.equal(first.baseWorkspaceRoot, "/Users/leilei");
+  assert.equal(first.defaultWorkingDirectory, "/Users/leilei");
   assert.match(
     first.listenerInstanceId,
     /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
   );
 });
 
-test("Mac daemon base workspace root defaults to canonical home and ignores process cwd", () => {
-  const root = resolveNativeLiveMacBaseWorkspaceRoot(
+test("Mac daemon default working directory defaults to canonical home and ignores process cwd", () => {
+  const root = resolveNativeLiveMacDefaultWorkingDirectory(
     {},
     { homedir: () => "/Users/leilei" },
     {
@@ -101,10 +98,10 @@ test("Mac daemon base workspace root defaults to canonical home and ignores proc
   assert.equal(root, "/System/Volumes/Data/Users/leilei");
 });
 
-test("Mac daemon base workspace root prefers an explicit canonical directory", () => {
-  const root = resolveNativeLiveMacBaseWorkspaceRoot(
+test("Mac daemon default working directory prefers an explicit canonical directory", () => {
+  const root = resolveNativeLiveMacDefaultWorkingDirectory(
     {
-      LEILEI_NATIVE_LIVE_WORKSPACE_ROOT:
+      LEILEI_NATIVE_LIVE_WORKING_DIRECTORY:
         " /Users/leilei/Projects/leileios ",
     },
     { homedir: () => "/Users/leilei" },
@@ -116,57 +113,10 @@ test("Mac daemon base workspace root prefers an explicit canonical directory", (
   assert.equal(root, "/Volumes/work/leileios");
 });
 
-test("Mac daemon workspace map canonicalizes durable Workspace ids to local realpaths", () => {
-  const workspaceId = "55555555-5555-4555-8555-555555555555";
-  const roots = resolveNativeLiveMacWorkspaceRoots(
-    {
-      LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON: JSON.stringify({
-        [workspaceId]: "/Users/leilei/Projects/demo",
-      }),
-    },
-    {
-      realpath: (path) =>
-        path === "/Users/leilei/Projects/demo"
-          ? "/System/Volumes/Data/Users/leilei/Projects/demo"
-          : path,
-      isDirectory: () => true,
-    },
-  );
-
-  assert.deepEqual(roots, {
-    [workspaceId]:
-      "/System/Volumes/Data/Users/leilei/Projects/demo",
-  });
-});
-
-test("Mac daemon workspace map fails closed for invalid ids and roots", () => {
+test("Mac daemon default working directory rejects relative, missing, and non-directory targets", () => {
   assert.throws(
-    () => resolveNativeLiveMacWorkspaceRoots(
-      {
-        LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON:
-          JSON.stringify({ "not-a-uuid": "/tmp/demo" }),
-      },
-      fakeFilesystem,
-    ),
-    /Workspace UUIDs/u,
-  );
-  assert.throws(
-    () => resolveNativeLiveMacWorkspaceRoots(
-      {
-        LEILEI_NATIVE_LIVE_WORKSPACE_MAP_JSON: JSON.stringify({
-          "55555555-5555-4555-8555-555555555555": "./demo",
-        }),
-      },
-      fakeFilesystem,
-    ),
-    /absolute paths/u,
-  );
-});
-
-test("Mac daemon base workspace root rejects relative, missing, and non-directory targets", () => {
-  assert.throws(
-    () => resolveNativeLiveMacBaseWorkspaceRoot(
-      { LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: "./leileios" },
+    () => resolveNativeLiveMacDefaultWorkingDirectory(
+      { LEILEI_NATIVE_LIVE_WORKING_DIRECTORY: "./leileios" },
       { homedir: () => "/Users/leilei" },
       fakeFilesystem,
     ),
@@ -174,8 +124,8 @@ test("Mac daemon base workspace root rejects relative, missing, and non-director
   );
 
   assert.throws(
-    () => resolveNativeLiveMacBaseWorkspaceRoot(
-      { LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: "/missing" },
+    () => resolveNativeLiveMacDefaultWorkingDirectory(
+      { LEILEI_NATIVE_LIVE_WORKING_DIRECTORY: "/missing" },
       { homedir: () => "/Users/leilei" },
       {
         realpath: () => {
@@ -188,8 +138,8 @@ test("Mac daemon base workspace root rejects relative, missing, and non-director
   );
 
   assert.throws(
-    () => resolveNativeLiveMacBaseWorkspaceRoot(
-      { LEILEI_NATIVE_LIVE_WORKSPACE_ROOT: "/tmp/file" },
+    () => resolveNativeLiveMacDefaultWorkingDirectory(
+      { LEILEI_NATIVE_LIVE_WORKING_DIRECTORY: "/tmp/file" },
       { homedir: () => "/Users/leilei" },
       {
         realpath: (path) => path,

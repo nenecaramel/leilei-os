@@ -1,11 +1,9 @@
 import type { NativeLiveNormalizedEvent } from "../../../conversation/native-live-conversation-orchestrator.js";
 import type { NativeLiveExecutionSelection } from "../../turn/native-live-execution-selection.js";
 
-export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 3 as const;
+export const NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION = 4 as const;
 
 export const NATIVE_LIVE_RUNTIME_ATTACHMENT_PROTOCOL_VERSION = 2 as const;
-
-export const NATIVE_LIVE_RUNTIME_LEGACY_PROTOCOL_VERSION = 1 as const;
 
 export type NativeLiveRuntimeMode = "new" | "fork";
 
@@ -24,7 +22,7 @@ export type NativeLiveRuntimeOutputAttachmentMetadata = {
 };
 
 export type NativeLiveRuntimeCommand = {
-  protocol_version: 1 | 2 | 3;
+  protocol_version: 4;
   dispatch_target: "claude_code";
   prepare_id: string;
   request_id: string;
@@ -33,10 +31,10 @@ export type NativeLiveRuntimeCommand = {
   canonical_user_message_id: string | null;
   runtime_mode: NativeLiveRuntimeMode;
   parent_provider_session_id: string | null;
-  workspace_id: string | null;
-  expected_workspace_root: string | null;
+  expected_working_directory: string | null;
   execution_selection?: NativeLiveExecutionSelection | null;
   attachments?: NativeLiveRuntimeAttachment[];
+  output_attachments_enabled?: boolean;
   prompt: string;
 };
 
@@ -47,8 +45,8 @@ export type NativeLiveRuntimeFailureCode =
   | "INTERRUPTED"
   | "NO_PROVIDER_SESSION"
   | "PROVIDER_SESSION_CONFLICT"
-  | "WORKSPACE_UNAVAILABLE"
-  | "WORKSPACE_ROOT_MISMATCH"
+  | "WORKING_DIRECTORY_UNAVAILABLE"
+  | "WORKING_DIRECTORY_MISMATCH"
   | "ATTACHMENT_UNAVAILABLE"
   | "RUNTIME_UNAVAILABLE";
 
@@ -244,21 +242,20 @@ export type NativeLiveRuntimeMetadata = {
 
 export type NativeLiveRuntimeExecutionResult =
   | {
-      protocol_version: 1 | 2 | 3;
+      protocol_version: 4;
       prepare_id: string;
       request_id: string;
       conversation_id: string;
       status: "success";
       provider_session_id: string;
-      workspace_id: string | null;
-      effective_workspace_root: string | null;
+      effective_working_directory: string | null;
       normalized_events: NativeLiveNormalizedEvent[];
       output_attachment_ids?: string[];
       output_attachment_metadata?: NativeLiveRuntimeOutputAttachmentMetadata[];
       runtime_metadata?: NativeLiveRuntimeMetadata | null;
     }
   | {
-      protocol_version: 1 | 2 | 3;
+      protocol_version: 4;
       prepare_id: string;
       request_id: string;
       conversation_id: string;

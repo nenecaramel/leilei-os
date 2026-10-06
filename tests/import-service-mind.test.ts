@@ -72,7 +72,7 @@ test("v3 Mind restore rejects a state id owned by another user", async () => {
   assert.equal(repository.writes, 0);
 });
 
-test("v3 all-state restore creates canonical conversations before Project membership", async () => {
+test("v3 all-state restore restores remaining portable modules without Product Workspace", async () => {
   const repository = new FakeImportRepository({
     diary: [],
     todo: [],
@@ -95,7 +95,6 @@ test("v3 all-state restore creates canonical conversations before Project member
   const service = new ImportService(repository);
   const raw = v3PackageBytes({
     conversations: conversationBundle,
-    projects: projectBundle,
     mind: [mindState],
     diary: [diary],
     universe: universeBundle,
@@ -104,12 +103,6 @@ test("v3 all-state restore creates canonical conversations before Project member
   const preview = await service.preview(raw, USER_ID);
   assert.deepEqual(preview.summary.conversations, {
     create: 6,
-    duplicate: 0,
-    conflict: 0,
-    invalid: 0,
-  });
-  assert.deepEqual(preview.summary.workspaces, {
-    create: 3,
     duplicate: 0,
     conflict: 0,
     invalid: 0,
@@ -126,13 +119,9 @@ test("v3 all-state restore creates canonical conversations before Project member
     repository.state.conversations,
     conversationBundle,
   );
-  assert.deepEqual(
-    repository.state.projects,
-    canonicalProjectBundle,
-  );
   assert.deepEqual(repository.state.mind, [mindState]);
   assert.deepEqual(repository.state.universe, universeBundle);
-  assert.equal(repository.writes, 12);
+  assert.equal(repository.writes, 9);
 });
 
 test("v3 scoped Mind restore preserves historical scope even after source deletion", async () => {

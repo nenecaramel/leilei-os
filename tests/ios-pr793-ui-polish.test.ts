@@ -15,7 +15,7 @@ const pageContainer = readFileSync(
   "utf8",
 );
 const projects = readFileSync(
-  "ios/LeileiOS/LeileiOS/Pages/ProjectsView.swift",
+  "ios/LeileiOS/LeileiOS/Pages/ContextOverviewSheet.swift",
   "utf8",
 );
 const runtimeStore = readFileSync(
@@ -76,7 +76,6 @@ test("ported PR 793 Context puts Manual Compact before dense Session Environment
     /normalizedValues\.joined\(separator: " · "\)/,
   );
 });
-
 
 test("Context keeps a Session Environment skeleton until metadata fetch succeeds", () => {
   assert.match(

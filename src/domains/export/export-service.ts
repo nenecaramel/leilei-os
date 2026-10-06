@@ -6,7 +6,6 @@ import type {
   ExportLifecycleEvent,
   ExportMindContinuityBundle,
   ExportMindStateRecord,
-  ExportWorkspacesBundle,
   ExportToolActivity,
   ExportTodoPaper,
   ExportUniverseBundle,
@@ -26,7 +25,6 @@ export interface ExportRepository {
   listDiary(userId: string): Promise<ExportDiaryRecord[]>;
   listDiaryComments(userId: string): Promise<ExportDiaryCommentRecord[]>;
   listTodo(userId: string): Promise<ExportTodoPaper[]>;
-  listWorkspaces(userId: string): Promise<ExportWorkspacesBundle>;
   listMind(userId: string): Promise<ExportMindStateRecord[]>;
   listMindContinuity(userId: string): Promise<ExportMindContinuityBundle>;
   hasIncompleteMindFollowUps(userId: string): Promise<boolean>;
@@ -130,13 +128,11 @@ export class ExportService {
     }
 
     const [
-      workspaces,
       mind,
       mindContinuity,
       conversations,
       universe,
     ] = await Promise.all([
-      repository.listWorkspaces(userId),
       repository.listMind(userId),
       repository.listMindContinuity(userId),
       repository.listConversations(userId),
@@ -159,7 +155,6 @@ export class ExportService {
       diary,
       diary_comments: diaryComments,
       todo,
-      workspaces,
       mind,
       mind_continuity: mindContinuity,
       conversations,

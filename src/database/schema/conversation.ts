@@ -246,7 +246,6 @@ export const conversationContentBlocks = pgTable(
   ],
 );
 
-
 export const conversationProviderSessionCheckpoints = pgTable(
   "conversation_provider_session_checkpoints",
   {
@@ -258,8 +257,7 @@ export const conversationProviderSessionCheckpoints = pgTable(
       .$type<ConversationRuntimeProvider>()
       .notNull(),
     providerSessionId: text("provider_session_id").notNull(),
-    workspaceId: uuid("workspace_id"),
-    effectiveWorkspaceRoot: text("effective_workspace_root"),
+    effectiveWorkingDirectory: text("effective_working_directory"),
     runtimeMetadata: jsonb("runtime_metadata")
       .$type<Record<string, unknown> | null>(),
     providerCheckpointId: text("provider_checkpoint_id"),
@@ -292,11 +290,6 @@ export const conversationProviderSessionCheckpoints = pgTable(
       table.conversationId,
       table.canonicalMessageId,
     ),
-    index("conversation_provider_session_checkpoints_workspace_idx").on(
-      table.userId,
-      table.workspaceId,
-      table.createdAt,
-    ),
     check(
       "conversation_provider_session_checkpoints_provider_allowed",
       sql`${table.provider} = 'claude_code'`,
@@ -310,8 +303,8 @@ export const conversationProviderSessionCheckpoints = pgTable(
       sql`${table.providerCheckpointId} IS NULL OR char_length(btrim(${table.providerCheckpointId})) > 0`,
     ),
     check(
-      "conversation_provider_session_checkpoints_workspace_root_not_blank",
-      sql`${table.effectiveWorkspaceRoot} IS NULL OR char_length(btrim(${table.effectiveWorkspaceRoot})) > 0`,
+      "conversation_provider_checkpoints_directory_not_blank",
+      sql`${table.effectiveWorkingDirectory} IS NULL OR char_length(btrim(${table.effectiveWorkingDirectory})) > 0`,
     ),
   ],
 );

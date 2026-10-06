@@ -455,8 +455,7 @@ implements NativeLiveMacDaemonRelayClient {
             gitBranch: string | null;
             lastModified: number | null;
             createdAt: number | null;
-            workspaceId: string | null;
-            workspaceRoot: string;
+            workingDirectory: string;
           }>;
         }
       | {
@@ -478,8 +477,7 @@ implements NativeLiveMacDaemonRelayClient {
               git_branch: session.gitBranch,
               last_modified: session.lastModified,
               created_at: session.createdAt,
-              workspace_id: session.workspaceId,
-              workspace_root: session.workspaceRoot,
+              working_directory: session.workingDirectory,
             })),
           }
         : {
@@ -511,14 +509,9 @@ implements NativeLiveMacDaemonRelayClient {
       || typeof record.providerSessionId !== "string"
       || !record.providerSessionId.trim()
       || !(
-        record.workspaceId === undefined
-        || record.workspaceId === null
-        || typeof record.workspaceId === "string"
-      )
-      || !(
-        record.effectiveWorkspaceRoot === undefined
-        || record.effectiveWorkspaceRoot === null
-        || typeof record.effectiveWorkspaceRoot === "string"
+        record.effectiveWorkingDirectory === undefined
+        || record.effectiveWorkingDirectory === null
+        || typeof record.effectiveWorkingDirectory === "string"
       )
     ) {
       throw new Error(
@@ -531,13 +524,9 @@ implements NativeLiveMacDaemonRelayClient {
       expectedHeadMessageId: record.expectedHeadMessageId,
       sourceMessageId: record.sourceMessageId,
       providerSessionId: record.providerSessionId,
-      workspaceId:
-        typeof record.workspaceId === "string"
-          ? record.workspaceId
-          : null,
-      effectiveWorkspaceRoot:
-        typeof record.effectiveWorkspaceRoot === "string"
-          ? record.effectiveWorkspaceRoot
+      effectiveWorkingDirectory:
+        typeof record.effectiveWorkingDirectory === "string"
+          ? record.effectiveWorkingDirectory
           : null,
     };
   }
@@ -601,16 +590,11 @@ implements NativeLiveMacDaemonRelayClient {
       || typeof record.providerSessionId !== "string"
       || !record.providerSessionId.trim()
       || !(
-        record.workspaceId === undefined
-        || record.workspaceId === null
-        || typeof record.workspaceId === "string"
-      )
-      || !(
-        record.effectiveWorkspaceRoot === undefined
-        || record.effectiveWorkspaceRoot === null
+        record.effectiveWorkingDirectory === undefined
+        || record.effectiveWorkingDirectory === null
         || (
-          typeof record.effectiveWorkspaceRoot === "string"
-          && record.effectiveWorkspaceRoot.trim()
+          typeof record.effectiveWorkingDirectory === "string"
+          && record.effectiveWorkingDirectory.trim()
         )
       )
     ) {
@@ -621,13 +605,9 @@ implements NativeLiveMacDaemonRelayClient {
     return {
       reservationId: record.reservationId,
       providerSessionId: record.providerSessionId,
-      workspaceId:
-        typeof record.workspaceId === "string"
-          ? record.workspaceId
-          : null,
-      effectiveWorkspaceRoot:
-        typeof record.effectiveWorkspaceRoot === "string"
-          ? record.effectiveWorkspaceRoot
+      effectiveWorkingDirectory:
+        typeof record.effectiveWorkingDirectory === "string"
+          ? record.effectiveWorkingDirectory
           : null,
     };
   }
@@ -1333,7 +1313,6 @@ function readRecord(value: unknown): Record<string, unknown> {
   }
   return value as Record<string, unknown>;
 }
-
 
 function abortedInteractionError(): Error {
   return Object.assign(

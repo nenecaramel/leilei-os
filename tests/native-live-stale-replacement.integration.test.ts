@@ -30,7 +30,7 @@ async function fixture(t: test.TestContext) {
   const target = await repository.appendUserMessage({ userId: user.id, conversationId: conversation.id, parentMessageId: null });
   await repository.appendContentBlock({ userId: user.id, conversationId: conversation.id, messageId: target.id, ordinal: 0, block: { kind: "text", text: "Original" } });
   const answer = await repository.appendAssistantMessage({ userId: user.id, conversationId: conversation.id, parentMessageId: target.id });
-  await repository.bindProviderCheckpoint({ userId: user.id, conversationId: conversation.id, canonicalMessageId: answer.id, checkpoint: { provider: "claude_code", providerSessionId: crypto.randomUUID(), workspaceId: null, effectiveWorkspaceRoot: null } });
+  await repository.bindProviderCheckpoint({ userId: user.id, conversationId: conversation.id, canonicalMessageId: answer.id, checkpoint: { provider: "claude_code", providerSessionId: crypto.randomUUID(),  effectiveWorkingDirectory: null } });
   await repository.setCurrentHead({ userId: user.id, conversationId: conversation.id, messageId: answer.id });
   const scope = { userId: user.id, conversationId: conversation.id };
   const prepare = async (operation: "send" | "edit" | "retry") => {

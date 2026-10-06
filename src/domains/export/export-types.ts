@@ -1,6 +1,6 @@
 import type { ContentAuthor } from "../content-author.js";
 import type { UniverseSnapshot } from "../universe/universe-types.js";
-import type { ProjectResourceKind } from "../../database/schema.js";
+type ProjectResourceKind = "file" | "instructions" | "settings" | "skill" | "agent" | "mcp" | "hook" | "plugin";
 
 export type ExportDiaryRecord = {
   id: string;
@@ -198,8 +198,7 @@ export type ExportConversationProviderCheckpointRecord = {
   canonical_message_id: string;
   provider: "claude_code";
   provider_session_id: string;
-  workspace_id: string | null;
-  effective_workspace_root: string | null;
+  effective_working_directory: string | null;
   runtime_metadata: Record<string, unknown> | null;
   provider_checkpoint_id: string | null;
   created_at: string;

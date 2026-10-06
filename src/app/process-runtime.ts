@@ -33,12 +33,6 @@ import { ImportService } from "../domains/import/import-service.js";
 import { DrizzleUniverseRepository } from "../domains/universe/universe-repository-drizzle.js";
 import { UniverseService } from "../domains/universe/universe-service.js";
 import {
-  DrizzleProjectWorkspaceRepository,
-} from "../domains/project-workspace/project-workspace-repository.js";
-import {
-  ProjectWorkspaceService,
-} from "../domains/project-workspace/project-workspace-service.js";
-import {
   createDefaultBackendMindRuntime,
   createDefaultSubjectStateBackgroundMaintenance,
   DEFAULT_NATIVE_LIVE_SUBJECT_ID,
@@ -408,9 +402,6 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
-  const projectWorkspaceService = new ProjectWorkspaceService(
-    new DrizzleProjectWorkspaceRepository(db),
-  );
   const mindProductService = new MindProductService(
     new DrizzleMindProductRepository(db),
     DEFAULT_NATIVE_LIVE_SUBJECT_ID,
@@ -542,7 +533,8 @@ export function createProcessRuntime(
     new DrizzleNativeLiveBackendRelayRepository(db),
     nativeLiveTurnCoordinator,
     nativeLiveWorkWakePublisher,
-    runtimeEnv.NATIVE_LIVE_SEND_FILE_ENABLED ? 3 : 2,
+    4,
+    runtimeEnv.NATIVE_LIVE_SEND_FILE_ENABLED,
   );
   const nativeLiveProviderSessionCleanupService =
     new NativeLiveProviderSessionCleanupService(
@@ -800,7 +792,6 @@ export function createProcessRuntime(
       ...(claudePhotoAlbumService
         ? { webAlbumService: claudePhotoAlbumService }
         : {}),
-      webProjectWorkspaceService: projectWorkspaceService,
       nativeLiveProduction: {
         web: {
           coordinator: nativeLiveRelayPrepareCoordinator,

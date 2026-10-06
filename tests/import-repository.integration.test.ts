@@ -390,35 +390,6 @@ test(
         updatedAt: now,
       });
 
-      await db.insert(schema.workspaces).values({
-        id: workspaceId,
-        userId,
-        name: "Project",
-        description: null,
-        version: 3,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.insert(schema.workspaceResources).values({
-        id: resourceId,
-        userId,
-        workspaceId,
-        kind: "file",
-        resourceKey: "context.md",
-        title: "Context",
-        content: "Project context",
-        metadata: { portable: true },
-        version: 4,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.insert(schema.workspaceConversations).values({
-        userId,
-        workspaceId,
-        conversationId,
-        addedAt: now,
-      });
-
       const exported = await new ExportService(
         new DrizzleExportRepository(
           db as never,
@@ -433,7 +404,6 @@ test(
           "diary",
           "diary_comments",
           "todo",
-          "workspaces",
           "mind",
           "mind_continuity",
           "conversations",
@@ -441,15 +411,6 @@ test(
         ],
       );
 
-      await db
-        .delete(schema.workspaceConversations)
-        .where(eq(schema.workspaceConversations.userId, userId));
-      await db
-        .delete(schema.workspaceResources)
-        .where(eq(schema.workspaceResources.userId, userId));
-      await db
-        .delete(schema.workspaces)
-        .where(eq(schema.workspaces.userId, userId));
       await db
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId));
@@ -532,7 +493,6 @@ test(
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
       assert.equal(preview.summary.mind?.create, 8);
-      assert.equal(preview.summary.workspaces?.create, 3);
       assert.equal(
         preview.summary.conversations?.create,
         5,
@@ -560,10 +520,6 @@ test(
         watermarkCount,
         universeMetaCount,
         universeSourceCount,
-        workspaceCount,
-        projectCount,
-        resourceCount,
-        membershipCount,
       ] = await Promise.all([
         db.select({ count: count() })
           .from(schema.diaryEntries)
@@ -612,18 +568,6 @@ test(
         db.select({ count: count() })
           .from(schema.universeDiarySources)
           .where(eq(schema.universeDiarySources.userId, userId)),
-        db.select({ count: count() })
-          .from(schema.workspaces)
-          .where(eq(schema.workspaces.userId, userId)),
-        db.select({ count: count() })
-          .from(schema.workspaces)
-          .where(eq(schema.workspaces.userId, userId)),
-        db.select({ count: count() })
-          .from(schema.workspaceResources)
-          .where(eq(schema.workspaceResources.userId, userId)),
-        db.select({ count: count() })
-          .from(schema.workspaceConversations)
-          .where(eq(schema.workspaceConversations.userId, userId)),
       ]);
 
       assert.equal(diaryCount[0]?.count, 1);
@@ -640,10 +584,6 @@ test(
       assert.equal(watermarkCount[0]?.count, 1);
       assert.equal(universeMetaCount[0]?.count, 1);
       assert.equal(universeSourceCount[0]?.count, 1);
-      assert.equal(workspaceCount[0]?.count, 1);
-      assert.equal(projectCount[0]?.count, 1);
-      assert.equal(resourceCount[0]?.count, 1);
-      assert.equal(membershipCount[0]?.count, 1);
 
       const [restoredUniverse] = await db
         .select({
@@ -789,37 +729,7 @@ test(
         headMessageId: assistantMessageId,
       });
 
-      const [restoredMembership] = await db
-        .select({
-          projectId:
-            schema.workspaceConversations.workspaceId,
-          conversationId:
-            schema.workspaceConversations.conversationId,
-        })
-        .from(schema.workspaceConversations)
-        .where(
-          eq(
-            schema.workspaceConversations.userId,
-            userId,
-          ),
-        );
-      assert.deepEqual(restoredMembership, {
-        projectId,
-        conversationId,
-      });
     } finally {
-      await db
-        .delete(schema.workspaceConversations)
-        .where(eq(schema.workspaceConversations.userId, userId))
-        .catch(() => undefined);
-      await db
-        .delete(schema.workspaceResources)
-        .where(eq(schema.workspaceResources.userId, userId))
-        .catch(() => undefined);
-      await db
-        .delete(schema.workspaces)
-        .where(eq(schema.workspaces.userId, userId))
-        .catch(() => undefined);
       await db
         .delete(schema.runtimeDriveSatisfactionEvents)
         .where(eq(schema.runtimeDriveSatisfactionEvents.userId, userId))

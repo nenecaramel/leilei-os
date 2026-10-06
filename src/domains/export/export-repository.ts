@@ -19,9 +19,6 @@ import {
   nativeLiveBackgroundModelJobs,
   nativeLiveMindFollowUps,
   nativeLiveTurnPreparations,
-  workspaceConversations,
-  workspaceResources,
-  workspaces,
   resourceLifecycleEvents,
   runtimeCuriosityResolutionEvents,
   runtimeDistillationWatermarks,
@@ -44,7 +41,6 @@ import type {
   ExportMindContinuityBundle,
   ExportMindStateRecord,
   ExportProjectsBundle,
-  ExportWorkspacesBundle,
   ExportToolActivity,
   ExportTodoPaper,
   ExportUniverseBundle,
@@ -276,10 +272,8 @@ export class DrizzleExportRepository implements ExportRepository {
               conversationProviderSessionCheckpoints.provider,
             providerSessionId:
               conversationProviderSessionCheckpoints.providerSessionId,
-            workspaceId:
-              conversationProviderSessionCheckpoints.workspaceId,
-            effectiveWorkspaceRoot:
-              conversationProviderSessionCheckpoints.effectiveWorkspaceRoot,
+            effectiveWorkingDirectory:
+              conversationProviderSessionCheckpoints.effectiveWorkingDirectory,
             runtimeMetadata:
               conversationProviderSessionCheckpoints.runtimeMetadata,
             providerCheckpointId:
@@ -363,8 +357,7 @@ export class DrizzleExportRepository implements ExportRepository {
         canonical_message_id: row.canonicalMessageId,
         provider: row.provider,
         provider_session_id: row.providerSessionId,
-        workspace_id: row.workspaceId,
-        effective_workspace_root: row.effectiveWorkspaceRoot,
+        effective_working_directory: row.effectiveWorkingDirectory,
         runtime_metadata: row.runtimeMetadata,
         provider_checkpoint_id: row.providerCheckpointId,
         created_at: toIso(row.createdAt),
@@ -372,108 +365,8 @@ export class DrizzleExportRepository implements ExportRepository {
     };
   }
 
-  async listWorkspaces(userId: string): Promise<ExportWorkspacesBundle> {
-    const [workspaceRows, resourceRows, conversationRows] = await Promise.all([
-      this.db.select({
-        id: workspaces.id,
-        name: workspaces.name,
-        description: workspaces.description,
-        version: workspaces.version,
-        createdAt: workspaces.createdAt,
-        updatedAt: workspaces.updatedAt,
-      }).from(workspaces)
-        .where(eq(workspaces.userId, userId))
-        .orderBy(asc(workspaces.createdAt), asc(workspaces.id)),
-      this.db.select({
-        id: workspaceResources.id,
-        workspaceId: workspaceResources.workspaceId,
-        kind: workspaceResources.kind,
-        key: workspaceResources.resourceKey,
-        title: workspaceResources.title,
-        content: workspaceResources.content,
-        metadata: workspaceResources.metadata,
-        version: workspaceResources.version,
-        createdAt: workspaceResources.createdAt,
-        updatedAt: workspaceResources.updatedAt,
-      }).from(workspaceResources)
-        .where(eq(workspaceResources.userId, userId))
-        .orderBy(
-          asc(workspaceResources.workspaceId),
-          asc(workspaceResources.kind),
-          asc(workspaceResources.resourceKey),
-          asc(workspaceResources.id),
-        ),
-      this.db.select({
-        workspaceId: workspaceConversations.workspaceId,
-        conversationId: workspaceConversations.conversationId,
-        addedAt: workspaceConversations.addedAt,
-      }).from(workspaceConversations)
-        .where(eq(workspaceConversations.userId, userId))
-        .orderBy(
-          asc(workspaceConversations.workspaceId),
-          asc(workspaceConversations.addedAt),
-          asc(workspaceConversations.conversationId),
-        ),
-    ]);
-
-    return {
-      items: workspaceRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        version: row.version,
-        created_at: toIso(row.createdAt),
-        updated_at: toIso(row.updatedAt),
-      })),
-      resources: resourceRows.map((row) => ({
-        id: row.id,
-        workspace_id: row.workspaceId,
-        kind: row.kind,
-        key: row.key,
-        title: row.title,
-        content: row.content,
-        metadata: row.metadata,
-        version: row.version,
-        created_at: toIso(row.createdAt),
-        updated_at: toIso(row.updatedAt),
-      })),
-      conversations: conversationRows.map((row) => ({
-        workspace_id: row.workspaceId,
-        conversation_id: row.conversationId,
-        added_at: toIso(row.addedAt),
-      })),
-    };
-  }
-
   // v3 restore compatibility still uses this historical projection in the
   // import repository. New exports never emit it.
-  async listProjects(userId: string): Promise<ExportProjectsBundle> {
-    const bundle = await this.listWorkspaces(userId);
-    return {
-      workspaces: bundle.items.map((row) => ({ ...row })),
-      projects: bundle.items.map((row) => ({
-        ...row,
-        workspace_id: row.id,
-      })),
-      resources: bundle.resources.map((row) => ({
-        id: row.id,
-        project_id: row.workspace_id,
-        kind: row.kind,
-        key: row.key,
-        title: row.title,
-        content: row.content,
-        metadata: row.metadata,
-        version: row.version,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-      })),
-      conversations: bundle.conversations.map((row) => ({
-        project_id: row.workspace_id,
-        conversation_id: row.conversation_id,
-        added_at: row.added_at,
-      })),
-    };
-  }
 
   async hasIncompleteMindSemanticGrouping(
     userId: string,

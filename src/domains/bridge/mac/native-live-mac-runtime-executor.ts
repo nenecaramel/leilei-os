@@ -92,8 +92,8 @@ import type {
 } from "./native-live-mac-claude-transport.js";
 import type { NativeLiveExecutionSelection } from "../turn/native-live-execution-selection.js";
 import type {
-  NativeLiveWorkspaceRuntimeResolver,
-} from "./native-live-mac-workspace-runtime.js";
+  NativeLiveWorkingDirectoryRuntimeResolver,
+} from "./native-live-mac-working-directory-runtime.js";
 import type {
   NativeLiveMacAttachmentMaterializer,
 } from "./native-live-mac-attachment-materializer.js";
@@ -124,13 +124,13 @@ import {
 
 export class NativeLiveMacRuntimeExecutor {
   private readonly runtime: NativeLiveForegroundRuntime | null;
-  private readonly resolver: NativeLiveWorkspaceRuntimeResolver | null;
+  private readonly resolver: NativeLiveWorkingDirectoryRuntimeResolver | null;
 
   constructor(
     runtimeOrResolver:
       | NativeLiveForegroundRuntime
-      | NativeLiveWorkspaceRuntimeResolver,
-    private readonly fallbackWorkspaceRoot = "/",
+      | NativeLiveWorkingDirectoryRuntimeResolver,
+    private readonly fallbackWorkingDirectory = "/",
     private readonly attachmentMaterializer:
       NativeLiveMacAttachmentMaterializer | null = null,
     private readonly outputAttachmentSender:
@@ -141,7 +141,7 @@ export class NativeLiveMacRuntimeExecutor {
       NativeLiveClaudeAlbumToolClient | null = null,
     private readonly memeSender: NativeLiveMemeRuntimeHandlers | null = null,
   ) {
-    if ("resolveWorkspaceRuntime" in runtimeOrResolver) {
+    if ("resolveWorkingDirectoryRuntime" in runtimeOrResolver) {
       this.runtime = null;
       this.resolver = runtimeOrResolver;
     } else {
@@ -175,7 +175,7 @@ export class NativeLiveMacRuntimeExecutor {
     let runtimeResult: NativeLiveForegroundRuntimeResult;
     let binding: {
       runtime: NativeLiveForegroundRuntime;
-      workspaceRoot: string;
+      workingDirectory: string;
     };
     const outputAttachmentIds: string[] = [];
     const outputAttachmentMetadata: Array<{
@@ -263,6 +263,7 @@ export class NativeLiveMacRuntimeExecutor {
               }
             : {}),
           ...(this.outputAttachmentSender
+            && command.output_attachments_enabled !== false
             && command.protocol_version
               === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
             ? {
@@ -274,7 +275,7 @@ export class NativeLiveMacRuntimeExecutor {
                     () => this.outputAttachmentSender!.sendFile({
                       path: input.path,
                       displayName: input.displayName,
-                      workspaceRoot: binding.workspaceRoot,
+                      workingDirectory: binding.workingDirectory,
                     }),
                     value => value.attachmentId,
                     "send_file may send at most 8 files in one turn.",
@@ -450,8 +451,7 @@ export class NativeLiveMacRuntimeExecutor {
       conversation_id: command.conversation_id,
       status: "success",
       provider_session_id: runtimeResult.providerSessionId,
-      workspace_id: command.workspace_id,
-      effective_workspace_root: binding.workspaceRoot,
+      effective_working_directory: binding.workingDirectory,
       normalized_events:
         terminalFallbackEvents(runtimeResult.normalizedEvents),
       ...(outputAttachmentIds.length > 0
@@ -549,32 +549,31 @@ export class NativeLiveMacRuntimeExecutor {
     command: NativeLiveRuntimeCommand,
   ): Promise<{
     runtime: NativeLiveForegroundRuntime;
-    workspaceRoot: string;
+    workingDirectory: string;
   }> {
     if (this.resolver) {
-      return this.resolver.resolveWorkspaceRuntime({
-        workspaceId: command.workspace_id,
-        expectedWorkspaceRoot: command.expected_workspace_root,
+      return this.resolver.resolveWorkingDirectoryRuntime({
+        expectedWorkingDirectory: command.expected_working_directory,
       });
     }
-    if (!this.runtime || command.workspace_id !== null) {
+    if (!this.runtime) {
       throw Object.assign(
-        new Error("Native Live Workspace runtime is unavailable."),
-        { runtimeCode: "WORKSPACE_UNAVAILABLE" },
+        new Error("Native Live working directory runtime is unavailable."),
+        { runtimeCode: "WORKING_DIRECTORY_UNAVAILABLE" },
       );
     }
     if (
-      command.expected_workspace_root !== null
-      && command.expected_workspace_root !== this.fallbackWorkspaceRoot
+      command.expected_working_directory !== null
+      && command.expected_working_directory !== this.fallbackWorkingDirectory
     ) {
       throw Object.assign(
-        new Error("Native Live Workspace root does not match the runtime."),
-        { runtimeCode: "WORKSPACE_ROOT_MISMATCH" },
+        new Error("Native Live working directory does not match the runtime."),
+        { runtimeCode: "WORKING_DIRECTORY_MISMATCH" },
       );
     }
     return {
       runtime: this.runtime,
-      workspaceRoot: this.fallbackWorkspaceRoot,
+      workingDirectory: this.fallbackWorkingDirectory,
     };
   }
 }
@@ -1055,8 +1054,8 @@ function isRuntimeFailureCode(
     || value === "INTERRUPTED"
     || value === "NO_PROVIDER_SESSION"
     || value === "PROVIDER_SESSION_CONFLICT"
-    || value === "WORKSPACE_UNAVAILABLE"
-    || value === "WORKSPACE_ROOT_MISMATCH"
+    || value === "WORKING_DIRECTORY_UNAVAILABLE"
+    || value === "WORKING_DIRECTORY_MISMATCH"
     || value === "ATTACHMENT_UNAVAILABLE"
     || value === "RUNTIME_UNAVAILABLE"
   );

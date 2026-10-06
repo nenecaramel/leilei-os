@@ -14,14 +14,8 @@ import type {
   ExportMindDriveSatisfactionEventRecord,
   ExportMindSemanticGroupingResultRecord,
   ExportMindStateRecord,
-  ExportProjectConversationRecord,
-  ExportProjectRecord,
-  ExportProjectResourceRecord,
-  ExportProjectsBundle,
-  ExportProjectWorkspaceRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
-  ExportWorkspacesBundle,
 } from "../export/export-types.js";
 import {
   ImportValidationError,
@@ -33,7 +27,6 @@ export type ImportModule =
   | "diary"
   | "diary_comments"
   | "todo"
-  | "workspaces"
   | "mind"
   | "conversations"
   | "universe";
@@ -55,16 +48,12 @@ export type ImportCurrentState = {
   diary: ExportDiaryRecord[];
   diary_comments?: ExportDiaryCommentRecord[];
   todo: ExportTodoPaper[];
-  projects?: ExportProjectsBundle;
   mind?: ExportMindStateRecord[];
   mind_continuity?: ExportMindContinuityBundle;
   conversations?: ExportConversationsBundle;
   universe?: ExportUniverseBundle | null;
   foreign_diary_ids?: Set<string>;
   foreign_diary_comment_ids?: Set<string>;
-  foreign_workspace_ids?: Set<string>;
-  foreign_project_ids?: Set<string>;
-  foreign_project_resource_ids?: Set<string>;
   foreign_mind_ids?: Set<string>;
   foreign_drive_satisfaction_event_ids?: Set<string>;
   foreign_curiosity_resolution_event_ids?: Set<string>;
@@ -82,29 +71,10 @@ export type ImportSummary = {
   diary: ImportCounts;
   diary_comments?: ImportCounts;
   todo: ImportCounts;
-  workspaces?: ImportCounts;
   mind?: ImportCounts;
   conversations?: ImportCounts;
   universe?: ImportCounts;
 };
-
-export type ProjectRestoreRecord =
-  | {
-      entity: "workspace";
-      value: ExportProjectWorkspaceRecord;
-    }
-  | {
-      entity: "project";
-      value: ExportProjectRecord;
-    }
-  | {
-      entity: "resource";
-      value: ExportProjectResourceRecord;
-    }
-  | {
-      entity: "conversation";
-      value: ExportProjectConversationRecord;
-    };
 
 export type ConversationRestoreRecord =
   | {
@@ -161,7 +131,6 @@ export type ImportPlanItem = {
     | ExportTodoPaper
     | ExportMindStateRecord
     | MindContinuityRestoreRecord
-    | ProjectRestoreRecord
     | ConversationRestoreRecord
     | UniverseRestoreRecord;
   current_hash: string | null;
@@ -181,42 +150,6 @@ const emptyCounts = (): ImportCounts => ({
   conflict: 0,
   invalid: 0,
 });
-
-const emptyProjects = (): ExportProjectsBundle => ({
-  workspaces: [],
-  projects: [],
-  resources: [],
-  conversations: [],
-});
-
-function legacyProjectsFromWorkspaces(
-  bundle: ExportWorkspacesBundle,
-): ExportProjectsBundle {
-  return {
-    workspaces: bundle.items.map((record) => ({ ...record })),
-    projects: bundle.items.map((record) => ({
-      ...record,
-      workspace_id: record.id,
-    })),
-    resources: bundle.resources.map((record) => ({
-      id: record.id,
-      project_id: record.workspace_id,
-      kind: record.kind,
-      key: record.key,
-      title: record.title,
-      content: record.content,
-      metadata: record.metadata,
-      version: record.version,
-      created_at: record.created_at,
-      updated_at: record.updated_at,
-    })),
-    conversations: bundle.conversations.map((record) => ({
-      project_id: record.workspace_id,
-      conversation_id: record.conversation_id,
-      added_at: record.added_at,
-    })),
-  };
-}
 
 const emptyConversations = (): ExportConversationsBundle => ({
   conversations: [],
@@ -549,48 +482,6 @@ function mindContinuityItems(
     ...watermarkItems,
     ...groupingItems,
   ];
-}
-
-function classifyProjectEntity<T>(
-  entity: ProjectRestoreRecord["entity"],
-  imported: T[],
-  current: T[],
-  key: (record: T) => string,
-): ImportPlanItem[] {
-  const occurrences = new Map<string, number>();
-  for (const record of imported) {
-    const logicalKey = `${entity}:${key(record)}`;
-    occurrences.set(
-      logicalKey,
-      (occurrences.get(logicalKey) ?? 0) + 1,
-    );
-  }
-
-  return imported.map((record) => {
-    const logicalKey = `${entity}:${key(record)}`;
-    const existing = current.find(
-      (candidate) => key(candidate) === key(record),
-    );
-    let classification: ImportClassification;
-
-    if ((occurrences.get(logicalKey) ?? 0) > 1) {
-      classification = "invalid";
-    } else if (!existing) {
-      classification = "create";
-    } else if (hashCanonical(existing) === hashCanonical(record)) {
-      classification = "duplicate";
-    } else {
-      classification = "conflict";
-    }
-
-    return {
-      module: "workspaces" as const,
-      logical_key: logicalKey,
-      classification,
-      record: { entity, value: record } as ProjectRestoreRecord,
-      current_hash: existing ? hashCanonical(existing) : null,
-    };
-  });
 }
 
 function classifyConversationEntity<T>(
@@ -963,120 +854,9 @@ function conversationItems(
   return items;
 }
 
-function projectItems(
-  imported: ExportProjectsBundle,
-  current: ImportCurrentState,
-  additionalConversationIds: Set<string>,
-): ImportPlanItem[] {
-  const currentProjects = current.projects ?? emptyProjects();
-
-  // Export v3 historically encoded a backing Workspace plus one or more
-  // Projects. The product now has one durable Workspace layer. A backing row
-  // that is referenced by a Project is therefore structural metadata only;
-  // each old Project becomes the restored Workspace. Backing-only rows are
-  // preserved as standalone Workspaces so old packages do not silently lose
-  // user-authored containers.
-  const referencedBackingIds = new Set(
-    imported.projects.map((record) => record.workspace_id),
-  );
-  const standaloneBackingWorkspaces = imported.workspaces.filter(
-    (record) => !referencedBackingIds.has(record.id),
-  );
-
-  const items = [
-    ...classifyProjectEntity(
-      "workspace",
-      standaloneBackingWorkspaces,
-      currentProjects.workspaces,
-      (record) => record.id,
-    ),
-    ...classifyProjectEntity(
-      "project",
-      imported.projects,
-      currentProjects.projects,
-      (record) => record.id,
-    ),
-    ...classifyProjectEntity(
-      "resource",
-      imported.resources,
-      currentProjects.resources,
-      (record) => record.id,
-    ),
-    ...classifyProjectEntity(
-      "conversation",
-      imported.conversations,
-      currentProjects.conversations,
-      (record) =>
-        `${record.project_id}:${record.conversation_id}`,
-    ),
-  ];
-
-  const workspaceIds = new Set([
-    ...currentProjects.projects.map((record) => record.id),
-    ...currentProjects.workspaces.map((record) => record.id),
-    ...standaloneBackingWorkspaces.map((record) => record.id),
-    ...imported.projects.map((record) => record.id),
-  ]);
-  const conversationIds = new Set([
-    ...(current.native_live_conversation_ids ?? new Set<string>()),
-    ...additionalConversationIds,
-  ]);
-
-  for (const item of items) {
-    if (item.classification !== "create") continue;
-    const record = item.record as ProjectRestoreRecord;
-
-    if (
-      record.entity === "workspace"
-      && (
-        current.foreign_workspace_ids?.has(record.value.id)
-        || current.foreign_project_ids?.has(record.value.id)
-      )
-    ) {
-      item.classification = "conflict";
-      continue;
-    }
-    if (
-      record.entity === "project"
-      && (
-        current.foreign_project_ids?.has(record.value.id)
-        || current.foreign_workspace_ids?.has(record.value.id)
-      )
-    ) {
-      item.classification = "conflict";
-      continue;
-    }
-    if (
-      record.entity === "resource"
-      && (
-        current.foreign_project_resource_ids?.has(record.value.id)
-        || !workspaceIds.has(record.value.project_id)
-      )
-    ) {
-      item.classification =
-        current.foreign_project_resource_ids?.has(record.value.id)
-          ? "conflict"
-          : "invalid";
-      continue;
-    }
-    if (
-      record.entity === "conversation"
-      && (
-        !workspaceIds.has(record.value.project_id)
-        || !conversationIds.has(record.value.conversation_id)
-      )
-    ) {
-      item.classification = "invalid";
-    }
-  }
-
-  return items;
-}
-
 function summarize(
   items: ImportPlanItem[],
   includeDiaryComments: boolean,
-  includeWorkspaces: boolean,
   includeMind: boolean,
   includeConversations: boolean,
   includeUniverse: boolean,
@@ -1087,9 +867,6 @@ function summarize(
       ? { diary_comments: emptyCounts() }
       : {}),
     todo: emptyCounts(),
-    ...(includeWorkspaces
-      ? { workspaces: emptyCounts() }
-      : {}),
     ...(includeMind
       ? { mind: emptyCounts() }
       : {}),
@@ -1250,27 +1027,6 @@ export function buildImportPlan(
     );
   }
 
-  const importedProjects =
-    parsed.document.schema_version === 3
-      ? parsed.document.data.projects
-      : parsed.document.schema_version === 4
-        && parsed.document.data.workspaces
-        ? legacyProjectsFromWorkspaces(parsed.document.data.workspaces)
-        : undefined;
-  if (importedProjects) {
-    items.push(
-      ...projectItems(
-        importedProjects,
-        current,
-        new Set(
-          importedConversations?.conversations.map(
-            (record) => record.id,
-          ) ?? [],
-        ),
-      ),
-    );
-  }
-
   const importedMind =
     parsed.document.schema_version !== 2
       ? parsed.document.data.mind
@@ -1322,7 +1078,6 @@ export function buildImportPlan(
   const summary = summarize(
     items,
     Boolean(importedDiaryComments),
-    Boolean(importedProjects),
     Boolean(importedMind || importedMindContinuity),
     Boolean(importedConversations),
     Boolean(importedUniverse),

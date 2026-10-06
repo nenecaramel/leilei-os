@@ -20,7 +20,6 @@ export class NativeLiveMacProviderSessionStore {
   constructor(
     baseUrl: string,
     private readonly token: string,
-    readonly workspaceId: string,
     private readonly fetchImpl: FetchLike = fetch,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/u, "");
@@ -29,13 +28,6 @@ export class NativeLiveMacProviderSessionStore {
     }
     if (!token.trim()) {
       throw new Error("Native Live session store token is required.");
-    }
-    if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-        workspaceId,
-      )
-    ) {
-      throw new Error("Native Live session store Workspace id must be a UUID.");
     }
   }
 
@@ -102,7 +94,6 @@ export class NativeLiveMacProviderSessionStore {
   ): Promise<Array<{ sessionId: string; mtime: number }>> {
     const data = readRecord(
       await this.post("/list-sessions", {
-        workspace_id: this.workspaceId,
       }),
     );
     if (!Array.isArray(data.sessions)) {
@@ -134,7 +125,6 @@ export class NativeLiveMacProviderSessionStore {
   ): Promise<"complete" | "incomplete" | null> {
     const data = readRecord(
       await this.post("/status", {
-        workspace_id: this.workspaceId,
         session_id: normalizeSessionId(sessionId),
       }),
     );
@@ -159,7 +149,6 @@ export class NativeLiveMacProviderSessionStore {
   }): Promise<string[]> {
     const data = readRecord(
       await this.post("/list-subkeys", {
-        workspace_id: this.workspaceId,
         session_id: normalizeSessionId(input.sessionId),
       }),
     );
@@ -180,7 +169,6 @@ export class NativeLiveMacProviderSessionStore {
       await this.post(
         state === "complete" ? "/mark-complete" : "/mark-incomplete",
         {
-          workspace_id: this.workspaceId,
           session_id: normalizeSessionId(sessionId),
         },
       ),
@@ -192,7 +180,6 @@ export class NativeLiveMacProviderSessionStore {
 
   private remoteKey(key: NativeLiveMacSessionStoreKey) {
     return {
-      workspace_id: this.workspaceId,
       session_id: normalizeSessionId(key.sessionId),
       ...(key.subpath === undefined
         ? {}
@@ -263,7 +250,7 @@ function readRecord(value: unknown): Record<string, unknown> {
 }
 
 function appendSignature(
-  key: { workspace_id: string; session_id: string; subpath?: string },
+  key: { session_id: string; subpath?: string },
   entries: NativeLiveMacSessionStoreEntry[],
 ): string {
   return createHash("sha256")

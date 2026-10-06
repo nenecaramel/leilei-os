@@ -14,7 +14,7 @@ function instrument(source: string, file: string) {
     source = source.replace('.task(id: appModel.activeNativeLiveConversationID)', '.onAppear { isComposerFocused = ChatRenderFixtures.keyboardShown }\n.task(id: appModel.activeNativeLiveConversationID)');
     source += `\nextension ChatView {
       static func fixture(_ name: String) -> ChatView {
-        var view = ChatView(isDraftConversation:true,draftConversationID:ChatRenderFixtures.id,selectedWorkspaceID:.constant(nil),onDraftCommitted:{})
+        var view = ChatView(isDraftConversation:true,draftConversationID:ChatRenderFixtures.id,${source.includes("@Binding var selectedWorkspaceID") ? "selectedWorkspaceID:.constant(nil)," : ""}onDraftCommitted:{})
         view._messageText = State(initialValue:ChatRenderFixtures.text(name))
         view._composerAttachments = State(initialValue:ChatRenderFixtures.attachments(name))
         if name == "edit" { view._editDraft = State(initialValue:NativeLiveEditDraft(targetUserMessageID:"user",text:"Edit me")) }

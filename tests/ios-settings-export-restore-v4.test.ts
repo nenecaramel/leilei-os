@@ -49,7 +49,7 @@ test("iOS Export uses Full Backup wording, timestamp filenames, and diagnostic a
   assert.match(dataService, /leileios-full-backup_/);
   assert.match(dataService, /yyyyMMdd'T'HHmmss'Z'/);
   assert.match(exportView, /Audit and lifecycle events are diagnostic only and are not restored/);
-  assert.match(exportView, /Full Backup excludes machine-local Workspace paths/);
+  assert.match(exportView, /Full Backup excludes machine-local working directory paths/);
   assert.match(exportView, /settingsDataErrorMessage\(error\)/);
 });
 
@@ -68,7 +68,6 @@ test("iOS restore decodes complete v4 metadata and every portable module", () =>
 
   for (const module of [
     "diaryComments",
-    "workspaces",
     "conversations",
     "mind",
     "universe",
@@ -87,7 +86,6 @@ test("iOS Summary shows the same portable product modules as Web", () => {
   for (const label of [
     "Diary comments",
     "Todo",
-    "Workspaces",
     "Conversations",
     "Mind",
     "Universe",
@@ -97,12 +95,10 @@ test("iOS Summary shows the same portable product modules as Web", () => {
 
   assert.match(dataService, /diaryComments: summary\.diaryComments\.count/);
   assert.match(dataService, /todo: summary\.todo\.count/);
-  assert.match(dataService, /workspaces: summary\.workspaces\.count/);
   assert.match(dataService, /conversationsActive: summary\.conversations\.active/);
   assert.match(dataService, /mind: summary\.mind\.count/);
   assert.match(dataService, /universeNodes: summary\.universe\.nodes/);
 });
-
 
 test("iOS no longer calls retired partial export scopes", () => {
   const files = [

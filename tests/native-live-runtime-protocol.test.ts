@@ -70,7 +70,7 @@ const resultTelemetry = {
 
 test("new runtime command carries no parent provider session", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -86,10 +86,10 @@ test("new runtime command carries no parent provider session", () => {
   assert.equal(command.parent_provider_session_id, null);
 });
 
-test("runtime protocol v2 carries bounded attachment descriptors", () => {
+test("runtime protocol v4 carries bounded attachment descriptors", () => {
   const attachmentId = "55555555-5555-4555-8555-555555555555";
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 2,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -109,7 +109,7 @@ test("runtime protocol v2 carries bounded attachment descriptors", () => {
     prompt: "see attachment",
   });
 
-  assert.equal(command.protocol_version, 2);
+  assert.equal(command.protocol_version, 4);
   assert.deepEqual(command.attachments, [{
     attachment_id: attachmentId,
     filename: "photo.jpg",
@@ -124,11 +124,11 @@ test("runtime protocol v2 carries bounded attachment descriptors", () => {
       ...command,
       protocol_version: 1,
     }),
-    /v1 does not support attachments/u,
+    /Unsupported runtime protocol version/u,
   );
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 2,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -142,7 +142,7 @@ test("runtime protocol v2 carries bounded attachment descriptors", () => {
 
 test("silence wake runtime command carries no fake canonical user message", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 3,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -182,7 +182,7 @@ test("silence wake runtime command carries no fake canonical user message", () =
 
 test("fork runtime command requires an exact parent provider session", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -207,7 +207,7 @@ test("fork runtime command requires an exact parent provider session", () => {
 
 test("runtime command carries optional validated execution selection", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -231,10 +231,9 @@ test("runtime command carries optional validated execution selection", () => {
   });
 });
 
-
 test("runtime command accepts Sonnet 5.5 native between_tools thinking", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -271,10 +270,9 @@ test("runtime command accepts Sonnet 5.5 native between_tools thinking", () => {
   );
 });
 
-test("runtime protocol preserves Workspace identity and enforces the bound root", () => {
-  const workspaceId = "55555555-5555-4555-8555-555555555555";
+test("runtime protocol preserves the durable working directory and enforces the bound path", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -283,25 +281,22 @@ test("runtime protocol preserves Workspace identity and enforces the bound root"
     canonical_user_message_id: userMessageId,
     runtime_mode: "new",
     parent_provider_session_id: null,
-    workspace_id: workspaceId,
-    expected_workspace_root: "/Users/leilei/Projects/demo",
+    expected_working_directory: "/Users/leilei/Projects/demo",
     prompt: "hello",
   });
-  assert.equal(command.workspace_id, workspaceId);
   assert.equal(
-    command.expected_workspace_root,
+    command.expected_working_directory,
     "/Users/leilei/Projects/demo",
   );
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-child",
-    workspace_id: workspaceId,
-    effective_workspace_root: "/Users/leilei/Projects/demo",
+    effective_working_directory: "/Users/leilei/Projects/demo",
     normalized_events: [],
   });
   assert.doesNotThrow(() =>
@@ -309,25 +304,24 @@ test("runtime protocol preserves Workspace identity and enforces the bound root"
   );
 
   const moved = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-child",
-    workspace_id: workspaceId,
-    effective_workspace_root: "/Users/leilei/Projects/moved",
+    effective_working_directory: "/Users/leilei/Projects/moved",
     normalized_events: [],
   });
   assert.throws(
     () => assertRuntimeResultMatchesCommand(command, moved),
-    /workspace root does not match/u,
+    /working directory does not match/u,
   );
 });
 
-test("runtime protocol accepts legacy envelopes only for unbound turns", () => {
+test("runtime protocol defaults an absent expected directory for new sessions", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -338,11 +332,10 @@ test("runtime protocol accepts legacy envelopes only for unbound turns", () => {
     parent_provider_session_id: null,
     prompt: "legacy",
   });
-  assert.equal(command.workspace_id, null);
-  assert.equal(command.expected_workspace_root, null);
+  assert.equal(command.expected_working_directory, null);
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -352,8 +345,7 @@ test("runtime protocol accepts legacy envelopes only for unbound turns", () => {
   });
   assert.equal(result.status, "success");
   if (result.status !== "success") throw new Error("expected success");
-  assert.equal(result.workspace_id, null);
-  assert.equal(result.effective_workspace_root, null);
+  assert.equal(result.effective_working_directory, null);
   assert.doesNotThrow(() =>
     assertRuntimeResultMatchesCommand(command, result)
   );
@@ -361,7 +353,7 @@ test("runtime protocol accepts legacy envelopes only for unbound turns", () => {
 
 test("success result carries provider session and normalized events only", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -380,7 +372,7 @@ test("success result carries provider session and normalized events only", () =>
 
 test("success result accepts bounded runtime context usage", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -414,7 +406,7 @@ test("success result accepts bounded runtime context usage", () => {
 
 test("runtime metadata accepts bounded execution readback while remaining backward compatible", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -449,7 +441,7 @@ test("runtime metadata accepts bounded execution readback while remaining backwa
   );
 
   const legacy = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -473,14 +465,13 @@ test("runtime metadata accepts bounded execution readback while remaining backwa
 
 test("runtime metadata preserves Agent SDK result usage, thinking, permission and latency telemetry", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-child",
-    workspace_id: null,
-    effective_workspace_root: null,
+    effective_working_directory: null,
     normalized_events: [],
     runtime_metadata: {
       context_usage: null,
@@ -500,7 +491,7 @@ test("runtime metadata preserves Agent SDK result usage, thinking, permission an
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -537,14 +528,13 @@ test("runtime metadata preserves bounded VCS mutation hints", () => {
   ];
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-vcs",
-    workspace_id: null,
-    effective_workspace_root: "/workspace/repo",
+    effective_working_directory: "/workspace/repo",
     normalized_events: [],
     runtime_metadata: {
       context_usage: null,
@@ -562,7 +552,7 @@ test("runtime metadata preserves bounded VCS mutation hints", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -600,14 +590,13 @@ test("runtime metadata preserves bounded SessionStore mirror health", () => {
     status_failure_reason: null,
   };
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-child",
-    workspace_id: null,
-    effective_workspace_root: "/workspace/leilei-os",
+    effective_working_directory: "/workspace/leilei-os",
     normalized_events: [],
     runtime_metadata: {
       context_usage: null,
@@ -625,7 +614,7 @@ test("runtime metadata preserves bounded SessionStore mirror health", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -645,7 +634,7 @@ test("runtime metadata preserves bounded SessionStore mirror health", () => {
 
 test("runtime metadata accepts bounded durable MCP output resources", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -702,7 +691,7 @@ test("runtime metadata accepts bounded durable MCP output resources", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -734,7 +723,7 @@ test("runtime metadata rejects unbounded execution readback errors", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -763,7 +752,7 @@ test("runtime metadata rejects unbounded execution readback errors", () => {
 test("failure result accepts bounded result telemetry without exposing arbitrary fields", () => {
   assert.deepEqual(
     parseNativeLiveRuntimeExecutionResult({
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: prepareId,
       request_id: requestId,
       conversation_id: conversationId,
@@ -771,7 +760,7 @@ test("failure result accepts bounded result telemetry without exposing arbitrary
       error_code: "CLAUDE_PROCESS_FAILED",
     }),
     {
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: prepareId,
       request_id: requestId,
       conversation_id: conversationId,
@@ -781,7 +770,7 @@ test("failure result accepts bounded result telemetry without exposing arbitrary
   );
 
   const withTelemetry = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -810,7 +799,7 @@ test("failure result accepts bounded result telemetry without exposing arbitrary
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -824,7 +813,7 @@ test("failure result accepts bounded result telemetry without exposing arbitrary
 
 test("graceful interrupt is a bounded runtime failure code", () => {
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -839,7 +828,7 @@ test("graceful interrupt is a bounded runtime failure code", () => {
 
 test("result identity must match the exact prepared command", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -852,7 +841,7 @@ test("result identity must match the exact prepared command", () => {
   });
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: "55555555-5555-4555-8555-555555555555",
     request_id: requestId,
     conversation_id: conversationId,
@@ -868,7 +857,7 @@ test("result identity must match the exact prepared command", () => {
 
 test("fork result cannot reuse the parent provider session", () => {
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -881,7 +870,7 @@ test("fork result cannot reuse the parent provider session", () => {
   });
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -899,7 +888,7 @@ test("fork result cannot reuse the parent provider session", () => {
 test("assembled Mind prompt may exceed raw user-text limit while remaining bounded", () => {
   const prompt = "x".repeat(8_000);
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -926,7 +915,7 @@ test("protocol rejects unknown versions and extra fields", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeCommand({
-        protocol_version: 4,
+        protocol_version: 5,
         dispatch_target: "claude_code",
         prepare_id: prepareId,
         request_id: requestId,
@@ -943,7 +932,7 @@ test("protocol rejects unknown versions and extra fields", () => {
   assert.throws(
     () =>
       parseNativeLiveRuntimeExecutionResult({
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepareId,
         request_id: requestId,
         conversation_id: conversationId,
@@ -956,12 +945,11 @@ test("protocol rejects unknown versions and extra fields", () => {
   );
 });
 
-
-test("runtime protocol v3 carries explicit output attachment ids", () => {
+test("runtime protocol v4 carries explicit output attachment ids", () => {
   const outputAttachmentId =
     "66666666-6666-4666-8666-666666666666";
   const command = parseNativeLiveRuntimeCommand({
-    protocol_version: 3,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -973,14 +961,13 @@ test("runtime protocol v3 carries explicit output attachment ids", () => {
     prompt: "make a file",
   });
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
     status: "success",
     provider_session_id: "provider-output",
-    workspace_id: null,
-    effective_workspace_root: "/workspace",
+    effective_working_directory: "/workspace",
     normalized_events: [],
     output_attachment_ids: [outputAttachmentId],
   });
@@ -998,12 +985,11 @@ test("runtime protocol v3 carries explicit output attachment ids", () => {
   assert.throws(
     () => parseNativeLiveRuntimeExecutionResult({
       ...result,
-      protocol_version: 2,
+      protocol_version: 3,
     }),
-    /require runtime protocol v3/u,
+    /Unsupported runtime protocol version/u,
   );
 });
-
 
 test("runtime metadata accepts the bounded system/init environment projection", () => {
   const environment = {
@@ -1034,7 +1020,7 @@ test("runtime metadata accepts the bounded system/init environment projection", 
   };
 
   const result = parseNativeLiveRuntimeExecutionResult({
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,

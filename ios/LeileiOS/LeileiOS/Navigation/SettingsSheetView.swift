@@ -340,7 +340,6 @@ private struct SettingsSummaryContent: View {
                 LabeledContent("Diary", value: diaryValue)
                 LabeledContent("Diary comments", value: countValue(\.diaryComments))
                 LabeledContent("Todo", value: countValue(\.todo))
-                LabeledContent("Workspaces", value: countValue(\.workspaces))
                 LabeledContent("Conversations", value: conversationsValue)
                 LabeledContent("Mind", value: countValue(\.mind))
                 LabeledContent("Universe", value: universeValue)

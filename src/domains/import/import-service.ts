@@ -24,7 +24,6 @@ import {
   type ImportPlanItem,
   type ImportSummary,
   type MindContinuityRestoreRecord,
-  type ProjectRestoreRecord,
   type UniverseRestoreRecord,
 } from "./import-planner.js";
 import { hashCanonical } from "./import-canonical.js";
@@ -99,12 +98,6 @@ function includedModules(
   }
   if (document.data.todo) modules.push("todo");
   if (
-    (document.schema_version === 3 && document.data.projects)
-    || (document.schema_version === 4 && document.data.workspaces)
-  ) {
-    modules.push("workspaces");
-  }
-  if (
     document.schema_version !== 2
     && (
       document.data.mind
@@ -126,49 +119,6 @@ function includedModules(
     modules.push("universe");
   }
   return new Set(modules);
-}
-
-function hasExactProjectValue(
-  record: ProjectRestoreRecord,
-  state: ImportCurrentState,
-): boolean {
-  const projects = state.projects ?? {
-    workspaces: [],
-    projects: [],
-    resources: [],
-    conversations: [],
-  };
-  if (record.entity === "workspace") {
-    return projects.workspaces.some(
-      (candidate) =>
-        candidate.id === record.value.id
-        && hashCanonical(candidate) === hashCanonical(record.value),
-    );
-  }
-  if (record.entity === "project") {
-    const canonical = {
-      ...record.value,
-      workspace_id: record.value.id,
-    };
-    return projects.projects.some(
-      (candidate) =>
-        candidate.id === record.value.id
-        && hashCanonical(candidate) === hashCanonical(canonical),
-    );
-  }
-  if (record.entity === "resource") {
-    return projects.resources.some(
-      (candidate) =>
-        candidate.id === record.value.id
-        && hashCanonical(candidate) === hashCanonical(record.value),
-    );
-  }
-  return projects.conversations.some(
-    (candidate) =>
-      candidate.project_id === record.value.project_id
-      && candidate.conversation_id === record.value.conversation_id
-      && hashCanonical(candidate) === hashCanonical(record.value),
-  );
 }
 
 function hasExactConversationValue(
@@ -341,10 +291,7 @@ function hasExactCreatedValue(
     );
   }
 
-  return hasExactProjectValue(
-    item.record as ProjectRestoreRecord,
-    state,
-  );
+  return false;
 }
 
 function hasDatabaseErrorCode(error: unknown, code: string): boolean {
@@ -361,22 +308,6 @@ function hasDatabaseErrorCode(error: unknown, code: string): boolean {
       : undefined;
   }
   return false;
-}
-
-function projectRecords<
-  Entity extends ProjectRestoreRecord["entity"],
->(
-  creates: ImportPlanItem[],
-  entity: Entity,
-): Array<Extract<ProjectRestoreRecord, { entity: Entity }>> {
-  return creates.flatMap((item) => {
-    if (item.module !== "workspaces") return [];
-    const record = item.record as ProjectRestoreRecord;
-    if (record.entity !== entity) return [];
-    return [
-      record as Extract<ProjectRestoreRecord, { entity: Entity }>,
-    ];
-  });
 }
 
 function conversationRecords(
@@ -568,18 +499,6 @@ async function executeCreates(
     }
   }
 
-  for (const record of projectRecords(creates, "workspace")) {
-    await repository.insertProjectWorkspace(userId, record.value);
-  }
-  for (const record of projectRecords(creates, "project")) {
-    await repository.insertProject(userId, record.value);
-  }
-  for (const record of projectRecords(creates, "resource")) {
-    await repository.insertProjectResource(userId, record.value);
-  }
-  for (const record of projectRecords(creates, "conversation")) {
-    await repository.insertProjectConversation(userId, record.value);
-  }
 }
 
 export class ImportService {

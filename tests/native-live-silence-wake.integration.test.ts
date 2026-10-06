@@ -103,7 +103,7 @@ test(
 
     const foregroundFinalized =
       await coordinator.finalize(user.id, {
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: foreground.command.prepare_id,
         request_id: foregroundRequestId,
         conversation_id: conversation.id,
@@ -177,7 +177,7 @@ test(
     );
 
     const quiet = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: shortPrepareId,
       request_id: shortPreparation.requestId,
       conversation_id: conversation.id,
@@ -251,7 +251,7 @@ test(
     assert.ok(longPreparation);
 
     const visible = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: longPrepareId,
       request_id: longPreparation.requestId,
       conversation_id: conversation.id,
@@ -346,7 +346,6 @@ test(
   },
 );
 
-
 test(
   "silence wake revalidates user activity before canonical write and discards an in-flight stale wake",
   { skip: !enabled },
@@ -417,7 +416,7 @@ test(
 
     const foregroundFinalized =
       await coordinator.finalize(user.id, {
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: foreground.command.prepare_id,
         request_id: foregroundRequestId,
         conversation_id: conversation.id,
@@ -478,7 +477,7 @@ test(
     assert.equal(next.ok, true);
 
     const stale = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: wakePrepareId,
       request_id: wakePreparation.requestId,
       conversation_id: conversation.id,
@@ -547,7 +546,6 @@ test(
     );
   },
 );
-
 
 test(
   "silence wake ignores stranded staged work older than its source assistant while fresh staged intent still blocks",
@@ -639,7 +637,7 @@ test(
     assert.ok(sourceUserMessageId);
 
     const sourceFinalized = await coordinator.finalize(user.id, {
-      protocol_version: 3,
+      protocol_version: 4,
       prepare_id: source.command.prepare_id,
       request_id: sourceRequestId,
       conversation_id: sourceConversation.id,
@@ -729,7 +727,7 @@ test(
       listenerInstanceId: listenerId,
       reservationId: shortPrepareId,
       result: {
-        protocol_version: 3,
+        protocol_version: 4,
         prepare_id: shortPrepareId,
         request_id: shortPreparation.requestId,
         conversation_id: sourceConversation.id,

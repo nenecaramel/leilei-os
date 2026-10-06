@@ -15,7 +15,7 @@ const userMessageId = "55555555-5555-4555-8555-555555555555";
 
 function command() {
   return {
-    protocol_version: 3,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -24,8 +24,7 @@ function command() {
     canonical_user_message_id: userMessageId,
     runtime_mode: "new",
     parent_provider_session_id: null,
-    workspace_id: null,
-    expected_workspace_root: null,
+    expected_working_directory: null,
     execution_selection: null,
     prompt: "hello",
   };
@@ -116,7 +115,7 @@ test("Mac HTTP relay client maps daemon calls onto authenticated internal endpoi
   });
 
   const result: NativeLiveRuntimeExecutionResult = {
-    protocol_version: 3,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -434,7 +433,6 @@ test("Mac HTTP relay client treats non-success responses as transport failures w
   );
 });
 
-
 test("Mac HTTP relay client transports background model reservations without user identity", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
   const responses = [
@@ -497,7 +495,6 @@ test("Mac HTTP relay client transports background model reservations without use
     dispatch_target: "claude_code",
   });
 });
-
 
 test("Mac HTTP relay client offers one scoped companion background opportunity", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
@@ -726,7 +723,6 @@ test("Mac HTTP relay client round-trips a durable permission interaction", async
   );
 });
 
-
 test("Mac HTTP relay client reserves and receipts provider session cleanup", async () => {
   const cleanupId = "77777777-7777-4777-8777-777777777777";
   const calls: Array<{ url: string; body: unknown }> = [];
@@ -769,8 +765,7 @@ test("Mac HTTP relay client reserves and receipts provider session cleanup", asy
     {
       reservationId: cleanupId,
       providerSessionId: "provider-old-fork",
-      workspaceId: null,
-      effectiveWorkspaceRoot: null,
+      effectiveWorkingDirectory: null,
     },
   );
   await client.submitProviderSessionCleanupResult({
@@ -798,7 +793,6 @@ test("Mac HTTP relay client reserves and receipts provider session cleanup", asy
     },
   ]);
 });
-
 
 test("Mac HTTP relay wait retries transient deploy 502 and then continues", async () => {
   let calls = 0;
@@ -874,7 +868,6 @@ test("Mac HTTP relay wait does not retry durable 409 conflicts", async () => {
   assert.equal(calls, 1);
 });
 
-
 test("Mac HTTP relay terminal result retries transient 503 and then completes", async () => {
   let calls = 0;
   const fakeFetch: typeof fetch = async () => {
@@ -909,7 +902,7 @@ test("Mac HTTP relay terminal result retries transient 503 and then completes", 
     fakeFetch,
   );
   const result: NativeLiveRuntimeExecutionResult = {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -954,7 +947,7 @@ test("Mac HTTP relay terminal result bounds persistent transient failures", asyn
     fakeFetch,
   );
   const result: NativeLiveRuntimeExecutionResult = {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -996,7 +989,7 @@ test("Mac HTTP relay terminal result does not retry durable 409 conflicts", asyn
     fakeFetch,
   );
   const result: NativeLiveRuntimeExecutionResult = {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -1015,7 +1008,6 @@ test("Mac HTTP relay terminal result does not retry durable 409 conflicts", asyn
 
   assert.equal(calls, 1);
 });
-
 
 test("Mac HTTP relay client creates and completes private output attachment uploads", async () => {
   const attachmentId =
@@ -1121,7 +1113,6 @@ test("Mac HTTP relay client creates and completes private output attachment uplo
     },
   ]);
 });
-
 
 test("Mac HTTP relay runtime event batch retries a transient transport failure with the exact same payload", async () => {
   const calls: Array<{ url: string; body: unknown }> = [];
@@ -1248,7 +1239,6 @@ test("Mac HTTP relay runtime event batch does not retry durable 409 conflicts", 
   );
   assert.equal(calls, 1);
 });
-
 
 test("Mac HTTP relay client parses silence wake ignore reason", async () => {
   const fakeFetch: typeof fetch = async () =>

@@ -134,7 +134,7 @@ async function createDefaultSendFileMcpServer(
   const sendFileTool = sdk.tool(
     "send_file",
     [
-      "Send one specific local file from the active workspace to the user.",
+      "Send one specific local file from the active working directory to the user.",
       "Use this only when you explicitly intend to share or deliver that file.",
       "Never scan directories or infer files to send; pass the exact file path.",
     ].join(" "),
@@ -1129,6 +1129,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
   }
 
   async listSessions({
+    allDirectories = false,
     limit = 100,
     offset = 0,
   } = {}) {
@@ -1142,7 +1143,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     let rows;
     try {
       rows = await listSessions({
-        dir: this.cwd,
+        ...(allDirectories ? {} : { dir: this.cwd }),
         limit,
         offset,
         includeWorktrees: false,
@@ -1166,7 +1167,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         customTitle: nonblankString(row?.customTitle),
         firstPrompt: nonblankString(row?.firstPrompt),
         gitBranch: nonblankString(row?.gitBranch),
-        cwd: nonblankString(row?.cwd) ?? this.cwd,
+        cwd: nonblankString(row?.cwd) ?? (allDirectories ? null : this.cwd),
         lastModified:
           Number.isFinite(row?.lastModified)
             ? row.lastModified
@@ -1176,7 +1177,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             ? row.createdAt
             : null,
       }))
-      .filter((row) => row.sessionId);
+      .filter((row) => row.sessionId && row.cwd);
   }
 
   async deleteSession(sessionId) {

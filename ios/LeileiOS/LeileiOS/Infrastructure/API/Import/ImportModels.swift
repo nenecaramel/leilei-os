@@ -11,7 +11,6 @@ struct ImportSummarySnapshot: Decodable, Sendable, Equatable {
     let diary: ImportSummaryCountsSnapshot
     let diaryComments: ImportSummaryCountsSnapshot?
     let todo: ImportSummaryCountsSnapshot
-    let workspaces: ImportSummaryCountsSnapshot?
     let mind: ImportSummaryCountsSnapshot?
     let conversations: ImportSummaryCountsSnapshot?
     let universe: ImportSummaryCountsSnapshot?
@@ -20,7 +19,6 @@ struct ImportSummarySnapshot: Decodable, Sendable, Equatable {
         case diary
         case diaryComments = "diary_comments"
         case todo
-        case workspaces
         case mind
         case conversations
         case universe

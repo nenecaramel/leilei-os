@@ -161,7 +161,7 @@ test(
     );
 
     const finalized = await coordinator.finalize(userId, {
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: prepared.command.prepare_id,
       request_id: requestId,
       conversation_id: conversation.id,
@@ -382,7 +382,7 @@ test(
     );
 
     const scheduleFinalized = await coordinator.finalize(userId, {
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: schedulePrepared.command.prepare_id,
       request_id: scheduleRequestId,
       conversation_id: conversation.id,
@@ -448,7 +448,7 @@ test(
       "the just-written Memory must not be handed back after a transparent non-Mind turn",
     );
     const preCompactProbeFailure = await coordinator.finalize(userId, {
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: preCompactProbe.command.prepare_id,
       request_id: preCompactProbeRequestId,
       conversation_id: conversation.id,
@@ -543,7 +543,7 @@ test(
     );
 
     const nextFailure = await coordinator.finalize(userId, {
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: nextPrepared.command.prepare_id,
       request_id: nextRequestId,
       conversation_id: conversation.id,
@@ -553,7 +553,6 @@ test(
     assert.equal(nextFailure.ok, false);
   },
 );
-
 
 test(
   "malformed durable Mind follow-up is quarantined without starving the next valid job",
@@ -636,7 +635,7 @@ test(
       if (!prepared.ok) throw new Error("expected prepare success");
 
       const finalized = await coordinator.finalize(userId!, {
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepared.command.prepare_id,
         request_id: requestId,
         conversation_id: conversation.id,
@@ -804,7 +803,7 @@ test(
       assert.equal(prepared.ok, true);
       if (!prepared.ok) throw new Error("expected prepare success");
       const finalized = await coordinator.finalize(userId!, {
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepared.command.prepare_id,
         request_id: requestId,
         conversation_id: conversation.id,

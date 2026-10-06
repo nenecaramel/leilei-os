@@ -31,7 +31,7 @@ export class FakeCoordinator {
     outcome: "created",
     semanticPending: false,
     command: {
-      protocol_version: 1,
+      protocol_version: 4,
       dispatch_target: "claude_code",
       prepare_id: prepareId,
       request_id: requestId,
@@ -61,8 +61,7 @@ export class FakeTurnReader {
       conversationId,
       operation: "send" as const,
       canonicalUserMessageId: userMessageId,
-      workspaceId: null,
-      expectedWorkspaceRoot: null,
+      expectedWorkingDirectory: null,
       executionSelection: {
         model: "claude-opus-5-5" as const,
         thinking: "adaptive" as const,
@@ -167,7 +166,7 @@ export class FakeRelayService {
     return {
       reservationId: prepareId,
       command: {
-        protocol_version: 1 as const,
+        protocol_version: 4 as const,
         dispatch_target: "claude_code" as const,
         prepare_id: prepareId,
         request_id: requestId,

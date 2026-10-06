@@ -19,8 +19,6 @@ extension AppModel {
             }
 
             nativeLiveRuntimeMetadata = snapshot.runtimeMetadata
-            activeNativeLiveWorkspaceID = snapshot.workspaceId
-            activeNativeLiveWorkspaceRoot = snapshot.effectiveWorkspaceRoot
             if let metadata = snapshot.runtimeMetadata {
                 nativeLiveRuntimeMetadataByConversationID[
                     conversationID

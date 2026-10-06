@@ -9,7 +9,6 @@ struct ChatView: View {
 
     let isDraftConversation: Bool
     let draftConversationID: UUID
-    @Binding var selectedWorkspaceID: String?
     let onDraftCommitted: () -> Void
 
     @StateObject var voiceInput = VoiceInputController()

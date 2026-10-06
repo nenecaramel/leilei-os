@@ -137,7 +137,7 @@ test("foreground MCP resource links become durable output-resource candidates wi
 
   const result =
     await new NativeLiveMacRuntimeExecutor(runtime).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
     );
 
   assert.equal(result.status, "success");
@@ -217,7 +217,7 @@ test("provider-terminal failure retains MCP output-resource candidates", async (
 
   const result =
     await new NativeLiveMacRuntimeExecutor(runtime).execute(
-      command({ protocol_version: 3 }),
+      command({ protocol_version: 4 }),
     );
 
   assert.equal(result.status, "failure");

@@ -41,7 +41,7 @@ test("Mac attachment materializer verifies bytes and writes isolated inbox path"
     async () => new Response(bytes, { status: 200 }),
   );
   const command = {
-    protocol_version: 2 as const,
+    protocol_version: 4 as const,
     dispatch_target: "claude_code" as const,
     prepare_id: "11111111-1111-4111-8111-111111111111",
     request_id: "22222222-2222-4222-8222-222222222222",
@@ -51,8 +51,7 @@ test("Mac attachment materializer verifies bytes and writes isolated inbox path"
       "44444444-4444-4444-8444-444444444444",
     runtime_mode: "new" as const,
     parent_provider_session_id: null,
-    workspace_id: null,
-    expected_workspace_root: null,
+    expected_working_directory: null,
     prompt: "read it",
     attachments: [{
       attachment_id:
@@ -115,7 +114,7 @@ test("Mac attachment materializer fails closed on checksum mismatch", async () =
     async () => new Response(bytes, { status: 200 }),
   );
   const command = {
-    protocol_version: 2 as const,
+    protocol_version: 4 as const,
     dispatch_target: "claude_code" as const,
     prepare_id: "11111111-1111-4111-8111-111111111111",
     request_id: "22222222-2222-4222-8222-222222222222",
@@ -125,8 +124,7 @@ test("Mac attachment materializer fails closed on checksum mismatch", async () =
       "44444444-4444-4444-8444-444444444444",
     runtime_mode: "new" as const,
     parent_provider_session_id: null,
-    workspace_id: null,
-    expected_workspace_root: null,
+    expected_working_directory: null,
     prompt: "read it",
     attachments: [{
       attachment_id:

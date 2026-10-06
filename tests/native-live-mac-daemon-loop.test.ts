@@ -23,7 +23,7 @@ const userMessageId = "66666666-6666-4666-8666-666666666666";
 
 function command(): NativeLiveRuntimeCommand {
   return {
-    protocol_version: 1,
+    protocol_version: 4,
     dispatch_target: "claude_code",
     prepare_id: prepareId,
     request_id: requestId,
@@ -38,7 +38,7 @@ function command(): NativeLiveRuntimeCommand {
 
 function success(): NativeLiveRuntimeExecutionResult {
   return {
-    protocol_version: 1,
+    protocol_version: 4,
     prepare_id: prepareId,
     request_id: requestId,
     conversation_id: conversationId,
@@ -551,7 +551,6 @@ test("ambiguous semantic callback is surfaced without executing Claude", async (
   );
 });
 
-
 class FakeRuntimeEventRelay extends FakeRelay {
   eventSubmitError: Error | null = null;
 
@@ -706,7 +705,6 @@ test("runtime event delivery is fail-soft and does not invalidate canonical term
   );
 });
 
-
 class FakeInteractionRelay extends FakeRelay {
   interactionCalls: unknown[] = [];
 
@@ -826,7 +824,6 @@ test("runOnce rejects reentrant polling while an execution is in flight", async 
   resolveExecute(success());
   assert.equal((await first).outcome, "completed");
 });
-
 
 test("daemon applies reserved mid-turn and interrupt controls exactly once on the active turn", async () => {
   class FakeControlRelay extends FakeRelay {
@@ -995,7 +992,6 @@ test("daemon never blindly reapplies a provider control when completion delivery
   assert.equal(relay.waitCount, 1);
 });
 
-
 test("idle daemon hard-deletes a reserved purged provider session and receipts success", async () => {
   const relay = new FakeRelay();
   relay.reservation = null;
@@ -1099,8 +1095,6 @@ test("provider session deletion failure is receipted for bounded retry", async (
     },
   }]);
 });
-
-
 
 test("provider clock start and terminal are delivered before sparse foreground execution continues", async () => {
   const relay = new FakeRuntimeEventRelay();

@@ -58,8 +58,7 @@ export const nativeLiveTurnPreparations = pgTable(
       .$type<NativeLiveTurnRuntimeMode>()
       .notNull(),
     parentProviderSessionId: text("parent_provider_session_id"),
-    workspaceId: uuid("workspace_id"),
-    expectedWorkspaceRoot: text("expected_workspace_root"),
+    expectedWorkingDirectory: text("expected_working_directory"),
     executionSelection: jsonb("execution_selection").$type<Record<string, unknown> | null>(),
     attachments: jsonb("attachments")
       .$type<Array<Record<string, unknown>>>()
@@ -190,8 +189,8 @@ export const nativeLiveTurnPreparations = pgTable(
       sql`${table.executionSelection} IS NULL OR jsonb_typeof(${table.executionSelection}) = \'object\'`,
     ),
     check(
-      "native_live_turn_preparations_workspace_root_not_blank",
-      sql`${table.expectedWorkspaceRoot} IS NULL OR char_length(btrim(${table.expectedWorkspaceRoot})) > 0`,
+      "native_live_turn_preparations_working_directory_not_blank",
+      sql`${table.expectedWorkingDirectory} IS NULL OR char_length(btrim(${table.expectedWorkingDirectory})) > 0`,
     ),
     check(
       "native_live_turn_preparations_attachments_array",

@@ -36,7 +36,7 @@ struct SidebarEquivalenceChecks {
         var cases = 0
         for width in [300, 280] {
             for dark in [false, true] {
-                for page in [AppPage.workspaces, .diary, .daySpace, .mind, .universe, .chat] {
+                for page in [AppPage.diary, .daySpace, .mind, .universe, .chat] {
                     let baseline = sample(AnyView(BaselineSidebarView(
                         selectedPage: .constant(page), menuButtonCenterY: nil,
                         onNewSession: {}, newSessionEnabled: true, conversations: conversations,
@@ -56,7 +56,7 @@ struct SidebarEquivalenceChecks {
                     ))
                     #endif
                     let current = sample(currentView, scene: scene, width: width, dark: dark)
-                    precondition(baseline.frames.count == 27, "all critical frame anchors must be measured: \(baseline.frames.keys.sorted())")
+                    precondition(baseline.frames.count == 24, "all critical frame anchors must be measured: \(baseline.frames.keys.sorted())")
                     for name in baseline.frames.keys.sorted() {
                         precondition(baseline.frames[name] == current.frames[name],
                             "frame mismatch \(name): baseline=\(String(describing: baseline.frames[name])) current=\(String(describing: current.frames[name]))")
@@ -72,12 +72,12 @@ struct SidebarEquivalenceChecks {
                     precondition(rejected.frames != baseline.frames && pixelDifferences(baseline, rejected).staticPixels > 0,
                         "comparator must reject the former unified-gutter version")
                     cases += 1
-                    print("width=\(width) dark=\(dark) page=\(page.id): 27 exact frames; static pixels=0; system glass pixels=\(differences.glassPixels); rejected gutter detected")
+                    print("width=\(width) dark=\(dark) page=\(page.id): 24 exact frames; static pixels=0; system glass pixels=\(differences.glassPixels); rejected gutter detected")
                     fflush(stdout)
                 }
             }
         }
-        print("Sidebar render equivalence PASS: \(cases) cases / \(cases * 27) exact frame comparisons")
+        print("Sidebar render equivalence PASS: \(cases) cases / \(cases * 24) exact frame comparisons")
         fflush(stdout)
     }
 
