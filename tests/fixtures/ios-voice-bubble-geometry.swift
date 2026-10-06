@@ -23,6 +23,7 @@ import Foundation
   precondition(audio.allSatisfy{$0 >= minimum && $0 <= G.audioMaximumWidth})
   precondition(zip(audio,audio.dropFirst()).allSatisfy{$0 <= $1})
   precondition(audio[0] < audio[1] && audio[1] < audio[2] && audio.last == G.audioMaximumWidth)
+  precondition(audio[1] < audio[2] && audio[2] < audio[4], "3s, 8s, and 30s audio must have distinct widths")
   precondition(audio[0] < 140 && audio[1] < 160, "short audio must reflect the tighter minimum width")
   let fallback=G.audioWidth(duration:0,sizeBytes:nil)
   precondition(fallback > minimum && fallback < G.audioMaximumWidth)
