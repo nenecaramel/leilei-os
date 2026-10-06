@@ -472,3 +472,28 @@ test("an untagged new UUID-less callback cannot be mistaken for a pending same-c
   await store.append(key, [{ type: "tag", tag: "same" }]);
   assert.equal(remote.size, 2);
 });
+
+test("cleanup refuses a restarted session with durable append evidence until replay is acknowledged", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = mkdtempSync(join(tmpdir(), "leilei-cleanup-intent-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  let lost = true, deletes = 0;
+  const fetchImpl: typeof fetch = async (url) => {
+    if (String(url).endsWith("/delete")) deletes += 1;
+    else if (lost) throw new Error("append response lost");
+    return new Response(JSON.stringify({ success: true, data: null }));
+  };
+  const key = { projectKey: "/local", sessionId: "protected", subpath: "subagents/a" };
+  await assert.rejects(new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory).append(key, [{ type: "assistant", uuid: "checkpoint" }]), /lost/u);
+  const restarted = new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory);
+  await assert.rejects(restarted.delete({ ...key, subpath: undefined }), /pending append/u);
+  assert.equal(deletes, 0);
+  await restarted.delete({ ...key, sessionId: "unrelated" });
+  assert.equal(deletes, 1);
+  lost = false;
+  await restarted.recoverPendingAppends();
+  await restarted.delete(key);
+  assert.equal(deletes, 2);
+});

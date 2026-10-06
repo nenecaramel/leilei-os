@@ -186,7 +186,21 @@ export class NativeLiveMacProviderSessionStore {
   }
 
   async delete(key: NativeLiveMacSessionStoreKey): Promise<void> {
-    await this.post("/delete", { key: this.remoteKey(key) });
+    return this.enqueue(async () => {
+      const remoteKey = this.remoteKey(key);
+      const directory = this.scopedReceiptDirectory();
+      const receipts = directory && existsSync(directory)
+        ? readdirSync(directory).filter((name) => /^[a-f0-9]{64}\.json$/u.test(name))
+          .map((name) => this.readReceipt(name.slice(0, -5))!)
+        : [];
+      // Session deletion also removes subkeys. Unacknowledged append evidence
+      // must survive cleanup, including after a process restart.
+      if ([...this.retryAppendBatches.values(), ...receipts]
+        .some((receipt) => receipt.sessionId === remoteKey.session_id)) {
+        throw new Error("Cannot delete provider session with pending append intent.");
+      }
+      await this.post("/delete", { key: remoteKey });
+    });
   }
 
   async getStatus(
