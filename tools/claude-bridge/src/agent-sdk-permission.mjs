@@ -158,6 +158,18 @@ export function projectLeileiPermissionDecisionToSdk(
   };
 }
 
+// Explicitly reviewed pure reads only. Unknown namespace members are untrusted.
+// Do not infer safety from a prefix or from server-supplied annotations.
+const TRUSTED_LEILEIOS_READ_TOOLS = new Set([
+  "get_current_time", "get_health", "global_search",
+  "search_diary", "get_diary", "get_diary_comment", "list_diary_comments",
+  "search_todo", "list_todo_dates", "read_todo_day",
+  "list_universe_galaxies", "list_universe_nodes", "get_universe_node",
+  "get_universe_relations", "get_universe_diary_sources",
+  "search_notion", "read_notion_page", "get_notion_connection",
+  "read_notion_database", "read_notion_data_source",
+].map((name) => `mcp__leileios__${name}`));
+
 const TRUSTED_LOCAL_ALBUM_TOOLS = new Set([
   "mcp__leileios_album__save_photo",
   "mcp__leileios_album__search_photos",
@@ -172,11 +184,8 @@ export function trustedNativeLiveToolPolicy(
     trustedReadPaths = [],
   } = {},
 ) {
-  if (
-    typeof toolName === "string"
-    && toolName.startsWith("mcp__leileios__")
-  ) {
-    return "leileios_all";
+  if (TRUSTED_LEILEIOS_READ_TOOLS.has(toolName)) {
+    return "leileios_read";
   }
 
   if (toolName === "mcp__leileios_memes__send_meme") {

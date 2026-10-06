@@ -325,11 +325,11 @@ test("trusted LeileiOS and local Native Live tools bypass interactive permission
   const trusted = [
     [
       "mcp__leileios__get_current_time",
-      "leileios_all",
+      "leileios_read",
     ],
     [
-      "mcp__leileios__append_todo_entry",
-      "leileios_all",
+      "mcp__leileios__read_todo_day",
+      "leileios_read",
     ],
     [
       "mcp__leileios_album__save_photo",
@@ -481,4 +481,37 @@ test("only the local send_meme tool bypasses interactive permission",async()=>{
   assert.deepEqual(await callback("mcp__leileios_memes__send_meme",{},{}),{behavior:"allow"});assert.equal(calls,0);
   for(const name of ["mcp__leileios_memes__search_memes","mcp__leileios_memes__fetch_url","mcp__leileios_memes__github"]){assert.equal(trustedNativeLiveToolPolicy(name),null);assert.equal((await callback(name,{},{})).behavior,"deny");}
   assert.equal(calls,3);
+});
+
+test("LeileiOS mutations, destructive and unknown tools always enter the permission handler", async () => {
+  const requests = [];
+  const callback = createAgentSdkPermissionCallback({ permissionHandler: async (request) => {
+    requests.push(request);
+    return { decision: "deny", message: "approval required", interrupt: false };
+  } });
+  for (const name of [
+    "create_diary", "write_diary", "update_diary", "append_todo_entries", "append_todo_entry", "write_todo_paper", "update_todo_entries", "delete_todo_entries",
+    "create_universe_node", "update_universe_node", "delete_universe_node", "create_universe_relation", "delete_universe_relation",
+    "delete_universe_diary_source", "write_notion_page", "unknown_read_tool", "get_current_time_and_delete_everything",
+  ]) {
+    const toolName = `mcp__leileios__${name}`;
+    assert.equal(trustedNativeLiveToolPolicy(toolName), null, toolName);
+    assert.equal(isTrustedLeileiosTool(toolName), false, toolName);
+    const count = requests.length;
+    assert.deepEqual(await callback(toolName, { value: "unchanged" }, {}), { behavior: "deny", message: "approval required", interrupt: false });
+    assert.equal(requests.length, count + 1);
+    assert.equal(requests.at(-1).toolName, toolName);
+    assert.deepEqual(requests.at(-1).input, { value: "unchanged" });
+  }
+});
+
+
+test("explicit LeileiOS read allowlist contains only registered pure reads", async () => {
+  let calls = 0;
+  const callback = createAgentSdkPermissionCallback({ permissionHandler: async () => { calls += 1; throw new Error("read should not ask"); } });
+  for (const name of ["get_current_time", "get_health", "global_search", "search_diary", "get_diary", "get_diary_comment", "list_diary_comments", "search_todo", "list_todo_dates", "read_todo_day", "list_universe_galaxies", "list_universe_nodes", "get_universe_node", "get_universe_relations", "get_universe_diary_sources", "search_notion", "read_notion_page", "get_notion_connection", "read_notion_database", "read_notion_data_source"]) {
+    assert.equal(trustedNativeLiveToolPolicy(`mcp__leileios__${name}`), "leileios_read");
+    assert.deepEqual(await callback(`mcp__leileios__${name}`, {}, {}), { behavior: "allow" });
+  }
+  assert.equal(calls, 0);
 });
