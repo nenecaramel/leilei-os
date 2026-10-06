@@ -3,8 +3,6 @@ import {
   NativeLiveMacMemeSender,
 } from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
 import "dotenv/config";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import {
   NativeLiveMacDaemonLoop,
 } from "../src/domains/bridge/mac/native-live-mac-daemon-loop.js";
@@ -31,6 +29,7 @@ import {
 } from "../src/domains/bridge/mac/native-live-mac-working-directory-runtime.js";
 import {
   NativeLiveMacProviderSessionStore,
+  NATIVE_LIVE_MAC_APPEND_RECEIPT_DIRECTORY,
 } from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
 import {
   NativeLiveMacCompanionScheduler,
@@ -115,7 +114,7 @@ const providerSessionStore = new NativeLiveMacProviderSessionStore(
   relayBaseUrl,
   relayToken,
   undefined,
-  join(homedir(), ".leileios", "session-store-append-receipts"),
+  NATIVE_LIVE_MAC_APPEND_RECEIPT_DIRECTORY,
 );
 const workingDirectoryRuntimePool =
   new NativeLiveMacWorkingDirectoryRuntimePool(

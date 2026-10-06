@@ -1,7 +1,11 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 type FetchLike = typeof fetch;
+
+export const NATIVE_LIVE_MAC_APPEND_RECEIPT_DIRECTORY =
+  join(homedir(), ".leileios", "session-store-append-receipts");
 
 export type NativeLiveMacSessionStoreKey = {
   projectKey: string;
