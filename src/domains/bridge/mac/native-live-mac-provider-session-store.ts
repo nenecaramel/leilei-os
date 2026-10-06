@@ -1,5 +1,11 @@
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 type FetchLike = typeof fetch;
+
+export const NATIVE_LIVE_MAC_APPEND_RECEIPT_DIRECTORY =
+  join(homedir(), ".leileios", "session-store-append-receipts");
 
 export type NativeLiveMacSessionStoreKey = {
   projectKey: string;
@@ -10,17 +16,28 @@ export type NativeLiveMacSessionStoreKey = {
 export type NativeLiveMacSessionStoreEntry =
   Record<string, unknown> & { type: string };
 
+type AppendReceipt = {
+  batchIds: string[];
+  sessionId: string;
+  key: { session_id: string; subpath?: string };
+  entries: NativeLiveMacSessionStoreEntry[];
+  logicalAppendId?: string;
+  order: number;
+};
+
 export class NativeLiveMacProviderSessionStore {
   private readonly baseUrl: string;
+  private operationTail: Promise<void> = Promise.resolve();
   private readonly retryAppendBatches = new Map<
     string,
-    { batchIds: string[]; sessionId: string }
+    AppendReceipt
   >();
 
   constructor(
     baseUrl: string,
     private readonly token: string,
     private readonly fetchImpl: FetchLike = fetch,
+    private readonly receiptDirectory: string | null = null,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/u, "");
     if (!this.baseUrl) {
@@ -31,23 +48,48 @@ export class NativeLiveMacProviderSessionStore {
     }
   }
 
-  async append(
+  append(key: NativeLiveMacSessionStoreKey, entries: NativeLiveMacSessionStoreEntry[], logicalAppendId?: string): Promise<void> {
+    return this.enqueue(() => this.appendOrdered(key, entries, logicalAppendId));
+  }
+
+  private async appendOrdered(
     key: NativeLiveMacSessionStoreKey,
     entries: NativeLiveMacSessionStoreEntry[],
+    logicalAppendId?: string,
   ): Promise<void> {
     if (entries.length === 0) return;
+    if (logicalAppendId !== undefined && (!logicalAppendId.trim() || logicalAppendId.length > 256)) {
+      throw new Error("SessionStore logical append id is invalid.");
+    }
     const remoteKey = this.remoteKey(key);
     const chunks = chunkAppendEntries(entries);
-    const signature = appendSignature(remoteKey, entries);
-    const pending = this.retryAppendBatches.get(signature);
+    const signature = appendSignature(remoteKey, entries, logicalAppendId);
+    const stableIntent = Boolean(logicalAppendId) || entries.every((entry) => typeof entry.uuid === "string" && entry.uuid.trim());
+    const inProcess = this.retryAppendBatches.get(signature);
+    const recovered = inProcess ? undefined : this.readReceipt(signature);
+    if (this.receiptDirectory && (inProcess || recovered) && !stableIntent) {
+      // The SDK supplies no operation identity for UUID-less markers. Reusing a
+      // content-matched receipt could swallow a genuinely new identical append.
+      throw new Error("Ambiguous UUID-less append recovery requires a logicalAppendId.");
+    }
+    const pending = inProcess ?? recovered;
     const receipt =
       pending
       ?? {
-        batchIds: chunks.map(() => randomUUID()),
+        batchIds: chunks.map((_, index) => stableIntent ? stableAppendBatchId(signature, index) : randomUUID()),
         sessionId: remoteKey.session_id,
+        key: remoteKey,
+        entries,
+        ...(logicalAppendId ? { logicalAppendId } : {}),
+        order: this.nextReceiptOrder(),
       };
-    if (!pending) {
-      this.retryAppendBatches.set(signature, receipt);
+    if (!pending) this.writeReceipt(signature, receipt);
+    this.retryAppendBatches.set(signature, receipt);
+    if (this.receiptDirectory) {
+      // Persist this intent first, then replay all pending intents in original
+      // order. A later append cannot overtake an earlier failed chunk.
+      await this.recoverPendingAppendsOrdered();
+      return;
     }
 
     for (let index = 0; index < chunks.length; index += 1) {
@@ -59,11 +101,36 @@ export class NativeLiveMacProviderSessionStore {
     }
 
     if (this.retryAppendBatches.get(signature) === receipt) {
+      this.removeReceipt(signature);
+      this.retryAppendBatches.delete(signature);
+    }
+  }
+
+  /** Replay saved operations, never infer retry identity from a new callback. */
+  recoverPendingAppends(): Promise<void> {
+    return this.enqueue(() => this.recoverPendingAppendsOrdered());
+  }
+
+  private async recoverPendingAppendsOrdered(): Promise<void> {
+    const directory = this.scopedReceiptDirectory();
+    if (!directory || !existsSync(directory)) return;
+    const pending = readdirSync(directory).filter((name) => /^[a-f0-9]{64}\.json$/u.test(name))
+      .map((name) => ({ signature: name.slice(0, -5), receipt: this.readReceipt(name.slice(0, -5))! }))
+      .sort((a, b) => a.receipt.order - b.receipt.order);
+    for (const { signature, receipt } of pending) {
+      const chunks = chunkAppendEntries(receipt.entries);
+      if (chunks.length !== receipt.batchIds.length) throw new Error("Durable append chunk boundary mismatch.");
+      for (let index = 0; index < chunks.length; index += 1) {
+        await this.post("/append", { key: receipt.key, append_batch_id: receipt.batchIds[index], entries: chunks[index] });
+      }
+      this.removeReceipt(signature);
       this.retryAppendBatches.delete(signature);
     }
   }
 
   discardPendingAppends(sessionId: string): void {
+    // SDK mirror_error proves neither rollback nor non-commit. Durable receipts
+    // must survive it; a later exact retry still needs the original chunk IDs.
     const normalized = normalizeSessionId(sessionId);
     for (const [signature, pending] of this.retryAppendBatches) {
       if (pending.sessionId === normalized) {
@@ -119,7 +186,21 @@ export class NativeLiveMacProviderSessionStore {
   }
 
   async delete(key: NativeLiveMacSessionStoreKey): Promise<void> {
-    await this.post("/delete", { key: this.remoteKey(key) });
+    return this.enqueue(async () => {
+      const remoteKey = this.remoteKey(key);
+      const directory = this.scopedReceiptDirectory();
+      const receipts = directory && existsSync(directory)
+        ? readdirSync(directory).filter((name) => /^[a-f0-9]{64}\.json$/u.test(name))
+          .map((name) => this.readReceipt(name.slice(0, -5))!)
+        : [];
+      // Session deletion also removes subkeys. Unacknowledged append evidence
+      // must survive cleanup, including after a process restart.
+      if ([...this.retryAppendBatches.values(), ...receipts]
+        .some((receipt) => receipt.sessionId === remoteKey.session_id)) {
+        throw new Error("Cannot delete provider session with pending append intent.");
+      }
+      await this.post("/delete", { key: remoteKey });
+    });
   }
 
   async getStatus(
@@ -161,6 +242,65 @@ export class NativeLiveMacProviderSessionStore {
       throw new Error("Native Live session store subkeys response is invalid.");
     }
     return data.subkeys as string[];
+  }
+
+  private enqueue(operation: () => Promise<void>): Promise<void> {
+    const result = this.operationTail.then(operation);
+    this.operationTail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  private nextReceiptOrder(): number {
+    const directory = this.scopedReceiptDirectory();
+    if (!directory || !existsSync(directory)) return 1;
+    const orders = readdirSync(directory).filter((name) => /^[a-f0-9]{64}\.json$/u.test(name))
+      .map((name) => this.readReceipt(name.slice(0, -5))!.order);
+    return Math.max(0, ...orders) + 1;
+  }
+
+  private scopedReceiptDirectory(): string | null {
+    if (!this.receiptDirectory) return null;
+    const scope = createHash("sha256").update(JSON.stringify([this.baseUrl, this.token])).digest("hex");
+    return join(this.receiptDirectory, scope);
+  }
+
+  private receiptPath(signature: string): string | null {
+    const directory = this.scopedReceiptDirectory();
+    return directory ? join(directory, `${signature}.json`) : null;
+  }
+
+  private readReceipt(signature: string): AppendReceipt | undefined {
+    const path = this.receiptPath(signature);
+    if (!path || !existsSync(path)) return undefined;
+    const receipt = JSON.parse(readFileSync(path, "utf8"));
+    if (!Array.isArray(receipt.batchIds) || receipt.batchIds.some((id: unknown) => typeof id !== "string" || !/^[a-f0-9-]{36}$/u.test(id)) || typeof receipt.sessionId !== "string" || receipt.key?.session_id !== receipt.sessionId || !Array.isArray(receipt.entries) || !Number.isSafeInteger(receipt.order) || receipt.order < 1 || appendSignature(receipt.key, receipt.entries, receipt.logicalAppendId) !== signature) {
+      throw new Error("Invalid durable SessionStore append receipt.");
+    }
+    return receipt;
+  }
+
+  private writeReceipt(signature: string, receipt: AppendReceipt): void {
+    const path = this.receiptPath(signature);
+    if (!path) return;
+    const directory = join(path, "..");
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    const fd = openSync(temporary, "wx", 0o600);
+    try { writeFileSync(fd, JSON.stringify(receipt)); fsyncSync(fd); } finally { closeSync(fd); }
+    renameSync(temporary, path);
+    this.syncReceiptDirectory(directory);
+  }
+
+  private removeReceipt(signature: string): void {
+    const path = this.receiptPath(signature);
+    if (!path) return;
+    unlinkSync(path);
+    this.syncReceiptDirectory(join(path, ".."));
+  }
+
+  private syncReceiptDirectory(directory: string): void {
+    const fd = openSync(directory, "r");
+    try { fsyncSync(fd); } finally { closeSync(fd); }
   }
 
   private async markStatus(
@@ -286,8 +426,32 @@ function chunkAppendEntries(
 function appendSignature(
   key: { session_id: string; subpath?: string },
   entries: NativeLiveMacSessionStoreEntry[],
+  logicalAppendId?: string,
 ): string {
   return createHash("sha256")
-    .update(JSON.stringify({ key, entries }))
+    .update(stableJson({ key, entries, ...(logicalAppendId ? { logicalAppendId } : {}) }))
     .digest("hex");
+}
+
+
+// A stable SDK UUID (or explicit caller intent) names a logical append, so ACK
+// delivery and even receipt cleanup cannot change its server idempotency keys.
+function stableAppendBatchId(signature: string, index: number): string {
+  const hex = createHash("sha256").update(JSON.stringify(["native-live-append-v1", signature, index])).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+
+function stableJson(value: unknown): string {
+  // Postgres JSONB/SDK reload may reorder object keys without changing an entry.
+  const normalized = JSON.parse(JSON.stringify(value));
+  const sort = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(sort);
+    if (item && typeof item === "object") {
+      const record = item as Record<string, unknown>;
+      return Object.fromEntries(Object.keys(record).sort().map((key) => [key, sort(record[key])]));
+    }
+    return item;
+  };
+  return JSON.stringify(sort(normalized));
 }
