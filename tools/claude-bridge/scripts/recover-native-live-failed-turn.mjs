@@ -66,15 +66,38 @@ async function main(argv = process.argv.slice(2)) {
   );
 
   const capture = new CaptureSessionStore();
-  await importSessionToStore(
-    sessionId,
-    capture,
-    {
-      dir: workingDirectory,
-      includeSubagents: true,
-      batchSize: 500,
-    },
-  );
+  let localSessionScope = workingDirectory;
+  try {
+    await importSessionToStore(
+      sessionId,
+      capture,
+      {
+        dir: workingDirectory,
+        includeSubagents: true,
+        batchSize: 500,
+      },
+    );
+  } catch (scopedCause) {
+    if (
+      !String(
+        scopedCause instanceof Error
+          ? scopedCause.message
+          : scopedCause,
+      ).includes("Session " + sessionId + " not found")
+    ) {
+      throw scopedCause;
+    }
+    await capture.clear();
+    await importSessionToStore(
+      sessionId,
+      capture,
+      {
+        includeSubagents: true,
+        batchSize: 500,
+      },
+    );
+    localSessionScope = "all_project_directories";
+  }
 
   const sessionKey = {
     projectKey: workingDirectory,
@@ -106,6 +129,7 @@ async function main(argv = process.argv.slice(2)) {
       subkeyCount: (
         await capture.listSubkeys(sessionKey)
       ).length,
+      localSessionScope,
     }) + "\n",
   );
 
@@ -173,6 +197,10 @@ class InternalClient {
 class CaptureSessionStore {
   constructor() {
     this.entries = new Map();
+  }
+
+  async clear() {
+    this.entries.clear();
   }
 
   async append(key, entries) {
