@@ -497,11 +497,28 @@ export function createProcessRuntime(
     memoryDecayConfig,
   );
   const nativeLiveSilenceWakeService =
-    new NativeLiveSilenceWakeService(
-      db,
-      () => new Date(),
-      nativeLiveWorkWakePublisher,
-    );
+    runtimeEnv.NATIVE_LIVE_SILENCE_WAKE_ENABLED === false
+      ? {
+          async readSchedule(_input: { userId: string }) {
+            return null;
+          },
+          async fire(_input: {
+            userId: string;
+            epochId: string;
+            slot: "post_turn_idle" | "long_idle";
+          }) {
+            return {
+              outcome: "ignored" as const,
+              reason: "source_changed" as const,
+              schedule: null,
+            };
+          },
+        }
+      : new NativeLiveSilenceWakeService(
+          db,
+          () => new Date(),
+          nativeLiveWorkWakePublisher,
+        );
   const nativeLiveTurnWaitService =
     new NativeLiveTurnWaitService(
       nativeLiveTurnPort,
