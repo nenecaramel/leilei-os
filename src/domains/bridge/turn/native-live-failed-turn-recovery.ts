@@ -44,6 +44,9 @@ export type NativeLiveFailedTurnRecoveryInspection = {
   operation: "edit";
   providerSessionId: string;
   expectedWorkingDirectory: string | null;
+  runtimeMode: "fork";
+  parentProviderSessionId: string;
+  parentProviderCheckpointId: string;
   failureCode: "RUNTIME_UNAVAILABLE";
   eventCount: number;
   recoverable: boolean;
@@ -77,6 +80,9 @@ export class NativeLiveFailedTurnRecoveryService {
       operation: "edit",
       providerSessionId: snapshot.providerSessionId,
       expectedWorkingDirectory: snapshot.expectedWorkingDirectory,
+      runtimeMode: snapshot.runtimeMode,
+      parentProviderSessionId: snapshot.parentProviderSessionId,
+      parentProviderCheckpointId: snapshot.parentProviderCheckpointId,
       failureCode: "RUNTIME_UNAVAILABLE",
       eventCount: snapshot.events.length,
       recoverable: snapshot.recoverable,
@@ -226,6 +232,9 @@ export class NativeLiveFailedTurnRecoveryService {
     conversationId: string;
     userMessageId: string;
     expectedWorkingDirectory: string | null;
+    runtimeMode: "fork";
+    parentProviderSessionId: string;
+    parentProviderCheckpointId: string;
     providerSessionId: string;
     finalText: string;
     events: NativeLiveNormalizedEvent[];
@@ -239,6 +248,11 @@ export class NativeLiveFailedTurnRecoveryService {
           nativeLiveTurnPreparations.canonicalUserMessageId,
         expectedWorkingDirectory:
           nativeLiveTurnPreparations.expectedWorkingDirectory,
+        runtimeMode: nativeLiveTurnPreparations.runtimeMode,
+        parentProviderSessionId:
+          nativeLiveTurnPreparations.parentProviderSessionId,
+        parentProviderCheckpointId:
+          nativeLiveTurnPreparations.parentProviderCheckpointId,
         status: nativeLiveTurnPreparations.status,
         operation: nativeLiveTurnPreparations.operation,
         failureCode: nativeLiveTurnPreparations.failureCode,
@@ -261,6 +275,9 @@ export class NativeLiveFailedTurnRecoveryService {
     if (
       row.status !== "finalized_failure"
       || row.operation !== "edit"
+      || row.runtimeMode !== "fork"
+      || !row.parentProviderSessionId
+      || !row.parentProviderCheckpointId
       || row.failureCode !== "RUNTIME_UNAVAILABLE"
     ) {
       throw new NativeLiveFailedTurnRecoveryError(
@@ -318,6 +335,9 @@ export class NativeLiveFailedTurnRecoveryService {
       conversationId: row.conversationId,
       userMessageId: row.canonicalUserMessageId,
       expectedWorkingDirectory: row.expectedWorkingDirectory,
+      runtimeMode: "fork",
+      parentProviderSessionId: row.parentProviderSessionId,
+      parentProviderCheckpointId: row.parentProviderCheckpointId,
       providerSessionId,
       finalText,
       events,
