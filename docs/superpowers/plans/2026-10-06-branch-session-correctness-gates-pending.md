@@ -1,16 +1,51 @@
-# PR #908 additional correctness gates — pending live verification
+# PR #908 additional correctness gates — verification ledger
 
 Initial PR head was `f8339c69772eab13b3c9ee1af496f7c6b6d1bd57`. The user later
 authorized pushing candidate `dabda76d`, which is now on #908. Do not merge or deploy.
 SDK remains exactly `@anthropic-ai/claude-agent-sdk@0.3.286`.
 
-**Latest local-only follow-up:** zero Claude live calls; opt-in live switches forced
-off. Production-query compact historical fork remains **UNVERIFIED**, as explicitly
-requested. Node 22 local bridge 155/155 (4 live skips), runtime gate 539/539,
-isolated DB 66/66 (including six branch cases) plus branch/bootstrap 7/7, relay regressions 10/10, typecheck/build
-and diff check PASS. The DB-discovered v4 dispatch/cleanup alias regressions were
-reproduced RED and corrected without changing production config or weakening
-shared-session protection. The older attempts below are historical records.
+## Authorized single-path live verification — 2026-10-06
+
+**PASS** on tested PR head `983e716b7335d9941d215f3eb9cdb7d33d8d9201`,
+installed SDK **0.3.286**. Exactly **one live test path / five query() calls**:
+new turn 1, exact resume turn 2, real `/compact` from cp2, production historical
+query fork from pre-compact cp1, then normal exact resume B. No retries, additional
+forks/compacts, delivery-unknown case, same-U rerun or SDK comparison/upgrade.
+
+- A: `740e6981-8206-464c-8943-367dcaf54030`.
+- B: `531c73ba-fd1e-4fa6-971b-c43fc8598b53`; B != A.
+- Turn 2 and compact kept A. Real compact boundary and a new persisted valid
+  compact checkpoint were required and found; cp1 remained persisted.
+- Fork directly used production `AgentSdkClaudeTransport.executeTurn()` with
+  `query({ options: { resume: A, resumeSessionAt: cp1, forkSession: true } })`
+  and the candidate query-local canonical-prefix SessionStore view. No exported
+  `forkSession()` helper. The inherited user/assistant UUID prefix through cp1
+  matched exactly; turn-2 marker, later UUIDs and compact boundary were absent B.
+- Source A's complete raw SessionStore entries and local provider message readback
+  matched their pre-fork snapshots after both fork and B resume.
+- Normal B resume returned B; its SessionStore finished complete.
+- Test result: **1 pass / 0 fail**, 28.209 seconds, **5 query calls**. No transcript
+ content, credentials or prompts containing user data are included here.
+
+```sh
+RUN_SDK_BRANCH_CORRECTNESS_LIVE=1 node --test --test-concurrency=1 \
+  --test-name-pattern='^live production query historical fork after compact is isolated and resumes B$' \
+  tools/claude-bridge/test/sdk-live-branch-correctness.test.mjs
+```
+
+The selected case enforces a maximum of five query calls; fixture SDK retries are
+set to zero (`CLAUDE_CODE_MAX_RETRIES=0`). Other live cases were not executed.
+Only this live-test scope and verification documents changed in this follow-up;
+no production source, SDK dependency, database/config or deployment changed.
+Task-owned temporary sessions were removed by fixture cleanup without more queries.
+PR remains **Draft**; no merge or deploy is authorized.
+
+## Previous local-only follow-up
+
+The earlier local-only follow-up made zero live calls and left this gate
+UNVERIFIED. Its local evidence remains recorded below; the authorized single-path
+PASS above supersedes only the historical-fork pending status. Older failures and
+quota-blocked attempts are retained as history, not current results.
 
 ## Added opt-in real SDK cases
 
@@ -24,10 +59,10 @@ SessionStore are substituted. SDK responses and transcript writes are not mocked
   parent checkpoint and resend U. Assertions require a single successful turn,
   matching U, an acyclic persisted checkpoint chain containing U once, unchanged
   provider identity, and durable SessionStore completion.
-- Actual production fork path: new A, resume A, real compact A, append a later
-  marker, then use query resume/resumeSessionAt/forkSession for both pre-compact
-  and post-compact checkpoints. Assert new branch identity, excluded later
-  markers, unchanged source transcript and subsequent same-ID branch resume.
+- Current bounded production fork path: new A, resume A, real compact A, then
+  query resume/resumeSessionAt/forkSession at pre-compact cp1, followed by resume B.
+  Exactly five calls; no extra post-compact turn or second fork. The earlier
+  expanded case below is a historical record only.
 - Delivery unknown: complete a real provider U without canonical finalize, then
   resend U from the same parent. Assert the correct U/answer occurs once on the
   returned checkpoint chain and U descends directly from the canonical parent.

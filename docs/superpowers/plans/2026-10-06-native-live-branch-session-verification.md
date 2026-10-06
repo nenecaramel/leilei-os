@@ -3,17 +3,47 @@
 Base: `origin/main@7be4401ac6d10d26fc97c9a37a44e9b3c740227c`.
 Branch: `feat/native-live-branch-session-resume`. PR: #908 (Draft).
 
-## Current approval state
+## Authorized single-path live verification — 2026-10-06
 
-The candidate `dabda76d` was pushed to #908 by explicit user authorization. PR
-remains **Draft**, unmerged and undeployed. The **production-query compact
-historical fork live gate remains UNVERIFIED**. Earlier exported-fork evidence
-below does not pass that gate. Same-canonical-U interrupted exact resume passed
-on 0.3.286 before the user's live-test stop; it has not been rerun.
+**PASS** on tested PR head `983e716b7335d9941d215f3eb9cdb7d33d8d9201`,
+installed SDK **0.3.286**. Exactly **one live test path / five query() calls**:
+new turn 1, exact resume turn 2, real `/compact` from cp2, production historical
+query fork from pre-compact cp1, then normal exact resume B. No retries, additional
+forks/compacts, delivery-unknown case, same-U rerun or SDK comparison/upgrade.
 
-The current follow-up is strictly local: both `RUN_SDK_BRANCH_CHECKPOINT_LIVE`
-and `RUN_SDK_BRANCH_CORRECTNESS_LIVE` were forced to `0`. **No Claude live calls**
-were made in this follow-up. SDK stays **0.3.286**.
+- A: `740e6981-8206-464c-8943-367dcaf54030`.
+- B: `531c73ba-fd1e-4fa6-971b-c43fc8598b53`; B != A.
+- Turn 2 and compact kept A. Real compact boundary and a new persisted valid
+  compact checkpoint were required and found; cp1 remained persisted.
+- Fork directly used production `AgentSdkClaudeTransport.executeTurn()` with
+  `query({ options: { resume: A, resumeSessionAt: cp1, forkSession: true } })`
+  and the candidate query-local canonical-prefix SessionStore view. No exported
+  `forkSession()` helper. The inherited user/assistant UUID prefix through cp1
+  matched exactly; turn-2 marker, later UUIDs and compact boundary were absent B.
+- Source A's complete raw SessionStore entries and local provider message readback
+  matched their pre-fork snapshots after both fork and B resume.
+- Normal B resume returned B; its SessionStore finished complete.
+- Test result: **1 pass / 0 fail**, 28.209 seconds, **5 query calls**. No transcript
+ content, credentials or prompts containing user data are included here.
+
+```sh
+RUN_SDK_BRANCH_CORRECTNESS_LIVE=1 node --test --test-concurrency=1 \
+  --test-name-pattern='^live production query historical fork after compact is isolated and resumes B$' \
+  tools/claude-bridge/test/sdk-live-branch-correctness.test.mjs
+```
+
+The selected case enforces a maximum of five query calls; fixture SDK retries are
+set to zero (`CLAUDE_CODE_MAX_RETRIES=0`). Other live cases were not executed.
+Only this live-test scope and verification documents changed in this follow-up;
+no production source, SDK dependency, database/config or deployment changed.
+Task-owned temporary sessions were removed by fixture cleanup without more queries.
+PR remains **Draft**; no merge or deploy is authorized.
+
+## Previous local-only follow-up (historical evidence)
+
+Candidate `dabda76d` was pushed by explicit authorization. That earlier follow-up
+made zero Claude live calls; the gate was then UNVERIFIED. The single-path evidence
+above supersedes that pending status. Same-U interrupted resume was not rerun.
 
 Fresh Node 22.23.3 results: bridge **155 pass / 0 fail / 4 opt-in live skips**;
 runtime gate **539 pass / 0 fail**; isolated Postgres regression **66 pass / 0 fail** (now includes the six branch-session cases);
@@ -36,8 +66,8 @@ same isolated gate flags and file list. No canonical dependencies were reinstall
 
 See [the detailed additional-gate ledger](2026-10-06-branch-session-correctness-gates-pending.md)
 for the prior genuine fork RED, candidate mitigation, interrupted-U evidence and
-quota-blocked live attempt. Do not merge until the remaining gate is independently
-approved; this local follow-up does not substitute for it.
+quota-blocked live attempt. Those older attempts remain historical records; the
+single authorized path above supplies the final gate evidence. Do not merge or deploy.
 
 
 ### Final local canonical delta (Node 22.23.3)

@@ -8,7 +8,7 @@ import { query, InMemorySessionStore, deleteSession, getSessionMessages } from '
 import { AgentSdkClaudeTransport } from '../src/agent-sdk-claude-transport.mjs';
 
 const live = { skip: process.env.RUN_SDK_BRANCH_CORRECTNESS_LIVE !== '1', timeout: 360000 };
-async function fixture() {
+async function fixture({ maxQueries = Infinity } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'leilei-branch-correctness-'));
   const memory = new InMemorySessionStore(), states = new Map(), owned = new Set(), calls = [];
   const key = k => ({ ...k, projectKey: dir });
@@ -29,11 +29,12 @@ async function fixture() {
   };
   const transport = new AgentSdkClaudeTransport({ cwd: dir, environment: process.env, sessionStore: store,
     queryImpl(input) {
+      assert.ok(calls.length < maxQueries, 'Authorized live query budget exceeded');
       calls.push({ resume: input.options.resume, resumeSessionAt: input.options.resumeSessionAt, forkSession: input.options.forkSession });
       return query({ ...input, options: { ...input.options, cwd: dir, settingSources: [], tools: [],
         systemPrompt: 'You are a test assistant. Follow the prompt and reply briefly.', model: 'sonnet',
         effort: 'low', thinking: { type: 'disabled' }, maxTurns: 1, maxBudgetUsd: 10,
-        sessionStoreFlush: 'eager', env: { ...process.env, DISABLE_AUTO_COMPACT: '1' } } });
+        sessionStoreFlush: 'eager', env: { ...process.env, DISABLE_AUTO_COMPACT: '1', CLAUDE_CODE_MAX_RETRIES: '0' } } });
     } });
   const run = async (prompt, parent = null, mode = 'resume', uuid = randomUUID()) => {
     const timer = setTimeout(() => transport.abort(), 90000);
@@ -146,41 +147,64 @@ test('live same canonical user UUID delivery-unknown recovery returns one correc
   } finally { await f.cleanup(); }
 });
 
-test('live production query fork is exact before and after compact and resumes the new branch', live, async () => {
-  const f = await fixture();
+test('live production query historical fork after compact is isolated and resumes B', live, async () => {
+  const f = await fixture({ maxQueries: 5 });
+  let step = 'turn1', a = null, b = null;
+  const deadline = setTimeout(() => f.transport.abort(), 300000);
   try {
     const first = await f.run('Reply only FIRST_KEEP_MARKER.');
+    a = first.providerSessionId;
+    const firstRows = await f.entries(a);
+    const cp1Index = firstRows.findIndex(e => e.uuid === first.providerCheckpointId);
+    assert.ok(cp1Index >= 0);
+    const historicalIds = firstRows.slice(0, cp1Index + 1)
+      .filter(e => e.type === 'user' || e.type === 'assistant').map(e => e.uuid);
+    step = 'turn2';
     const second = await f.run('Reply only PRE_COMPACT_FUTURE_MARKER.', first);
-    assert.equal(second.providerSessionId, first.providerSessionId);
-    const compact = await f.transport.compact(second.providerSessionId, null, second.providerCheckpointId);
-    assert.equal(compact.providerSessionId, first.providerSessionId);
-    const compactRows = await f.entries(first.providerSessionId);
-    assert.ok(compactRows.some(e => e.type === 'system' && e.subtype === 'compact_boundary'), 'Require a real compact');
-    assert.ok(compactRows.some(e => e.uuid === first.providerCheckpointId), 'Historical checkpoint must remain persisted');
-    const tail = await f.run('Reply only POST_COMPACT_FUTURE_MARKER.', compact);
-    assert.equal(tail.providerSessionId, first.providerSessionId);
-    const source = JSON.stringify(await f.entries(first.providerSessionId));
-    const localSource = await getSessionMessages(first.providerSessionId, { dir: f.dir, limit: 500 });
-    for (const checkpoint of [first, compact]) {
-      const fork = await f.run('Reply only FORK_OK.', checkpoint, 'fork');
-      assert.notEqual(fork.providerSessionId, first.providerSessionId);
-      const call = f.calls.at(-1);
-      assert.deepEqual(call, { resume: first.providerSessionId, resumeSessionAt: checkpoint.providerCheckpointId, forkSession: true });
-      const raw = JSON.stringify(await f.entries(fork.providerSessionId));
-      assert.equal(raw.includes('POST_COMPACT_FUTURE_MARKER'), false);
-      if (checkpoint === first) {
-        assert.ok(raw.includes('FIRST_KEEP_MARKER'));
-        assert.equal(raw.includes('PRE_COMPACT_FUTURE_MARKER'), false);
-      } else {
-        assert.ok(raw.includes('compact_boundary'), 'Post-compact fork retains the compact boundary');
-      }
-      assert.equal(JSON.stringify(await f.entries(first.providerSessionId)), source, 'Fork must not mutate A');
-      assert.deepEqual(await getSessionMessages(first.providerSessionId, { dir: f.dir, limit: 500 }),
-        localSource, 'Fork must not alter the source local provider messages either');
-      const resumed = await f.run('Reply only BRANCH_RESUME_OK.', fork);
-      assert.equal(resumed.providerSessionId, fork.providerSessionId);
-      assert.equal(await f.store.getStatus(resumed.providerSessionId), 'complete');
-    }
-    console.info('LIVE production query pre/post compact forks PASS');
-  } finally { await f.cleanup(); }
+    assert.equal(second.providerSessionId, a);
+    assert.notEqual(second.providerCheckpointId, first.providerCheckpointId);
+    step = 'compact';
+    const compact = await f.transport.compact(a, null, second.providerCheckpointId);
+    assert.equal(compact.providerSessionId, a);
+    assert.ok(compact.providerCheckpointId);
+    assert.notEqual(compact.providerCheckpointId, second.providerCheckpointId);
+    const compactRows = await f.entries(a);
+    assert.ok(compactRows.some(e => e.type === 'system' && e.subtype === 'compact_boundary'));
+    assert.ok(compactRows.some(e => e.uuid === compact.providerCheckpointId));
+    assert.ok(compactRows.some(e => e.uuid === first.providerCheckpointId));
+    const source = JSON.stringify(compactRows);
+    const localSource = await getSessionMessages(a, { dir: f.dir, limit: 500 });
+    const excludedIds = new Set(compactRows.filter(e =>
+      !firstRows.some(old => old.uuid && old.uuid === e.uuid)).map(e => e.uuid).filter(Boolean));
+    step = 'historical-fork';
+    const fork = await f.run('Reply only FORK_OK.', first, 'fork');
+    b = fork.providerSessionId;
+    assert.notEqual(b, a);
+    assert.deepEqual(f.calls.at(-1), { resume: a, resumeSessionAt: first.providerCheckpointId, forkSession: true });
+    const forkRows = await f.entries(b);
+    const forkCp1Index = forkRows.findIndex(e => e.uuid === first.providerCheckpointId);
+    assert.ok(forkCp1Index >= 0);
+    assert.deepEqual(forkRows.slice(0, forkCp1Index + 1)
+      .filter(e => e.type === 'user' || e.type === 'assistant').map(e => e.uuid), historicalIds);
+    assert.equal(forkRows.some(e => excludedIds.has(e.uuid)), false);
+    assert.equal(JSON.stringify(forkRows).includes('PRE_COMPACT_FUTURE_MARKER'), false);
+    assert.equal(forkRows.some(e => e.type === 'system' && e.subtype === 'compact_boundary'), false);
+    assert.equal(JSON.stringify(await f.entries(a)), source);
+    assert.deepEqual(await getSessionMessages(a, { dir: f.dir, limit: 500 }), localSource);
+    step = 'resume-B';
+    const resumed = await f.run('Reply only BRANCH_RESUME_OK.', fork);
+    assert.equal(resumed.providerSessionId, b);
+    assert.equal(await f.store.getStatus(b), 'complete');
+    assert.equal(JSON.stringify(await f.entries(a)), source);
+    assert.deepEqual(await getSessionMessages(a, { dir: f.dir, limit: 500 }), localSource);
+    assert.equal(f.calls.length, 5);
+    console.info('LIVE_GATE_RESULT', JSON.stringify({ outcome: 'PASS', queries: f.calls.length,
+      sdk: '0.3.286', sessionA: a, sessionB: b, compactIdentity: true,
+      historicalIsolation: true, sourceUnchanged: true, resumeBIdentity: true }));
+  } catch (error) {
+    console.error('LIVE_GATE_RESULT', JSON.stringify({ outcome: 'FAIL', step, queries: f.calls.length,
+      sdk: '0.3.286', sessionA: a, sessionB: b, errorName: error.name,
+      errorMessage: error.message, runtimeCode: error.runtimeCode ?? null }));
+    throw error;
+  } finally { clearTimeout(deadline); await f.cleanup(); }
 });
