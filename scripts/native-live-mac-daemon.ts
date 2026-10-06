@@ -33,6 +33,7 @@ import {
 } from "../src/domains/bridge/mac/native-live-mac-working-directory-runtime.js";
 import {
   NativeLiveMacProviderSessionStore,
+  NATIVE_LIVE_MAC_APPEND_RECEIPT_DIRECTORY,
 } from "../src/domains/bridge/mac/native-live-mac-provider-session-store.js";
 import {
   NativeLiveMacCompanionScheduler,
@@ -113,16 +114,18 @@ const companionScheduler = new NativeLiveMacCompanionScheduler(
 );
 const claudeTransportKind =
   resolveNativeLiveMacClaudeTransportKind(process.env);
+const providerSessionStore = new NativeLiveMacProviderSessionStore(
+  relayBaseUrl,
+  relayToken,
+  undefined,
+  NATIVE_LIVE_MAC_APPEND_RECEIPT_DIRECTORY,
+);
 const workingDirectoryRuntimePool =
   new NativeLiveMacWorkingDirectoryRuntimePool(
     process.env,
     defaultWorkingDirectory,
     undefined,
-    () =>
-      new NativeLiveMacProviderSessionStore(
-        relayBaseUrl,
-        relayToken,
-      ),
+    () => providerSessionStore,
     {
       type: "http",
       url: relayBaseUrl + "/internal/native-live-mcp",
@@ -375,6 +378,9 @@ function isWakeTerminalOutcome(
 
 while (!stopping) {
   try {
+    // Restore original append intents before any new SDK query is allowed.
+    // Existing daemon retry/backoff handles an unavailable backend here.
+    await providerSessionStore.recoverPendingAppends();
     const outcome = await loop.runOnce();
     consecutiveWakeErrors = 0;
     const wakeTerminalOutcome =
