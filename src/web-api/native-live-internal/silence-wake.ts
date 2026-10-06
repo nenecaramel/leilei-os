@@ -104,12 +104,63 @@ function logSilenceWakeFailure(
           ? error.name
           : "UnknownError",
       ...(
+        error instanceof Error && error.message
+          ? { errorMessage: diagnosticText(error.message) }
+          : {}
+      ),
+      ...(
         typeof record.code === "string"
           ? { errorCode: record.code }
           : {}
       ),
+      ...(
+        typeof record.detail === "string"
+          ? { errorDetail: diagnosticText(record.detail) }
+          : {}
+      ),
+      ...(
+        typeof record.constraint_name === "string"
+          ? { errorConstraint: diagnosticText(record.constraint_name) }
+          : typeof record.constraint === "string"
+            ? { errorConstraint: diagnosticText(record.constraint) }
+            : {}
+      ),
+      ...(
+        errorRecord(record.cause)
+          ? {
+              causeName:
+                typeof errorRecord(record.cause)?.name === "string"
+                  ? errorRecord(record.cause)?.name
+                  : undefined,
+              causeCode:
+                typeof errorRecord(record.cause)?.code === "string"
+                  ? errorRecord(record.cause)?.code
+                  : undefined,
+              causeMessage:
+                typeof errorRecord(record.cause)?.message === "string"
+                  ? diagnosticText(
+                      errorRecord(record.cause)?.message as string,
+                    )
+                  : undefined,
+            }
+          : {}
+      ),
     }) + "\n",
   );
+}
+
+function diagnosticText(value: string): string {
+  return value.length <= 500
+    ? value
+    : value.slice(0, 497) + "...";
+}
+
+function errorRecord(
+  value: unknown,
+): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function parseFireBody(value: unknown): {
