@@ -27,6 +27,11 @@ extension NativeLiveAttachmentPresentationInput {
         return Int(n)
     }
     var sha256: String? { metadata["sha256"]?.stringValue?.lowercased() }
+    var durationSeconds: TimeInterval? {
+        guard let value = metadata["duration_seconds"]?.numberValue,
+              value.isFinite, value > 0 else { return nil }
+        return value
+    }
     var mediaKind: NativeLiveMediaKind {
         let mime = mimeType.split(separator:";",maxSplits:1).first.map(String.init)?.lowercased() ?? mimeType.lowercased()
         let ext = (filename as NSString).pathExtension.lowercased()
