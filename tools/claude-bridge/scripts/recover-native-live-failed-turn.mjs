@@ -274,16 +274,46 @@ function loadRailwayVariables(cwd) {
 }
 
 function collectStrings(value, output) {
-  if (!value || typeof value !== "object") return;
   if (Array.isArray(value)) {
     for (const item of value) collectStrings(item, output);
     return;
   }
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof item === "string") {
-      output[key] ??= item;
-    } else {
-      collectStrings(item, output);
+  if (!value || typeof value !== "object") return;
+
+  for (const key of [
+    "MCP_SERVER_URL",
+    "NATIVE_LIVE_RELAY_AUTH_TOKEN",
+  ]) {
+    const candidate = value[key];
+    if (typeof candidate === "string" && candidate.trim()) {
+      output[key] = candidate.trim();
+    }
+  }
+
+  const name =
+    typeof value.name === "string"
+      ? value.name
+      : typeof value.key === "string"
+        ? value.key
+        : null;
+  const variableValue =
+    typeof value.value === "string"
+      ? value.value
+      : null;
+  if (
+    name
+    && variableValue
+    && (
+      name === "MCP_SERVER_URL"
+      || name === "NATIVE_LIVE_RELAY_AUTH_TOKEN"
+    )
+  ) {
+    output[name] = variableValue.trim();
+  }
+
+  for (const nested of Object.values(value)) {
+    if (nested && typeof nested === "object") {
+      collectStrings(nested, output);
     }
   }
 }
