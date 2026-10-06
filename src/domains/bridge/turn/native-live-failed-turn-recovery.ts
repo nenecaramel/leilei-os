@@ -437,15 +437,12 @@ export class NativeLiveFailedTurnRecoveryService {
         : {}),
       ...(event.payload ? { payload: event.payload } : {}),
     }));
-    const sessionIds = new Set(
-      eventRows
-        .map((event) => event.providerSessionId?.trim() ?? "")
-        .filter(Boolean),
-    );
     const resultEvents = eventRows.filter(
       (event) => event.eventType === "result",
     );
     const terminalResult = resultEvents.at(-1);
+    const providerSessionId =
+      terminalResult?.providerSessionId?.trim() ?? "";
     const finalText =
       typeof terminalResult?.payload?.final_text === "string"
         ? terminalResult.payload.final_text.trim()
@@ -465,12 +462,11 @@ export class NativeLiveFailedTurnRecoveryService {
       userMessageId: row.canonicalUserMessageId,
       expectedWorkingDirectory: row.expectedWorkingDirectory,
       failureCode: row.failureCode,
-      providerSessionId:
-        sessionIds.size === 1 ? [...sessionIds][0]! : "",
+      providerSessionId,
       finalText,
       events,
       recoverable:
-        sessionIds.size === 1
+        providerSessionId.length > 0
         && resultEvents.length >= 1
         && finalText.length > 0
         && !hasError
