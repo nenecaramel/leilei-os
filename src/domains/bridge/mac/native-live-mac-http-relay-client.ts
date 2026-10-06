@@ -21,6 +21,7 @@ import type {
   ClaudeAlbumToolPhoto,
 } from "../../album/claude-photo-album-tool-contract.js";
 import type {
+  NativeLiveSilenceWakeIgnoredReason,
   NativeLiveSilenceWakeSchedule,
   NativeLiveSilenceWakeSlot,
 } from "../turn/native-live-silence-wake.js";
