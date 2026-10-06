@@ -40,6 +40,7 @@ test('assistant audio is one 45pt row with total-seconds label and no time text;
  const geometry=readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8');
  const user=readFileSync(root+'NativeLiveUserMessageRow.swift','utf8');
  assert.doesNotMatch(audio,/--:--|statusLabel|Text\("Audio"\)|\/ \\\(time|%d:%02d/);
+ assert.match(audio,/guard playback\.duration\.isFinite, playback\.duration > 0 else \{ return "—" \}/);
  assert.match(geometry,/u\{2033\}/);
  assert.match(geometry,/contentHeight: CGFloat = 21/);assert.match(geometry,/verticalInset: CGFloat = 12/);
  assert.match(audio,/\.padding\(\.vertical, NativeLiveVoiceBubbleGeometry\.verticalInset\)/);
