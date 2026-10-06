@@ -727,18 +727,29 @@ export class AgentSdkTurnHandle {
           },
         );
       }
-      throw runtimeError(
-        `Claude Agent SDK turn failed: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
-        {
-          runtimeCode: "CLAUDE_PROCESS_FAILED",
-          cause,
-          providerSessionId: this.providerSessionId,
-          events: parsedEvents,
-          normalizedEvents,
-        },
-      );
+      if (
+        terminalResult?.subtype === "success"
+        && terminalResult.is_error !== true
+        && !terminalFailure
+      ) {
+        // The SDK can surface a terminal success result before its child
+        // process finishes tearing down. A later non-zero process exit must
+        // not erase that already-authoritative result; downstream transport
+        // logic still enforces SessionStore/checkpoint durability.
+      } else {
+        throw runtimeError(
+          `Claude Agent SDK turn failed: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+          {
+            runtimeCode: "CLAUDE_PROCESS_FAILED",
+            cause,
+            providerSessionId: this.providerSessionId,
+            events: parsedEvents,
+            normalizedEvents,
+          },
+        );
+      }
     } finally {
       this.inputQueue?.end();
       this.closed = true;

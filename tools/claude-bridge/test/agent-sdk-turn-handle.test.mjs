@@ -89,6 +89,30 @@ test("turn handle completes a normal SDK turn without changing the phase-1 trans
 
 
 
+test("turn handle preserves terminal success when the SDK process exits during teardown", async () => {
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello",
+    environment: {},
+    queryImpl: () => ({
+      close() {},
+      async *[Symbol.asyncIterator]() {
+        for (const message of successMessages("provider-post-result-exit")) {
+          yield message;
+        }
+        throw new Error("Claude Code process exited with code 1");
+      },
+    }),
+  });
+
+  const result = await handle.start();
+  assert.equal(
+    result.providerSessionId,
+    "provider-post-result-exit",
+  );
+  assert.equal(result.result?.subtype, "success");
+  assert.equal(result.result?.result, "READY");
+});
+
 test("turn handle forwards bidirectional query options without owning permission policy", async () => {
   let call;
   const canUseTool = async (_toolName, toolInput) => ({
