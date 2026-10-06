@@ -20,9 +20,6 @@ import {
   resolve,
   sep,
 } from "node:path";
-import {
-  promisify,
-} from "node:util";
 
 export type NativeLiveMacOutputAttachmentDescriptor = {
   attachmentId: string;
@@ -298,19 +295,36 @@ function mimeTypeForFilename(filename: string): string {
   }
 }
 
-const execFileAsync = promisify(execFile);
-
 async function probeAudioDurationWithAfinfo(
   filePath: string,
 ): Promise<number | null> {
   try {
-    const { stdout } = await execFileAsync(
-      "/usr/bin/afinfo",
-      [filePath],
-      { timeout: 2_000, maxBuffer: 256 * 1024, encoding: "utf8" },
+    const stdout = await new Promise<string>(
+      (resolveOutput, rejectOutput) => {
+        execFile(
+          "/usr/bin/afinfo",
+          [filePath],
+          {
+            timeout: 2_000,
+            maxBuffer: 256 * 1024,
+            encoding: "utf8",
+          },
+          (error, output) => {
+            if (error) {
+              rejectOutput(error);
+              return;
+            }
+            resolveOutput(output);
+          },
+        );
+      },
     );
-    const match = /^\s*estimated duration:\s*([0-9]+(?:\.[0-9]+)?)\s*sec\b/imu.exec(stdout);
-    return normalizeDurationSeconds(match ? Number(match[1]) : null) ?? null;
+    const match =
+      /^\s*estimated duration:\s*([0-9]+(?:\.[0-9]+)?)\s*sec\b/imu
+        .exec(stdout);
+    return normalizeDurationSeconds(
+      match ? Number(match[1]) : null,
+    ) ?? null;
   } catch {
     return null;
   }
