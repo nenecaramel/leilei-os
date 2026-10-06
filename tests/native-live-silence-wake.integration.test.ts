@@ -5,9 +5,14 @@ import { createDatabase } from "../src/database/client.js";
 import {
   conversations,
   nativeLiveProviderSessionCleanups,
+  nativeLiveRuntimeListenerLeases,
   nativeLiveSilenceWakeReceipts,
   users,
 } from "../src/database/schema.js";
+import {
+  DrizzleNativeLiveBackendRelayRepository,
+  NativeLiveBackendRelayService,
+} from "../src/domains/bridge/relay/native-live-backend-relay.js";
 import {
   NativeLiveBackendTurnCoordinator,
 } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
@@ -540,5 +545,240 @@ test(
       null,
       "the new user activity invalidates the old epoch before it receives a reply",
     );
+  },
+);
+
+
+test(
+  "silence wake ignores stranded staged work older than its source assistant while fresh staged intent still blocks",
+  { skip: !enabled },
+  async (t) => {
+    const databaseUrl = process.env.DATABASE_URL;
+    assert.ok(databaseUrl, "DATABASE_URL is required");
+    const database = createDatabase(databaseUrl, { ssl: false });
+
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email:
+          `native-live-silence-stranded-${crypto.randomUUID()}@example.com`,
+        displayName: "Native Live Silence Wake Stranded",
+      })
+      .returning({ id: users.id });
+    assert.ok(user);
+
+    t.after(async () => {
+      try {
+        await database.db
+          .delete(nativeLiveRuntimeListenerLeases)
+          .where(eq(nativeLiveRuntimeListenerLeases.userId, user.id));
+        await database.db
+          .delete(nativeLiveProviderSessionCleanups)
+          .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
+        await database.db
+          .delete(conversations)
+          .where(eq(conversations.userId, user.id));
+        await database.db
+          .delete(users)
+          .where(eq(users.id, user.id));
+      } finally {
+        await database.close();
+      }
+    });
+
+    const conversationService =
+      new NativeLiveConversationService(
+        new DrizzleNativeLiveConversationRepository(database.db),
+      );
+    const strandedConversation =
+      await conversationService.createConversation({
+        userId: user.id,
+        title: "Stranded staged foreground",
+      });
+    const sourceConversation =
+      await conversationService.createConversation({
+        userId: user.id,
+        title: "Current silence source",
+      });
+    const port =
+      new DrizzleNativeLiveBackendTurnPort(database.db);
+    const coordinator =
+      new NativeLiveBackendTurnCoordinator(
+        port,
+        () => crypto.randomUUID(),
+      );
+
+    const stranded = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: crypto.randomUUID(),
+      operation: "send",
+      conversation_id: strandedConversation.id,
+      expected_head_message_id: null,
+      text: "old turn that never left staged",
+    });
+    assert.equal(stranded.ok, true);
+    if (!stranded.ok) {
+      throw new Error("expected stranded prepare success");
+    }
+
+    const sourceRequestId = crypto.randomUUID();
+    const source = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: sourceRequestId,
+      operation: "send",
+      conversation_id: sourceConversation.id,
+      expected_head_message_id: null,
+      text: "newer completed turn",
+    });
+    assert.equal(source.ok, true);
+    if (!source.ok) {
+      throw new Error("expected source prepare success");
+    }
+    const sourceUserMessageId =
+      source.command.canonical_user_message_id;
+    assert.ok(sourceUserMessageId);
+
+    const sourceFinalized = await coordinator.finalize(user.id, {
+      protocol_version: 3,
+      prepare_id: source.command.prepare_id,
+      request_id: sourceRequestId,
+      conversation_id: sourceConversation.id,
+      status: "success",
+      provider_session_id: "provider-current-source",
+      normalized_events: [
+        {
+          type: "text",
+          payload: { text: "current answer" },
+        },
+        {
+          type: "result",
+          payload: {
+            status: "success",
+            final_text: "current answer",
+          },
+        },
+      ],
+    });
+    assert.equal(sourceFinalized.ok, true);
+    if (
+      !sourceFinalized.ok
+      || sourceFinalized.outcome !== "completed"
+    ) {
+      throw new Error("expected source finalize success");
+    }
+
+    let now = new Date();
+    const silence = new NativeLiveSilenceWakeService(
+      database.db,
+      () => now,
+    );
+    const schedule =
+      await silence.readSchedule({ userId: user.id });
+    assert.ok(schedule);
+    assert.equal(schedule.epochId, sourceUserMessageId);
+
+    now = new Date(schedule.postTurnDueAt);
+    const short = await silence.fire({
+      userId: user.id,
+      epochId: schedule.epochId,
+      slot: "post_turn_idle",
+    });
+    assert.equal(short.outcome, "queued");
+
+    const shortPrepareId = silenceWakePreparationId(
+      schedule.epochId,
+      "post_turn_idle",
+    );
+    const relay = new NativeLiveBackendRelayService(
+      new DrizzleNativeLiveBackendRelayRepository(database.db),
+      coordinator,
+    );
+    const listenerId = crypto.randomUUID();
+    assert.equal(
+      await relay.renewLease({
+        userId: user.id,
+        listenerInstanceId: listenerId,
+        dispatchTarget: "claude_code",
+      }),
+      "acquired",
+    );
+    const reserved = await relay.reserveNext({
+      userId: user.id,
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    });
+    assert.ok(reserved);
+    assert.equal(
+      reserved.reservationId,
+      shortPrepareId,
+      "an older stranded staged row must not cancel the queued wake",
+    );
+
+    await relay.markExecutionStarted({
+      userId: user.id,
+      listenerInstanceId: listenerId,
+      reservationId: shortPrepareId,
+    });
+    const shortPreparation = await port.getPreparation({
+      userId: user.id,
+      prepareId: shortPrepareId,
+    });
+    assert.ok(shortPreparation);
+    const quiet = await relay.submitResult({
+      userId: user.id,
+      listenerInstanceId: listenerId,
+      reservationId: shortPrepareId,
+      result: {
+        protocol_version: 3,
+        prepare_id: shortPrepareId,
+        request_id: shortPreparation.requestId,
+        conversation_id: sourceConversation.id,
+        status: "success",
+        provider_session_id: "provider-stranded-wake",
+        normalized_events: [
+          {
+            type: "text",
+            payload: { text: "<quiet />" },
+          },
+          {
+            type: "result",
+            payload: {
+              status: "success",
+              final_text: "<quiet />",
+            },
+          },
+        ],
+      },
+    });
+    assert.equal(quiet.ok, true);
+    if (!quiet.ok) throw new Error("expected quiet wake success");
+    assert.equal(quiet.outcome, "wake_quiet");
+
+    const freshRetry = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: crypto.randomUUID(),
+      operation: "retry",
+      conversation_id: sourceConversation.id,
+      target_user_message_id: sourceUserMessageId,
+    });
+    assert.equal(freshRetry.ok, true);
+    if (!freshRetry.ok) {
+      throw new Error("expected fresh retry prepare success");
+    }
+
+    const afterShort =
+      await silence.readSchedule({ userId: user.id });
+    assert.ok(afterShort);
+    now = new Date(afterShort.longIdleDueAt);
+    const long = await silence.fire({
+      userId: user.id,
+      epochId: afterShort.epochId,
+      slot: "long_idle",
+    });
+    assert.deepEqual(long, {
+      outcome: "ignored",
+      reason: "foreground_active",
+      schedule: null,
+    });
   },
 );
