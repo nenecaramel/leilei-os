@@ -67,7 +67,7 @@ export class NativeLiveMacProviderSessionStore {
     const stableIntent = Boolean(logicalAppendId) || entries.every((entry) => typeof entry.uuid === "string" && entry.uuid.trim());
     const inProcess = this.retryAppendBatches.get(signature);
     const recovered = inProcess ? undefined : this.readReceipt(signature);
-    if (recovered && !stableIntent) {
+    if (this.receiptDirectory && (inProcess || recovered) && !stableIntent) {
       // The SDK supplies no operation identity for UUID-less markers. Reusing a
       // content-matched receipt could swallow a genuinely new identical append.
       throw new Error("Ambiguous UUID-less append recovery requires a logicalAppendId.");

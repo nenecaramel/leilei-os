@@ -448,3 +448,27 @@ test("concurrent identical UUID-less appends are serialized and keep distinct re
   assert.equal(maximum, 1);
   assert.equal(ids.size, 2);
 });
+
+test("an untagged new UUID-less callback cannot be mistaken for a pending same-content intent", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const directory = mkdtempSync(join(tmpdir(), "leilei-new-marker-fence-test-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  let lose = true;
+  const remote = new Set<string>();
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    remote.add(JSON.parse(String(init?.body)).append_batch_id);
+    if (lose) throw new Error("lost response");
+    return new Response(JSON.stringify({ success: true, data: null }));
+  };
+  const store = new NativeLiveMacProviderSessionStore("https://relay.example", "token", fetchImpl, directory);
+  const key = { projectKey: "/local", sessionId: "new-marker" };
+  await assert.rejects(store.append(key, [{ type: "tag", tag: "same" }]), /lost response/u);
+  lose = false;
+  await assert.rejects(store.append(key, [{ type: "tag", tag: "same" }]), /Ambiguous/u);
+  assert.equal(remote.size, 1);
+  await store.recoverPendingAppends();
+  await store.append(key, [{ type: "tag", tag: "same" }]);
+  assert.equal(remote.size, 2);
+});
