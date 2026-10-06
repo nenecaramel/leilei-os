@@ -3,51 +3,30 @@ import Combine
 import AVFoundation
 
 #if os(iOS)
-// Audio bubbles share one session lease: only the first acquisition changes the
-// process session, and only the final release restores the original configuration.
+// AVAudioSession exposes configuration, not reliable in-app activation ownership.
+// Borrow only a known output configuration. Never reconfigure/activate/deactivate
+// the process session: it may already belong to Voice or another playback owner.
 @MainActor private final class NativeLiveAudioSessionCoordinator {
     static let shared = NativeLiveAudioSessionCoordinator()
-    private struct Configuration {
-        let category: AVAudioSession.Category
-        let mode: AVAudioSession.Mode
-        let options: AVAudioSession.CategoryOptions
-    }
-    private var owners: Set<UUID> = []
-    private var previous: Configuration?
+    private enum AcquisitionError: Error { case incompatibleConfiguration }
+    private var borrowers: Set<UUID> = []
 
-    func acquire(_ owner: UUID) throws {
-        guard !owners.contains(owner) else { return }
-        if owners.isEmpty {
-            let session = AVAudioSession.sharedInstance()
-            let saved = Configuration(category: session.category, mode: session.mode, options: session.categoryOptions)
-            var categoryChanged = false
-            do {
-                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-                categoryChanged = true
-                try session.setActive(true)
-            } catch {
-                // A category change may succeed before activation fails. Roll it
-                // back without recording an owner for the failed acquisition.
-                // Activation did not succeed, so this attempt never owned the
-                // session and must not deactivate somebody else's active audio.
-                if categoryChanged {
-                    try? session.setCategory(saved.category, mode: saved.mode, options: saved.options)
-                }
-                throw error
-            }
-            previous = saved
-        }
-        owners.insert(owner)
-    }
-
-    func release(_ owner: UUID) {
-        guard owners.remove(owner) != nil, owners.isEmpty, let saved = previous else { return }
-        previous = nil
+    func checkConfiguration() throws {
         let session = AVAudioSession.sharedInstance()
-        // Attempt restoration even if deactivation throws; neither failure may
-        // leave a stale lease that suppresses the next acquisition/restoration.
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
-        try? session.setCategory(saved.category, mode: saved.mode, options: saved.options)
+        guard [.ambient, .soloAmbient, .playback].contains(session.category), session.mode == .default else {
+            throw AcquisitionError.incompatibleConfiguration
+        }
+    }
+
+    func acquire(_ borrower: UUID) throws {
+        try checkConfiguration()
+        // A lease owns only this bubble's player, never the session's activation.
+        // Check configuration again on resume and for every concurrent borrower.
+        borrowers.insert(borrower)
+    }
+
+    func release(_ borrower: UUID) {
+        borrowers.remove(borrower)
     }
 }
 #endif
@@ -63,7 +42,7 @@ import AVFoundation
     private var timer: Timer?
     private var generation = 0
     #if os(iOS)
-    private var sessionOwner: UUID?
+    private var sessionBorrower: UUID?
     #endif
     var progress: Double { duration > 0 ? min(1, max(0, currentTime / duration)) : 0 }
 
@@ -96,6 +75,13 @@ import AVFoundation
             player?.pause(); sampleProgress(); stopTimer(); phase = .paused
             return
         }
+        #if os(iOS)
+        do { try NativeLiveAudioSessionCoordinator.shared.checkConfiguration() }
+        catch {
+            stopPlaybackSession()
+            self.error = "Could not play audio. Try again."; phase = .failed; return
+        }
+        #endif
         if phase == .failed { player?.stop(); player = nil }
         if player == nil {
             let cached = verifiedData
@@ -105,9 +91,9 @@ import AVFoundation
         if currentTime >= duration { player.currentTime = 0; currentTime = 0 }
         #if os(iOS)
         do {
-            let owner = sessionOwner ?? UUID()
-            try NativeLiveAudioSessionCoordinator.shared.acquire(owner)
-            sessionOwner = owner
+            let borrower = sessionBorrower ?? UUID()
+            try NativeLiveAudioSessionCoordinator.shared.acquire(borrower)
+            sessionBorrower = borrower
         } catch {
             stopPlaybackSession()
             self.error = "Could not play audio. Try again."; phase = .failed; return
@@ -151,9 +137,9 @@ import AVFoundation
     private func stopPlaybackSession() {
         stopTimer(); player?.stop()
         #if os(iOS)
-        if let owner = sessionOwner {
-            sessionOwner = nil
-            NativeLiveAudioSessionCoordinator.shared.release(owner)
+        if let borrower = sessionBorrower {
+            sessionBorrower = nil
+            NativeLiveAudioSessionCoordinator.shared.release(borrower)
         }
         #endif
     }
@@ -161,8 +147,8 @@ import AVFoundation
     deinit {
         timer?.invalidate(); player?.stop()
         #if os(iOS)
-        if let owner = sessionOwner {
-            Task { @MainActor in NativeLiveAudioSessionCoordinator.shared.release(owner) }
+        if let borrower = sessionBorrower {
+            Task { @MainActor in NativeLiveAudioSessionCoordinator.shared.release(borrower) }
         }
         #endif
     }
