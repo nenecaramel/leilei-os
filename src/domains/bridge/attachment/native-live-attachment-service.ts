@@ -464,6 +464,19 @@ export class DrizzleNativeLiveAttachmentBinding {
         );
       }
     }
+    const durationPayloadFor = (
+      attachment: NativeLiveRuntimeAttachment,
+    ): Record<string, number> => {
+      const durationSeconds =
+        attachment.mime_type.startsWith("audio/")
+          ? durationSecondsByAttachmentId.get(
+              attachment.attachment_id,
+            )
+          : undefined;
+      return durationSeconds === undefined
+        ? {}
+        : { duration_seconds: durationSeconds };
+    };
 
     const rows = await this.db
       .select()
@@ -541,73 +554,53 @@ export class DrizzleNativeLiveAttachmentBinding {
       await this.db
         .insert(conversationAttachments)
         .values(
-          descriptors.map((attachment, index) => {
-            const durationSeconds =
-              attachment.mime_type.startsWith("audio/")
-                ? durationSecondsByAttachmentId.get(
-                    attachment.attachment_id,
-                  )
-                : undefined;
-            return {
-              userId: input.userId,
-              messageId: input.messageId,
-              ordinal: index,
-              sourceAttachmentId: attachment.attachment_id,
-              name: attachment.filename,
-              mimeType: attachment.mime_type,
-              sizeBytes: attachment.size_bytes,
-              payload: {
-                attachment_id: attachment.attachment_id,
-                sha256: attachment.sha256,
-                kind: attachment.kind,
-                storage: "native_live_attachment",
-                ...(durationSeconds === undefined
-                  ? {}
-                  : { duration_seconds: durationSeconds }),
-              },
-            };
-          }),
+          descriptors.map((attachment, index) => ({
+            userId: input.userId,
+            messageId: input.messageId,
+            ordinal: index,
+            sourceAttachmentId: attachment.attachment_id,
+            name: attachment.filename,
+            mimeType: attachment.mime_type,
+            sizeBytes: attachment.size_bytes,
+            payload: {
+              attachment_id: attachment.attachment_id,
+              sha256: attachment.sha256,
+              kind: attachment.kind,
+              storage: "native_live_attachment",
+              ...durationPayloadFor(attachment),
+            },
+          })),
         );
       await this.db
         .insert(conversationContentBlocks)
         .values(
-          descriptors.map((attachment, index) => {
-            const durationSeconds =
-              attachment.mime_type.startsWith("audio/")
-                ? durationSecondsByAttachmentId.get(
-                    attachment.attachment_id,
-                  )
-                : undefined;
-            return {
-              userId: input.userId,
-              messageId: input.messageId,
-              ordinal: (input.startOrdinal ?? 1) + index,
-              kind: "attachment" as const,
-              rawType: attachment.kind,
-              text: null,
-              payload: {
-                schema_version: 1,
-                identity: "attachment",
-                refs: [{ type: "attachment_ref", entity_id: attachment.attachment_id }],
-                provenance: {
-                  ...(input.contentOrigin === "provider_send" ? { provider: "claude_code" } : {}),
-                  raw_type: input.contentOrigin === "provider_send" ? "send_file" : "user_attachment",
-                  origin: input.contentOrigin ?? "user_send",
-                  source_ref: { type: "attachment_ref", entity_id: attachment.attachment_id },
-                },
-                attachment_id: attachment.attachment_id,
-                filename: attachment.filename,
-                mime_type: attachment.mime_type,
-                size_bytes: attachment.size_bytes,
-                sha256: attachment.sha256,
-                kind: attachment.kind,
-                storage: "native_live_attachment",
-                ...(durationSeconds === undefined
-                  ? {}
-                  : { duration_seconds: durationSeconds }),
+          descriptors.map((attachment, index) => ({
+            userId: input.userId,
+            messageId: input.messageId,
+            ordinal: (input.startOrdinal ?? 1) + index,
+            kind: "attachment" as const,
+            rawType: attachment.kind,
+            text: null,
+            payload: {
+              schema_version: 1,
+              identity: "attachment",
+              refs: [{ type: "attachment_ref", entity_id: attachment.attachment_id }],
+              provenance: {
+                ...(input.contentOrigin === "provider_send" ? { provider: "claude_code" } : {}),
+                raw_type: input.contentOrigin === "provider_send" ? "send_file" : "user_attachment",
+                origin: input.contentOrigin ?? "user_send",
+                source_ref: { type: "attachment_ref", entity_id: attachment.attachment_id },
               },
-            };
-          }),
+              attachment_id: attachment.attachment_id,
+              filename: attachment.filename,
+              mime_type: attachment.mime_type,
+              size_bytes: attachment.size_bytes,
+              sha256: attachment.sha256,
+              kind: attachment.kind,
+              storage: "native_live_attachment",
+              ...durationPayloadFor(attachment),
+            },
+          })),
         );
     }
     return descriptors;
