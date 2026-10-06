@@ -711,6 +711,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     {
       mode = "new",
       parentProviderSessionId = null,
+      parentProviderCheckpointId = null,
+      requireProviderCheckpoint = false,
       streaming = true,
       userMessageUuid = null,
       execution = null,
@@ -755,6 +757,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
+    if (parentProviderCheckpointId !== null) {
+      await this.#requireCheckpoint(parentProviderSessionId, parentProviderCheckpointId);
+    }
+
     let portability = {
       canComplete: true,
       parentLocalAvailable: null,
@@ -826,6 +832,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           ? null
           : parentProviderSessionId,
       forkSession: mode === "fork",
+      resumeSessionAt: parentProviderCheckpointId,
       queryImpl,
       environment: this.environment,
       cwd: this.cwd,
@@ -976,6 +983,19 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           },
         );
       }
+      if (mode === "resume" && result.providerSessionId !== parentProviderSessionId) {
+        throw runtimeError("Claude Agent SDK resume changed provider session identity.", {
+          runtimeCode: "PROVIDER_SESSION_CONFLICT", ...result,
+        });
+      }
+      if (requireProviderCheckpoint && sdkMirrorFailureReason(result.events)) {
+        throw runtimeError("Claude checkpoint cannot be committed after a failed transcript mirror.", {
+          runtimeCode: "RUNTIME_UNAVAILABLE", ...result,
+        });
+      }
+      const providerCheckpointId = await this.#completedCheckpoint(
+        result.providerSessionId, requireProviderCheckpoint, parentProviderCheckpointId,
+      );
       const mirrorFailureReason =
         sdkMirrorFailureReason(result.events);
       const completionState =
@@ -1002,6 +1022,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       });
       return {
         ...result,
+        providerCheckpointId,
         contextUsage,
         contextUsageError,
         executionReadback,
@@ -1215,6 +1236,54 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.abortRequested = true;
     this.activeTurnHandle?.abort?.();
     this.activeQuery?.close?.();
+  }
+
+  async #checkpointEntries(sessionId, required) {
+    if (this.sessionStore && typeof this.sessionStore.load === "function") {
+      const entries = await this.sessionStore.load({ projectKey: this.cwd, sessionId });
+      if (Array.isArray(entries) && entries.length) return entries;
+      return [];
+    } else if (!required) return [];
+    const entries = [];
+    const importer = this.importSessionToStoreImpl ?? await this.loadImportSessionToStore();
+    try { await importer(sessionId, {
+      append: async (key, batch) => { if (!key.subpath) entries.push(...batch); },
+      load: async () => null,
+    }, { dir: this.cwd, includeSubagents: false, batchSize: 500 });
+    } catch (cause) {
+      throw runtimeError("Claude provider transcript is unavailable for checkpoint addressing.", {
+        runtimeCode: "NO_PROVIDER_SESSION", cause,
+      });
+    }
+    return entries;
+  }
+
+  #chainEntries(entries) {
+    return entries.filter(entry => entry && !entry.isSidechain
+      && ["user", "assistant", "system", "attachment"].includes(entry.type)
+      && typeof entry.uuid === "string" && Object.hasOwn(entry, "parentUuid"));
+  }
+
+  async #requireCheckpoint(sessionId, checkpointId) {
+    const entries = this.#chainEntries(await this.#checkpointEntries(sessionId, true));
+    if (!entries.some(entry => entry.uuid === checkpointId)) {
+      throw runtimeError("Claude historical provider checkpoint is not present in the transcript.", {
+        runtimeCode: "NO_PROVIDER_SESSION", parentSessionId: sessionId,
+      });
+    }
+  }
+
+  async #completedCheckpoint(sessionId, required, parentCheckpointId) {
+    let entries;
+    try { entries = this.#chainEntries(await this.#checkpointEntries(sessionId, required)); }
+    catch (cause) { if (required) throw cause; return null; }
+    const id = entries.at(-1)?.uuid ?? null;
+    if (required && (!id || id === parentCheckpointId)) {
+      throw runtimeError("Claude turn has no new persisted provider checkpoint.", {
+        runtimeCode: "NO_PROVIDER_SESSION", providerSessionId: sessionId,
+      });
+    }
+    return id;
   }
 
   async #requireSession(sessionId) {
@@ -1876,6 +1945,17 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
+    if (mode === "fork" && providerSessionId === parentProviderSessionId) {
+      throw runtimeError("Claude Agent SDK fork returned the same provider session id as its parent.", {
+        runtimeCode: "PROVIDER_SESSION_CONFLICT", providerSessionId,
+      });
+    }
+    if (mode === "resume" && providerSessionId !== parentProviderSessionId) {
+      throw runtimeError("Claude Agent SDK returned conflicting provider session identity.", {
+        runtimeCode: "PROVIDER_SESSION_CONFLICT", providerSessionId,
+      });
+    }
+    const providerCheckpointId = mirrorFailureReason ? null : await this.#completedCheckpoint(providerSessionId, false, null);
     const completionState =
       await this.#completePortability(
         providerSessionId,
@@ -1913,6 +1993,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
     return {
       providerSessionId,
+      providerCheckpointId,
       events: parsedEvents,
       normalizedEvents,
       contextUsage,
