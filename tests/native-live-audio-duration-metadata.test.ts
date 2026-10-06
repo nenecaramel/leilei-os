@@ -186,6 +186,21 @@ test("Mac output sender recognizes common audio MIME types", async (t) => {
   }
 });
 
+test("default Mac duration probe uses bounded afinfo execFile without a shell dependency", () => {
+  const source = readFileSync(
+    "src/domains/bridge/mac/native-live-mac-output-attachment-sender.ts",
+    "utf8",
+  );
+  assert.match(source, /execFile\(/);
+  assert.match(source, /"\/usr\/bin\/afinfo"/);
+  assert.match(source, /timeout: 2_000/);
+  assert.match(
+    source,
+    /estimated duration:\\s\*\(\[0-9\]/,
+  );
+  assert.doesNotMatch(source, /ffmpeg|execSync\(|shell:\s*true/u);
+});
+
 test("runtime result round-trips output audio duration metadata", async () => {
   const runtime = {
     async sendNew() { throw new Error("unused"); },
@@ -483,6 +498,25 @@ test("binding mirrors valid duration into both canonical attachment payloads", a
   assert.equal(
     "duration_seconds" in invalidBlocks[0].payload,
     false,
+  );
+});
+
+test("legacy results without output metadata preserve the old finalize hash shape", () => {
+  const coordinator = readFileSync(
+    "src/domains/bridge/turn/native-live-backend-turn-coordinator.ts",
+    "utf8",
+  );
+  const finalize = readFileSync(
+    "src/domains/bridge/turn/turn-repository/finalize-success.ts",
+    "utf8",
+  );
+  assert.match(
+    coordinator,
+    /result\.output_attachment_metadata === undefined[\s\S]*\? \{\}[\s\S]*outputAttachmentMetadata/,
+  );
+  assert.match(
+    finalize,
+    /input\.outputAttachmentMetadata\?\.length[\s\S]*outputAttachmentMetadata/,
   );
 });
 
