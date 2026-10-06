@@ -223,7 +223,7 @@ test("runtime result round-trips output audio duration metadata", async () => {
       return {
         attachmentId,
         filename: "voice.m4a",
-        mimeType: "audio/mp4",
+        mimeType,
         sizeBytes: 123,
         sha256: "a".repeat(64),
         kind: "file" as const,
@@ -317,7 +317,9 @@ test("runtime protocol keeps duration metadata optional and rejects unsafe metad
   );
 });
 
-function bindingDb() {
+function bindingDb(
+  mimeType = "audio/mp4",
+) {
   const row = {
     id: attachmentId,
     userId,
@@ -431,6 +433,27 @@ test("binding mirrors valid duration into both canonical attachment payloads", a
   );
   assert.equal(
     "duration_seconds" in historicalBlocks[0].payload,
+    false,
+  );
+
+  const nonAudio = bindingDb("application/pdf");
+  await new DrizzleNativeLiveAttachmentBinding(
+    nonAudio.db as never,
+  ).bindReadyToMessage({
+    userId,
+    messageId,
+    attachmentIds: [attachmentId],
+    attachmentMetadata: [{
+      attachment_id: attachmentId,
+      duration_seconds: 3.42,
+    }],
+  });
+  const nonAudioBlocks =
+    nonAudio.inserts[1] as Array<{
+      payload: Record<string, unknown>;
+    }>;
+  assert.equal(
+    "duration_seconds" in nonAudioBlocks[0].payload,
     false,
   );
 
