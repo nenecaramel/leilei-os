@@ -14,7 +14,9 @@ enum NativeLiveVoiceBubbleGeometry {
     // MARK: User voice (content width, i.e. inside the bubble padding)
 
     static let userMaxContentWidth: CGFloat = 125
-    static let userClusterSpacing: CGFloat = 8
+    static let userLeadingInset: CGFloat = 8
+    static let userTrailingInset: CGFloat = 14
+    static let userClusterSpacing: CGFloat = 6
     // Fallback only when UIKit cannot measure; the app always measures the real symbols.
     static let userFallbackClusterWidth: CGFloat = 40
 
@@ -31,7 +33,7 @@ enum NativeLiveVoiceBubbleGeometry {
     // MARK: Assistant audio (outer width)
 
     static let audioPlayWidth: CGFloat = 24
-    static let audioMinimumWaveformWidth: CGFloat = 40
+    static let audioMinimumWaveformWidth: CGFloat = 28
     static let audioMaximumWidth: CGFloat = 236
     static let audioFallbackLabelWidth: CGFloat = 24
     static let waveformBarWidth: CGFloat = 2
