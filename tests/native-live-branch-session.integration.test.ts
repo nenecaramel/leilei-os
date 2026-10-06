@@ -188,3 +188,23 @@ for (const origin of ['legacy', 'external'] as const) {
         }
     });
 }
+
+test('bootstrap and in-flight preparation retain a queued shared session until their references end', {skip:!enabled}, async()=>{
+ const database=createDatabase(process.env.DATABASE_URL!,{ssl:false});
+ try{
+  const {nativeLiveRuntimeListenerLeases}=await import('../src/database/schema.js');
+  const {DrizzleNativeLiveProviderSessionCleanupRepository}=await import('../src/domains/bridge/provider-session/native-live-provider-session-cleanup.js');
+  const [user]=await database.db.insert(users).values({email:`references-${randomUUID()}@example.com`,displayName:'Reference safety'}).returning();
+  const repo=new DrizzleNativeLiveConversationRepository(database.db), service=new NativeLiveConversationService(repo),coordinator=new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(database.db),randomUUID);
+  const conversation=await service.createConversation({userId:user.id,title:'references'}),listener=randomUUID();
+  await database.db.insert(nativeLiveRuntimeListenerLeases).values({userId:user.id,dispatchTarget:'claude_code',listenerInstanceId:listener,leaseExpiresAt:new Date(Date.now()+300_000)});
+  await database.db.insert(nativeLiveProviderSessionCleanups).values({userId:user.id,provider:'claude_code',providerSessionId:'protected-X',status:'pending'});
+  await database.db.execute(sql`INSERT INTO native_live_conversation_provider_bootstraps(conversation_id,user_id,provider,source_provider_session_id,workspace_id,effective_workspace_root) VALUES(${conversation.id}::uuid,${user.id}::uuid,'claude_code','protected-X',NULL,'/private/tmp/test')`);
+  const cleanup=new DrizzleNativeLiveProviderSessionCleanupRepository(database.db);assert.equal(await cleanup.reserveNext({userId:user.id,listenerInstanceId:listener}),null);
+  const prepared=await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:null,text:'continue'});assert.equal(prepared.ok,true);if(!prepared.ok)throw Error(JSON.stringify(prepared));
+  await database.db.execute(sql`UPDATE native_live_conversation_provider_bootstraps SET consumed_at=now() WHERE conversation_id=${conversation.id}::uuid`);
+  assert.equal(await cleanup.reserveNext({userId:user.id,listenerInstanceId:listener}),null);
+  await coordinator.finalize(user.id,{protocol_version:4,prepare_id:prepared.command.prepare_id,request_id:prepared.command.request_id,conversation_id:conversation.id,status:'failure',error_code:'ABORTED'});
+  assert.equal((await cleanup.reserveNext({userId:user.id,listenerInstanceId:listener}))?.providerSessionId,'protected-X');
+ }finally{await database.close();}
+});
