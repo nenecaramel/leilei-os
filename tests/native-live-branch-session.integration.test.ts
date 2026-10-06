@@ -160,7 +160,7 @@ for (const origin of ['legacy', 'external'] as const) {
                 await repo.setCurrentHead({ userId: user.id, conversationId: conversation.id, messageId: head });
             }
             else {
-                await database.db.execute(sql `INSERT INTO native_live_conversation_provider_bootstraps(conversation_id,user_id,provider,source_provider_session_id,workspace_id,effective_workspace_root) VALUES(${conversation.id}::uuid,${user.id}::uuid,'claude_code','source-X',NULL,'/private/tmp/test')`);
+                await database.db.execute(sql `INSERT INTO native_live_conversation_provider_bootstraps(conversation_id,user_id,provider,source_provider_session_id,effective_working_directory) VALUES(${conversation.id}::uuid,${user.id}::uuid,'claude_code','source-X','/private/tmp/test')`);
             }
             const first = await coordinator.prepare(user.id, { dispatch_target: 'claude_code', request_id: randomUUID(), operation: 'send', conversation_id: conversation.id, expected_head_message_id: head, text: 'first continuation' });
             assert.equal(first.ok, true);
@@ -170,7 +170,7 @@ for (const origin of ['legacy', 'external'] as const) {
             assert.equal(first.command.parent_provider_session_id, 'source-X');
             assert.equal(first.command.parent_provider_checkpoint_id, null);
             const cp = randomUUID();
-            const done = await coordinator.finalize(user.id, { protocol_version: 4, prepare_id: first.command.prepare_id, request_id: first.command.request_id, conversation_id: conversation.id, status: 'success', provider_session_id: 'branch-A', provider_checkpoint_id: cp, ...(origin === 'external' ? { workspace_id: null, effective_workspace_root: '/private/tmp/test' } : {}), normalized_events: [{ type: 'text', payload: { text: 'ok' } }, { type: 'result', payload: { status: 'success', final_text: 'ok' } }] });
+            const done = await coordinator.finalize(user.id, { protocol_version: 4, prepare_id: first.command.prepare_id, request_id: first.command.request_id, conversation_id: conversation.id, status: 'success', provider_session_id: 'branch-A', provider_checkpoint_id: cp, ...(origin === 'external' ? { effective_working_directory: '/private/tmp/test' } : {}), normalized_events: [{ type: 'text', payload: { text: 'ok' } }, { type: 'result', payload: { status: 'success', final_text: 'ok' } }] });
             assert.equal(done.ok, true, JSON.stringify(done));
             if (!done.ok || !('assistantMessageId' in done))
                 throw Error(JSON.stringify(done));
@@ -181,7 +181,7 @@ for (const origin of ['legacy', 'external'] as const) {
             assert.equal(next.command.runtime_mode, 'resume');
             assert.equal(next.command.parent_provider_session_id, 'branch-A');
             assert.equal(next.command.parent_provider_checkpoint_id, cp);
-            const downgrade = await coordinator.finalize(user.id, { protocol_version: 3, prepare_id: next.command.prepare_id, request_id: next.command.request_id, conversation_id: conversation.id, status: 'success', provider_session_id: 'branch-A', normalized_events: [{ type: 'result', payload: { status: 'success', final_text: 'bad legacy downgrade' } }] });
+            const downgrade = await coordinator.finalize(user.id, { protocol_version: 4, prepare_id: next.command.prepare_id, request_id: next.command.request_id, conversation_id: conversation.id, status: 'success', provider_session_id: 'branch-A', normalized_events: [{ type: 'result', payload: { status: 'success', final_text: 'missing checkpoint' } }] });
             assert.equal(downgrade.ok, false);
             if (!downgrade.ok)
                 assert.equal(downgrade.code, 'RESULT_MISMATCH');
@@ -202,7 +202,7 @@ test('bootstrap and in-flight preparation retain a queued shared session until t
   const conversation=await service.createConversation({userId:user.id,title:'references'}),listener=randomUUID();
   await database.db.insert(nativeLiveRuntimeListenerLeases).values({userId:user.id,dispatchTarget:'claude_code',listenerInstanceId:listener,leaseExpiresAt:new Date(Date.now()+300_000)});
   await database.db.insert(nativeLiveProviderSessionCleanups).values({userId:user.id,provider:'claude_code',providerSessionId:'protected-X',status:'pending'});
-  await database.db.execute(sql`INSERT INTO native_live_conversation_provider_bootstraps(conversation_id,user_id,provider,source_provider_session_id,workspace_id,effective_workspace_root) VALUES(${conversation.id}::uuid,${user.id}::uuid,'claude_code','protected-X',NULL,'/private/tmp/test')`);
+  await database.db.execute(sql`INSERT INTO native_live_conversation_provider_bootstraps(conversation_id,user_id,provider,source_provider_session_id,effective_working_directory) VALUES(${conversation.id}::uuid,${user.id}::uuid,'claude_code','protected-X','/private/tmp/test')`);
   const cleanup=new DrizzleNativeLiveProviderSessionCleanupRepository(database.db);assert.equal(await cleanup.reserveNext({userId:user.id,listenerInstanceId:listener}),null);
   const prepared=await coordinator.prepare(user.id,{dispatch_target:'claude_code',request_id:randomUUID(),operation:'send',conversation_id:conversation.id,expected_head_message_id:null,text:'continue'});assert.equal(prepared.ok,true);if(!prepared.ok)throw Error(JSON.stringify(prepared));
   await database.db.execute(sql`UPDATE native_live_conversation_provider_bootstraps SET consumed_at=now() WHERE conversation_id=${conversation.id}::uuid`);

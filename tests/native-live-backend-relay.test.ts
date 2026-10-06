@@ -141,7 +141,7 @@ function setup(runtimeProtocolVersion: 4 = 4) {
   return { port, coordinator, wake, service };
 }
 
-test("reserve preserves v4 for a persisted modern new preparation despite the v3 attachment setting", async () => {
+test("reserve preserves v4 for a persisted modern new preparation after protocol namespace retirement", async () => {
   const { port, service } = setup(3);
   port.preparation = { ...prepared(), parentProviderCheckpointId: null };
   const reserved = await service.reserveNext({

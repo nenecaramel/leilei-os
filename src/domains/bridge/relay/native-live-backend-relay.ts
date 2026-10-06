@@ -882,7 +882,7 @@ export class NativeLiveBackendRelayService {
     });
     if (!preparation) return null;
     // A persisted checkpoint field marks a modern preparation, including a new
-    // turn with a null parent. Attachment rollout settings must not strip v4.
+    // turn with a null parent. Preserve its checkpoint-aware command on reserve.
     return {
       reservationId: preparation.prepareId,
       command: nativeLiveRuntimeCommandFromPreparation(

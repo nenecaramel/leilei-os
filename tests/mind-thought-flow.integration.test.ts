@@ -138,12 +138,13 @@ test(
       if (!prepared.ok) throw new Error("expected prepare success");
 
       const finalized = await coordinator.finalize(userId!, {
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepared.command.prepare_id,
         request_id: requestId,
         conversation_id: conversation.id,
         status: "success",
-        provider_session_id: `flow-provider-${crypto.randomUUID()}`,
+        provider_session_id: prepared.command.runtime_mode === "resume" ? prepared.command.parent_provider_session_id! : `flow-provider-${crypto.randomUUID()}`,
+        provider_checkpoint_id: prepared.command.prepare_id,
         normalized_events: [
           { type: "text", payload: { text: assistantText } },
           {
@@ -408,12 +409,13 @@ test(
       assert.equal(prepared.ok, true);
       if (!prepared.ok) throw new Error("expected prepare success");
       const finalized = await coordinator.finalize(userId!, {
-        protocol_version: 1,
+        protocol_version: 4,
         prepare_id: prepared.command.prepare_id,
         request_id: requestId,
         conversation_id: conversation.id,
         status: "success",
-        provider_session_id: `retry-provider-${crypto.randomUUID()}`,
+        provider_session_id: prepared.command.runtime_mode === "resume" ? prepared.command.parent_provider_session_id! : `retry-provider-${crypto.randomUUID()}`,
+        provider_checkpoint_id: prepared.command.prepare_id,
         normalized_events: [
           { type: "text", payload: { text: assistantText } },
           {
@@ -605,12 +607,13 @@ test(
     assert.equal(prepared.ok, true);
     if (!prepared.ok) throw new Error("expected prepare success");
     const finalized = await coordinator.finalize(userId, {
-      protocol_version: 1,
+      protocol_version: 4,
       prepare_id: prepared.command.prepare_id,
       request_id: requestId,
       conversation_id: conversation.id,
       status: "success",
-      provider_session_id: `retired-provider-${crypto.randomUUID()}`,
+      provider_session_id: prepared.command.runtime_mode === "resume" ? prepared.command.parent_provider_session_id! : `retired-provider-${crypto.randomUUID()}`,
+        provider_checkpoint_id: prepared.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: reply } },
         { type: "result", payload: { status: "success", final_text: reply } },

@@ -424,7 +424,7 @@ export class NativeLiveBackendTurnCoordinator {
         preparation,
         result.protocol_version,
       );
-      if ((preparation.runtimeMode === "resume" || preparation.parentProviderCheckpointId) && result.protocol_version < 4 && result.status === "success") {
+      if ((preparation.parentProviderCheckpointId !== undefined || preparation.runtimeMode === "resume") && result.status === "success" && !result.provider_checkpoint_id) {
         throw new NativeLiveRuntimeProtocolError("Checkpoint-addressed turn cannot accept a legacy result.");
       }
       assertRuntimeResultMatchesCommand(command, result);
@@ -665,7 +665,7 @@ export function nativeLiveRuntimeCommandFromPreparation(
     parent_provider_session_id: preparation.parentProviderSessionId,
     expected_working_directory:
       preparation.expectedWorkingDirectory ?? null,
-    ...(protocolVersion >= 4 ? { parent_provider_checkpoint_id: preparation.parentProviderCheckpointId ?? null } : {}),
+    ...(preparation.parentProviderCheckpointId !== undefined ? { parent_provider_checkpoint_id: preparation.parentProviderCheckpointId } : {}),
     execution_selection: preparation.executionSelection ?? null,
     ...(attachments.length > 0
       ? { attachments }

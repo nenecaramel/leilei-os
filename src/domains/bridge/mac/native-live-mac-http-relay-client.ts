@@ -528,7 +528,7 @@ implements NativeLiveMacDaemonRelayClient {
         typeof record.effectiveWorkingDirectory === "string"
           ? record.effectiveWorkingDirectory
           : null,
-      providerCheckpointId: typeof record.providerCheckpointId === "string" ? record.providerCheckpointId : null,
+      ...(Object.hasOwn(record, "providerCheckpointId") ? { providerCheckpointId: typeof record.providerCheckpointId === "string" ? record.providerCheckpointId : null } : {}),
     };
   }
 

@@ -126,7 +126,7 @@ export function parseNativeLiveRuntimeCommand(
     runtime_mode: runtimeMode,
     parent_provider_session_id: parentProviderSessionId,
     expected_working_directory: expectedWorkingDirectory,
-    ...(protocolVersion >= 4 ? { parent_provider_checkpoint_id: parentProviderCheckpointId } : {}),
+    ...(Object.hasOwn(body, "parent_provider_checkpoint_id") ? { parent_provider_checkpoint_id: parentProviderCheckpointId } : {}),
     execution_selection:
       body.execution_selection === undefined
         || body.execution_selection === null

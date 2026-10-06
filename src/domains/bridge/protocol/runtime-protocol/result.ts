@@ -58,7 +58,7 @@ export function parseNativeLiveRuntimeExecutionResult(
     if (protocolVersion < 4 && body.provider_checkpoint_id !== undefined) {
       throw new NativeLiveRuntimeProtocolError("Provider checkpoint requires protocol v4.");
     }
-    const providerCheckpointId = protocolVersion >= 4
+    const providerCheckpointId = Object.hasOwn(body, "provider_checkpoint_id")
       ? requireUuid(body.provider_checkpoint_id, "provider_checkpoint_id") : null;
     if (!Array.isArray(body.normalized_events)) {
       throw new NativeLiveRuntimeProtocolError("normalized_events must be an array.");

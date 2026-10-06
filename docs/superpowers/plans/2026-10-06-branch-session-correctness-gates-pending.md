@@ -1,5 +1,112 @@
 # PR #908 additional correctness gates — verification ledger
 
+## Latest rebase verification — 2026-10-06 (local only)
+
+Rebased the eleven #908 commits onto latest `origin/main@4b908b3bca68d56dce31cddd38eb8b3d38d6d8ad`
+(which contains the requested `5f461fd6` plus #911). History was not squashed.
+**Claude live query calls in this follow-up: 0**. Both opt-in SDK switches were
+forced to 0. The earlier authorized production-query compact historical fork PASS
+remains recorded against its actual tested head; it was not rerun after rebase.
+No SDK upgrade, merge, deployment, daemon restart or production mutation.
+
+### Conflict resolution and semantics
+
+- `native-live-silence-wake.ts`: retain main's stale staged predicate/source-path
+  query and ignore reasons; additionally select the canonical checkpoint UUID
+  and persist it on an isolated `fork` wake preparation. DB assertion pins fork
+  mode and the exact foreground checkpoint. Quiet/stale wake discard still works.
+- `native-live-backend-relay.ts`: retain main's output attachment capability,
+  discarded-wake receipts/recovery and working-directory selection. Reserve also
+  preserves modern checkpoint fields and resume/fork modes.
+- `native-live-mac-http-relay-client.ts`: keep main's 503 retry/recovery/ignore-reason
+  behavior; carry checkpoint in compact reservation/result without replacing
+  working-directory identity. Missing optional legacy fields stay absent.
+- Main removed `native-live-mac-workspace-runtime.ts`; keep it deleted and forward
+  the compact checkpoint through `native-live-mac-working-directory-runtime.ts`.
+  Its regression was RED against main (lost compact args) then GREEN here.
+- Turn schema, protocol, daemon/executor, prepare/finalize/read records and compact
+  conflicts retain main's `expected/effective_working_directory`, v4-only protocol
+  and output capability. Add exact transcript UUIDs and resume identity validation.
+  Existing pre-checkpoint v4 shapes remain readable; checkpoint-aware preparations
+  still reject success missing its checkpoint, before any canonical write. Retry/
+  Edit use exact historical parent; ordinary send resumes; legacy/bootstrap forks
+  once. No workspace columns/types or v1-v3 protocol acceptance were resurrected.
+- Migration journal keeps main's `0099_retire_product_workspace`; #908's branch
+  migration is now `0100_native_live_branch_session`, with matching idx 100. No
+  production migration ran. Fresh exported schema vs full ledger parity passes.
+- Shared-session cleanup retains main's user/provider namespace and protects all
+  surviving checkpoint/bootstrap/preparation/compact references. Fixtures now use
+  same-session resume results, exact UUIDs and expect A to remain protected after
+  Retry/Edit while exclusive replacement sessions can be cleaned.
+
+### Fresh local gates
+
+Server/Mac: Node **22.23.3**; Web: Node **24.21.0**; SDK unchanged **0.3.286**.
+
+| Gate | Result |
+| --- | --- |
+| Claude bridge complete local suite | 156 PASS / 0 FAIL / 4 live skips |
+| Production runtime gate | 519 PASS / 0 FAIL (402 root + 117 bridge) |
+| Isolated Postgres full regression | 67 PASS / 0 FAIL / 0 skips |
+| Silence wake / relay / protocol / turn / replacement / directory compact targeted | 101 PASS / 0 FAIL |
+| Root typecheck / build | PASS |
+| Web typecheck / build | PASS |
+| Migration 0000–0100 / Drizzle check / schema-ledger parity | PASS |
+| git diff --check | PASS |
+
+The DB runner retained its complete standard file list and safety checks. A
+throwaway launcher mapped pnpm commands to identical Node/Drizzle/tsx commands to
+avoid reinstalling canonical symlinked dependencies. DB was exclusively this
+task's localhost `127.0.0.1:55448/leilei_908_rebase_test_regression`.
+First sandboxed HTTP/full-suite runs could not bind local servers; those were
+excluded from final evidence. Final paired suites used the same localhost-enabled
+permissions, Node22, root/bridge dependencies, installed Web dependencies, JSX/CSS
+settings and disabled DB/live flags. No unrelated historical failures were fixed.
+
+Full canonical main: **2241 tests; 2092 PASS / 22 FAIL / 127 skips**.
+Full canonical PR: **2253 tests; 2098 PASS / 22 FAIL / 133 skips**.
+**New failure titles: 0; resolved failure titles: 0.** Six extra local passes and
+six opt-in branch DB cases account for the delta. This is not a full-suite GREEN claim.
+
+Commands (direct equivalents where the local pnpm launcher requires reinstall):
+```sh
+RUN_SDK_BRANCH_CHECKPOINT_LIVE=0 RUN_SDK_BRANCH_CORRECTNESS_LIVE=0 node --test tools/claude-bridge/test/*.test.mjs
+# package.json test:production-runtime-gate: tsx mapped to node --import tsx, same full file list
+# isolated DB runner: migrations/check/full file list, only task-owned localhost DB
+node --import tsx --test --test-concurrency=1 tests/native-live-silence-wake.test.ts tests/native-live-mac-silence-wake-scheduler.test.ts tests/native-live-backend-relay.test.ts tests/native-live-mac-http-relay-client.test.ts tests/native-live-runtime-protocol.test.ts tests/native-live-mac-working-directory-runtime.test.ts tests/native-live-backend-turn-coordinator.test.ts tests/native-live-replacement-purge.test.ts tests/native-live-runtime-protocol-boundaries.test.ts
+node node_modules/typescript/bin/tsc --noEmit
+node node_modules/typescript/bin/tsc -p tsconfig.json
+node scripts/build-mcp-browser.mjs
+# in web/, Node24: tsc -b; vite build
+TSX_TSCONFIG_PATH=./web/tsconfig.app.json node --import tsx --import ./tests/register-css-loader.mjs --test --test-concurrency=1 tests/**/*.test.ts
+# identical full-suite command in latest-main baseline worktree
+git diff --check
+```
+
+Shared failure titles on latest main and PR:
+- `AudioSession fix leaves VoiceInputController and every other production file unchanged from PR head`
+- `CI checks after a failed gate still run once their setup succeeds`
+- `CI reports all verification surfaces independently for PR and push`
+- `CI scopes database access to Postgres gates and preserves every verification command`
+- `G keeps a single registry and consumes C verified SVG without another downloader`
+- `G production loader accepts only local assets and the minimal data bridge`
+- `User row and history/divider moves retain complete presentation and interaction blocks`
+- `actual Swift media descriptors, layers, layout, integrity/cache/retry and preview lifecycle`
+- `authenticated Native Live internal JSON can exceed the public 1mb limit`
+- `canonical murmur is projected separately and raw streaming tags are fail-closed`
+- `composer keeps mic placeholder and arbitrates trailing tap versus hold in one native control`
+- `iOS Runtime UI prefers SDK tool display names and surfaces API retry state`
+- `murmur is a separate activity-row bubble that opens a sheet`
+- `partial murmur tag suffixes are fail-closed`
+- `real WebKit G loads offline production engines and denies navigation/network`
+- `source panels match assistant copy interaction without growing the button`
+- `tests/ios-native-live-message-surface-boundaries.test.ts`
+- `the app JSON parser accepts a 100k CJK Diary body`
+- `the app JSON parser remains bounded above 1mb`
+- `turn read targets only exact detached prepared user without a conversation scan`
+- `unauthenticated Native Live internal JSON does not get the larger parser budget`
+- `voice controller waits for final text, fails on timeout, and ignores cancelled session callbacks`
+
 Initial PR head was `f8339c69772eab13b3c9ee1af496f7c6b6d1bd57`. The user later
 authorized pushing candidate `dabda76d`, which is now on #908. Do not merge or deploy.
 SDK remains exactly `@anthropic-ai/claude-agent-sdk@0.3.286`.

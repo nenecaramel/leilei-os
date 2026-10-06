@@ -649,7 +649,8 @@ test(
         request_id: requestId,
         conversation_id: conversation.id,
         status: "success",
-        provider_session_id: providerSessionId,
+        provider_session_id: prepared.command.runtime_mode === "resume" ? prepared.command.parent_provider_session_id! : providerSessionId,
+        provider_checkpoint_id: prepared.command.prepare_id,
         normalized_events: [
           {
             type: "text",
@@ -817,7 +818,8 @@ test(
         request_id: requestId,
         conversation_id: conversation.id,
         status: "success",
-        provider_session_id: `legacy-provider-${crypto.randomUUID()}`,
+        provider_session_id: prepared.command.runtime_mode === "resume" ? prepared.command.parent_provider_session_id! : `legacy-provider-${crypto.randomUUID()}`,
+        provider_checkpoint_id: prepared.command.prepare_id,
         normalized_events: [
           { type: "text", payload: { text: "VISIBLE" } },
           {

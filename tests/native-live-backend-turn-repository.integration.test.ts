@@ -220,6 +220,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-first",
+        provider_checkpoint_id: firstPrepare.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "first answer" } },
         {
@@ -298,7 +299,7 @@ test(
     );
     assert.deepEqual(
       firstDurableMetadata.runtimeMetadata,
-      { ...runtimeMetadata, turn_started_at: finalizedRead.startedAt },
+      { ...runtimeMetadata, provider_checkpoint_version: 1, turn_started_at: finalizedRead.startedAt },
     );
     assert.ok(firstDurableMetadata.observedAt);
 
@@ -309,6 +310,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-first",
+        provider_checkpoint_id: firstPrepare.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "first answer" } },
         {
@@ -334,6 +336,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-conflict",
+        provider_checkpoint_id: firstPrepare.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "different answer" } },
       ],
@@ -365,7 +368,7 @@ test(
     });
     assert.equal(secondPrepare.ok, true);
     if (!secondPrepare.ok) throw new Error("expected second prepare success");
-    assert.equal(secondPrepare.command.runtime_mode, "fork");
+    assert.equal(secondPrepare.command.runtime_mode, "resume");
     assert.equal(
       secondPrepare.command.parent_provider_session_id,
       "provider-first",
@@ -378,7 +381,8 @@ test(
       request_id: secondRequestId,
       conversation_id: conversation.id,
       status: "success",
-      provider_session_id: "provider-second",
+      provider_session_id: "provider-first",
+        provider_checkpoint_id: secondPrepare.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "second answer" } },
         {
@@ -406,7 +410,7 @@ test(
     );
     assert.deepEqual(
       secondDurableMetadata.runtimeMetadata,
-      { turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
+      { provider_checkpoint_version: 1, turn_started_at: (await port.readTurn({ userId:user.id, prepareId:secondPrepare.command.prepare_id }))?.startedAt },
       "latest checkpoint carries its own turn start and must not inherit older provider metadata",
     );
 
@@ -702,6 +706,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-retry",
+        provider_checkpoint_id: retry.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "retry answer" } },
         {
@@ -792,7 +797,7 @@ test(
       .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
     assert.deepEqual(
       providerCleanupsAfterRetry.map((row) => row.providerSessionId).sort(),
-      ["provider-second"],
+      [],
     );
 
     const retryCausalStateId = crypto.randomUUID();
@@ -874,6 +879,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-edit",
+        provider_checkpoint_id: edit.command.prepare_id,
       normalized_events: [
         { type: "text", payload: { text: "edited answer" } },
         {
@@ -917,7 +923,7 @@ test(
       .where(eq(nativeLiveProviderSessionCleanups.userId, user.id));
     assert.deepEqual(
       providerCleanupsAfterEdit.map((row) => row.providerSessionId).sort(),
-      ["provider-retry", "provider-second"],
+      ["provider-retry"],
     );
 
     const failureRequestId =
@@ -1024,7 +1030,7 @@ test(
 );
 
 test(
-  "new sessions persist their effective directory and the next turn forks in that durable directory",
+  "new sessions persist their effective directory and the next turn resumes in that durable directory",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -1091,6 +1097,7 @@ test(
       conversation_id: boundConversation.id,
       status: "success",
       provider_session_id: "provider-directory-first",
+        provider_checkpoint_id: first.command.prepare_id,
       effective_working_directory: root,
       normalized_events: [
         { type: "text", payload: { text: "directory answer" } },
@@ -1125,7 +1132,7 @@ test(
     });
     assert.equal(second.ok, true);
     if (!second.ok) throw new Error("expected Directory continuation");
-    assert.equal(second.command.runtime_mode, "fork");
+    assert.equal(second.command.runtime_mode, "resume");
     assert.equal(
       second.command.parent_provider_session_id,
       "provider-directory-first",
@@ -1249,6 +1256,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "leileios-forked-provider-session",
+        provider_checkpoint_id: prepared.command.prepare_id,
       effective_working_directory: workingDirectory,
       normalized_events: [
         {

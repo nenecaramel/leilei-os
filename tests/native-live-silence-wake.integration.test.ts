@@ -109,6 +109,7 @@ test(
         conversation_id: conversation.id,
         status: "success",
         provider_session_id: "provider-foreground",
+        provider_checkpoint_id: foreground.command.prepare_id,
         normalized_events: [
           {
             type: "text",
@@ -166,6 +167,8 @@ test(
     });
     assert.ok(shortPreparation);
     assert.equal(shortPreparation.operation, "wake");
+    assert.equal(shortPreparation.runtimeMode, "fork");
+    assert.equal(shortPreparation.parentProviderCheckpointId, foreground.command.prepare_id);
     assert.equal(shortPreparation.canonicalUserMessageId, null);
     assert.equal(
       shortPreparation.parentProviderSessionId,
@@ -183,6 +186,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-wake-quiet",
+        provider_checkpoint_id: shortPrepareId,
       normalized_events: [
         {
           type: "text",
@@ -257,6 +261,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-wake-visible",
+        provider_checkpoint_id: longPrepareId,
       normalized_events: [
         {
           type: "text",
@@ -422,6 +427,7 @@ test(
         conversation_id: conversation.id,
         status: "success",
         provider_session_id: "provider-stale-source",
+        provider_checkpoint_id: foreground.command.prepare_id,
         normalized_events: [
           {
             type: "text",
@@ -483,6 +489,7 @@ test(
       conversation_id: conversation.id,
       status: "success",
       provider_session_id: "provider-stale-wake-child",
+        provider_checkpoint_id: wakePrepareId,
       normalized_events: [
         {
           type: "text",
@@ -643,6 +650,7 @@ test(
       conversation_id: sourceConversation.id,
       status: "success",
       provider_session_id: "provider-current-source",
+        provider_checkpoint_id: source.command.prepare_id,
       normalized_events: [
         {
           type: "text",
@@ -733,6 +741,7 @@ test(
         conversation_id: sourceConversation.id,
         status: "success",
         provider_session_id: "provider-stranded-wake",
+        provider_checkpoint_id: shortPrepareId,
         normalized_events: [
           {
             type: "text",
