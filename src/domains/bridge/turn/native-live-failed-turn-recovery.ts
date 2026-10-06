@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
   conversationMessages,
@@ -32,12 +32,6 @@ type Transaction = Parameters<Database["transaction"]>[0] extends (
   ? T
   : never;
 
-type FailedTurnMetadata = {
-  prepareId?: unknown;
-  conversationId?: unknown;
-  userMessageId?: unknown;
-  anchorHeadMessageId?: unknown;
-};
 
 export class NativeLiveFailedTurnRecoveryError extends Error {
   constructor(
@@ -164,7 +158,6 @@ export class NativeLiveFailedTurnRecoveryService {
         const [conversation] = await transaction
           .select({
             currentHeadMessageId: conversations.currentHeadMessageId,
-            providerMetadata: conversations.providerMetadata,
           })
           .from(conversations)
           .where(
@@ -181,21 +174,6 @@ export class NativeLiveFailedTurnRecoveryService {
           throw new NativeLiveFailedTurnRecoveryError(
             "NOT_FOUND",
             "Conversation was not found.",
-          );
-        }
-
-        const failedTurn = readFailedTurnMetadata(
-          conversation.providerMetadata["native_live_failed_turn"],
-        );
-        if (
-          failedTurn.prepareId !== snapshot.prepareId
-          || failedTurn.conversationId !== snapshot.conversationId
-          || failedTurn.userMessageId !== snapshot.userMessageId
-          || failedTurn.anchorHeadMessageId !== conversation.currentHeadMessageId
-        ) {
-          throw new NativeLiveFailedTurnRecoveryError(
-            "STALE_HEAD",
-            "Conversation head changed after the failed turn.",
           );
         }
 
@@ -359,23 +337,6 @@ export class NativeLiveFailedTurnRecoveryService {
           );
         }
 
-        await transaction
-          .update(conversations)
-          .set({
-            providerMetadata: sql`
-              ${conversations.providerMetadata}
-              - 'native_live_failed_turn'
-              - 'native_live_presentation_owner'
-            `,
-            updatedAt: recoveredAt,
-          })
-          .where(
-            and(
-              eq(conversations.userId, input.userId),
-              eq(conversations.id, snapshot.conversationId),
-            ),
-          );
-
         return {
           assistantMessageId: assistantMessage.id,
           providerSessionId: snapshot.providerSessionId,
@@ -516,13 +477,6 @@ export class NativeLiveFailedTurnRecoveryService {
         && !events.some((event) => event.type === "attachment"),
     };
   }
-}
-
-function readFailedTurnMetadata(value: unknown): FailedTurnMetadata {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as FailedTurnMetadata;
 }
 
 function completedCheckpointId(
