@@ -1896,8 +1896,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
 
         if (message?.type === "result") {
           terminalResult = message;
-          terminalFailure =
-            sdkResultFailed(message) ? message : null;
+        }
+        if (sdkResultFailed(message)) {
+          terminalFailure = message;
         }
       }
 
@@ -1965,10 +1966,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           },
         );
       }
-      // The SDK may yield an authoritative terminal success before its
-      // Claude Code child exits non-zero during teardown. Preserve that
-      // result and let mirror/checkpoint durability checks below decide
-      // whether the operation can commit.
+      // Preserve an authoritative successful result through the known
+      // Claude Code non-zero teardown quirk. Mirror/checkpoint durability
+      // checks below still decide whether the turn can commit.
     } finally {
       if (this.activeQuery === activeQuery) {
         this.activeQuery = null;
