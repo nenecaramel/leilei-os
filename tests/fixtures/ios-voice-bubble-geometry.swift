@@ -12,17 +12,18 @@ import Foundation
   precondition(G.userWidth(transcript:"中 é 👨‍👩‍👦",clusterWidth:cluster) == widths[2])
   precondition(G.userWidth(transcript:" \n ",clusterWidth:cluster) == cluster)
   precondition(G.userWidth(transcript:"\u{200B}\u{200E}",clusterWidth:cluster) == cluster)
-  // outer = content + 2 * inset; short voice must be clearly narrower than the old 103pt outer
-  precondition(widths[1] + 2 * G.horizontalInset < 90)
+  // Short user voice keeps the right inset but trims leading space; it must remain well below the old 103pt outer width.
+  precondition(widths[1] + G.userLeadingInset + G.userTrailingInset < 82)
   precondition(G.contentHeight + 2 * G.verticalInset == 45)
   let minimum=G.audioMinimumWidth()
+  precondition(minimum == 116)
   precondition(minimum == 2*G.horizontalInset + G.audioPlayWidth + 2*G.controlGap + G.audioMinimumWaveformWidth + G.audioFallbackLabelWidth)
   let durations=[1.0,3,8,15,30,60,120,10000]
   let audio=durations.map{G.audioWidth(duration:$0,sizeBytes:nil)}
   precondition(audio.allSatisfy{$0 >= minimum && $0 <= G.audioMaximumWidth})
   precondition(zip(audio,audio.dropFirst()).allSatisfy{$0 <= $1})
   precondition(audio[0] < audio[1] && audio[1] < audio[2] && audio.last == G.audioMaximumWidth)
-  precondition(audio[0] < 164 && audio[1] < 179, "short audio must be narrower than the old 164/179pt")
+  precondition(audio[0] < 140 && audio[1] < 160, "short audio must reflect the tighter minimum width")
   let fallback=G.audioWidth(duration:0,sizeBytes:nil)
   precondition(fallback > minimum && fallback < G.audioMaximumWidth)
   precondition(G.audioWidth(duration:0,sizeBytes:1000) < G.audioWidth(duration:0,sizeBytes:1000000))
