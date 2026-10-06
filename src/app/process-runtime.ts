@@ -561,6 +561,7 @@ export function createProcessRuntime(
     new NativeLiveFailedTurnRecoveryService(
       db,
       nativeLiveProviderSessionStoreService,
+      nativeLiveTurnPort,
     );
   const nativeLiveRuntimeEventService =
     new NativeLiveRuntimeEventService(
