@@ -87,8 +87,8 @@ struct NativeLiveAudioAttachmentBubble: View {
     }
 
     private var durationLabel: String {
-        NativeLiveVoiceBubbleGeometry.durationLabel(
-            seconds: NativeLiveVoiceBubbleGeometry.audioSeconds(duration: playback.duration, sizeBytes: input.sizeBytes))
+        guard playback.duration.isFinite, playback.duration > 0 else { return "—" }
+        return NativeLiveVoiceBubbleGeometry.durationLabel(seconds: playback.duration)
     }
 
     private func playOrPause() {
