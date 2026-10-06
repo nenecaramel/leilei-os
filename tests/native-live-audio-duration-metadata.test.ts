@@ -223,7 +223,7 @@ test("runtime result round-trips output audio duration metadata", async () => {
       return {
         attachmentId,
         filename: "voice.m4a",
-        mimeType,
+        mimeType: "audio/mp4",
         sizeBytes: 123,
         sha256: "a".repeat(64),
         kind: "file" as const,
@@ -326,7 +326,7 @@ function bindingDb(
     objectKey: "native-live/user/audio",
     content: null,
     filename: "voice.m4a",
-    mimeType: "audio/mp4",
+    mimeType,
     sizeBytes: 123,
     sha256: "a".repeat(64),
     kind: "file" as const,
