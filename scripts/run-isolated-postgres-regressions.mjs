@@ -93,6 +93,7 @@ run([
   "tests/native-live-background-model-queue.integration.test.ts",
   "tests/native-live-provider-session-store.integration.test.ts",
   "tests/retire-product-workspace-migration.test.ts",
+  "tests/retire-product-workspace-schema.integration.test.ts",
   "tests/native-live-external-history.integration.test.ts",
   "tests/claude-account-usage.integration.test.ts",
 ]);
