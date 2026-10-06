@@ -11,9 +11,9 @@ test('voice bubbles use transcript/duration geometry and stable waveform present
  const dir=mkdtempSync(path.join(os.tmpdir(),'voice-geometry-'));
  try {
   let source=readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8');
-  if(process.env.VOICE_VISUAL_MUTATION==='user-width')source=source.replace('return 68 + 57 * min(1, log1p(Double(count)) / log1p(240))','return 68');
-  if(process.env.VOICE_VISUAL_MUTATION==='audio-width')source=source.replace('return 150 + 100 * min(1, log1p(seconds) / log1p(120))','return 280');
-  if(process.env.VOICE_VISUAL_MUTATION==='waveform')source=source.replace('return (0..<count).map { _ in','return (0..<count).map { _ in').replace('return 6 + CGFloat(state % 17)','return 12');
+  if(process.env.VOICE_VISUAL_MUTATION==='user-width')source=source.replace('return minimum + (userMaxContentWidth - minimum) * CGFloat(min(1, log1p(Double(count)) / log1p(240)))','return 68');
+  if(process.env.VOICE_VISUAL_MUTATION==='audio-width')source=source.replace('return minimum + growth * CGFloat(min(1, log1p(audioSeconds(duration: duration, sizeBytes: sizeBytes)) / log1p(60)))','return 280');
+  if(process.env.VOICE_VISUAL_MUTATION==='waveform')source=source.replace('return (0..<count).map { _ in','return (0..<count).map { _ in').replace('return waveformMinimumHeight + CGFloat(state % span)','return 12');
   writeFileSync(path.join(dir,'Geometry.swift'),source);
   const build=spawnSync('xcrun',['swiftc','-parse-as-library','-module-cache-path',path.join(dir,'cache'),path.join(dir,'Geometry.swift'),'tests/fixtures/ios-voice-bubble-geometry.swift','-o',path.join(dir,'check')],{encoding:'utf8',timeout:180000});
   assert.equal(build.status,0,build.stderr);
@@ -33,4 +33,18 @@ test('only the two bubble presentations change; playback/open/expansion remain e
   assert.equal(section(current),section(original),marker);
  }
  assert.doesNotMatch(readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8'),/Hasher|nativeLiveAttachmentBytes\(/);
+});
+
+test('assistant audio is one 45pt row with total-seconds label and no time text; user voice height matches',()=>{
+ const audio=readFileSync(root+'NativeLiveAudioAttachmentBubble.swift','utf8');
+ const geometry=readFileSync(root+'NativeLiveVoiceBubbleGeometry.swift','utf8');
+ const user=readFileSync(root+'NativeLiveUserMessageRow.swift','utf8');
+ assert.doesNotMatch(audio,/--:--|statusLabel|Text\("Audio"\)|\/ \\\(time|%d:%02d/);
+ assert.match(geometry,/u\{2033\}/);
+ assert.match(geometry,/contentHeight: CGFloat = 21/);assert.match(geometry,/verticalInset: CGFloat = 12/);
+ assert.match(audio,/\.padding\(\.vertical, NativeLiveVoiceBubbleGeometry\.verticalInset\)/);
+ assert.match(user,/frame\(height: NativeLiveVoiceBubbleGeometry\.contentHeight/);
+ assert.match(geometry,/waveformMinimumHeight: CGFloat = 4/);assert.match(geometry,/waveformMaximumHeight: CGFloat = 15/);
+ assert.match(geometry,/waveformBarWidth: CGFloat = 2/);
+ assert.match(audio,/Button \{ playOrPause\(\) \}/);assert.match(audio,/Button \{ open\(\) \}/);
 });

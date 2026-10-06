@@ -1,46 +1,60 @@
 import Foundation
 @main struct VoiceGeometryChecks {
  static func main() {
+  let G=NativeLiveVoiceBubbleGeometry.self
+  let cluster=G.userFallbackClusterWidth
   let counts=[0,1,3,8,15,30,60,240,10000]
-  let widths=counts.map { NativeLiveVoiceBubbleGeometry.userWidth(transcript:String(repeating:"字",count:$0)) }
-  precondition(widths.first == 68 && widths.last == 125)
+  let widths=counts.map { G.userWidth(transcript:String(repeating:"字",count:$0),clusterWidth:cluster) }
+  precondition(widths.first == cluster && widths.last == 125)
   precondition(zip(widths,widths.dropFirst()).allSatisfy{$0 <= $1})
   precondition(widths[1] < widths[2] && widths[2] < widths[3])
-  precondition(NativeLiveVoiceBubbleGeometry.userWidth(transcript:" a b\n c ") == NativeLiveVoiceBubbleGeometry.userWidth(transcript:"abc"))
-  precondition(NativeLiveVoiceBubbleGeometry.userWidth(transcript:"中 é 👨‍👩‍👦") == widths[2])
-  precondition(NativeLiveVoiceBubbleGeometry.userWidth(transcript:" \n ") == 68)
-  precondition(NativeLiveVoiceBubbleGeometry.userWidth(transcript:"\u{200B}\u{200E}") == 68)
+  precondition(G.userWidth(transcript:" a b\n c ",clusterWidth:cluster) == G.userWidth(transcript:"abc",clusterWidth:cluster))
+  precondition(G.userWidth(transcript:"中 é 👨‍👩‍👦",clusterWidth:cluster) == widths[2])
+  precondition(G.userWidth(transcript:" \n ",clusterWidth:cluster) == cluster)
+  precondition(G.userWidth(transcript:"\u{200B}\u{200E}",clusterWidth:cluster) == cluster)
+  // outer = content + 2 * inset; short voice must be clearly narrower than the old 103pt outer
+  precondition(widths[1] + 2 * G.horizontalInset < 90)
+  precondition(G.contentHeight + 2 * G.verticalInset == 45)
+  let minimum=G.audioMinimumWidth()
+  precondition(minimum == 2*G.horizontalInset + G.audioPlayWidth + 2*G.controlGap + G.audioMinimumWaveformWidth + G.audioFallbackLabelWidth)
   let durations=[1.0,3,8,15,30,60,120,10000]
-  let audio=durations.map{NativeLiveVoiceBubbleGeometry.audioWidth(duration:$0,sizeBytes:nil)}
-  precondition(audio.allSatisfy{$0 >= 150 && $0 <= 250})
+  let audio=durations.map{G.audioWidth(duration:$0,sizeBytes:nil)}
+  precondition(audio.allSatisfy{$0 >= minimum && $0 <= G.audioMaximumWidth})
   precondition(zip(audio,audio.dropFirst()).allSatisfy{$0 <= $1})
-  precondition(audio[0] < audio[1] && audio[1] < audio[2] && audio.last == 250)
-  precondition(audio[2]-audio[0] > audio[6]-audio[4])
-  let fallback=NativeLiveVoiceBubbleGeometry.audioWidth(duration:0,sizeBytes:nil)
-  precondition(fallback > 150 && fallback < 250)
-  precondition(NativeLiveVoiceBubbleGeometry.audioWidth(duration:0,sizeBytes:1000) < NativeLiveVoiceBubbleGeometry.audioWidth(duration:0,sizeBytes:1000000))
-  precondition(NativeLiveVoiceBubbleGeometry.audioWidth(duration:8,sizeBytes:1) == audio[2])
-  precondition(abs(NativeLiveVoiceBubbleGeometry.audioWidth(duration:0,sizeBytes:192000)-audio[2]) < 1)
+  precondition(audio[0] < audio[1] && audio[1] < audio[2] && audio.last == G.audioMaximumWidth)
+  precondition(audio[0] < 164 && audio[1] < 179, "short audio must be narrower than the old 164/179pt")
+  let fallback=G.audioWidth(duration:0,sizeBytes:nil)
+  precondition(fallback > minimum && fallback < G.audioMaximumWidth)
+  precondition(G.audioWidth(duration:0,sizeBytes:1000) < G.audioWidth(duration:0,sizeBytes:1000000))
+  precondition(G.audioWidth(duration:8,sizeBytes:1) == audio[2])
+  precondition(abs(G.audioWidth(duration:0,sizeBytes:192000)-audio[2]) < 1)
   for (seconds, bytes) in [(1.0,32044),(8.0,64000),(8.0,128044),(8.0,256044),(30.0,960044)] {
-   let proxy=NativeLiveVoiceBubbleGeometry.audioWidth(duration:0,sizeBytes:bytes)
-   let known=NativeLiveVoiceBubbleGeometry.audioWidth(duration:seconds,sizeBytes:bytes)
+   let proxy=G.audioWidth(duration:0,sizeBytes:bytes)
+   let known=G.audioWidth(duration:seconds,sizeBytes:bytes)
    precondition(abs(proxy-known) < 25, "common encoding proxy must not cause a large geometry jump")
+  }
+  for (s,l) in [(0.2,"1\u{2033}"),(1.0,"1\u{2033}"),(4.4,"4\u{2033}"),(7.6,"8\u{2033}"),(23,"23\u{2033}")] {
+   precondition(G.durationLabel(seconds:s) == l)
   }
   let seed=NativeLiveVoiceBubbleGeometry.identity(entityID:"entity",sha256:"sha",draftID:"draft",filename:"f")
   precondition(seed == "entity")
   precondition(NativeLiveVoiceBubbleGeometry.identity(entityID:nil,sha256:"sha",draftID:"draft",filename:"f") == "sha")
   precondition(NativeLiveVoiceBubbleGeometry.identity(entityID:nil,sha256:nil,draftID:"draft",filename:"f") == "draft")
-  let wave=NativeLiveVoiceBubbleGeometry.waveform(identity:seed,width:200)
-  precondition(wave == NativeLiveVoiceBubbleGeometry.waveform(identity:seed,width:200))
-  precondition(wave != NativeLiveVoiceBubbleGeometry.waveform(identity:"different",width:200))
-  for width in [0.0,150,180,200,250,1000] {
-   let bars=NativeLiveVoiceBubbleGeometry.waveform(identity:seed,width:width)
-   precondition((12...28).contains(bars.count) && bars.allSatisfy{(6...22).contains($0)})
+  let wave=G.waveform(identity:seed,width:120)
+  precondition(wave == G.waveform(identity:seed,width:120))
+  precondition(wave != G.waveform(identity:"different",width:120))
+  let wide=G.waveform(identity:seed,width:200)
+  precondition(Array(wide.prefix(wave.count)) == wave, "same attachment keeps the same leading bars at any width")
+  for width in [0.0,40,80,120,200,1000] {
+   let bars=G.waveform(identity:seed,width:width)
+   precondition((8...48).contains(bars.count) && bars.allSatisfy{(4...15).contains($0)})
+   precondition(CGFloat(bars.count) * (G.waveformBarWidth + G.waveformBarSpacing) - G.waveformBarSpacing <= max(width, 8 * 4 - 2))
    for progress in [0.0,0.25,0.5,1] {
-    let filled=bars.indices.filter{NativeLiveVoiceBubbleGeometry.isFilled(index:$0,count:bars.count,progress:progress)}.count
+    let filled=bars.indices.filter{G.isFilled(index:$0,count:bars.count,progress:progress)}.count
     precondition(filled == Int(ceil(progress * Double(bars.count))))
    }
   }
+  precondition(G.waveformBarWidth >= 1.5 && G.waveformBarWidth <= 2)
   print("Voice geometry PASS widths=\(widths) audio=\(audio) waveform=\(wave)")
  }
 }

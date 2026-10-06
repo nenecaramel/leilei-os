@@ -77,8 +77,8 @@ private struct NativeLiveVoiceMessageBubbleVisual: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
-        .frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript), alignment: .trailing)
-        .frame(height: 21, alignment: .leading)
+        .frame(width: NativeLiveVoiceBubbleGeometry.userWidth(transcript: transcript, clusterWidth: NativeLiveVoiceBubbleMetrics.userClusterWidth), alignment: .trailing)
+        .frame(height: NativeLiveVoiceBubbleGeometry.contentHeight, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(isExpanded ? "Voice message, transcript shown" : "Voice message, tap to show transcript")
     }
