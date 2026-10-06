@@ -121,6 +121,21 @@ test('compact preserves terminal success through Claude teardown exit and still 
  assert.equal(result.compaction?.boundary?.trigger,'manual');
 });
 
+test('compact does not mask arbitrary errors after terminal success', async()=>{
+ const f=fixture();
+ f.transport.queryImpl=()=>({close(){},async *[Symbol.asyncIterator](){
+  yield {type:'system',subtype:'init',session_id:f.a};
+  yield {type:'system',subtype:'compact_boundary',session_id:f.a,compact_metadata:{trigger:'manual',pre_tokens:100,post_tokens:10}};
+  yield {type:'result',subtype:'success',is_error:false,session_id:f.a,result:'summary'};
+  throw new Error('unexpected compact host failure');
+ }});
+ await assert.rejects(
+  f.transport.compact(f.a,null,f.cp),
+  e=>e.runtimeCode==='CLAUDE_PROCESS_FAILED'
+ );
+ assert.equal((await f.store.getStatus(f.a)),'incomplete');
+});
+
 test('compact terminal success still fails when SessionStore mirror reports an error', async()=>{
  const f=fixture();
  f.transport.queryImpl=()=>({close(){},async *[Symbol.asyncIterator](){
