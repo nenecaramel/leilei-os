@@ -93,3 +93,7 @@
 - [ ] Fetch latest main, align isolated branch and re-run affected gates. Commit/push and create one Draft PR; attach it to this task. No merge/deploy.
 - [ ] Report user-requested 12 delivery items with concrete RED/GREEN, full-suite delta and unexecuted tests. Document migration ordering and Mac daemon fresh requirement without performing either production action.
 - [ ] Run hygiene:finish, preserve evidence in PR, remove this task's worktree/cache and prune; keep owner main/signing settings untouched.
+
+## Closeout status
+
+Tasks 1–6 implemented and verified; see [verification and full changed-file list](2026-10-06-native-live-branch-session-verification.md). Real SDK compact evidence is complete. Production acceptance remains deliberately unexecuted. PR #908 remains Draft; no merge or deployment. Temporary task resources are removed at closeout.
