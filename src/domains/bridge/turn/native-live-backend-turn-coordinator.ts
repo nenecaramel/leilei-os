@@ -32,6 +32,7 @@ import {
   type NativeLiveRuntimeFailureCode,
   type NativeLiveRuntimeMetadata,
   type NativeLiveRuntimeMode,
+  type NativeLiveRuntimeOutputAttachmentMetadata,
 } from "../protocol/native-live-runtime-protocol.js";
 
 export type NativeLivePreparedTurn = {
@@ -233,6 +234,8 @@ export interface NativeLiveBackendTurnPort {
     effectiveWorkspaceRoot: string | null;
     blocks: NativeLiveContentBlockInput[];
     outputAttachmentIds: readonly string[];
+    outputAttachmentMetadata:
+      readonly NativeLiveRuntimeOutputAttachmentMetadata[];
     normalizedEvents: readonly NativeLiveNormalizedEvent[];
     runtimeMetadata: NativeLiveRuntimeMetadata | null;
     mindFollowUp: NativeLiveMindFollowUpPayload | null;
@@ -561,6 +564,8 @@ export class NativeLiveBackendTurnCoordinator {
         blocks: finalizedBlocks,
         outputAttachmentIds:
           result.output_attachment_ids ?? [],
+        outputAttachmentMetadata:
+          result.output_attachment_metadata ?? [],
         normalizedEvents: result.normalized_events,
         runtimeMetadata: result.runtime_metadata ?? null,
         mindFollowUp: this.mind && this.postFinalize
