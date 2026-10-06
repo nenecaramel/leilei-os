@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
   conversationMessages,
@@ -259,15 +259,27 @@ export class NativeLiveSilenceWakeService {
               eq(nativeLiveTurnPreparations.userId, input.userId),
               eq(nativeLiveTurnPreparations.status, "prepared"),
               ne(nativeLiveTurnPreparations.operation, "wake"),
-              sql`(
-                ${nativeLiveTurnPreparations.dispatchStatus}
-                  IN ('pending', 'reserved', 'executing', 'delivery_unknown')
-                OR (
-                  ${nativeLiveTurnPreparations.dispatchStatus} = 'staged'
-                  AND ${nativeLiveTurnPreparations.createdAt}
-                    >= ${source.assistantCompletedAt}
-                )
-              )`,
+              or(
+                inArray(
+                  nativeLiveTurnPreparations.dispatchStatus,
+                  [
+                    "pending",
+                    "reserved",
+                    "executing",
+                    "delivery_unknown",
+                  ],
+                ),
+                and(
+                  eq(
+                    nativeLiveTurnPreparations.dispatchStatus,
+                    "staged",
+                  ),
+                  gte(
+                    nativeLiveTurnPreparations.createdAt,
+                    source.assistantCompletedAt,
+                  ),
+                ),
+              ),
             ),
           )
           .limit(1);
