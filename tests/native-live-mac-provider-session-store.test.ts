@@ -150,6 +150,67 @@ test("Mac SessionStore reuses one append batch id after ambiguous delivery", asy
   );
 });
 
+test("Mac SessionStore chunks large appends and reuses every chunk receipt after partial delivery", async () => {
+  const calls: Array<{
+    batchId: string;
+    entryLengths: number[];
+  }> = [];
+  let attempt = 0;
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      append_batch_id: string;
+      entries: Array<{ text?: string }>;
+    };
+    calls.push({
+      batchId: body.append_batch_id,
+      entryLengths: body.entries.map(
+        (entry) => entry.text?.length ?? 0,
+      ),
+    });
+    attempt += 1;
+    if (attempt === 2) {
+      throw new Error("second chunk response lost after commit");
+    }
+    return new Response(JSON.stringify({
+      success: true,
+      data: null,
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const store = new NativeLiveMacProviderSessionStore(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+  const key = { projectKey: "/local/path", sessionId: "s-large" };
+  const entries = [
+    { type: "assistant", text: "a".repeat(3_100_000) },
+    { type: "assistant", text: "b".repeat(3_100_000) },
+  ];
+
+  await assert.rejects(
+    () => store.append(key, entries),
+    /second chunk response lost after commit/u,
+  );
+  await store.append(key, entries);
+
+  assert.equal(calls.length, 4);
+  assert.deepEqual(
+    calls.map((call) => call.entryLengths),
+    [
+      [3_100_000],
+      [3_100_000],
+      [3_100_000],
+      [3_100_000],
+    ],
+  );
+  assert.equal(calls[0]?.batchId, calls[2]?.batchId);
+  assert.equal(calls[1]?.batchId, calls[3]?.batchId);
+  assert.notEqual(calls[0]?.batchId, calls[1]?.batchId);
+});
+
 test("Mac SessionStore keeps one receipt until mirror_error discards it", async () => {
   const ids: string[] = [];
   const fakeFetch: typeof fetch = async (_input, init) => {

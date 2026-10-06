@@ -14,7 +14,7 @@ export class NativeLiveMacProviderSessionStore {
   private readonly baseUrl: string;
   private readonly retryAppendBatches = new Map<
     string,
-    { batchId: string; sessionId: string }
+    { batchIds: string[]; sessionId: string }
   >();
 
   constructor(
@@ -37,27 +37,29 @@ export class NativeLiveMacProviderSessionStore {
   ): Promise<void> {
     if (entries.length === 0) return;
     const remoteKey = this.remoteKey(key);
+    const chunks = chunkAppendEntries(entries);
     const signature = appendSignature(remoteKey, entries);
     const pending = this.retryAppendBatches.get(signature);
-    const appendBatchId = pending?.batchId ?? randomUUID();
-    try {
+    const receipt =
+      pending
+      ?? {
+        batchIds: chunks.map(() => randomUUID()),
+        sessionId: remoteKey.session_id,
+      };
+    if (!pending) {
+      this.retryAppendBatches.set(signature, receipt);
+    }
+
+    for (let index = 0; index < chunks.length; index += 1) {
       await this.post("/append", {
         key: remoteKey,
-        append_batch_id: appendBatchId,
-        entries,
+        append_batch_id: receipt.batchIds[index],
+        entries: chunks[index],
       });
-      if (
-        this.retryAppendBatches.get(signature)?.batchId
-        === appendBatchId
-      ) {
-        this.retryAppendBatches.delete(signature);
-      }
-    } catch (error) {
-      this.retryAppendBatches.set(signature, {
-        batchId: appendBatchId,
-        sessionId: remoteKey.session_id,
-      });
-      throw error;
+    }
+
+    if (this.retryAppendBatches.get(signature) === receipt) {
+      this.retryAppendBatches.delete(signature);
     }
   }
 
@@ -247,6 +249,38 @@ function readRecord(value: unknown): Record<string, unknown> {
     throw new Error("Native Live session store response is invalid.");
   }
   return value as Record<string, unknown>;
+}
+
+const MAX_APPEND_CHUNK_BYTES = 6_000_000;
+
+function chunkAppendEntries(
+  entries: NativeLiveMacSessionStoreEntry[],
+): NativeLiveMacSessionStoreEntry[][] {
+  const chunks: NativeLiveMacSessionStoreEntry[][] = [];
+  let chunk: NativeLiveMacSessionStoreEntry[] = [];
+  let chunkBytes = 0;
+
+  for (const entry of entries) {
+    const entryBytes = Buffer.byteLength(
+      JSON.stringify(entry),
+      "utf8",
+    );
+    if (
+      chunk.length > 0
+      && chunkBytes + entryBytes > MAX_APPEND_CHUNK_BYTES
+    ) {
+      chunks.push(chunk);
+      chunk = [];
+      chunkBytes = 0;
+    }
+    chunk.push(entry);
+    chunkBytes += entryBytes;
+  }
+
+  if (chunk.length > 0) {
+    chunks.push(chunk);
+  }
+  return chunks;
 }
 
 function appendSignature(

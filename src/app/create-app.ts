@@ -249,28 +249,38 @@ export function createApp(
   }
 
   const defaultJsonParser = express.json({ limit: "1mb" });
-  const nativeLiveInternalJsonParser = express.json({ limit: "8mb" });
+  const nativeLiveRelayJsonParser = express.json({ limit: "8mb" });
+  const nativeLiveSessionStoreJsonParser =
+    express.json({ limit: "32mb" });
   app.use((request, response, next) => {
     const internalRelayToken =
       config.NATIVE_LIVE_RELAY_AUTH_TOKEN;
-    const usesLargeNativeLiveInternalParser =
+    const authenticatedInternal =
       Boolean(internalRelayToken)
       && request.header("authorization")
-        === `Bearer ${internalRelayToken}`
+        === `Bearer ${internalRelayToken}`;
+    const usesNativeLiveRelayParser =
+      authenticatedInternal
       && (
         request.path === "/internal/native-live-relay"
         || request.path.startsWith(
           "/internal/native-live-relay/",
         )
-        || request.path === "/internal/native-live-session-store"
+      );
+    const usesNativeLiveSessionStoreParser =
+      authenticatedInternal
+      && (
+        request.path === "/internal/native-live-session-store"
         || request.path.startsWith(
           "/internal/native-live-session-store/",
         )
       );
 
-    const parser = usesLargeNativeLiveInternalParser
-      ? nativeLiveInternalJsonParser
-      : defaultJsonParser;
+    const parser = usesNativeLiveSessionStoreParser
+      ? nativeLiveSessionStoreJsonParser
+      : usesNativeLiveRelayParser
+        ? nativeLiveRelayJsonParser
+        : defaultJsonParser;
     parser(request, response, next);
   });
 
@@ -499,7 +509,7 @@ export function createApp(
         config.MCP_USER_ID,
       ),
       databaseReadinessMiddleware,
-      express.json({ limit: "8mb" }),
+      express.json({ limit: "32mb" }),
       createNativeLiveProviderSessionStoreInternalRouter({
         providerSessionStoreService:
           dependencies.nativeLiveProduction.internal

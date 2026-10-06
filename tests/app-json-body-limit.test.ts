@@ -121,3 +121,23 @@ test("unauthenticated Native Live internal JSON does not get the larger parser b
   });
 });
 
+
+
+test("authenticated SessionStore JSON can exceed the old 8mb parser limit", async () => {
+  await withApp(async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/internal/native-live-session-store/parser-probe`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer relay-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          payload: "x".repeat(9_000_000),
+        }),
+      },
+    );
+    assert.equal(response.status, 404);
+  });
+});
