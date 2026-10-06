@@ -309,7 +309,7 @@ async function probeAudioDurationWithAfinfo(
       [filePath],
       { timeout: 2_000, maxBuffer: 256 * 1024, encoding: "utf8" },
     );
-    const match = /^\\s*estimated duration:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*sec\\b/imu.exec(stdout);
+    const match = /^\s*estimated duration:\s*([0-9]+(?:\.[0-9]+)?)\s*sec\b/imu.exec(stdout);
     return normalizeDurationSeconds(match ? Number(match[1]) : null) ?? null;
   } catch {
     return null;
