@@ -64,6 +64,7 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         sizeBytes: number;
         sha256: string;
         kind: "image" | "file";
+        durationSeconds?: number;
       }>;
       memeHandlers?: NativeLiveMemeRuntimeHandlers;
       albumHandlers?: NativeLiveClaudeAlbumRuntimeHandlers;
@@ -177,6 +178,10 @@ export class NativeLiveMacRuntimeExecutor {
       workspaceRoot: string;
     };
     const outputAttachmentIds: string[] = [];
+    const outputAttachmentMetadata: Array<{
+      attachment_id: string;
+      duration_seconds: number;
+    }> = [];
     let pendingOutputAttachments = 0;
     async function sendOutput<T>(
       send: () => Promise<T>,
@@ -265,15 +270,26 @@ export class NativeLiveMacRuntimeExecutor {
                   path: string;
                   displayName: string | null;
                 }) => {
-                  return sendOutput(
+                  const attachment = await sendOutput(
                     () => this.outputAttachmentSender!.sendFile({
                       path: input.path,
                       displayName: input.displayName,
                       workspaceRoot: binding.workspaceRoot,
                     }),
-                    attachment => attachment.attachmentId,
+                    value => value.attachmentId,
                     "send_file may send at most 8 files in one turn.",
                   );
+                  if (
+                    typeof attachment.durationSeconds === "number"
+                    && Number.isFinite(attachment.durationSeconds)
+                    && attachment.durationSeconds > 0
+                  ) {
+                    outputAttachmentMetadata.push({
+                      attachment_id: attachment.attachmentId,
+                      duration_seconds: attachment.durationSeconds,
+                    });
+                  }
+                  return attachment;
                 },
               }
             : {}),
@@ -440,6 +456,9 @@ export class NativeLiveMacRuntimeExecutor {
         terminalFallbackEvents(runtimeResult.normalizedEvents),
       ...(outputAttachmentIds.length > 0
         ? { output_attachment_ids: outputAttachmentIds }
+        : {}),
+      ...(outputAttachmentMetadata.length > 0
+        ? { output_attachment_metadata: outputAttachmentMetadata }
         : {}),
       ...(runtimeMetadata
         ? { runtime_metadata: runtimeMetadata }
