@@ -75,7 +75,7 @@ struct NativeLiveAudioAttachmentBubble: View {
     }
 
     private var bubbleWidth: CGFloat {
-        NativeLiveVoiceBubbleGeometry.audioWidth(duration: playback.duration, sizeBytes: input.sizeBytes,
+        NativeLiveVoiceBubbleGeometry.audioWidth(duration: effectiveDuration ?? 0, sizeBytes: input.sizeBytes,
             playWidth: NativeLiveVoiceBubbleGeometry.audioPlayWidth, labelWidth: labelWidth)
     }
 
@@ -86,9 +86,16 @@ struct NativeLiveAudioAttachmentBubble: View {
             entityID: input.entityID, sha256: input.sha256, draftID: input.draftID, filename: input.filename)
     }
 
+    private var effectiveDuration: TimeInterval? {
+        if playback.duration.isFinite, playback.duration > 0 {
+            return playback.duration
+        }
+        return input.durationSeconds
+    }
+
     private var durationLabel: String {
-        guard playback.duration.isFinite, playback.duration > 0 else { return "—" }
-        return NativeLiveVoiceBubbleGeometry.durationLabel(seconds: playback.duration)
+        guard let duration = effectiveDuration else { return "—" }
+        return NativeLiveVoiceBubbleGeometry.durationLabel(seconds: duration)
     }
 
     private func playOrPause() {
