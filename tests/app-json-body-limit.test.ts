@@ -16,7 +16,7 @@ function configureEnvironment(): void {
     WEB_APP_ORIGIN: "https://web.example.test",
     WEB_AUTH0_AUDIENCE: "https://web.example.test/api",
     WEB_AUTH0_REQUIRED_SCOPE: "web:access",
-    NATIVE_LIVE_RELAY_AUTH_TOKEN: "relay-secret",
+    NATIVE_LIVE_RELAY_AUTH_TOKEN: "relay-secret-0123456789-0123456789",
   });
 }
 
