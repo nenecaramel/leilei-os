@@ -271,6 +271,7 @@ implements NativeLiveConversationRepository {
         id: conversations.id,
         title: conversations.title,
         currentHeadMessageId: conversations.currentHeadMessageId,
+        providerMetadata: conversations.providerMetadata,
         createdAt: conversations.createdAt,
         updatedAt: conversations.updatedAt,
       })
