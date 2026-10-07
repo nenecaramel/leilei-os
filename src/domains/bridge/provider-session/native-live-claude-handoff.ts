@@ -96,6 +96,27 @@ export class NativeLiveClaudeHandoffService {
       ?? false;
 
     const created = await this.db.transaction(async (tx) => {
+      const conversations = await tx.execute<{
+        id: string;
+        current_head_message_id: string | null;
+      }>(sql`
+        SELECT id, current_head_message_id
+        FROM conversations
+        WHERE id = ${input.conversationId}::uuid
+          AND user_id = ${input.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR UPDATE
+        LIMIT 1
+      `);
+      const conversation = conversations[0];
+      if (!conversation) {
+        throw new NativeLiveClaudeHandoffError(
+          "NOT_FOUND",
+          "Native live conversation was not found.",
+        );
+      }
+
       await tx.execute(sql`
         UPDATE native_live_claude_handoffs
         SET status = 'expired',
@@ -136,27 +157,6 @@ export class NativeLiveClaudeHandoffService {
             now() - ${DELIVERY_UNKNOWN_RECOVERY_TTL_MS}
               * interval '1 millisecond'
       `);
-
-      const conversations = await tx.execute<{
-        id: string;
-        current_head_message_id: string | null;
-      }>(sql`
-        SELECT id, current_head_message_id
-        FROM conversations
-        WHERE id = ${input.conversationId}::uuid
-          AND user_id = ${input.userId}::uuid
-          AND origin = 'native_live'
-          AND lifecycle_status = 'active'
-        FOR UPDATE
-        LIMIT 1
-      `);
-      const conversation = conversations[0];
-      if (!conversation) {
-        throw new NativeLiveClaudeHandoffError(
-          "NOT_FOUND",
-          "Native live conversation was not found.",
-        );
-      }
 
       const compactConflict =
         await tx.execute<{ id: string }>(sql`
