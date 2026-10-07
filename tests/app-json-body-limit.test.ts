@@ -90,7 +90,7 @@ test("authenticated Native Live internal JSON can exceed the public 1mb limit", 
       {
         method: "POST",
         headers: {
-          authorization: "Bearer relay-secret",
+          authorization: "Bearer relay-secret-0123456789-0123456789",
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -130,7 +130,7 @@ test("authenticated SessionStore JSON can exceed the old 8mb parser limit", asyn
       {
         method: "POST",
         headers: {
-          authorization: "Bearer relay-secret",
+          authorization: "Bearer relay-secret-0123456789-0123456789",
           "content-type": "application/json",
         },
         body: JSON.stringify({
