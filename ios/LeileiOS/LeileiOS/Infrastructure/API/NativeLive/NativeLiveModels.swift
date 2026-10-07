@@ -58,6 +58,7 @@ enum NativeLiveClaudeHandoffStatus:
     Equatable {
     case pending
     case reserved
+    case delivery_unknown
     case completed
     case failed
     case stale
