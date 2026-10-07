@@ -22,7 +22,7 @@ test("Claude handoff migration persists exact source checkpoint, terminal B, and
   }
   assert.match(
     migration,
-    /status" IN \(\s*'pending','reserved','completed','failed','stale','expired'/,
+    /status" IN \(\s*'pending','reserved','delivery_unknown','completed','failed','stale','expired'/,
   );
   assert.match(
     migration,
@@ -71,7 +71,7 @@ test("expired Claude handoff reservations preserve the original owner so a durab
     read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
 
   const expiry = source.match(
-    /UPDATE native_live_claude_handoffs[\s\S]*?failure_code = 'RESULT_DELIVERY_UNKNOWN'[\s\S]*?WHERE user_id = \$\{input\.userId\}::uuid[\s\S]*?status = 'reserved'/,
+    /UPDATE native_live_claude_handoffs[\s\S]*?status = 'delivery_unknown'[\s\S]*?failure_code = 'RESULT_DELIVERY_UNKNOWN'[\s\S]*?WHERE user_id = \$\{input\.userId\}::uuid[\s\S]*?status = 'reserved'/,
   )?.[0];
   assert.ok(expiry, "reservation expiry update must exist");
   assert.doesNotMatch(
@@ -80,11 +80,15 @@ test("expired Claude handoff reservations preserve the original owner so a durab
   );
   assert.match(
     source,
-    /current\.failure_code === "RESULT_DELIVERY_UNKNOWN"[\s\S]*current\.reserved_by === input\.listenerInstanceId/,
+    /current\.status === "delivery_unknown"[\s\S]*current\.failure_code === "RESULT_DELIVERY_UNKNOWN"[\s\S]*current\.reserved_by === input\.listenerInstanceId/,
   );
   assert.match(
     source,
     /current\.status = "reserved"/,
+  );
+  assert.match(
+    source,
+    /status IN \('pending','reserved','delivery_unknown'\)/,
   );
 });
 
