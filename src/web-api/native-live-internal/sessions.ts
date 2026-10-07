@@ -126,6 +126,20 @@ export function submitClaudeHandoffResultHandler(
         data: { outcome },
       });
     } catch (error) {
+      if (
+        error instanceof NativeLiveClaudeHandoffError
+        && error.code === "RESERVATION_CONFLICT"
+      ) {
+        response.json({
+          success: true,
+          data: {
+            outcome: "rejected",
+            canonicalOutcome:
+              "RESERVATION_CONFLICT",
+          },
+        });
+        return;
+      }
       sendClaudeHandoffInternalError(response, error);
     }
   };
