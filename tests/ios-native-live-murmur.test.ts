@@ -26,7 +26,7 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
   assert.match(activity, /@State private var isShowingMurmur = false/u);
   assert.match(
     activity,
-    /Image\(systemName: "bubble\.left"\)[\s\S]*isShowingMurmur = true/u,
+    /Button \{[\s\S]*isShowingMurmur = true[\s\S]*Image\(systemName: "bubble\.left"\)/u,
   );
   assert.match(
     activity,
@@ -68,7 +68,7 @@ test("canonical murmur is projected separately and raw streaming tags are fail-c
   assert.match(assembler, /murmurStrippedRuntimeText/u);
   assert.match(
     assembler,
-    /guard let close = result\.range\([\s\S]*else \{[\s\S]*result\.removeSubrange\(open\.lowerBound<\.\.result\.endIndex\)/u,
+    /guard let close = result\.range\([\s\S]*else \{[\s\S]*result\.removeSubrange\(open\.lowerBound\.\.<result\.endIndex\)/u,
   );
   assert.match(
     assembler,

@@ -15,7 +15,7 @@ test("G production loader accepts only local assets and the minimal data bridge"
   assert.match(host, /websiteDataStore = \.nonPersistent\(\)/);
   assert.match(host, /arguments: arguments/);
   assert.match(host, /NativeLiveAttachmentIntegrity.sha256\(data\) == manifest\[name\]/);
-  assert.match(host, /owners.count < 3/);
+  assert.match(host, /owners.count < 12/);
   assert.match(shell, /trust:false/);
   assert.match(shell, /securityLevel:'strict'/);
   assert.doesNotMatch(shell, /\.bindFunctions\(/);
@@ -30,14 +30,15 @@ test("G keeps a single registry and consumes C verified SVG without another down
   const svg = read("NativeLiveSVGRenderer.swift");
   assert.match(svg, /appModel.nativeLiveAttachmentBytes\(descriptor\)/);
   assert.doesNotMatch(svg, /URLSession|Data\(contentsOf:|downloadTask|fetch\(/i);
-  assert.match(svg, /data:verified.data/);
+  assert.match(svg, /state\.complete\(bytes, generation:generation\)/);
+  assert.match(svg, /NativeLiveFilePreviewLease\(data:verified\.data/);
   assert.match(svg, /fullScreenCover/);
   assert.match(svg, /previewAction/);
   const controls = read("NativeLiveVisualSurface.swift");
   assert.match(controls, /input.kind != \.svg/);
   assert.match(controls, /UIPasteboard.general.string = input.source/);
   assert.match(controls, /textSelection\(\.enabled\)/);
-  assert.match(controls, /onDisappear \{ controller.stop\(\) \}/);
+  assert.match(controls, /\.onDisappear \{[\s\S]*controller\.stop\(\)[\s\S]*\}/);
   const model = read("NativeLiveVisualSandboxModel.swift");
   assert.match(model, /case math, mermaid, svg/);
   assert.doesNotMatch(model, /case html|case artifact|case resource|case webArtifact|case interactiveResource/);

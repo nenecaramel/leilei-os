@@ -19,11 +19,13 @@ test("voice controller waits for final text, fails on timeout, and ignores cance
 
 test("composer keeps mic placeholder and arbitrates trailing tap versus hold in one native control", () => {
   const composer=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatComposer.swift","utf8");
+  const voiceControl=readFileSync("ios/LeileiOS/LeileiOS/Chat/ComposerVoiceActionControl.swift","utf8");
   const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
   const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
 
-  // Mic is back to decorative placeholder only.
-  assert.match(composer,/ComposerCircleButton\(\s*systemName: "mic\.fill"/);
+  // The fixed trailing utility remains keyboard dismissal; voice owns only the primary action slot.
+  assert.match(composer,/ComposerCircleButton\(\s*systemName: "chevron\.down"/);
+  assert.match(composer,/accessibilityLabel\("Dismiss keyboard"\)/);
   assert.doesNotMatch(composer,/onDictationStart|dictationEnabled|isDictating|NativeLiveDictationWaveform/);
 
   // Trailing voice control preserves the original SwiftUI visual and layers
@@ -31,22 +33,22 @@ test("composer keeps mic placeholder and arbitrates trailing tap versus hold in 
   assert.match(composer,/private var voiceActionButton: some View \{\s*ZStack \{\s*composerActionLabel[\s\S]*NativeLiveVoiceActionControl\(/);
   assert.doesNotMatch(composer,/private var voiceActionButton: some View \{\s*Menu \{/);
   assert.doesNotMatch(composer,/\.onLongPressGesture\(/);
-  assert.match(composer,/func makeUIView\([\s\S]*\) -> UIView \{\s*let view = UIView\(frame: \.zero\)[\s\S]*view\.backgroundColor = \.clear/);
-  assert.doesNotMatch(composer,/UIButton\(type: \.system\)/);
-  assert.doesNotMatch(composer,/UIImage\([\s\S]*systemName: "waveform"/);
+  assert.match(voiceControl,/func makeUIView\([\s\S]*\) -> UIView \{\s*let view = UIView\(frame: \.zero\)[\s\S]*view\.backgroundColor = \.clear/);
+  assert.doesNotMatch(voiceControl,/UIButton\(type: \.system\)/);
+  assert.doesNotMatch(voiceControl,/UIImage\([\s\S]*systemName: "waveform"/);
 
   // A single UIKit arbiter owns tap and hold.
-  assert.match(composer,/struct NativeLiveVoiceActionControl: UIViewRepresentable/);
-  assert.match(composer,/UILongPressGestureRecognizer\(/);
-  assert.match(composer,/longPress\.minimumPressDuration = 0\.35/);
-  assert.match(composer,/UITapGestureRecognizer\(/);
-  assert.match(composer,/tap\.require\(toFail: longPress\)/);
-  assert.match(composer,/UIEditMenuInteraction\(/);
-  assert.match(composer,/editMenuInteraction\.presentEditMenu/);
-  assert.match(composer,/case \.began:[\s\S]*parent\.onVoicePress\(\)/);
-  assert.match(composer,/case \.ended, \.cancelled, \.failed:[\s\S]*parent\.onVoiceRelease\(\)/);
-  assert.match(composer,/VoiceInputLanguage\.allCases\.map/);
-  assert.match(composer,/language == parent\.voiceLanguage[\s\S]*\? \.on/);
+  assert.match(voiceControl,/struct NativeLiveVoiceActionControl: UIViewRepresentable/);
+  assert.match(voiceControl,/UILongPressGestureRecognizer\(/);
+  assert.match(voiceControl,/longPress\.minimumPressDuration = 0\.35/);
+  assert.match(voiceControl,/UITapGestureRecognizer\(/);
+  assert.match(voiceControl,/tap\.require\(toFail: longPress\)/);
+  assert.match(voiceControl,/UIEditMenuInteraction\(/);
+  assert.match(voiceControl,/editMenuInteraction\.presentEditMenu/);
+  assert.match(voiceControl,/case \.began:[\s\S]*parent\.onVoicePress\(\)/);
+  assert.match(voiceControl,/case \.ended, \.cancelled, \.failed:[\s\S]*parent\.onVoiceRelease\(\)/);
+  assert.match(voiceControl,/VoiceInputLanguage\.allCases\.map/);
+  assert.match(voiceControl,/language == parent\.voiceLanguage[\s\S]*\? \.on/);
 
   // Existing language and speech wiring remains.
   assert.match(chatView,/@State private var voiceLanguage: VoiceInputLanguage = \.english/);

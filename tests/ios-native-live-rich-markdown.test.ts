@@ -66,9 +66,14 @@ test("source panels match assistant copy interaction without growing the button"
     "ios/LeileiOS/LeileiOS/Chat/NativeLiveMessageSurface.swift",
     "utf8",
   );
+  const chrome = fs.readFileSync(
+    "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageSurfaceChrome.swift",
+    "utf8",
+  );
   assert.match(surface, /copyFeedbackText/);
-  assert.match(surface, /Text\(copyFeedbackText\)/);
-  assert.match(surface, /showCopyFeedback\("Message copied"/);
+  assert.match(surface, /NativeLiveCopyFeedbackBanner\(text: copyFeedbackText\)/);
+  assert.match(chrome, /Text\(text\)/);
+  assert.match(surface, /showCopyFeedback\(\s*"Message copied"/);
   assert.match(surface, /\.environment\(\\\.nativeLiveCopyFeedback\)/);
 });
 
