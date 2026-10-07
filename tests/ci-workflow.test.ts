@@ -66,7 +66,7 @@ test("CI scopes Core, Web, wake broker and Postgres work without leaking databas
 
 test("CI path scoping keeps iOS/docs-only changes out of hosted Core/Web/Postgres work", () => {
   const checks = jobs.get("checks")!;
-  assert.match(checks, /pull_request:[\s\S]*paths-ignore:/);
+  assert.match(workflow, /pull_request:[\s\S]*paths-ignore:/);
   assert.match(workflow, /- "ios\/\*\*"/);
   assert.match(workflow, /- "docs\/\*\*"/);
 
