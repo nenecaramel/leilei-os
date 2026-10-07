@@ -9,6 +9,7 @@ import {
   prepareId,
   requestId,
   conversationId,
+  userMessageId,
   FakeRelayService,
   FakeRuntimeInteractionService,
   FakeRuntimeEventService,
