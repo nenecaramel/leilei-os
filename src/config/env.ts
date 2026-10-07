@@ -88,8 +88,6 @@ const baseEnvSchema = z.object({
     z.coerce.number().min(0).max(1).optional(),
   NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS:
     z.coerce.number().positive().optional(),
-  NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS:
-    z.coerce.number().positive().optional(),
   NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD:
     z.coerce.number().min(0).max(1).optional(),
   NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD:
@@ -291,7 +289,6 @@ export type BreathRankingConfig = {
 export type MemoryDecayConfig = {
   halfLifeHours: {
     memory: number;
-    feel: number;
   };
   fadingThreshold: number;
   archiveThreshold: number;
@@ -439,14 +436,12 @@ export function getMemoryDecayConfig(
   environment: Pick<
     RuntimeEnv,
     | "NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS"
-    | "NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS"
     | "NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD"
     | "NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD"
   >,
 ): MemoryDecayConfig | undefined {
   const values = [
     environment.NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS,
-    environment.NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS,
     environment.NATIVE_LIVE_MEMORY_DECAY_FADING_THRESHOLD,
     environment.NATIVE_LIVE_MEMORY_DECAY_ARCHIVE_THRESHOLD,
   ];
@@ -473,8 +468,6 @@ export function getMemoryDecayConfig(
     halfLifeHours: {
       memory:
         environment.NATIVE_LIVE_MEMORY_DECAY_MEMORY_HALF_LIFE_HOURS!,
-      feel:
-        environment.NATIVE_LIVE_MEMORY_DECAY_FEEL_HALF_LIFE_HOURS!,
     },
     fadingThreshold,
     archiveThreshold,

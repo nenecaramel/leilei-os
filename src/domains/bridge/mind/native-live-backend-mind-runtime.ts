@@ -259,20 +259,6 @@ implements NativeLiveBackendMindRuntime {
         })
       : null;
 
-    // A bootstrap fork can carry provider history even though the new
-    // LeileiOS conversation has no canonical parent message yet. Force one
-    // authoritative Thought snapshot (including an explicit empty snapshot)
-    // so stale aliases from that provider history cannot remain current.
-    if (
-      lineage
-      && input.runtimeMode === "fork"
-      && input.parentMessageId === null
-    ) {
-      return {
-        ...lineage,
-        forceThoughtSnapshot: true,
-      };
-    }
     return lineage;
   }
 

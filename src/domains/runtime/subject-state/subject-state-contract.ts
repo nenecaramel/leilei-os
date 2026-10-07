@@ -4,9 +4,7 @@ import {
 } from "../shared/persistent-write-envelope.js";
 
 export const CURRENT_SUBJECT_STATE_KINDS = [
-  "feel",
   "memory",
-  "thought",
 ] as const;
 
 export type CurrentSubjectStateKind =
@@ -27,6 +25,7 @@ export type SubjectStateWrite = {
 export class SubjectStateContractError extends Error {
   constructor(
     readonly code:
+      | "INVALID_KIND"
       | "INVALID_ID"
       | "EMPTY_STATE"
       | "UNSETTLED_STATE_MUST_BE_PATH_SCOPED",
@@ -57,6 +56,9 @@ function hasPayload(payload: Record<string, unknown> | null | undefined): boolea
 export function validateSubjectStateWrite(
   input: SubjectStateWrite,
 ): SubjectStateWrite {
+  if (input.kind !== "memory") {
+    throw new SubjectStateContractError("INVALID_KIND", "Mind kind must be memory.");
+  }
   const id = nonBlank(input.id, "id");
   const text = input.text?.trim() || null;
 

@@ -10,10 +10,6 @@ import {
   removeRecallReinforcementSources,
   type MemoryLifecyclePolicy,
 } from "../../runtime/lifecycle/memory-lifecycle.js";
-import {
-  readThoughtLifecycle,
-  writeThoughtActive,
-} from "../../runtime/thought/thought.js";
 
 export type ReplacementPurgePlan = {
   targetUserMessageId: string;
@@ -86,14 +82,11 @@ export function planCausalSubjectStatePurge(input: {
 export type SubjectStateRepair = {
   stateId: string;
   nextPayload: Record<string, unknown> | null;
-  /** True when a thought dropped by a purged turn becomes active again. */
-  revivedThought?: true;
 };
 
 /**
  * Repairs surviving states whose derived payload rests on purged messages:
- * recall reinforcement is removed from Memory/Feel, and a Thought dropped by
- * a purged assistant message is active again.
+ * recall reinforcement is removed from Memory.
  */
 export function planSubjectStateRepairs(input: {
   states: readonly {
@@ -109,24 +102,7 @@ export function planSubjectStateRepairs(input: {
   return input.states.flatMap((state): SubjectStateRepair[] => {
     if (input.purgeStateIds.has(state.id) || !state.payload) return [];
 
-    if (state.kind === "thought") {
-      const lifecycle = readThoughtLifecycle(state.payload);
-      if (
-        lifecycle?.status === "dropped"
-        && lifecycle.reason === "subject"
-        && lifecycle.droppedByMessageId !== null
-        && input.purgeMessageIds.has(lifecycle.droppedByMessageId)
-      ) {
-        return [{
-          stateId: state.id,
-          nextPayload: writeThoughtActive(state.payload),
-          revivedThought: true,
-        }];
-      }
-      return [];
-    }
-
-    if (state.kind === "memory" || state.kind === "feel") {
+    if (state.kind === "memory") {
       let repaired;
       try {
         repaired = removeRecallReinforcementSources(

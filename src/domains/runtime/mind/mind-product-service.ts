@@ -15,7 +15,6 @@ import {
 } from "../subject-state/subject-state-contract.js";
 import { readSubjectStateOccurredAt } from "../subject-state/subject-state-temporal.js";
 import { createMindState } from "./mind-writer.js";
-import { THOUGHT_KEY } from "../thought/thought.js";
 
 export type MindProductSource = "manual" | "runtime";
 
@@ -338,8 +337,7 @@ function lifecycleProjection(
   kind: CurrentSubjectStateKind,
   payload: Record<string, unknown>,
 ): MindProductLifecycleProjection {
-  const key = kind === "thought" ? THOUGHT_KEY : "lifecycle_v1";
-  const value = record(payload[key]);
+  const value = record(payload.lifecycle_v1);
   return {
     state:
       stringOrNull(value?.status)

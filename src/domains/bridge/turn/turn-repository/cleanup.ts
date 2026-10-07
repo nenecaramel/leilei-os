@@ -5,7 +5,6 @@ import {
   inArray,
   sql,
 } from "drizzle-orm";
-import { enforceThoughtCapacity } from "../../../runtime/thought/thought-runtime-repository.js";
 import {
   conversationMessages,
   conversationProviderSessionCheckpoints,
@@ -230,25 +229,6 @@ export async function purgeReplacementArtifacts(
           ),
         );
     }
-    // A revived thought can push the active set past its limit.
-    const revivedIds = new Set(
-      stateRepairs
-        .filter((repair) => repair.revivedThought)
-        .map((repair) => repair.stateId),
-    );
-    const revivedSubjectIds = new Set(
-      states
-        .filter((state) => revivedIds.has(state.id))
-        .map((state) => state.subjectId),
-    );
-    for (const subjectId of revivedSubjectIds) {
-      await enforceThoughtCapacity(transaction, {
-        userId: row.userId,
-        subjectId,
-        droppedAt: new Date().toISOString(),
-      });
-    }
-
     await transaction
       .delete(conversationMessages)
       .where(

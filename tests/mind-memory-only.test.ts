@@ -1,0 +1,59 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
+import { parseMindWriteIntents } from "../src/domains/runtime/mind/mind-intent-parser.js";
+import { parseMindSemanticActions } from "../src/domains/runtime/mind/mind-semantic-action.js";
+import { validateSubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
+
+const input = {id: "memory-a", userId: "u", subjectId: "claude", text: "We met again and I felt relieved", source: {origin: "manual" as const, occurredAt: "2026-01-01T01:02:03Z", note: "keep"}};
+test("shared writer rejects every retired kind even from untyped callers", () => {
+  for (const kind of ["thought", "feel", "drive"]) {
+    assert.throws(() => createMindState({...input, kind} as never), /kind/i);
+  }
+  const memory = createMindState({...input, kind: "memory"});
+  assert.equal(memory.kind, "memory");
+  assert.equal(memory.envelope.authority, "user_asserted");
+  assert.equal(memory.envelope.status.settlementStatus, "settled");
+  assert.deepEqual(memory.payload?.manual_v1, {occurredAt: "2026-01-01T01:02:03Z", note: "keep"});
+  assert.throws(() => validateSubjectStateWrite({...memory, kind: "feel"} as never), /kind/i);
+});
+test("only explicit memory tags write; retired wrappers and actions remain opaque prose", () => {
+  const parsed = parseMindWriteIntents('hello <feel>sad</feel> <thought>later</thought> <memory>We met and felt relieved</memory>');
+  assert.deepEqual(parsed.intents.map(intent => [intent.kind, intent.text]), [["memory", "We met and felt relieved"]]);
+  assert.equal(parsed.visibleText, 'hello <feel>sad</feel> <thought>later</thought>');
+  for (const wrapper of ["feel", "thought"]) {
+    const source = `<${wrapper}><memory>not authorized</memory></${wrapper}>`;
+    assert.deepEqual(parseMindWriteIntents(source), {visibleText: source, intents: []});
+  }
+  assert.deepEqual(parseMindSemanticActions('<thought_drop ref="T1" />'), {visibleText: '<thought_drop ref="T1" />', actions: []});
+});
+
+test("persisted pre-deployment context renders former feelings once as memories and drops thoughts", async () => {
+  const { assembledTurnContextFromManifest } = await import("../src/domains/runtime/context/context-assembler.js");
+  const result = assembledTurnContextFromManifest({
+    manifestId: "legacy", userId: "u", subjectId: "claude", conversationId: "c", pathHeadMessageId: null,
+    snapshotSequence: 0, assemblyVersion: "old", promptContractVersion: "old", createdAt: "2026-01-01T00:00:00Z",
+    budget: {maxItems: 10, maxChars: 1000, usedItems: 4, usedChars: 100, overflowPolicy: "drop_lowest_rank"},
+    items: [
+      {id: "user", type: "user_message", sourceId: "user", text: "the reunion", authority: "data", trustBoundary: "user", selection: {rank: 0, reason: "user", truncated: false}},
+      ...["feel", "memory"].map((type, i) => ({id: "same-record-" + i, type, sourceId: "m1", text: "Reunion felt reassuring", authority: "data" as const, trustBoundary: "subject_state_data" as const, selection: {rank: 1+i, reason: "breath_lexical_match", truncated: false}})),
+      {id: "t", type: "thought", sourceId: "t", text: "obsolete plan", authority: "data", trustBoundary: "subject_state_data", selection: {rank: 3, reason: "old", truncated: false}},
+    ],
+  });
+  assert.match(result.contextData, /Relevant memories:/);
+  assert.equal(result.contextData.split("Reunion felt reassuring").length - 1, 1);
+  assert.doesNotMatch(result.contextData, /Current thoughts|Relevant feelings|obsolete plan/);
+  assert.deepEqual(result.breathStateIds, ["m1"]);
+});
+
+
+test("actual bridge prompt guides emotional memories and the instructed tag writes only memory", async () => {
+  const {LEILEIOS_MIND_SYSTEM_PROMPT:prompt} = await import("../tools/claude-bridge/src/leileios-mind-system-prompt.mjs");
+  assert.doesNotMatch(prompt, /thought|<feel>|Relevant feelings/i);
+  assert.match(prompt, /how it felt at the time/);
+  assert.match(prompt, /why it matters/);
+  const parsed = parseMindWriteIntents("<memory>Our reunion mattered; I felt reassured by her kindness.</memory>");
+  const state = createMindState({...input, kind:parsed.intents[0]!.kind, text:parsed.intents[0]!.text});
+  assert.equal(state.kind,"memory");
+  assert.equal(state.text,"Our reunion mattered; I felt reassured by her kindness.");
+});

@@ -426,7 +426,7 @@ implements ProactivityWakeOpportunitySource {
           AND path_status = 'current'
           AND ${inArray(sql`kind`, CURRENT_SUBJECT_STATE_KINDS)}
           AND NOT (
-            kind IN ('memory', 'feel')
+            kind = 'memory'
             AND payload #>> '{lifecycle_v1,status}'
               IN ('archived', 'forgotten')
           )

@@ -99,7 +99,7 @@ test("Proactivity producer reuses the shared orchestrator and schedules only eli
 });
 
 
-test("Proactivity capsule excludes archived or forgotten Memory and Feel", () => {
+test("Proactivity capsule excludes archived or forgotten Memory", () => {
   const source = readFileSync(
     new URL(
       "../src/domains/runtime/proactivity/proactivity-wake-opportunity.ts",
@@ -109,6 +109,6 @@ test("Proactivity capsule excludes archived or forgotten Memory and Feel", () =>
   );
   assert.match(
     source,
-    /kind IN \('memory', 'feel'\)[\s\S]*lifecycle_v1,status[\s\S]*IN \('archived', 'forgotten'\)/,
+    /kind = 'memory'[\s\S]*lifecycle_v1,status[\s\S]*IN \('archived', 'forgotten'\)/,
   );
 });

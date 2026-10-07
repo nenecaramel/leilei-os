@@ -46,7 +46,7 @@ implements MemoryLifecycleRuntimePort {
         and(
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
-          inArray(runtimeSubjectStates.kind, ["memory", "feel"]),
+          inArray(runtimeSubjectStates.kind, ["memory"]),
           eq(runtimeSubjectStates.settlementStatus, "settled"),
           eq(runtimeSubjectStates.pathStatus, "current"),
           eq(runtimeSubjectStates.validityStatus, "valid"),
@@ -59,7 +59,7 @@ implements MemoryLifecycleRuntimePort {
       .limit(input.limit);
 
     return rows.map((row) => {
-      if (row.kind !== "memory" && row.kind !== "feel") {
+      if (row.kind !== "memory") {
         throw new Error(
           "Memory lifecycle query returned unsupported state kind.",
         );
@@ -92,7 +92,7 @@ implements MemoryLifecycleRuntimePort {
         and(
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
-          inArray(runtimeSubjectStates.kind, ["memory", "feel"]),
+          inArray(runtimeSubjectStates.kind, ["memory"]),
           eq(runtimeSubjectStates.validityStatus, "tombstoned"),
         ),
       )
@@ -103,7 +103,7 @@ implements MemoryLifecycleRuntimePort {
       .limit(input.limit);
 
     return rows.flatMap((row) => {
-      if (row.kind !== "memory" && row.kind !== "feel") return [];
+      if (row.kind !== "memory") return [];
       try {
         if (
           readSubjectStateLifecycle(row.payload)?.status
@@ -193,7 +193,7 @@ implements MemoryLifecycleRuntimePort {
               eq(runtimeSubjectStates.id, forget.stateId),
               eq(runtimeSubjectStates.userId, input.userId),
               eq(runtimeSubjectStates.subjectId, input.subjectId),
-              inArray(runtimeSubjectStates.kind, ["memory", "feel"]),
+              inArray(runtimeSubjectStates.kind, ["memory"]),
               eq(runtimeSubjectStates.validityStatus, "valid"),
               eq(
                 runtimeSubjectStates.updatedAt,
@@ -295,7 +295,7 @@ implements MemoryLifecycleRuntimePort {
               eq(runtimeSubjectStates.id, purge.stateId),
               eq(runtimeSubjectStates.userId, input.userId),
               eq(runtimeSubjectStates.subjectId, input.subjectId),
-              inArray(runtimeSubjectStates.kind, ["memory", "feel"]),
+              inArray(runtimeSubjectStates.kind, ["memory"]),
               eq(runtimeSubjectStates.validityStatus, "tombstoned"),
               eq(
                 runtimeSubjectStates.updatedAt,
@@ -396,7 +396,7 @@ implements MemoryLifecycleRuntimePort {
             eq(runtimeSubjectStates.id, input.stateId),
             eq(runtimeSubjectStates.userId, input.userId),
             eq(runtimeSubjectStates.subjectId, input.subjectId),
-            inArray(runtimeSubjectStates.kind, ["memory", "feel"]),
+            inArray(runtimeSubjectStates.kind, ["memory"]),
             eq(runtimeSubjectStates.validityStatus, "valid"),
           ),
         )

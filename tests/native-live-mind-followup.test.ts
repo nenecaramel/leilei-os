@@ -52,18 +52,18 @@ function job(): NativeLiveMindFollowUpJob {
         raw: "<memory>remember this</memory>",
       },
       {
-        kind: "feel",
+        kind: "memory",
         text: "warm",
         sourceStart: 36,
         sourceEnd: 53,
-        raw: "<feel>warm</feel>",
+        raw: "<memory>warm</memory>",
       },
       {
-        kind: "thought",
+        kind: "memory",
         text: "keep exploring",
         sourceStart: 54,
         sourceEnd: 90,
-        raw: "<thought>keep exploring</thought>",
+        raw: "<memory>keep exploring</memory>",
       },
     ],
   };
@@ -115,11 +115,7 @@ class FakeMind implements NativeLiveBackendMindRuntime {
   }
 }
 
-function setup(
-  semanticActions: {
-    execute(input: unknown): Promise<any>;
-  } | null = null,
-) {
+function setup() {
   const port = new FakePort();
   const mind = new FakeMind();
   const turns: Pick<NativeLiveBackendTurnPort, "getPreparation"> = {
@@ -132,7 +128,6 @@ function setup(
     turns,
     mind,
     "77777777-7777-4777-8777-777777777777",
-    semanticActions,
   );
   return { port, mind, service };
 }
@@ -160,65 +155,6 @@ test("durable Mind follow-up uses stable per-intent UUIDs and completes only aft
     /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
   );
   assert.equal(port.completeCalls.length, 1);
-  assert.equal(port.releaseCalls.length, 0);
-});
-
-test("durable Mind follow-up executes staged thought drops only after canonical finalize and persists receipts", async () => {
-  const receipts = [
-    {
-      actionIndex: 0,
-      kind: "thought_drop",
-      ref: "T1",
-      stateId: "88888888-8888-4888-8888-888888888888",
-      outcome: "applied",
-    },
-    {
-      actionIndex: 1,
-      kind: "thought_drop",
-      ref: "T2",
-      stateId: "99999999-9999-4999-8999-999999999999",
-      outcome: "idempotent",
-    },
-  ];
-  const semanticCalls: unknown[] = [];
-  const { port, mind, service } = setup({
-    async execute(input) {
-      semanticCalls.push(input);
-      // The drop must not run before the canonical finalize has happened.
-      assert.equal(mind.finalizeCalls.length, 1);
-      return receipts[semanticCalls.length - 1]!;
-    },
-  });
-  port.next = {
-    ...job(),
-    intents: [],
-    actions: [
-      {
-        kind: "thought_drop",
-        ref: "T1",
-        sourceStart: 0,
-        sourceEnd: 1,
-        raw: "x",
-      },
-      {
-        kind: "thought_drop",
-        ref: "T2",
-        sourceStart: 2,
-        sourceEnd: 3,
-        raw: "y",
-      },
-    ],
-  };
-
-  assert.equal(
-    await service.processPreparation({ userId, prepareId }),
-    "processed",
-  );
-  assert.equal(semanticCalls.length, 2);
-  assert.deepEqual(
-    (port.completeCalls[0] as { receipts: unknown[] }).receipts,
-    receipts,
-  );
   assert.equal(port.releaseCalls.length, 0);
 });
 
@@ -254,4 +190,14 @@ test("Mind follow-up scheduler drains bounded work and never lets one failed job
   assert.equal(calls, 3);
   recovery.stop();
   await recovery.drain();
+});
+
+
+test("queued legacy normalization keeps deterministic IDs at the original ordinals", async () => {
+  const {port,mind,service} = setup();
+  const queued = job();
+  queued.intents = queued.intents.slice(1).map((intent,index) => ({...intent,writeOrdinal:index+1}));
+  port.claimByPreparation = async () => queued;
+  await service.processPreparation({userId,prepareId});
+  assert.deepEqual((mind.finalizeCalls[0] as {stateIds:string[]}).stateIds, [nativeLiveMindFollowUpStateId(prepareId,1),nativeLiveMindFollowUpStateId(prepareId,2)]);
 });

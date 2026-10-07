@@ -110,7 +110,7 @@ class Repository implements MindProductRepository {
   async readMessageWrites() {
     return [
       { kind: "memory" as const, count: 2 },
-      { kind: "thought" as const, count: 1 },
+
     ];
   }
 }
@@ -162,7 +162,7 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
 
   const created = await service.createManual({
     userId,
-    kind: "thought",
+    kind: "memory",
     text: "  old note  ",
     occurredAt: "2025-01-02T03:04:05+08:00",
     note: "  copied by hand  ",
@@ -191,8 +191,6 @@ test("manual Mind create is user_asserted, global, settled, and keeps historical
       basis: "user_supplied",
       sourceMessageId: null,
     },
-    // A manually written thought starts active.
-    thought_v2: { status: "active" },
   });
 });
 
@@ -285,10 +283,10 @@ test("message Mind write projection returns only kind/count metadata", async () 
     await service.readMessageWrites({ userId, messageId }),
     {
       messageId,
-      total: 3,
+      total: 2,
       kinds: [
         { kind: "memory", count: 2 },
-        { kind: "thought", count: 1 },
+
       ],
     },
   );

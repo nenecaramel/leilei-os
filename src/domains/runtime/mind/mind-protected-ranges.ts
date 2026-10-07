@@ -1,6 +1,6 @@
 export type MindProtectedRange = { start: number; end: number };
 
-const RETIRED_WRAPPER_TAG = /<(\/?)(drive|curiosity|topic|dream)>/gi;
+const RETIRED_WRAPPER_TAG = /<(\/?)(feel|thought|drive|curiosity|topic|dream)>/gi;
 
 /** Complete retired wrappers are opaque text, including nested wrappers. */
 export function retiredMindProtectedRanges(source: string): MindProtectedRange[] {

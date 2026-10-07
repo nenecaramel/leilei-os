@@ -422,9 +422,7 @@ export async function finalizeSuccess(
                 sourceEnd: intent.sourceEnd,
                 raw: intent.raw,
               })),
-              actions: input.mindFollowUp.actions.map((action) => ({
-                ...action,
-              })),
+              actions: [],
               receipts: [],
               status: "pending",
               retryCount: 0,
@@ -604,14 +602,14 @@ export async function persistFinalizedContextLineage(
 
     const selfWrittenStateIds = (mindFollowUp?.intents ?? []).flatMap(
       (intent, index) =>
-        intent.kind === "memory" || intent.kind === "feel"
+        intent.kind === "memory"
           ? [nativeLiveMindFollowUpStateId(row.id, index)]
           : [],
     );
 
     if (!manifestLineage && selfWrittenStateIds.length === 0) {
       // Native schedule turns and legacy preparations normally have no
-      // lineage-aware Context Manifest. With no authored Memory/Feel to
+      // lineage-aware Context Manifest. With no authored Memory to
       // reserve, leaving no row makes the reader carry the nearest canonical
       // ancestor forward transparently.
       return;
@@ -649,8 +647,6 @@ export async function persistFinalizedContextLineage(
       const rows = await transaction.execute<{
         epoch: number;
         seen_state_ids: string[];
-        thought_revision: number;
-        thought_fingerprint: string | null;
       }>(sql`
         WITH RECURSIVE current_path AS (
           SELECT
@@ -676,9 +672,7 @@ export async function persistFinalizedContextLineage(
         )
         SELECT
           lineage.epoch,
-          lineage.seen_state_ids,
-          lineage.thought_revision,
-          lineage.thought_fingerprint
+          lineage.seen_state_ids
         FROM current_path AS path
         INNER JOIN runtime_context_lineage_states AS lineage
           ON lineage.canonical_message_id = path.id
@@ -693,8 +687,6 @@ export async function persistFinalizedContextLineage(
           ? {
               epoch: Number(parentRow.epoch),
               seenStateIds: parentRow.seen_state_ids,
-              thoughtRevision: Number(parentRow.thought_revision),
-              thoughtFingerprint: parentRow.thought_fingerprint,
             }
           : null,
       );
@@ -724,7 +716,7 @@ export async function persistFinalizedContextLineage(
             const record = item as Record<string, unknown>;
             const selection = record.selection;
             if (
-              (record.type !== "memory" && record.type !== "feel")
+              (record.type !== "memory")
               || typeof record.sourceId !== "string"
               || !selection
               || typeof selection !== "object"
@@ -754,11 +746,5 @@ export async function persistFinalizedContextLineage(
       conversationId: row.conversationId,
       epoch: manifestLineage?.epoch ?? parentLineage.epoch,
       seenStateIds,
-      thoughtRevision:
-        manifestLineage?.thoughtRevision
-        ?? parentLineage.thoughtRevision,
-      thoughtFingerprint:
-        manifestLineage?.thoughtFingerprint
-        ?? parentLineage.thoughtFingerprint,
     });
   }

@@ -31,8 +31,6 @@ implements NativeLiveContextLineageReader {
     const rows = await this.db.execute<{
       epoch: number;
       seen_state_ids: string[];
-      thought_revision: number;
-      thought_fingerprint: string | null;
     }>(sql`
       WITH RECURSIVE current_path AS (
         SELECT
@@ -58,9 +56,7 @@ implements NativeLiveContextLineageReader {
       )
       SELECT
         lineage.epoch,
-        lineage.seen_state_ids,
-        lineage.thought_revision,
-        lineage.thought_fingerprint
+        lineage.seen_state_ids
       FROM current_path AS path
       INNER JOIN runtime_context_lineage_states AS lineage
         ON lineage.canonical_message_id = path.id
@@ -75,20 +71,14 @@ implements NativeLiveContextLineageReader {
       return normalizeContextLineageState({
         epoch: 0,
         seenStateIds: [],
-        thoughtRevision: 0,
-        thoughtFingerprint: null,
-        forceThoughtSnapshot: true,
+
       });
     }
 
     return normalizeContextLineageState({
       epoch: Number(row.epoch),
       seenStateIds: row.seen_state_ids,
-      thoughtRevision: Number(row.thought_revision),
-      thoughtFingerprint: row.thought_fingerprint,
-      ...(row.thought_fingerprint === null
-        ? { forceThoughtSnapshot: true }
-        : {}),
+
     });
   }
 }

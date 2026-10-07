@@ -20,10 +20,6 @@ import {
 } from "../src/domains/runtime/shared/surface-projector.js";
 import { decideProvisionalSettlement } from "../src/domains/runtime/subject-state/subject-state-settlement.js";
 import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/subject-state-contract.js";
-import {
-  writeThoughtActive,
-  writeThoughtDropped,
-} from "../src/domains/runtime/thought/thought.js";
 
 const now = "2026-09-22T08:00:00.000Z";
 const settledStatus = {
@@ -167,7 +163,7 @@ test("Breath recalls only consolidation-eligible Feel/Memory in scope", () => {
     "我又想到柠檬黄了",
     [
       state("m1", "memory", "蕾蕾喜欢柠檬黄头发"),
-      state("f1", "feel", "看到柠檬黄的时候觉得很亮"),
+      state("f1", "memory", "看到柠檬黄的时候觉得很亮"),
       state("t1", "thought", "柠檬黄这个话题还想继续想"),
       invalidMemory,
       otherConversation,
@@ -206,12 +202,10 @@ test("Mind intent parser extracts only explicit valid tags and leaves malformed 
   assert.deepEqual(
     parsed.intents.map((intent) => [intent.kind, intent.text]),
     [
-      ["feel", "有点开心"],
       ["memory", "今天把 Runtime 接起来了"],
-      ["thought", "下一步验证 recall"],
     ],
   );
-  assert.equal(parsed.visibleText.includes("<feel>"), false);
+  assert.equal(parsed.visibleText.includes("<feel>"), true);
   // Retired tags are not parsed and are not given a new meaning: they stay
   // visible and create nothing.
   assert.equal(
@@ -300,7 +294,7 @@ test("unsettled state invalidates when Retry selects a sibling path", () => {
   const oldReply = message("a-old", "assistant", "u1", "old");
   const newReply = message("a-new", "assistant", "u1", "new");
 
-  const provisional = state("p-old", "feel", "old branch feeling");
+  const provisional = state("p-old", "memory", "old branch feeling");
   provisional.envelope = {
     ...provisional.envelope,
     status: { ...settledStatus, settlementStatus: "unsettled" },
@@ -332,7 +326,7 @@ test("Context Assembly injects bounded Breath but does not reinject canonical Su
   const states = [
     state("memory-1", "memory", "蕾蕾喜欢柠檬黄"),
     state("thought-1", "thought", "不会被 Breath 自动注入", {
-      payload: writeThoughtActive(null),
+      payload: null,
     }),
   ];
 
@@ -621,15 +615,6 @@ test("explicit Mind write can move from emitted intent to settled Breath recall"
 
 
 
-function thoughtState(
-  id: string,
-  text: string,
-  payload: Record<string, unknown> | null = writeThoughtActive(null),
-  overrides: Partial<SubjectStateWrite> = {},
-): SubjectStateWrite {
-  return state(id, "thought", text, { payload, ...overrides });
-}
-
 function assembleWith(
   states: SubjectStateWrite[],
   userText = "在吗",
@@ -653,183 +638,6 @@ function assembleWith(
     contextLineage,
   });
 }
-
-test("active thoughts are always present, newest first, and labelled T1..T3 for the model", () => {
-  // States arrive oldest-first, like the repository lists them.
-  const assembled = assembleWith([
-    thoughtState("th-1", "最早的念头"),
-    thoughtState("th-2", "中间的念头"),
-    thoughtState("th-3", "最新的念头"),
-  ]);
-
-  const thoughts = assembled.manifest.items.filter(
-    (item) => item.type === "thought",
-  );
-  assert.deepEqual(
-    thoughts.map((item) => [item.alias, item.sourceId]),
-    [["T1", "th-3"], ["T2", "th-2"], ["T3", "th-1"]],
-  );
-  assert.equal(
-    assembled.prompt.includes(
-      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- [T1] 最新的念头\n- [T2] 中间的念头\n- [T3] 最早的念头",
-    ),
-    true,
-  );
-  // The model never sees a database id.
-  for (const id of ["th-1", "th-2", "th-3"]) {
-    assert.equal(assembled.prompt.includes(id), false);
-  }
-  assert.equal(
-    assembled.prompt.includes('<thought_drop ref="T1" />'),
-    false,
-  );
-});
-
-test("unchanged thoughts are not reinjected, while a changed snapshot advances revision", () => {
-  const states = [
-    thoughtState("th-1", "第一个"),
-    thoughtState("th-2", "第二个"),
-  ];
-  const first = assembleWith(states);
-  const firstLineage = first.manifest.lineage;
-  assert.ok(firstLineage);
-  assert.equal(firstLineage.thoughtSnapshotEmitted, true);
-  assert.equal(firstLineage.thoughtRevision, 1);
-
-  const parent: ContextLineageState = {
-    epoch: firstLineage.epoch,
-    seenStateIds: [],
-    thoughtRevision: firstLineage.thoughtRevision,
-    thoughtFingerprint: firstLineage.thoughtFingerprint,
-  };
-  const unchanged = assembleWith(states, "还在吗", parent);
-  assert.equal(
-    unchanged.manifest.items.some((item) => item.type === "thought"),
-    false,
-  );
-  assert.equal(unchanged.manifest.lineage?.thoughtSnapshotEmitted, false);
-  assert.equal(unchanged.manifest.lineage?.thoughtRevision, 1);
-  assert.equal(unchanged.prompt.includes("Current thoughts (rev"), false);
-  assert.equal(
-    unchanged.prompt.includes('<thought_drop ref="T1" />'),
-    false,
-  );
-
-  const changed = assembleWith(
-    [...states, thoughtState("th-3", "第三个")],
-    "现在呢",
-    parent,
-  );
-  assert.equal(changed.manifest.lineage?.thoughtSnapshotEmitted, true);
-  assert.equal(changed.manifest.lineage?.thoughtRevision, 2);
-  assert.equal(
-    changed.prompt.includes(
-      "Current thoughts (rev 2, supersedes all earlier snapshots):",
-    ),
-    true,
-  );
-});
-
-test("a legacy provider checkpoint gets one explicit Thought bootstrap snapshot", () => {
-  const assembled = assembleWith(
-    [],
-    "升级后的第一轮",
-    {
-      epoch: 0,
-      seenStateIds: [],
-      thoughtRevision: 0,
-      thoughtFingerprint: null,
-      forceThoughtSnapshot: true,
-    },
-  );
-
-  assert.equal(assembled.manifest.lineage?.thoughtRevision, 1);
-  assert.equal(assembled.manifest.lineage?.thoughtSnapshotEmitted, true);
-  assert.equal(
-    assembled.prompt.includes(
-      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- none",
-    ),
-    true,
-  );
-});
-
-test("a compact epoch forces an explicit Thought snapshot even when none are active", () => {
-  const assembled = assembleWith(
-    [],
-    "compact 之后",
-    {
-      epoch: 1,
-      seenStateIds: [],
-      thoughtRevision: 0,
-      thoughtFingerprint: null,
-    },
-  );
-
-  assert.equal(assembled.manifest.lineage?.epoch, 1);
-  assert.equal(assembled.manifest.lineage?.thoughtRevision, 1);
-  assert.equal(assembled.manifest.lineage?.thoughtSnapshotEmitted, true);
-  assert.equal(
-    assembled.prompt.includes(
-      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- none",
-    ),
-    true,
-  );
-});
-
-test("dropping the last Thought emits an explicit empty superseding snapshot", () => {
-  const first = assembleWith([
-    thoughtState("th-last", "最后一个念头"),
-  ]);
-  const firstLineage = first.manifest.lineage;
-  assert.ok(firstLineage);
-
-  const cleared = assembleWith(
-    [],
-    "放下了",
-    {
-      epoch: firstLineage.epoch,
-      seenStateIds: [],
-      thoughtRevision: firstLineage.thoughtRevision,
-      thoughtFingerprint: firstLineage.thoughtFingerprint,
-    },
-  );
-
-  assert.equal(cleared.manifest.lineage?.thoughtRevision, 2);
-  assert.equal(cleared.manifest.lineage?.thoughtSnapshotEmitted, true);
-  assert.equal(
-    cleared.prompt.includes(
-      "Current thoughts (rev 2, supersedes all earlier snapshots):\n- none",
-    ),
-    true,
-  );
-  assert.deepEqual(cleared.manifest.lineage?.thoughtRefs, []);
-});
-
-test("changed Thought snapshots fail closed instead of rendering a partial revision", () => {
-  assert.throws(
-    () => assembleTurnContext({
-      manifestId: "manifest-thought-budget",
-      userId: "u1",
-      subjectId: "G",
-      conversation: conversation([], null),
-      userMessageId: "u-thought-budget",
-      userText: "hello",
-      subjectStates: [
-        thoughtState("th-budget-1", "A".repeat(120)),
-        thoughtState("th-budget-2", "B".repeat(120)),
-      ],
-      snapshotSequence: 1,
-      assembledAt: now,
-      assemblyVersion: "assembly-v2",
-      promptContractVersion: "prompt-v5",
-      breathLimit: 1,
-      thoughtLimit: 3,
-      maxContextItems: 10,
-      maxContextChars: 150,
-    }),
-    /complete current Thought snapshot/,
-  );
-});
 
 test("Breath excludes seen states before the limit and backfills lower-ranked matches", () => {
   const memories = [
@@ -864,98 +672,9 @@ test("Breath excludes seen states before the limit and backfills lower-ranked ma
     contextLineage: {
       epoch: 0,
       seenStateIds: baseline.breathStateIds,
-      thoughtRevision: 0,
-      thoughtFingerprint: null,
     },
   });
   assert.deepEqual(backfilled.breathStateIds, ["mem-c", "mem-d"]);
-});
-
-test("Thought injection is capped, and dropped, unsettled or foreign thoughts stay out", () => {
-  const dropped = writeThoughtDropped(null, {
-    reason: "subject",
-    droppedAt: now,
-    droppedByMessageId: "a9",
-  });
-  const unsettled = thoughtState("th-unsettled", "还没被用户接上的", undefined, {
-    envelope: {
-      ...state("x", "thought", "x").envelope,
-      status: { ...settledStatus, settlementStatus: "unsettled" },
-      scope: {
-        ...state("x", "thought", "x").envelope.scope,
-        applicability: "path",
-        conversationId: "c1",
-        pathHeadMessageId: "a1",
-      },
-    },
-  });
-  const foreign = thoughtState("th-foreign", "别的主体的", undefined, {
-    envelope: {
-      ...state("x", "thought", "x").envelope,
-      scope: {
-        ...state("x", "thought", "x").envelope.scope,
-        subjectId: "someone-else",
-      },
-    },
-  });
-  const noLifecycle = thoughtState("th-bare", "没有生命周期标记的", null, {
-    payload: { unrelated: true },
-  });
-
-  const assembled = assembleWith([
-    thoughtState("th-a", "a"),
-    thoughtState("th-b", "b"),
-    thoughtState("th-c", "c"),
-    thoughtState("th-d", "d"),
-    thoughtState("th-dropped", "放下了", dropped),
-    unsettled,
-    foreign,
-    noLifecycle,
-  ]);
-
-  const ids = assembled.manifest.items
-    .filter((item) => item.type === "thought")
-    .map((item) => item.sourceId);
-  assert.deepEqual(ids, ["th-d", "th-c", "th-b"]);
-});
-
-test("Memory and Feel are grouped and dated; Thought is not dated", () => {
-  const memory = state("mem-1", "memory", "蕾蕾喜欢柠檬黄", {
-    payload: {
-      temporal_v1: {
-        occurredAt: "2026-09-24T02:00:00.000Z",
-        basis: "user_supplied",
-        sourceMessageId: null,
-      },
-    },
-  });
-  const feel = state("feel-1", "feel", "柠檬黄让人放松");
-  const thought = thoughtState("th-1", "想把柠檬黄用进设计", {
-    ...writeThoughtActive(null),
-    temporal_v1: {
-      occurredAt: "2026-09-24T02:00:00.000Z",
-      basis: "user_supplied",
-      sourceMessageId: null,
-    },
-  });
-
-  const assembled = assembleWith([memory, feel, thought], "柠檬黄");
-  const context = assembled.contextData;
-
-  assert.equal(
-    context.includes(
-      "Current thoughts (rev 1, supersedes all earlier snapshots):\n- [T1] 想把柠檬黄用进设计",
-    ),
-    true,
-  );
-  assert.equal(context.includes("Relevant memories:\n- [2026-09-24] 蕾蕾喜欢柠檬黄"), true);
-  assert.equal(context.includes("Relevant feelings:\n- 柠檬黄让人放松"), true);
-  assert.equal(context.includes("[2026-09-24] 想把"), false);
-  assert.equal(
-    context.indexOf("Current thoughts (rev 1")
-      < context.indexOf("Relevant memories:"),
-    true,
-  );
 });
 
 test("a turn with no new Mind context emits only the user message", () => {
@@ -970,57 +689,13 @@ test("a turn with no new Mind context emits only the user message", () => {
 
 test("the manifest keeps ids and labels so a replay is byte-identical", () => {
   const assembled = assembleWith([
-    thoughtState("th-1", "一"),
-    thoughtState("th-2", "二"),
+    state("replay-memory", "memory", "一"),
+    state("replay-memory", "memory", "二"),
   ]);
   const replayed = assembledTurnContextFromManifest(
     JSON.parse(JSON.stringify(assembled.manifest)),
   );
   assert.equal(replayed.prompt, assembled.prompt);
-});
-
-test("persisted lineage rejects a partial or mismatched Thought snapshot", () => {
-  const assembled = assembleWith([
-    thoughtState("th-safe-1", "一"),
-    thoughtState("th-safe-2", "二"),
-  ]);
-  const partial = structuredClone(assembled.manifest);
-  partial.items = partial.items.filter(
-    (item) => item.type !== "thought" || item.alias === "T1",
-  );
-  assert.throws(
-    () => assembledTurnContextFromManifest(partial),
-    /Thought snapshot does not match lineage metadata/,
-  );
-
-  const mismatched = structuredClone(assembled.manifest);
-  const thought = mismatched.items.find((item) => item.type === "thought");
-  assert.ok(thought);
-  thought.sourceId = "wrong-thought";
-  assert.throws(
-    () => assembledTurnContextFromManifest(mismatched),
-    /Thought aliases do not match lineage metadata/,
-  );
-
-  const tampered = structuredClone(assembled.manifest);
-  const tamperedThought = tampered.items.find(
-    (item) => item.type === "thought",
-  );
-  assert.ok(tamperedThought);
-  tamperedThought.text = "tampered after assembly";
-  assert.throws(
-    () => assembledTurnContextFromManifest(tampered),
-    /Thought fingerprint does not match the delivered snapshot/,
-  );
-
-  const noncontiguous = structuredClone(assembled.manifest);
-  assert.ok(noncontiguous.lineage);
-  noncontiguous.lineage.thoughtRefs[0]!.alias = "T2";
-  noncontiguous.lineage.thoughtRefs[1]!.alias = "T3";
-  assert.throws(
-    () => assembledTurnContextFromManifest(noncontiguous),
-    /contiguous T1\.\.Tn aliases/,
-  );
 });
 
 test("retired Drive and Curiosity tags never create Mind state, alone or beside current tags", () => {
@@ -1030,18 +705,18 @@ test("retired Drive and Curiosity tags never create Mind state, alone or beside 
     assert.deepEqual(parsedAlone.intents, [], tag);
     assert.equal(parsedAlone.visibleText, alone, tag);
 
-    const mixed = `前 <thought>新念头</thought> 中 ${alone} 后`;
+    const mixed = `前 <memory>新记忆</memory> 中 ${alone} 后`;
     const parsedMixed = parseMindWriteIntents(mixed);
     assert.deepEqual(
       parsedMixed.intents.map((intent) => [intent.kind, intent.text]),
-      [["thought", "新念头"]],
+      [["memory", "新记忆"]],
       tag,
     );
     assert.equal(parsedMixed.visibleText.includes(alone), true, tag);
-    assert.equal(parsedMixed.visibleText.includes("<thought>"), false, tag);
+    assert.equal(parsedMixed.visibleText.includes("<memory>"), false, tag);
 
     // A retired tag cannot ride inside a current write either.
-    const nested = `<thought>a ${alone} b</thought>`;
+    const nested = `<memory>a ${alone} b</memory>`;
     const parsedNested = parseMindWriteIntents(nested);
     assert.deepEqual(parsedNested.intents, [], tag);
     assert.equal(parsedNested.visibleText, nested, tag);
@@ -1066,7 +741,7 @@ test("only thought_drop is a semantic action; retired action directives stay vis
 
 test("complete retired wrappers protect all current write kinds", () => {
   for (const tag of ["drive", "curiosity", "topic", "dream"]) {
-    for (const kind of ["memory", "feel", "thought"]) {
+    for (const kind of ["memory"]) {
       const source = `<${tag}>old <${kind}>hidden</${kind}></${tag}>`;
       const parsed = parseMindWriteIntents(source);
       assert.deepEqual(parsed.intents, [], source);
@@ -1077,13 +752,13 @@ test("complete retired wrappers protect all current write kinds", () => {
 
 test("only current writes outside retired wrappers are extracted", () => {
   const wrapper = "<drive>旧 <thought>非法内层</thought></drive>";
-  const source = `前 <thought>合法 thought</thought> 中 ${wrapper} 后`;
+  const source = `前 <memory>合法 memory</memory> 中 ${wrapper} 后`;
   const parsed = parseMindWriteIntents(source);
   assert.deepEqual(parsed.intents.map(({ kind, text }) => [kind, text]), [
-    ["thought", "合法 thought"],
+    ["memory", "合法 memory"],
   ]);
   assert.equal(parsed.visibleText, `前  中 ${wrapper} 后`);
-  assert.equal(parsed.intents[0]?.sourceStart, source.indexOf("<thought>"));
+  assert.equal(parsed.intents[0]?.sourceStart, source.indexOf("<memory>"));
 });
 
 test("nested retired wrappers protect content after an inner closing tag", () => {
@@ -1098,10 +773,10 @@ test("both block parser passes preserve retired wrapper text including whitespac
   const wrapper = '<dream>old  \n\n\n<thought>hidden</thought>\n<thought_drop ref="T1" /></dream>';
   const parsed = parseMindWriteIntentsFromBlocks([{
     kind: "text", rawType: "text",
-    text: `<thought>outside</thought>${wrapper}<thought_drop ref="T2" />`,
+    text: `<memory>outside</memory>${wrapper}`,
   }]);
   assert.deepEqual(parsed.intents.map(({ text }) => text), ["outside"]);
-  assert.deepEqual(parsed.actions?.map(({ ref }) => ref), ["T2"]);
+  assert.deepEqual(parsed.actions, []);
   assert.equal(parsed.visibleBlocks[0]?.text, wrapper);
 });
 

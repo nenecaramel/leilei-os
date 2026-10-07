@@ -98,7 +98,7 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
         "idempotency-key": "mind-manual-api-0001",
       },
       body: JSON.stringify({
-        kind: "thought",
+        kind: "memory",
         text: "old record",
         occurred_at: "2025-01-01T00:00:00Z",
         note: "manual",
@@ -128,7 +128,7 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
         name: "create",
         input: {
           userId,
-          kind: "thought",
+          kind: "memory",
           text: "old record",
           occurredAt: "2025-01-01T00:00:00Z",
           note: "manual",
@@ -229,4 +229,16 @@ test("Mind API rejects client identity, unsupported fields, and unauthenticated 
     },
     false,
   );
+});
+
+
+test("manual API rejects retired Mind kinds before calling the writer", async () => {
+  const service = new FakeMindService();
+  await withServer(service, async baseUrl => {
+    for (const kind of ["thought", "feel"]) {
+      const response = await fetch(baseUrl, {method:"POST", headers:{"Content-Type":"application/json","Idempotency-Key":"legacy-mind-create-001"}, body:JSON.stringify({kind,text:"keep emotional context"})});
+      assert.equal(response.status,400);
+    }
+    assert.deepEqual(service.calls,[]);
+  });
 });

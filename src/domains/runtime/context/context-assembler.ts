@@ -10,10 +10,8 @@ import { recallBreath } from "../breath/breath-recall.js";
 import { canonicalPathToHead } from "../shared/surface-projector.js";
 import type { SubjectStateWrite } from "../subject-state/subject-state-contract.js";
 import { isConsolidationEligible } from "../subject-state/runtime-status-axes.js";
-import { THOUGHT_ACTIVE_LIMIT, isActiveThought } from "../thought/thought.js";
 import { readSubjectStateOccurredAt } from "../subject-state/subject-state-temporal.js";
 import {
-  fingerprintThoughtSnapshot,
   normalizeContextLineageState,
   type ContextLineageState,
 } from "./context-lineage.js";
@@ -25,7 +23,6 @@ export type AssembledTurnContext = {
   breathStateIds: string[];
 };
 
-const THOUGHT_RANK_BASE = 150;
 const BREATH_RANK_BASE = 300;
 
 function escapeData(value: string): string {
@@ -95,10 +92,7 @@ function renderLine(item: ContextManifestItem, dated: boolean): string {
   const text = item.text?.trim();
   if (!text) return "";
   const timestamp = dated ? contextTimestampLabel(item) : null;
-  const label = item.type === "thought" && item.alias
-    ? `[${item.alias}] `
-    : "";
-  return `- ${label}${timestamp ? `${timestamp} ` : ""}${escapeData(text)}`;
+  return `- ${timestamp ? `${timestamp} ` : ""}${escapeData(text)}`;
 }
 
 function renderSection(
@@ -243,8 +237,7 @@ function selectWithinBudget(
 
 /**
  * Foreground Context Assembly:
- * current user message + a versioned active-Thought snapshot when changed
- * + bounded Breath Memory/Feel recall.
+ * current user message + bounded Breath Memory recall.
  * Selection order is deterministic; exact budget values are supplied by the
  * caller/runtime config rather than hard-coded here.
  */
@@ -273,7 +266,6 @@ export function assembleTurnContext(input: {
   breathSemanticMedianMargin?: number;
   breathRecentRecallPenalty?: boolean;
   breathDiversityMaxTokenOverlap?: number;
-  thoughtLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
   surfaceHeadMessageId?: string | null;
@@ -312,56 +304,7 @@ export function assembleTurnContext(input: {
     selection: selection("current_user_message", 0),
   };
 
-  const thoughtLimit = input.thoughtLimit ?? THOUGHT_ACTIVE_LIMIT;
-  if (!Number.isInteger(thoughtLimit) || thoughtLimit < 0) {
-    throw new Error("Thought limit must be a nonnegative integer.");
-  }
-
   const parentLineage = normalizeContextLineageState(input.contextLineage);
-
-  // The states arrive oldest-first, so the newest thought is labelled T1.
-  const thoughtCandidates = input.subjectStates
-    .filter((state) =>
-      state.kind === "thought"
-      && isActiveThought(state.payload)
-      && stateApplies(state, {
-        userId: input.userId,
-        subjectId: input.subjectId,
-        conversationId: input.conversation.id,
-        currentPathMessageIds,
-      })
-    )
-    .reverse()
-    .slice(0, thoughtLimit)
-    .map((state, index) => ({
-      ...subjectStateToContextItem(
-        state,
-        selection("active_thought", THOUGHT_RANK_BASE + index),
-      ),
-      alias: `T${index + 1}`,
-    }));
-  const thoughtFingerprint = fingerprintThoughtSnapshot(
-    thoughtCandidates.map((item) => ({
-      sourceId: item.sourceId,
-      text: item.text,
-    })),
-  );
-  const initialEmptyThoughtState =
-    parentLineage.epoch === 0
-    && parentLineage.thoughtFingerprint === null
-    && parentLineage.thoughtRevision === 0
-    && thoughtCandidates.length === 0;
-  const thoughtSnapshotEmitted =
-    parentLineage.forceThoughtSnapshot === true
-    || (
-      thoughtFingerprint !== parentLineage.thoughtFingerprint
-      && !initialEmptyThoughtState
-    );
-  const thoughtRevision = thoughtSnapshotEmitted
-    ? parentLineage.thoughtRevision + 1
-    : parentLineage.thoughtRevision;
-  const thoughts = thoughtSnapshotEmitted ? thoughtCandidates : [];
-
   const seenStateIds = new Set(parentLineage.seenStateIds);
   const breath = recallBreath(input.userText, input.subjectStates, {
     userId: input.userId,
@@ -401,7 +344,6 @@ export function assembleTurnContext(input: {
   const selected = selectWithinBudget(
     [
       userItem,
-      ...thoughts,
       ...breathItems,
     ].map((item) => withOccurredDate(item, contextTimeZone)),
     {
@@ -409,16 +351,6 @@ export function assembleTurnContext(input: {
       maxChars: input.maxContextChars,
     },
   );
-  if (
-    thoughtSnapshotEmitted
-    && selected.filter((item) => item.type === "thought").length
-      !== thoughtCandidates.length
-  ) {
-    throw new Error(
-      "Context budget is too small to include the complete current Thought snapshot.",
-    );
-  }
-
   const usedChars = selected.reduce((sum, item) => sum + charCost(item), 0);
 
   const manifest: InitialContextManifest = {
@@ -433,14 +365,6 @@ export function assembleTurnContext(input: {
     createdAt: input.assembledAt,
     lineage: {
       epoch: parentLineage.epoch,
-      thoughtRevision,
-      thoughtFingerprint,
-      thoughtSnapshotEmitted,
-      activeThoughtCount: thoughtCandidates.length,
-      thoughtRefs: thoughtCandidates.map((item) => ({
-        alias: item.alias ?? "",
-        stateId: item.sourceId,
-      })),
     },
     budget: {
       maxItems: input.maxContextItems,
@@ -457,6 +381,16 @@ export function assembleTurnContext(input: {
 export function assembledTurnContextFromManifest(
   manifest: InitialContextManifest,
 ): AssembledTurnContext {
+  // Decode persisted pre-deployment manifests without re-injecting retired
+  // states; deduplicate by durable source ID before rendering or recall accounting.
+  const seen = new Set<string>();
+  manifest = {...manifest, items: manifest.items.flatMap(item => {
+    if (item.trustBoundary !== "subject_state_data") return [item];
+    if (item.type !== "memory" && item.type !== "feel") return [];
+    if (seen.has(item.sourceId)) return [];
+    seen.add(item.sourceId);
+    return [{...item, type: "memory"}];
+  })};
   assertContextManifestSafe(manifest);
 
   const userItems = manifest.items.filter(
@@ -479,26 +413,7 @@ export function assembledTurnContextFromManifest(
   );
   const ofType = (type: string) =>
     ordered.filter((item) => item.type === type);
-  const thoughts = ofType("thought");
-
-  const thoughtLines = thoughts
-    .map((item) => renderLine(item, false))
-    .filter(Boolean);
-  const thoughtSection = manifest.lineage
-    ? (
-        manifest.lineage.thoughtSnapshotEmitted
-          ? [
-              `Current thoughts (rev ${manifest.lineage.thoughtRevision}, supersedes all earlier snapshots):`,
-              ...(thoughtLines.length > 0 ? thoughtLines : ["- none"]),
-            ]
-          : []
-      )
-    : renderSection("Current thoughts:", thoughts, false);
-  const sections = [
-    ...thoughtSection,
-    ...renderSection("Relevant memories:", ofType("memory"), true),
-    ...renderSection("Relevant feelings:", ofType("feel"), true),
-  ];
+  const sections = renderSection("Relevant memories:", ofType("memory"), true);
   const contextData = sections.length > 0
     ? [
         "<leileios_context>",

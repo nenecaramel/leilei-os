@@ -76,6 +76,7 @@ export const runtimeContextLineageStates = pgTable(
       .$type<string[]>()
       .default(sql`'[]'::jsonb`)
       .notNull(),
+    // Dormant legacy columns retained for stored lineage compatibility; current runtime uses epoch/seen IDs only.
     thoughtRevision: integer("thought_revision").default(0).notNull(),
     thoughtFingerprint: varchar("thought_fingerprint", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true })

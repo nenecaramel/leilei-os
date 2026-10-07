@@ -9,7 +9,6 @@ import {
   type SubjectStateWrite,
 } from "../subject-state/subject-state-contract.js";
 import { writeSubjectStateTemporal } from "../subject-state/subject-state-temporal.js";
-import { writeThoughtActive } from "../thought/thought.js";
 
 /**
  * Where a Mind write came from. Both origins end up in `createMindState`, so
@@ -118,10 +117,6 @@ export function createMindState(input: {
       userId: input.userId,
       subjectId: input.subjectId,
     });
-  }
-
-  if (input.kind === "thought") {
-    payload = writeThoughtActive(payload);
   }
 
   return validateSubjectStateWrite({

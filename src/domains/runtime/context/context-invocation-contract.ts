@@ -3,7 +3,6 @@ import type {
   RuntimePrincipal,
 } from "../shared/persistent-write-envelope.js";
 import {
-  fingerprintThoughtSnapshot,
   parseContextLineageManifest,
   type ContextLineageManifest,
 } from "./context-lineage.js";
@@ -32,8 +31,7 @@ export type ContextManifestItem = {
   text?: string | null;
   payload?: Record<string, unknown> | null;
   /**
-   * Turn-local label the model sees instead of `sourceId` (for example T1 for
-   * an active thought). Only the manifest can map it back to a real state.
+   * Historical turn-local label; ignored by current memory rendering.
    */
   alias?: string | null;
   selection: ContextSelection;
@@ -104,62 +102,6 @@ export function assertContextManifestSafe(manifest: InitialContextManifest): voi
     const lineage = parseContextLineageManifest(manifest.lineage);
     if (!lineage) {
       throw new Error("Context manifest lineage metadata is invalid.");
-    }
-    const thoughtItems = manifest.items.filter(
-      (item) => item.type === "thought",
-    );
-    if (
-      lineage.thoughtSnapshotEmitted
-        ? thoughtItems.length !== lineage.activeThoughtCount
-        : thoughtItems.length !== 0
-    ) {
-      throw new Error(
-        "Context manifest Thought snapshot does not match lineage metadata.",
-      );
-    }
-    if (lineage.thoughtSnapshotEmitted) {
-      const expected = new Map(
-        lineage.thoughtRefs.map((value) => [
-          value.alias,
-          value.stateId,
-        ]),
-      );
-      if (
-        new Set(thoughtItems.map((item) => item.alias)).size
-          !== thoughtItems.length
-        || thoughtItems.some(
-          (item) =>
-            !item.alias
-            || expected.get(item.alias) !== item.sourceId,
-        )
-      ) {
-        throw new Error(
-          "Context manifest Thought aliases do not match lineage metadata.",
-        );
-      }
-
-      const itemByAlias = new Map(
-        thoughtItems.map((item) => [item.alias!, item]),
-      );
-      const deliveredFingerprint = fingerprintThoughtSnapshot(
-        lineage.thoughtRefs.map((ref) => {
-          const item = itemByAlias.get(ref.alias);
-          if (!item) {
-            throw new Error(
-              "Context manifest Thought aliases do not match lineage metadata.",
-            );
-          }
-          return {
-            sourceId: item.sourceId,
-            text: item.text,
-          };
-        }),
-      );
-      if (deliveredFingerprint !== lineage.thoughtFingerprint) {
-        throw new Error(
-          "Context manifest Thought fingerprint does not match the delivered snapshot.",
-        );
-      }
     }
   }
   for (const item of manifest.items) {

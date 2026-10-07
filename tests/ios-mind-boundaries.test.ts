@@ -49,14 +49,14 @@ test("Mind detail retains local item, reload and delete coordination", () => {
 test("Mind manual entry retains its form state and signature-based retry identity", () => {
   const source = surface("MindManualEntry");
   assert.match(source, /struct MindManualEntrySheet: View/);
-  for (const state of ["kind", "text", "note", "hasOccurredAt", "occurredAt", "saving", "failed", "pendingRequestID", "pendingRequestSignature"]) {
+  for (const state of ["text", "note", "hasOccurredAt", "occurredAt", "saving", "failed", "pendingRequestID", "pendingRequestSignature"]) {
     assert.match(source, new RegExp(`@State private var ${state}\\b`));
   }
   assert.match(source, /value\.count <= 20_000/);
   assert.match(source, /\.joined\(separator: "\\u\{0\}"\)/);
   assert.match(source, /if pendingRequestSignature == signature,\s*let pendingRequestID/);
-  assert.match(source, /createManualMind\(\s*kind: kind,\s*text: normalizedText,\s*occurredAt: desiredOccurredAt,\s*note: desiredNote,\s*requestID: requestID/);
-  assert.doesNotMatch(source, /deleteMind|mindPage/);
+  assert.match(source, /createManualMind\(\s*kind: \.memory,\s*text: normalizedText,\s*occurredAt: desiredOccurredAt,\s*note: desiredNote,\s*requestID: requestID/);
+  assert.doesNotMatch(source, /deleteMind|mindPage|\bPicker\(|typePicker|@State private var kind/);
 });
 
 test("Mind extraction adds no observable state authority or persistence and stays focused", () => {

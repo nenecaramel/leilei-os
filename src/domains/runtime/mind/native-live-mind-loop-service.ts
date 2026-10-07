@@ -39,7 +39,6 @@ import {
 } from "../breath/breath-recall.js";
 import { canonicalPathToHead } from "../shared/surface-projector.js";
 import { expandCausalStateReferences } from "../lifecycle/persistent-reference-scan.js";
-import { readThoughtLifecycle, writeThoughtActive } from "../thought/thought.js";
 import {
   readSubjectStateLifecycle,
   type MemoryLifecyclePolicy,
@@ -120,7 +119,6 @@ export type MindLoopConfig = {
   breathDiversityMaxTokenOverlap?: number;
   breathSemanticCandidateLimit?: number;
   breathSemanticCandidateMaxChars?: number;
-  thoughtLimit?: number;
   maxContextItems: number;
   maxContextChars: number;
 };
@@ -351,7 +349,6 @@ export class NativeLiveMindLoopService {
         this.config.breathRecentRecallPenalty ?? false,
       breathDiversityMaxTokenOverlap:
         this.config.breathDiversityMaxTokenOverlap ?? 1,
-      thoughtLimit: this.config.thoughtLimit ?? 0,
       maxContextItems: this.config.maxContextItems,
       maxContextChars: this.config.maxContextChars,
       surfaceHeadMessageId: input.surfaceHeadMessageId,
@@ -774,10 +771,7 @@ function hasCompleteSemanticScores(
 
 /**
  * Context for a Retry/Edit must match what the replaced turn saw. States that
- * only exist because of the replaced messages are removed, and a thought that
- * one of those messages dropped is treated as still active. (The stored drop is
- * undone for real when the replacement finalizes; this keeps the model from
- * seeing the world after the very turn it is redoing.)
+ * only exist because of the replaced messages are removed.
  */
 function excludeCausalStates(
   states: readonly SubjectStateWrite[],
@@ -786,25 +780,7 @@ function excludeCausalStates(
   if (!excludedReferenceIds || excludedReferenceIds.size === 0) {
     return [...states];
   }
-  // A thought's own payload names the message that dropped it. That is not
-  // a reason to hide the thought, so only its envelope is scanned; a thought
-  // written by a replaced turn is still caught through its provenance.
-  const excludedStateIds = expandCausalStateReferences({
-    states: states.map((state) =>
-      state.kind === "thought" ? { ...state, payload: null } : state
-    ),
-    rootIds: excludedReferenceIds,
-  });
+  const excludedStateIds = expandCausalStateReferences({states, rootIds: excludedReferenceIds});
   return states
-    .filter((state) => !excludedStateIds.has(state.id))
-    .map((state) => {
-      if (state.kind !== "thought") return state;
-      const lifecycle = readThoughtLifecycle(state.payload);
-      return lifecycle?.status === "dropped"
-        && lifecycle.reason === "subject"
-        && lifecycle.droppedByMessageId !== null
-        && excludedReferenceIds.has(lifecycle.droppedByMessageId)
-        ? { ...state, payload: writeThoughtActive(state.payload) }
-        : state;
-    });
+    .filter((state) => !excludedStateIds.has(state.id));
 }
