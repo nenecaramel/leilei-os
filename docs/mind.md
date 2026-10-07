@@ -44,11 +44,16 @@ existing time (`temporal_v1`), scope, provenance and status semantics:
 Retired tags remain visible prose and cannot create state, including when they wrap a
 nested memory tag. Semantic action directives have no current effect.
 
-## Deployment 1 and compatibility
+## Deployment and compatibility
 
 Migration `0101_simplify_mind_memory` deletes existing `thought` records and changes only
 `kind` on existing `feel` rows to `memory`. It preserves IDs, timestamps, envelopes, payload,
-source, settlement and metadata. It does not recreate records or change the existing CHECK.
+source, settlement and metadata. It does not recreate records.
+
+After the memory-only writers were deployed and production write/readback was verified,
+`0102_tighten_mind_memory_check` completes Deployment 2. It refuses to proceed if any
+non-`memory` row remains, then replaces and validates
+`runtime_subject_states_kind_allowed` as a memory-only CHECK. It does not rewrite or delete data.
 
 Queued pre-deployment follow-ups skip retired intents/actions and normalize `feel` to memory,
 retaining the original intent ordinal for deterministic retry IDs. Archive imports normalize
@@ -58,9 +63,6 @@ cached kinds as memory; encoding emits only memory.
 
 Dormant lineage columns and historical event/archive vocabularies remain readable for history
 compatibility. They do not drive current Mind behavior.
-
-**Deployment 2 TODO:** after all old processes stop writing and production migration is
-verified, tighten `runtime_subject_states_kind_allowed` to permit only `memory` in a separate PR.
 
 ## Unchanged limitations
 
