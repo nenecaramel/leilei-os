@@ -12,8 +12,11 @@ const entry = {
     "11111111-1111-4111-8111-111111111111",
   reservationId:
     "22222222-2222-4222-8222-222222222222",
-  handoffSessionId:
-    "33333333-3333-4333-8333-333333333333",
+  outcome: {
+    status: "success" as const,
+    handoffSessionId:
+      "33333333-3333-4333-8333-333333333333",
+  },
 };
 
 test("Claude handoff outbox is durable, idempotent, and acknowledged explicitly", async (t) => {
@@ -64,9 +67,43 @@ test("Claude handoff outbox rejects conflicting B session ids for one reservatio
   await assert.rejects(
     outbox.save({
       ...entry,
-      handoffSessionId:
-        "44444444-4444-4444-8444-444444444444",
+      outcome: {
+        status: "success",
+        handoffSessionId:
+          "44444444-4444-4444-8444-444444444444",
+      },
     }),
     /Conflicting Claude handoff receipt/,
+  );
+});
+
+
+test("Claude handoff outbox durably stores failure receipts", async (t) => {
+  const root = mkdtempSync(
+    join(tmpdir(), "leileios-handoff-outbox-"),
+  );
+  t.after(() => {
+    rmSync(root, {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  const outbox =
+    new NativeLiveMacClaudeHandoffOutbox(root);
+  const failure = {
+    listenerInstanceId:
+      "11111111-1111-4111-8111-111111111111",
+    reservationId:
+      "55555555-5555-4555-8555-555555555555",
+    outcome: {
+      status: "failure" as const,
+      failureCode: "NO_PROVIDER_SESSION",
+    },
+  };
+  await outbox.save(failure);
+  assert.deepEqual(
+    await new NativeLiveMacClaudeHandoffOutbox(root).list(),
+    [failure],
   );
 });
