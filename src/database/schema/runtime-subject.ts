@@ -95,9 +95,7 @@ export const runtimeSubjectStates = pgTable(
       table.validityStatus,
     ),
     check("runtime_subject_states_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
-    // Deployment 1 keeps the existing legacy-compatible CHECK for rollout ordering.
-    // Deployment 2 TODO: tighten CHECK to memory only after old writers/data are gone.
-    check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'thought')`),
+    check("runtime_subject_states_kind_allowed", sql`${table.kind} = 'memory'`),
     check("runtime_subject_states_scope_allowed", sql`${table.scopeApplicability} IN ('global', 'conversation', 'path')`),
     check("runtime_subject_states_settlement_allowed", sql`${table.settlementStatus} IN ('unsettled', 'settled', 'rejected')`),
     check("runtime_subject_states_path_status_allowed", sql`${table.pathStatus} IN ('current', 'superseded')`),

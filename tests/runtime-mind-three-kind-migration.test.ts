@@ -25,15 +25,36 @@ test("three-kind Mind migration preserves historical rows but fences future writ
   assert.doesNotMatch(migration, /UPDATE "runtime_subject_states"/);
 });
 
-test("Deployment 1 schema preserves the historical three-kind CHECK", () => {
+test("Deployment 2 migration refuses residual legacy rows and validates memory-only CHECK", () => {
+  const migration = readRepoFile("drizzle/0102_tighten_mind_memory_check.sql");
+
+  assert.match(migration, /WHERE "kind" <> 'memory'/);
+  assert.match(
+    migration,
+    /DROP CONSTRAINT "runtime_subject_states_kind_allowed"/,
+  );
+  assert.match(
+    migration,
+    /CHECK \("kind" = 'memory'\)\s+NOT VALID/,
+  );
+  assert.match(
+    migration,
+    /VALIDATE CONSTRAINT "runtime_subject_states_kind_allowed"/,
+  );
+  assert.doesNotMatch(migration, /DELETE FROM "runtime_subject_states"/);
+  assert.doesNotMatch(migration, /UPDATE "runtime_subject_states"/);
+});
+
+test("Deployment 2 schema permits memory only", () => {
   const schema = readSchemaSource();
   const constraint = schema.match(
     /check\("runtime_subject_states_kind_allowed"[\s\S]*?\),/,
   )?.[0];
 
   assert.ok(constraint, "runtime_subject_states kind constraint must exist");
-  assert.match(constraint, /'feel'/);
   assert.match(constraint, /'memory'/);
-  assert.match(constraint, /'thought'/);
-  assert.doesNotMatch(constraint, /'drive'|'curiosity'|'topic'|'dream'/);
+  assert.doesNotMatch(
+    constraint,
+    /'feel'|'thought'|'drive'|'curiosity'|'topic'|'dream'/,
+  );
 });

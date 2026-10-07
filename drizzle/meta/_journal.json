@@ -715,6 +715,13 @@
       "when": 1791330000000,
       "tag": "0101_simplify_mind_memory",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1791357600000,
+      "tag": "0102_tighten_mind_memory_check",
+      "breakpoints": true
     }
   ]
 }
