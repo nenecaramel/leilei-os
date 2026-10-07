@@ -383,16 +383,6 @@ function transcriptHash(entries: SessionEntry[]): string {
     .digest("hex");
 }
 
-function isChainEntry(entry: SessionEntry): boolean {
-  return Boolean(
-    entry
-    && !entry.isSidechain
-    && ["user", "assistant", "system", "attachment"].includes(entry.type)
-    && typeof entry.uuid === "string"
-    && Object.hasOwn(entry, "parentUuid"),
-  );
-}
-
 function shellQuote(value: string): string {
   return "'" + value.replaceAll("'", "'\\''") + "'";
 }
