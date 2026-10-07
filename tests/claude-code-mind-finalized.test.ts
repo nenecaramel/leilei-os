@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { createServer } from "node:http";
 import { runHook } from "../tools/claude-code-mind/hook.mjs";
-import { contextHashMatches, provesDelivery, MAX_TRANSCRIPT_BYTES } from "../tools/claude-code-mind/transcript.mjs";
+import { contextHashMatches, promptAnchor, provesDelivery, provesFinalizedDelivery, MAX_TRANSCRIPT_BYTES } from "../tools/claude-code-mind/transcript.mjs";
 import { configureHooks } from "../tools/claude-code-mind/install.mjs";
 
 const memoryId = "11111111-1111-4111-8111-111111111111";
@@ -111,6 +111,42 @@ test("confirm network failure retains pending but a later prompt retires it; loc
   await writeFile(await f.file(), JSON.stringify(state)); await f.accept();
   assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
   await runHook({hook_event_name: "SessionStart", session_id: "s", source: "resume"}); assert.deepEqual((await f.state()).pending_recalls, []);
+});
+
+test("promptAnchor waits for a partially appended Desktop prompt record", async t => {
+  const home = await mkdtemp(join(tmpdir(), "mind-v2-transcript-race-"));
+  t.after(() => rm(home, {recursive: true, force: true}));
+  const transcript = join(home, "transcript.jsonl");
+  const line = JSON.stringify(message());
+  const split = Math.floor(line.length / 2);
+  await writeFile(transcript, line.slice(0, split));
+  const pending = promptAnchor(transcript, "s", "tea");
+  const appended = new Promise<void>((resolveAppend, rejectAppend) => {
+    setTimeout(() => { appendFile(transcript, `${line.slice(split)}\n`).then(resolveAppend, rejectAppend); }, 40);
+  });
+  assert.equal(await pending, promptId);
+  await appended;
+});
+
+test("next-prompt finalization waits until Desktop appends the new prompt record", async t => {
+  const home = await mkdtemp(join(tmpdir(), "mind-v2-finalize-race-"));
+  t.after(() => rm(home, {recursive: true, force: true}));
+  const transcript = join(home, "transcript.jsonl");
+  const delivered = attachment();
+  const done = summary(delivered.uuid);
+  await writeFile(transcript, jsonl([message(), delivered, done]));
+  const pending = {
+    turn_anchor: promptId,
+    context_sha256: digest,
+    delivered_at: Date.parse(delivered.timestamp) - 1,
+  };
+  const proof = provesFinalizedDelivery(transcript, "s", pending, true, false);
+  const next = message(randomUUID(), done.uuid);
+  const appended = new Promise<void>((resolveAppend, rejectAppend) => {
+    setTimeout(() => { appendFile(transcript, JSON.stringify(next) + "\n").then(resolveAppend, rejectAppend); }, 40);
+  });
+  assert.equal(await proof, true);
+  await appended;
 });
 
 test("transcript canonicalization and bounded defensive ancestry parsing fail closed", async t => {
