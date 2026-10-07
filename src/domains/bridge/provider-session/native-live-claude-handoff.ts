@@ -329,8 +329,6 @@ export class NativeLiveClaudeHandoffService {
         UPDATE native_live_claude_handoffs
         SET status = 'failed',
             failure_code = 'RESULT_DELIVERY_UNKNOWN',
-            reserved_by = NULL,
-            reserved_at = NULL,
             reservation_expires_at = NULL,
             completed_at = now(),
             updated_at = now()
@@ -420,6 +418,7 @@ export class NativeLiveClaudeHandoffService {
         provider_checkpoint_id: string;
         status: NativeLiveClaudeHandoffStatus;
         handoff_session_id: string | null;
+        failure_code: string | null;
         reserved_by: string | null;
       }>(sql`
         SELECT
@@ -430,6 +429,7 @@ export class NativeLiveClaudeHandoffService {
           provider_checkpoint_id,
           status,
           handoff_session_id,
+          failure_code,
           reserved_by
         FROM native_live_claude_handoffs
         WHERE id = ${input.reservationId}::uuid
@@ -438,6 +438,24 @@ export class NativeLiveClaudeHandoffService {
         LIMIT 1
       `);
       const current = rows[0];
+      if (
+        current
+        && input.outcome.status === "success"
+        && current.status === "failed"
+        && current.failure_code === "RESULT_DELIVERY_UNKNOWN"
+        && current.reserved_by === input.listenerInstanceId
+      ) {
+        await tx.execute(sql`
+          UPDATE native_live_claude_handoffs
+          SET status = 'reserved',
+              completed_at = NULL,
+              updated_at = now()
+          WHERE id = ${input.reservationId}::uuid
+            AND user_id = ${input.userId}::uuid
+        `);
+        current.status = "reserved";
+      }
+
       if (
         current
         && input.outcome.status === "success"
