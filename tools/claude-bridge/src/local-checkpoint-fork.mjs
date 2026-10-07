@@ -33,12 +33,20 @@ function projectsDirectory(environment) {
   return join(configDirectory(environment), "projects");
 }
 
-function receiptDirectory() {
-  return join(
-    homedir(),
-    ".leileios",
-    "local-checkpoint-fork-receipts",
-  );
+function receiptDirectory(environment) {
+  const configured =
+    typeof environment?.LEILEIOS_LOCAL_CHECKPOINT_FORK_RECEIPT_DIR
+      === "string"
+    && environment.LEILEIOS_LOCAL_CHECKPOINT_FORK_RECEIPT_DIR.trim()
+      ? environment.LEILEIOS_LOCAL_CHECKPOINT_FORK_RECEIPT_DIR.trim()
+      : null;
+  return configured
+    ? resolve(configured)
+    : join(
+        homedir(),
+        ".leileios",
+        "local-checkpoint-fork-receipts",
+      );
 }
 
 async function exists(path) {
@@ -123,8 +131,9 @@ async function findUniqueLocalSessionTranscript({
 async function writeDurableReceipt({
   sessionId,
   projectDirectoryName,
+  environment,
 }) {
-  const directory = receiptDirectory();
+  const directory = receiptDirectory(environment);
   await mkdir(directory, {
     recursive: true,
     mode: 0o700,
@@ -234,6 +243,7 @@ export async function prepareLocalCheckpointFork({
   const receiptPath = await writeDurableReceipt({
     sessionId: syntheticSessionId,
     projectDirectoryName: source.projectDirectoryName,
+    environment,
   });
 
   const encoded = encodePrefix(prefix, syntheticSessionId);
@@ -325,7 +335,7 @@ function validateReceipt(record, filename, environment) {
 export async function cleanupOrphanedLocalCheckpointForks({
   environment = process.env,
 } = {}) {
-  const directory = receiptDirectory();
+  const directory = receiptDirectory(environment);
   let names;
   try {
     names = await readdir(directory);
