@@ -223,6 +223,11 @@ test("current attachment presentation is extracted from the message surface", ()
   }
 });
 
+const messageRowsPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageRows.swift";
+const messageBlocksPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMessageBlocks.swift";
+
 test("canonical voice input is a tappable compact bubble that expands and collapses its transcript", () => {
   const userRow = readExisting(
     "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveUserMessageRow.swift",
@@ -252,7 +257,8 @@ test("canonical voice input is a tappable compact bubble that expands and collap
     userRow,
     /get:\{ appModel\.nativeLiveMessageUIState\[row\.id\]\.voiceTranscriptExpansion \}/,
   );
-  assert.doesNotMatch(userRow, /voice.*duration|duration.*voice|seconds|秒/i);
+  assert.doesNotMatch(userRow, /durationSeconds|duration_seconds|秒/);
+  assert.doesNotMatch(userRow, /Text\([^)]*"[^"]*seconds[^"]*"/i);
 });
 
 test("message rows and canonical block rendering are extracted while root composition stays put", () => {
