@@ -411,6 +411,7 @@ export class NativeLiveClaudeHandoffService {
         provider_session_id: string;
         provider_checkpoint_id: string;
         status: NativeLiveClaudeHandoffStatus;
+        handoff_session_id: string | null;
         reserved_by: string | null;
       }>(sql`
         SELECT
@@ -420,6 +421,7 @@ export class NativeLiveClaudeHandoffService {
           provider_session_id,
           provider_checkpoint_id,
           status,
+          handoff_session_id,
           reserved_by
         FROM native_live_claude_handoffs
         WHERE id = ${input.reservationId}::uuid
@@ -428,6 +430,26 @@ export class NativeLiveClaudeHandoffService {
         LIMIT 1
       `);
       const current = rows[0];
+      if (
+        current
+        && input.outcome.status === "success"
+        && current.handoff_session_id
+          === input.outcome.handoffSessionId.trim()
+      ) {
+        if (current.status === "completed") {
+          return "completed" as const;
+        }
+        if (current.status === "stale") {
+          return "stale" as const;
+        }
+      }
+      if (
+        current
+        && input.outcome.status === "failure"
+        && current.status === "failed"
+      ) {
+        return "failed" as const;
+      }
       if (
         !current
         || current.status !== "reserved"
