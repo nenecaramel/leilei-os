@@ -206,14 +206,19 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
     new URL("../ios/LeileiOS/LeileiOS/Infrastructure/NativeLiveRuntimeModels.swift", import.meta.url),
     "utf8",
   );
-  const surface = readFileSync(
-    new URL("../ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveRuntimeActivity.swift", import.meta.url),
+  const tools = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Tools.swift", import.meta.url),
+    "utf8",
+  );
+  const lifecycle = readFileSync(
+    new URL("../ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveTurnActivityProjection+Lifecycle.swift", import.meta.url),
     "utf8",
   );
 
   assert.match(models, /payload\["display_name"\]/);
   assert.match(models, /payload\["kind"\]\?\.stringValue == "api_retry"/);
-  assert.match(surface, /payload\?\["display_name"\]/);
+  assert.match(tools, /payload\["display_name"\]\?\.stringValue[\s\S]*payload\["tool_name"\]\?\.stringValue/);
+  assert.match(lifecycle, /case "api_retry":/);
 });
 
 test("Agent SDK transport enables native session state events for every turn", async () => {
