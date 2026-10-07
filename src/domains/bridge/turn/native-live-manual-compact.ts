@@ -95,18 +95,6 @@ export class NativeLiveManualCompactService {
         .catch(() => false)
       ?? false;
     const created = await this.db.transaction(async (tx) => {
-      await tx.execute(sql`
-        UPDATE native_live_manual_compactions
-        SET status = 'expired',
-            failure_code = 'REQUEST_EXPIRED',
-            completed_at = now(),
-            updated_at = now()
-        WHERE user_id = ${input.userId}::uuid
-          AND conversation_id = ${input.conversationId}::uuid
-          AND status = 'pending'
-          AND expires_at <= now()
-      `);
-
       const conversations = await tx.execute<{
         id: string;
         current_head_message_id: string | null;
@@ -127,6 +115,18 @@ export class NativeLiveManualCompactService {
           "Native live conversation was not found.",
         );
       }
+
+      await tx.execute(sql`
+        UPDATE native_live_manual_compactions
+        SET status = 'expired',
+            failure_code = 'REQUEST_EXPIRED',
+            completed_at = now(),
+            updated_at = now()
+        WHERE user_id = ${input.userId}::uuid
+          AND conversation_id = ${input.conversationId}::uuid
+          AND status = 'pending'
+          AND expires_at <= now()
+      `);
 
       const handoffConflict =
         await tx.execute<{ id: string }>(sql`
@@ -186,7 +186,8 @@ export class NativeLiveManualCompactService {
             AND conversation_id = ${input.conversationId}::uuid
             AND status = 'prepared'
             AND dispatch_status IN (
-              'staged','pending','reserved','executing'
+              'staged','pending','reserved','executing',
+              'delivery_unknown'
             )
         ) AS busy
       `);
