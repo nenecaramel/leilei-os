@@ -41,13 +41,13 @@ CREATE TABLE "native_live_claude_handoffs" (
     ),
   CONSTRAINT "native_live_claude_handoffs_status_allowed"
     CHECK ("status" IN (
-      'pending','reserved','completed','failed','stale','expired'
+      'pending','reserved','delivery_unknown','completed','failed','stale','expired'
     ))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX "native_live_claude_handoffs_active_uidx"
   ON "native_live_claude_handoffs" ("user_id","conversation_id")
-  WHERE "status" IN ('pending','reserved');
+  WHERE "status" IN ('pending','reserved','delivery_unknown');
 --> statement-breakpoint
 CREATE INDEX "native_live_claude_handoffs_queue_idx"
   ON "native_live_claude_handoffs" (
