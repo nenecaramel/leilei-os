@@ -73,7 +73,7 @@ test("source panels match assistant copy interaction without growing the button"
   assert.match(surface, /copyFeedbackText/);
   assert.match(surface, /NativeLiveCopyFeedbackBanner\(text: copyFeedbackText\)/);
   assert.match(chrome, /Text\(text\)/);
-  assert.match(surface, /showCopyFeedback\("Message copied"/);
+  assert.match(surface, /showCopyFeedback\(\s*"Message copied"/);
   assert.match(surface, /\.environment\(\\\.nativeLiveCopyFeedback\)/);
 });
 
