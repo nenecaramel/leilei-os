@@ -101,14 +101,14 @@ actor FetchCounter {
         expect(controller.state.phase == .ready,"process recovery retry")
         controller.stop()
         expect(controller.view == nil && controller.state.phase == .fallback,"disappear cancellation cleanup")
-        let owners = (0..<4).map { _ in NativeLiveVisualSandboxController(assetsRoot:URL(fileURLWithPath:CommandLine.arguments[1])) }
+        let owners = (0..<13).map { _ in NativeLiveVisualSandboxController(assetsRoot:URL(fileURLWithPath:CommandLine.arguments[1])) }
         let equation = try! NativeLiveVisualSandboxInput.displayMath(.init(latex:"x",isDisplay:true))
         owners.forEach { $0.update(equation,dark:false,scale:1) }
-        expect(owners.prefix(3).allSatisfy { $0.view != nil },"bounded live view slots")
-        expect(owners[3].view == nil && owners[3].state.phase == .failed,"fourth view falls back visibly")
+        expect(owners.prefix(12).allSatisfy { $0.view != nil },"bounded live view slots")
+        expect(owners[12].view == nil && owners[12].state.phase == .failed,"thirteenth view falls back visibly")
         owners[0].stop()
-        owners[3].update(equation,dark:false,scale:1,retry:1)
-        expect(owners[3].view != nil,"released capacity can retry")
+        owners[12].update(equation,dark:false,scale:1,retry:1)
+        expect(owners[12].view != nil,"released capacity can retry")
         owners.forEach { $0.stop() }
         print("Visual WebKit PASS: \(checks) real engine/host assertions")
     }
