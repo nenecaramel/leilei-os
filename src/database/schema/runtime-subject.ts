@@ -32,9 +32,7 @@ export type RuntimeDriveSatisfactionEvidenceKind =
   | "assistant_message"
   | "tool_result";
 export type RuntimeSubjectStateKind =
-  | "feel"
-  | "memory"
-  | "thought";
+  | "memory";
 /**
  * Kinds that Mind semantic grouping historically covered. The table is no
  * longer written; the type stays wide so archived rows remain representable.
@@ -97,9 +95,8 @@ export const runtimeSubjectStates = pgTable(
       table.validityStatus,
     ),
     check("runtime_subject_states_subject_not_blank", sql`char_length(btrim(${table.subjectId})) > 0`),
-    // Current writes are three-kind only. Production keeps historical retired
-    // rows via a NOT VALID migration while enforcing this predicate on all
-    // future inserts and updates.
+    // Deployment 1 keeps the existing legacy-compatible CHECK for rollout ordering.
+    // Deployment 2 TODO: tighten CHECK to memory only after old writers/data are gone.
     check("runtime_subject_states_kind_allowed", sql`${table.kind} IN ('feel', 'memory', 'thought')`),
     check("runtime_subject_states_scope_allowed", sql`${table.scopeApplicability} IN ('global', 'conversation', 'path')`),
     check("runtime_subject_states_settlement_allowed", sql`${table.settlementStatus} IN ('unsettled', 'settled', 'rejected')`),

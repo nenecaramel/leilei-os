@@ -760,7 +760,7 @@ function parseCandidates(value: unknown): BreathSemanticCandidate[] {
     if (
       typeof record.stateId !== "string"
       || !record.stateId
-      || (record.kind !== "memory" && record.kind !== "feel")
+      || (record.kind !== "memory")
       || typeof record.text !== "string"
       || !record.text.trim()
     ) {

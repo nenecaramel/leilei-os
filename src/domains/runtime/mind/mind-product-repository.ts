@@ -8,7 +8,6 @@ import {
   sql,
 } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
-import { enforceThoughtCapacity } from "../thought/thought-runtime-repository.js";
 import {
   conversationMessages,
   nativeLiveBackgroundModelJobs,
@@ -194,13 +193,6 @@ implements MindProductRepository {
 
         if (!row) {
           throw new Error("Manual Mind insert failed.");
-        }
-        if (state.kind === "thought") {
-          await enforceThoughtCapacity(transaction, {
-            userId: input.userId,
-            subjectId: input.subjectId,
-            droppedAt: new Date().toISOString(),
-          });
         }
         const productRow = toProductRow(row);
         await recordProductCreateIdempotency(transaction, {

@@ -434,8 +434,6 @@ test("seen states are excluded before semantic candidate limiting", async () => 
     contextLineage: {
       epoch: 0,
       seenStateIds: ["seen-a", "seen-b"],
-      thoughtRevision: 0,
-      thoughtFingerprint: null,
     },
   });
 

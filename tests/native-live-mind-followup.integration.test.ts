@@ -40,9 +40,6 @@ import {
 import {
   createDefaultBackendMindRuntime,
 } from "../src/domains/runtime/mind/default-backend-mind-runtime.js";
-import {
-  fingerprintThoughtSnapshot,
-} from "../src/domains/runtime/context/context-lineage.js";
 
 const enabled =
   process.env.RUN_NATIVE_LIVE_MIND_FOLLOWUP_DATABASE_TEST === "1";
@@ -225,8 +222,6 @@ test(
       {
         epoch: 0,
         seenStateIds: [expectedStateId],
-        thoughtRevision: 0,
-        thoughtFingerprint: fingerprintThoughtSnapshot([]),
       },
     );
 
@@ -428,8 +423,6 @@ test(
       {
         epoch: 0,
         seenStateIds: [expectedStateId, scheduleStateId],
-        thoughtRevision: 0,
-        thoughtFingerprint: fingerprintThoughtSnapshot([]),
       },
       "a non-Mind turn carries its parent lineage and still reserves any self-authored Memory/Feel",
     );
@@ -512,11 +505,8 @@ test(
       {
         epoch: 1,
         seenStateIds: [],
-        thoughtRevision: 0,
-        thoughtFingerprint: null,
-        forceThoughtSnapshot: true,
       },
-      "successful compact starts a fresh context epoch and forces a new Thought snapshot",
+      "successful compact starts a fresh memory context epoch",
     );
 
     const nextRequestId = crypto.randomUUID();
@@ -530,13 +520,6 @@ test(
     });
     assert.equal(nextPrepared.ok, true);
     if (!nextPrepared.ok) throw new Error("expected next prepare success");
-    assert.equal(
-      nextPrepared.command.prompt.includes(
-        "Current thoughts (rev 1, supersedes all earlier snapshots):",
-      ),
-      true,
-      "the first post-compact turn must re-establish an authoritative Thought snapshot",
-    );
     assert.equal(
       nextPrepared.command.prompt.includes("Relevant memories:"),
       true,
@@ -855,18 +838,18 @@ test(
             raw: "<drive>still want this</drive>",
           },
           {
-            kind: "curiosity",
+            kind: "thought",
             text: "still wondering",
             sourceStart: 31,
             sourceEnd: 70,
             raw: "<curiosity>still wondering</curiosity>",
           },
           {
-            kind: "memory",
+            kind: "feel",
             text: "kept as is",
             sourceStart: 71,
             sourceEnd: 100,
-            raw: "<memory>kept as is</memory>",
+            raw: "<feel>kept as is</feel>",
           },
         ],
         actions: [
@@ -900,13 +883,7 @@ test(
       .update(nativeLiveMindFollowUps)
       .set({
         availableAt: new Date(1),
-        actions: [{
-          kind: "thought_drop",
-          ref: "not-a-label",
-          sourceStart: 0,
-          sourceEnd: 1,
-          raw: "x",
-        }],
+        intents: [{kind:"unknown", text:"malformed"}],
       })
       .where(eq(nativeLiveMindFollowUps.prepareId, strict.prepareId));
 
@@ -922,12 +899,10 @@ test(
       claimed.intents.map((intent) => [intent.kind, intent.text]),
       [["memory", "kept as is"]],
     );
-    assert.deepEqual(
-      claimed.actions.map((action) => [action.kind, action.ref]),
-      [["thought_drop", "T2"]],
-    );
+    assert.deepEqual(claimed.actions, []);
+    assert.equal(claimed.intents[0]?.writeOrdinal, 2);
 
-    // A label that cannot be a thought reference is still quarantined.
+    // Unknown current intent kinds are still quarantined.
     assert.equal(
       await repository.claimNext({ workerId: crypto.randomUUID() }),
       null,

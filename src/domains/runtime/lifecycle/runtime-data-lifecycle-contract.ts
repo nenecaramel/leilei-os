@@ -14,60 +14,20 @@ export type RuntimeRetentionSpec = {
   ttlMs?: number | null;
 };
 
+export type SubjectStateRetentionKind = "memory";
+export type SubjectStateRetentionPolicy = {
+  automaticForgetting: true;
+  mechanism: "decay_forget_purge";
+};
 
-export type SubjectStateRetentionKind =
-  | "memory"
-  | "feel"
-  | "drive"
-  | "thought"
-  | "curiosity"
-  | "topic";
-
-export type SubjectStateRetentionPolicy =
-  | {
-      automaticForgetting: true;
-      mechanism: "decay_forget_purge";
-    }
-  | {
-      automaticForgetting: false;
-      mechanism: "domain_evolution";
-    };
-
-/**
- * Generic age-based Subject State deletion is intentionally forbidden.
- *
- * Memory / Feel are the only current kinds with the shared lifecycle_v1
- * active→fading→archived→forgotten→purged contract. Drive / Thought /
- * Curiosity / Topic use their own domain evolution and retirement semantics
- * and must not inherit Memory decay just because they are Subject State.
- */
+/** Persistent memories use their lifecycle, never a generic age-based TTL. */
 export function subjectStateRetentionPolicy(
   kind: SubjectStateRetentionKind,
 ): SubjectStateRetentionPolicy {
-  switch (kind) {
-    case "memory":
-    case "feel":
-      return {
-        automaticForgetting: true,
-        mechanism: "decay_forget_purge",
-      };
-    case "thought":
-    case "drive":
-    case "curiosity":
-    case "topic":
-      return {
-        automaticForgetting: false,
-        mechanism: "domain_evolution",
-      };
-    default:
-      return assertNeverSubjectStateKind(kind);
+  if (kind !== "memory") {
+    throw new Error("Unhandled Subject State retention kind: " + String(kind));
   }
-}
-
-function assertNeverSubjectStateKind(value: never): never {
-  throw new Error(
-    "Unhandled Subject State retention kind: " + String(value),
-  );
+  return { automaticForgetting: true, mechanism: "decay_forget_purge" };
 }
 
 /**

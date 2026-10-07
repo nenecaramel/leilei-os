@@ -1,9 +1,15 @@
 import Foundation
 
 enum MindProductKind: String, CaseIterable, Codable, Sendable, Equatable, Identifiable {
-    case feel
     case memory
-    case thought
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case "memory", "feel", "thought": self = .memory
+        default: throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown Mind kind"))
+        }
+    }
 
     var id: String { rawValue }
 

@@ -377,7 +377,7 @@ const mindStateRecord = z.object({
     "thought",
     "curiosity",
     "topic",
-  ]),
+  ]).transform(kind => kind === "feel" ? "memory" as const : kind),
   text: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()).nullable(),
   scope_applicability: z.enum(["global", "conversation", "path"]),

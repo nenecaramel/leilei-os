@@ -5,9 +5,7 @@ import {
 } from "./mind-protected-ranges.js";
 
 export type CurrentMindWriteIntentKind =
-  | "feel"
-  | "memory"
-  | "thought";
+  | "memory";
 
 export type MindWriteIntentKind = CurrentMindWriteIntentKind;
 
@@ -15,6 +13,8 @@ export type MindWriteIntentShape<
   K extends MindWriteIntentKind = MindWriteIntentKind,
 > = {
   kind: K;
+  /** Original queued ordinal, only populated while decoding historical jobs. */
+  writeOrdinal?: number;
   text: string;
   sourceStart: number;
   sourceEnd: number;
@@ -30,10 +30,10 @@ export type ParsedMindIntents = {
   intents: CurrentMindWriteIntent[];
 };
 
-const TAG_PATTERN = /<(feel|memory|thought)>([\s\S]*?)<\/\1>/gi;
+const TAG_PATTERN = /<(memory)>([\s\S]*?)<\/\1>/gi;
 
 /**
- * Retired tags (drive, curiosity, topic, dream) are not parsed and are never
+ * Retired tags (feel, thought, drive, curiosity, topic, dream) are not parsed and are never
  * given a new meaning. They stay visible wherever they appear and produce no
  * Mind state, including when nested inside a current write.
  */

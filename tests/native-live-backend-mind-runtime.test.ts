@@ -132,8 +132,6 @@ class LineageReader {
   value: ContextLineageState = {
     epoch: 2,
     seenStateIds: ["memory-seen"],
-    thoughtRevision: 7,
-    thoughtFingerprint: "a".repeat(64),
   };
 
   async readForMessage(input: unknown) {
@@ -203,8 +201,8 @@ test("send preparation settles the continued path, then assembles context", asyn
   const reader = new Reader();
   const mind = new Mind();
   mind.transitions = [{
-    stateId: "thought-1",
-    stateKind: "thought",
+    stateId: "memory-1",
+    stateKind: "memory",
     reason: "user_continued_current_path",
     settlementStatus: "settled",
     pathStatus: "current",
@@ -219,7 +217,7 @@ test("send preparation settles the continued path, then assembles context", asyn
   });
 
   assert.equal(prompt, "ASSEMBLED_PROMPT");
-  // A settled thought is injectable immediately; nothing else has to run
+  // A settled memory becomes eligible for recall; nothing else has to run
   // between settlement and context assembly.
   assert.deepEqual(mind.calls, [
     `reconcile:${userMessageId}`,
@@ -253,7 +251,7 @@ test("Mind preparation inherits context lineage from the canonical parent messag
   assert.deepEqual(mind.contextLineages, [lineage.value]);
 });
 
-test("bootstrap fork with no canonical parent forces one authoritative Thought snapshot", async () => {
+test("bootstrap fork with no canonical parent uses the current memory lineage", async () => {
   const reader = new Reader();
   const bootstrapUser = {
     ...userMessage(),
@@ -269,8 +267,6 @@ test("bootstrap fork with no canonical parent forces one authoritative Thought s
   lineage.value = {
     epoch: 0,
     seenStateIds: [],
-    thoughtRevision: 0,
-    thoughtFingerprint: null,
   };
   const runtime = new DefaultNativeLiveBackendMindRuntime(
     reader,
@@ -290,7 +286,6 @@ test("bootstrap fork with no canonical parent forces one authoritative Thought s
   }]);
   assert.deepEqual(mind.contextLineages, [{
     ...lineage.value,
-    forceThoughtSnapshot: true,
   }]);
 });
 
@@ -375,8 +370,6 @@ test("Retry and Edit inherit lineage from the replacement branch point, not the 
     lineage.value = {
       epoch: 3,
       seenStateIds: ["seen-before-branch"],
-      thoughtRevision: 9,
-      thoughtFingerprint: "b".repeat(64),
     };
     const runtime = new DefaultNativeLiveBackendMindRuntime(
       reader,
@@ -444,11 +437,11 @@ test("ordinary send finalize records intents but leaves the new state provisiona
     preparation: prepared("send"),
     assistantMessageId: assistantId,
     intents: [{
-      kind: "feel",
+      kind: "memory",
       text: "warm",
       sourceStart: 0,
       sourceEnd: 1,
-      raw: "<feel>warm</feel>",
+      raw: "<memory>warm</memory>",
     }],
   });
 

@@ -13,7 +13,7 @@ import {
 } from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
 
 const policy: MemoryLifecyclePolicy = {
-  halfLifeHours: { memory: 24, feel: 12 },
+  halfLifeHours: { memory: 24 },
   fadingThreshold: 0.7,
   archiveThreshold: 0.2,
   forgetAfterHours: 24,
@@ -98,7 +98,7 @@ test("protected lifecycle freezes salience while advancing the decay anchor", ()
   const update = evaluateLifecycle(
     {
       stateId: "f1",
-      kind: "feel",
+      kind: "memory",
       payload,
       updatedAt: "2026-09-01T00:00:01.000Z",
     },
@@ -113,7 +113,7 @@ test("protected lifecycle freezes salience while advancing the decay anchor", ()
 
 test("decay-only policy keeps archived/forgotten retention fail-closed", () => {
   const decayOnly: MemoryLifecyclePolicy = {
-    halfLifeHours: { memory: 1440, feel: 168 },
+    halfLifeHours: { memory: 1440 },
     fadingThreshold: 0.35,
     archiveThreshold: 0.12,
   };
@@ -423,7 +423,7 @@ test("recall reinforcement is idempotent for the same or older recall evidence",
   );
 });
 
-test("recall cannot resurrect archived or forgotten Memory/Feel", () => {
+test("recall cannot resurrect archived or forgotten Memory", () => {
   for (const status of ["archived", "forgotten"] as const) {
     const at = "2026-09-21T00:00:00.000Z";
     const payload = {
@@ -508,7 +508,7 @@ test("recall reinforcement without decay policy starts a new non-retroactive bas
   const update = evaluateRecallReinforcement(
     {
       stateId: "f-no-decay",
-      kind: "feel",
+      kind: "memory",
       payload: {
         lifecycle_v1: {
           status: "fading",

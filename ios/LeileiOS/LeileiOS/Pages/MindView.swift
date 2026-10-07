@@ -52,12 +52,8 @@ struct MindView: View {
 private extension MindProductKind {
     var systemImage: String {
         switch self {
-        case .feel:
-            return "heart"
         case .memory:
             return "clock.arrow.circlepath"
-        case .thought:
-            return "bubble.left"
         }
     }
 }

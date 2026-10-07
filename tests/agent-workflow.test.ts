@@ -89,7 +89,7 @@ test('status fails closed when origin/main cannot be resolved', (t) => {
 test('plan merges surfaces and deduplicates gates without running the canonical suite', (t) => {
   const root = fixture(t);
   file(root, 'src/domains/bridge/native-live-attachment-service.ts');
-  file(root, 'src/domains/runtime/runtime-thought.ts');
+  file(root, 'src/domains/runtime/runtime-memory.ts');
   const p = json(verifyScript, root, '--plan');
   assert.ok(p.changedSurfaces.includes('native-live'));
   assert.ok(p.changedSurfaces.includes('mind-runtime'));

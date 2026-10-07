@@ -708,6 +708,13 @@
       "when": 1791250000000,
       "tag": "0100_native_live_branch_session",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1791330000000,
+      "tag": "0101_simplify_mind_memory",
+      "breakpoints": true
     }
   ]
 }

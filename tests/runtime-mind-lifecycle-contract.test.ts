@@ -24,8 +24,8 @@ test("Mind lifecycle contract covers every persisted Subject State kind", () => 
   assert.equal(SUBJECT_STATE_KINDS.includes("dream" as never), false);
 });
 
-test("Memory and Feel share the recoverable decay chain before physical purge", () => {
-  for (const kind of ["memory", "feel"] as const) {
+test("Memory follows the recoverable decay chain before physical purge", () => {
+  for (const kind of ["memory"] as const) {
     const profile = mindLifecycleProfile(kind);
     assert.equal(profile.management, "managed");
     assert.equal(profile.initialState, "active");
@@ -58,36 +58,6 @@ test("Memory and Feel share the recoverable decay chain before physical purge", 
   }
 });
 
-test("Thought has no clock: it is dropped by the subject or at the active limit, and is never purged", () => {
-  const profile = mindLifecycleProfile("thought");
-  assert.equal(profile.initialState, "active");
-  assert.deepEqual(profile.drivers, ["subject_drop", "capacity"]);
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "thought",
-      from: "active",
-      to: "dropped",
-    }),
-    true,
-  );
-  // There is no dormancy, no reactivation and no automatic physical purge.
-  for (const to of ["dormant", "fading", "archived", "forgotten"] as const) {
-    assert.equal(
-      isMindLifecycleTransitionAllowed({ kind: "thought", from: "active", to }),
-      false,
-    );
-  }
-  assert.equal(
-    isMindLifecycleTransitionAllowed({
-      kind: "thought",
-      from: "dropped",
-      to: "active",
-    }),
-    false,
-  );
-  assert.equal(canPurgeMindState({ kind: "thought", state: "dropped" }), false);
-});
-
 test("Drive, Curiosity and Topic are no longer Subject State kinds", () => {
   for (const retired of ["drive", "curiosity", "topic", "dream"]) {
     assert.equal(
@@ -98,7 +68,7 @@ test("Drive, Curiosity and Topic are no longer Subject State kinds", () => {
 });
 
 test("every remaining kind is authored by the subject", () => {
-  for (const kind of ["feel", "memory", "thought"] as const) {
+  for (const kind of ["memory"] as const) {
     assert.equal(mindLifecycleProfile(kind).ownership, "authored");
   }
 });

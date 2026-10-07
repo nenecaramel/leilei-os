@@ -4,13 +4,9 @@ import type { createDatabase } from "../../../database/client.js";
 import { nativeLiveMindFollowUps } from "../../../database/schema.js";
 import type { MindWriteIntent } from "../../runtime/mind/mind-intent-parser.js";
 import {
-  THOUGHT_REF_PATTERN,
   type MindSemanticAction,
 } from "../../runtime/mind/mind-semantic-action.js";
-import type {
-  MindSemanticActionReceipt,
-  NativeLiveMindSemanticActionExecutor,
-} from "./native-live-mind-semantic-action.js";
+type MindSemanticActionReceipt = Record<string, unknown>;
 import type {
   NativeLiveBackendMindRuntime,
 } from "./native-live-backend-mind-runtime.js";
@@ -268,8 +264,6 @@ implements NativeLivePostFinalizeRunner {
     private readonly turns: Pick<NativeLiveBackendTurnPort, "getPreparation">,
     private readonly mind: NativeLiveBackendMindRuntime,
     workerId: string = randomUUID(),
-    private readonly semanticActions:
-      Pick<NativeLiveMindSemanticActionExecutor, "execute"> | null = null,
   ) {
     this.workerId = workerId;
   }
@@ -318,31 +312,14 @@ implements NativeLivePostFinalizeRunner {
         assistantMessageId: job.assistantMessageId,
         intents: job.intents,
         stateIds: job.intents.map((_intent, index) =>
-          nativeLiveMindFollowUpStateId(job.prepareId, index)
+          nativeLiveMindFollowUpStateId(job.prepareId, _intent.writeOrdinal ?? index)
         ),
       });
-
-      if (job.actions.length > 0 && !this.semanticActions) {
-        throw new Error("NativeLiveMindSemanticActionExecutorMissing");
-      }
-      const receipts: MindSemanticActionReceipt[] = [];
-      for (const [actionIndex, action] of job.actions.entries()) {
-        receipts.push(
-          await this.semanticActions!.execute({
-            userId: job.userId,
-            conversationId: job.conversationId,
-            assistantMessageId: job.assistantMessageId,
-            prepareId: job.prepareId,
-            actionIndex,
-            action,
-          }),
-        );
-      }
 
       const completed = await this.port.complete({
         prepareId: job.prepareId,
         workerId: this.workerId,
-        receipts,
+        receipts: [],
       });
       if (!completed) {
         throw new Error("NativeLiveMindFollowUpCompletionLost");
@@ -438,21 +415,18 @@ function parseIntents(value: unknown): MindWriteIntent[] {
     throw new Error("Native live Mind follow-up intents must be an array.");
   }
 
-  return value.flatMap((candidate) => {
+  return value.flatMap((candidate, ordinal) => {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       throw new Error("Native live Mind follow-up intent is invalid.");
     }
     const record = candidate as Record<string, unknown>;
-    // An open follow-up staged before the Mind rework may still carry a
-    // Drive or Curiosity intent. Those kinds no longer exist and are not
-    // given a new meaning: the intent is skipped and the rest of the job runs.
-    if (record.kind === "drive" || record.kind === "curiosity") {
+    // Queued legacy intents keep their original ordinal for idempotent IDs.
+    // Retired kinds are skipped; old feelings become memories.
+    if (record.kind === "drive" || record.kind === "curiosity" || record.kind === "thought") {
       return [];
     }
     if (
-      (record.kind !== "feel"
-        && record.kind !== "memory"
-        && record.kind !== "thought")
+      (record.kind !== "feel" && record.kind !== "memory")
       || typeof record.text !== "string"
       || !record.text.trim()
       || typeof record.sourceStart !== "number"
@@ -464,7 +438,8 @@ function parseIntents(value: unknown): MindWriteIntent[] {
       throw new Error("Native live Mind follow-up intent is invalid.");
     }
     return [{
-      kind: record.kind,
+      kind: "memory" as const,
+      writeOrdinal: ordinal,
       text: record.text,
       sourceStart: record.sourceStart as number,
       sourceEnd: record.sourceEnd as number,
@@ -473,40 +448,8 @@ function parseIntents(value: unknown): MindWriteIntent[] {
   });
 }
 
+// Compatibility for queued pre-deployment actions: they have no current meaning.
 function parseActions(value: unknown): MindSemanticAction[] {
-  if (!Array.isArray(value)) {
-    throw new Error("Native live Mind follow-up actions must be an array.");
-  }
-
-  return value.flatMap((candidate) => {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-      throw new Error("Native live Mind follow-up action is invalid.");
-    }
-    const record = candidate as Record<string, unknown>;
-    // Satisfy/resolve actions belonged to the retired Drive and Curiosity
-    // kinds. Dropping them keeps the rest of an open follow-up intact.
-    if (record.kind === "mind_satisfy" || record.kind === "mind_resolve") {
-      return [];
-    }
-    if (
-      record.kind !== "thought_drop"
-      || typeof record.ref !== "string"
-      || !THOUGHT_REF_PATTERN.test(record.ref)
-      || typeof record.sourceStart !== "number"
-      || !Number.isInteger(record.sourceStart)
-      || typeof record.sourceEnd !== "number"
-      || !Number.isInteger(record.sourceEnd)
-      || typeof record.raw !== "string"
-    ) {
-      throw new Error("Native live Mind follow-up action is invalid.");
-    }
-
-    return [{
-      kind: "thought_drop" as const,
-      ref: record.ref,
-      sourceStart: record.sourceStart,
-      sourceEnd: record.sourceEnd,
-      raw: record.raw,
-    }];
-  });
+  if (!Array.isArray(value)) throw new Error("Native live Mind follow-up actions must be an array.");
+  return [];
 }

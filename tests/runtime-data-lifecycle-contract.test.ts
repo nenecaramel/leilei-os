@@ -93,20 +93,7 @@ test("archived is explicitly non-terminal while forgotten and purged are termina
 });
 
 
-test("Subject State retention audit forbids generic forgetting outside Memory and Feel", () => {
-  for (const kind of ["memory", "feel"] as const) {
-    assert.deepEqual(subjectStateRetentionPolicy(kind), {
-      automaticForgetting: true,
-      mechanism: "decay_forget_purge",
-    });
-  }
-
-  for (
-    const kind of ["thought", "drive", "curiosity", "topic"] as const
-  ) {
-    assert.deepEqual(subjectStateRetentionPolicy(kind), {
-      automaticForgetting: false,
-      mechanism: "domain_evolution",
-    });
-  }
+test("memory retention uses lifecycle and rejects retired kinds", () => {
+  assert.deepEqual(subjectStateRetentionPolicy("memory"), {automaticForgetting:true, mechanism:"decay_forget_purge"});
+  for (const kind of ["thought", "feel", "drive", "curiosity", "topic"]) assert.throws(() => subjectStateRetentionPolicy(kind as never), /Unhandled/);
 });

@@ -19,7 +19,7 @@ export function semanticCandidatesFromStates(
   return states
     .filter(
       (state) =>
-        (state.kind === "memory" || state.kind === "feel")
+        state.kind === "memory"
         && typeof state.text === "string"
         && state.text.trim().length > 0,
     )

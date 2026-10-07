@@ -5,7 +5,7 @@ import {
   readSubjectStateRecallContext,
 } from "../lifecycle/memory-lifecycle.js";
 
-export const BREATH_RECALL_KINDS = ["memory", "feel"] as const satisfies readonly SubjectStateKind[];
+export const BREATH_RECALL_KINDS = ["memory"] as const satisfies readonly SubjectStateKind[];
 
 export type BreathRecallHit = {
   state: SubjectStateWrite;

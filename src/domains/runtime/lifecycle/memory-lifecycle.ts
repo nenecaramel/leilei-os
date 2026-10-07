@@ -14,7 +14,7 @@ export type SubjectStateLifecycle = {
   forgottenAt: string | null;
 };
 
-export type DecayableSubjectStateKind = "memory" | "feel";
+export type DecayableSubjectStateKind = "memory";
 
 export type MemoryLifecyclePolicy = {
   halfLifeHours: Record<DecayableSubjectStateKind, number>;
@@ -810,7 +810,7 @@ function lifecycleStatusForSalience(
 }
 
 function validatePolicy(policy: MemoryLifecyclePolicy): void {
-  for (const kind of ["memory", "feel"] as const) {
+  for (const kind of ["memory"] as const) {
     const halfLife = policy.halfLifeHours[kind];
     if (!Number.isFinite(halfLife) || halfLife <= 0) {
       throw new Error(`Decay half-life for ${kind} must be positive.`);

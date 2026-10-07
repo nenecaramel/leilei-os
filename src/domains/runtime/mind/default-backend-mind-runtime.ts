@@ -32,7 +32,6 @@ import {
 import {
   DEFAULT_BACKGROUND_TARGET_PLANS,
 } from "../background/background-opportunity-policy.js";
-import { THOUGHT_ACTIVE_LIMIT } from "../thought/thought.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -79,7 +78,6 @@ export function createDefaultBackendMindRuntime(
       breathDiversityMaxTokenOverlap: 0.75,
       breathSemanticCandidateLimit: 256,
       breathSemanticCandidateMaxChars: 2_000,
-      thoughtLimit: THOUGHT_ACTIVE_LIMIT,
       maxContextItems: 16,
       maxContextChars: 8_000,
     },

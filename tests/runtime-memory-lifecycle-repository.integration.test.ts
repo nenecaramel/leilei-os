@@ -91,7 +91,7 @@ test(
     const lifecycle = new MemoryLifecycleService(
       new DrizzleMemoryLifecycleRuntimePort(database.db),
       {
-        halfLifeHours: { memory: 24, feel: 12 },
+        halfLifeHours: { memory: 24 },
         fadingThreshold: 0.7,
         archiveThreshold: 0.2,
         forgetAfterHours: 24,

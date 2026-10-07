@@ -1034,14 +1034,12 @@ export function buildImportPlan(
   if (importedMind) {
     const retiredKind = importedMind.find(
       (record) =>
-        record.kind !== "feel"
-        && record.kind !== "memory"
-        && record.kind !== "thought",
+        record.kind !== "memory",
     );
     if (retiredKind) {
       throw new ImportValidationError(
         "INVALID_IMPORT_FILE",
-        "Import package contains Mind states of a retired kind (drive, curiosity or topic).",
+        "Import package contains Mind states of a retired kind (thought, drive, curiosity or topic).",
       );
     }
     const mindItems = classify(

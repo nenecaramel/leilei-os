@@ -1171,6 +1171,7 @@ implements ImportRepository {
     userId: string,
     record: ExportMindStateRecord,
   ): Promise<void> {
+    if (record.kind !== "memory") throw new Error("Import writes require the current memory kind.");
     await this.db.insert(runtimeSubjectStates).values({
       id: record.id,
       userId,

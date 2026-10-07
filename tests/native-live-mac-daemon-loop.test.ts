@@ -161,7 +161,7 @@ class FakeSemanticScorer {
     query: string;
     candidates: readonly {
       stateId: string;
-      kind: "memory" | "feel";
+      kind: "memory";
       text: string;
     }[];
   }) {

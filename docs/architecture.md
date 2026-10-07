@@ -11,7 +11,7 @@ Leilei OS is an authenticated personal workspace composed of:
 - a PWA runtime for the Web application; and
 - a Native Live / Runtime backend where Railway owns durable authority and a Mac Companion process performs local Claude execution and bounded background work.
 
-Mind (memory, feel, thought) is described in [mind.md](mind.md).
+Mind (memory) is described in [mind.md](mind.md).
 
 ChatGPT is one MCP client and conversation surface. Leilei OS does not call the OpenAI API. Conversation Archive persists only user-initiated ChatGPT or Claude exports; it does not automatically capture host conversations.
 

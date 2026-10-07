@@ -29,14 +29,7 @@ export type SubjectStateBackgroundMaintenanceRunners = {
   decay?: SubjectStateBackgroundRunner | null;
 };
 
-/**
- * Adapts Memory/Feel decay into the shared BackgroundLoopOrchestrator.
- *
- * Thought has no background maintenance: it is dropped by the subject or by
- * the active limit at write time, never by the clock. All Subject State
- * mutation jobs for one user+subject share one mutex key so a concurrent
- * orchestrator cannot interleave those writes.
- */
+/** Memory decay shares the subject mutation mutex with other runtime writes. */
 export class SubjectStateBackgroundMaintenance {
   constructor(
     private readonly orchestrator: Pick<

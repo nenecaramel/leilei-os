@@ -17,7 +17,7 @@ function orchestrator() {
   });
 }
 
-test("Subject State maintenance runs Memory/Feel decay under the shared Subject mutex", async () => {
+test("Subject State maintenance runs Memory decay under the shared Subject mutex", async () => {
   const calls: string[] = [];
   const loop = orchestrator();
   const maintenance = new SubjectStateBackgroundMaintenance(

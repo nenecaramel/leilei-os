@@ -136,9 +136,9 @@ test(
         id: sharedId,
         userId,
         subjectId: "G",
-        kind: "thought",
-        text: "shared dependent thought",
-        payload: { thought_v2: { status: "active" } },
+        kind: "memory",
+        text: "shared dependent memory",
+        payload: { preserved_metadata: { source: "shared" } },
         scopeApplicability: "global",
         scopeConversationId: null,
         scopePathHeadMessageId: null,
@@ -186,8 +186,8 @@ test(
         id: exclusiveId,
         userId,
         subjectId: "G",
-        kind: "thought",
-        text: "exclusive dependent thought",
+        kind: "memory",
+        text: "exclusive dependent memory",
         payload: null,
         scopeApplicability: "global",
         scopeConversationId: null,
@@ -255,9 +255,9 @@ test(
       .where(eq(runtimeSubjectStates.id, sharedId))
       .limit(1);
     assert.ok(shared);
-    // Only provenance referenced the deleted state, so the thought itself
+    // Only provenance referenced the deleted state, so the memory itself
     // survives with its own lifecycle intact.
-    assert.deepEqual(shared.payload, { thought_v2: { status: "active" } });
+    assert.deepEqual(shared.payload, { preserved_metadata: { source: "shared" } });
     const provenance = (
       shared.envelope.provenance as Record<string, unknown>
     );
@@ -295,7 +295,7 @@ test(
       id: crypto.randomUUID(),
       userId,
       subjectId: "G",
-      kind: "feel",
+      kind: "memory",
       text: "authored feel",
       payload: null,
       scopeApplicability: "path",
@@ -350,7 +350,7 @@ test(
       {
         messageId: assistant.message.id,
         total: 1,
-        kinds: [{ kind: "feel", count: 1 }],
+        kinds: [{ kind: "memory", count: 1 }],
       },
     );
   },
@@ -434,7 +434,7 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
         causedBy: assistant.message.id, derivedFrom: [] },
       versions: { schemaVersion: 1, ruleVersion: "test", processVersion: "test" },
     };
-    // Raw SQL deliberately bypasses the three-kind application type to model
+    // Raw SQL deliberately bypasses the memory-only application type to model
     // rows stored before the real CHECK contraction migration.
     await db.execute(sql`
       INSERT INTO runtime_subject_states
@@ -465,12 +465,12 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
       });
     }
   });
-  const current = records.slice(0, 3);
-  const legacy = records.slice(3);
+  const current = records.filter(row => row.kind === "memory");
+  const legacy = records.filter(row => row.kind !== "memory");
   const repository = new DrizzleMindProductRepository(db);
   const service = new MindProductService(repository, "G");
 
-  await t.test("foreground runtime reads only the three current kinds", async () => {
+  await t.test("foreground runtime reads only memory", async () => {
     const rows = await new DrizzleSubjectStateRuntimePort(db).list({ userId, subjectId: "G", conversationId: conversation.id });
     assert.deepEqual(rows.map(({ id }) => id).sort(), current.map(({ id }) => id).sort());
   });
@@ -482,11 +482,10 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
       userId, subjectId: "G", conversationId: conversation.id, headMessageId: assistant.message.id,
     });
     const capsule = JSON.parse(capsuleText);
-    // The existing capsule eligibility rule excludes Memory/Feel fixtures
-    // without lifecycle_v1. The active Thought must still reach the model.
+    // Memories without lifecycle_v1 remain ineligible; legacy kinds never reach the model.
     assert.deepEqual(
       capsule.subject_state.map((row: { state_id: string }) => row.state_id),
-      [current[2]!.id],
+      [],
     );
     for (const row of legacy) assert.equal(capsuleText.includes(row.text), false);
   });
@@ -497,11 +496,11 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
     const prepared = await coordinator.prepare(userId, {
       dispatch_target: "claude_code", request_id: crypto.randomUUID(), operation: "send",
       conversation_id: conversation.id, expected_head_message_id: assistant.message.id,
-      text: "reader-memory reader-feel",
+      text: "reader-memory",
     });
     assert.equal(prepared.ok, true);
     if (!prepared.ok) throw new Error("Context prepare failed");
-    assert.equal(prepared.command.prompt.includes("reader-thought"), true);
+    assert.equal(prepared.command.prompt.includes("reader-thought"), false);
     for (const row of legacy) {
       assert.equal(prepared.command.prompt.includes(row.text), false);
       assert.equal(prepared.command.prompt.includes(row.id), false);
@@ -532,8 +531,8 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
   });
   await t.test("message projection excludes legacy rows, including legacy-only writes", async () => {
     const writes = await repository.readMessageWrites({ userId, subjectId: "G", messageId: assistant.message.id });
-    assert.deepEqual(writes?.map(({ kind }) => kind).sort(), ["feel", "memory", "thought"]);
-    assert.equal((await service.readMessageWrites({ userId, messageId: assistant.message.id })).total, 3);
+    assert.deepEqual(writes?.map(({ kind }) => kind).sort(), ["memory"]);
+    assert.equal((await service.readMessageWrites({ userId, messageId: assistant.message.id } )).total, 1);
     await db.delete(runtimeSubjectStates).where(inArray(runtimeSubjectStates.id, current.map(({ id }) => id)));
     assert.deepEqual(await repository.readMessageWrites({ userId, subjectId: "G", messageId: assistant.message.id }), []);
     assert.deepEqual(await service.readMessageWrites({ userId, messageId: assistant.message.id }), {

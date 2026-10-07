@@ -3,7 +3,6 @@ import test from "node:test";
 import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
 import { materializeMindWrites } from "../src/domains/runtime/mind/mind-write-materializer.js";
 import { readSubjectStateTemporal } from "../src/domains/runtime/subject-state/subject-state-temporal.js";
-import { isActiveThought } from "../src/domains/runtime/thought/thought.js";
 
 const unsettled = {
   generationStatus: "committed",
@@ -30,7 +29,7 @@ const assistantSource = {
 };
 
 test("assistant writes are path-scoped, unsettled and dated from the source message", () => {
-  for (const kind of ["memory", "feel", "thought"] as const) {
+  for (const kind of ["memory"] as const) {
     const state = createMindState({
       id: `id-${kind}`,
       userId: "u1",
@@ -53,7 +52,6 @@ test("assistant writes are path-scoped, unsettled and dated from the source mess
       basis: "source_message",
       sourceMessageId: "a1",
     });
-    assert.equal(isActiveThought(state.payload), kind === "thought");
   }
 });
 
@@ -87,40 +85,11 @@ test("manual writes are global, settled and user-asserted; time only when the us
     id: "m2",
     userId: "u1",
     subjectId: "G",
-    kind: "thought",
+    kind: "memory",
     text: "想一想",
     source: { origin: "manual", occurredAt: null, note: null },
   });
   assert.equal(readSubjectStateTemporal(undated.payload), null);
-  assert.equal(isActiveThought(undated.payload), true);
-});
-
-test("both entry points produce the same shape for the same kind", () => {
-  const fromTag = createMindState({
-    id: "t1",
-    userId: "u1",
-    subjectId: "G",
-    kind: "thought",
-    text: "x",
-    source: assistantSource,
-  });
-  const fromManual = createMindState({
-    id: "t2",
-    userId: "u1",
-    subjectId: "G",
-    kind: "thought",
-    text: "x",
-    source: { origin: "manual", occurredAt: "2026-09-30T02:00:00.000Z", note: null },
-  });
-
-  assert.deepEqual(
-    Object.keys(fromTag.payload ?? {}).filter((key) => key.endsWith("_v1") || key.endsWith("_v2")).sort(),
-    ["temporal_v1", "thought_v2"],
-  );
-  assert.deepEqual(
-    Object.keys(fromManual.payload ?? {}).filter((key) => key.endsWith("_v1") || key.endsWith("_v2")).sort(),
-    ["manual_v1", "temporal_v1", "thought_v2"],
-  );
 });
 
 test("blank text is rejected by the contract, not stored", () => {
@@ -145,11 +114,11 @@ test("tag materialization goes through the same Writer", () => {
     assistantMessageId: "a1",
     sourceOccurredAt: "2026-09-30T02:00:00.000Z",
     intents: [{
-      kind: "thought",
+      kind: "memory",
       text: "想把 Mind 收简单",
       sourceStart: 0,
       sourceEnd: 10,
-      raw: "<thought>想把 Mind 收简单</thought>",
+      raw: "<memory>想把 Mind 收简单</memory>",
     }],
     createId: () => `id-${++n}`,
     producer: assistantSource.producer,
@@ -164,7 +133,6 @@ test("tag materialization goes through the same Writer", () => {
 
   assert.ok(state);
   assert.equal(state.id, "id-1");
-  assert.equal(isActiveThought(state.payload), true);
   assert.equal(state.payload?.source_start, 0);
   assert.equal(state.payload?.source_end, 10);
 });

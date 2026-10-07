@@ -376,7 +376,7 @@ implements NativeLiveMacDaemonRelayClient {
         const item = readRecord(candidate);
         if (
           typeof item.stateId !== "string"
-          || (item.kind !== "memory" && item.kind !== "feel")
+          || (item.kind !== "memory")
           || typeof item.text !== "string"
         ) {
           throw new Error("Native live semantic candidate is invalid.");

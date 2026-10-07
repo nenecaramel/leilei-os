@@ -25,7 +25,7 @@ test("three-kind Mind migration preserves historical rows but fences future writ
   assert.doesNotMatch(migration, /UPDATE "runtime_subject_states"/);
 });
 
-test("runtime schema advertises only the current three Mind kinds", () => {
+test("Deployment 1 schema preserves the historical three-kind CHECK", () => {
   const schema = readSchemaSource();
   const constraint = schema.match(
     /check\("runtime_subject_states_kind_allowed"[\s\S]*?\),/,

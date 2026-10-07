@@ -609,8 +609,7 @@ export class NativeLiveManualCompactService {
         ),
         nearest_lineage AS (
           SELECT
-            lineage.epoch,
-            lineage.thought_revision
+            lineage.epoch
           FROM current_path AS path
           INNER JOIN runtime_context_lineage_states AS lineage
             ON lineage.canonical_message_id = path.id
@@ -625,9 +624,7 @@ export class NativeLiveManualCompactService {
           user_id,
           conversation_id,
           epoch,
-          seen_state_ids,
-          thought_revision,
-          thought_fingerprint
+          seen_state_ids
         )
         SELECT
           ${current.source_message_id}::uuid,
@@ -637,17 +634,11 @@ export class NativeLiveManualCompactService {
             (SELECT epoch + 1 FROM nearest_lineage),
             1
           ),
-          '[]'::jsonb,
-          COALESCE(
-            (SELECT thought_revision FROM nearest_lineage),
-            0
-          ),
-          NULL
+          '[]'::jsonb
         ON CONFLICT (canonical_message_id)
         DO UPDATE SET
           epoch = runtime_context_lineage_states.epoch + 1,
           seen_state_ids = '[]'::jsonb,
-          thought_fingerprint = NULL,
           updated_at = now()
         WHERE runtime_context_lineage_states.user_id =
               ${input.userId}::uuid

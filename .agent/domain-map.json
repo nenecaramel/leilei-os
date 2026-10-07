@@ -213,7 +213,8 @@
         "src/web-api/mind-*",
         "tests/runtime-*.test.ts",
         "tests/mind-*.test.ts",
-        "src/app/process-runtime.ts"
+        "src/app/process-runtime.ts",
+        "tests/import-service-mind.test.ts"
       ],
       "verification": [
         "production-runtime",

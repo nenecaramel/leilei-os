@@ -5,7 +5,6 @@ struct MindManualEntrySheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kind: MindProductKind = .memory
     @State private var text = ""
     @State private var note = ""
     @State private var hasOccurredAt = false
@@ -19,13 +18,6 @@ struct MindManualEntrySheet: View {
         NavigationStack {
             Form {
                 Section("Mind") {
-                    Picker("Kind", selection: $kind) {
-                        ForEach(MindProductKind.allCases) { kind in
-                            Text(kind.displayName)
-                                .tag(kind)
-                        }
-                    }
-
                     TextEditor(text: $text)
                         .frame(minHeight: 120)
                 }
@@ -111,7 +103,7 @@ struct MindManualEntrySheet: View {
         let desiredNote =
             normalizedNote.isEmpty ? nil : normalizedNote
         let signature = [
-            kind.rawValue,
+            MindProductKind.memory.rawValue,
             normalizedText,
             desiredOccurredAt.map {
                 String($0.timeIntervalSince1970)
@@ -122,7 +114,7 @@ struct MindManualEntrySheet: View {
 
         do {
             _ = try await appModel.api.createManualMind(
-                kind: kind,
+                kind: .memory,
                 text: normalizedText,
                 occurredAt: desiredOccurredAt,
                 note: desiredNote,

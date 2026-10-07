@@ -132,9 +132,7 @@ function bodyRecord(value: unknown): Record<string, unknown> {
 
 function readKind(value: unknown): CurrentSubjectStateKind {
   if (
-    value === "feel"
-    || value === "memory"
-    || value === "thought"
+    value === "memory"
   ) {
     return value;
   }

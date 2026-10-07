@@ -268,6 +268,7 @@ export type ExportMindContinuityBundle = {
 export type ExportMindStateRecord = {
   id: string;
   subject_id: string;
+  // Portable historical archive vocabulary; import normalizes or rejects before writing.
   kind: "feel" | "memory" | "drive" | "thought" | "curiosity" | "topic";
   text: string | null;
   payload: Record<string, unknown> | null;

@@ -3,7 +3,6 @@ import type { CurrentSubjectStateKind } from "../subject-state/subject-state-con
 export type MindLifecycleState =
   | "active"
   | "fading"
-  | "dropped"
   | "archived"
   | "forgotten";
 
@@ -14,9 +13,7 @@ export type MindLifecycleOwnership =
 export type MindLifecycleDriver =
   | "time_decay"
   | "reinforcement"
-  | "recall"
-  | "subject_drop"
-  | "capacity";
+  | "recall";
 
 export type ManagedMindLifecycleProfile = {
   management: "managed";
@@ -40,10 +37,7 @@ export type MindLifecycleProfile = ManagedMindLifecycleProfile;
  * - E5 may inform semantic grouping/relevance but never lifecycle.
  * - Numeric thresholds/half-lives remain runtime policy and are not frozen here.
  *
- * Thought is the only always-present state and has no clock: it ends when the
- * subject drops it, or when newer thoughts displace it at the active limit.
- *
- * Drive, Curiosity and Topic are retired; wanting and wondering are thoughts.
+ * Memory is the only current kind, carrying events and their emotional context.
  * Dream is fully retired from the Subject State storage/write contract.
  */
 export const MIND_LIFECYCLE_PROFILES = {
@@ -58,28 +52,6 @@ export const MIND_LIFECYCLE_PROFILES = {
       archived: ["forgotten"],
     },
     purgeFrom: ["forgotten"],
-  },
-  feel: {
-    management: "managed",
-    ownership: "authored",
-    drivers: ["time_decay", "reinforcement", "recall"],
-    initialState: "active",
-    transitions: {
-      active: ["fading", "archived"],
-      fading: ["active", "archived"],
-      archived: ["forgotten"],
-    },
-    purgeFrom: ["forgotten"],
-  },
-  thought: {
-    management: "managed",
-    ownership: "authored",
-    drivers: ["subject_drop", "capacity"],
-    initialState: "active",
-    transitions: {
-      active: ["dropped"],
-    },
-    purgeFrom: [],
   },
 } as const satisfies Record<CurrentSubjectStateKind, MindLifecycleProfile>;
 

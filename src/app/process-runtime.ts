@@ -168,8 +168,6 @@ import {
   NativeLiveMindFollowUpService,
   createNativeLiveMindFollowUpRecoveryRunner,
 } from "../domains/bridge/mind/native-live-mind-followup.js";
-import { NativeLiveMindSemanticActionExecutor } from "../domains/bridge/mind/native-live-mind-semantic-action.js";
-import { DrizzleThoughtDropPort } from "../domains/runtime/thought/thought-runtime-repository.js";
 import { DrizzleSubjectStateRuntimePort } from "../domains/runtime/subject-state/subject-state-runtime-repository.js";
 import {
   DrizzleNativeLiveSemanticScoringRepository,
@@ -413,12 +411,6 @@ export function createProcessRuntime(
     memoryDecayConfig,
     breathRankingConfig,
   );
-  const semanticMindActions =
-    new NativeLiveMindSemanticActionExecutor(
-      new DrizzleSubjectStateRuntimePort(db),
-      new DrizzleThoughtDropPort(db),
-      DEFAULT_NATIVE_LIVE_SUBJECT_ID,
-    );
   const backgroundLoopOrchestrator = new BackgroundLoopOrchestrator({
     maxRunsPerCycle: 4,
     maxCostPerCycle: 4,
@@ -534,7 +526,6 @@ export function createProcessRuntime(
     nativeLiveTurnPort,
     nativeLiveBackendMind,
     undefined,
-    semanticMindActions,
   );
   const nativeLiveMindFollowUpRecovery =
     createNativeLiveMindFollowUpRecoveryRunner({

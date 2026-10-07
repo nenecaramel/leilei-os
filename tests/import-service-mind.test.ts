@@ -252,3 +252,24 @@ test("v3 semantic grouping restore conflicts with an occupied nonterminal groupi
   assert.equal(preview.can_execute, false);
   assert.equal(repository.writes, 0);
 });
+
+
+test("legacy feeling backup restores in place as memory with all other metadata preserved", async () => {
+  const repository = new FakeImportRepository({diary:[],todo:[],mind:[]});
+  const service = new ImportService(repository);
+  const legacy = {...mindState, kind:"feel" as const};
+  const raw = v3PackageBytes({mind:[legacy]});
+  const preview = await service.preview(raw, USER_ID);
+  assert.equal(preview.can_execute,true);
+  await service.execute(raw, USER_ID, preview.preview_fingerprint);
+  assert.deepEqual(repository.state.mind,[{...legacy,kind:"memory"}]);
+});
+
+test("legacy thought backup cannot reintroduce retired state or mutate the database", async () => {
+  const repository = new FakeImportRepository({diary:[],todo:[],mind:[]});
+  const service = new ImportService(repository);
+  const raw = v3PackageBytes({mind:[{...mindState,kind:"thought"}]});
+  await assert.rejects(service.preview(raw, USER_ID), /retired kind/);
+  await assert.rejects(service.execute(raw, USER_ID, "no-valid-preview"));
+  assert.equal(repository.writes,0);
+});

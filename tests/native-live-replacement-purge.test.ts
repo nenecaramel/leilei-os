@@ -118,7 +118,7 @@ test("causal Mind purge follows message provenance and derived state chains", ()
   const states = [
     {
       id: "state-old",
-      kind: "thought",
+      kind: "memory",
       payload: null,
       envelope: { provenance: { sources: [{ kind: "message", id: "a2" }] } },
       scopeConversationId: "c1",
@@ -126,7 +126,7 @@ test("causal Mind purge follows message provenance and derived state chains", ()
     },
     {
       id: "state-derived",
-      kind: "thought",
+      kind: "memory",
       payload: { seed_state_id: "state-old" },
       envelope: { provenance: { sources: [{ kind: "persistent_state", id: "state-old" }] } },
       scopeConversationId: null,
@@ -149,63 +149,6 @@ test("causal Mind purge follows message provenance and derived state chains", ()
     })),
     new Set(["state-old", "state-derived"]),
   );
-});
-
-test("a thought dropped by a purged turn is active again; the states it touched survive", () => {
-  const purgeMessageIds = new Set(["old-assistant"]);
-  const active = { thought_v2: { status: "active" } };
-  const states = [
-    {
-      id: "dropped-by-purged-turn",
-      kind: "thought",
-      payload: {
-        source_start: 1,
-        thought_v2: {
-          status: "dropped",
-          reason: "subject",
-          droppedAt: "2026-09-30T00:00:00.000Z",
-          droppedByMessageId: "old-assistant",
-        },
-      },
-    },
-    {
-      id: "dropped-by-surviving-turn",
-      kind: "thought",
-      payload: {
-        thought_v2: {
-          status: "dropped",
-          reason: "subject",
-          droppedAt: "2026-09-30T00:00:00.000Z",
-          droppedByMessageId: "safe-assistant",
-        },
-      },
-    },
-    {
-      id: "dropped-by-capacity",
-      kind: "thought",
-      payload: {
-        thought_v2: {
-          status: "dropped",
-          reason: "capacity",
-          droppedAt: "2026-09-30T00:00:00.000Z",
-          droppedByMessageId: null,
-        },
-      },
-    },
-    { id: "still-active", kind: "thought", payload: active },
-  ];
-
-  const repairs = planSubjectStateRepairs({
-    states,
-    purgeMessageIds,
-    purgeStateIds: new Set(),
-  });
-
-  assert.deepEqual(repairs, [{
-    stateId: "dropped-by-purged-turn",
-    nextPayload: { source_start: 1, thought_v2: { status: "active" } },
-    revivedThought: true,
-  }]);
 });
 
 test("Edit causal purge removes only Memory recall contribution from the purged user source", () => {
