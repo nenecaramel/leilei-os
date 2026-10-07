@@ -22,6 +22,8 @@ import {
 import {
   reserveManualCompactHandler,
   submitManualCompactResultHandler,
+  reserveClaudeHandoffHandler,
+  submitClaudeHandoffResultHandler,
   reserveExternalSessionsHandler,
   submitExternalSessionsResultHandler,
   reserveProviderSessionCleanupHandler,
@@ -103,6 +105,16 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/background-model/reservations/:reservationId/result",
       submitBackgroundModelResultHandler(dependencies),
+    );
+  }
+  if (dependencies.claudeHandoffService) {
+    router.post(
+      "/claude-handoff/reserve",
+      reserveClaudeHandoffHandler(dependencies),
+    );
+    router.post(
+      "/claude-handoff/reservations/:reservationId/result",
+      submitClaudeHandoffResultHandler(dependencies),
     );
   }
   if (dependencies.manualCompactService) {
