@@ -68,7 +68,7 @@ test("canonical murmur is projected separately and raw streaming tags are fail-c
   assert.match(assembler, /murmurStrippedRuntimeText/u);
   assert.match(
     assembler,
-    /guard let close = result\.range\([\s\S]*else \{[\s\S]*result\.removeSubrange\(open\.lowerBound<\.\.result\.endIndex\)/u,
+    /guard let close = result\.range\([\s\S]*else \{[\s\S]*result\.removeSubrange\(open\.lowerBound\.\.<result\.endIndex\)/u,
   );
   assert.match(
     assembler,
