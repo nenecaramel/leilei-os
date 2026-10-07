@@ -1177,3 +1177,68 @@ test("internal relay reserves and receipts Claude handoff in authenticated user 
     },
   );
 });
+
+
+test("internal relay turns deterministic Claude handoff reservation conflict into a 200 terminal receipt", async () => {
+  const relayService = new FakeRelayService();
+  const handoffId =
+    "88888888-8888-4888-8888-888888888888";
+  const handoffSessionId =
+    "99999999-9999-4999-8999-999999999999";
+  const claudeHandoffService = {
+    async reserveNext() {
+      return null;
+    },
+    async complete() {
+      throw new NativeLiveClaudeHandoffError(
+        "RESERVATION_CONFLICT",
+        "already terminal",
+      );
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          claudeHandoffService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/claude-handoff/reservations/${handoffId}/result`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            status: "success",
+            handoff_session_id:
+              handoffSessionId,
+          }),
+        },
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        (await response.json() as {
+          data: unknown;
+        }).data,
+        {
+          outcome: "rejected",
+          canonicalOutcome:
+            "RESERVATION_CONFLICT",
+        },
+      );
+    },
+  );
+});
