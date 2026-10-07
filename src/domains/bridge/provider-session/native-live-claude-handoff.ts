@@ -15,6 +15,7 @@ const RESERVATION_TTL_MS = 120_000;
 export type NativeLiveClaudeHandoffStatus =
   | "pending"
   | "reserved"
+  | "delivery_unknown"
   | "completed"
   | "failed"
   | "stale"
@@ -110,7 +111,7 @@ export class NativeLiveClaudeHandoffService {
         FROM native_live_claude_handoffs
         WHERE user_id = ${input.userId}::uuid
           AND conversation_id = ${input.conversationId}::uuid
-          AND status IN ('pending','reserved')
+          AND status IN ('pending','reserved','delivery_unknown')
         LIMIT 1
       `);
       if (active[0]) {
@@ -327,10 +328,9 @@ export class NativeLiveClaudeHandoffService {
 
       await tx.execute(sql`
         UPDATE native_live_claude_handoffs
-        SET status = 'failed',
+        SET status = 'delivery_unknown',
             failure_code = 'RESULT_DELIVERY_UNKNOWN',
             reservation_expires_at = NULL,
-            completed_at = now(),
             updated_at = now()
         WHERE user_id = ${input.userId}::uuid
           AND status = 'reserved'
@@ -441,7 +441,7 @@ export class NativeLiveClaudeHandoffService {
       if (
         current
         && input.outcome.status === "success"
-        && current.status === "failed"
+        && current.status === "delivery_unknown"
         && current.failure_code === "RESULT_DELIVERY_UNKNOWN"
         && current.reserved_by === input.listenerInstanceId
       ) {
