@@ -16,7 +16,7 @@ function configureEnvironment(): void {
     WEB_APP_ORIGIN: "https://web.example.test",
     WEB_AUTH0_AUDIENCE: "https://web.example.test/api",
     WEB_AUTH0_REQUIRED_SCOPE: "web:access",
-    NATIVE_LIVE_RELAY_AUTH_TOKEN: "relay-secret",
+    NATIVE_LIVE_RELAY_AUTH_TOKEN: "relay-secret-0123456789-0123456789",
   });
 }
 
@@ -90,7 +90,7 @@ test("authenticated Native Live internal JSON can exceed the public 1mb limit", 
       {
         method: "POST",
         headers: {
-          authorization: "Bearer relay-secret",
+          authorization: "Bearer relay-secret-0123456789-0123456789",
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -130,7 +130,7 @@ test("authenticated SessionStore JSON can exceed the old 8mb parser limit", asyn
       {
         method: "POST",
         headers: {
-          authorization: "Bearer relay-secret",
+          authorization: "Bearer relay-secret-0123456789-0123456789",
           "content-type": "application/json",
         },
         body: JSON.stringify({

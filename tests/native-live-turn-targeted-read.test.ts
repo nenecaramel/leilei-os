@@ -38,7 +38,7 @@ for (const terminal of [false,true]) test(`turn read targets only exact ${termin
   assert.equal(result?.preparedUserMessage?.blocks[1]?.payload?.tool_use_id,"tool");
   assert.deepEqual(result?.preparedUserMessage?.blocks.map(b=>b.ordinal),[0,1]);
   assert.equal(result?.preparedUserMessage?.createdAt,date.toISOString());
-  assert.equal(queries.length,4,"preparation + semantic + bounded messages + bounded blocks");
+  assert.equal(queries.length,terminal ? 4 : 5,"prepared turns also check applied interrupt state before semantic + bounded messages + bounded blocks");
   const dialect = new PgDialect();
   for (const table of ["conversation_messages","conversation_content_blocks"]) {
     const query = queries.find(q=>q.table===table)!;
