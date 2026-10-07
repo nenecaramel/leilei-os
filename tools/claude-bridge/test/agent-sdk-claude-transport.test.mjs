@@ -1308,7 +1308,7 @@ test("local historical checkpoint fork materializes only the canonical prefix", 
 });
 
 
-test("default local historical fork source is written beside the Claude transcript and cleaned", async (t) => {
+test("default local historical fork locates the parent by session id and cleans the temporary source", async (t) => {
   const configDirectory =
     await mkdtemp(join(tmpdir(), "leileios-local-fork-"));
   t.after(() =>
