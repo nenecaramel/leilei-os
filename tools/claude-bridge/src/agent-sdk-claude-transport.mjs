@@ -1341,6 +1341,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
     }
 
+    if (this.sessionStore) {
+      throw runtimeError(
+        "Claude Code handoff requires the local SDK transcript store.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+
     const id = nonblankString(sessionId);
     const checkpoint = nonblankString(checkpointId);
     if (!id || !checkpoint) {
@@ -1376,9 +1383,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         {
           dir: this.cwd,
           upToMessageId: checkpoint,
-          ...(this.sessionStore
-            ? { sessionStore: this.sessionStore }
-            : {}),
         },
       );
     } catch (cause) {
