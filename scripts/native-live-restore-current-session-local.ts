@@ -133,33 +133,51 @@ if (apply) {
   }
 }
 
-const daemonConfig = resolveNativeLiveMacDaemonConfig(
-  process.env,
-  undefined,
-  () => appVariables,
-);
-const store = new NativeLiveMacProviderSessionStore(
-  daemonConfig.relayBaseUrl,
-  daemonConfig.relayToken,
-);
-const remoteEntries = await store.load({
-  projectKey: leaf.effective_working_directory,
+const localEntries = await readLocalEntriesWithInstalledSdk({
   sessionId: leaf.provider_session_id,
+  workingDirectory: leaf.effective_working_directory,
 });
-if (!Array.isArray(remoteEntries) || remoteEntries.length === 0) {
-  throw new Error("Remote SessionStore returned no transcript entries.");
+
+let sourceEntries = localEntries;
+let sourceStorage = "local_sdk";
+let verified = checkpointPrefixOrNull(
+  sourceEntries,
+  leaf.provider_checkpoint_id,
+);
+
+if (!verified) {
+  const daemonConfig = resolveNativeLiveMacDaemonConfig(
+    process.env,
+    undefined,
+    () => appVariables,
+  );
+  const store = new NativeLiveMacProviderSessionStore(
+    daemonConfig.relayBaseUrl,
+    daemonConfig.relayToken,
+  );
+  const remoteEntries = await store.load({
+    projectKey: leaf.effective_working_directory,
+    sessionId: leaf.provider_session_id,
+  });
+  sourceEntries =
+    Array.isArray(remoteEntries) ? remoteEntries : [];
+  sourceStorage = "remote_store";
+  verified = checkpointPrefixOrNull(
+    sourceEntries,
+    leaf.provider_checkpoint_id,
+  );
+}
+
+if (!verified) {
+  throw new Error(
+    "Neither the local Claude transcript nor the remote SessionStore contains the current canonical checkpoint.",
+  );
 }
 
 const {
   prefix,
   ancestry,
-} = durableCheckpointPrefix(
-  remoteEntries,
-  leaf.provider_checkpoint_id,
-) as {
-  prefix: SessionEntry[];
-  ancestry: Set<string>;
-};
+} = verified;
 
 const lastCanonical = [...prefix]
   .reverse()
@@ -188,7 +206,8 @@ const report = {
   providerSessionId: leaf.provider_session_id,
   providerCheckpointId: leaf.provider_checkpoint_id,
   effectiveWorkingDirectory: leaf.effective_working_directory,
-  remoteEntries: remoteEntries.length,
+  sourceStorage,
+  sourceEntries: sourceEntries.length,
   canonicalPrefixEntries: prefix.length,
   canonicalAncestryEntries: ancestry.size,
   canonicalPrefixBytes: encodedBytes,
@@ -381,6 +400,70 @@ function fsyncDirectory(directory: string): void {
   }
 }
 
+function checkpointPrefixOrNull(
+  entries: SessionEntry[],
+  checkpointId: string,
+): {
+  prefix: SessionEntry[];
+  ancestry: Set<string>;
+} | null {
+  if (entries.length === 0) return null;
+  try {
+    return durableCheckpointPrefix(
+      entries,
+      checkpointId,
+    ) as {
+      prefix: SessionEntry[];
+      ancestry: Set<string>;
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readLocalEntriesWithInstalledSdk(input: {
+  sessionId: string;
+  workingDirectory: string;
+}): Promise<SessionEntry[]> {
+  const bridgeRequire = createRequire(
+    new URL("../tools/claude-bridge/package.json", import.meta.url),
+  );
+  const sdkEntry =
+    bridgeRequire.resolve("@anthropic-ai/claude-agent-sdk");
+  const sdk = await import(pathToFileURL(sdkEntry).href);
+  if (typeof sdk.importSessionToStore !== "function") {
+    throw new Error(
+      "Installed Claude Agent SDK does not expose importSessionToStore().",
+    );
+  }
+
+  const imported: SessionEntry[] = [];
+  try {
+    await sdk.importSessionToStore(
+      input.sessionId,
+      {
+        async append(
+          key: { subpath?: string },
+          batch: SessionEntry[],
+        ) {
+          if (!key.subpath) imported.push(...batch);
+        },
+        async load() {
+          return null;
+        },
+      },
+      {
+        dir: input.workingDirectory,
+        includeSubagents: false,
+        batchSize: 500,
+      },
+    );
+  } catch {
+    return [];
+  }
+  return imported;
+}
+
 async function validateWithInstalledSdk(input: {
   sessionId: string;
   checkpointId: string;
@@ -413,27 +496,7 @@ async function validateWithInstalledSdk(input: {
     );
   }
 
-  const imported: SessionEntry[] = [];
-  const memoryStore = {
-    async append(
-      key: { subpath?: string },
-      batch: SessionEntry[],
-    ) {
-      if (!key.subpath) imported.push(...batch);
-    },
-    async load() {
-      return null;
-    },
-  };
-  await sdk.importSessionToStore(
-    input.sessionId,
-    memoryStore,
-    {
-      dir: input.workingDirectory,
-      includeSubagents: false,
-      batchSize: 500,
-    },
-  );
+  const imported = await readLocalEntriesWithInstalledSdk(input);
   if (imported.length === 0) {
     throw new Error(
       "Claude Agent SDK could not import the restored local transcript.",
