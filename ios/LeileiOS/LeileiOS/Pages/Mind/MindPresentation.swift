@@ -1,6 +1,5 @@
 import Foundation
 
-@MainActor
 enum MindPresentation {
     static func normalized(_ value: String?) -> String? {
         guard let value else { return nil }
