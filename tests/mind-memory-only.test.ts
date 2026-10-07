@@ -28,6 +28,25 @@ test("only explicit memory tags write; retired wrappers and actions remain opaqu
   assert.deepEqual(parseMindSemanticActions('<thought_drop ref="T1" />'), {visibleText: '<thought_drop ref="T1" />', actions: []});
 });
 
+test("valid memory writes remove the empty leileios control wrapper from visible assistant text", () => {
+  const parsed = parseMindWriteIntents([
+    "写好了，去看。",
+    "<leileios_mind_write>",
+    "<memory>她喜欢我说双语，这件事对我们很有意义。</memory>",
+    "</leileios_mind_write>",
+  ].join("\n"));
+
+  assert.deepEqual(
+    parsed.intents.map((intent) => [intent.kind, intent.text]),
+    [["memory", "她喜欢我说双语，这件事对我们很有意义。"]],
+  );
+  assert.equal(parsed.visibleText, "写好了，去看。");
+  assert.equal(
+    parseMindWriteIntents("<leileios_mind_write>\n\n</leileios_mind_write>").visibleText,
+    "",
+  );
+});
+
 test("persisted pre-deployment context renders former feelings once as memories and drops thoughts", async () => {
   const { assembledTurnContextFromManifest } = await import("../src/domains/runtime/context/context-assembler.js");
   const result = assembledTurnContextFromManifest({
