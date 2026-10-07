@@ -215,10 +215,12 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
     "utf8",
   );
 
-  assert.match(models, /payload\["display_name"\]/);
-  assert.match(models, /payload\["kind"\]\?\.stringValue == "api_retry"/);
-  assert.match(tools, /payload\["display_name"\]\?\.stringValue[\s\S]*payload\["tool_name"\]\?\.stringValue/);
+  assert.match(
+    tools,
+    /payload\["display_name"\]\?\.stringValue[\s\S]*payload\["tool_name"\]\?\.stringValue/,
+  );
   assert.match(lifecycle, /case "api_retry":/);
+  assert.match(models, /case "album_saved", "api_retry":\s*return true/);
 });
 
 test("Agent SDK transport enables native session state events for every turn", async () => {
