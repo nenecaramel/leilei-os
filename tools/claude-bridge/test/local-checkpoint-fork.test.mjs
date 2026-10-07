@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -134,6 +135,70 @@ test("orphan cleanup refuses a receipt that escapes the Claude projects director
       version: 1,
       session_id: sessionId,
       project_directory: "../outside",
+      created_at: new Date().toISOString(),
+    }),
+    "utf8",
+  );
+
+  const result =
+    await cleanupOrphanedLocalCheckpointForks({
+      environment: {
+        CLAUDE_CONFIG_DIR: configDirectory,
+        LEILEIOS_LOCAL_CHECKPOINT_FORK_RECEIPT_DIR:
+          receiptDirectory,
+      },
+    });
+
+  assert.equal(result.cleaned, 0);
+  assert.equal(result.failures.length, 1);
+  assert.equal(await pathExists(outsideTranscript), true);
+  assert.equal(
+    await pathExists(
+      join(receiptDirectory, sessionId + ".json"),
+    ),
+    true,
+  );
+});
+
+
+test("orphan cleanup refuses a project-directory symlink even when the receipt name is valid", async (t) => {
+  const root = await mkdtemp(
+    join(tmpdir(), "leileios-fork-symlink-guard-"),
+  );
+  t.after(() =>
+    rm(root, { recursive: true, force: true })
+  );
+
+  const configDirectory = join(root, "claude");
+  const receiptDirectory = join(root, "receipts");
+  const projectsDirectory = join(
+    configDirectory,
+    "projects",
+  );
+  const outsideDirectory = join(root, "outside");
+  await mkdir(projectsDirectory, { recursive: true });
+  await mkdir(receiptDirectory, { recursive: true });
+  await mkdir(outsideDirectory, { recursive: true });
+
+  const projectName = "project-link";
+  await symlink(
+    outsideDirectory,
+    join(projectsDirectory, projectName),
+  );
+
+  const sessionId =
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const outsideTranscript = join(
+    outsideDirectory,
+    sessionId + ".jsonl",
+  );
+  await writeFile(outsideTranscript, "do not delete\n", "utf8");
+  await writeFile(
+    join(receiptDirectory, sessionId + ".json"),
+    JSON.stringify({
+      version: 1,
+      session_id: sessionId,
+      project_directory: projectName,
       created_at: new Date().toISOString(),
     }),
     "utf8",
