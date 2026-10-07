@@ -260,9 +260,19 @@ export async function prepareLocalCheckpointFork({
     }
     await fsyncDirectory(projectDirectory);
   } catch (cause) {
-    await unlink(syntheticPath).catch(() => undefined);
-    await fsyncDirectory(projectDirectory).catch(() => undefined);
-    await removeReceipt(receiptPath).catch(() => undefined);
+    let transcriptRemovalDurable = false;
+    try {
+      await unlink(syntheticPath);
+      await fsyncDirectory(projectDirectory);
+      transcriptRemovalDurable = true;
+    } catch (cleanupCause) {
+      if (cleanupCause?.code === "ENOENT") {
+        transcriptRemovalDurable = true;
+      }
+    }
+    if (transcriptRemovalDurable) {
+      await removeReceipt(receiptPath).catch(() => undefined);
+    }
     throw runtimeError(
       "Failed to materialize local historical checkpoint fork source.",
       {
