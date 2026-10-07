@@ -4,6 +4,9 @@ import {
   createNativeLiveRelayInternalRouter,
 } from "../src/web-api/native-live-relay-internal-router.js";
 import {
+  NativeLiveClaudeHandoffError,
+} from "../src/domains/bridge/provider-session/native-live-claude-handoff.js";
+import {
   userId,
   listenerId,
   prepareId,
