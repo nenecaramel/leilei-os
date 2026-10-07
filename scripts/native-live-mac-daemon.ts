@@ -241,6 +241,7 @@ const loop = new NativeLiveMacDaemonLoop(
   workingDirectoryRuntimePool,
   new NativeLiveMacResultOutbox(join(homedir(), ".leileios", "terminal-results",
     createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex"))),
+  workingDirectoryRuntimePool,
 );
 
 let stopping = false;
