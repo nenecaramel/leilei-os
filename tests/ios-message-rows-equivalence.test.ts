@@ -26,9 +26,15 @@ test('User row and history/divider moves retain complete presentation and intera
  for(const name of ['NativeLiveHistorySnapshotRow','NativeLiveHistoryForkDivider']) {
   equal(block(read(name==='NativeLiveHistorySnapshotRow'?'NativeLiveHistoryMessageRow.swift':'NativeLiveHistoryDivider.swift'),'struct '+name+':'),block(baseline,'struct '+name+':'),name);
  }
- // Only the voice visual and its minimal transcript/alignment plumbing are intentional.
- const normalized=user.replace('VStack(alignment:.trailing,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)', 'VStack(alignment:.leading,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)');
- equal(block(normalized,'struct NativeLiveUserMessagePresentationView:'),block(old('NativeLiveMessageBlocks.swift'),'struct NativeLiveUserMessagePresentationView:'),'entire user presentation except voice plumbing');
+ // Compact voice geometry changed intentionally; normalize only that presentation seam.
+ const normalized=user
+   .replace(
+     '.padding(.leading, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userLeadingInset : ChatPresentationLayout.bubbleHorizontalInset)\n                    .padding(.trailing, usesCompactVoiceInsets ? NativeLiveVoiceBubbleGeometry.userTrailingInset : ChatPresentationLayout.bubbleHorizontalInset)\n                    .padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)',
+     '.padding(.horizontal,ChatPresentationLayout.bubbleHorizontalInset).padding(.vertical,ChatPresentationLayout.bubbleVerticalInset)',
+   )
+   .replace(/\n    private var usesCompactVoiceInsets: Bool \{[\s\S]*?\n    \}\n\n    @ViewBuilder private var textBubble:/, '\n    @ViewBuilder private var textBubble:')
+   .replace('VStack(alignment:.trailing,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed, transcript:presentation.copyText)', 'VStack(alignment:.leading,spacing:10) {\n                NativeLiveVoiceMessageBubbleVisual(isExpanded:isVoiceTranscriptRevealed)');
+ equal(block(normalized,'struct NativeLiveUserMessagePresentationView:'),block(old('NativeLiveMessageBlocks.swift'),'struct NativeLiveUserMessagePresentationView:'),'entire user presentation except compact voice geometry');
 });
 test('Assistant organization conserves activity bindings, refresh owner, indicators and action routes',()=>{
  const baseline=old('NativeLiveAssistantTurnRow.swift'),current=read('NativeLiveAssistantTurnRow.swift');
