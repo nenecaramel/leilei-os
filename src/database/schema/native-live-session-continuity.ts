@@ -71,3 +71,36 @@ export const nativeLiveManualCompactions = pgTable("native_live_manual_compactio
   check("native_live_manual_compactions_result_object", sql`${table.result} IS NULL OR jsonb_typeof(${table.result}) = 'object'`),
   check("native_live_manual_compactions_status_allowed", sql`${table.status} IN ('pending','reserved','completed','failed','stale','expired')`),
 ]);
+
+export const nativeLiveClaudeHandoffs = pgTable("native_live_claude_handoffs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull(),
+  conversationId: uuid("conversation_id").notNull(),
+  expectedHeadMessageId: uuid("expected_head_message_id").notNull(),
+  sourceMessageId: uuid("source_message_id").notNull(),
+  providerSessionId: text("provider_session_id").notNull(),
+  providerCheckpointId: text("provider_checkpoint_id").notNull(),
+  effectiveWorkingDirectory: text("effective_working_directory"),
+  status: varchar("status", { length: 32 }).default("pending").notNull(),
+  handoffSessionId: text("handoff_session_id"),
+  reservedBy: uuid("reserved_by"),
+  reservedAt: timestamp("reserved_at", { withTimezone: true }),
+  reservationExpiresAt: timestamp("reservation_expires_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  failureCode: varchar("failure_code", { length: 64 }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+  foreignKey({ name: "native_live_claude_handoffs_user_fk", columns: [table.userId], foreignColumns: [users.id] }).onDelete("cascade").onUpdate("cascade"),
+  foreignKey({ name: "native_live_claude_handoffs_conversation_user_fk", columns: [table.conversationId, table.userId], foreignColumns: [conversations.id, conversations.userId] }).onDelete("cascade").onUpdate("cascade"),
+  foreignKey({ name: "native_live_claude_handoffs_source_message_user_fk", columns: [table.sourceMessageId, table.conversationId, table.userId], foreignColumns: [conversationMessages.id, conversationMessages.conversationId, conversationMessages.userId] }).onDelete("cascade").onUpdate("cascade"),
+  uniqueIndex("native_live_claude_handoffs_active_uidx").on(table.userId, table.conversationId).where(sql`${table.status} IN ('pending','reserved')`),
+  index("native_live_claude_handoffs_queue_idx").on(table.userId, table.status, table.createdAt, table.id),
+  check("native_live_claude_handoffs_provider_session_not_blank", sql`char_length(btrim(${table.providerSessionId})) > 0`),
+  check("native_live_claude_handoffs_checkpoint_not_blank", sql`char_length(btrim(${table.providerCheckpointId})) > 0`),
+  check("native_live_claude_handoffs_working_directory_not_blank", sql`${table.effectiveWorkingDirectory} IS NULL OR char_length(btrim(${table.effectiveWorkingDirectory})) > 0`),
+  check("native_live_claude_handoffs_handoff_session_not_blank", sql`${table.handoffSessionId} IS NULL OR char_length(btrim(${table.handoffSessionId})) > 0`),
+  check("native_live_claude_handoffs_status_allowed", sql`${table.status} IN ('pending','reserved','completed','failed','stale','expired')`),
+]);
+
