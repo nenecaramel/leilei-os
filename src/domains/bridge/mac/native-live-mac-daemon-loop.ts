@@ -549,28 +549,44 @@ export class NativeLiveMacDaemonLoop {
               pendingHandoff.listenerInstanceId,
             reservationId:
               pendingHandoff.reservationId,
-            outcome: {
-              status: "success",
-              handoffSessionId:
-                pendingHandoff.handoffSessionId,
-            },
+            outcome: pendingHandoff.outcome,
           });
           await this.claudeHandoffOutbox
             ?.acknowledge(pendingHandoff);
+
+          if (
+            pendingHandoff.outcome.status
+              === "failure"
+          ) {
+            return {
+              outcome: "claude_handoff_failed",
+              reservationId:
+                pendingHandoff.reservationId,
+            };
+          }
+
           return {
             outcome: "claude_handoff_completed",
             reservationId:
               pendingHandoff.reservationId,
             handoffSessionId:
-              pendingHandoff.handoffSessionId,
+              pendingHandoff.outcome.handoffSessionId,
           };
         } catch {
           return {
             outcome: "claude_handoff_delivery_unknown",
             reservationId:
               pendingHandoff.reservationId,
-            handoffSessionId:
-              pendingHandoff.handoffSessionId,
+            ...(
+              pendingHandoff.outcome.status
+                === "success"
+                ? {
+                    handoffSessionId:
+                      pendingHandoff.outcome
+                        .handoffSessionId,
+                  }
+                : {}
+            ),
           };
         }
       }
@@ -608,16 +624,30 @@ export class NativeLiveMacDaemonLoop {
                     handoff.effectiveWorkingDirectory,
                   );
             } catch (error) {
+              const pendingFailure = {
+                listenerInstanceId:
+                  this.listenerInstanceId,
+                reservationId:
+                  handoff.reservationId,
+                outcome: {
+                  status: "failure" as const,
+                  failureCode:
+                    claudeHandoffFailureCode(error),
+                },
+              };
+              await this.claudeHandoffOutbox
+                ?.save(pendingFailure);
               try {
                 await this.relay.submitClaudeHandoffResult({
-                  listenerInstanceId: this.listenerInstanceId,
-                  reservationId: handoff.reservationId,
-                  outcome: {
-                    status: "failure",
-                    failureCode:
-                      claudeHandoffFailureCode(error),
-                  },
+                  listenerInstanceId:
+                    this.listenerInstanceId,
+                  reservationId:
+                    handoff.reservationId,
+                  outcome:
+                    pendingFailure.outcome,
                 });
+                await this.claudeHandoffOutbox
+                  ?.acknowledge(pendingFailure);
               } catch {
                 return {
                   outcome: "claude_handoff_delivery_unknown",
@@ -635,8 +665,11 @@ export class NativeLiveMacDaemonLoop {
                 this.listenerInstanceId,
               reservationId:
                 handoff.reservationId,
-              handoffSessionId:
-                forked.providerSessionId,
+              outcome: {
+                status: "success" as const,
+                handoffSessionId:
+                  forked.providerSessionId,
+              },
             };
             await this.claudeHandoffOutbox
               ?.save(pendingHandoff);
@@ -644,11 +677,8 @@ export class NativeLiveMacDaemonLoop {
               await this.relay.submitClaudeHandoffResult({
                 listenerInstanceId: this.listenerInstanceId,
                 reservationId: handoff.reservationId,
-                outcome: {
-                  status: "success",
-                  handoffSessionId:
-                    forked.providerSessionId,
-                },
+                outcome:
+                  pendingHandoff.outcome,
               });
               await this.claudeHandoffOutbox
                 ?.acknowledge(pendingHandoff);
