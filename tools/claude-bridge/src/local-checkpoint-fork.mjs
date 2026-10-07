@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
   access,
+  lstat,
   mkdir,
   open,
   readdir,
+  realpath,
   rename,
   unlink,
 } from "node:fs/promises";
@@ -284,6 +286,49 @@ export async function prepareLocalCheckpointFork({
   };
 }
 
+async function validateCleanupLocation(
+  receipt,
+  environment,
+) {
+  const root = resolve(projectsDirectory(environment));
+  let projectStats;
+  try {
+    projectStats = await lstat(receipt.projectDirectory);
+  } catch (cause) {
+    if (cause?.code === "ENOENT") {
+      return { ...receipt, projectMissing: true };
+    }
+    throw cause;
+  }
+  if (
+    !projectStats.isDirectory()
+    || projectStats.isSymbolicLink()
+  ) {
+    throw new Error(
+      "Local checkpoint fork project directory is not a real directory.",
+    );
+  }
+
+  const [realRoot, realProject] = await Promise.all([
+    realpath(root),
+    realpath(receipt.projectDirectory),
+  ]);
+  if (dirname(realProject) !== realRoot) {
+    throw new Error(
+      "Local checkpoint fork project directory escapes Claude projects directory.",
+    );
+  }
+  return {
+    ...receipt,
+    projectDirectory: realProject,
+    transcriptPath: join(
+      realProject,
+      receipt.sessionId + ".jsonl",
+    ),
+    projectMissing: false,
+  };
+}
+
 function validateReceipt(record, filename, environment) {
   if (
     !record
@@ -383,17 +428,23 @@ export async function cleanupOrphanedLocalCheckpointForks({
       } finally {
         await handle.close();
       }
-      const receipt = validateReceipt(
+      const parsedReceipt = validateReceipt(
         JSON.parse(raw),
         name,
         environment,
       );
+      const receipt = await validateCleanupLocation(
+        parsedReceipt,
+        environment,
+      );
 
-      try {
-        await unlink(receipt.transcriptPath);
-        await fsyncDirectory(receipt.projectDirectory);
-      } catch (cause) {
-        if (cause?.code !== "ENOENT") throw cause;
+      if (!receipt.projectMissing) {
+        try {
+          await unlink(receipt.transcriptPath);
+          await fsyncDirectory(receipt.projectDirectory);
+        } catch (cause) {
+          if (cause?.code !== "ENOENT") throw cause;
+        }
       }
       await removeReceipt(receiptPath);
       cleaned += 1;
