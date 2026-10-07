@@ -42,12 +42,13 @@ export function registerWriteMemoryTool(server: McpServer, dependencies: WriteMe
           const state = createMindState({
             id: randomUUID(), userId: context.userId, subjectId: dependencies.subjectId,
             kind: "memory", text: input.text,
-            source: {origin: "claude_code", occurredAt, note},
+            // Shared MCP authenticates the user, not the client implementation.
+            source: {origin: context.source, occurredAt, note},
           });
           const result = await dependencies.repository.insertMcpIdempotent({
             userId: context.userId, subjectId: dependencies.subjectId, state,
             idempotencyKey: normalizeMcpIdempotencyKey(input.idempotency_key),
-            requestHash: hashMcpWriteRequest({text: state.text, occurred_at: occurredAt, note, source: "claude_code"}),
+            requestHash: hashMcpWriteRequest({text: state.text, occurred_at: occurredAt, note, source: context.source}),
           });
           const structuredContent = {success: true, data: {
             memory_id: result.memoryId,

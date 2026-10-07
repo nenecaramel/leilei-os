@@ -4,14 +4,14 @@ import { createMindState } from "../src/domains/runtime/mind/mind-writer.js";
 import { writeSubjectStateLifecycle } from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
 import { isConsolidationEligible } from "../src/domains/runtime/subject-state/runtime-status-axes.js";
 
-test("Claude Code writes are global, confirmed and attributed to claude_code", () => {
+test("MCP writes are global, confirmed and attributed neutrally to mcp", () => {
   const state = createMindState({
     id: "11111111-1111-4111-8111-111111111111", userId: "u1", subjectId: "G",
     kind: "memory", text: "  prefers jasmine tea  ",
-    source: { origin: "claude_code", occurredAt: null, note: null },
+    source: { origin: "mcp", occurredAt: null, note: null },
   });
-  assert.equal(state.payload?.source, "claude_code");
-  assert.equal(state.envelope.producer.id, "claude_code");
+  assert.equal(state.payload?.source, "mcp");
+  assert.deepEqual(state.envelope.producer, {kind: "service", id: "mcp_client"});
   assert.equal(state.envelope.scope.applicability, "global");
   assert.equal(state.envelope.scope.conversationId, null);
   assert.equal(state.envelope.scope.pathHeadMessageId, null);

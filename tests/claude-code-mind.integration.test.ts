@@ -44,7 +44,9 @@ test("MCP concurrent retries commit one global confirmed memory; recall is a rea
   const rows = await db.select().from(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, userId));
   const row = rows[0]!;
   assert.equal(row.scopeApplicability, "global"); assert.equal(row.settlementStatus, "settled");
-  assert.equal(row.scopeConversationId, null); assert.equal(row.scopePathHeadMessageId, null); assert.equal(row.payload?.source, "claude_code");
+  assert.equal(row.scopeConversationId, null); assert.equal(row.scopePathHeadMessageId, null); assert.equal(row.payload?.source, "mcp");
+  assert.deepEqual(row.envelope.producer, {kind: "service", id: "mcp_client"});
+  assert.deepEqual(row.envelope.provenance.sources, [{kind: "tool_result", id: `mcp:${row.id}`}]);
   const service = new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), DEFAULT_MIND_LOOP_CONFIG, "G");
   const first = await service.recall({userId, sessionId: "not-a-postgres-uuid", query: "jasmine tea", excludeIds: []});
   assert.deepEqual(first.memory_ids, [row.id]);
@@ -70,4 +72,38 @@ test("MCP write_memory requires active authentication before reaching the writer
   t.after(async () => {await client.close(); await server.close();});
   const result = await client.callTool({name: "write_memory", arguments: {text: "tea", idempotency_key: "claude-memory-disabled-test"}});
   assert.equal(result.isError, true); assert.equal(writes, 0);
+});
+
+
+test("shared MCP write_memory uses neutral provenance even when clientInfo claims Claude Code", async t => {
+  for (const name of ["ordinary-mcp-client", "claude-code"]) {
+    const states: Parameters<DrizzleMindProductRepository["insertMcpIdempotent"]>[0]["state"][] = [];
+    const server = createMcpServer({writeMemory: {subjectId: "G", requireActiveUser: async () => "u1",
+      repository: {insertMcpIdempotent: async input => {
+        states.push(input.state); return {memoryId: input.state.id!, replayed: false};
+      }}}}, "u1", resolveMcpToolExposure(["core"]));
+    const client = new Client({name, version: "1"}, {capabilities: {}});
+    const [c, s] = InMemoryTransport.createLinkedPair(); await server.connect(s); await client.connect(c);
+    t.after(async () => {await client.close(); await server.close();});
+    const args = {text: "prefers jasmine tea", idempotency_key: "shared-mcp-memory-provenance"};
+    const result = await client.callTool({name: "write_memory", arguments: args});
+    assert.equal(result.isError, undefined);
+    assert.equal(states.length, 1);
+    const state = states[0]!;
+    assert.equal(state.payload?.source, "mcp");
+    assert.deepEqual(state.envelope.producer, {kind: "service", id: "mcp_client"});
+    assert.deepEqual(state.envelope.provenance.sources, [{kind: "tool_result", id: `mcp:${state.id}`}]);
+    assert.equal(state.envelope.provenance.causedBy, `mcp:${state.id}`);
+    assert.equal(state.envelope.scope.applicability, "global");
+    assert.equal(state.envelope.scope.conversationId, null);
+    assert.equal(state.envelope.scope.pathHeadMessageId, null);
+    assert.equal(state.envelope.status.settlementStatus, "settled");
+    assert.deepEqual(result.structuredContent, {success: true, data: {
+      memory_id: state.id, outcome: "applied", entity_type: "memory", entity_id: state.id,
+      revision: null, detail_tool: null, detail_arguments: null,
+    }});
+    const spoofed = await client.callTool({name: "write_memory", arguments: {...args, source: "claude_code"}});
+    assert.equal(spoofed.isError, true);
+    assert.equal(states.length, 1);
+  }
 });

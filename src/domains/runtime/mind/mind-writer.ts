@@ -35,7 +35,7 @@ export type MindWriteSource =
       model?: PersistentWriteEnvelope["versions"]["model"];
     }
   | {
-      origin: "manual" | "claude_code";
+      origin: "manual" | "mcp";
       /** Explicit user-supplied time of the thing itself; null when unknown. */
       occurredAt: string | null;
       note: string | null;
@@ -117,16 +117,16 @@ export function createMindState(input: {
       userId: input.userId,
       subjectId: input.subjectId,
     });
-    if (source.origin === "claude_code") {
-      payload.source = "claude_code";
-      envelope.producer = { kind: "model", id: "claude_code" };
+    if (source.origin === "mcp") {
+      payload.source = "mcp";
+      envelope.producer = { kind: "service", id: "mcp_client" };
       envelope.authority = "subject_authorized";
       envelope.semanticActor = { kind: "subject", id: input.subjectId };
-      const sourceId = `claude_code:${input.id}`;
+      const sourceId = `mcp:${input.id}`;
       envelope.provenance.sources = [{ kind: "tool_result", id: sourceId }];
       envelope.provenance.causedBy = sourceId;
-      envelope.versions.ruleVersion = "mind-claude-code-v1";
-      envelope.versions.processVersion = "mind-claude-code-v1";
+      envelope.versions.ruleVersion = "mind-mcp-v1";
+      envelope.versions.processVersion = "mind-mcp-v1";
     }
   }
 
