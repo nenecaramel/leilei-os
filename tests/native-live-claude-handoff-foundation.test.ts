@@ -26,6 +26,10 @@ test("Claude handoff migration persists exact source checkpoint, terminal B, and
   );
   assert.match(
     migration,
+    /"effective_working_directory" text NOT NULL/,
+  );
+  assert.match(
+    migration,
     /native_live_claude_handoffs_active_uidx/,
   );
 });
@@ -56,6 +60,7 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.match(source, /'delivery_unknown'/);
   assert.match(source, /current\.status === "completed"/);
   assert.match(source, /current\.status === "stale"/);
+  assert.match(source, /effective_working_directory IS NOT NULL/);
   assert.match(source, /return "completed" as const/);
   assert.match(source, /return "stale" as const/);
 });
