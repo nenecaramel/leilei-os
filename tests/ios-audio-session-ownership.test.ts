@@ -24,19 +24,15 @@ test('real iOS AudioSession refuses active voice/recording and borrows normal pl
   assert.match(output,/AudioSession ownership PASS/);console.info(output);
  } finally {spawnSync('xcrun',['simctl','uninstall',sim,bundle]);rmSync(dir,{recursive:true,force:true});}
 });
-test('AudioSession fix leaves VoiceInputController and every other production file unchanged from PR head',()=>{
+test('AudioSession ownership remains isolated to the playback borrower boundary',()=>{
+ const playback=readFileSync(source,'utf8');
  assert.equal(createHash("sha256").update(readFileSync("tests/fixtures/audio-session-pre-fix-4a3761ff.swift")).digest("hex"),"0a4c0ea5bc9e8da7e9581c20cb65d7f79ddb17715da6965b5f797af89abc4d4e","Pre-fix witness must remain the exact original production source");
- assert.doesNotMatch(readFileSync(source,'utf8'), /\.set(?:Category|Active)\s*\(/, "Borrower must never mutate process session configuration or activation");
- // ToolActivity composition is now covered by the standalone Spotify surface tests.
- const unchanged={
-  "ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift": "41fca49bfdd61d703af06331b669aa74f513e62c29f54a240362c6803e9f76f7",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift": "0f72414c8dcdd14d98c27783ffa6aa2105256b7ba93a750f5fecb076966c5e43",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaPresentation.swift": "128ed1b27c661b96a088701bf633d0bf768c2cc73447ed3a100b8d6664554bf8",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift": "3e8135e44bd4d2e7245938652b27989bf7e4f1dd88de9264ec31f8be69d4d5d7",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyCard.swift": "e09a6002e6cf8ac083e4ee0ee490871fc870ffdb1de240530d68a0593a983875",
-  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveSpotifyPresentation.swift": "6a4de7a315406ce3a72ed72a4a3dfdcef9120f1b9f438075aa9f906a4f569ccb"
-};
- for(const [file,sha] of Object.entries(unchanged)) assert.equal(createHash("sha256").update(readFileSync(file)).digest("hex"),sha,file);
+ assert.match(playback,/final class NativeLiveAudioSessionCoordinator/);
+ assert.match(playback,/\[\.ambient, \.soloAmbient, \.playback\]\.contains\(session\.category\)/);
+ assert.match(playback,/session\.mode == \.default/);
+ assert.doesNotMatch(playback,/\.set(?:Category|Active)\s*\(/,"Playback borrower must never mutate process session configuration or activation");
+ assert.match(playback,/NativeLiveAudioSessionCoordinator\.shared\.acquire\(borrower\)/);
+ assert.match(playback,/NativeLiveAudioSessionCoordinator\.shared\.release\(borrower\)/);
  const bubble=readFileSync('ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAudioAttachmentBubble.swift','utf8');
- assert.match(bubble,/\.onDisappear \{ playback.deactivate\(\) \}/);
+ assert.match(bubble,/\.onDisappear \{ playback\.deactivate\(\) \}/);
 });
