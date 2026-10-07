@@ -331,6 +331,17 @@ export function restoreNativeLiveConversationHandler(
         userId: request.webUserId,
         conversationId,
       });
+      if (result.outcome === "handoff_archived") {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: "NATIVE_LIVE_CONVERSATION_HANDOFF_ARCHIVED",
+            message:
+              "This conversation was handed off to Claude Code and is retained as a read-only archive.",
+          },
+        });
+        return;
+      }
       if (result.outcome === "not_found") {
         response.status(404).json({
           success: false,
