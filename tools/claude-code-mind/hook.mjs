@@ -220,7 +220,9 @@ export async function runHook(input, output = text => new Promise((resolve, reje
   const completedBoundary = nextPrompt || input.hook_event_name === "SessionEnd" ||
     (input.hook_event_name === "Notification" && input.notification_type === "idle_prompt");
   if (completedBoundary) {
-    const requireDuration = nextPrompt || input.hook_event_name === "SessionEnd";
+    // A directly-following next prompt is itself the desktop completion boundary once
+    // the previous turn ends at a clean aggregate. SessionEnd remains conservative.
+    const requireDuration = input.hook_event_name === "SessionEnd";
     const snapshot = await withState(config, input.session_id, async state => structuredClone(state));
     const pending = snapshot.pending_recalls.find(p => p.epoch === snapshot.epoch && p.turn_id === snapshot.active_turn && p.context_epoch === snapshot.context_epoch);
     if (pending && await provesFinalizedDelivery(input.transcript_path, input.session_id, pending, nextPrompt, requireDuration)) await withState(config, input.session_id, async (state, save) => {

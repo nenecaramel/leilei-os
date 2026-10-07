@@ -175,9 +175,11 @@ for (const feedback of ["block", "additionalContext"]) {
   });
 }
 
-test("accepted Stop on previous turn confirms at next prompt before its pending state retires", async t => {
-  const f = await fixture(t); await f.submit(); const done = summary(); const closed = duration(done.uuid);
-  await writeFile(f.transcript, jsonl([message(), attachment(), done, closed, message(randomUUID(), closed.uuid)]));
+test("desktop next prompt confirms a clean previous Stop without turn_duration", async t => {
+  const f = await fixture(t); await f.submit(); const done = summary();
+  // claude-desktop 2.1.289 transcripts observed in the owner's recent sessions have
+  // stop_hook_summary records but no turn_duration records.
+  await writeFile(f.transcript, jsonl([message(), attachment(), done, message(randomUUID(), done.uuid)]));
   await f.submit(); await f.accept();
   assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
 });
@@ -222,9 +224,9 @@ test("subagent StopFailure cannot retire the main-turn receipt", async t => {
   assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
 });
 
-test("next prompt after a clean Stop proposal cannot confirm without normal turn closure", async t => {
-  const f = await fixture(t); await f.submit(); const proposal = summary();
-  await writeFile(f.transcript, jsonl([message(), attachment(), proposal, message(randomUUID(), proposal.uuid)]));
+test("next prompt after a blocked Stop cannot confirm without a later clean Stop", async t => {
+  const f = await fixture(t); await f.submit(); const blocked = summary(attachmentId, "block");
+  await writeFile(f.transcript, jsonl([message(), attachment(), blocked, message(randomUUID(), blocked.uuid)]));
   await f.submit(); await f.accept();
   assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
 });
