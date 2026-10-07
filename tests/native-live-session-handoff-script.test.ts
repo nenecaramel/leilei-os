@@ -13,29 +13,20 @@ test("Claude Code handoff forks the exact canonical checkpoint without mutating 
   assert.match(source, /sourceBeforeHash = transcriptHash\(localEntries\)/);
   assert.match(source, /transcriptHash\(sourceAfter\) !== sourceBeforeHash/);
   assert.match(source, /sourceSessionUnchanged: "passed"/);
-  assert.match(source, /forkHistoryMatchesCanonical: "passed"/);
-  assert.match(source, /--recover-existing/);
-  assert.match(source, /recentClaudeSessionFiles\(/);
-  assert.match(source, /\.claude/);
-  assert.doesNotMatch(source, /sdk\.listSessions\(/);
+  assert.match(source, /forkTranscriptReadable: "passed"/);
+  assert.match(source, /sdkGetSessionMessages: "passed"/);
   assert.match(source, /claude --resume/);
 
+  assert.doesNotMatch(source, /recover-existing|historyMatchesCanonical/);
   assert.doesNotMatch(source, /archiveConversation|lifecycle_status\s*=\s*'archived'/);
   assert.doesNotMatch(source, /deleteSession|unlinkSync|rmSync/);
 });
 
-test("handoff validation compares full visible history without requiring source UUIDs to survive the fork", () => {
+test("handoff validates source identity and fork readability without assuming UUID preservation", () => {
   const source = read("scripts/native-live-handoff-current-session-local.ts");
 
-  assert.match(
-    source,
-    /visibleConversationProjectionFromEntries\(\s*verified\.prefix/,
-  );
-  assert.match(
-    source,
-    /visibleConversationProjectionFromSdkMessages\(\s*visible/,
-  );
-  assert.match(source, /historyMatchesCanonical/);
+  assert.match(source, /forkEntries\.length === 0/);
+  assert.match(source, /sdk\.getSessionMessages\(/);
   assert.doesNotMatch(
     source,
     /checkpointPrefixOrNull\(\s*forkEntries,\s*leaf\.provider_checkpoint_id/,
