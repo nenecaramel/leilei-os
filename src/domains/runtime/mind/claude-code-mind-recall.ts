@@ -11,6 +11,7 @@ export type ClaudeCodeRecallInput = {
   excludeIds: string[];
   semanticCandidates?: BreathSemanticCandidate[];
   semanticScores?: ReadonlyMap<string, number>;
+  receiptMode?: "signed_v1";
 };
 
 /** Adapter over the canonical Mind loop; only the repository's read capability is given to it. */
@@ -44,11 +45,20 @@ export class ClaudeCodeMindRecallService {
       semanticCandidates: input.semanticCandidates, semanticScores: input.semanticScores,
     });
     const context = result.assembled.contextData;
-    const receipt = context ? await this.receipts.create({
+    const receiptInput = {
       userId: input.userId, subjectId: this.subjectId, conversationId: `claude-code:${input.sessionId}`,
       contextEpoch: input.contextEpoch ?? 0, stateIds: result.assembled.breathStateIds,
       contextSha256: createHash("sha256").update(context).digest("hex"), recalledAt: now,
-    }) : {};
+    };
+    const receipt = !context
+      ? {}
+      : input.receiptMode === "signed_v1"
+        ? (
+            this.receipts.issueSigned
+              ? await this.receipts.issueSigned(receiptInput)
+              : (() => { throw new Error("Signed recall receipts unavailable."); })()
+          )
+        : await this.receipts.create(receiptInput);
     return {
       ...receipt,
       context: result.assembled.contextData,
@@ -56,7 +66,21 @@ export class ClaudeCodeMindRecallService {
       semantic_candidates: result.semanticCandidates,
     };
   }
-  async confirm(input: {userId: string; recallId: string; contextSha256: string}) {
+  async confirm(input: {
+    userId: string;
+    recallId: string;
+    contextSha256: string;
+    recallToken?: string;
+  }) {
+    if (input.recallToken) {
+      if (!this.receipts.confirmSigned) throw new Error("Signed recall receipts unavailable.");
+      return this.receipts.confirmSigned({
+        userId: input.userId,
+        recallId: input.recallId,
+        recallToken: input.recallToken,
+        contextSha256: input.contextSha256,
+      });
+    }
     return this.receipts.confirm(input);
   }
 
