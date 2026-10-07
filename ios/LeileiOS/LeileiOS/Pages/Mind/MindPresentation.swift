@@ -13,11 +13,7 @@ enum MindPresentation {
         source == "manual" ? "Manual" : "Runtime"
     }
 
-    static func dateText(
-        _ value: String?,
-        date: Date.FormatStyle.DateStyle = .abbreviated,
-        time: Date.FormatStyle.TimeStyle = .shortened
-    ) -> String? {
+    static func dateText(_ value: String?) -> String? {
         guard let value else { return nil }
 
         let fractional = ISO8601DateFormatter()
@@ -35,6 +31,9 @@ enum MindPresentation {
             return nil
         }
 
-        return parsed.formatted(date: date, time: time)
+        return parsed.formatted(
+            date: .abbreviated,
+            time: .shortened
+        )
     }
 }
