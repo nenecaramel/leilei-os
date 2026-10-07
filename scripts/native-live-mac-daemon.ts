@@ -50,8 +50,56 @@ import {
   NativeLiveMacWakeBrokerClient,
   type NativeLiveWakeBrokerCursor,
 } from "../src/domains/bridge/mac/native-live-mac-wake-broker-client.js";
+import {
+  cleanupOrphanedLocalCheckpointForks,
+} from "../tools/claude-bridge/src/local-checkpoint-fork.mjs";
 
 const daemonLock = acquireNativeLiveMacDaemonLock();
+
+await cleanupOrphanedLocalCheckpointForks({
+  environment: process.env,
+}).then((result) => {
+  if (
+    result.cleaned > 0
+    || result.temporaryReceiptsRemoved > 0
+    || result.failures.length > 0
+  ) {
+    process.stdout.write(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        outcome: "local_checkpoint_fork_cleanup",
+        cleaned: result.cleaned,
+        temporaryReceiptsRemoved:
+          result.temporaryReceiptsRemoved,
+        failures: result.failures.length,
+      }) + "\n",
+    );
+  }
+  for (const failure of result.failures) {
+    process.stderr.write(
+      JSON.stringify({
+        at: new Date().toISOString(),
+        outcome:
+          "local_checkpoint_fork_cleanup_failed",
+        receipt: failure.receipt,
+        error: failure.error,
+      }) + "\n",
+    );
+  }
+}).catch((error) => {
+  process.stderr.write(
+    JSON.stringify({
+      at: new Date().toISOString(),
+      outcome:
+        "local_checkpoint_fork_cleanup_failed",
+      error:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    }) + "\n",
+  );
+});
+
 const memeGitHubConfig =
   consumeNativeLiveMacMemeGitHubConfig(process.env);
 

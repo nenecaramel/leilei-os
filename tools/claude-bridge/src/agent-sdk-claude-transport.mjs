@@ -1,9 +1,5 @@
 import { createMemeMcpServer, MEME_SYSTEM_HINT } from "./send-meme-mcp.mjs";
 import { EventEmitter } from "node:events";
-import { randomUUID } from "node:crypto";
-import { access, open, readdir, unlink } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
@@ -19,6 +15,9 @@ import {
 import {
   normalizeAgentSdkExecutionReadback,
 } from "./agent-sdk-execution-readback.mjs";
+import {
+  prepareLocalCheckpointFork,
+} from "./local-checkpoint-fork.mjs";
 
 const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
 
@@ -84,143 +83,6 @@ function checkpointForkSessionStore(store, sessionId, checkpointId, validatePref
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
-}
-
-async function localPathExists(path) {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function findLocalSessionTranscriptPath({
-  sessionId,
-  cwd,
-  environment,
-}) {
-  const configured =
-    typeof environment.CLAUDE_CONFIG_DIR === "string"
-    && environment.CLAUDE_CONFIG_DIR.trim()
-      ? resolve(environment.CLAUDE_CONFIG_DIR.trim())
-      : join(homedir(), ".claude");
-  const projectsDirectory = join(configured, "projects");
-  const direct = join(
-    projectsDirectory,
-    cwd.replace(/\//gu, "-"),
-    sessionId + ".jsonl",
-  );
-  if (await localPathExists(direct)) return direct;
-
-  let directories;
-  try {
-    directories = await readdir(projectsDirectory, {
-      withFileTypes: true,
-    });
-  } catch (cause) {
-    throw runtimeError(
-      "Claude local transcript directory is unavailable for historical fork.",
-      { runtimeCode: "NO_PROVIDER_SESSION", cause },
-    );
-  }
-
-  const matches = [];
-  for (const directory of directories) {
-    if (!directory.isDirectory()) continue;
-    const candidate = join(
-      projectsDirectory,
-      directory.name,
-      sessionId + ".jsonl",
-    );
-    if (await localPathExists(candidate)) matches.push(candidate);
-  }
-  if (matches.length !== 1) {
-    throw runtimeError(
-      "Claude local parent transcript could not be located uniquely for historical fork.",
-      {
-        runtimeCode: "NO_PROVIDER_SESSION",
-        parentSessionId: sessionId,
-      },
-    );
-  }
-  return matches[0];
-}
-
-async function prepareLocalCheckpointFork({
-  sessionId,
-  checkpointId,
-  prefix,
-  cwd,
-  environment,
-}) {
-  if (!Array.isArray(prefix) || prefix.length === 0) {
-    throw runtimeError(
-      "Claude historical checkpoint prefix is unavailable for local fork.",
-      {
-        runtimeCode: "NO_PROVIDER_SESSION",
-        parentSessionId: sessionId,
-      },
-    );
-  }
-  const sourcePath = await findLocalSessionTranscriptPath({
-    sessionId,
-    cwd,
-    environment,
-  });
-  const syntheticSessionId = randomUUID();
-  const syntheticPath = join(
-    dirname(sourcePath),
-    syntheticSessionId + ".jsonl",
-  );
-  const encoded = prefix
-    .map((entry) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        return JSON.stringify(entry);
-      }
-      const cloned = {
-        ...entry,
-        sessionId: syntheticSessionId,
-        ...(Object.hasOwn(entry, "session_id")
-          ? { session_id: syntheticSessionId }
-          : {}),
-      };
-      return JSON.stringify(cloned);
-    })
-    .join("\n") + "\n";
-
-  let file;
-  try {
-    file = await open(syntheticPath, "wx", 0o600);
-    try {
-      await file.writeFile(encoded, "utf8");
-      await file.sync();
-    } finally {
-      await file.close();
-    }
-  } catch (cause) {
-    await unlink(syntheticPath).catch(() => undefined);
-    throw runtimeError(
-      "Failed to materialize local historical checkpoint fork source.",
-      {
-        runtimeCode: "RUNTIME_UNAVAILABLE",
-        parentSessionId: sessionId,
-        checkpointId,
-        cause,
-      },
-    );
-  }
-
-  return {
-    sessionId: syntheticSessionId,
-    async cleanup() {
-      try {
-        await unlink(syntheticPath);
-      } catch (cause) {
-        if (cause?.code !== "ENOENT") throw cause;
-      }
-    },
-  };
 }
 
 async function loadDefaultListSessions() {
