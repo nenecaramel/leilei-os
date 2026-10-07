@@ -29,6 +29,21 @@ struct ConversationList: View {
                             conversation.id
                         )
                     )
+                } else if let conversationID =
+                            UUID(uuidString: conversation.id) {
+                    NavigationLink {
+                        ArchivedConversationView(
+                            conversationID: conversationID,
+                            title: conversation.title
+                        )
+                    } label: {
+                        rowContent(conversation)
+                    }
+                    .disabled(
+                        lifecycleMutationIDs.contains(
+                            conversation.id
+                        )
+                    )
                 } else {
                     rowContent(conversation)
                 }
