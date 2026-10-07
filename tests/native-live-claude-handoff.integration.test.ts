@@ -450,5 +450,89 @@ test(
       )?.status,
       "completed",
     );
+
+    const lateFailure =
+      await seededConversation(
+        "Late failure receipt",
+        crypto.randomUUID(),
+      );
+    const lateFailureRequest =
+      await handoffs.create({
+        userId,
+        conversationId:
+          lateFailure.conversation.id,
+      });
+    const lateFailureReservation =
+      await handoffs.reserveNext({
+        userId,
+        listenerInstanceId,
+      });
+    assert.ok(lateFailureReservation);
+
+    await database.db
+      .update(nativeLiveClaudeHandoffs)
+      .set({
+        reservationExpiresAt:
+          new Date(Date.now() - 1_000),
+      })
+      .where(
+        and(
+          eq(
+            nativeLiveClaudeHandoffs.id,
+            lateFailureReservation.reservationId,
+          ),
+          eq(
+            nativeLiveClaudeHandoffs.userId,
+            userId,
+          ),
+        ),
+      );
+
+    assert.equal(
+      (
+        await handoffs.read({
+          userId,
+          requestId:
+            lateFailureRequest.id,
+        })
+      )?.status,
+      "delivery_unknown",
+    );
+
+    assert.equal(
+      await handoffs.complete({
+        userId,
+        listenerInstanceId,
+        reservationId:
+          lateFailureReservation.reservationId,
+        outcome: {
+          status: "failure",
+          failureCode:
+            "NO_PROVIDER_SESSION",
+        },
+      }),
+      "failed",
+    );
+    assert.equal(
+      (
+        await conversationsService
+          .getConversation({
+            userId,
+            conversationId:
+              lateFailure.conversation.id,
+          })
+      )?.lifecycleStatus,
+      "active",
+    );
+    assert.equal(
+      (
+        await handoffs.read({
+          userId,
+          requestId:
+            lateFailureRequest.id,
+        })
+      )?.status,
+      "failed",
+    );
   },
 );
