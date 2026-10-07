@@ -240,6 +240,7 @@ struct PageContainer: View {
         }
         .disabled(
             claudeHandoffInProgress
+                || isDraftConversation
                 || !appModel.isAuthenticated
                 || appModel.chatSendState == .sending
                 || appModel.activeNativeLiveConversationID == nil
