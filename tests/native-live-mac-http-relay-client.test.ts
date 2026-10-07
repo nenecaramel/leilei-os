@@ -1272,3 +1272,89 @@ test("Mac HTTP relay client parses silence wake ignore reason", async () => {
     },
   );
 });
+
+
+test("Mac HTTP relay client reserves and receipts Claude handoff", async () => {
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const handoffSessionId = "99999999-9999-4999-8999-999999999999";
+  const calls: Array<{ url: string; body: unknown }> = [];
+  const responses = [
+    {
+      success: true,
+      data: {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerCheckpointId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        effectiveWorkingDirectory: "/Users/test/project",
+      },
+    },
+    {
+      success: true,
+      data: { outcome: "completed" },
+    },
+  ];
+  const fakeFetch: typeof fetch = async (input, init) => {
+    calls.push({
+      url: String(input),
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    const payload = responses.shift();
+    if (!payload) throw new Error("unexpected fetch");
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example",
+    "secret-token",
+    fakeFetch,
+  );
+
+  assert.deepEqual(
+    await client.reserveClaudeHandoff({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    }),
+    {
+      reservationId: handoffId,
+      conversationId,
+      expectedHeadMessageId: userMessageId,
+      sourceMessageId: userMessageId,
+      providerSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      providerCheckpointId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      effectiveWorkingDirectory: "/Users/test/project",
+    },
+  );
+  await client.submitClaudeHandoffResult({
+    listenerInstanceId: listenerId,
+    reservationId: handoffId,
+    outcome: {
+      status: "success",
+      handoffSessionId,
+    },
+  });
+
+  assert.deepEqual(calls, [
+    {
+      url:
+        "https://relay.example/internal/native-live-relay/claude-handoff/reserve",
+      body: {
+        listener_instance_id: listenerId,
+        dispatch_target: "claude_code",
+      },
+    },
+    {
+      url:
+        `https://relay.example/internal/native-live-relay/claude-handoff/reservations/${handoffId}/result`,
+      body: {
+        listener_instance_id: listenerId,
+        status: "success",
+        handoff_session_id: handoffSessionId,
+      },
+    },
+  ]);
+});
