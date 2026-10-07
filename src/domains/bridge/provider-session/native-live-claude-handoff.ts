@@ -110,6 +110,18 @@ export class NativeLiveClaudeHandoffService {
 
       await tx.execute(sql`
         UPDATE native_live_claude_handoffs
+        SET status = 'delivery_unknown',
+            failure_code = 'RESULT_DELIVERY_UNKNOWN',
+            reservation_expires_at = NULL,
+            updated_at = now()
+        WHERE user_id = ${input.userId}::uuid
+          AND conversation_id = ${input.conversationId}::uuid
+          AND status = 'reserved'
+          AND reservation_expires_at <= now()
+      `);
+
+      await tx.execute(sql`
+        UPDATE native_live_claude_handoffs
         SET status = 'failed',
             failure_code = 'RECOVERY_EXPIRED',
             reserved_by = NULL,
@@ -277,6 +289,18 @@ export class NativeLiveClaudeHandoffService {
         AND user_id = ${input.userId}::uuid
         AND status = 'pending'
         AND expires_at <= now()
+    `);
+
+    await this.db.execute(sql`
+      UPDATE native_live_claude_handoffs
+      SET status = 'delivery_unknown',
+          failure_code = 'RESULT_DELIVERY_UNKNOWN',
+          reservation_expires_at = NULL,
+          updated_at = now()
+      WHERE id = ${input.requestId}::uuid
+        AND user_id = ${input.userId}::uuid
+        AND status = 'reserved'
+        AND reservation_expires_at <= now()
     `);
 
     await this.db.execute(sql`
