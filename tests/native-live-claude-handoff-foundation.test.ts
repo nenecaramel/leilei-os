@@ -74,6 +74,16 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.match(source, /return "stale" as const/);
 });
 
+test("repeated handoff creation resumes the existing nonterminal request instead of scheduling B2", () => {
+  const source =
+    read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
+
+  assert.match(
+    source,
+    /status IN \('pending','reserved','delivery_unknown'\)[\s\S]*return readModel\(active\[0\]\)/,
+  );
+});
+
 test("handoff and manual compact share conversation-first locking and reject each other", () => {
   const handoff =
     read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
