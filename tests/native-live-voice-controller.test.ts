@@ -22,8 +22,9 @@ test("composer keeps mic placeholder and arbitrates trailing tap versus hold in 
   const chatView=readFileSync("ios/LeileiOS/LeileiOS/Chat/ChatView.swift","utf8");
   const controller=readFileSync("ios/LeileiOS/LeileiOS/Chat/VoiceInputController.swift","utf8");
 
-  // Mic is back to decorative placeholder only.
-  assert.match(composer,/ComposerCircleButton\(\s*systemName: "mic\.fill"/);
+  // The fixed trailing utility remains keyboard dismissal; voice owns only the primary action slot.
+  assert.match(composer,/ComposerCircleButton\(\s*systemName: "chevron\.down"/);
+  assert.match(composer,/accessibilityLabel\("Dismiss keyboard"\)/);
   assert.doesNotMatch(composer,/onDictationStart|dictationEnabled|isDictating|NativeLiveDictationWaveform/);
 
   // Trailing voice control preserves the original SwiftUI visual and layers
