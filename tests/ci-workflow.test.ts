@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const jobsSource = workflow.slice(workflow.indexOf("\njobs:\n") + "\njobs:\n".length);
 const jobs = new Map(
-  [...workflow.matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/gm)]
+  [...jobsSource.matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/gm)]
     .map((match) => [match[1], match[2]]),
 );
 
