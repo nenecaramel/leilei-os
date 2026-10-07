@@ -1,4 +1,5 @@
 import type { NativeLiveMacResultOutbox } from "./native-live-mac-result-outbox.js";
+import type { NativeLiveMacClaudeHandoffOutbox } from "./native-live-mac-claude-handoff-outbox.js";
 import type {
   NativeLiveRuntimeCommand,
   NativeLiveRuntimeExecutionResult,
@@ -449,6 +450,8 @@ export class NativeLiveMacDaemonLoop {
     private readonly resultOutbox: NativeLiveMacResultOutbox | null = null,
     private readonly claudeHandoffExecutor:
       NativeLiveClaudeHandoffExecutor | null = null,
+    private readonly claudeHandoffOutbox:
+      NativeLiveMacClaudeHandoffOutbox | null = null,
   ) {}
 
   async runOnce(): Promise<NativeLiveDaemonRunOutcome> {
@@ -532,6 +535,46 @@ export class NativeLiveMacDaemonLoop {
         }
       }
 
+      const pendingHandoff =
+        (await this.claudeHandoffOutbox?.list())?.[0];
+      if (pendingHandoff) {
+        if (!this.relay.submitClaudeHandoffResult) {
+          throw new Error(
+            "Claude handoff outbox requires a relay result endpoint.",
+          );
+        }
+        try {
+          await this.relay.submitClaudeHandoffResult({
+            listenerInstanceId:
+              pendingHandoff.listenerInstanceId,
+            reservationId:
+              pendingHandoff.reservationId,
+            outcome: {
+              status: "success",
+              handoffSessionId:
+                pendingHandoff.handoffSessionId,
+            },
+          });
+          await this.claudeHandoffOutbox
+            ?.acknowledge(pendingHandoff);
+          return {
+            outcome: "claude_handoff_completed",
+            reservationId:
+              pendingHandoff.reservationId,
+            handoffSessionId:
+              pendingHandoff.handoffSessionId,
+          };
+        } catch {
+          return {
+            outcome: "claude_handoff_delivery_unknown",
+            reservationId:
+              pendingHandoff.reservationId,
+            handoffSessionId:
+              pendingHandoff.handoffSessionId,
+          };
+        }
+      }
+
       const reservation = await this.relay.reserveNext({
         listenerInstanceId: this.listenerInstanceId,
         dispatchTarget: "claude_code",
@@ -587,6 +630,16 @@ export class NativeLiveMacDaemonLoop {
               };
             }
 
+            const pendingHandoff = {
+              listenerInstanceId:
+                this.listenerInstanceId,
+              reservationId:
+                handoff.reservationId,
+              handoffSessionId:
+                forked.providerSessionId,
+            };
+            await this.claudeHandoffOutbox
+              ?.save(pendingHandoff);
             try {
               await this.relay.submitClaudeHandoffResult({
                 listenerInstanceId: this.listenerInstanceId,
@@ -597,6 +650,8 @@ export class NativeLiveMacDaemonLoop {
                     forked.providerSessionId,
                 },
               });
+              await this.claudeHandoffOutbox
+                ?.acknowledge(pendingHandoff);
             } catch {
               return {
                 outcome: "claude_handoff_delivery_unknown",
