@@ -19,6 +19,7 @@ export type NativeLiveClaudeHandoffReadModel = {
   conversationId: string;
   status: NativeLiveClaudeHandoffStatus;
   handoffSessionId: string | null;
+  effectiveWorkingDirectory: string | null;
   failureCode: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -243,6 +244,7 @@ export class NativeLiveClaudeHandoffService {
           conversation_id,
           status,
           handoff_session_id,
+          effective_working_directory,
           failure_code,
           created_at::text,
           completed_at::text
@@ -579,6 +581,7 @@ type ReadRow = {
   conversation_id: string;
   status: NativeLiveClaudeHandoffStatus;
   handoff_session_id: string | null;
+  effective_working_directory: string | null;
   failure_code: string | null;
   created_at: string;
   completed_at: string | null;
@@ -590,6 +593,8 @@ function readModel(row: ReadRow): NativeLiveClaudeHandoffReadModel {
     conversationId: row.conversation_id,
     status: row.status,
     handoffSessionId: row.handoff_session_id,
+    effectiveWorkingDirectory:
+      row.effective_working_directory,
     failureCode: row.failure_code,
     createdAt: new Date(row.created_at).toISOString(),
     completedAt: row.completed_at
