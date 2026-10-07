@@ -162,11 +162,46 @@ export function validateClientMetadata(
   };
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost"
+    || hostname === "127.0.0.1"
+    || hostname === "[::1]"
+    || hostname === "::1";
+}
+
+function loopbackRedirectMatches(
+  registeredRedirectUri: string,
+  requestedRedirectUri: string,
+): boolean {
+  let registered: URL;
+  let requested: URL;
+  try {
+    registered = new URL(registeredRedirectUri);
+    requested = new URL(requestedRedirectUri);
+  } catch {
+    return false;
+  }
+
+  return registered.protocol === "http:"
+    && requested.protocol === "http:"
+    && isLoopbackHostname(registered.hostname)
+    && registered.hostname === requested.hostname
+    && registered.port === ""
+    && registered.pathname === requested.pathname
+    && registered.search === requested.search
+    && registered.hash === requested.hash
+    && !requested.username
+    && !requested.password;
+}
+
 export function assertRedirectUriAllowed(
   client: ResolvedClient,
   requestedRedirectUri: string,
 ): void {
-  if (!client.redirect_uris.some((redirectUri) => redirectUri === requestedRedirectUri)) {
+  if (!client.redirect_uris.some((redirectUri) =>
+    redirectUri === requestedRedirectUri
+    || loopbackRedirectMatches(redirectUri, requestedRedirectUri)
+  )) {
     throw new Error("redirect_uri is not registered for this client");
   }
 }
