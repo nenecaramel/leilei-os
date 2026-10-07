@@ -31,3 +31,69 @@ struct DaySpaceTodoSearchRow: View {
         .contentShape(Rectangle())
     }
 }
+
+struct DaySpaceSearchContent: View {
+    let searchState: DaySpaceTodoSearchState
+    let searchHasMore: Bool
+    let isLoadingMoreSearch: Bool
+    let onOpenResult: (DaySpaceTodoSearchEntry) -> Void
+    let onLoadMore: () -> Void
+    let onRetry: () -> Void
+
+    @ViewBuilder
+    var body: some View {
+        switch searchState {
+        case .idle, .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .results(let entries):
+            List {
+                ForEach(entries) { entry in
+                    Button {
+                        onOpenResult(entry)
+                    } label: {
+                        DaySpaceTodoSearchRow(entry: entry)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if searchHasMore {
+                    Button {
+                        onLoadMore()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isLoadingMoreSearch {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+
+                            Text("More")
+                        }
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .center
+                        )
+                    }
+                    .disabled(isLoadingMoreSearch)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemBackground))
+
+        case .noResults:
+            AppStateSurface(title: "Nothing here")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .unavailable:
+            AppStateSurface(
+                title: "Unavailable",
+                actionTitle: "Retry"
+            ) {
+                onRetry()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}

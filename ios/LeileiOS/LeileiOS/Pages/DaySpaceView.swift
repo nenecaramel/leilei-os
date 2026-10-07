@@ -31,10 +31,12 @@ struct DaySpaceView: View {
             if isSearching {
                 searchContent
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                DaySpaceDateNavigationRow(
+                DaySpaceContent(
                     selectedDate: selectedDate,
+                    discoveryState: discoveryState,
+                    discoveryIncomplete: discoveryIncomplete,
+                    todoState: todoState,
+                    diaryState: diaryState,
                     onPrevious: {
                         guard let selectedDate else { return }
                         selectDate(
@@ -58,45 +60,23 @@ struct DaySpaceView: View {
                                 by: 1
                             )
                         )
+                    },
+                    onRetryTodo: { date in
+                        Task { await retryTodo(for: date) }
+                    },
+                    onRetryDiary: { date in
+                        Task { await retryDiary(for: date) }
+                    },
+                    onRetryDiscovery: {
+                        Task { await discoverAndLoad() }
+                    },
+                    onRetryDate: { date in
+                        Task { await loadDate(date) }
+                    },
+                    onSelectPaper: { paper in
+                        selection = paper
                     }
                 )
-                .padding(.bottom, 8)
-
-                if discoveryIncomplete, selectedDate != nil {
-                    DaySpaceWarning(
-                        text: "Unavailable"
-                    )
-                    .padding(.bottom, 8)
-                }
-
-                if let selectedDate,
-                   hasPartialFailure,
-                   !bothModulesFailed {
-                    DaySpacePartialFailure(
-                        todoFailed: todoState.isError,
-                        diaryFailed: diaryState.isError,
-                        onRetryTodo: {
-                            Task {
-                                await retryTodo(for: selectedDate)
-                            }
-                        },
-                        onRetryDiary: {
-                            Task {
-                                await retryDiary(for: selectedDate)
-                            }
-                        }
-                    )
-                    .padding(.bottom, 8)
-                }
-
-                        content
-                    }
-                    .frame(maxWidth: 860)
-                    .padding(.horizontal, LeileiUI.Gutter.canvas)
-                    .padding(.top, 8)
-                    .padding(.bottom, 28)
-                    .frame(maxWidth: .infinity)
-                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -211,158 +191,20 @@ struct DaySpaceView: View {
 
     @ViewBuilder
     private var searchContent: some View {
-        switch searchState {
-        case .idle, .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        case .results(let entries):
-            List {
-                ForEach(entries) { entry in
-                    Button {
-                        Task {
-                            await openSearchResult(entry)
-                        }
-                    } label: {
-                        DaySpaceTodoSearchRow(entry: entry)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if searchHasMore {
-                    Button {
-                        Task {
-                            await loadMoreTodoSearch()
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isLoadingMoreSearch {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-
-                            Text("More")
-                        }
-                        .frame(
-                            maxWidth: .infinity,
-                            alignment: .center
-                        )
-                    }
-                    .disabled(isLoadingMoreSearch)
-                }
+        DaySpaceSearchContent(
+            searchState: searchState,
+            searchHasMore: searchHasMore,
+            isLoadingMoreSearch: isLoadingMoreSearch,
+            onOpenResult: { entry in
+                Task { await openSearchResult(entry) }
+            },
+            onLoadMore: {
+                Task { await loadMoreTodoSearch() }
+            },
+            onRetry: {
+                Task { await searchTodoIfNeeded() }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Color(.systemBackground))
-
-        case .noResults:
-            AppStateSurface(title: "Nothing here")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        case .unavailable:
-            AppStateSurface(
-                title: "Unavailable",
-                actionTitle: "Retry"
-            ) {
-                Task {
-                    await searchTodoIfNeeded()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if discoveryState == .loading, selectedDate == nil {
-            DaySpaceReadingState()
-        } else if discoveryState == .unavailable {
-            AppStateSurface(
-                title: "Unavailable",
-                actionTitle: "Retry"
-            ) {
-                Task {
-                    await discoverAndLoad()
-                }
-            }
-            .frame(
-                maxWidth: .infinity,
-                minHeight: daySpaceStateHeight,
-                alignment: .center
-            )
-        } else if let selectedDate {
-            let papers = currentPapers
-
-            if bothModulesFailed {
-                AppStateSurface(
-                    title: "Unavailable",
-                    actionTitle: "Retry"
-                ) {
-                    Task {
-                        await loadDate(selectedDate)
-                    }
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: daySpaceStateHeight,
-                    alignment: .center
-                )
-            } else if todoState.isLoading && diaryState.isLoading && papers.isEmpty {
-                DaySpaceReadingState()
-            } else if completeEmpty {
-                AppStateSurface(
-                    title: "Nothing here",
-                )
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: daySpaceStateHeight,
-                    alignment: .center
-                )
-            } else if !papers.isEmpty {
-                DaySpaceStage(
-                    dateKey: selectedDate,
-                    papers: papers
-                ) { paper in
-                    selection = paper
-                }
-            }
-        }
-    }
-
-    private var hasPartialFailure: Bool {
-        todoState.isError || diaryState.isError
-    }
-
-    private var bothModulesFailed: Bool {
-        todoState.isErrorWithoutValue && diaryState.isErrorWithoutValue
-    }
-
-    private var completeEmpty: Bool {
-        guard case .ready(let todo) = todoState,
-              case .ready(let diaries) = diaryState
-        else {
-            return false
-        }
-
-        return todo.visiblePapers.isEmpty && diaries.isEmpty
-    }
-
-    private var currentPapers: [DaySpacePaperSelection] {
-        var result: [DaySpacePaperSelection] = []
-
-        if let todo = todoState.value {
-            result.append(contentsOf: todo.visiblePapers.map {
-                .todo($0)
-            })
-        }
-
-        if let diaries = diaryState.value {
-            result.append(contentsOf: diaries.map {
-                .diary($0)
-            })
-        }
-
-        return result
+        )
     }
 
     private var unavailableTodoAuthors: [DaySpaceAuthor] {
@@ -439,7 +281,7 @@ struct DaySpaceView: View {
 
             let response: DaySpaceTodoSearchEnvelope =
                 try await appModel.api.request(
-                    path: todoSearchPath(for: normalized)
+                    path: DaySpaceTodoSearchSupport.todoSearchPath(for: normalized)
                 )
 
             try Task.checkCancellation()
@@ -490,7 +332,7 @@ struct DaySpaceView: View {
                     LeileiExportSnapshot.self,
                     from: data
                 )
-                all = completeTodoSearchResults(
+                all = DaySpaceTodoSearchSupport.completeTodoSearchResults(
                     papers: snapshot.data.todo ?? [],
                     query: normalizedQuery
                 )
@@ -516,88 +358,6 @@ struct DaySpaceView: View {
         } catch {
             // Preserve the current search results.
         }
-    }
-
-    private func completeTodoSearchResults(
-        papers: [LeileiExportTodoPaperSnapshot],
-        query: String
-    ) -> [DaySpaceTodoSearchEntry] {
-        let needle = normalizedTodoSearchText(query)
-
-        struct Candidate {
-            let entry: DaySpaceTodoSearchEntry
-            let paperUpdatedAt: String
-            let position: Int
-        }
-
-        var candidates: [Candidate] = []
-
-        for paper in papers {
-            guard let author =
-                    DaySpaceAuthor(rawValue: paper.author) else {
-                continue
-            }
-
-            for (position, rawEntry) in paper.entries.enumerated() {
-                guard let kind =
-                        DaySpaceTodoEntryKind(
-                            rawValue: rawEntry.kind
-                        ),
-                      normalizedTodoSearchText(
-                          rawEntry.text
-                      ).contains(needle) else {
-                    continue
-                }
-
-                candidates.append(
-                    Candidate(
-                        entry: DaySpaceTodoSearchEntry(
-                            entryID: rawEntry.id,
-                            date: paper.date,
-                            author: author,
-                            kind: kind,
-                            text: rawEntry.text,
-                            snippet: rawEntry.text
-                        ),
-                        paperUpdatedAt: paper.updatedAt,
-                        position: position
-                    )
-                )
-            }
-        }
-
-        return candidates.sorted {
-            if $0.entry.date != $1.entry.date {
-                return $0.entry.date > $1.entry.date
-            }
-            if $0.paperUpdatedAt != $1.paperUpdatedAt {
-                return $0.paperUpdatedAt > $1.paperUpdatedAt
-            }
-            if $0.position != $1.position {
-                return $0.position < $1.position
-            }
-            return $0.entry.entryID < $1.entry.entryID
-        }
-        .map(\.entry)
-    }
-
-    private func normalizedTodoSearchText(
-        _ value: String
-    ) -> String {
-        value
-            .precomposedStringWithCanonicalMapping
-            .lowercased()
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
-    }
-
-    private func todoSearchPath(for query: String) -> String {
-        var components = URLComponents()
-        components.queryItems = [
-            URLQueryItem(name: "query", value: query),
-            URLQueryItem(name: "limit", value: "51"),
-        ]
-        return "/api/v1/todo/search?\(components.percentEncodedQuery ?? "")"
     }
 
     @MainActor
