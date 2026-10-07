@@ -454,7 +454,7 @@ function parseClaudeHandoffResultBody(
   if (
     record.status !== "success"
     || typeof record.handoff_session_id !== "string"
-    || !record.handoff_session_id.trim()
+    || !isUuid(record.handoff_session_id)
   ) {
     return null;
   }
