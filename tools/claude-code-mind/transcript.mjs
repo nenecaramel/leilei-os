@@ -73,3 +73,34 @@ export async function provesDelivery(path, sessionId, pending) {
     record.attachment.hookEvent === "UserPromptSubmit" && record.attachment.exitCode === 0 &&
     Date.parse(record.timestamp) >= pending.delivered_at && contextHashMatches(record.attachment.content, pending.context_sha256));
 }
+
+// Stop is a proposal: the aggregate is written only after all matching hooks resolve.
+// A later host boundary (idle, next prompt, session end) is required as well. The
+// summary alone precedes other possible continuation paths and is not finality.
+export async function provesFinalizedDelivery(path, sessionId, pending, nextPrompt = false, requireDuration = false) {
+  if (!pending.turn_anchor) return false;
+  const transcript = await readTranscript(path, sessionId);
+  let turn = currentTurn(transcript);
+  if (nextPrompt) {
+    if (!turn || turn.prompt.uuid === pending.turn_anchor) return false;
+    turn = currentTurn({...transcript, head: turn.prompt.parentUuid});
+  }
+  if (turn?.prompt.uuid !== pending.turn_anchor) return false;
+  const index = turn.chain.findIndex(r => r.type === "system" && r.subtype === "stop_hook_summary" && r.hookLabel === undefined);
+  if (index < 0) return false;
+  if (requireDuration && !turn.chain.slice(0, index).some(r => r.type === "system" && r.subtype === "turn_duration" && Number.isFinite(r.durationMs) && r.durationMs >= 0)) return false;
+  const summary = turn.chain[index];
+  // Do not confuse preventContinuation (continue:false) with decision:block.
+  // Both blocking errors and additionalContext are continuation evidence.
+  if (summary.preventedContinuation !== false || summary.hasOutput !== false ||
+      !Number.isInteger(summary.hookCount) || summary.hookCount < 1 ||
+      !Array.isArray(summary.hookErrors) || summary.hookErrors.length ||
+      !Array.isArray(summary.hookAdditionalContext) || summary.hookAdditionalContext.length ||
+      Date.parse(summary.timestamp) < pending.delivered_at || !Number.isFinite(Date.parse(summary.timestamp))) return false;
+  // Fail closed on activity after this Stop, including API errors, tool calls,
+  // TaskCompleted/TeammateIdle feedback and cancellation attachments.
+  if (turn.chain.slice(0, index).some(r => !(r.type === "system" && r.subtype === "turn_duration"))) return false;
+  return turn.chain.slice(index + 1).some(record => record.type === "attachment" && record.attachment?.type === "hook_success" &&
+    record.attachment.hookEvent === "UserPromptSubmit" && record.attachment.exitCode === 0 &&
+    Date.parse(record.timestamp) >= pending.delivered_at && contextHashMatches(record.attachment.content, pending.context_sha256));
+}

@@ -19,12 +19,14 @@ const attachmentId = "33333333-3333-4333-8333-333333333333";
 const message = (uuid = promptId, parentUuid = null) => ({type: "user", uuid, parentUuid, sessionId: "s", isSidechain: false, message: {role: "user", content: "tea"}, version: "2.1.267"});
 // Sanitized structure derived from real 2.1.267 and 2.1.289 local transcripts; no real memory/prompt is copied.
 const attachment = (content = context, parentUuid = promptId) => ({type: "attachment", uuid: attachmentId, parentUuid, sessionId: "s", isSidechain: false, version: "2.1.267", timestamp: new Date().toISOString(), attachment: {type: "hook_success", hookName: "UserPromptSubmit", hookEvent: "UserPromptSubmit", content, stdout: `${content}\n`, stderr: "", exitCode: 0}});
+const summary = (parentUuid = attachmentId, feedback = "", uuid = randomUUID()) => ({type: "system", subtype: "stop_hook_summary", uuid, parentUuid, sessionId: "s", isSidechain: false, timestamp: new Date().toISOString(), version: "2.1.267", hookCount: 2, hookErrors: feedback === "block" ? ["continue"] : [], hookAdditionalContext: feedback === "additionalContext" ? ["continue"] : [], preventedContinuation: false, hasOutput: !!feedback});
+const duration = (parentUuid) => ({type: "system", subtype: "turn_duration", durationMs: 100, uuid: randomUUID(), parentUuid, sessionId: "s", isSidechain: false});
 const jsonl = records => records.map(r => JSON.stringify(r)).join("\n") + "\n";
 
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "mind-v2-hook-test-")); const transcript = join(home, "transcript.jsonl");
   await writeFile(transcript, jsonl([message()]));
-  const calls: {path: string; body: any}[] = []; let available = true, hit = true;
+  const calls: {path: string; body: any}[] = []; let available: boolean | null = true, hit = true, loseAck = false; const applied = new Set<string>();
   const server = createServer(async (req, res) => {
     const chunks = []; for await (const b of req) chunks.push(b);
     const body = JSON.parse(Buffer.concat(chunks).toString()); calls.push({path: req.url!, body});
@@ -32,7 +34,9 @@ async function fixture(t) {
     if (req.url!.endsWith("/confirm")) {
       if (available === null) return;
       if (!available) {res.statusCode = 503; res.end("{}"); return;}
-      res.end(JSON.stringify({success: true, data: {recall_id: body.recall_id, outcome: "confirmed"}})); return;
+      const outcome = applied.has(body.recall_id) ? "replayed" : "confirmed"; applied.add(body.recall_id);
+      if (loseAck) {loseAck = false; res.destroy(); return;}
+      res.end(JSON.stringify({success: true, data: {recall_id: body.recall_id, outcome}})); return;
     }
     const data = hit && !body.exclude_ids.includes(memoryId) ? {context, memory_ids: [memoryId], semantic_candidates: [], recall_id: randomUUID(), context_sha256: digest} : {context: "", memory_ids: [], semantic_candidates: []};
     res.end(JSON.stringify({success: true, data}));
@@ -47,10 +51,11 @@ async function fixture(t) {
   const state = async () => JSON.parse(await readFile(await file(), "utf8"));
   const submit = (output = async () => undefined) => runHook({hook_event_name: "UserPromptSubmit", session_id: "s", prompt: "tea", transcript_path: transcript}, output);
   const stop = (event = "Stop") => runHook({hook_event_name: event, session_id: "s", transcript_path: transcript, stop_hook_active: false});
-  return {home, transcript, calls, file, state, submit, stop, noHit: () => {hit = false;}, failConfirm: () => {available = false;}, timeoutConfirm: () => {available = null;}};
+  const accept = () => runHook({hook_event_name: "Notification", notification_type: "idle_prompt", session_id: "s", transcript_path: transcript});
+  return {applied, loseAck: () => {loseAck = true;}, accept, home, transcript, calls, file, state, submit, stop, noHit: () => {hit = false;}, failConfirm: () => {available = false;}, timeoutConfirm: () => {available = null;}};
 }
 
-test("stdout completion registers metadata only; Stop proves exact current-turn delivery without requiring assistant record", async t => {
+test("stdout completion registers metadata only; post-Stop idle boundary proves delivery and confirms exactly once", async t => {
   const f = await fixture(t); let output = "";
   await f.submit(async s => {output = s; assert.deepEqual((await f.state()).pending_recalls, []);});
   const state = await f.state(); assert.equal(output, `${context}\n`); assert.deepEqual(state.injected_ids, [memoryId]);
@@ -58,7 +63,9 @@ test("stdout completion registers metadata only; Stop proves exact current-turn 
   assert.equal(state.pending_recalls[0].turn_anchor, promptId);
   assert.ok(!JSON.stringify(state).includes("<leileios_context>"));
   await writeFile(f.transcript, jsonl([message(), attachment()]));
-  await f.stop(); await f.stop();
+  await f.stop(); assert.equal(f.calls.length, 1);
+  await writeFile(f.transcript, jsonl([message(), attachment(), summary()]));
+  await f.accept(); await f.accept();
   const confirmations = f.calls.filter(c => c.path.endsWith("/confirm")); assert.equal(confirmations.length, 1);
   assert.deepEqual(confirmations[0].body, {recall_id: state.pending_recalls[0].recall_id, context_sha256: digest, caller: "claude_code"});
   assert.deepEqual((await f.state()).pending_recalls, []);
@@ -86,7 +93,7 @@ test("abandoned branch, absent attachment, modified/truncated content, StopFailu
     [message(), attachment(), message(randomUUID(), null)],
     [message(), {...attachment(), isSidechain: true}],
     [message(), {...attachment(), attachment: {...attachment().attachment, hookEvent: "SessionStart"}}],
-  ]) {await writeFile(f.transcript, jsonl(records)); await f.stop();}
+  ]) {const parent = records.at(-1).uuid; await writeFile(f.transcript, jsonl([...records, summary(parent)])); await f.accept();}
   await writeFile(f.transcript, jsonl([message(), attachment()])); await f.stop("StopFailure");
   const prior = process.env.LEILEI_MIND_HOOK_DISABLED; process.env.LEILEI_MIND_HOOK_DISABLED = "1";
   try {await f.stop();} finally {if (prior === undefined) delete process.env.LEILEI_MIND_HOOK_DISABLED; else process.env.LEILEI_MIND_HOOK_DISABLED = prior;}
@@ -94,10 +101,10 @@ test("abandoned branch, absent attachment, modified/truncated content, StopFailu
 });
 
 test("confirm network failure retains pending but a later prompt retires it; local expiry never confirms", async t => {
-  const f = await fixture(t); await f.submit(); await writeFile(f.transcript, jsonl([message(), attachment()])); f.failConfirm(); await f.stop();
+  const f = await fixture(t); await f.submit(); await writeFile(f.transcript, jsonl([message(), attachment(), summary()])); f.failConfirm(); await f.accept();
   assert.equal((await f.state()).pending_recalls.length, 1);
   const state = await f.state(); state.pending_recalls[0].delivered_at = Date.now() - 86400001;
-  await writeFile(await f.file(), JSON.stringify(state)); await f.stop();
+  await writeFile(await f.file(), JSON.stringify(state)); await f.accept();
   assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
   await runHook({hook_event_name: "SessionStart", session_id: "s", source: "resume"}); assert.deepEqual((await f.state()).pending_recalls, []);
 });
@@ -113,23 +120,111 @@ test("transcript canonicalization and bounded defensive ancestry parsing fail cl
   ]) {await writeFile(f.transcript, text); assert.equal(await provesDelivery(f.transcript, "s", p), false);}
 });
 
-test("installer preserves unrelated hooks in all four events and never registers StopFailure", () => {
-  const hooks = Object.fromEntries(["UserPromptSubmit", "SessionStart", "PostToolUse", "Stop"].map(event => [event, [{hooks: [{type: "command", command: `original-${event}`}]}]]));
+test("installer preserves unrelated hooks including Stop, StopFailure and completion boundaries", () => {
+  const hooks = Object.fromEntries(["UserPromptSubmit", "SessionStart", "PostToolUse", "Stop", "StopFailure", "Notification", "SessionEnd"].map(event => [event, [{hooks: [{type: "command", command: `original-${event}`}]}]]));
   const next = configureHooks({hooks}, {home: "/test/mind"});
   for (const event of Object.keys(hooks)) {assert.equal(next.hooks[event][0].hooks[0].command, `original-${event}`); assert.equal(next.hooks[event].length, 2);}
-  assert.equal(next.hooks.StopFailure, undefined);
+  assert.equal(next.hooks.Notification[1].matcher, "idle_prompt");
+  assert.deepEqual(configureHooks(next, {home: "/test/mind"}), next);
 });
 
 
-test("Stop HTTP timeout exits 0 silently under the existing hard deadline", async t => {
-  const f = await fixture(t); await f.submit(); await writeFile(f.transcript, jsonl([message(), attachment()])); f.timeoutConfirm();
+test("completion HTTP timeout exits 0 silently under the existing hard deadline", async t => {
+  const f = await fixture(t); await f.submit(); await writeFile(f.transcript, jsonl([message(), attachment(), summary()])); f.timeoutConfirm();
   const started = Date.now();
   const result = await new Promise<{status: number | null; stdout: string; stderr: string}>(done => {
     const child = spawn(process.execPath, [resolve("tools/claude-code-mind/hook.mjs")], {env: {...process.env, LEILEI_MIND_HOME: f.home}, stdio: "pipe"});
     let stdout = "", stderr = ""; child.stdout.on("data", b => stdout += b); child.stderr.on("data", b => stderr += b);
     child.on("close", status => done({status, stdout, stderr}));
-    child.stdin.end(JSON.stringify({hook_event_name: "Stop", session_id: "s", transcript_path: f.transcript}));
+    child.stdin.end(JSON.stringify({hook_event_name: "Notification", notification_type: "idle_prompt", session_id: "s", transcript_path: f.transcript}));
   });
   assert.equal(result.status, 0); assert.equal(result.stdout, ""); assert.equal(result.stderr, ""); assert.ok(Date.now() - started < 3800);
   assert.equal((await f.state()).pending_recalls.length, 1);
+});
+
+for (const feedback of ["block", "additionalContext"]) {
+  test(`parallel Stop ${feedback} then StopFailure never confirms`, async t => {
+    const f = await fixture(t); await f.submit();
+    await writeFile(f.transcript, jsonl([message(), attachment()]));
+    await f.stop(); // This callback finishes before the unrelated Stop callback.
+    assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+    const blocked = summary(attachmentId, feedback);
+    await writeFile(f.transcript, jsonl([message(), attachment(), blocked]));
+    await f.accept(); assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+    await writeFile(f.transcript, jsonl([message(), attachment(), blocked, {type: "assistant", uuid: randomUUID(), parentUuid: blocked.uuid, sessionId: "s", isSidechain: false, message: {role: "assistant", content: [{type: "text", text: "API Error"}]}, isApiErrorMessage: true}]));
+    await f.stop("StopFailure");
+    await runHook({hook_event_name: "Notification", notification_type: "idle_prompt", session_id: "s", transcript_path: f.transcript});
+    assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+  });
+}
+
+for (const feedback of ["block", "additionalContext"]) {
+  test(`parallel Stop ${feedback} then later accepted Stop confirms exactly once`, async t => {
+    const f = await fixture(t); await f.submit();
+    await writeFile(f.transcript, jsonl([message(), attachment()])); await f.stop();
+    const blocked = summary(attachmentId, feedback);
+    await writeFile(f.transcript, jsonl([message(), attachment(), blocked])); await f.accept();
+    assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+    const continued = {type: "assistant", uuid: randomUUID(), parentUuid: blocked.uuid, sessionId: "s", message: {role: "assistant", content: [{type: "text", text: "done"}]}};
+    await writeFile(f.transcript, jsonl([message(), attachment(), blocked, continued]));
+    await runHook({hook_event_name: "Stop", stop_hook_active: true, session_id: "s", transcript_path: f.transcript});
+    assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+    await writeFile(f.transcript, jsonl([message(), attachment(), blocked, continued, summary(continued.uuid)]));
+    await Promise.all([f.accept(), f.accept()]); await f.accept();
+    assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
+  });
+}
+
+test("accepted Stop on previous turn confirms at next prompt before its pending state retires", async t => {
+  const f = await fixture(t); await f.submit(); const done = summary(); const closed = duration(done.uuid);
+  await writeFile(f.transcript, jsonl([message(), attachment(), done, closed, message(randomUUID(), closed.uuid)]));
+  await f.submit(); await f.accept();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
+});
+
+test("SessionEnd confirms only accepted Stop; forced halt and subsequent activity fail closed", async t => {
+  const f = await fixture(t); await f.submit();
+  const end = () => runHook({hook_event_name: "SessionEnd", session_id: "s", reason: "other", transcript_path: f.transcript});
+  for (const done of [{...summary(), preventedContinuation: true}, {...summary(), hookLabel: "PreToolUse"}, {...summary(), hookAdditionalContext: undefined}]) {
+    await writeFile(f.transcript, jsonl([message(), attachment(), done])); await end();
+  }
+  const done = summary();
+  await writeFile(f.transcript, jsonl([message(), attachment(), done, {type: "user", isMeta: true, uuid: randomUUID(), parentUuid: done.uuid, sessionId: "s", message: {role: "user", content: "TaskCompleted feedback"}}])); await end();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+  const accepted = summary();
+  await writeFile(f.transcript, jsonl([message(), attachment(), accepted])); await end();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+  await writeFile(f.transcript, jsonl([message(), attachment(), accepted, duration(accepted.uuid)])); await end(); await end();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
+});
+
+test("lost confirm acknowledgement retries only with accepted proof and consumes replay once", async t => {
+  const f = await fixture(t); await f.submit();
+  await writeFile(f.transcript, jsonl([message(), attachment(), summary()])); f.loseAck();
+  await f.accept(); assert.equal((await f.state()).pending_recalls.length, 1); assert.equal(f.applied.size, 1);
+  await f.accept(); await f.accept();
+  assert.equal(f.applied.size, 1); assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 2);
+  assert.deepEqual((await f.state()).pending_recalls, []);
+});
+
+test("new prompt and epoch changes prevent delayed completion from reusing old receipt", async t => {
+  const f = await fixture(t); await f.submit(); const done = summary();
+  await writeFile(f.transcript, jsonl([message(), attachment(), done]));
+  await runHook({hook_event_name: "SessionStart", session_id: "s", source: "compact"}); await f.accept();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+});
+
+test("subagent StopFailure cannot retire the main-turn receipt", async t => {
+  const f = await fixture(t); await f.submit();
+  await runHook({hook_event_name: "StopFailure", agent_id: "child", session_id: "s", transcript_path: f.transcript});
+  assert.equal((await f.state()).pending_recalls.length, 1);
+  await writeFile(f.transcript, jsonl([message(), attachment(), summary()])); await f.accept();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
+});
+
+test("next prompt after a clean Stop proposal cannot confirm without normal turn closure", async t => {
+  const f = await fixture(t); await f.submit(); const proposal = summary();
+  await writeFile(f.transcript, jsonl([message(), attachment(), proposal, message(randomUUID(), proposal.uuid)]));
+  await f.submit(); await f.accept();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
 });

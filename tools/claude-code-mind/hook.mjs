@@ -1,4 +1,4 @@
-import { promptAnchor, provesDelivery } from "./transcript.mjs";
+import { promptAnchor, provesFinalizedDelivery } from "./transcript.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -187,7 +187,8 @@ async function semanticScores(config, query, candidates) {
 }
 
 export async function runHook(input, output = text => new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()))) {
-  if (process.env.LEILEI_MIND_HOOK_DISABLED === "1") return;
+  if (process.env.LEILEI_MIND_HOOK_DISABLED === "1" ||
+      (input?.agent_id && ["Stop", "StopFailure", "Notification", "SessionEnd"].includes(input.hook_event_name))) return;
   if (!input || typeof input.session_id !== "string" || !input.session_id || input.session_id.length > 256) return;
   const config = await readConfig();
   if (input.hook_event_name === "SessionStart") {
@@ -206,14 +207,25 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     });
     return;
   }
-  if (input.hook_event_name === "Stop") {
-    if (input.stop_hook_active === true) return;
+  // No synchronous Stop callback can know what its parallel peers will decide.
+  // Keep it registered so Claude writes an aggregate even with no other Stop hooks.
+  if (input.hook_event_name === "Stop") return;
+  if (input.hook_event_name === "StopFailure") {
+    await withState(config, input.session_id, async (state, save) => {
+      state.pending_recalls = []; await save(state);
+    });
+    return;
+  }
+  const nextPrompt = input.hook_event_name === "UserPromptSubmit";
+  const completedBoundary = nextPrompt || input.hook_event_name === "SessionEnd" ||
+    (input.hook_event_name === "Notification" && input.notification_type === "idle_prompt");
+  if (completedBoundary) {
+    const requireDuration = nextPrompt || input.hook_event_name === "SessionEnd";
     const snapshot = await withState(config, input.session_id, async state => structuredClone(state));
     const pending = snapshot.pending_recalls.find(p => p.epoch === snapshot.epoch && p.turn_id === snapshot.active_turn && p.context_epoch === snapshot.context_epoch);
-    if (!pending || !(await provesDelivery(input.transcript_path, input.session_id, pending))) return;
-    await withState(config, input.session_id, async (state, save) => {
+    if (pending && await provesFinalizedDelivery(input.transcript_path, input.session_id, pending, nextPrompt, requireDuration)) await withState(config, input.session_id, async (state, save) => {
       if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn ||
-          !state.pending_recalls.some(p => p.recall_id === pending.recall_id) || !(await provesDelivery(input.transcript_path, input.session_id, pending))) return;
+          !state.pending_recalls.some(p => p.recall_id === pending.recall_id) || !(await provesFinalizedDelivery(input.transcript_path, input.session_id, pending, nextPrompt, requireDuration))) return;
       const response = await fetch(`${config.url}/internal/mind/recall/confirm`, {
         method: "POST", redirect: "error", signal: AbortSignal.timeout(1200),
         headers: {authorization: `Bearer ${config.token}`, "content-type": "application/json"},
@@ -225,8 +237,8 @@ export async function runHook(input, output = text => new Promise((resolve, reje
       if (result.success !== true || result.data?.recall_id !== pending.recall_id || !["confirmed", "replayed"].includes(result.data?.outcome)) return;
       state.pending_recalls = state.pending_recalls.filter(p => p.recall_id !== pending.recall_id);
       await save(state);
-    });
-    return;
+    }).catch(() => undefined); // Failure must not suppress the next prompt's recall.
+    if (!nextPrompt) return;
   }
   if (input.hook_event_name !== "UserPromptSubmit" || typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 16000) return;
   const snapshot = await withState(config, input.session_id, async (state, save) => {

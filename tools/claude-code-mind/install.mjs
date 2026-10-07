@@ -11,7 +11,7 @@ export function configureHooks(settings, {home, serverName = "leileios", nodeCom
   const command = `LEILEI_MIND_HOME=${quote(home)} ${quote(nodeCommand)} ${quote(hook)}`;
   const hooks = {...settings.hooks};
   const definition = {type: "command", command, timeout: 5};
-  for (const event of ["UserPromptSubmit", "SessionStart", "PostToolUse", "Stop"]) {
+  for (const event of ["UserPromptSubmit", "SessionStart", "PostToolUse", "Stop", "StopFailure", "Notification", "SessionEnd"]) {
     const items = hooks[event] ?? [];
     if (!Array.isArray(items)) throw new Error("Invalid existing hooks.");
     // Replace only this installation's exact script; preserve all unrelated hook entries.
@@ -22,6 +22,7 @@ export function configureHooks(settings, {home, serverName = "leileios", nodeCom
     });
     hooks[event].push({
       ...(event === "SessionStart" ? {matcher: "startup|resume|compact|clear|fork"} : {}),
+      ...(event === "Notification" ? {matcher: "idle_prompt"} : {}),
       ...(event === "PostToolUse" ? {matcher: `^mcp__${serverName}__write_memory$`} : {}),
       hooks: [definition],
     });
