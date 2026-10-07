@@ -1,3 +1,4 @@
+import { registerWriteMemoryTool, type WriteMemoryDependencies } from "../tools/write-memory/register.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { env } from "../../config/env.js";
 import { NotionReadClient } from "../../domains/notion/notion-read-client.js";
@@ -301,6 +302,7 @@ type UniverseProvenanceToolsDependencies = {
 
 export type McpServerDependencies = {
   activeUserAuthorization?: () => Promise<string>;
+  writeMemory?: WriteMemoryDependencies;
   diaryTools?: {
     diaryService: WriteDiaryToolDependencies["diaryService"] &
       SearchDiaryToolDependencies["diaryService"] &
@@ -337,6 +339,10 @@ export function createMcpServer(
     createMissingActiveUserAuthorizer(authenticatedUserId);
 
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {
+  registerWriteMemoryTool(server, dependencies.writeMemory ?? {
+    subjectId: "G", requireActiveUser: activeUserAuthorization,
+    repository: { insertMcpIdempotent: async () => { throw new Error("Memory writer unavailable."); } },
+  });
   registerCreateDiaryTool(
     server,
     dependencies.writeDiary ?? dependencies.diaryTools ?? {

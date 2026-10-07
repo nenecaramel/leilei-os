@@ -68,6 +68,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
     userId: string;
     subjectId: string;
     conversationId: string;
+    globalOnly?: boolean;
   }): Promise<SubjectStateWrite[]> {
     const rows = await this.db
       .select({
@@ -83,10 +84,12 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
           eq(runtimeSubjectStates.userId, input.userId),
           eq(runtimeSubjectStates.subjectId, input.subjectId),
           inArray(runtimeSubjectStates.kind, CURRENT_SUBJECT_STATE_KINDS),
-          or(
-            isNull(runtimeSubjectStates.scopeConversationId),
-            eq(runtimeSubjectStates.scopeConversationId, input.conversationId),
-          ),
+          input.globalOnly
+            ? eq(runtimeSubjectStates.scopeApplicability, "global")
+            : or(
+                isNull(runtimeSubjectStates.scopeConversationId),
+                eq(runtimeSubjectStates.scopeConversationId, input.conversationId),
+              ),
         ),
       )
       .orderBy(

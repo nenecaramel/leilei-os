@@ -1,3 +1,4 @@
+import { requireActiveUserInTransaction } from "../../require-active-user-transaction.js";
 import {
   and,
   desc,
@@ -16,6 +17,7 @@ import {
   runtimeProactivityWakes,
   runtimeSubjectStates,
 } from "../../../database/schema.js";
+import { lockAndReadMcpIdempotency, recordMcpIdempotency } from "../../mcp-write/mcp-write-idempotency.js";
 import {
   structuredValueReferencesAnyId,
 } from "../lifecycle/persistent-reference-scan.js";
@@ -38,11 +40,7 @@ import type {
 } from "./mind-product-service.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
-type Transaction = Parameters<Database["transaction"]>[0] extends (
-  tx: infer T,
-) => unknown
-  ? T
-  : never;
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 type Row = {
   id: string;
@@ -57,6 +55,29 @@ type Row = {
 export class DrizzleMindProductRepository
 implements MindProductRepository {
   constructor(private readonly db: Database) {}
+
+  async insertMcpIdempotent(input: {
+    userId: string; subjectId: string; state: SubjectStateWrite;
+    idempotencyKey: string; requestHash: string;
+  }): Promise<{ memoryId: string; replayed: boolean }> {
+    return this.db.transaction(async transaction => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const receipt = await lockAndReadMcpIdempotency(transaction, {
+        userId: input.userId, toolName: "write_memory", idempotencyKey: input.idempotencyKey,
+      });
+      if (receipt) {
+        if (receipt.requestHash !== input.requestHash || receipt.resourceType !== "mind_state") throw new Error("IDEMPOTENCY_CONFLICT");
+        return { memoryId: receipt.resourceId, replayed: true };
+      }
+      const row = await insertMindState(transaction, input.state, input);
+      if (!row) throw new Error("Mind insert failed.");
+      await recordMcpIdempotency(transaction, {
+        userId: input.userId, toolName: "write_memory", idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash, resourceType: "mind_state", resourceId: row.id,
+      });
+      return { memoryId: row.id, replayed: false };
+    });
+  }
 
   async list(input: {
     userId: string;
@@ -168,28 +189,7 @@ implements MindProductRepository {
         }
 
         const state = input.state;
-        const [row] = await transaction
-          .insert(runtimeSubjectStates)
-          .values({
-            id: state.id,
-            userId: input.userId,
-            subjectId: input.subjectId,
-            kind: state.kind,
-            text: state.text ?? null,
-            payload: state.payload ?? null,
-            scopeApplicability: state.envelope.scope.applicability,
-            scopeConversationId:
-              state.envelope.scope.conversationId ?? null,
-            scopePathHeadMessageId:
-              state.envelope.scope.pathHeadMessageId ?? null,
-            settlementStatus:
-              state.envelope.status.settlementStatus,
-            pathStatus: state.envelope.status.pathStatus,
-            validityStatus: state.envelope.status.validityStatus,
-            envelope:
-              state.envelope as unknown as Record<string, unknown>,
-          })
-          .returning(rowSelection());
+        const row = await insertMindState(transaction, state, input);
 
         if (!row) {
           throw new Error("Manual Mind insert failed.");
@@ -565,4 +565,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value)
     && typeof value === "object"
     && !Array.isArray(value);
+}
+
+async function insertMindState(transaction: Transaction, state: SubjectStateWrite,
+  input: {userId: string; subjectId: string}) {
+  const [row] = await transaction.insert(runtimeSubjectStates).values({
+    id: state.id,
+    userId: input.userId,
+    subjectId: input.subjectId,
+    kind: state.kind,
+    text: state.text ?? null,
+    payload: state.payload ?? null,
+    scopeApplicability: state.envelope.scope.applicability,
+    scopeConversationId:
+      state.envelope.scope.conversationId ?? null,
+    scopePathHeadMessageId:
+      state.envelope.scope.pathHeadMessageId ?? null,
+    settlementStatus:
+      state.envelope.status.settlementStatus,
+    pathStatus: state.envelope.status.pathStatus,
+    validityStatus: state.envelope.status.validityStatus,
+    envelope:
+      state.envelope as unknown as Record<string, unknown>,
+  }).returning(rowSelection());
+  return row;
 }

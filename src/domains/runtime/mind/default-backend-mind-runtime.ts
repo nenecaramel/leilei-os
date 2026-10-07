@@ -11,6 +11,7 @@ import {
 } from "./native-live-mind-runtime.js";
 import {
   NativeLiveMindLoopService,
+  type MindLoopConfig,
 } from "./native-live-mind-loop-service.js";
 import {
   DrizzleSubjectStateRuntimePort,
@@ -46,6 +47,28 @@ export const DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE = "Asia/Shanghai";
 export const DEFAULT_SUBJECT_STATE_BACKGROUND_MAINTENANCE_CONFIG:
   SubjectStateBackgroundMaintenanceConfig = {};
 
+export const DEFAULT_MIND_LOOP_CONFIG: MindLoopConfig = {
+  assemblyVersion: "assembly-v3",
+  promptContractVersion: "prompt-v6",
+  contextTimeZone: DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE,
+  ruleVersion: "mind-v2",
+  processVersion: "subject-write-v2",
+  breathLimit: 4,
+  breathCooldownHours: 0,
+  breathSalienceWeight: DEFAULT_BREATH_SALIENCE_WEIGHT,
+  breathRecallSalienceBoost: DEFAULT_BREATH_RECALL_SALIENCE_BOOST,
+  breathSemanticWeight: 0.65,
+  breathSemanticMinScore: 0.80,
+  breathMinimumScore: 0.08,
+  breathSemanticMedianMargin: 0.03,
+  breathRecentRecallPenalty: true,
+  breathDiversityMaxTokenOverlap: 0.75,
+  breathSemanticCandidateLimit: 256,
+  breathSemanticCandidateMaxChars: 2_000,
+  maxContextItems: 16,
+  maxContextChars: 8_000,
+};
+
 export function createDefaultBackendMindRuntime(
   db: Database,
   memoryLifecyclePolicy?: MemoryLifecyclePolicy,
@@ -60,26 +83,9 @@ export function createDefaultBackendMindRuntime(
   const loop = new NativeLiveMindLoopService(
     subjectState,
     {
-      assemblyVersion: "assembly-v3",
-      promptContractVersion: "prompt-v6",
-      contextTimeZone: DEFAULT_NATIVE_LIVE_CONTEXT_TIME_ZONE,
-      ruleVersion: "mind-v2",
-      processVersion: "subject-write-v2",
-      breathLimit: 4,
-      breathCooldownHours: 0,
+      ...DEFAULT_MIND_LOOP_CONFIG,
       breathSalienceWeight: breathRanking.salienceWeight,
-      breathRecallSalienceBoost: DEFAULT_BREATH_RECALL_SALIENCE_BOOST,
       ...(memoryLifecyclePolicy ? { memoryLifecyclePolicy } : {}),
-      breathSemanticWeight: 0.65,
-      breathSemanticMinScore: 0.80,
-      breathMinimumScore: 0.08,
-      breathSemanticMedianMargin: 0.03,
-      breathRecentRecallPenalty: true,
-      breathDiversityMaxTokenOverlap: 0.75,
-      breathSemanticCandidateLimit: 256,
-      breathSemanticCandidateMaxChars: 2_000,
-      maxContextItems: 16,
-      maxContextChars: 8_000,
     },
     null,
   );

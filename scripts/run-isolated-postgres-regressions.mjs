@@ -43,6 +43,7 @@ if (
 const env = {
   ...process.env,
   RUN_NATIVE_LIVE_CONVERSATION_DATABASE_TEST: "1",
+  RUN_CLAUDE_CODE_MIND_DATABASE_TEST: "1",
   RUN_RUNTIME_BREATH_DATABASE_TEST: "1",
   RUN_RUNTIME_MIND_PRODUCT_DATABASE_TEST: "1",
   RUN_RUNTIME_LIFECYCLE_DATABASE_TEST: "1",
@@ -79,6 +80,7 @@ run([
   "--test-concurrency=1",
   "tests/native-live-conversation-repository.integration.test.ts",
   "tests/runtime-breath-recall-repository.integration.test.ts",
+  "tests/claude-code-mind.integration.test.ts",
   "tests/mind-product-repository.integration.test.ts",
   "tests/runtime-memory-lifecycle-repository.integration.test.ts",
   "tests/native-live-mind-followup.integration.test.ts",

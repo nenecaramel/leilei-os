@@ -11,7 +11,7 @@ import {
 import { writeSubjectStateTemporal } from "../subject-state/subject-state-temporal.js";
 
 /**
- * Where a Mind write came from. Both origins end up in `createMindState`, so
+ * Where a Mind write came from. All origins end up in `createMindState`, so
  * time, scope, provenance, lifecycle seed and status axes are produced in
  * exactly one place. Adding a field (for example a new temporal version) means
  * changing this file only.
@@ -35,7 +35,7 @@ export type MindWriteSource =
       model?: PersistentWriteEnvelope["versions"]["model"];
     }
   | {
-      origin: "manual";
+      origin: "manual" | "mcp";
       /** Explicit user-supplied time of the thing itself; null when unknown. */
       occurredAt: string | null;
       note: string | null;
@@ -117,6 +117,17 @@ export function createMindState(input: {
       userId: input.userId,
       subjectId: input.subjectId,
     });
+    if (source.origin === "mcp") {
+      payload.source = "mcp";
+      envelope.producer = { kind: "service", id: "mcp_client" };
+      envelope.authority = "subject_authorized";
+      envelope.semanticActor = { kind: "subject", id: input.subjectId };
+      const sourceId = `mcp:${input.id}`;
+      envelope.provenance.sources = [{ kind: "tool_result", id: sourceId }];
+      envelope.provenance.causedBy = sourceId;
+      envelope.versions.ruleVersion = "mind-mcp-v1";
+      envelope.versions.processVersion = "mind-mcp-v1";
+    }
   }
 
   return validateSubjectStateWrite({

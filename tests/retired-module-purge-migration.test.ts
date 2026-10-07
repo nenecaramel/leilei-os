@@ -104,7 +104,6 @@ test("retired module names are removed from legacy idempotency and lifecycle con
 
   for (const retired of [
     "create_task",
-    "write_memory",
     "create_shared_paper",
     "edit_shared_paper",
     "append_shared_paper",
@@ -171,7 +170,6 @@ test("retired module names are removed from shared lifecycle and idempotency dom
 
   for (const retired of [
     '"create_task"',
-    '"write_memory"',
     '"create_shared_paper"',
     '"edit_shared_paper"',
     '"append_shared_paper"',
@@ -189,4 +187,12 @@ test("retired module names are removed from shared lifecycle and idempotency dom
       "retired idempotency domain type remains: " + retired,
     );
   }
+});
+
+test("current Mind write_memory uses mind_state receipts while legacy Memory storage stays retired", () => {
+  const currentMigration = readFileSync("drizzle/0103_claude_code_mind_mcp.sql", "utf8");
+  assert.match(currentMigration, /'write_memory'/);
+  assert.match(currentMigration, /'mind_state'/);
+  assert.equal(schema.includes('pgTable(\n  "core_memories"'), false);
+  assert.match(readFileSync("src/mcp/tools/write-memory/register.ts", "utf8"), /createMindState/);
 });

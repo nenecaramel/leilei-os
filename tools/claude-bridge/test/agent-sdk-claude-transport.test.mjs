@@ -101,6 +101,7 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
       cwd: "/workspace/leilei-os",
       env: {
         HOME: "/Users/leilei",
+        LEILEI_MIND_HOOK_DISABLED: "1",
         DISABLE_AUTO_COMPACT: "1",
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
@@ -2532,4 +2533,11 @@ test("without meme handler no meme server or hint is added",async()=>{
   const rows = await transport.listSessions({allDirectories: true});
   assert.equal(Object.hasOwn(options, "dir"), false);
   assert.deepEqual(rows.map(row => [row.sessionId, row.cwd]), [["historical", "/historical"]]);
+});
+
+test("Native Live SDK explicitly bypasses the standalone Claude Code Mind hook", () => {
+  const environment = {LEILEI_MIND_HOOK_DISABLED: "0", HOME: "/tmp/leileios-test"};
+  const transport = new AgentSdkClaudeTransport({environment});
+  assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "1");
+  assert.equal(environment.LEILEI_MIND_HOOK_DISABLED, "0");
 });

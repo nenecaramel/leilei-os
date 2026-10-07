@@ -109,6 +109,7 @@ export const mcpWriteIdempotency = pgTable(
       }),
     toolName: varchar("tool_name", { length: 100 })
       .$type<
+        | "write_memory"
         | "write_diary"
         | "toy_set"
         | "toy_stop"
@@ -125,6 +126,7 @@ export const mcpWriteIdempotency = pgTable(
     requestHash: varchar("request_hash", { length: 64 }).notNull(),
     resourceType: varchar("resource_type", { length: 32 })
       .$type<
+        | "mind_state"
         | "diary_entry"
         | "toy_command"
         | "todo_paper"
@@ -155,7 +157,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_tool_allowed",
-      sql`${table.toolName} IN ('write_diary', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'add_diary_comment')`,
+      sql`${table.toolName} IN ('write_memory', 'write_diary', 'toy_set', 'toy_stop', 'write_todo_paper', 'append_todo_entry', 'update_todo_entry', 'delete_todo_entry', 'create_universe_node', 'create_universe_relation', 'add_diary_comment')`,
     ),
     check(
       "mcp_write_idempotency_key_format",
@@ -167,7 +169,7 @@ export const mcpWriteIdempotency = pgTable(
     ),
     check(
       "mcp_write_idempotency_resource_type_allowed",
-      sql`${table.resourceType} IN ('diary_entry', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'diary_comment')`,
+      sql`${table.resourceType} IN ('mind_state', 'diary_entry', 'toy_command', 'todo_paper', 'todo_entry', 'universe_node', 'universe_relation', 'diary_comment')`,
     ),
   ],
 );

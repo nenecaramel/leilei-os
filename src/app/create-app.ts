@@ -1,3 +1,4 @@
+import { createMindRecallRouter } from "../web-api/mind-recall-internal-router.js";
 import express from "express";
 import { createInternalAuthMiddleware } from "../auth/internal-auth.js";
 import {
@@ -133,6 +134,7 @@ export type AppDependencies = {
   webImportService?: ImportApiDependencies["importService"];
   webUniverseService?: UniverseApiDependencies["universeService"];
   webMindService?: MindApiDependencies["mindService"];
+  internalMindRecall?: Parameters<typeof createMindRecallRouter>[0];
   webAlbumService?: AlbumApiDependencies["albumService"];
   healthSyncService?: HealthSyncApiDependencies["healthSyncService"];
   databaseReadinessProbe?: () => Promise<unknown>;
@@ -249,6 +251,7 @@ export function createApp(
   }
 
   const defaultJsonParser = express.json({ limit: "1mb" });
+  const mindRecallJsonParser = express.json({ limit: "4mb" });
   const nativeLiveRelayJsonParser = express.json({ limit: "8mb" });
   const nativeLiveSessionStoreJsonParser =
     express.json({ limit: "32mb" });
@@ -276,7 +279,11 @@ export function createApp(
         )
       );
 
-    const parser = usesNativeLiveSessionStoreParser
+    // The shared 256×2000 candidate plan can exceed 1 MB for CJK text.
+    const usesMindRecallParser = authenticatedInternal && request.path === "/internal/mind/recall";
+    const parser = usesMindRecallParser
+      ? mindRecallJsonParser
+      : usesNativeLiveSessionStoreParser
       ? nativeLiveSessionStoreJsonParser
       : usesNativeLiveRelayParser
         ? nativeLiveRelayJsonParser
@@ -497,6 +504,14 @@ export function createApp(
       logger,
     }),
   );
+
+  if (config.NATIVE_LIVE_RELAY_AUTH_TOKEN && dependencies.internalMindRecall) {
+    app.use("/internal/mind",
+      createInternalAuthMiddleware(config.NATIVE_LIVE_RELAY_AUTH_TOKEN, config.MCP_USER_ID),
+      databaseReadinessMiddleware,
+      createMindRecallRouter(dependencies.internalMindRecall),
+    );
+  }
 
   if (
     config.NATIVE_LIVE_RELAY_AUTH_TOKEN

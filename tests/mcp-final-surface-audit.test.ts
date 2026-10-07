@@ -150,6 +150,7 @@ test("default production public surface stays compact and reports final inventor
     "update_todo_entry",
     "update_universe_node",
     "update_universe_relation",
+    "write_memory",
   ];
 
   assert.deepEqual(
@@ -157,7 +158,7 @@ test("default production public surface stays compact and reports final inventor
     expectedPublicNames.sort(),
     "default public inventory must stay exact",
   );
-  assert.equal(tools.length, 35);
+  assert.equal(tools.length, 36);
   assert.ok(
     tools.length < fullTools.length,
     "default public surface must be smaller than internal full",
@@ -181,7 +182,6 @@ test("default production public surface stays compact and reports final inventor
     "search_memory",
     "get_memory",
     "create_memory",
-    "write_memory",
     "update_memory",
     "create_task",
     "update_task",
@@ -228,7 +228,6 @@ test("default production public surface stays compact and reports final inventor
   for (const hidden of [
     "render_working_note",
     "render_thinking_block",
-    "write_memory",
     "write_diary",
     "write_todo_paper",
     "delete_diary",
