@@ -80,7 +80,7 @@ export const nativeLiveClaudeHandoffs = pgTable("native_live_claude_handoffs", {
   sourceMessageId: uuid("source_message_id").notNull(),
   providerSessionId: text("provider_session_id").notNull(),
   providerCheckpointId: text("provider_checkpoint_id").notNull(),
-  effectiveWorkingDirectory: text("effective_working_directory"),
+  effectiveWorkingDirectory: text("effective_working_directory").notNull(),
   status: varchar("status", { length: 32 }).default("pending").notNull(),
   handoffSessionId: text("handoff_session_id"),
   reservedBy: uuid("reserved_by"),
@@ -99,7 +99,7 @@ export const nativeLiveClaudeHandoffs = pgTable("native_live_claude_handoffs", {
   index("native_live_claude_handoffs_queue_idx").on(table.userId, table.status, table.createdAt, table.id),
   check("native_live_claude_handoffs_provider_session_not_blank", sql`char_length(btrim(${table.providerSessionId})) > 0`),
   check("native_live_claude_handoffs_checkpoint_not_blank", sql`char_length(btrim(${table.providerCheckpointId})) > 0`),
-  check("native_live_claude_handoffs_working_directory_not_blank", sql`${table.effectiveWorkingDirectory} IS NULL OR char_length(btrim(${table.effectiveWorkingDirectory})) > 0`),
+  check("native_live_claude_handoffs_working_directory_not_blank", sql`char_length(btrim(${table.effectiveWorkingDirectory})) > 0`),
   check("native_live_claude_handoffs_handoff_session_not_blank", sql`${table.handoffSessionId} IS NULL OR char_length(btrim(${table.handoffSessionId})) > 0`),
   check("native_live_claude_handoffs_status_allowed", sql`${table.status} IN ('pending','reserved','completed','failed','stale','expired')`),
 ]);
