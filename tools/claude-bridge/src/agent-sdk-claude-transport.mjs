@@ -192,14 +192,13 @@ async function prepareLocalCheckpointFork({
   let file;
   try {
     file = await open(syntheticPath, "wx", 0o600);
-    await file.writeFile(encoded, "utf8");
-    await file.sync();
-  } catch (cause) {
     try {
-      await file?.close();
-    } catch {
-      // Preserve the original write failure.
+      await file.writeFile(encoded, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
     }
+  } catch (cause) {
     await unlink(syntheticPath).catch(() => undefined);
     throw runtimeError(
       "Failed to materialize local historical checkpoint fork source.",
@@ -211,7 +210,6 @@ async function prepareLocalCheckpointFork({
       },
     );
   }
-  await file.close();
 
   return {
     sessionId: syntheticSessionId,
