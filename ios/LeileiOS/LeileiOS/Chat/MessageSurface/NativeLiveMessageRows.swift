@@ -10,7 +10,7 @@ struct NativeLiveMessageRow: View {
     let onCopyMessage: (String) -> Void
     let onRetryMessage: (String) -> Void
     let onEditMessage: (NativeLiveCurrentPathMessage) -> Void
-    let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
+    let onResolveInteraction: ((NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void)?
 
     var body: some View {
         if row.isHistoryDivider {
