@@ -194,7 +194,7 @@ extension AppModel {
                 throw NativeLiveConversationLifecycleError
                     .handoffExpired
 
-            case .pending, .reserved:
+            case .pending, .reserved, .delivery_unknown:
                 try await Task.sleep(
                     for: .milliseconds(500)
                 )
