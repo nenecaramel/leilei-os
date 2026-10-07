@@ -31,6 +31,18 @@ type SessionEntry = Record<string, unknown> & {
 };
 
 type ClaudeSdk = {
+  listSessions(options: {
+    dir: string;
+    limit: number;
+  }): Promise<Array<{
+    sessionId: string;
+    summary?: string | null;
+    customTitle?: string | null;
+    firstPrompt?: string | null;
+    lastModified?: number | null;
+    createdAt?: number | null;
+    cwd?: string | null;
+  }>>;
   forkSession(
     sessionId: string,
     options: {
@@ -60,6 +72,8 @@ type ClaudeSdk = {
 };
 
 const apply = process.argv.includes("--apply");
+const recoverExisting =
+  process.argv.includes("--recover-existing");
 const expectedConversation = argument("--expect-conversation");
 const expectedCheckpoint = argument("--expect-checkpoint");
 
@@ -161,7 +175,7 @@ const report = {
   canonicalAncestryEntries: verified.ancestry.size,
 };
 
-if (!apply) {
+if (!apply && !recoverExisting) {
   process.stdout.write(
     JSON.stringify(
       {
@@ -180,6 +194,98 @@ if (!apply) {
     ) + "\n",
   );
   process.exit(0);
+}
+
+if (recoverExisting) {
+  if (sourceStorage !== "local_sdk") {
+    throw new Error(
+      "Existing local handoff recovery requires the canonical source transcript to be available locally.",
+    );
+  }
+
+  const sourceTail = lastVisibleMessageProjection(
+    verified.prefix,
+  );
+  if (!sourceTail) {
+    throw new Error(
+      "The selected canonical checkpoint has no visible user/assistant message to match.",
+    );
+  }
+
+  const cutoff =
+    Date.parse(leaf.updated_at) - 60_000;
+  const listed = await sdk.listSessions({
+    dir: leaf.effective_working_directory,
+    limit: 100,
+  });
+  const candidates = [];
+  for (const session of listed) {
+    if (session.sessionId === leaf.provider_session_id) {
+      continue;
+    }
+    const activity =
+      session.createdAt ?? session.lastModified ?? 0;
+    if (activity < cutoff) continue;
+
+    let messages: unknown[] = [];
+    try {
+      messages = await sdk.getSessionMessages(
+        session.sessionId,
+        {
+          dir: leaf.effective_working_directory,
+          limit: 10_000,
+        },
+      );
+    } catch {
+      continue;
+    }
+    const tail = lastSdkVisibleProjection(messages);
+    candidates.push({
+      sessionId: session.sessionId,
+      createdAt: session.createdAt ?? null,
+      lastModified: session.lastModified ?? null,
+      customTitle: session.customTitle ?? null,
+      summary: session.summary ?? null,
+      firstPrompt: session.firstPrompt ?? null,
+      visibleMessages: messages.length,
+      tailMatchesCanonical: deepEqualJson(
+        tail,
+        sourceTail,
+      ),
+    });
+  }
+
+  const matches = candidates.filter(
+    (candidate) => candidate.tailMatchesCanonical,
+  );
+  process.stdout.write(
+    JSON.stringify(
+      {
+        ...report,
+        mode: "recover_existing",
+        candidates,
+        matches: matches.length,
+        ...(matches.length === 1
+          ? {
+              handoffSessionId: matches[0]!.sessionId,
+              validation: {
+                sourceSessionUntouched: "not_mutated",
+                recoveredForkVisibleTailMatchesCanonical:
+                  "passed",
+              },
+              resumeCommand:
+                "cd "
+                + shellQuote(leaf.effective_working_directory)
+                + " && claude --resume "
+                + shellQuote(matches[0]!.sessionId),
+            }
+          : {}),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  process.exit(matches.length === 1 ? 0 : 2);
 }
 
 if (sourceStorage !== "local_sdk") {
@@ -221,7 +327,7 @@ const [sourceAfter, forkEntries, visible] = await Promise.all([
     forkSessionId,
     {
       dir: leaf.effective_working_directory,
-      limit: 1,
+      limit: 10_000,
     },
   ),
 ]);
@@ -231,26 +337,39 @@ if (transcriptHash(sourceAfter) !== sourceBeforeHash) {
     "Source Claude session changed while creating the handoff fork.",
   );
 }
-const forkPrefix = checkpointPrefixOrNull(
-  forkEntries,
-  leaf.provider_checkpoint_id,
-);
-if (!forkPrefix) {
-  throw new Error(
-    "Forked Claude session does not contain the selected canonical checkpoint.",
-  );
-}
-const forkTail = [...forkEntries]
-  .reverse()
-  .find((entry) => isChainEntry(entry));
-if (forkTail?.uuid !== leaf.provider_checkpoint_id) {
-  throw new Error(
-    "Forked Claude session contains transcript state after the selected canonical checkpoint.",
-  );
-}
-if (!Array.isArray(visible) || visible.length === 0) {
+if (forkEntries.length === 0 || !Array.isArray(visible) || visible.length === 0) {
   throw new Error(
     "Claude Agent SDK cannot read the forked handoff session.",
+  );
+}
+
+const sourceVisibleTail =
+  lastVisibleMessageProjection(verified.prefix);
+const forkVisibleTail =
+  lastSdkVisibleProjection(visible);
+if (
+  !sourceVisibleTail
+  || !deepEqualJson(sourceVisibleTail, forkVisibleTail)
+) {
+  process.stdout.write(
+    JSON.stringify(
+      {
+        ...report,
+        handoffSessionId: forkSessionId,
+        validation: {
+          sourceSessionUnchanged: "passed",
+          sdkGetSessionMessages: "passed",
+          forkVisibleTailMatchesCanonical: "failed",
+        },
+        recoveryCommand:
+          "pnpm runtime:native-live-handoff-current-session-local -- --recover-existing",
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  throw new Error(
+    "Forked Claude session is readable, but its visible tail does not match the selected canonical checkpoint.",
   );
 }
 
@@ -261,8 +380,8 @@ process.stdout.write(
       handoffSessionId: forkSessionId,
       validation: {
         sourceSessionUnchanged: "passed",
-        forkCheckpointPresent: "passed",
-        forkEndsAtCanonicalCheckpoint: "passed",
+        forkTranscriptReadable: "passed",
+        forkVisibleTailMatchesCanonical: "passed",
         sdkGetSessionMessages: "passed",
       },
       resumeCommand:
@@ -329,7 +448,8 @@ async function loadInstalledSdk(): Promise<ClaudeSdk> {
     bridgeRequire.resolve("@anthropic-ai/claude-agent-sdk");
   const sdk = await import(pathToFileURL(sdkEntry).href);
   if (
-    typeof sdk.forkSession !== "function"
+    typeof sdk.listSessions !== "function"
+    || typeof sdk.forkSession !== "function"
     || typeof sdk.getSessionMessages !== "function"
     || typeof sdk.importSessionToStore !== "function"
   ) {
@@ -367,6 +487,49 @@ async function importLocalEntries(
     return [];
   }
   return entries;
+}
+
+function lastVisibleMessageProjection(
+  entries: SessionEntry[],
+): unknown | null {
+  const entry = [...entries]
+    .reverse()
+    .find((candidate) =>
+      !candidate.isSidechain
+      && (candidate.type === "user"
+        || candidate.type === "assistant")
+      && Object.hasOwn(candidate, "message")
+    );
+  if (!entry) return null;
+  return {
+    type: entry.type,
+    message: entry.message ?? null,
+  };
+}
+
+function lastSdkVisibleProjection(
+  messages: unknown[],
+): unknown | null {
+  const record = messages.at(-1);
+  if (!record || typeof record !== "object") return null;
+  const row = record as Record<string, unknown>;
+  if (
+    row.type !== "user"
+    && row.type !== "assistant"
+  ) {
+    return null;
+  }
+  return {
+    type: row.type,
+    message: row.message ?? null,
+  };
+}
+
+function deepEqualJson(
+  left: unknown,
+  right: unknown,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function checkpointPrefixOrNull(
