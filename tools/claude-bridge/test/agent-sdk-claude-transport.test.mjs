@@ -1314,11 +1314,15 @@ test("default local historical fork source is written beside the Claude transcri
   t.after(() =>
     rm(configDirectory, { recursive: true, force: true })
   );
-  const cwd = "/workspace/leilei-os";
+  const receiptDirectory = join(
+    configDirectory,
+    "fork-receipts",
+  );
+  const cwd = "/workspace/leilei.os_test";
   const projectDirectory = join(
     configDirectory,
     "projects",
-    "-workspace-leilei-os",
+    "sdk-private-encoding-current-project",
   );
   await mkdir(projectDirectory, { recursive: true });
 
@@ -1360,6 +1364,8 @@ test("default local historical fork source is written beside the Claude transcri
   const transport = new AgentSdkClaudeTransport({
     environment: {
       CLAUDE_CONFIG_DIR: configDirectory,
+      LEILEIOS_LOCAL_CHECKPOINT_FORK_RECEIPT_DIR:
+        receiptDirectory,
     },
     cwd,
     sessionMessagesImpl: async () => [{ type: "assistant" }],
@@ -1421,6 +1427,10 @@ test("default local historical fork source is written beside the Claude transcri
   assert.deepEqual(
     (await readdir(projectDirectory)).sort(),
     ["provider-parent.jsonl"],
+  );
+  assert.deepEqual(
+    await readdir(receiptDirectory),
+    [],
   );
 });
 
