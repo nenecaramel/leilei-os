@@ -137,6 +137,44 @@ export class NativeLiveClaudeHandoffService {
               * interval '1 millisecond'
       `);
 
+      const conversations = await tx.execute<{
+        id: string;
+        current_head_message_id: string | null;
+      }>(sql`
+        SELECT id, current_head_message_id
+        FROM conversations
+        WHERE id = ${input.conversationId}::uuid
+          AND user_id = ${input.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR UPDATE
+        LIMIT 1
+      `);
+      const conversation = conversations[0];
+      if (!conversation) {
+        throw new NativeLiveClaudeHandoffError(
+          "NOT_FOUND",
+          "Native live conversation was not found.",
+        );
+      }
+
+      const compactConflict =
+        await tx.execute<{ id: string }>(sql`
+          SELECT id
+          FROM native_live_manual_compactions
+          WHERE user_id = ${input.userId}::uuid
+            AND conversation_id =
+              ${input.conversationId}::uuid
+            AND status IN ('pending','reserved')
+          LIMIT 1
+        `);
+      if (compactConflict[0]) {
+        throw new NativeLiveClaudeHandoffError(
+          "CONVERSATION_BUSY",
+          "Wait for the current compact operation to finish before continuing in Claude Code.",
+        );
+      }
+
       const active = await tx.execute<{ id: string }>(sql`
         SELECT id
         FROM native_live_claude_handoffs
@@ -175,26 +213,6 @@ export class NativeLiveClaudeHandoffService {
         );
       }
 
-      const conversations = await tx.execute<{
-        id: string;
-        current_head_message_id: string | null;
-      }>(sql`
-        SELECT id, current_head_message_id
-        FROM conversations
-        WHERE id = ${input.conversationId}::uuid
-          AND user_id = ${input.userId}::uuid
-          AND origin = 'native_live'
-          AND lifecycle_status = 'active'
-        FOR UPDATE
-        LIMIT 1
-      `);
-      const conversation = conversations[0];
-      if (!conversation) {
-        throw new NativeLiveClaudeHandoffError(
-          "NOT_FOUND",
-          "Native live conversation was not found.",
-        );
-      }
       if (!conversation.current_head_message_id) {
         throw new NativeLiveClaudeHandoffError(
           "NO_RUNTIME_SESSION",
