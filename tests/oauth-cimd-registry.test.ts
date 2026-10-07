@@ -63,7 +63,7 @@ test("does not fetch malformed, non-HTTPS, or untrusted client identifiers", asy
   assert.equal(fetched, false);
 });
 
-test("requires exact client_id and redirect URI equality", () => {
+test("requires exact client_id and safely permits ephemeral loopback callback ports", () => {
   assert.throws(
     () => validateClientMetadata({ ...validMetadata, client_id: "https://claude.ai/oauth/mcp-oauth-client-metadata/" }, CLIENT_ID),
     /client_id.*match|exact/u,
@@ -75,6 +75,21 @@ test("requires exact client_id and redirect URI equality", () => {
   const resolved = validateClientMetadata(validMetadata, CLIENT_ID);
   assert.throws(() => assertRedirectUriAllowed(resolved, "https://claude.ai/oauth/other"), /redirect/u);
   assert.doesNotThrow(() => assertRedirectUriAllowed(resolved, REDIRECT_URI));
+
+  const loopback = validateClientMetadata({
+    ...validMetadata,
+    redirect_uris: [
+      "http://localhost/callback",
+      "http://127.0.0.1/callback",
+      "http://localhost:8080/fixed",
+    ],
+  }, CLIENT_ID);
+  assert.doesNotThrow(() => assertRedirectUriAllowed(loopback, "http://localhost:59451/callback"));
+  assert.doesNotThrow(() => assertRedirectUriAllowed(loopback, "http://127.0.0.1:43123/callback"));
+  assert.throws(() => assertRedirectUriAllowed(loopback, "http://localhost:59451/other"), /redirect/u);
+  assert.throws(() => assertRedirectUriAllowed(loopback, "http://localhost:59451/callback?next=1"), /redirect/u);
+  assert.throws(() => assertRedirectUriAllowed(loopback, "https://localhost:59451/callback"), /redirect/u);
+  assert.throws(() => assertRedirectUriAllowed(loopback, "http://localhost:8081/fixed"), /redirect/u);
 });
 
 test("requires the three mandatory fields and authorization-code support", () => {
