@@ -11,6 +11,8 @@ type DbExecutor = Database | Transaction;
 
 const REQUEST_TTL_MS = 60_000;
 const RESERVATION_TTL_MS = 120_000;
+const DELIVERY_UNKNOWN_RECOVERY_TTL_MS =
+  15 * 60_000;
 
 export type NativeLiveClaudeHandoffStatus =
   | "pending"
@@ -104,6 +106,23 @@ export class NativeLiveClaudeHandoffService {
           AND conversation_id = ${input.conversationId}::uuid
           AND status = 'pending'
           AND expires_at <= now()
+      `);
+
+      await tx.execute(sql`
+        UPDATE native_live_claude_handoffs
+        SET status = 'failed',
+            failure_code = 'RECOVERY_EXPIRED',
+            reserved_by = NULL,
+            reserved_at = NULL,
+            reservation_expires_at = NULL,
+            completed_at = now(),
+            updated_at = now()
+        WHERE user_id = ${input.userId}::uuid
+          AND conversation_id = ${input.conversationId}::uuid
+          AND status = 'delivery_unknown'
+          AND updated_at <=
+            now() - ${DELIVERY_UNKNOWN_RECOVERY_TTL_MS}
+              * interval '1 millisecond'
       `);
 
       const active = await tx.execute<{ id: string }>(sql`
@@ -260,6 +279,23 @@ export class NativeLiveClaudeHandoffService {
         AND expires_at <= now()
     `);
 
+    await this.db.execute(sql`
+      UPDATE native_live_claude_handoffs
+      SET status = 'failed',
+          failure_code = 'RECOVERY_EXPIRED',
+          reserved_by = NULL,
+          reserved_at = NULL,
+          reservation_expires_at = NULL,
+          completed_at = now(),
+          updated_at = now()
+      WHERE id = ${input.requestId}::uuid
+        AND user_id = ${input.userId}::uuid
+        AND status = 'delivery_unknown'
+        AND updated_at <=
+          now() - ${DELIVERY_UNKNOWN_RECOVERY_TTL_MS}
+            * interval '1 millisecond'
+    `);
+
     const rows = await this.db.execute<ReadRow>(sql`
       SELECT
         id,
@@ -322,6 +358,22 @@ export class NativeLiveClaudeHandoffService {
         WHERE user_id = ${input.userId}::uuid
           AND status = 'pending'
           AND expires_at <= now()
+      `);
+
+      await tx.execute(sql`
+        UPDATE native_live_claude_handoffs
+        SET status = 'failed',
+            failure_code = 'RECOVERY_EXPIRED',
+            reserved_by = NULL,
+            reserved_at = NULL,
+            reservation_expires_at = NULL,
+            completed_at = now(),
+            updated_at = now()
+        WHERE user_id = ${input.userId}::uuid
+          AND status = 'delivery_unknown'
+          AND updated_at <=
+            now() - ${DELIVERY_UNKNOWN_RECOVERY_TTL_MS}
+              * interval '1 millisecond'
       `);
 
       const rows = await tx.execute<{
