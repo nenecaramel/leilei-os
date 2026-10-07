@@ -183,6 +183,17 @@ test(
         conversationId:
           exact.conversation.id,
       });
+    const exactReplay =
+      await handoffs.create({
+        userId,
+        conversationId:
+          exact.conversation.id,
+      });
+    assert.equal(
+      exactReplay.id,
+      exactRequest.id,
+    );
+
     const exactReservation =
       await handoffs.reserveNext({
         userId,
