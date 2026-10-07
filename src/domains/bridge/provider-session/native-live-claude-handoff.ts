@@ -25,7 +25,7 @@ export type NativeLiveClaudeHandoffReadModel = {
   conversationId: string;
   status: NativeLiveClaudeHandoffStatus;
   handoffSessionId: string | null;
-  effectiveWorkingDirectory: string | null;
+  effectiveWorkingDirectory: string;
   failureCode: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -38,7 +38,7 @@ export type NativeLiveClaudeHandoffReservation = {
   sourceMessageId: string;
   providerSessionId: string;
   providerCheckpointId: string;
-  effectiveWorkingDirectory: string | null;
+  effectiveWorkingDirectory: string;
 };
 
 export type NativeLiveClaudeHandoffCompletion =
@@ -174,7 +174,7 @@ export class NativeLiveClaudeHandoffService {
         source_message_id: string;
         provider_session_id: string;
         provider_checkpoint_id: string;
-        effective_working_directory: string | null;
+        effective_working_directory: string;
       }>(sql`
         WITH RECURSIVE current_path AS (
           SELECT
@@ -214,6 +214,8 @@ export class NativeLiveClaudeHandoffService {
            ${input.conversationId}::uuid
          AND checkpoint.provider = 'claude_code'
          AND checkpoint.provider_checkpoint_id IS NOT NULL
+         AND checkpoint.effective_working_directory IS NOT NULL
+         AND char_length(btrim(checkpoint.effective_working_directory)) > 0
         ORDER BY path.depth ASC
         LIMIT 1
       `);
@@ -355,7 +357,7 @@ export class NativeLiveClaudeHandoffService {
         source_message_id: string;
         provider_session_id: string;
         provider_checkpoint_id: string;
-        effective_working_directory: string | null;
+        effective_working_directory: string;
       }>(sql`
         WITH candidate AS (
           SELECT id
@@ -610,7 +612,7 @@ type ReadRow = {
   conversation_id: string;
   status: NativeLiveClaudeHandoffStatus;
   handoff_session_id: string | null;
-  effective_working_directory: string | null;
+  effective_working_directory: string;
   failure_code: string | null;
   created_at: string;
   completed_at: string | null;
