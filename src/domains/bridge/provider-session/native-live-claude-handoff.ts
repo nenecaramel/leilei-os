@@ -175,19 +175,25 @@ export class NativeLiveClaudeHandoffService {
         );
       }
 
-      const active = await tx.execute<{ id: string }>(sql`
-        SELECT id
+      const active = await tx.execute<ReadRow>(sql`
+        SELECT
+          id,
+          conversation_id,
+          status,
+          handoff_session_id,
+          effective_working_directory,
+          failure_code,
+          created_at::text,
+          completed_at::text
         FROM native_live_claude_handoffs
         WHERE user_id = ${input.userId}::uuid
           AND conversation_id = ${input.conversationId}::uuid
           AND status IN ('pending','reserved','delivery_unknown')
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
       `);
       if (active[0]) {
-        throw new NativeLiveClaudeHandoffError(
-          "HANDOFF_ALREADY_PENDING",
-          "A Claude Code handoff is already in progress for this conversation.",
-        );
+        return readModel(active[0]);
       }
 
       const listener = await tx.execute<{ ok: boolean }>(sql`
