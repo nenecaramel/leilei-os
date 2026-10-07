@@ -74,6 +74,45 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.match(source, /return "stale" as const/);
 });
 
+test("handoff and manual compact share conversation-first locking and reject each other", () => {
+  const handoff =
+    read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
+  const compact =
+    read("src/domains/bridge/turn/native-live-manual-compact.ts");
+
+  const handoffLock = handoff.indexOf(
+    "FROM conversations",
+    handoff.indexOf("async create"),
+  );
+  const handoffQueue = handoff.indexOf(
+    "UPDATE native_live_claude_handoffs",
+    handoff.indexOf("async create"),
+  );
+  const compactLock = compact.indexOf(
+    "FROM conversations",
+    compact.indexOf("async create"),
+  );
+  const compactQueue = compact.indexOf(
+    "UPDATE native_live_manual_compactions",
+    compact.indexOf("async create"),
+  );
+
+  assert.ok(handoffLock >= 0 && handoffQueue > handoffLock);
+  assert.ok(compactLock >= 0 && compactQueue > compactLock);
+  assert.match(
+    handoff,
+    /FROM native_live_manual_compactions[\s\S]*status IN \('pending','reserved'\)/,
+  );
+  assert.match(
+    compact,
+    /FROM native_live_claude_handoffs[\s\S]*'pending','reserved','delivery_unknown'/,
+  );
+  assert.match(
+    compact,
+    /'staged','pending','reserved','executing',[\s\S]*'delivery_unknown'/,
+  );
+});
+
 test("public handoff maintenance reconciles crashed reservations without allowing an immediate second fork", () => {
   const source =
     read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
