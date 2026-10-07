@@ -130,9 +130,7 @@ private struct MindItemRow: View {
             HStack(spacing: 6) {
                 Text(MindPresentation.sourceLabel(item.source))
                 if let occurred = MindPresentation.dateText(
-                    item.occurredAt ?? item.createdAt,
-                    date: .abbreviated,
-                    time: .shortened
+                    item.occurredAt ?? item.createdAt
                 ) {
                     Text("·")
                     Text(occurred)
