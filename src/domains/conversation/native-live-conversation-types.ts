@@ -71,6 +71,7 @@ export type NativeLiveConversationSummary = {
   title: string | null;
   currentHeadMessageId: string | null;
   lastMessageAt: string | null;
+  claudeHandoffSessionId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
