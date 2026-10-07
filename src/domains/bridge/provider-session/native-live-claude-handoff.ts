@@ -177,47 +177,23 @@ export class NativeLiveClaudeHandoffService {
         provider_checkpoint_id: string;
         effective_working_directory: string;
       }>(sql`
-        WITH RECURSIVE current_path AS (
-          SELECT
-            message.id,
-            message.parent_message_id,
-            0 AS depth
-          FROM conversation_messages AS message
-          WHERE message.id =
-              ${conversation.current_head_message_id}::uuid
-            AND message.user_id = ${input.userId}::uuid
-            AND message.conversation_id =
-              ${input.conversationId}::uuid
-
-          UNION ALL
-
-          SELECT
-            parent.id,
-            parent.parent_message_id,
-            path.depth + 1
-          FROM conversation_messages AS parent
-          JOIN current_path AS path
-            ON parent.id = path.parent_message_id
-          WHERE parent.user_id = ${input.userId}::uuid
-            AND parent.conversation_id =
-              ${input.conversationId}::uuid
-        )
         SELECT
           checkpoint.canonical_message_id AS source_message_id,
           checkpoint.provider_session_id,
           checkpoint.provider_checkpoint_id,
           checkpoint.effective_working_directory
-        FROM current_path AS path
-        INNER JOIN conversation_provider_session_checkpoints AS checkpoint
-          ON checkpoint.canonical_message_id = path.id
-         AND checkpoint.user_id = ${input.userId}::uuid
-         AND checkpoint.conversation_id =
-           ${input.conversationId}::uuid
-         AND checkpoint.provider = 'claude_code'
-         AND checkpoint.provider_checkpoint_id IS NOT NULL
-         AND checkpoint.effective_working_directory IS NOT NULL
-         AND char_length(btrim(checkpoint.effective_working_directory)) > 0
-        ORDER BY path.depth ASC
+        FROM conversation_provider_session_checkpoints AS checkpoint
+        WHERE checkpoint.user_id = ${input.userId}::uuid
+          AND checkpoint.conversation_id =
+            ${input.conversationId}::uuid
+          AND checkpoint.canonical_message_id =
+            ${conversation.current_head_message_id}::uuid
+          AND checkpoint.provider = 'claude_code'
+          AND checkpoint.provider_checkpoint_id IS NOT NULL
+          AND checkpoint.effective_working_directory IS NOT NULL
+          AND char_length(
+            btrim(checkpoint.effective_working_directory)
+          ) > 0
         LIMIT 1
       `);
       const checkpoint = checkpoints[0];
