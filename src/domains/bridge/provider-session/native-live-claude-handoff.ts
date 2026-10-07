@@ -281,6 +281,7 @@ export class NativeLiveClaudeHandoffService {
         conversation_id,
         status,
         handoff_session_id,
+        effective_working_directory,
         failure_code,
         created_at::text,
         completed_at::text
@@ -603,8 +604,10 @@ function readModel(row: ReadRow): NativeLiveClaudeHandoffReadModel {
   };
 }
 
+type SqlExecutor = Pick<Database, "execute">;
+
 async function hasInFlightTurn(
-  tx: Database,
+  tx: SqlExecutor,
   input: {
     userId: string;
     conversationId: string;
@@ -626,7 +629,7 @@ async function hasInFlightTurn(
 }
 
 async function markStale(
-  tx: Database,
+  tx: SqlExecutor,
   input: {
     userId: string;
     reservationId: string;
