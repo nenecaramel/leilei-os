@@ -98,7 +98,7 @@ export class NativeLiveMacClaudeHandoffOutbox {
         if (
           !entry.listenerInstanceId
           || !entry.reservationId
-          || !entry.handoffSessionId
+          || !validOutcome(entry.outcome)
           || this.path(entry)
             !== join(this.directory, name)
         ) {
