@@ -5,6 +5,7 @@ import type {
 import { NativeLiveProviderSessionCleanupError } from "../../domains/bridge/provider-session/native-live-provider-session-cleanup.js";
 import { NativeLiveManualCompactError } from "../../domains/bridge/turn/native-live-manual-compact.js";
 import { NativeLiveExternalSessionBridgeError } from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
+import { NativeLiveClaudeHandoffError } from "../../domains/bridge/provider-session/native-live-claude-handoff.js";
 import type { NativeLiveRelayInternalDependencies } from "./dependencies.js";
 import {
   requireInternalUser,
@@ -68,6 +69,64 @@ export function submitExternalSessionsResultHandler(
       });
     } catch (error) {
       sendExternalSessionBridgeInternalError(response, error);
+    }
+  };
+}
+
+export function reserveClaudeHandoffHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.claudeHandoffService) return;
+    const body = parseListenerBody(request.body);
+    if (!body) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const reservation =
+        await dependencies.claudeHandoffService.reserveNext({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+        });
+      response.json({
+        success: true,
+        data: reservation,
+      });
+    } catch (error) {
+      sendClaudeHandoffInternalError(response, error);
+    }
+  };
+}
+
+export function submitClaudeHandoffResultHandler(
+  dependencies: NativeLiveRelayInternalDependencies,
+): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId || !dependencies.claudeHandoffService) return;
+    const reservationId =
+      parseReservationId(request.params.reservationId);
+    const body = parseClaudeHandoffResultBody(request.body);
+    if (!reservationId || !body) {
+      sendInvalid(response);
+      return;
+    }
+    try {
+      const outcome =
+        await dependencies.claudeHandoffService.complete({
+          userId,
+          listenerInstanceId: body.listener_instance_id,
+          reservationId,
+          outcome: body.outcome,
+        });
+      response.json({
+        success: true,
+        data: { outcome },
+      });
+    } catch (error) {
+      sendClaudeHandoffInternalError(response, error);
     }
   };
 }
@@ -358,6 +417,57 @@ function nullableFiniteNumberValue(value: unknown): boolean {
     || (typeof value === "number" && Number.isFinite(value));
 }
 
+function parseClaudeHandoffResultBody(
+  value: unknown,
+): {
+  listener_instance_id: string;
+  outcome:
+    | {
+        status: "success";
+        handoffSessionId: string;
+      }
+    | {
+        status: "failure";
+        failureCode: string;
+      };
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (!isUuid(record.listener_instance_id)) return null;
+
+  if (record.status === "failure") {
+    if (
+      typeof record.failure_code !== "string"
+      || !record.failure_code.trim()
+    ) return null;
+    return {
+      listener_instance_id: record.listener_instance_id,
+      outcome: {
+        status: "failure",
+        failureCode: record.failure_code,
+      },
+    };
+  }
+
+  if (
+    record.status !== "success"
+    || typeof record.handoff_session_id !== "string"
+    || !record.handoff_session_id.trim()
+  ) {
+    return null;
+  }
+
+  return {
+    listener_instance_id: record.listener_instance_id,
+    outcome: {
+      status: "success",
+      handoffSessionId: record.handoff_session_id,
+    },
+  };
+}
+
 function parseManualCompactResultBody(
   value: unknown,
 ): {
@@ -525,6 +635,29 @@ function sendExternalSessionBridgeInternalError(
     error: {
       code: "NATIVE_LIVE_EXTERNAL_SESSION_UNAVAILABLE",
       message: "External Claude sessions are temporarily unavailable.",
+    },
+  });
+}
+
+function sendClaudeHandoffInternalError(
+  response: Response,
+  error: unknown,
+): void {
+  if (error instanceof NativeLiveClaudeHandoffError) {
+    response.status(409).json({
+      success: false,
+      error: {
+        code: error.code,
+        message: error.message,
+      },
+    });
+    return;
+  }
+  response.status(503).json({
+    success: false,
+    error: {
+      code: "NATIVE_LIVE_CLAUDE_HANDOFF_UNAVAILABLE",
+      message: "Claude handoff is temporarily unavailable.",
     },
   });
 }
