@@ -64,3 +64,83 @@ test("durable pending→confirm is atomic, zero-boost, idempotent, identity/expi
   await db.update(users).set({status: "disabled"}).where(eq(users.id, userId));
   await assert.rejects(receiptPort.confirm(confirm)); assert.deepEqual(await stored(), finalized);
 });
+
+test("signed recall stays stateless until confirm, then materializes one idempotent finalized receipt", {skip: !enabled}, async t => {
+  const database = createDatabase(url!, {ssl: false}); const db = database.db;
+  const userId = randomUUID(), other = randomUUID();
+  t.after(async () => {
+    await db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, userId));
+    await db.delete(users).where(eq(users.id, userId));
+    await db.delete(users).where(eq(users.id, other));
+    await database.close();
+  });
+  await db.insert(users).values([
+    {id: userId, email: `${userId}@example.test`, displayName: "Signed Mind"},
+    {id: other, email: `${other}@example.test`, displayName: "Signed Foreign"},
+  ]);
+  const port = new DrizzleSubjectStateRuntimePort(db);
+  const receiptPort = new DrizzleClaudeCodeRecallReceipts(db, undefined, "s".repeat(64));
+  const service = new ClaudeCodeMindRecallService(port, DEFAULT_MIND_LOOP_CONFIG, "G", receiptPort);
+  const state = createMindState({
+    id: randomUUID(), userId, subjectId: "G", kind: "memory", text: "osmanthus tea preference",
+    source: {origin: "manual", occurredAt: null, note: null},
+  });
+  state.payload = {...state.payload, lifecycle_v1: {
+    status: "active", salience: .5, protected: false,
+    lastDecayedAt: new Date().toISOString(), lastRecalledAt: null,
+    archivedAt: null, forgottenAt: null,
+  }};
+  await port.append({userId, subjectId: "G", states: [state]});
+  const stored = async () => (await db.select().from(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, userId)))[0]!;
+  const before = await stored();
+
+  const result = await service.recall({
+    userId, sessionId: "desktop-session", query: "osmanthus tea", excludeIds: [],
+    contextEpoch: 3, receiptMode: "signed_v1",
+  });
+  assert.ok(result.recall_id); assert.ok(result.recall_token);
+  assert.equal(result.context_sha256, createHash("sha256").update(result.context).digest("hex"));
+  assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 0);
+  assert.deepEqual(await stored(), before);
+
+  const token = result.recall_token!;
+  const tampered = `${token.slice(0, -1)}${token.endsWith("A") ? "B" : "A"}`;
+  const confirmation = {
+    userId, recallId: result.recall_id!, recallToken: token,
+    contextSha256: result.context_sha256!,
+  };
+  await assert.rejects(receiptPort.confirmSigned({...confirmation, recallToken: tampered}));
+  await assert.rejects(receiptPort.confirmSigned({...confirmation, userId: other}));
+  assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 0);
+  assert.deepEqual(await stored(), before);
+
+  const outcomes = await Promise.all([
+    receiptPort.confirmSigned(confirmation),
+    receiptPort.confirmSigned(confirmation),
+    receiptPort.confirmSigned(confirmation),
+  ]);
+  assert.deepEqual(outcomes.map(value => value.outcome).sort(), ["confirmed", "replayed", "replayed"]);
+  const [receipt] = await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.id, result.recall_id!));
+  assert.ok(receipt?.confirmedAt);
+  assert.equal(receipt?.contextEpoch, 3);
+  assert.equal(receipt?.conversationId, "claude-code:desktop-session");
+  const finalized = await stored();
+  assert.equal(readSubjectStateLifecycle(finalized.payload)?.salience, .5);
+  assert.deepEqual(readSubjectStateRecallContext(finalized.payload), {
+    conversationId: "claude-code:desktop-session",
+    epoch: 3,
+    sourceMessageId: result.recall_id!,
+    recalledAt: receipt!.recalledAt.toISOString(),
+  });
+
+  const expired = await receiptPort.issueSigned({
+    userId, subjectId: "G", conversationId: "claude-code:desktop-session",
+    contextEpoch: 4, stateIds: [state.id!], contextSha256: "a".repeat(64),
+    recalledAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+  });
+  await assert.rejects(receiptPort.confirmSigned({
+    userId, recallId: expired.recall_id, recallToken: expired.recall_token,
+    contextSha256: expired.context_sha256,
+  }));
+  assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 1);
+});

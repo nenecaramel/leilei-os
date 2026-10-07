@@ -807,7 +807,11 @@ export function createProcessRuntime(
       internalMindRecall: {
         service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), {
           ...DEFAULT_MIND_LOOP_CONFIG, breathSalienceWeight: breathRankingConfig.salienceWeight,
-        }, DEFAULT_NATIVE_LIVE_SUBJECT_ID, new DrizzleClaudeCodeRecallReceipts(db, memoryDecayConfig)),
+        }, DEFAULT_NATIVE_LIVE_SUBJECT_ID, new DrizzleClaudeCodeRecallReceipts(
+          db,
+          memoryDecayConfig,
+          runtimeEnv.NATIVE_LIVE_RELAY_AUTH_TOKEN,
+        )),
         requireActiveUser: userId => requireActiveUser(systemRepository, userId),
       },
       ...(claudePhotoAlbumService
