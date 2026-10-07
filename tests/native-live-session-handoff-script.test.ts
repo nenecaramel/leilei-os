@@ -13,11 +13,24 @@ test("Claude Code handoff forks the exact canonical checkpoint without mutating 
   assert.match(source, /sourceBeforeHash = transcriptHash\(localEntries\)/);
   assert.match(source, /transcriptHash\(sourceAfter\) !== sourceBeforeHash/);
   assert.match(source, /sourceSessionUnchanged: "passed"/);
-  assert.match(source, /forkEndsAtCanonicalCheckpoint: "passed"/);
+  assert.match(source, /forkVisibleTailMatchesCanonical: "passed"/);
+  assert.match(source, /--recover-existing/);
+  assert.match(source, /sdk\.listSessions\(/);
   assert.match(source, /claude --resume/);
 
   assert.doesNotMatch(source, /archiveConversation|lifecycle_status\s*=\s*'archived'/);
   assert.doesNotMatch(source, /deleteSession|unlinkSync|rmSync/);
+});
+
+test("handoff validation does not require source UUIDs to survive the official fork", () => {
+  const source = read("scripts/native-live-handoff-current-session-local.ts");
+
+  assert.match(source, /lastVisibleMessageProjection\(verified\.prefix\)/);
+  assert.match(source, /lastSdkVisibleProjection\(visible\)/);
+  assert.doesNotMatch(
+    source,
+    /checkpointPrefixOrNull\(\s*forkEntries,\s*leaf\.provider_checkpoint_id/,
+  );
 });
 
 test("local restore probes the real local SDK transcript before remote SessionStore fallback", () => {
