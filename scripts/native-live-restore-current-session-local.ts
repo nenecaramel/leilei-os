@@ -177,7 +177,7 @@ const target = localTranscriptPath(
 const existingLocalBytes =
   existsSync(target) ? statSync(target).size : 0;
 const encoded =
-  prefix.map((entry) => JSON.stringify(entry)).join("\\n") + "\\n";
+  prefix.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
 const encodedBytes = Buffer.byteLength(encoded, "utf8");
 
 const report = {
@@ -212,7 +212,7 @@ if (!apply) {
       },
       null,
       2,
-    ) + "\\n",
+    ) + "\n",
   );
   process.exit(0);
 }
@@ -258,7 +258,7 @@ try {
       },
       null,
       2,
-    ) + "\\n",
+    ) + "\n",
   );
 } catch (error) {
   if (backup) {
