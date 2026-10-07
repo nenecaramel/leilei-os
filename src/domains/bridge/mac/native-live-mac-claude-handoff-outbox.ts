@@ -16,8 +16,31 @@ import { join } from "node:path";
 export type NativeLivePendingClaudeHandoff = {
   listenerInstanceId: string;
   reservationId: string;
-  handoffSessionId: string;
+  outcome:
+    | {
+        status: "success";
+        handoffSessionId: string;
+      }
+    | {
+        status: "failure";
+        failureCode: string;
+      };
 };
+
+function validOutcome(
+  outcome: NativeLivePendingClaudeHandoff["outcome"],
+): boolean {
+  if (!outcome || typeof outcome !== "object") {
+    return false;
+  }
+  if (outcome.status === "success") {
+    return Boolean(
+      outcome.handoffSessionId?.trim(),
+    );
+  }
+  return outcome.status === "failure"
+    && Boolean(outcome.failureCode?.trim());
+}
 
 export class NativeLiveMacClaudeHandoffOutbox {
   constructor(private readonly directory: string) {}
