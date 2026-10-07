@@ -53,6 +53,7 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.ok(checkpointCheck > headCheck);
   assert.ok(archive > checkpointCheck);
   assert.match(source, /hasInFlightTurn\(tx/);
+  assert.match(source, /'delivery_unknown'/);
   assert.match(source, /current\.status === "completed"/);
   assert.match(source, /current\.status === "stale"/);
   assert.match(source, /return "completed" as const/);
@@ -84,6 +85,10 @@ test("archived LeileiOS conversations remain readable but active write gates rem
     repository,
     /eq\(conversations\.lifecycleStatus, "active"\)/,
   );
+  assert.match(
+    repository,
+    /outcome: "handoff_archived"/,
+  );
 });
 
 test("iOS exposes Continue in Claude Code and archived conversations open a read-only canonical viewer", () => {
@@ -100,6 +105,7 @@ test("iOS exposes Continue in Claude Code and archived conversations open a read
     /continueActiveNativeLiveConversationInClaudeCode/,
   );
   assert.match(list, /ArchivedConversationView\(/);
+  assert.match(list, /conversation\.claudeHandoffSessionId == nil/);
   assert.match(archived, /nativeLiveCurrentPath\(/);
   assert.match(archived, /nativeLiveMessageList\(/);
   assert.match(archived, /beforeMessageID: olderCursor/);
