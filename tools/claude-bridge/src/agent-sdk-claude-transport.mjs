@@ -22,7 +22,7 @@ function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
 }
 
-function durableCheckpointPrefix(entries, checkpointId) {
+export function durableCheckpointPrefix(entries, checkpointId) {
   const index = Array.isArray(entries)
     ? entries.findLastIndex(entry => entry && !entry.isSidechain && entry.uuid === checkpointId)
     : -1;

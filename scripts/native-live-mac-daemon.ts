@@ -125,7 +125,7 @@ const workingDirectoryRuntimePool =
     process.env,
     defaultWorkingDirectory,
     undefined,
-    () => providerSessionStore,
+    () => null,
     {
       type: "http",
       url: relayBaseUrl + "/internal/native-live-mcp",
@@ -145,7 +145,7 @@ process.stdout.write(
     outcome: "daemon_config",
     claudeTransport: claudeTransportKind,
     defaultWorkingDirectory,
-    providerSessionStore: "remote_user_session_scoped",
+    providerSessionStore: "local_sdk",
     leileiosMcp: "http_auto_recover",
     wakeMode:
       wakeBrokerClient

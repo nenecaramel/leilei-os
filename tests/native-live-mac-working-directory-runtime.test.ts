@@ -28,6 +28,24 @@ test("directory pool keeps durable paths outside the default, canonicalizes, and
 });
 
 
+test("directory pool defaults foreground Claude runtimes to local SDK transcript storage", async (t) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "directory-local-session-store-test-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const observed: unknown[] = [];
+  const runtime = { abort() {}, async deleteSession() {} };
+  const pool = new Pool(
+    {},
+    root,
+    async (_env: unknown, _cwd: string, sessionStore: unknown) => {
+      observed.push(sessionStore);
+      return { kind: "agent_sdk", runtime };
+    },
+  );
+  await pool.resolveWorkingDirectoryRuntime({ expectedWorkingDirectory: null });
+  assert.deepEqual(observed, [null]);
+});
+
+
 test("directory pool forwards the canonical compact checkpoint without changing provider identity", async (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "directory-compact-checkpoint-test-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
