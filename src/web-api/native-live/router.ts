@@ -34,6 +34,10 @@ import {
   readNativeLiveManualCompactHandler,
 } from "./compact.js";
 import {
+  createNativeLiveClaudeHandoffHandler,
+  readNativeLiveClaudeHandoffHandler,
+} from "./handoff.js";
+import {
   createNativeLiveExternalSessionListHandler,
   readNativeLiveExternalSessionListHandler,
   createNativeLiveConversationFromClaudeSessionHandler,
@@ -148,6 +152,16 @@ export function createNativeLiveApiRouter(
     router.get(
       "/manual-compacts/:requestId",
       readNativeLiveManualCompactHandler(dependencies),
+    );
+  }
+  if (dependencies.claudeHandoffService) {
+    router.post(
+      "/conversations/:conversationId/claude-handoff",
+      createNativeLiveClaudeHandoffHandler(dependencies),
+    );
+    router.get(
+      "/claude-handoffs/:requestId",
+      readNativeLiveClaudeHandoffHandler(dependencies),
     );
   }
   if (dependencies.externalSessionBridgeService) {
