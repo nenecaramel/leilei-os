@@ -1348,6 +1348,10 @@ test("Claude handoff response loss replays the same durable B without reforking"
     }) {
       submissions += 1;
       assert.equal(
+        input.outcome.status,
+        "success",
+      );
+      assert.equal(
         input.outcome.handoffSessionId,
         handoffSessionId,
       );
@@ -1411,6 +1415,120 @@ test("Claude handoff response loss replays the same durable B without reforking"
     outcome: "claude_handoff_completed",
     reservationId: handoffId,
     handoffSessionId,
+  });
+  assert.equal(forks, 1);
+  assert.equal(submissions, 2);
+  assert.deepEqual(
+    await new NativeLiveMacClaudeHandoffOutbox(root).list(),
+    [],
+  );
+});
+
+
+test("Claude handoff failure response loss replays the durable failure without retrying the fork", async (t) => {
+  const root = mkdtempSync(
+    join(tmpdir(), "leileios-handoff-failure-replay-"),
+  );
+  t.after(() => {
+    rmSync(root, {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  const handoffId =
+    "88888888-8888-4888-8888-888888888888";
+  let reserved = false;
+  let submissions = 0;
+  let forks = 0;
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff() {
+      if (reserved) return null;
+      reserved = true;
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId:
+          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerCheckpointId:
+          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        effectiveWorkingDirectory:
+          "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: {
+      outcome: {
+        status: string;
+        failureCode?: string;
+      };
+    }) {
+      submissions += 1;
+      assert.equal(input.outcome.status, "failure");
+      assert.equal(
+        input.outcome.failureCode,
+        "NO_PROVIDER_SESSION",
+      );
+      if (submissions === 1) {
+        throw new Error(
+          "timeout after canonical failure write",
+        );
+      }
+    },
+  });
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint() {
+      forks += 1;
+      throw Object.assign(
+        new Error("checkpoint missing"),
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    },
+  };
+  const outbox =
+    new NativeLiveMacClaudeHandoffOutbox(root);
+
+  const first = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+    outbox,
+  );
+  assert.deepEqual(await first.runOnce(), {
+    outcome: "claude_handoff_delivery_unknown",
+    reservationId: handoffId,
+  });
+  assert.equal(forks, 1);
+  assert.equal((await outbox.list()).length, 1);
+
+  const restarted = new NativeLiveMacDaemonLoop(
+    "77777777-7777-4777-8777-777777777777",
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+    new NativeLiveMacClaudeHandoffOutbox(root),
+  );
+  assert.deepEqual(await restarted.runOnce(), {
+    outcome: "claude_handoff_failed",
+    reservationId: handoffId,
   });
   assert.equal(forks, 1);
   assert.equal(submissions, 2);
