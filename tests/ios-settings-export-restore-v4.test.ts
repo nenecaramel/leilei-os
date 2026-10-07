@@ -18,6 +18,10 @@ const settingsView = fs.readFileSync(
   "ios/LeileiOS/LeileiOS/Navigation/SettingsSheetView.swift",
   "utf8",
 );
+const summaryView = fs.readFileSync(
+  "ios/LeileiOS/LeileiOS/Navigation/Settings/SettingsSummaryContent.swift",
+  "utf8",
+);
 const apiClient = fs.readFileSync(
   "ios/LeileiOS/LeileiOS/Infrastructure/API/Import/ImportModels.swift",
   "utf8",
@@ -90,7 +94,7 @@ test("iOS Summary shows the same portable product modules as Web", () => {
     "Mind",
     "Universe",
   ]) {
-    assert.match(settingsView, new RegExp(label));
+    assert.match(summaryView, new RegExp(label));
   }
 
   assert.match(dataService, /diaryComments: summary\.diaryComments\.count/);
