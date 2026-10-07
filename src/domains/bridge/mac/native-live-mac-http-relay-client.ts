@@ -510,11 +510,8 @@ implements NativeLiveMacDaemonRelayClient {
       || !record.providerSessionId.trim()
       || typeof record.providerCheckpointId !== "string"
       || !record.providerCheckpointId.trim()
-      || !(
-        record.effectiveWorkingDirectory === undefined
-        || record.effectiveWorkingDirectory === null
-        || typeof record.effectiveWorkingDirectory === "string"
-      )
+      || typeof record.effectiveWorkingDirectory !== "string"
+      || !record.effectiveWorkingDirectory.trim()
     ) {
       throw new Error(
         "Native live Claude handoff reservation is invalid.",
@@ -528,9 +525,7 @@ implements NativeLiveMacDaemonRelayClient {
       providerSessionId: record.providerSessionId,
       providerCheckpointId: record.providerCheckpointId,
       effectiveWorkingDirectory:
-        typeof record.effectiveWorkingDirectory === "string"
-          ? record.effectiveWorkingDirectory
-          : null,
+        record.effectiveWorkingDirectory,
     };
   }
 
