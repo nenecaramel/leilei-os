@@ -722,6 +722,13 @@
       "when": 1791357600000,
       "tag": "0102_tighten_mind_memory_check",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1791362400000,
+      "tag": "0103_native_live_claude_handoff",
+      "breakpoints": true
     }
   ]
 }
