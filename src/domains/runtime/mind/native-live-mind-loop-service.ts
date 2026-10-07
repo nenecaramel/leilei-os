@@ -61,6 +61,7 @@ export interface SubjectStateRuntimePort {
     userId: string;
     subjectId: string;
     conversationId: string;
+    globalOnly?: boolean;
   }): Promise<SubjectStateWrite[]>;
 
   append(input: {
@@ -247,6 +248,39 @@ export class NativeLiveMindLoopService {
       listedStates,
       input.excludedReferenceIds,
     );
+    const assembled = await this.assembleRecallContext(input, states);
+
+    await this.port.saveContextManifest({ manifest: assembled.manifest });
+
+    return assembled;
+  }
+
+  /** Pure assembly: no manifest persistence or recall accounting. */
+  async readOnlyRecall(input: Parameters<NativeLiveMindLoopService["prepareTurn"]>[0]): Promise<{
+    assembled: AssembledTurnContext;
+    semanticCandidates: BreathSemanticCandidate[];
+  }> {
+    // Snapshot once; both the plan and rendering share the same eligibility view.
+    const states = await this.port.list({
+      userId: input.userId, subjectId: input.subjectId,
+      conversationId: input.conversation.id, globalOnly: true,
+    });
+    const globalStates = states.filter(state => state.envelope.scope.applicability === "global");
+    const lineage = normalizeContextLineageState(input.contextLineage);
+    const plan = this.semanticPlanFromStates({
+      ...input, states: globalStates,
+      excludedStateIds: new Set(lineage.seenStateIds), contextEpoch: lineage.epoch,
+    });
+    return {
+      assembled: await this.assembleRecallContext(input, globalStates),
+      semanticCandidates: plan?.candidates ?? [],
+    };
+  }
+
+  private async assembleRecallContext(
+    input: Parameters<NativeLiveMindLoopService["prepareTurn"]>[0],
+    states: readonly SubjectStateWrite[],
+  ): Promise<AssembledTurnContext> {
     const contextLineage = normalizeContextLineageState(
       input.contextLineage,
     );
@@ -321,7 +355,7 @@ export class NativeLiveMindLoopService {
       }
     }
 
-    const assembled = assembleTurnContext({
+    return assembleTurnContext({
       manifestId: input.manifestId,
       userId: input.userId,
       subjectId: input.subjectId,
@@ -354,10 +388,6 @@ export class NativeLiveMindLoopService {
       surfaceHeadMessageId: input.surfaceHeadMessageId,
       contextLineage,
     });
-
-    await this.port.saveContextManifest({ manifest: assembled.manifest });
-
-    return assembled;
   }
 
   async recordFinalizedBreathRecall(input: {

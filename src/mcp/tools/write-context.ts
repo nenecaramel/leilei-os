@@ -1,4 +1,5 @@
 export const MCP_WRITE_TOOL_NAMES = [
+  "write_memory",
   "write_diary",
   "toy_set",
   "toy_stop",

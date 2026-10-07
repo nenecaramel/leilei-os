@@ -503,6 +503,7 @@ test("core mutation tools expose one model-readable receipt contract", async () 
     "delete_universe_relation",
     "add_universe_diary_source",
     "delete_universe_diary_source",
+    "write_memory",
   ] as const;
 
   for (const name of mutationTools) {

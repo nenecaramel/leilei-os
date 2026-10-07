@@ -1,3 +1,4 @@
+import { startMindRecallSemanticServer } from "../src/domains/bridge/mac/native-live-mac-mind-recall-server.js";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -229,6 +230,8 @@ const executor = new NativeLiveMacRuntimeExecutor(
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);
 const semanticScorer = new LocalE5BreathSemanticScorer();
+// Optional hook transport: failures must not stop the canonical daemon.
+const closeMindRecallServer = await startMindRecallSemanticServer(semanticScorer).catch(() => null);
 const loop = new NativeLiveMacDaemonLoop(
   listenerInstanceId,
   relay,
@@ -648,4 +651,5 @@ while (!stopping) {
   }
 }
 
+await closeMindRecallServer?.();
 daemonLock.release();

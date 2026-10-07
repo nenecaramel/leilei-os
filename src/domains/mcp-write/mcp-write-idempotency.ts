@@ -17,6 +17,7 @@ export type McpFingerprintValue =
   | { readonly [key: string]: McpFingerprintValue };
 
 export type McpIdempotentToolName =
+  | "write_memory"
   | "write_diary"
   | "toy_set"
   | "toy_stop"
@@ -29,6 +30,7 @@ export type McpIdempotentToolName =
   | "add_diary_comment";
 
 export type McpIdempotentResourceType =
+  | "mind_state"
   | "diary_entry"
   | "toy_command"
   | "todo_paper"

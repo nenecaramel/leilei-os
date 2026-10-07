@@ -1,3 +1,6 @@
+import { requireActiveUser } from "../domains/require-active-user.js";
+import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
+import { DEFAULT_MIND_LOOP_CONFIG } from "../domains/runtime/mind/default-backend-mind-runtime.js";
 import { randomUUID } from "node:crypto";
 import {
   env,
@@ -400,8 +403,9 @@ export function createProcessRuntime(
   const exportService = new ExportService(new DrizzleExportRepository(db));
   const importService = new ImportService(new DrizzleImportRepository(db));
   const universeService = new UniverseService(new DrizzleUniverseRepository(db));
+  const mindRepository = new DrizzleMindProductRepository(db);
   const mindProductService = new MindProductService(
-    new DrizzleMindProductRepository(db),
+    mindRepository,
     DEFAULT_NATIVE_LIVE_SUBJECT_ID,
   );
   const memoryDecayConfig = getMemoryDecayConfig(runtimeEnv);
@@ -769,6 +773,8 @@ export function createProcessRuntime(
 
     const createMcpSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: systemRepository,
+    memoryRepository: mindRepository,
+    memorySubjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
     diaryService,
     diaryCommentService,
     toyCommandService,
@@ -797,6 +803,12 @@ export function createProcessRuntime(
       webImportService: importService,
       webUniverseService: universeService,
       webMindService: mindProductService,
+      internalMindRecall: {
+        service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), {
+          ...DEFAULT_MIND_LOOP_CONFIG, breathSalienceWeight: breathRankingConfig.salienceWeight,
+        }, DEFAULT_NATIVE_LIVE_SUBJECT_ID),
+        requireActiveUser: userId => requireActiveUser(systemRepository, userId),
+      },
       ...(claudePhotoAlbumService
         ? { webAlbumService: claudePhotoAlbumService }
         : {}),
