@@ -2,6 +2,12 @@ import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Database["transaction"]>[0] extends (
+  tx: infer T,
+) => unknown
+  ? T
+  : never;
+type DbExecutor = Database | Transaction;
 
 const REQUEST_TTL_MS = 60_000;
 const RESERVATION_TTL_MS = 120_000;
@@ -626,10 +632,8 @@ function readModel(row: ReadRow): NativeLiveClaudeHandoffReadModel {
   };
 }
 
-type SqlExecutor = Pick<Database, "execute">;
-
 async function hasInFlightTurn(
-  tx: SqlExecutor,
+  tx: DbExecutor,
   input: {
     userId: string;
     conversationId: string;
@@ -643,7 +647,8 @@ async function hasInFlightTurn(
         AND conversation_id = ${input.conversationId}::uuid
         AND status = 'prepared'
         AND dispatch_status IN (
-          'staged','pending','reserved','executing'
+          'staged','pending','reserved','executing',
+          'delivery_unknown'
         )
     ) AS busy
   `);
