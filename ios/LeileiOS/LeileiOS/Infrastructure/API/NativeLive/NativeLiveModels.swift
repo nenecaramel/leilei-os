@@ -47,6 +47,33 @@ struct NativeLiveConversationRuntimeMetadataSnapshot:
     let observedAt: String?
 }
 
+enum NativeLiveClaudeHandoffStatus:
+    String,
+    Decodable,
+    Sendable,
+    Equatable {
+    case pending
+    case reserved
+    case completed
+    case failed
+    case stale
+    case expired
+}
+
+struct NativeLiveClaudeHandoffSnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let id: String
+    let conversationId: String
+    let status: NativeLiveClaudeHandoffStatus
+    let handoffSessionId: String?
+    let effectiveWorkingDirectory: String?
+    let failureCode: String?
+    let createdAt: String
+    let completedAt: String?
+}
+
 enum NativeLiveManualCompactStatus: String, Decodable, Sendable, Equatable {
     case pending
     case reserved
