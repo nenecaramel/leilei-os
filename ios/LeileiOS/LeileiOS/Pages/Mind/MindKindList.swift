@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct MindMemoryListView: View {
     @EnvironmentObject private var appModel: AppModel
