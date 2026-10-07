@@ -51,7 +51,7 @@ struct ArchivedConversationView: View {
                         },
                         onRetryMessage: { _ in },
                         onEditMessage: { _ in },
-                        onResolveRuntimeInteraction: { _, _ in },
+                        onResolveRuntimeInteraction: nil,
                         pagination: {
                             olderMessagesButton(snapshot)
                         }
