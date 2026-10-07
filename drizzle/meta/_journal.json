@@ -729,6 +729,13 @@
       "when": 1791370800000,
       "tag": "0103_claude_code_mind_mcp",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1791381600000,
+      "tag": "0104_claude_code_recall_receipts",
+      "breakpoints": true
     }
   ]
 }

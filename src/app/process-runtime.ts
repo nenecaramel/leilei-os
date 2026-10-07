@@ -1,3 +1,4 @@
+import { DrizzleClaudeCodeRecallReceipts } from "../domains/runtime/mind/claude-code-recall-receipts.js";
 import { requireActiveUser } from "../domains/require-active-user.js";
 import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
 import { DEFAULT_MIND_LOOP_CONFIG } from "../domains/runtime/mind/default-backend-mind-runtime.js";
@@ -806,7 +807,7 @@ export function createProcessRuntime(
       internalMindRecall: {
         service: new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), {
           ...DEFAULT_MIND_LOOP_CONFIG, breathSalienceWeight: breathRankingConfig.salienceWeight,
-        }, DEFAULT_NATIVE_LIVE_SUBJECT_ID),
+        }, DEFAULT_NATIVE_LIVE_SUBJECT_ID, new DrizzleClaudeCodeRecallReceipts(db, memoryDecayConfig)),
         requireActiveUser: userId => requireActiveUser(systemRepository, userId),
       },
       ...(claudePhotoAlbumService
