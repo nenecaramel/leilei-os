@@ -5,6 +5,7 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
     let title: String?
     let currentHeadMessageId: String?
     let lastMessageAt: String?
+    let claudeHandoffSessionId: String?
     let createdAt: String
     let updatedAt: String
 
@@ -13,6 +14,7 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
         title: String?,
         currentHeadMessageId: String?,
         lastMessageAt: String? = nil,
+        claudeHandoffSessionId: String? = nil,
         createdAt: String,
         updatedAt: String
     ) {
@@ -20,6 +22,8 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
         self.title = title
         self.currentHeadMessageId = currentHeadMessageId
         self.lastMessageAt = lastMessageAt
+        self.claudeHandoffSessionId =
+            claudeHandoffSessionId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -45,6 +49,34 @@ struct NativeLiveConversationRuntimeMetadataSnapshot:
     let effectiveWorkingDirectory: String?
     let runtimeMetadata: NativeLiveRuntimeMetadata?
     let observedAt: String?
+}
+
+enum NativeLiveClaudeHandoffStatus:
+    String,
+    Decodable,
+    Sendable,
+    Equatable {
+    case pending
+    case reserved
+    case delivery_unknown
+    case completed
+    case failed
+    case stale
+    case expired
+}
+
+struct NativeLiveClaudeHandoffSnapshot:
+    Decodable,
+    Sendable,
+    Equatable {
+    let id: String
+    let conversationId: String
+    let status: NativeLiveClaudeHandoffStatus
+    let handoffSessionId: String?
+    let effectiveWorkingDirectory: String?
+    let failureCode: String?
+    let createdAt: String
+    let completedAt: String?
 }
 
 enum NativeLiveManualCompactStatus: String, Decodable, Sendable, Equatable {

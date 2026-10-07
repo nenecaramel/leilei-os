@@ -116,6 +116,9 @@ import {
   NativeLiveExternalSessionBridgeService,
 } from "../domains/bridge/provider-session/native-live-external-session-bridge.js";
 import {
+  NativeLiveClaudeHandoffService,
+} from "../domains/bridge/provider-session/native-live-claude-handoff.js";
+import {
   NativeLiveAttachmentService,
   deleteExpiredNativeLiveAttachmentsBatch,
 } from "../domains/bridge/attachment/native-live-attachment-service.js";
@@ -564,6 +567,12 @@ export function createProcessRuntime(
       nativeLiveWorkWakePublisher,
       nativeLiveExternalWakeSignal ?? undefined,
     );
+  const nativeLiveClaudeHandoffService =
+    new NativeLiveClaudeHandoffService(
+      db,
+      nativeLiveWorkWakePublisher,
+      nativeLiveExternalWakeSignal ?? undefined,
+    );
   const nativeLiveProviderSessionStoreService =
     new NativeLiveProviderSessionStoreService(
       new DrizzleNativeLiveProviderSessionStoreRepository(db),
@@ -834,6 +843,8 @@ export function createProcessRuntime(
             nativeLiveRuntimeControlService,
           manualCompactService:
             nativeLiveManualCompactService,
+          claudeHandoffService:
+            nativeLiveClaudeHandoffService,
           externalSessionBridgeService:
             nativeLiveExternalSessionBridgeService,
           ...(nativeLiveAttachmentService
@@ -850,6 +861,8 @@ export function createProcessRuntime(
             nativeLiveProviderSessionCleanupService,
           manualCompactService:
             nativeLiveManualCompactService,
+          claudeHandoffService:
+            nativeLiveClaudeHandoffService,
           externalSessionBridgeService:
             nativeLiveExternalSessionBridgeService,
           providerSessionStoreService:

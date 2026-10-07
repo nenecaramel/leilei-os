@@ -488,6 +488,77 @@ implements NativeLiveMacDaemonRelayClient {
     );
   }
 
+  async reserveClaudeHandoff(input: {
+    listenerInstanceId: string;
+    dispatchTarget: "claude_code";
+  }) {
+    const data = await this.post(
+      "/claude-handoff/reserve",
+      {
+        listener_instance_id: input.listenerInstanceId,
+        dispatch_target: input.dispatchTarget,
+      },
+    );
+    if (data === null) return null;
+    const record = readRecord(data);
+    if (
+      typeof record.reservationId !== "string"
+      || typeof record.conversationId !== "string"
+      || typeof record.expectedHeadMessageId !== "string"
+      || typeof record.sourceMessageId !== "string"
+      || typeof record.providerSessionId !== "string"
+      || !record.providerSessionId.trim()
+      || typeof record.providerCheckpointId !== "string"
+      || !record.providerCheckpointId.trim()
+      || typeof record.effectiveWorkingDirectory !== "string"
+      || !record.effectiveWorkingDirectory.trim()
+    ) {
+      throw new Error(
+        "Native live Claude handoff reservation is invalid.",
+      );
+    }
+    return {
+      reservationId: record.reservationId,
+      conversationId: record.conversationId,
+      expectedHeadMessageId: record.expectedHeadMessageId,
+      sourceMessageId: record.sourceMessageId,
+      providerSessionId: record.providerSessionId,
+      providerCheckpointId: record.providerCheckpointId,
+      effectiveWorkingDirectory:
+        record.effectiveWorkingDirectory,
+    };
+  }
+
+  async submitClaudeHandoffResult(input: {
+    listenerInstanceId: string;
+    reservationId: string;
+    outcome:
+      | {
+          status: "success";
+          handoffSessionId: string;
+        }
+      | {
+          status: "failure";
+          failureCode: string;
+        };
+  }): Promise<void> {
+    await this.post(
+      `/claude-handoff/reservations/${encodeURIComponent(input.reservationId)}/result`,
+      input.outcome.status === "success"
+        ? {
+            listener_instance_id: input.listenerInstanceId,
+            status: "success",
+            handoff_session_id:
+              input.outcome.handoffSessionId,
+          }
+        : {
+            listener_instance_id: input.listenerInstanceId,
+            status: "failure",
+            failure_code: input.outcome.failureCode,
+          },
+    );
+  }
+
   async reserveManualCompact(input: {
     listenerInstanceId: string;
     dispatchTarget: "claude_code";

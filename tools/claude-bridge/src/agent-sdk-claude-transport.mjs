@@ -1335,6 +1335,110 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       .filter((row) => row.sessionId && row.cwd);
   }
 
+  async forkSessionAtCheckpoint(sessionId, checkpointId) {
+    if (this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError(
+        "Claude Agent SDK session cannot be forked during an active turn.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+
+    if (this.sessionStore) {
+      throw runtimeError(
+        "Claude Code handoff requires the local SDK transcript store.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+
+    const id = nonblankString(sessionId);
+    const checkpoint = nonblankString(checkpointId);
+    if (!id || !checkpoint) {
+      throw runtimeError(
+        "Claude Agent SDK source session and checkpoint are required for handoff.",
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    }
+
+    await this.#requireCheckpoint(
+      id,
+      checkpoint,
+      { needPrefix: true },
+    );
+    const sourceBefore =
+      await this.#checkpointEntries(id, true);
+
+    const module = await import("@anthropic-ai/claude-agent-sdk");
+    if (
+      typeof module.forkSession !== "function"
+      || typeof module.getSessionMessages !== "function"
+    ) {
+      throw runtimeError(
+        "Claude Agent SDK does not expose handoff fork helpers.",
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+
+    let fork;
+    try {
+      fork = await module.forkSession(
+        id,
+        {
+          dir: this.cwd,
+          upToMessageId: checkpoint,
+        },
+      );
+    } catch (cause) {
+      throw runtimeError(
+        `Failed to fork Claude session for handoff: ${cause instanceof Error ? cause.message : String(cause)}`,
+        {
+          runtimeCode: "RUNTIME_UNAVAILABLE",
+          cause,
+        },
+      );
+    }
+
+    const forkSessionId =
+      nonblankString(fork?.sessionId);
+    if (!forkSessionId || forkSessionId === id) {
+      throw runtimeError(
+        "Claude Agent SDK handoff did not create an isolated session.",
+        { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
+      );
+    }
+
+    const [sourceAfter, visible] =
+      await Promise.all([
+        this.#checkpointEntries(id, true),
+        module.getSessionMessages(
+          forkSessionId,
+          {
+            dir: this.cwd,
+            limit: 1,
+          },
+        ),
+      ]);
+
+    if (
+      JSON.stringify(sourceAfter)
+        !== JSON.stringify(sourceBefore)
+    ) {
+      throw runtimeError(
+        "Claude source session changed during handoff fork.",
+        { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
+      );
+    }
+    if (!Array.isArray(visible) || visible.length === 0) {
+      throw runtimeError(
+        "Claude handoff session is not readable by the installed SDK.",
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    }
+
+    return {
+      providerSessionId: forkSessionId,
+    };
+  }
+
   async deleteSession(sessionId) {
     if (this.activeQuery || this.activeTurnHandle) {
       throw runtimeError(

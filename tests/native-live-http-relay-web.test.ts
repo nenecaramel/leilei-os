@@ -683,3 +683,110 @@ test("current-path ETag changes for durable failure and clearing without advanci
     assert.equal(cleared.headers.get("etag"),initialETag,"absent overlay preserves the existing ETag contract");
   });
 });
+
+
+test("web Claude handoff create/read is user scoped and returns the official session receipt", async () => {
+  const coordinator = new FakeCoordinator();
+  const relayService = new FakeRelayService();
+  const turnReader = new FakeTurnReader();
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const handoffSessionId = "99999999-9999-4999-8999-999999999999";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const claudeHandoffService = {
+    async create(input: unknown) {
+      calls.push({ name: "create", input });
+      return {
+        id: handoffId,
+        conversationId,
+        status: "pending" as const,
+        handoffSessionId: null,
+        effectiveWorkingDirectory: "/Users/test/project",
+        failureCode: null,
+        createdAt: "2026-10-07T08:00:00.000Z",
+        completedAt: null,
+      };
+    },
+    async read(input: unknown) {
+      calls.push({ name: "read", input });
+      return {
+        id: handoffId,
+        conversationId,
+        status: "completed" as const,
+        handoffSessionId,
+        effectiveWorkingDirectory: "/Users/test/project",
+        failureCode: null,
+        createdAt: "2026-10-07T08:00:00.000Z",
+        completedAt: "2026-10-07T08:00:01.000Z",
+      };
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        if (request.header("x-test-user") === "owner") {
+          request.webUserId = userId;
+        }
+        next();
+      });
+      app.use(
+        "/api/v1/native-live",
+        createNativeLiveApiRouter({
+          coordinator,
+          relayService,
+          turnReader,
+          claudeHandoffService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const unauthenticated = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/claude-handoff`,
+        { method: "POST" },
+      );
+      assert.equal(unauthenticated.status, 401);
+
+      const created = await fetch(
+        `${baseUrl}/api/v1/native-live/conversations/${conversationId}/claude-handoff`,
+        {
+          method: "POST",
+          headers: { "x-test-user": "owner" },
+        },
+      );
+      assert.equal(created.status, 202);
+      assert.equal(
+        (await created.json() as { data: { status: string } }).data.status,
+        "pending",
+      );
+
+      const read = await fetch(
+        `${baseUrl}/api/v1/native-live/claude-handoffs/${handoffId}`,
+        { headers: { "x-test-user": "owner" } },
+      );
+      assert.equal(read.status, 200);
+      assert.deepEqual(
+        (await read.json() as { data: unknown }).data,
+        {
+          id: handoffId,
+          conversationId,
+          status: "completed",
+          handoffSessionId,
+          effectiveWorkingDirectory: "/Users/test/project",
+          failureCode: null,
+          createdAt: "2026-10-07T08:00:00.000Z",
+          completedAt: "2026-10-07T08:00:01.000Z",
+        },
+      );
+      assert.deepEqual(calls, [
+        {
+          name: "create",
+          input: { userId, conversationId },
+        },
+        {
+          name: "read",
+          input: { userId, requestId: handoffId },
+        },
+      ]);
+    },
+  );
+});

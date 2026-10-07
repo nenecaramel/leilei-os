@@ -76,6 +76,12 @@ export type NativeLiveMacClaudeTransport =
   NativeLiveClaudeRuntime & {
     abort(): void;
     deleteSession(sessionId: string): Promise<void>;
+    forkSessionAtCheckpoint?(
+      sessionId: string,
+      checkpointId: string,
+    ): Promise<{
+      providerSessionId: string;
+    }>;
     listSessions?(input?: {
       allDirectories?: boolean;
       limit?: number;

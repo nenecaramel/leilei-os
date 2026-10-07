@@ -85,7 +85,10 @@ implements NativeLiveCurrentPathReader {
           eq(conversations.id, input.conversationId),
           eq(conversations.userId, input.userId),
           eq(conversations.origin, "native_live"),
-          eq(conversations.lifecycleStatus, "active"),
+          inArray(
+            conversations.lifecycleStatus,
+            ["active", "archived"],
+          ),
         ),
       )
       .limit(1);

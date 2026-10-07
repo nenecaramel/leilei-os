@@ -69,6 +69,7 @@ export type NativeLiveConversationArchiveResult =
 
 export type NativeLiveConversationRestoreResult =
   | { outcome: "restored" | "already_active" }
+  | { outcome: "handoff_archived" }
   | { outcome: "not_found" };
 
 export type NativeLiveConversationDeleteResult =
@@ -206,6 +207,7 @@ implements NativeLiveConversationRepository {
         title: conversations.title,
         lifecycleStatus: conversations.lifecycleStatus,
         currentHeadMessageId: conversations.currentHeadMessageId,
+        providerMetadata: conversations.providerMetadata,
         createdAt: conversations.createdAt,
         updatedAt: conversations.updatedAt,
       });
@@ -269,6 +271,7 @@ implements NativeLiveConversationRepository {
         id: conversations.id,
         title: conversations.title,
         currentHeadMessageId: conversations.currentHeadMessageId,
+        providerMetadata: conversations.providerMetadata,
         createdAt: conversations.createdAt,
         updatedAt: conversations.updatedAt,
       })
@@ -306,6 +309,8 @@ implements NativeLiveConversationRepository {
           ? headCreatedAtById.get(row.currentHeadMessageId)?.toISOString()
             ?? null
           : null,
+      claudeHandoffSessionId:
+        claudeHandoffSessionId(row.providerMetadata),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     }));
@@ -580,6 +585,7 @@ implements NativeLiveConversationRepository {
           .select({
             id: conversations.id,
             lifecycleStatus: conversations.lifecycleStatus,
+            providerMetadata: conversations.providerMetadata,
           })
           .from(conversations)
           .where(and(
@@ -596,6 +602,9 @@ implements NativeLiveConversationRepository {
         }
         if (conversation.lifecycleStatus !== "archived") {
           return { outcome: "not_found" as const };
+        }
+        if (claudeHandoffSessionId(conversation.providerMetadata)) {
+          return { outcome: "handoff_archived" as const };
         }
 
         const updatedAt = new Date();
@@ -1233,4 +1242,23 @@ function inFlightConversationTurns(input: { userId: string; conversationId: stri
       "staged", "pending", "reserved", "executing", "delivery_unknown",
     ]),
   );
+}
+
+
+function claudeHandoffSessionId(
+  metadata: Record<string, unknown> | null,
+): string | null {
+  const handoff = metadata?.claude_handoff;
+  if (
+    !handoff
+    || typeof handoff !== "object"
+    || Array.isArray(handoff)
+  ) {
+    return null;
+  }
+  const sessionId =
+    (handoff as Record<string, unknown>).session_id;
+  return typeof sessionId === "string" && sessionId.trim()
+    ? sessionId.trim()
+    : null;
 }

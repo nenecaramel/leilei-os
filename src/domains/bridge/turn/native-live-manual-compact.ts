@@ -95,6 +95,27 @@ export class NativeLiveManualCompactService {
         .catch(() => false)
       ?? false;
     const created = await this.db.transaction(async (tx) => {
+      const conversations = await tx.execute<{
+        id: string;
+        current_head_message_id: string | null;
+      }>(sql`
+        SELECT id, current_head_message_id
+        FROM conversations
+        WHERE id = ${input.conversationId}::uuid
+          AND user_id = ${input.userId}::uuid
+          AND origin = 'native_live'
+          AND lifecycle_status = 'active'
+        FOR UPDATE
+        LIMIT 1
+      `);
+      const conversation = conversations[0];
+      if (!conversation) {
+        throw new NativeLiveManualCompactError(
+          "NOT_FOUND",
+          "Native live conversation was not found.",
+        );
+      }
+
       await tx.execute(sql`
         UPDATE native_live_manual_compactions
         SET status = 'expired',
@@ -106,6 +127,25 @@ export class NativeLiveManualCompactService {
           AND status = 'pending'
           AND expires_at <= now()
       `);
+
+      const handoffConflict =
+        await tx.execute<{ id: string }>(sql`
+          SELECT id
+          FROM native_live_claude_handoffs
+          WHERE user_id = ${input.userId}::uuid
+            AND conversation_id =
+              ${input.conversationId}::uuid
+            AND status IN (
+              'pending','reserved','delivery_unknown'
+            )
+          LIMIT 1
+        `);
+      if (handoffConflict[0]) {
+        throw new NativeLiveManualCompactError(
+          "CONVERSATION_BUSY",
+          "Wait for the Claude Code handoff to finish before compacting context.",
+        );
+      }
 
       const active = await tx.execute<{ id: string }>(sql`
         SELECT id
@@ -146,7 +186,8 @@ export class NativeLiveManualCompactService {
             AND conversation_id = ${input.conversationId}::uuid
             AND status = 'prepared'
             AND dispatch_status IN (
-              'staged','pending','reserved','executing'
+              'staged','pending','reserved','executing',
+              'delivery_unknown'
             )
         ) AS busy
       `);
@@ -157,26 +198,6 @@ export class NativeLiveManualCompactService {
         );
       }
 
-      const conversations = await tx.execute<{
-        id: string;
-        current_head_message_id: string | null;
-      }>(sql`
-        SELECT id, current_head_message_id
-        FROM conversations
-        WHERE id = ${input.conversationId}::uuid
-          AND user_id = ${input.userId}::uuid
-          AND origin = 'native_live'
-          AND lifecycle_status = 'active'
-        FOR UPDATE
-        LIMIT 1
-      `);
-      const conversation = conversations[0];
-      if (!conversation) {
-        throw new NativeLiveManualCompactError(
-          "NOT_FOUND",
-          "Native live conversation was not found.",
-        );
-      }
       if (!conversation.current_head_message_id) {
         throw new NativeLiveManualCompactError(
           "NO_RUNTIME_SESSION",

@@ -29,6 +29,21 @@ struct ConversationList: View {
                             conversation.id
                         )
                     )
+                } else if let conversationID =
+                            UUID(uuidString: conversation.id) {
+                    NavigationLink {
+                        ArchivedConversationView(
+                            conversationID: conversationID,
+                            title: conversation.title
+                        )
+                    } label: {
+                        rowContent(conversation)
+                    }
+                    .disabled(
+                        lifecycleMutationIDs.contains(
+                            conversation.id
+                        )
+                    )
                 } else {
                     rowContent(conversation)
                 }
@@ -44,12 +59,14 @@ struct ConversationList: View {
                         .disabled(isMutationDisabled(conversation))
 
                     case .archived:
-                        Button("Restore") {
-                            Task {
-                                await onRestore(conversation)
+                        if conversation.claudeHandoffSessionId == nil {
+                            Button("Restore") {
+                                Task {
+                                    await onRestore(conversation)
+                                }
                             }
+                            .disabled(isMutationDisabled(conversation))
                         }
-                        .disabled(isMutationDisabled(conversation))
                     }
 
                     Button(
@@ -135,10 +152,19 @@ struct ConversationList: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
-                if let subtitle =
-                        lastMessageDateText(
-                            for: conversation
-                        ) {
+                if let handoffSessionID =
+                        conversation.claudeHandoffSessionId {
+                    Text(
+                        "Claude Code · "
+                        + String(handoffSessionID.prefix(8))
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                } else if let subtitle =
+                            lastMessageDateText(
+                                for: conversation
+                            ) {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)

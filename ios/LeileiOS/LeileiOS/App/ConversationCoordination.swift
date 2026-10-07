@@ -134,6 +134,94 @@ extension AppModel {
         }
     }
 
+    @discardableResult
+    func continueActiveNativeLiveConversationInClaudeCode()
+        async throws -> NativeLiveClaudeHandoffSnapshot {
+        guard isAuthenticated,
+              let conversationID =
+                activeNativeLiveConversationID else {
+            throw NativeLiveConversationLifecycleError.notReady
+        }
+        if chatSendInFlight {
+            throw NativeLiveConversationLifecycleError.busy
+        }
+
+        var request =
+            try await api.createNativeLiveClaudeHandoff(
+                conversationID: conversationID
+            )
+        var lastReadError: Error?
+
+        for _ in 0..<120 {
+            switch request.status {
+            case .completed:
+                guard let sessionID =
+                        request.handoffSessionId?
+                            .trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            ),
+                      !sessionID.isEmpty else {
+                    throw NativeLiveConversationLifecycleError
+                        .handoffFailed(
+                            "Claude Code handoff completed without a session id."
+                        )
+                }
+
+                stopNativeLiveRuntimeObservations(
+                    conversationID: conversationID
+                )
+                nativeLiveConversations.removeAll {
+                    UUID(uuidString: $0.id) == conversationID
+                }
+                clearActiveNativeLiveConversationIfMatching(
+                    conversationID
+                )
+
+                await refreshNativeLiveConversations()
+                await refreshNativeLiveArchivedConversations()
+                await openFirstActiveNativeLiveConversationIfNeeded()
+                return request
+
+            case .failed:
+                throw NativeLiveConversationLifecycleError
+                    .handoffFailed(request.failureCode)
+
+            case .stale:
+                throw NativeLiveConversationLifecycleError
+                    .handoffStale(request.failureCode)
+
+            case .expired:
+                throw NativeLiveConversationLifecycleError
+                    .handoffExpired
+
+            case .pending, .reserved, .delivery_unknown:
+                try await Task.sleep(
+                    for: .milliseconds(500)
+                )
+                do {
+                    request =
+                        try await api.nativeLiveClaudeHandoff(
+                            requestID: request.id
+                        )
+                    lastReadError = nil
+                } catch LeileiAPIError.missingAccessToken {
+                    clearNativeLiveSessionData()
+                    throw LeileiAPIError.missingAccessToken
+                } catch LeileiAPIError.unauthorized {
+                    clearNativeLiveSessionData()
+                    throw LeileiAPIError.unauthorized
+                } catch {
+                    lastReadError = error
+                }
+            }
+        }
+
+        if let lastReadError {
+            throw lastReadError
+        }
+        throw NativeLiveConversationLifecycleError.handoffTimedOut
+    }
+
     func archiveNativeLiveConversation(
         conversationID: UUID
     ) async throws {
@@ -802,6 +890,10 @@ private enum NativeLiveConversationLifecycleError: LocalizedError {
     case notReady
     case invalidTitle
     case busy
+    case handoffFailed(String?)
+    case handoffStale(String?)
+    case handoffExpired
+    case handoffTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -811,6 +903,16 @@ private enum NativeLiveConversationLifecycleError: LocalizedError {
             return "Conversation title must contain 1-200 characters."
         case .busy:
             return "Wait for the current turn to finish."
+        case .handoffFailed(let code):
+            return code
+                ?? "Claude Code handoff failed."
+        case .handoffStale(let code):
+            return code
+                ?? "Conversation changed before the Claude Code handoff could be archived."
+        case .handoffExpired:
+            return "Claude Code handoff expired before the Mac runtime reserved it."
+        case .handoffTimedOut:
+            return "Claude Code handoff timed out."
         }
     }
 }

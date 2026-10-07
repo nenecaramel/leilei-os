@@ -667,6 +667,37 @@ extension LeileiAPIClient {
         return envelope.data
     }
 
+    func createNativeLiveClaudeHandoff(
+        conversationID: UUID
+    ) async throws -> NativeLiveClaudeHandoffSnapshot {
+        let envelope: NativeLiveClaudeHandoffEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/conversations/"
+                    + conversationID.uuidString.lowercased()
+                    + "/claude-handoff",
+                method: "POST",
+                authenticated: true
+            )
+        return envelope.data
+    }
+
+    func nativeLiveClaudeHandoff(
+        requestID: String
+    ) async throws -> NativeLiveClaudeHandoffSnapshot {
+        guard UUID(uuidString: requestID) != nil else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let envelope: NativeLiveClaudeHandoffEnvelope =
+            try await request(
+                path:
+                    "/api/v1/native-live/claude-handoffs/"
+                    + requestID.lowercased(),
+                authenticated: true
+            )
+        return envelope.data
+    }
+
     func createNativeLiveManualCompact(
         conversationID: UUID
     ) async throws -> NativeLiveManualCompactSnapshot {
@@ -702,6 +733,13 @@ private struct NativeLiveExternalSessionRequestEnvelope:
     Sendable {
     let success: Bool
     let data: NativeLiveExternalSessionRequestSnapshot
+}
+
+private struct NativeLiveClaudeHandoffEnvelope:
+    Decodable,
+    Sendable {
+    let success: Bool
+    let data: NativeLiveClaudeHandoffSnapshot
 }
 
 private struct NativeLiveManualCompactEnvelope:

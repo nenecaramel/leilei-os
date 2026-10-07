@@ -56,6 +56,29 @@ export class NativeLiveMacWorkingDirectoryRuntimePool implements NativeLiveWorki
     return sessions.sort((a,b) => (b.lastModified ?? 0) - (a.lastModified ?? 0)).filter((session, index, all) => all.findIndex(candidate => candidate.sessionId === session.sessionId) === index);
   }
 
+  async forkSessionAtCheckpoint(
+    sessionId: string,
+    checkpointId: string,
+    expectedWorkingDirectory: string | null,
+  ): Promise<{ providerSessionId: string }> {
+    const { runtime } =
+      await this.resolveWorkingDirectoryRuntime({
+        expectedWorkingDirectory,
+      });
+    if (!runtime.forkSessionAtCheckpoint) {
+      throw Object.assign(
+        new Error(
+          "Native Live runtime does not expose Claude handoff fork.",
+        ),
+        { runtimeCode: "RUNTIME_UNAVAILABLE" },
+      );
+    }
+    return runtime.forkSessionAtCheckpoint(
+      sessionId,
+      checkpointId,
+    );
+  }
+
   async compactSession(sessionId: string, expectedWorkingDirectory: string | null, providerCheckpointId: string | null = null) {
     const { runtime } = await this.resolveWorkingDirectoryRuntime({ expectedWorkingDirectory });
     if (!runtime.compact) throw Object.assign(new Error("Native Live runtime does not expose compact."), { runtimeCode: "RUNTIME_UNAVAILABLE" });

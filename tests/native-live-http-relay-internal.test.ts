@@ -9,6 +9,7 @@ import {
   prepareId,
   requestId,
   conversationId,
+  userMessageId,
   FakeRelayService,
   FakeRuntimeInteractionService,
   FakeRuntimeEventService,
@@ -1078,4 +1079,166 @@ test("internal relay output attachment upload endpoints stay user scoped", async
       },
     },
   ]);
+});
+
+
+test("internal relay reserves and receipts Claude handoff in authenticated user scope", async () => {
+  const relayService = new FakeRelayService();
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const handoffSessionId = "99999999-9999-4999-8999-999999999999";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const claudeHandoffService = {
+    async reserveNext(input: unknown) {
+      calls.push({ name: "reserve", input });
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerCheckpointId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        effectiveWorkingDirectory: "/Users/test/project",
+      };
+    },
+    async complete(input: unknown) {
+      calls.push({ name: "complete", input });
+      return "completed" as const;
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          claudeHandoffService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const reserved = await fetch(
+        `${baseUrl}/internal/native-live-relay/claude-handoff/reserve`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            dispatch_target: "claude_code",
+          }),
+        },
+      );
+      assert.equal(reserved.status, 200);
+      assert.equal(
+        (await reserved.json() as {
+          data: { providerCheckpointId: string };
+        }).data.providerCheckpointId,
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      );
+
+      const completed = await fetch(
+        `${baseUrl}/internal/native-live-relay/claude-handoff/reservations/${handoffId}/result`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            status: "success",
+            handoff_session_id: handoffSessionId,
+          }),
+        },
+      );
+      assert.equal(completed.status, 200);
+      assert.deepEqual(calls, [
+        {
+          name: "reserve",
+          input: {
+            userId,
+            listenerInstanceId: listenerId,
+          },
+        },
+        {
+          name: "complete",
+          input: {
+            userId,
+            listenerInstanceId: listenerId,
+            reservationId: handoffId,
+            outcome: {
+              status: "success",
+              handoffSessionId,
+            },
+          },
+        },
+      ]);
+    },
+  );
+});
+
+
+test("internal relay turns deterministic Claude handoff reservation conflict into a 200 terminal receipt", async () => {
+  const relayService = new FakeRelayService();
+  const handoffId =
+    "88888888-8888-4888-8888-888888888888";
+  const handoffSessionId =
+    "99999999-9999-4999-8999-999999999999";
+  const claudeHandoffService = {
+    async reserveNext() {
+      return null;
+    },
+    async complete() {
+      throw new NativeLiveClaudeHandoffError(
+        "RESERVATION_CONFLICT",
+        "already terminal",
+      );
+    },
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({
+          relayService,
+          claudeHandoffService,
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/claude-handoff/reservations/${handoffId}/result`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            status: "success",
+            handoff_session_id:
+              handoffSessionId,
+          }),
+        },
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        (await response.json() as {
+          data: unknown;
+        }).data,
+        {
+          outcome: "rejected",
+          canonicalOutcome:
+            "RESERVATION_CONFLICT",
+        },
+      );
+    },
+  );
 });

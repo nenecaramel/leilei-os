@@ -11,6 +11,7 @@ import type { NativeLiveWorkWaitService } from "../../domains/bridge/relay/nativ
 import type { NativeLiveProviderSessionCleanupService } from "../../domains/bridge/provider-session/native-live-provider-session-cleanup.js";
 import type { NativeLiveManualCompactService } from "../../domains/bridge/turn/native-live-manual-compact.js";
 import type { NativeLiveExternalSessionBridgeService } from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
+import type { NativeLiveClaudeHandoffService } from "../../domains/bridge/provider-session/native-live-claude-handoff.js";
 import type { NativeLiveAttachmentService } from "../../domains/bridge/attachment/native-live-attachment-service.js";
 import type { ClaudePhotoAlbumService } from "../../domains/album/claude-photo-album-service.js";
 import type { ClaudeAlbumPhotoAttachmentSender } from "../../domains/album/claude-photo-album-output-sender.js";
@@ -72,6 +73,10 @@ export type NativeLiveRelayInternalDependencies = {
   >;
   manualCompactService?: Pick<
     NativeLiveManualCompactService,
+    "reserveNext" | "complete"
+  >;
+  claudeHandoffService?: Pick<
+    NativeLiveClaudeHandoffService,
     "reserveNext" | "complete"
   >;
   externalSessionBridgeService?: Pick<

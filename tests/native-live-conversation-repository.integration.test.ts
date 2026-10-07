@@ -524,6 +524,8 @@ test(
     const service = new NativeLiveConversationService(
       new DrizzleNativeLiveConversationRepository(database.db),
     );
+    const archivedCurrentPathReader =
+      new DrizzleNativeLiveCurrentPathReader(database.db);
 
     const deletedConversation = await service.createConversation({
       userId,
@@ -857,6 +859,27 @@ test(
       conversationId: deletedConversation.id,
     });
     assert.equal(archived.outcome, "archived");
+
+    const archivedPath =
+      await archivedCurrentPathReader.readCurrentPath({
+        userId,
+        conversationId: deletedConversation.id,
+        limit: 20,
+      });
+    assert.ok(archivedPath);
+    assert.equal(
+      archivedPath.currentHeadMessageId,
+      secondAssistant.message.id,
+    );
+    assert.deepEqual(
+      archivedPath.messages.map((message) => message.id),
+      [
+        firstUser.id,
+        firstAssistant.message.id,
+        secondUser.id,
+        secondAssistant.message.id,
+      ],
+    );
 
     await assert.rejects(
       proactivity.markWaitingModel({

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacResultOutbox } from "../src/domains/bridge/mac/native-live-mac-result-outbox.js";
+import { NativeLiveMacClaudeHandoffOutbox } from "../src/domains/bridge/mac/native-live-mac-claude-handoff-outbox.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -1144,4 +1145,395 @@ test("production loop persists before submit and restarted daemon replays withou
   assert.equal((await restarted.runOnce()).outcome, "completed");
   assert.equal(executor.calls.length, 1);
   assert.deepEqual(await outbox.list(), []);
+});
+
+
+test("idle daemon forks the exact Claude checkpoint and receipts the handoff session", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const sourceSessionId =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const checkpointId =
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const handoffSessionId =
+    "99999999-9999-4999-8999-999999999999";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff(input: unknown) {
+      calls.push({ name: "reserveHandoff", input });
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId: sourceSessionId,
+        providerCheckpointId: checkpointId,
+        effectiveWorkingDirectory: "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: unknown) {
+      calls.push({ name: "submitHandoff", input });
+    },
+  });
+  const forkCalls: unknown[] = [];
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint(
+      sessionId: string,
+      checkpoint: string,
+      workingDirectory: string | null,
+    ) {
+      forkCalls.push({
+        sessionId,
+        checkpoint,
+        workingDirectory,
+      });
+      return {
+        providerSessionId: handoffSessionId,
+      };
+    },
+  };
+
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "claude_handoff_completed",
+    reservationId: handoffId,
+    handoffSessionId,
+  });
+  assert.deepEqual(forkCalls, [{
+    sessionId: sourceSessionId,
+    checkpoint: checkpointId,
+    workingDirectory: "/Users/test/project",
+  }]);
+  assert.deepEqual(calls, [
+    {
+      name: "reserveHandoff",
+      input: {
+        listenerInstanceId,
+        dispatchTarget: "claude_code",
+      },
+    },
+    {
+      name: "submitHandoff",
+      input: {
+        listenerInstanceId,
+        reservationId: handoffId,
+        outcome: {
+          status: "success",
+          handoffSessionId,
+        },
+      },
+    },
+  ]);
+});
+
+test("Claude handoff fork failure is receipted without archiving locally", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const receipts: unknown[] = [];
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff() {
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId:
+          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerCheckpointId:
+          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        effectiveWorkingDirectory: "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: unknown) {
+      receipts.push(input);
+    },
+  });
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint() {
+      throw Object.assign(
+        new Error("checkpoint missing"),
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    },
+  };
+
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "claude_handoff_failed",
+    reservationId: handoffId,
+  });
+  assert.deepEqual(receipts, [{
+    listenerInstanceId,
+    reservationId: handoffId,
+    outcome: {
+      status: "failure",
+      failureCode: "NO_PROVIDER_SESSION",
+    },
+  }]);
+});
+
+
+test("Claude handoff response loss replays the same durable B without reforking", async (t) => {
+  const root = mkdtempSync(
+    join(tmpdir(), "leileios-handoff-replay-"),
+  );
+  t.after(() => {
+    rmSync(root, {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  const handoffId =
+    "88888888-8888-4888-8888-888888888888";
+  const sourceSessionId =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const checkpointId =
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const handoffSessionId =
+    "99999999-9999-4999-8999-999999999999";
+  let reserved = false;
+  let submissions = 0;
+  let forks = 0;
+
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff() {
+      if (reserved) return null;
+      reserved = true;
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId: sourceSessionId,
+        providerCheckpointId: checkpointId,
+        effectiveWorkingDirectory: "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: {
+      outcome: {
+        status: string;
+        handoffSessionId?: string;
+      };
+    }) {
+      submissions += 1;
+      assert.equal(
+        input.outcome.status,
+        "success",
+      );
+      assert.equal(
+        input.outcome.handoffSessionId,
+        handoffSessionId,
+      );
+      if (submissions === 1) {
+        throw new Error(
+          "timeout after canonical handoff write",
+        );
+      }
+    },
+  });
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint() {
+      forks += 1;
+      return {
+        providerSessionId: handoffSessionId,
+      };
+    },
+  };
+  const outbox =
+    new NativeLiveMacClaudeHandoffOutbox(root);
+
+  const first = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+    outbox,
+  );
+
+  assert.deepEqual(await first.runOnce(), {
+    outcome: "claude_handoff_delivery_unknown",
+    reservationId: handoffId,
+    handoffSessionId,
+  });
+  assert.equal(forks, 1);
+  assert.equal((await outbox.list()).length, 1);
+
+  const restarted = new NativeLiveMacDaemonLoop(
+    "77777777-7777-4777-8777-777777777777",
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+    new NativeLiveMacClaudeHandoffOutbox(root),
+  );
+
+  assert.deepEqual(await restarted.runOnce(), {
+    outcome: "claude_handoff_completed",
+    reservationId: handoffId,
+    handoffSessionId,
+  });
+  assert.equal(forks, 1);
+  assert.equal(submissions, 2);
+  assert.deepEqual(
+    await new NativeLiveMacClaudeHandoffOutbox(root).list(),
+    [],
+  );
+});
+
+
+test("Claude handoff failure response loss replays the durable failure without retrying the fork", async (t) => {
+  const root = mkdtempSync(
+    join(tmpdir(), "leileios-handoff-failure-replay-"),
+  );
+  t.after(() => {
+    rmSync(root, {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  const handoffId =
+    "88888888-8888-4888-8888-888888888888";
+  let reserved = false;
+  let submissions = 0;
+  let forks = 0;
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff() {
+      if (reserved) return null;
+      reserved = true;
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId:
+          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerCheckpointId:
+          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        effectiveWorkingDirectory:
+          "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: {
+      outcome: {
+        status: string;
+        failureCode?: string;
+      };
+    }) {
+      submissions += 1;
+      assert.equal(input.outcome.status, "failure");
+      assert.equal(
+        input.outcome.failureCode,
+        "NO_PROVIDER_SESSION",
+      );
+      if (submissions === 1) {
+        throw new Error(
+          "timeout after canonical failure write",
+        );
+      }
+    },
+  });
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint() {
+      forks += 1;
+      throw Object.assign(
+        new Error("checkpoint missing"),
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    },
+  };
+  const outbox =
+    new NativeLiveMacClaudeHandoffOutbox(root);
+
+  const first = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+    outbox,
+  );
+  assert.deepEqual(await first.runOnce(), {
+    outcome: "claude_handoff_delivery_unknown",
+    reservationId: handoffId,
+  });
+  assert.equal(forks, 1);
+  assert.equal((await outbox.list()).length, 1);
+
+  const restarted = new NativeLiveMacDaemonLoop(
+    "77777777-7777-4777-8777-777777777777",
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+    new NativeLiveMacClaudeHandoffOutbox(root),
+  );
+  assert.deepEqual(await restarted.runOnce(), {
+    outcome: "claude_handoff_failed",
+    reservationId: handoffId,
+  });
+  assert.equal(forks, 1);
+  assert.equal(submissions, 2);
+  assert.deepEqual(
+    await new NativeLiveMacClaudeHandoffOutbox(root).list(),
+    [],
+  );
 });

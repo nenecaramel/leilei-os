@@ -79,6 +79,7 @@ run([
   "--test",
   "--test-concurrency=1",
   "tests/native-live-conversation-repository.integration.test.ts",
+  "tests/native-live-claude-handoff.integration.test.ts",
   "tests/runtime-breath-recall-repository.integration.test.ts",
   "tests/claude-code-mind.integration.test.ts",
   "tests/mind-product-repository.integration.test.ts",
