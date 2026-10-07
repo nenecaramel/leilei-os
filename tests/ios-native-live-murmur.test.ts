@@ -26,7 +26,7 @@ test("murmur is a separate activity-row bubble that opens a sheet", () => {
   assert.match(activity, /@State private var isShowingMurmur = false/u);
   assert.match(
     activity,
-    /Image\(systemName: "bubble\.left"\)[\s\S]*isShowingMurmur = true/u,
+    /Button \{[\s\S]*isShowingMurmur = true[\s\S]*Image\(systemName: "bubble\.left"\)/u,
   );
   assert.match(
     activity,
