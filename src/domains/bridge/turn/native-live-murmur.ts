@@ -26,9 +26,19 @@ export function extractNativeLiveMurmur(
 
     const text = block.text;
     const lowerText = text.toLowerCase();
+    const suffixMarker = lowerText.lastIndexOf("<");
+    const suffix =
+      suffixMarker >= 0 ? lowerText.slice(suffixMarker) : "";
+    const hasPartialMurmurMarker =
+      suffix.length > 0
+      && (
+        "<murmur>".startsWith(suffix)
+        || "</murmur>".startsWith(suffix)
+      );
     if (
       !lowerText.includes("<murmur")
       && !lowerText.includes("</murmur>")
+      && !hasPartialMurmurMarker
     ) {
       visibleBlocks.push({ ...block });
       continue;
