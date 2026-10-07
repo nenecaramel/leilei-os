@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { readdir, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import postgres from "postgres";
 import "dotenv/config";
@@ -31,18 +34,6 @@ type SessionEntry = Record<string, unknown> & {
 };
 
 type ClaudeSdk = {
-  listSessions(options: {
-    dir: string;
-    limit: number;
-  }): Promise<Array<{
-    sessionId: string;
-    summary?: string | null;
-    customTitle?: string | null;
-    firstPrompt?: string | null;
-    lastModified?: number | null;
-    createdAt?: number | null;
-    cwd?: string | null;
-  }>>;
   forkSession(
     sessionId: string,
     options: {
@@ -203,34 +194,28 @@ if (recoverExisting) {
     );
   }
 
-  const sourceTail = lastVisibleMessageProjection(
-    verified.prefix,
-  );
-  if (!sourceTail) {
+  const sourceConversation =
+    visibleConversationProjectionFromEntries(
+      verified.prefix,
+    );
+  if (sourceConversation.length === 0) {
     throw new Error(
-      "The selected canonical checkpoint has no visible user/assistant message to match.",
+      "The selected canonical checkpoint has no visible user/assistant history to match.",
     );
   }
 
   const cutoff =
     Date.parse(leaf.updated_at) - 60_000;
-  const listed = await sdk.listSessions({
-    dir: leaf.effective_working_directory,
-    limit: 100,
+  const files = await recentClaudeSessionFiles({
+    cutoff,
+    sourceSessionId: leaf.provider_session_id,
   });
   const candidates = [];
-  for (const session of listed) {
-    if (session.sessionId === leaf.provider_session_id) {
-      continue;
-    }
-    const activity =
-      session.createdAt ?? session.lastModified ?? 0;
-    if (activity < cutoff) continue;
-
+  for (const file of files) {
     let messages: unknown[] = [];
     try {
       messages = await sdk.getSessionMessages(
-        session.sessionId,
+        file.sessionId,
         {
           dir: leaf.effective_working_directory,
           limit: 10_000,
@@ -239,30 +224,34 @@ if (recoverExisting) {
     } catch {
       continue;
     }
-    const tail = lastSdkVisibleProjection(messages);
+    if (!Array.isArray(messages) || messages.length === 0) {
+      continue;
+    }
+
+    const candidateConversation =
+      visibleConversationProjectionFromSdkMessages(
+        messages,
+      );
     candidates.push({
-      sessionId: session.sessionId,
-      createdAt: session.createdAt ?? null,
-      lastModified: session.lastModified ?? null,
-      customTitle: session.customTitle ?? null,
-      summary: session.summary ?? null,
-      firstPrompt: session.firstPrompt ?? null,
-      visibleMessages: messages.length,
-      tailMatchesCanonical: deepEqualJson(
-        tail,
-        sourceTail,
+      sessionId: file.sessionId,
+      modifiedAt: new Date(file.mtimeMs).toISOString(),
+      visibleMessages: candidateConversation.length,
+      historyMatchesCanonical: deepEqualJson(
+        candidateConversation,
+        sourceConversation,
       ),
     });
   }
 
   const matches = candidates.filter(
-    (candidate) => candidate.tailMatchesCanonical,
+    (candidate) => candidate.historyMatchesCanonical,
   );
   process.stdout.write(
     JSON.stringify(
       {
         ...report,
         mode: "recover_existing",
+        scannedTranscriptFiles: files.length,
         candidates,
         matches: matches.length,
         ...(matches.length === 1
@@ -270,7 +259,7 @@ if (recoverExisting) {
               handoffSessionId: matches[0]!.sessionId,
               validation: {
                 sourceSessionUntouched: "not_mutated",
-                recoveredForkVisibleTailMatchesCanonical:
+                recoveredForkHistoryMatchesCanonical:
                   "passed",
               },
               resumeCommand:
@@ -343,13 +332,20 @@ if (forkEntries.length === 0 || !Array.isArray(visible) || visible.length === 0)
   );
 }
 
-const sourceVisibleTail =
-  lastVisibleMessageProjection(verified.prefix);
-const forkVisibleTail =
-  lastSdkVisibleProjection(visible);
+const sourceConversation =
+  visibleConversationProjectionFromEntries(
+    verified.prefix,
+  );
+const forkConversation =
+  visibleConversationProjectionFromSdkMessages(
+    visible,
+  );
 if (
-  !sourceVisibleTail
-  || !deepEqualJson(sourceVisibleTail, forkVisibleTail)
+  sourceConversation.length === 0
+  || !deepEqualJson(
+    sourceConversation,
+    forkConversation,
+  )
 ) {
   process.stdout.write(
     JSON.stringify(
@@ -359,7 +355,7 @@ if (
         validation: {
           sourceSessionUnchanged: "passed",
           sdkGetSessionMessages: "passed",
-          forkVisibleTailMatchesCanonical: "failed",
+          forkHistoryMatchesCanonical: "failed",
         },
         recoveryCommand:
           "pnpm runtime:native-live-handoff-current-session-local -- --recover-existing",
@@ -369,7 +365,7 @@ if (
     ) + "\n",
   );
   throw new Error(
-    "Forked Claude session is readable, but its visible tail does not match the selected canonical checkpoint.",
+    "Forked Claude session is readable, but its visible history does not match the selected canonical checkpoint.",
   );
 }
 
@@ -381,7 +377,7 @@ process.stdout.write(
       validation: {
         sourceSessionUnchanged: "passed",
         forkTranscriptReadable: "passed",
-        forkVisibleTailMatchesCanonical: "passed",
+        forkHistoryMatchesCanonical: "passed",
         sdkGetSessionMessages: "passed",
       },
       resumeCommand:
@@ -448,8 +444,7 @@ async function loadInstalledSdk(): Promise<ClaudeSdk> {
     bridgeRequire.resolve("@anthropic-ai/claude-agent-sdk");
   const sdk = await import(pathToFileURL(sdkEntry).href);
   if (
-    typeof sdk.listSessions !== "function"
-    || typeof sdk.forkSession !== "function"
+    typeof sdk.forkSession !== "function"
     || typeof sdk.getSessionMessages !== "function"
     || typeof sdk.importSessionToStore !== "function"
   ) {
@@ -489,40 +484,149 @@ async function importLocalEntries(
   return entries;
 }
 
-function lastVisibleMessageProjection(
+function visibleConversationProjectionFromEntries(
   entries: SessionEntry[],
-): unknown | null {
-  const entry = [...entries]
-    .reverse()
-    .find((candidate) =>
-      !candidate.isSidechain
-      && (candidate.type === "user"
-        || candidate.type === "assistant")
-      && Object.hasOwn(candidate, "message")
-    );
-  if (!entry) return null;
+): unknown[] {
+  return entries.flatMap((entry) => {
+    if (
+      entry.isSidechain
+      || (
+        entry.type !== "user"
+        && entry.type !== "assistant"
+      )
+      || !Object.hasOwn(entry, "message")
+    ) {
+      return [];
+    }
+    return [visibleMessageProjection(
+      entry.type,
+      entry.message,
+    )];
+  });
+}
+
+function visibleConversationProjectionFromSdkMessages(
+  messages: unknown[],
+): unknown[] {
+  return messages.flatMap((value) => {
+    if (!value || typeof value !== "object") {
+      return [];
+    }
+    const row = value as Record<string, unknown>;
+    if (
+      row.type !== "user"
+      && row.type !== "assistant"
+    ) {
+      return [];
+    }
+    return [visibleMessageProjection(
+      row.type,
+      row.message,
+    )];
+  });
+}
+
+function visibleMessageProjection(
+  type: "user" | "assistant",
+  message: unknown,
+): unknown {
+  if (!message || typeof message !== "object") {
+    return {
+      type,
+      role: null,
+      content: message ?? null,
+    };
+  }
+  const record = message as Record<string, unknown>;
   return {
-    type: entry.type,
-    message: entry.message ?? null,
+    type,
+    role:
+      typeof record.role === "string"
+        ? record.role
+        : null,
+    content:
+      Object.hasOwn(record, "content")
+        ? record.content
+        : null,
   };
 }
 
-function lastSdkVisibleProjection(
-  messages: unknown[],
-): unknown | null {
-  const record = messages.at(-1);
-  if (!record || typeof record !== "object") return null;
-  const row = record as Record<string, unknown>;
-  if (
-    row.type !== "user"
-    && row.type !== "assistant"
-  ) {
-    return null;
+async function recentClaudeSessionFiles(input: {
+  cutoff: number;
+  sourceSessionId: string;
+}): Promise<Array<{
+  sessionId: string;
+  mtimeMs: number;
+}>> {
+  const configRoot = resolve(
+    firstNonblank(process.env.CLAUDE_CONFIG_DIR)
+      ?? join(homedir(), ".claude"),
+  );
+  const projectsRoot = join(configRoot, "projects");
+  let projectDirectories;
+  try {
+    projectDirectories = await readdir(
+      projectsRoot,
+      { withFileTypes: true },
+    );
+  } catch {
+    return [];
   }
-  return {
-    type: row.type,
-    message: row.message ?? null,
-  };
+
+  const files: Array<{
+    sessionId: string;
+    mtimeMs: number;
+  }> = [];
+  for (const project of projectDirectories) {
+    if (!project.isDirectory()) continue;
+    const directory = join(
+      projectsRoot,
+      project.name,
+    );
+    let entries;
+    try {
+      entries = await readdir(
+        directory,
+        { withFileTypes: true },
+      );
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (
+        !entry.isFile()
+        || !entry.name.endsWith(".jsonl")
+      ) {
+        continue;
+      }
+      const sessionId =
+        basename(entry.name, ".jsonl");
+      if (
+        sessionId === input.sourceSessionId
+        || !/^[0-9a-f-]{36}$/iu.test(sessionId)
+      ) {
+        continue;
+      }
+      const path = join(directory, entry.name);
+      let metadata;
+      try {
+        metadata = await stat(path);
+      } catch {
+        continue;
+      }
+      if (metadata.mtimeMs < input.cutoff) {
+        continue;
+      }
+      files.push({
+        sessionId,
+        mtimeMs: metadata.mtimeMs,
+      });
+    }
+  }
+  return files.sort(
+    (left, right) =>
+      right.mtimeMs - left.mtimeMs,
+  );
 }
 
 function deepEqualJson(
