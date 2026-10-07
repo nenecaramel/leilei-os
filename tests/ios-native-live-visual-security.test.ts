@@ -38,7 +38,7 @@ test("G keeps a single registry and consumes C verified SVG without another down
   assert.match(controls, /input.kind != \.svg/);
   assert.match(controls, /UIPasteboard.general.string = input.source/);
   assert.match(controls, /textSelection\(\.enabled\)/);
-  assert.match(controls, /onDisappear \{ controller.stop\(\) \}/);
+  assert.match(controls, /\.onDisappear \{[\s\S]*controller\.stop\(\)[\s\S]*\}/);
   const model = read("NativeLiveVisualSandboxModel.swift");
   assert.match(model, /case math, mermaid, svg/);
   assert.doesNotMatch(model, /case html|case artifact|case resource|case webArtifact|case interactiveResource/);
