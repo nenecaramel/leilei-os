@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readdir, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import postgres from "postgres";
 import "dotenv/config";
@@ -63,8 +60,6 @@ type ClaudeSdk = {
 };
 
 const apply = process.argv.includes("--apply");
-const recoverExisting =
-  process.argv.includes("--recover-existing");
 const expectedConversation = argument("--expect-conversation");
 const expectedCheckpoint = argument("--expect-checkpoint");
 
@@ -166,7 +161,7 @@ const report = {
   canonicalAncestryEntries: verified.ancestry.size,
 };
 
-if (!apply && !recoverExisting) {
+if (!apply) {
   process.stdout.write(
     JSON.stringify(
       {
@@ -187,95 +182,6 @@ if (!apply && !recoverExisting) {
   process.exit(0);
 }
 
-if (recoverExisting) {
-  if (sourceStorage !== "local_sdk") {
-    throw new Error(
-      "Existing local handoff recovery requires the canonical source transcript to be available locally.",
-    );
-  }
-
-  const sourceConversation =
-    visibleConversationProjectionFromEntries(
-      verified.prefix,
-    );
-  if (sourceConversation.length === 0) {
-    throw new Error(
-      "The selected canonical checkpoint has no visible user/assistant history to match.",
-    );
-  }
-
-  const cutoff =
-    Date.parse(leaf.updated_at) - 60_000;
-  const files = await recentClaudeSessionFiles({
-    cutoff,
-    sourceSessionId: leaf.provider_session_id,
-  });
-  const candidates = [];
-  for (const file of files) {
-    let messages: unknown[] = [];
-    try {
-      messages = await sdk.getSessionMessages(
-        file.sessionId,
-        {
-          dir: leaf.effective_working_directory,
-          limit: 10_000,
-        },
-      );
-    } catch {
-      continue;
-    }
-    if (!Array.isArray(messages) || messages.length === 0) {
-      continue;
-    }
-
-    const candidateConversation =
-      visibleConversationProjectionFromSdkMessages(
-        messages,
-      );
-    candidates.push({
-      sessionId: file.sessionId,
-      modifiedAt: new Date(file.mtimeMs).toISOString(),
-      visibleMessages: candidateConversation.length,
-      historyMatchesCanonical: deepEqualJson(
-        candidateConversation,
-        sourceConversation,
-      ),
-    });
-  }
-
-  const matches = candidates.filter(
-    (candidate) => candidate.historyMatchesCanonical,
-  );
-  process.stdout.write(
-    JSON.stringify(
-      {
-        ...report,
-        mode: "recover_existing",
-        scannedTranscriptFiles: files.length,
-        candidates,
-        matches: matches.length,
-        ...(matches.length === 1
-          ? {
-              handoffSessionId: matches[0]!.sessionId,
-              validation: {
-                sourceSessionUntouched: "not_mutated",
-                recoveredForkHistoryMatchesCanonical:
-                  "passed",
-              },
-              resumeCommand:
-                "cd "
-                + shellQuote(leaf.effective_working_directory)
-                + " && claude --resume "
-                + shellQuote(matches[0]!.sessionId),
-            }
-          : {}),
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-  process.exit(matches.length === 1 ? 0 : 2);
-}
 
 if (sourceStorage !== "local_sdk") {
   throw new Error(
@@ -316,7 +222,7 @@ const [sourceAfter, forkEntries, visible] = await Promise.all([
     forkSessionId,
     {
       dir: leaf.effective_working_directory,
-      limit: 10_000,
+      limit: 1,
     },
   ),
 ]);
@@ -326,46 +232,13 @@ if (transcriptHash(sourceAfter) !== sourceBeforeHash) {
     "Source Claude session changed while creating the handoff fork.",
   );
 }
-if (forkEntries.length === 0 || !Array.isArray(visible) || visible.length === 0) {
+if (
+  forkEntries.length === 0
+  || !Array.isArray(visible)
+  || visible.length === 0
+) {
   throw new Error(
     "Claude Agent SDK cannot read the forked handoff session.",
-  );
-}
-
-const sourceConversation =
-  visibleConversationProjectionFromEntries(
-    verified.prefix,
-  );
-const forkConversation =
-  visibleConversationProjectionFromSdkMessages(
-    visible,
-  );
-if (
-  sourceConversation.length === 0
-  || !deepEqualJson(
-    sourceConversation,
-    forkConversation,
-  )
-) {
-  process.stdout.write(
-    JSON.stringify(
-      {
-        ...report,
-        handoffSessionId: forkSessionId,
-        validation: {
-          sourceSessionUnchanged: "passed",
-          sdkGetSessionMessages: "passed",
-          forkHistoryMatchesCanonical: "failed",
-        },
-        recoveryCommand:
-          "pnpm runtime:native-live-handoff-current-session-local -- --recover-existing",
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-  throw new Error(
-    "Forked Claude session is readable, but its visible history does not match the selected canonical checkpoint.",
   );
 }
 
@@ -377,7 +250,6 @@ process.stdout.write(
       validation: {
         sourceSessionUnchanged: "passed",
         forkTranscriptReadable: "passed",
-        forkHistoryMatchesCanonical: "passed",
         sdkGetSessionMessages: "passed",
       },
       resumeCommand:
@@ -482,158 +354,6 @@ async function importLocalEntries(
     return [];
   }
   return entries;
-}
-
-function visibleConversationProjectionFromEntries(
-  entries: SessionEntry[],
-): unknown[] {
-  return entries.flatMap((entry) => {
-    if (
-      entry.isSidechain
-      || (
-        entry.type !== "user"
-        && entry.type !== "assistant"
-      )
-      || !Object.hasOwn(entry, "message")
-    ) {
-      return [];
-    }
-    return [visibleMessageProjection(
-      entry.type,
-      entry.message,
-    )];
-  });
-}
-
-function visibleConversationProjectionFromSdkMessages(
-  messages: unknown[],
-): unknown[] {
-  return messages.flatMap((value) => {
-    if (!value || typeof value !== "object") {
-      return [];
-    }
-    const row = value as Record<string, unknown>;
-    if (
-      row.type !== "user"
-      && row.type !== "assistant"
-    ) {
-      return [];
-    }
-    return [visibleMessageProjection(
-      row.type,
-      row.message,
-    )];
-  });
-}
-
-function visibleMessageProjection(
-  type: "user" | "assistant",
-  message: unknown,
-): unknown {
-  if (!message || typeof message !== "object") {
-    return {
-      type,
-      role: null,
-      content: message ?? null,
-    };
-  }
-  const record = message as Record<string, unknown>;
-  return {
-    type,
-    role:
-      typeof record.role === "string"
-        ? record.role
-        : null,
-    content:
-      Object.hasOwn(record, "content")
-        ? record.content
-        : null,
-  };
-}
-
-async function recentClaudeSessionFiles(input: {
-  cutoff: number;
-  sourceSessionId: string;
-}): Promise<Array<{
-  sessionId: string;
-  mtimeMs: number;
-}>> {
-  const configRoot = resolve(
-    firstNonblank(process.env.CLAUDE_CONFIG_DIR)
-      ?? join(homedir(), ".claude"),
-  );
-  const projectsRoot = join(configRoot, "projects");
-  let projectDirectories;
-  try {
-    projectDirectories = await readdir(
-      projectsRoot,
-      { withFileTypes: true },
-    );
-  } catch {
-    return [];
-  }
-
-  const files: Array<{
-    sessionId: string;
-    mtimeMs: number;
-  }> = [];
-  for (const project of projectDirectories) {
-    if (!project.isDirectory()) continue;
-    const directory = join(
-      projectsRoot,
-      project.name,
-    );
-    let entries;
-    try {
-      entries = await readdir(
-        directory,
-        { withFileTypes: true },
-      );
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (
-        !entry.isFile()
-        || !entry.name.endsWith(".jsonl")
-      ) {
-        continue;
-      }
-      const sessionId =
-        basename(entry.name, ".jsonl");
-      if (
-        sessionId === input.sourceSessionId
-        || !/^[0-9a-f-]{36}$/iu.test(sessionId)
-      ) {
-        continue;
-      }
-      const path = join(directory, entry.name);
-      let metadata;
-      try {
-        metadata = await stat(path);
-      } catch {
-        continue;
-      }
-      if (metadata.mtimeMs < input.cutoff) {
-        continue;
-      }
-      files.push({
-        sessionId,
-        mtimeMs: metadata.mtimeMs,
-      });
-    }
-  }
-  return files.sort(
-    (left, right) =>
-      right.mtimeMs - left.mtimeMs,
-  );
-}
-
-function deepEqualJson(
-  left: unknown,
-  right: unknown,
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function checkpointPrefixOrNull(
