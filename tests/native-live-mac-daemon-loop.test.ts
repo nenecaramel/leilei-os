@@ -1145,3 +1145,156 @@ test("production loop persists before submit and restarted daemon replays withou
   assert.equal(executor.calls.length, 1);
   assert.deepEqual(await outbox.list(), []);
 });
+
+
+test("idle daemon forks the exact Claude checkpoint and receipts the handoff session", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const sourceSessionId =
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const checkpointId =
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const handoffSessionId =
+    "99999999-9999-4999-8999-999999999999";
+  const calls: Array<{ name: string; input: unknown }> = [];
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff(input: unknown) {
+      calls.push({ name: "reserveHandoff", input });
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId: sourceSessionId,
+        providerCheckpointId: checkpointId,
+        effectiveWorkingDirectory: "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: unknown) {
+      calls.push({ name: "submitHandoff", input });
+    },
+  });
+  const forkCalls: unknown[] = [];
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint(
+      sessionId: string,
+      checkpoint: string,
+      workingDirectory: string | null,
+    ) {
+      forkCalls.push({
+        sessionId,
+        checkpoint,
+        workingDirectory,
+      });
+      return {
+        providerSessionId: handoffSessionId,
+      };
+    },
+  };
+
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "claude_handoff_completed",
+    reservationId: handoffId,
+    handoffSessionId,
+  });
+  assert.deepEqual(forkCalls, [{
+    sessionId: sourceSessionId,
+    checkpoint: checkpointId,
+    workingDirectory: "/Users/test/project",
+  }]);
+  assert.deepEqual(calls, [
+    {
+      name: "reserveHandoff",
+      input: {
+        listenerInstanceId,
+        dispatchTarget: "claude_code",
+      },
+    },
+    {
+      name: "submitHandoff",
+      input: {
+        listenerInstanceId,
+        reservationId: handoffId,
+        outcome: {
+          status: "success",
+          handoffSessionId,
+        },
+      },
+    },
+  ]);
+});
+
+test("Claude handoff fork failure is receipted without archiving locally", async () => {
+  const relay = new FakeRelay();
+  relay.reservation = null;
+  const handoffId = "88888888-8888-4888-8888-888888888888";
+  const receipts: unknown[] = [];
+  const handoffRelay = Object.assign(relay, {
+    async reserveClaudeHandoff() {
+      return {
+        reservationId: handoffId,
+        conversationId,
+        expectedHeadMessageId: userMessageId,
+        sourceMessageId: userMessageId,
+        providerSessionId:
+          "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        providerCheckpointId:
+          "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        effectiveWorkingDirectory: "/Users/test/project",
+      };
+    },
+    async submitClaudeHandoffResult(input: unknown) {
+      receipts.push(input);
+    },
+  });
+  const handoffExecutor = {
+    async forkSessionAtCheckpoint() {
+      throw Object.assign(
+        new Error("checkpoint missing"),
+        { runtimeCode: "NO_PROVIDER_SESSION" },
+      );
+    },
+  };
+
+  const loop = new NativeLiveMacDaemonLoop(
+    listenerInstanceId,
+    handoffRelay,
+    new FakeExecutor(),
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoffExecutor,
+  );
+
+  assert.deepEqual(await loop.runOnce(), {
+    outcome: "claude_handoff_failed",
+    reservationId: handoffId,
+  });
+  assert.deepEqual(receipts, [{
+    listenerInstanceId,
+    reservationId: handoffId,
+    outcome: {
+      status: "failure",
+      failureCode: "NO_PROVIDER_SESSION",
+    },
+  }]);
+});
