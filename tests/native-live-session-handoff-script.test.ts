@@ -52,6 +52,17 @@ test("local restore probes the real local SDK transcript before remote SessionSt
   );
 });
 
+test("production Claude transport refuses official handoff from a remote SessionStore", () => {
+  const source = read("tools/claude-bridge/src/agent-sdk-claude-transport.mjs");
+
+  assert.match(
+    source,
+    /Claude Code handoff requires the local SDK transcript store/,
+  );
+  assert.match(source, /async forkSessionAtCheckpoint/);
+  assert.match(source, /upToMessageId: checkpoint/);
+});
+
 test("package exposes an explicit non-destructive current-session handoff command", () => {
   const pkg = JSON.parse(read("package.json")) as {
     scripts: Record<string, string>;
