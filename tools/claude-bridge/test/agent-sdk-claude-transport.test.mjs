@@ -1209,6 +1209,205 @@ test("interactive foreground execution uses the dedicated turn handle with verba
   );
 });
 
+
+test("local historical checkpoint fork materializes only the canonical prefix", async () => {
+  const root = {
+    type: "user",
+    uuid: "11111111-1111-4111-8111-111111111111",
+    parentUuid: null,
+    message: { role: "user", content: "root" },
+  };
+  const checkpoint = {
+    type: "assistant",
+    uuid: "22222222-2222-4222-8222-222222222222",
+    parentUuid: root.uuid,
+    message: { role: "assistant", content: "checkpoint" },
+  };
+  const compact = {
+    type: "system",
+    uuid: "33333333-3333-4333-8333-333333333333",
+    parentUuid: checkpoint.uuid,
+    subtype: "compact_boundary",
+  };
+  const later = {
+    type: "assistant",
+    uuid: "44444444-4444-4444-8444-444444444444",
+    parentUuid: compact.uuid,
+    message: { role: "assistant", content: "later" },
+  };
+  const childCheckpoint = {
+    type: "assistant",
+    uuid: "55555555-5555-4555-8555-555555555555",
+    parentUuid: checkpoint.uuid,
+    message: { role: "assistant", content: "forked" },
+  };
+
+  let call;
+  let prepared = null;
+  let cleanupCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    importSessionToStoreImpl: async (sessionId, store) => {
+      const entries =
+        sessionId === "provider-parent"
+          ? [root, checkpoint, compact, later]
+          : [root, checkpoint, childCheckpoint];
+      await store.append({ subpath: undefined }, entries);
+    },
+    prepareLocalCheckpointForkImpl: async (input) => {
+      prepared = input;
+      return {
+        sessionId: "synthetic-local-parent",
+        async cleanup() {
+          cleanupCalls += 1;
+        },
+      };
+    },
+    queryImpl: (input) => {
+      call = input;
+      return fakeQuery(successFixture("provider-child"));
+    },
+  });
+
+  const result = await transport.executeTurn(
+    "edit from old checkpoint",
+    {
+      mode: "fork",
+      parentProviderSessionId: "provider-parent",
+      parentProviderCheckpointId: checkpoint.uuid,
+      requireProviderCheckpoint: true,
+      streaming: true,
+    },
+  );
+
+  assert.deepEqual(
+    prepared.prefix
+      .filter((entry) => typeof entry.uuid === "string")
+      .map((entry) => entry.uuid),
+    [root.uuid, checkpoint.uuid],
+  );
+  assert.equal(call.options.resume, "synthetic-local-parent");
+  assert.equal(call.options.resumeSessionAt, checkpoint.uuid);
+  assert.equal(call.options.forkSession, true);
+  assert.equal("sessionStore" in call.options, false);
+  assert.equal(result.providerSessionId, "provider-child");
+  assert.equal(result.providerCheckpointId, childCheckpoint.uuid);
+  assert.equal(cleanupCalls, 1);
+});
+
+test("steady local resume reparses the transcript only after the turn", async () => {
+  const root = {
+    type: "user",
+    uuid: "61111111-1111-4111-8111-111111111111",
+    parentUuid: null,
+    message: { role: "user", content: "root" },
+  };
+  const first = {
+    type: "assistant",
+    uuid: "62222222-2222-4222-8222-222222222222",
+    parentUuid: root.uuid,
+    message: { role: "assistant", content: "first" },
+  };
+  const second = {
+    type: "assistant",
+    uuid: "63333333-3333-4333-8333-333333333333",
+    parentUuid: first.uuid,
+    message: { role: "assistant", content: "second" },
+  };
+  const third = {
+    type: "assistant",
+    uuid: "64444444-4444-4444-8444-444444444444",
+    parentUuid: second.uuid,
+    message: { role: "assistant", content: "third" },
+  };
+  const snapshots = [
+    [root, first],
+    [root, first, second],
+    [root, first, second, third],
+  ];
+
+  let importCalls = 0;
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    importSessionToStoreImpl: async (_sessionId, store) => {
+      const entries = snapshots[importCalls];
+      importCalls += 1;
+      assert.ok(entries, "unexpected extra local transcript parse");
+      await store.append({ subpath: undefined }, entries);
+    },
+    queryImpl: () => fakeQuery(successFixture("provider-root")),
+  });
+
+  const firstResult = await transport.executeTurn(
+    "continue",
+    {
+      mode: "resume",
+      parentProviderSessionId: "provider-root",
+      parentProviderCheckpointId: first.uuid,
+      requireProviderCheckpoint: true,
+      streaming: true,
+    },
+  );
+  assert.equal(firstResult.providerCheckpointId, second.uuid);
+
+  const secondResult = await transport.executeTurn(
+    "continue again",
+    {
+      mode: "resume",
+      parentProviderSessionId: "provider-root",
+      parentProviderCheckpointId: second.uuid,
+      requireProviderCheckpoint: true,
+      streaming: true,
+    },
+  );
+  assert.equal(secondResult.providerCheckpointId, third.uuid);
+  assert.equal(importCalls, 3);
+});
+
+test("local checkpoint preflight rejects a broken ancestry before query", async () => {
+  let queryCalls = 0;
+  const checkpoint = {
+    type: "assistant",
+    uuid: "72222222-2222-4222-8222-222222222222",
+    parentUuid: "missing-parent",
+    message: { role: "assistant", content: "broken" },
+  };
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    cwd: "/workspace/leilei-os",
+    sessionMessagesImpl: async () => [{ type: "assistant" }],
+    importSessionToStoreImpl: async (_sessionId, store) => {
+      await store.append({ subpath: undefined }, [checkpoint]);
+    },
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("must-not-run"));
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      transport.executeTurn(
+        "continue",
+        {
+          mode: "resume",
+          parentProviderSessionId: "provider-root",
+          parentProviderCheckpointId: checkpoint.uuid,
+          requireProviderCheckpoint: true,
+          streaming: true,
+        },
+      ),
+    (error) =>
+      error.runtimeCode === "NO_PROVIDER_SESSION"
+      && /prefix is not durably present/i.test(error.message),
+  );
+  assert.equal(queryCalls, 0);
+});
+
 test("interactive native schedule commands use Claude slash-command parsing", async () => {
   for (const command of [
     "/schedule list",
