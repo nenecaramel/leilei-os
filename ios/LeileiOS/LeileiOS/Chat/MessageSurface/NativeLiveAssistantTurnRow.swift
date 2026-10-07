@@ -9,7 +9,7 @@ struct NativeLiveAssistantTurnRow: View {
     let isCopied: Bool
     let onCopyMessage: (String) -> Void
     let onRetryMessage: (String) -> Void
-    let onResolveInteraction: (NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void
+    let onResolveInteraction: ((NativeLiveRuntimeInteractionSnapshot,[String:NativeLiveJSONValue]) async throws -> Void)?
     var body: some View {
         VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing) {
             activityArea
