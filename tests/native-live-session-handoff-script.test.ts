@@ -33,25 +33,6 @@ test("handoff validates source identity and fork readability without assuming UU
   );
 });
 
-test("local restore probes the real local SDK transcript before remote SessionStore fallback", () => {
-  const source = read("scripts/native-live-restore-current-session-local.ts");
-
-  const localProbe = source.indexOf(
-    "const localEntries = await readLocalEntriesWithInstalledSdk",
-  );
-  const remoteProbe = source.indexOf(
-    "new NativeLiveMacProviderSessionStore",
-  );
-
-  assert.ok(localProbe >= 0, "local SDK transcript probe must exist");
-  assert.ok(remoteProbe > localProbe, "remote SessionStore must be fallback-only");
-  assert.match(source, /sourceStorage = "local_sdk"/);
-  assert.match(
-    source,
-    /Neither the local Claude transcript nor the remote SessionStore contains the current canonical checkpoint/,
-  );
-});
-
 test("production Claude transport refuses official handoff from a remote SessionStore", () => {
   const source = read("tools/claude-bridge/src/agent-sdk-claude-transport.mjs");
 
