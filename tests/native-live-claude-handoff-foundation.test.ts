@@ -96,6 +96,36 @@ test("archived LeileiOS conversations remain readable but active write gates rem
   );
 });
 
+test("production daemon durably persists successful Claude handoff receipts before delivery", () => {
+  const daemon =
+    read("scripts/native-live-mac-daemon.ts");
+  const loop =
+    read("src/domains/bridge/mac/native-live-mac-daemon-loop.ts");
+
+  assert.match(
+    daemon,
+    /new NativeLiveMacClaudeHandoffOutbox/,
+  );
+  assert.match(
+    daemon,
+    /"claude-handoffs"/,
+  );
+  const save = loop.indexOf(
+    "claudeHandoffOutbox\n              ?.save",
+  );
+  const submit = loop.indexOf(
+    "submitClaudeHandoffResult",
+    save,
+  );
+  const acknowledge = loop.indexOf(
+    "acknowledge(pendingHandoff)",
+    submit,
+  );
+  assert.ok(save >= 0);
+  assert.ok(submit > save);
+  assert.ok(acknowledge > submit);
+});
+
 test("iOS exposes Continue in Claude Code and archived conversations open a read-only canonical viewer", () => {
   const page =
     read("ios/LeileiOS/LeileiOS/Navigation/PageContainer.swift");
