@@ -61,6 +61,14 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.match(source, /'delivery_unknown'/);
   assert.match(source, /current\.status === "completed"/);
   assert.match(source, /current\.status === "stale"/);
+  assert.match(
+    source,
+    /checkpoint\.canonical_message_id =[\s\S]*conversation\.current_head_message_id/,
+  );
+  assert.doesNotMatch(
+    source,
+    /WITH RECURSIVE current_path/,
+  );
   assert.match(source, /effective_working_directory IS NOT NULL/);
   assert.match(source, /return "completed" as const/);
   assert.match(source, /return "stale" as const/);
