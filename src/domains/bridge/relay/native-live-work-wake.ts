@@ -277,7 +277,25 @@ export class DrizzleNativeLiveWorkAvailability {
             )
           )
 
+
         UNION ALL
+
+        SELECT 1
+        FROM native_live_claude_handoffs AS handoff
+        WHERE handoff.user_id = ${input.userId}::uuid
+          AND (
+            (
+              handoff.status = 'pending'
+              AND handoff.expires_at > now()
+            )
+            OR (
+              handoff.status = 'reserved'
+              AND handoff.reservation_expires_at <= now()
+            )
+          )
+
+        UNION ALL
+
 
         SELECT 1
         FROM native_live_provider_session_cleanups AS cleanup
