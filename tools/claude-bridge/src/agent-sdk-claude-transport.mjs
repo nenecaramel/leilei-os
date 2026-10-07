@@ -1,5 +1,9 @@
 import { createMemeMcpServer, MEME_SYSTEM_HINT } from "./send-meme-mcp.mjs";
 import { EventEmitter } from "node:events";
+import { randomUUID } from "node:crypto";
+import { access, open, readdir, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
@@ -80,6 +84,143 @@ function checkpointForkSessionStore(store, sessionId, checkpointId, validatePref
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
+}
+
+async function localPathExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findLocalSessionTranscriptPath({
+  sessionId,
+  cwd,
+  environment,
+}) {
+  const configured =
+    typeof environment.CLAUDE_CONFIG_DIR === "string"
+    && environment.CLAUDE_CONFIG_DIR.trim()
+      ? resolve(environment.CLAUDE_CONFIG_DIR.trim())
+      : join(homedir(), ".claude");
+  const projectsDirectory = join(configured, "projects");
+  const direct = join(
+    projectsDirectory,
+    cwd.replace(/\//gu, "-"),
+    sessionId + ".jsonl",
+  );
+  if (await localPathExists(direct)) return direct;
+
+  let directories;
+  try {
+    directories = await readdir(projectsDirectory, {
+      withFileTypes: true,
+    });
+  } catch (cause) {
+    throw runtimeError(
+      "Claude local transcript directory is unavailable for historical fork.",
+      { runtimeCode: "NO_PROVIDER_SESSION", cause },
+    );
+  }
+
+  const matches = [];
+  for (const directory of directories) {
+    if (!directory.isDirectory()) continue;
+    const candidate = join(
+      projectsDirectory,
+      directory.name,
+      sessionId + ".jsonl",
+    );
+    if (await localPathExists(candidate)) matches.push(candidate);
+  }
+  if (matches.length !== 1) {
+    throw runtimeError(
+      "Claude local parent transcript could not be located uniquely for historical fork.",
+      {
+        runtimeCode: "NO_PROVIDER_SESSION",
+        parentSessionId: sessionId,
+      },
+    );
+  }
+  return matches[0];
+}
+
+async function prepareLocalCheckpointFork({
+  sessionId,
+  checkpointId,
+  prefix,
+  cwd,
+  environment,
+}) {
+  if (!Array.isArray(prefix) || prefix.length === 0) {
+    throw runtimeError(
+      "Claude historical checkpoint prefix is unavailable for local fork.",
+      {
+        runtimeCode: "NO_PROVIDER_SESSION",
+        parentSessionId: sessionId,
+      },
+    );
+  }
+  const sourcePath = await findLocalSessionTranscriptPath({
+    sessionId,
+    cwd,
+    environment,
+  });
+  const syntheticSessionId = randomUUID();
+  const syntheticPath = join(
+    dirname(sourcePath),
+    syntheticSessionId + ".jsonl",
+  );
+  const encoded = prefix
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return JSON.stringify(entry);
+      }
+      const cloned = {
+        ...entry,
+        sessionId: syntheticSessionId,
+        ...(Object.hasOwn(entry, "session_id")
+          ? { session_id: syntheticSessionId }
+          : {}),
+      };
+      return JSON.stringify(cloned);
+    })
+    .join("\n") + "\n";
+
+  let file;
+  try {
+    file = await open(syntheticPath, "wx", 0o600);
+    try {
+      await file.writeFile(encoded, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+  } catch (cause) {
+    await unlink(syntheticPath).catch(() => undefined);
+    throw runtimeError(
+      "Failed to materialize local historical checkpoint fork source.",
+      {
+        runtimeCode: "RUNTIME_UNAVAILABLE",
+        parentSessionId: sessionId,
+        checkpointId,
+        cause,
+      },
+    );
+  }
+
+  return {
+    sessionId: syntheticSessionId,
+    async cleanup() {
+      try {
+        await unlink(syntheticPath);
+      } catch (cause) {
+        if (cause?.code !== "ENOENT") throw cause;
+      }
+    },
+  };
 }
 
 async function loadDefaultListSessions() {
@@ -689,6 +830,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     createAlbumMcpServerImpl =
       createDefaultAlbumMcpServer,
     createMemeMcpServerImpl = createMemeMcpServer,
+    prepareLocalCheckpointForkImpl = prepareLocalCheckpointFork,
     environment = process.env,
     cwd = process.cwd(),
   } = {}) {
@@ -716,6 +858,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.createAlbumMcpServerImpl =
       createAlbumMcpServerImpl;
     this.createMemeMcpServerImpl = createMemeMcpServerImpl;
+    this.prepareLocalCheckpointForkImpl =
+      prepareLocalCheckpointForkImpl;
+    this.localCheckpointAncestry = new Map();
     this.environment = {
       ...environment,
       DISABLE_AUTO_COMPACT: "1",
@@ -817,8 +962,16 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
+    let checkpointPreflight = null;
     if (parentProviderCheckpointId !== null) {
-      await this.#requireCheckpoint(parentProviderSessionId, parentProviderCheckpointId);
+      checkpointPreflight = await this.#requireCheckpoint(
+        parentProviderSessionId,
+        parentProviderCheckpointId,
+        {
+          needPrefix:
+            mode === "fork" && !this.sessionStore,
+        },
+      );
     }
 
     let portability = {
@@ -884,14 +1037,35 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       ? await this.createMemeMcpServerImpl(memeHandlers)
       : null;
 
-    const handle = await createAgentSdkTurnHandle({
+    let localCheckpointFork = null;
+    if (
+      mode === "fork"
+      && !this.sessionStore
+      && parentProviderCheckpointId !== null
+    ) {
+      localCheckpointFork =
+        await this.prepareLocalCheckpointForkImpl({
+          sessionId: parentProviderSessionId,
+          checkpointId: parentProviderCheckpointId,
+          prefix: checkpointPreflight?.prefix ?? null,
+          cwd: this.cwd,
+          environment: this.environment,
+        });
+    }
+    const sdkParentProviderSessionId =
+      localCheckpointFork?.sessionId
+      ?? parentProviderSessionId;
+
+    let handle;
+    try {
+      handle = await createAgentSdkTurnHandle({
       prompt,
       mode,
       parentProviderSessionId,
       resume:
         mode === "new"
           ? null
-          : parentProviderSessionId,
+          : sdkParentProviderSessionId,
       forkSession: mode === "fork",
       resumeSessionAt: parentProviderCheckpointId,
       queryImpl,
@@ -927,7 +1101,13 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       midTurnInput:
         Boolean(controlPump) && !nativeScheduleCommand,
       executionReadback: Boolean(execution),
-    });
+      });
+    } catch (cause) {
+      if (localCheckpointFork) {
+        await localCheckpointFork.cleanup().catch(() => undefined);
+      }
+      throw cause;
+    }
 
     this.activeTurnHandle = handle;
     const forwardRaw = (event) => {
@@ -976,6 +1156,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       try {
         handleResult = await completion;
       } catch (cause) {
+        if (!this.sessionStore && parentProviderSessionId) {
+          this.localCheckpointAncestry.delete(
+            parentProviderSessionId,
+          );
+        }
         const events =
           Array.isArray(cause?.events) ? cause.events : [];
         const providerSessionId =
@@ -1034,7 +1219,10 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       }
       if (
         mode === "fork"
-        && result.providerSessionId === parentProviderSessionId
+        && (
+          result.providerSessionId === parentProviderSessionId
+          || result.providerSessionId === sdkParentProviderSessionId
+        )
       ) {
         throw runtimeError(
           "Claude Agent SDK fork returned the same provider session id as its parent.",
@@ -1126,6 +1314,16 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       );
       if (this.activeTurnHandle === handle) {
         this.activeTurnHandle = null;
+      }
+      if (localCheckpointFork) {
+        try {
+          await localCheckpointFork.cleanup();
+        } catch (cause) {
+          this.events.emit(
+            "local-checkpoint-fork-cleanup-error",
+            cause,
+          );
+        }
       }
     }
   }
@@ -1296,6 +1494,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           ? { sessionStore: this.sessionStore }
           : {}),
       });
+      this.localCheckpointAncestry.delete(id);
     } catch (cause) {
       throw runtimeError(
         `Failed to delete Claude Agent SDK session: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -1336,24 +1535,78 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       && typeof entry.uuid === "string" && Object.hasOwn(entry, "parentUuid"));
   }
 
-  async #requireCheckpoint(sessionId, checkpointId) {
-    const entries = this.#chainEntries(await this.#checkpointEntries(sessionId, true));
-    if (!entries.some(entry => entry.uuid === checkpointId)) {
-      throw runtimeError("Claude historical provider checkpoint is not present in the transcript.", {
-        runtimeCode: "NO_PROVIDER_SESSION", parentSessionId: sessionId,
-      });
+  async #requireCheckpoint(
+    sessionId,
+    checkpointId,
+    { needPrefix = false } = {},
+  ) {
+    const id = nonblankString(sessionId);
+    if (
+      !needPrefix
+      && !this.sessionStore
+      && this.localCheckpointAncestry
+        .get(id)
+        ?.has(checkpointId)
+    ) {
+      return {
+        prefix: null,
+        ancestry: this.localCheckpointAncestry.get(id),
+        cached: true,
+      };
     }
+
+    const allEntries =
+      await this.#checkpointEntries(sessionId, true);
+    const verified =
+      durableCheckpointPrefix(allEntries, checkpointId);
+    if (!this.sessionStore && id) {
+      this.localCheckpointAncestry.set(
+        id,
+        verified.ancestry,
+      );
+    }
+    return {
+      ...verified,
+      cached: false,
+    };
   }
 
-  async #completedCheckpoint(sessionId, required, parentCheckpointId) {
-    let entries;
-    try { entries = this.#chainEntries(await this.#checkpointEntries(sessionId, required)); }
-    catch (cause) { if (required) throw cause; return null; }
+  async #completedCheckpoint(
+    sessionId,
+    required,
+    parentCheckpointId,
+  ) {
+    let allEntries;
+    try {
+      allEntries =
+        await this.#checkpointEntries(sessionId, required);
+    } catch (cause) {
+      if (required) throw cause;
+      return null;
+    }
+    const entries = this.#chainEntries(allEntries);
     const id = entries.at(-1)?.uuid ?? null;
     if (required && (!id || id === parentCheckpointId)) {
-      throw runtimeError("Claude turn has no new persisted provider checkpoint.", {
-        runtimeCode: "NO_PROVIDER_SESSION", providerSessionId: sessionId,
-      });
+      throw runtimeError(
+        "Claude turn has no new persisted provider checkpoint.",
+        {
+          runtimeCode: "NO_PROVIDER_SESSION",
+          providerSessionId: sessionId,
+        },
+      );
+    }
+    if (!this.sessionStore && id) {
+      try {
+        const verified =
+          durableCheckpointPrefix(allEntries, id);
+        this.localCheckpointAncestry.set(
+          sessionId,
+          verified.ancestry,
+        );
+      } catch (cause) {
+        this.localCheckpointAncestry.delete(sessionId);
+        if (required) throw cause;
+      }
     }
     return id;
   }
