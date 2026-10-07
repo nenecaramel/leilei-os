@@ -11,6 +11,7 @@ import type { NativeLiveTurnWaitService } from "../../domains/bridge/relay/nativ
 import type { NativeLiveConversationHeadWaitService } from "../../domains/bridge/relay/native-live-conversation-head-wait.js";
 import type { NativeLiveManualCompactService } from "../../domains/bridge/turn/native-live-manual-compact.js";
 import type { NativeLiveExternalSessionBridgeService } from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
+import type { NativeLiveClaudeHandoffService } from "../../domains/bridge/provider-session/native-live-claude-handoff.js";
 import type { NativeLiveAttachmentService } from "../../domains/bridge/attachment/native-live-attachment-service.js";
 
 export type NativeLiveApiDependencies = {
@@ -54,6 +55,10 @@ export type NativeLiveApiDependencies = {
   >;
   manualCompactService?: Pick<
     NativeLiveManualCompactService,
+    "create" | "read"
+  >;
+  claudeHandoffService?: Pick<
+    NativeLiveClaudeHandoffService,
     "create" | "read"
   >;
   externalSessionBridgeService?: Pick<
