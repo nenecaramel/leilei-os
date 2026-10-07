@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacResultOutbox } from "../src/domains/bridge/mac/native-live-mac-result-outbox.js";
+import { NativeLiveMacClaudeHandoffOutbox } from "../src/domains/bridge/mac/native-live-mac-claude-handoff-outbox.js";
 import {
   consumeNativeLiveMacMemeGitHubConfig,
   NativeLiveMacMemeSender,
@@ -242,6 +243,16 @@ const loop = new NativeLiveMacDaemonLoop(
   new NativeLiveMacResultOutbox(join(homedir(), ".leileios", "terminal-results",
     createHash("sha256").update(JSON.stringify([relayBaseUrl, relayToken])).digest("hex"))),
   workingDirectoryRuntimePool,
+  new NativeLiveMacClaudeHandoffOutbox(
+    join(
+      homedir(),
+      ".leileios",
+      "claude-handoffs",
+      createHash("sha256")
+        .update(JSON.stringify([relayBaseUrl, relayToken]))
+        .digest("hex"),
+    ),
+  ),
 );
 
 let stopping = false;
