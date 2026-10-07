@@ -6,7 +6,7 @@ CREATE TABLE "native_live_claude_handoffs" (
   "source_message_id" uuid NOT NULL,
   "provider_session_id" text NOT NULL,
   "provider_checkpoint_id" text NOT NULL,
-  "effective_working_directory" text,
+  "effective_working_directory" text NOT NULL,
   "status" varchar(32) DEFAULT 'pending' NOT NULL,
   "handoff_session_id" text,
   "reserved_by" uuid,
@@ -33,10 +33,7 @@ CREATE TABLE "native_live_claude_handoffs" (
   CONSTRAINT "native_live_claude_handoffs_checkpoint_not_blank"
     CHECK (char_length(btrim("provider_checkpoint_id")) > 0),
   CONSTRAINT "native_live_claude_handoffs_working_directory_not_blank"
-    CHECK (
-      "effective_working_directory" IS NULL
-      OR char_length(btrim("effective_working_directory")) > 0
-    ),
+    CHECK (char_length(btrim("effective_working_directory")) > 0),
   CONSTRAINT "native_live_claude_handoffs_handoff_session_not_blank"
     CHECK (
       "handoff_session_id" IS NULL
