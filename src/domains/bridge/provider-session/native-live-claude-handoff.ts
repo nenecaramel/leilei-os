@@ -515,7 +515,6 @@ export class NativeLiveClaudeHandoffService {
       const current = rows[0];
       if (
         current
-        && input.outcome.status === "success"
         && current.status === "delivery_unknown"
         && current.failure_code === "RESULT_DELIVERY_UNKNOWN"
         && current.reserved_by === input.listenerInstanceId
