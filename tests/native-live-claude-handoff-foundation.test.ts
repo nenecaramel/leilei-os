@@ -66,6 +66,28 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.match(source, /return "stale" as const/);
 });
 
+test("expired Claude handoff reservations preserve the original owner so a durable B receipt can arrive late", () => {
+  const source =
+    read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
+
+  const expiry = source.match(
+    /UPDATE native_live_claude_handoffs[\s\S]*?failure_code = 'RESULT_DELIVERY_UNKNOWN'[\s\S]*?WHERE user_id = \$\{input\.userId\}::uuid[\s\S]*?status = 'reserved'/,
+  )?.[0];
+  assert.ok(expiry, "reservation expiry update must exist");
+  assert.doesNotMatch(
+    expiry,
+    /reserved_by = NULL/,
+  );
+  assert.match(
+    source,
+    /current\.failure_code === "RESULT_DELIVERY_UNKNOWN"[\s\S]*current\.reserved_by === input\.listenerInstanceId/,
+  );
+  assert.match(
+    source,
+    /current\.status = "reserved"/,
+  );
+});
+
 test("handoff failure never archives the LeileiOS source conversation", () => {
   const source =
     read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
