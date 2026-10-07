@@ -10,6 +10,9 @@ import { parseEnv } from "node:util";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_SEEN = 20000;
 export const HOOK_DEADLINE_MS = 3800;
+const DELIVERY_RESERVE_MS = 400;
+const SIGNED_TOKEN = /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
+const validSignedToken = token => typeof token === "string" && token.length >= 80 && token.length <= 4096 && SIGNED_TOKEN.test(token);
 const root = () => process.env.LEILEI_MIND_HOME || join(homedir(), ".claude", "leileios-mind");
 const hash = value => createHash("sha256").update(value).digest("hex");
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -42,7 +45,7 @@ function validState(state) {
     (state.active_turn === null || UUID.test(state.active_turn)) &&
     Array.isArray(state.pending_recalls) && state.pending_recalls.length <= 8 && state.pending_recalls.every(p =>
       UUID.test(p.recall_id) && /^[a-f0-9]{64}$/.test(p.context_sha256) &&
-      (p.recall_token === undefined || typeof p.recall_token === "string" && /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(p.recall_token) && p.recall_token.length <= 4096) &&
+      (p.recall_token === undefined || validSignedToken(p.recall_token)) &&
       UUID.test(p.epoch) && UUID.test(p.turn_id) &&
       Number.isInteger(p.context_epoch) && p.context_epoch >= 0 && p.context_epoch <= 2147483647 &&
       Number.isFinite(p.delivered_at) && (p.turn_anchor === null || typeof p.turn_anchor === "string" && p.turn_anchor.length <= 256) &&
@@ -151,7 +154,7 @@ async function recall(config, input, timeoutMs = 2500) {
   if (hasReceiptFields || input.receipt_mode === "signed_v1" && data.context) {
     if (!data.context || !data.memory_ids.length || !UUID.test(data.recall_id) || data.context_sha256 !== hash(data.context)) throw new Error("Invalid receipt.");
     if (input.receipt_mode === "signed_v1" &&
-        (typeof data.recall_token !== "string" || !/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(data.recall_token) || data.recall_token.length > 4096)) {
+        !validSignedToken(data.recall_token)) {
       throw new Error("Invalid signed receipt.");
     }
   }
@@ -271,7 +274,10 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     context_epoch: snapshot.context_epoch,
     receipt_mode: "signed_v1",
   };
-  let data = await recall(config, body, 2500);
+  // A previous-turn confirm may already have spent 1.2s of this invocation.
+  const firstTimeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
+  if (firstTimeout <= 0) return;
+  let data = await recall(config, body, firstTimeout);
   // Preserve the 3.8s process deadline. Semantic scoring is opportunistic:
   // if the first cross-Pacific recall consumed too much of the budget, emit its
   // lexical result instead of risking a second request that suppresses all recall.
@@ -279,7 +285,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
       data.semantic_candidates.length <= 256 && Date.now() - invocationStarted < 1500) {
     try {
       const scores = await semanticScores(config, input.prompt, data.semantic_candidates);
-      if (Date.now() - invocationStarted < 2400) {
+      if (HOOK_DEADLINE_MS - (Date.now() - invocationStarted) > 1200 + DELIVERY_RESERVE_MS) {
         data = await recall(config, {...body, semantic_candidates: data.semantic_candidates, semantic_scores: scores}, 1200);
       }
     } catch { /* Use the already returned canonical lexical context. */ }

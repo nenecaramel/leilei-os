@@ -12,6 +12,7 @@ const SIGNED_RECEIPT_PREFIX = "v1";
 const SIGNING_LABEL = "leileios/claude-code-recall/signed-v1";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
+const PAYLOAD_FIELDS = ["v", "id", "uid", "sid", "cid", "ep", "ids", "hash", "iat", "exp"];
 
 export type RecallReceiptInput = {
   userId: string; subjectId: string; conversationId: string; contextEpoch: number;
@@ -53,6 +54,7 @@ function validReceiptInput(input: RecallReceiptInput): boolean {
     && input.subjectId.trim().length > 0
     && input.subjectId.length <= 256
     && input.conversationId.startsWith("claude-code:")
+    && input.conversationId.length > 12
     && input.conversationId.length <= 268
     && Number.isInteger(input.contextEpoch)
     && input.contextEpoch >= 0
@@ -61,7 +63,8 @@ function validReceiptInput(input: RecallReceiptInput): boolean {
     && input.stateIds.length <= 4
     && input.stateIds.every(id => UUID.test(id))
     && SHA256.test(input.contextSha256)
-    && Number.isFinite(recalledAt);
+    && Number.isFinite(recalledAt)
+    && Number.isFinite(new Date(recalledAt + RECEIPT_TTL_MS).getTime());
 }
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
@@ -90,7 +93,7 @@ export class DrizzleClaudeCodeRecallReceipts implements ClaudeCodeRecallReceiptP
     private readonly lifecyclePolicy?: MemoryLifecyclePolicy,
     signingSecret?: string,
   ) {
-    this.signedReceiptKey = signingSecret
+    this.signedReceiptKey = signingSecret && signingSecret.length >= 32
       ? createHmac("sha256", signingSecret).update(SIGNING_LABEL).digest()
       : null;
   }
@@ -105,10 +108,10 @@ export class DrizzleClaudeCodeRecallReceipts implements ClaudeCodeRecallReceiptP
         recalledAt: new Date(input.recalledAt), expiresAt: new Date(Date.parse(input.recalledAt) + RECEIPT_TTL_MS),
       });
       // Legacy V2 rolling compatibility: old hooks still use durable pending receipts.
-      await transaction.execute(sql`DELETE FROM claude_code_recall_receipts WHERE id IN (
+      await transaction.execute(sql`WITH expired AS MATERIALIZED (
         SELECT id FROM claude_code_recall_receipts WHERE user_id = ${input.userId}::uuid
         AND expires_at < clock_timestamp() ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED
-      )`);
+      ) DELETE FROM claude_code_recall_receipts WHERE id IN (SELECT id FROM expired)`);
     });
     return {recall_id: id, context_sha256: input.contextSha256};
   }
@@ -142,6 +145,10 @@ export class DrizzleClaudeCodeRecallReceipts implements ClaudeCodeRecallReceiptP
     if (!this.signedReceiptKey || token.length < 80 || token.length > 4096) unavailable();
     const parts = token.split(".");
     if (parts.length !== 3 || parts[0] !== SIGNED_RECEIPT_PREFIX) unavailable();
+    // Buffer's base64url decoder accepts padding, junk and nonzero unused bits.
+    // Require the one canonical representation of both encoded segments.
+    if (!parts.slice(1).every(part => /^[A-Za-z0-9_-]+$/.test(part)
+      && Buffer.from(part, "base64url").toString("base64url") === part)) unavailable();
     let supplied: Buffer;
     try {
       supplied = Buffer.from(parts[2]!, "base64url");
@@ -162,15 +169,19 @@ export class DrizzleClaudeCodeRecallReceipts implements ClaudeCodeRecallReceiptP
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) unavailable();
     const value = payload as Partial<SignedReceiptPayload>;
     if (
-      value.v !== 1
+      Object.keys(value).length !== PAYLOAD_FIELDS.length
+      || !Object.keys(value).every(field => PAYLOAD_FIELDS.includes(field))
+      || value.v !== 1
       || typeof value.id !== "string" || !UUID.test(value.id)
       || typeof value.uid !== "string" || !UUID.test(value.uid)
       || typeof value.sid !== "string" || !value.sid.trim() || value.sid.length > 256
-      || typeof value.cid !== "string" || !value.cid.startsWith("claude-code:") || value.cid.length > 268
+      || typeof value.cid !== "string" || !value.cid.startsWith("claude-code:") || value.cid.length <= 12 || value.cid.length > 268
       || !Number.isInteger(value.ep) || (value.ep as number) < 0 || (value.ep as number) > 2147483647
       || !Array.isArray(value.ids) || value.ids.length < 1 || value.ids.length > 4 || !value.ids.every(id => typeof id === "string" && UUID.test(id))
       || typeof value.hash !== "string" || !SHA256.test(value.hash)
       || !Number.isSafeInteger(value.iat) || !Number.isSafeInteger(value.exp)
+      || !Number.isFinite(new Date(value.iat as number).getTime())
+      || !Number.isFinite(new Date(value.exp as number).getTime())
       || (value.exp as number) - (value.iat as number) !== RECEIPT_TTL_MS
     ) unavailable();
     return value as SignedReceiptPayload;
@@ -213,15 +224,21 @@ export class DrizzleClaudeCodeRecallReceipts implements ClaudeCodeRecallReceiptP
 
     return this.db.transaction(async transaction => {
       await requireActiveUserInTransaction(transaction, input.userId);
-      const [clock] = await transaction.execute<{now: Date}>(sql`SELECT clock_timestamp() AS now`);
-      const now = new Date(clock!.now);
-      if (payload.exp <= now.getTime()) unavailable();
+      const checkExpiry = async () => {
+        const [clock] = await transaction.execute<{now: Date}>(sql`SELECT clock_timestamp() AS now`);
+        const now = new Date(clock!.now);
+        if (payload.exp <= now.getTime()) unavailable();
+        return now;
+      };
+      const now = await checkExpiry();
       // Signed mode does no recall-time writes, so perform the bounded retention
       // cleanup here instead of letting confirmed rows accumulate indefinitely.
-      await transaction.execute(sql`DELETE FROM claude_code_recall_receipts WHERE id IN (
+      // Materialize once: a nested-loop IN subquery can rescan the LIMIT and
+      // delete more than 100 rows as earlier matches disappear during DELETE.
+      await transaction.execute(sql`WITH expired AS MATERIALIZED (
         SELECT id FROM claude_code_recall_receipts WHERE user_id = ${input.userId}::uuid
         AND expires_at < clock_timestamp() ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED
-      )`);
+      ) DELETE FROM claude_code_recall_receipts WHERE id IN (SELECT id FROM expired)`);
 
       const [inserted] = await transaction.insert(claudeCodeRecallReceipts).values({
         id: payload.id,
@@ -237,13 +254,19 @@ export class DrizzleClaudeCodeRecallReceipts implements ClaudeCodeRecallReceiptP
       }).onConflictDoNothing().returning({id: claudeCodeRecallReceipts.id});
 
       if (!inserted) {
+        // This separate statement gets a fresh READ COMMITTED snapshot after
+        // the unique-index conflict has waited for the winning transaction.
         const [existing] = await transaction.select().from(claudeCodeRecallReceipts)
           .where(and(eq(claudeCodeRecallReceipts.id, payload.id), eq(claudeCodeRecallReceipts.userId, input.userId)))
           .for("update").limit(1);
         if (!existing || !existing.confirmedAt || !matchesPayload(existing, payload)) unavailable();
+        await checkExpiry();
         return {outcome: "replayed"};
       }
 
+      // Cleanup/unique-index waits may outlive the token. Any provisional insert
+      // rolls back if it expired before we can apply lifecycle accounting.
+      await checkExpiry();
       await applyFinalizedMemoryRecall(transaction, {
         userId: payload.uid,
         subjectId: payload.sid,

@@ -69,6 +69,9 @@ test("signed recall stays stateless until confirm, then materializes one idempot
   const database = createDatabase(url!, {ssl: false}); const db = database.db;
   const userId = randomUUID(), other = randomUUID();
   t.after(async () => {
+    await db.execute(sql`DROP TRIGGER IF EXISTS mind_signed_test_count_effect ON runtime_subject_states`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS mind_signed_test_count_effect()`);
+    await db.execute(sql`DROP TABLE IF EXISTS mind_signed_test_effects`);
     await db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId, userId));
     await db.delete(users).where(eq(users.id, userId));
     await db.delete(users).where(eq(users.id, other));
@@ -111,15 +114,39 @@ test("signed recall stays stateless until confirm, then materializes one idempot
   };
   await assert.rejects(receiptPort.confirmSigned({...confirmation, recallToken: tampered}));
   await assert.rejects(receiptPort.confirmSigned({...confirmation, userId: other}));
+  await assert.rejects(receiptPort.confirmSigned({...confirmation, recallId: randomUUID()}));
+  await assert.rejects(receiptPort.confirmSigned({...confirmation, contextSha256: "0".repeat(64)}));
   assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 0);
   assert.deepEqual(await stored(), before);
 
-  const outcomes = await Promise.all([
-    receiptPort.confirmSigned(confirmation),
-    receiptPort.confirmSigned(confirmation),
-    receiptPort.confirmSigned(confirmation),
-  ]);
-  assert.deepEqual(outcomes.map(value => value.outcome).sort(), ["confirmed", "replayed", "replayed"]);
+  // Observe physical lifecycle UPDATEs, rather than inferring exactly-once from
+  // an idempotent final payload that could hide repeated writes.
+  await db.execute(sql`CREATE TABLE mind_signed_test_effects (id serial PRIMARY KEY)`);
+  await db.execute(sql`CREATE FUNCTION mind_signed_test_count_effect() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN INSERT INTO mind_signed_test_effects DEFAULT VALUES; RETURN NEW; END $$`);
+  await db.execute(sql`CREATE TRIGGER mind_signed_test_count_effect AFTER UPDATE ON runtime_subject_states
+    FOR EACH ROW EXECUTE FUNCTION mind_signed_test_count_effect()`);
+  const effects = async () => Number((await db.execute<{count: string}>(sql`SELECT count(*) AS count FROM mind_signed_test_effects`))[0]!.count);
+  // A deferred failure runs at COMMIT, after both receipt insertion and lifecycle
+  // mutation. It must roll back the receipt, memory, and audit insert together.
+  await db.execute(sql`CREATE FUNCTION mind_signed_test_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'signed test abort at commit'; END $$`);
+  await db.execute(sql`CREATE CONSTRAINT TRIGGER mind_signed_test_abort AFTER INSERT ON claude_code_recall_receipts
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION mind_signed_test_abort()`);
+  try {
+    await assert.rejects(receiptPort.confirmSigned(confirmation));
+    assert.deepEqual(await stored(), before);
+    assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.id, result.recall_id!))).length, 0);
+    assert.equal(await effects(), 0);
+  } finally {
+    await db.execute(sql`DROP TRIGGER mind_signed_test_abort ON claude_code_recall_receipts`);
+    await db.execute(sql`DROP FUNCTION mind_signed_test_abort()`);
+  }
+
+  const outcomes = await Promise.all(Array.from({length: 12}, () => receiptPort.confirmSigned(confirmation)));
+  assert.equal(outcomes.filter(value => value.outcome === "confirmed").length, 1);
+  assert.equal(outcomes.filter(value => value.outcome === "replayed").length, 11);
+  assert.equal(await effects(), 1);
   const [receipt] = await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.id, result.recall_id!));
   assert.ok(receipt?.confirmedAt);
   assert.equal(receipt?.contextEpoch, 3);
@@ -132,6 +159,23 @@ test("signed recall stays stateless until confirm, then materializes one idempot
     sourceMessageId: result.recall_id!,
     recalledAt: receipt!.recalledAt.toISOString(),
   });
+  assert.equal(readSubjectStateLifecycle(finalized.payload)?.lastRecalledAt, receipt!.recalledAt.toISOString());
+  assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 1);
+  await assert.rejects(receiptPort.confirmSigned({...confirmation, userId: other}));
+  // An ID collision is a replay only if every authoritative field matches.
+  for (const mismatch of [
+    {userId: other}, {subjectId: "foreign"}, {conversationId: "claude-code:foreign"},
+    {contextEpoch: 9}, {stateIds: [randomUUID()]}, {contextSha256: "0".repeat(64)},
+    {recalledAt: new Date(receipt!.recalledAt.getTime() + 1), expiresAt: new Date(receipt!.expiresAt.getTime() + 1)},
+    {confirmedAt: null},
+  ]) {
+    await db.update(claudeCodeRecallReceipts).set(mismatch).where(eq(claudeCodeRecallReceipts.id, receipt!.id));
+    await assert.rejects(receiptPort.confirmSigned(confirmation));
+    assert.deepEqual(await stored(), finalized); assert.equal(await effects(), 1);
+    await db.update(claudeCodeRecallReceipts).set(receipt!).where(eq(claudeCodeRecallReceipts.id, receipt!.id));
+  }
+  assert.deepEqual(await receiptPort.confirmSigned(confirmation), {outcome: "replayed"});
+  assert.equal(await effects(), 1);
 
   const expired = await receiptPort.issueSigned({
     userId, subjectId: "G", conversationId: "claude-code:desktop-session",
@@ -142,5 +186,106 @@ test("signed recall stays stateless until confirm, then materializes one idempot
     userId, recallId: expired.recall_id, recallToken: expired.recall_token,
     contextSha256: expired.context_sha256,
   }));
+  assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 1);
+  await db.update(users).set({status: "disabled"}).where(eq(users.id, userId));
+  await assert.rejects(receiptPort.confirmSigned(confirmation));
+  assert.deepEqual(await stored(), finalized); assert.equal(await effects(), 1);
+});
+
+test("signed loser waits for an uncommitted winner then replays; cleanup is bounded and skips locked expired rows", {skip: !enabled}, async t => {
+  const database = createDatabase(url!, {ssl: false}); const db = database.db;
+  const userId = randomUUID();
+  t.after(async () => {await db.delete(users).where(eq(users.id, userId)); await database.close();});
+  await db.insert(users).values({id: userId, email: `${userId}@example.test`, displayName: "Concurrent Signed"});
+  const receipts = new DrizzleClaudeCodeRecallReceipts(db, undefined, "s".repeat(64));
+  const issued = await receipts.issueSigned({userId, subjectId: "G", conversationId: "claude-code:concurrent",
+    contextEpoch: 0, stateIds: [randomUUID()], contextSha256: "a".repeat(64), recalledAt: new Date().toISOString()});
+  const input = {userId, recallId: issued.recall_id, recallToken: issued.recall_token, contextSha256: issued.context_sha256};
+  const [isolation] = await db.execute<{transaction_isolation: string}>(sql`SHOW transaction_isolation`);
+  assert.equal(isolation!.transaction_isolation, "read committed");
+  let release!: () => void, ready!: () => void;
+  const hold = new Promise<void>(resolve => {release = resolve;});
+  const entered = new Promise<void>(resolve => {ready = resolve;});
+  const pausedDb = {transaction: callback => db.transaction(async transaction => {
+    const result = await callback(transaction); ready(); await hold; return result;
+  })} as typeof db;
+  const winner = new DrizzleClaudeCodeRecallReceipts(pausedDb, undefined, "s".repeat(64)).confirmSigned(input);
+  await entered;
+  let settled = false;
+  const loser = receipts.confirmSigned(input).finally(() => {settled = true;});
+  try {
+    const deadline = Date.now() + 3000;
+    let blocked = false;
+    while (Date.now() < deadline) {
+      const [row] = await db.execute<{blocked: boolean}>(sql`SELECT EXISTS (
+        SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+        AND wait_event_type = 'Lock' AND query ILIKE '%insert into%claude_code_recall_receipts%'
+      ) AS blocked`);
+      if (row!.blocked) {blocked = true; break;}
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(blocked, true); assert.equal(settled, false);
+  } finally {release();}
+  assert.deepEqual(await winner, {outcome: "confirmed"});
+  assert.deepEqual(await loser, {outcome: "replayed"});
+
+  const expiredIds = Array.from({length: 105}, () => randomUUID());
+  const old = Date.now() - 3 * 86400000;
+  await db.insert(claudeCodeRecallReceipts).values(expiredIds.map((id, index) => ({
+    id, userId, subjectId: "G", conversationId: "claude-code:expired", contextEpoch: 0,
+    stateIds: [randomUUID()], contextSha256: "b".repeat(64),
+    recalledAt: new Date(old + index), expiresAt: new Date(old + index + 86400000), confirmedAt: null,
+  })));
+  let unlock!: () => void, locked!: () => void;
+  const lockHold = new Promise<void>(resolve => {unlock = resolve;});
+  const lockReady = new Promise<void>(resolve => {locked = resolve;});
+  const locker = db.transaction(async transaction => {
+    await transaction.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.id, expiredIds[0]!)).for("update");
+    locked(); await lockHold;
+  });
+  await lockReady;
+  try {
+    assert.deepEqual(await receipts.confirmSigned(input), {outcome: "replayed"});
+    const remaining = await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId));
+    assert.equal(remaining.length, 6); // Exactly 100 expired rows removed, plus 1 valid receipt retained.
+    assert.ok(remaining.some(row => row.id === expiredIds[0]));
+    assert.ok(remaining.some(row => row.id === issued.recall_id && row.confirmedAt));
+  } finally {unlock(); await locker;}
+});
+
+test("signed confirm rechecks DB expiry after waiting on a concurrent receipt", {skip: !enabled}, async t => {
+  const database = createDatabase(url!, {ssl: false}); const db = database.db;
+  const userId = randomUUID();
+  t.after(async () => {await db.delete(users).where(eq(users.id, userId)); await database.close();});
+  await db.insert(users).values({id: userId, email: `${userId}@example.test`, displayName: "Expiring Signed"});
+  const receipts = new DrizzleClaudeCodeRecallReceipts(db, undefined, "s".repeat(64));
+  const [clock] = await db.execute<{now: Date}>(sql`SELECT clock_timestamp() AS now`);
+  const issued = await receipts.issueSigned({userId, subjectId: "G", conversationId: "claude-code:expiry",
+    contextEpoch: 0, stateIds: [randomUUID()], contextSha256: "a".repeat(64),
+    recalledAt: new Date(new Date(clock!.now).getTime() - 86400000 + 500).toISOString()});
+  const input = {userId, recallId: issued.recall_id, recallToken: issued.recall_token, contextSha256: issued.context_sha256};
+  let release!: () => void, ready!: () => void;
+  const hold = new Promise<void>(resolve => {release = resolve;});
+  const entered = new Promise<void>(resolve => {ready = resolve;});
+  const pausedDb = {transaction: callback => db.transaction(async transaction => {
+    const result = await callback(transaction); ready(); await hold; return result;
+  })} as typeof db;
+  const winner = new DrizzleClaudeCodeRecallReceipts(pausedDb, undefined, "s".repeat(64)).confirmSigned(input);
+  await entered;
+  const loser = assert.rejects(receipts.confirmSigned(input), /RECALL_RECEIPT_UNAVAILABLE/);
+  try {
+    const deadline = Date.now() + 3000; let blocked = false;
+    while (Date.now() < deadline) {
+      const [row] = await db.execute<{blocked: boolean}>(sql`SELECT EXISTS (
+        SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+        AND wait_event_type = 'Lock' AND query ILIKE '%insert into%claude_code_recall_receipts%'
+      ) AS blocked`);
+      if (row!.blocked) {blocked = true; break;}
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.ok(blocked);
+    await db.execute(sql`SELECT pg_sleep(0.6)`);
+  } finally {release();}
+  await winner; await loser;
   assert.equal((await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.userId, userId))).length, 1);
 });
