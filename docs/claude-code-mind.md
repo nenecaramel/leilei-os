@@ -72,7 +72,7 @@ The script copies `hook.mjs` to `~/.claude/leileios-mind/` and atomically update
 - `Stop`: bounded local transcript current-turn proof, then authenticated confirm with a 1200 ms HTTP timeout. Stop itself establishes normal completion; it does not require a final assistant record already written. StopFailure is never registered.
 - `PostToolUse`, matcher `^mcp__leileios__write_memory$`: successful applied/replayed receipts only; checks exact configured tool name, success, memory entity and matching UUID. Accepts MCP structured content or its JSON text receipt. Failed tools do not mark seen.
 
-Every registration has host timeout **5 seconds**. The standalone hook has a **3.8 second** hard successful process deadline, including stdin, state, networking and stdout. Recall requests each allow 1.2 seconds; optional scorer .8 seconds. Failures exit 0 with no error stdout/stderr. No transcript scanning. LeileiOS-managed SDK processes set `LEILEI_MIND_HOOK_DISABLED=1`; normal standalone Claude Code does not.
+Every registration has host timeout **5 seconds**. The standalone hook has a **3.8 second** hard successful process deadline, including stdin, state, networking and stdout. Recall requests each allow 1.2 seconds; optional scorer .8 seconds. Failures exit 0 with no error stdout/stderr. Seen-state tracking never scans transcripts; V2 Stop confirmation performs only the bounded local current-turn transcript proof described below, and never uploads transcript content. LeileiOS-managed SDK processes set `LEILEI_MIND_HOOK_DISABLED=1`; normal standalone Claude Code does not.
 
 State location:
 
