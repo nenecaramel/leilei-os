@@ -330,7 +330,34 @@ struct PageContainer: View {
                 claudeHandoffSessionID else {
             return ""
         }
-        return "claude --resume " + sessionID
+
+        let resume =
+            "claude --resume "
+            + shellQuote(sessionID)
+        guard let directory =
+                claudeHandoffWorkingDirectory?
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ),
+              !directory.isEmpty else {
+            return resume
+        }
+
+        return "cd "
+            + shellQuote(directory)
+            + " && "
+            + resume
+    }
+
+    private func shellQuote(
+        _ value: String
+    ) -> String {
+        "'"
+            + value.replacingOccurrences(
+                of: "'",
+                with: "'\\''"
+            )
+            + "'"
     }
 
     private var claudeHandoffReadyMessage: String {
@@ -351,7 +378,7 @@ struct PageContainer: View {
                 + sessionID
                 + "\n\nWorking directory: "
                 + directory
-                + "\n\nRun the copied resume command from that directory on your Mac."
+                + "\n\nCopy the command and run it on your Mac."
         }
 
         return "Session: "
