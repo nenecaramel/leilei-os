@@ -255,10 +255,10 @@ test("runtime activity and tool presentation are extracted from the message surf
     /tools\.count \+ tasks\.count \+ interactions\.count/,
   );
   assert.match(projection, /"1 step"/);
-  assert.match(projection, /"\\(activityCount\) steps"/);
+  assert.match(projection, /"\\\(activityCount\) steps"/);
   assert.doesNotMatch(projection, /components\.append\("Done"\)/);
   assert.doesNotMatch(projection, /"1 activity"/);
-  assert.doesNotMatch(projection, /"\\(activityCount\) activities"/);
+  assert.doesNotMatch(projection, /"\\\(activityCount\) activities"/);
   assert.doesNotMatch(projection, /var headerTitle: String/);
 
   const activityViewBlock = runtime.match(
