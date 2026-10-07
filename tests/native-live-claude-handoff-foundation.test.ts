@@ -43,6 +43,7 @@ test("server archives A only after an isolated B is returned and exact head/chec
   );
   const headCheck = source.indexOf(
     "conversation.current_head_message_id",
+    isolated,
   );
   const checkpointCheck = source.indexOf(
     "provider_checkpoint_id =",
