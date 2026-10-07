@@ -12,6 +12,11 @@ struct PageContainer: View {
     @State private var showingContext = false
     @State private var showingClaudeUsage = false
     @State private var showingClaudeSessions = false
+    @State private var showingClaudeHandoffConfirmation = false
+    @State private var claudeHandoffInProgress = false
+    @State private var claudeHandoffErrorMessage: String?
+    @State private var claudeHandoffSessionID: String?
+    @State private var claudeHandoffWorkingDirectory: String?
 
     let selectedPage: AppPage
     let diaryTarget: DiaryNavigationTarget?
@@ -114,6 +119,58 @@ struct PageContainer: View {
             Text(renameErrorMessage ?? "")
         }
         .appConfirmationAlert(
+            title: "Continue in Claude Code?",
+            message:
+                "This forks the current Claude session at the exact current conversation point. "
+                + "After the fork is confirmed, this LeileiOS conversation moves to Archive.",
+            actionTitle: "Continue",
+            isPresented: $showingClaudeHandoffConfirmation
+        ) {
+            Task { @MainActor in
+                await continueInClaudeCode()
+            }
+        }
+        .alert(
+            "Ready in Claude Code",
+            isPresented: Binding(
+                get: { claudeHandoffSessionID != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        claudeHandoffSessionID = nil
+                        claudeHandoffWorkingDirectory = nil
+                    }
+                }
+            )
+        ) {
+            Button("Copy Resume Command") {
+                UIPasteboard.general.string =
+                    claudeHandoffResumeCommand
+            }
+            Button("OK", role: .cancel) {
+                claudeHandoffSessionID = nil
+                claudeHandoffWorkingDirectory = nil
+            }
+        } message: {
+            Text(claudeHandoffReadyMessage)
+        }
+        .alert(
+            "Claude Code handoff failed",
+            isPresented: Binding(
+                get: { claudeHandoffErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        claudeHandoffErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                claudeHandoffErrorMessage = nil
+            }
+        } message: {
+            Text(claudeHandoffErrorMessage ?? "")
+        }
+        .appConfirmationAlert(
             title: "Delete conversation?",
             message: "This conversation will be permanently deleted. This can’t be undone.",
             actionTitle: "Delete",
@@ -172,6 +229,23 @@ struct PageContainer: View {
         }
 
         Button {
+            showingClaudeHandoffConfirmation = true
+        } label: {
+            Label(
+                claudeHandoffInProgress
+                    ? "Continuing in Claude Code…"
+                    : "Continue in Claude Code",
+                systemImage: "arrow.up.forward.app"
+            )
+        }
+        .disabled(
+            claudeHandoffInProgress
+                || !appModel.isAuthenticated
+                || appModel.chatSendState == .sending
+                || appModel.activeNativeLiveConversationID == nil
+        )
+
+        Button {
             showingClaudeSessions = true
         } label: {
             Label(
@@ -211,6 +285,78 @@ struct PageContainer: View {
             appModel.activeNativeLiveConversationID == nil
                 || appModel.chatSendState == .sending
         )
+    }
+
+    @MainActor
+    private func continueInClaudeCode() async {
+        guard !claudeHandoffInProgress else { return }
+
+        claudeHandoffInProgress = true
+        claudeHandoffErrorMessage = nil
+        defer {
+            claudeHandoffInProgress = false
+        }
+
+        do {
+            let handoff =
+                try await appModel
+                    .continueActiveNativeLiveConversationInClaudeCode()
+
+            guard let sessionID =
+                    handoff.handoffSessionId?
+                        .trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ),
+                  !sessionID.isEmpty else {
+                claudeHandoffErrorMessage =
+                    "Claude Code handoff completed without a session id."
+                return
+            }
+
+            claudeHandoffSessionID = sessionID
+            claudeHandoffWorkingDirectory =
+                handoff.effectiveWorkingDirectory?
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+        } catch {
+            claudeHandoffErrorMessage =
+                error.localizedDescription
+        }
+    }
+
+    private var claudeHandoffResumeCommand: String {
+        guard let sessionID =
+                claudeHandoffSessionID else {
+            return ""
+        }
+        return "claude --resume " + sessionID
+    }
+
+    private var claudeHandoffReadyMessage: String {
+        guard let sessionID =
+                claudeHandoffSessionID else {
+            return ""
+        }
+
+        let directory =
+            claudeHandoffWorkingDirectory?
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        if let directory,
+           !directory.isEmpty {
+            return "Session: "
+                + sessionID
+                + "\n\nWorking directory: "
+                + directory
+                + "\n\nRun the copied resume command from that directory on your Mac."
+        }
+
+        return "Session: "
+            + sessionID
+            + "\n\nRun the copied resume command on your Mac."
     }
 
     private var destructiveTrashIcon: Image {
