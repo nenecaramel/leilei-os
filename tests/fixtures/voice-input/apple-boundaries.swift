@@ -10,7 +10,7 @@ struct AVAudioPCMBuffer {
 struct AudioFormat { let sampleRate = 48000.0; let channelCount = 1 }
 final class AudioInput {
     func outputFormat(forBus: Int) -> AudioFormat { AudioFormat() }
-    func installTap(onBus: Int, bufferSize: Int, format: AudioFormat, block: @escaping (AudioBuffer, Int) -> Void) {}
+    func installAudioTap(onBus: Int, bufferSize: Int, format: AudioFormat, block: @escaping (AudioBuffer, Int) -> Void) throws {}
     func removeTap(onBus: Int) {}
 }
 final class AVAudioEngine {
