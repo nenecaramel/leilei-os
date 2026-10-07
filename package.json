@@ -64,7 +64,6 @@
     "agent:verify": "node scripts/agent-verify.mjs",
     "test:agent-workflow": "tsx --test tests/agent-workflow.test.ts tests/native-live-mac-daemon-fresh.test.ts",
     "runtime:native-live-mac-daemon:fresh-current": "bash scripts/native-live-mac-daemon-fresh.sh --current",
-    "runtime:native-live-restore-current-session-local": "tsx scripts/native-live-restore-current-session-local.ts",
     "runtime:native-live-handoff-current-session-local": "tsx scripts/native-live-handoff-current-session-local.ts"
   },
   "dependencies": {
