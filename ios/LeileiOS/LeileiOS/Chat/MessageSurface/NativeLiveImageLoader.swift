@@ -76,19 +76,26 @@ actor NativeLiveImageDecoder {
             scale:1,
             representationTypes:.thumbnail
         )
-        let image: CGImage = try await withCheckedThrowingContinuation {
-            continuation in
-            QLThumbnailGenerator.shared.generateBestRepresentation(
-                for:request
-            ) { representation, error in
-                if let image = representation?.cgImage {
-                    continuation.resume(returning:image)
-                    return
+        let image: CGImage
+        do {
+            image = try await withCheckedThrowingContinuation {
+                continuation in
+                QLThumbnailGenerator.shared.generateBestRepresentation(
+                    for:request
+                ) { representation, error in
+                    if let image = representation?.cgImage {
+                        continuation.resume(returning:image)
+                        return
+                    }
+                    continuation.resume(
+                        throwing:error ?? NativeLiveMediaError.decodeFailed
+                    )
                 }
-                continuation.resume(
-                    throwing:error ?? NativeLiveMediaError.decodeFailed
-                )
             }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw NativeLiveMediaError.decodeFailed
         }
         guard image.width > 0, image.height > 0 else {
             throw NativeLiveMediaError.decodeFailed
