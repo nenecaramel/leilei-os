@@ -60,7 +60,6 @@ export class NativeLiveClaudeHandoffError extends Error {
       | "NOT_FOUND"
       | "NO_RUNTIME_SESSION"
       | "CONVERSATION_BUSY"
-      | "HANDOFF_ALREADY_PENDING"
       | "RUNTIME_OFFLINE"
       | "LISTENER_NOT_ACTIVE"
       | "RESERVATION_CONFLICT",
