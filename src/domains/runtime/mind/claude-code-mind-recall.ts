@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import type { ClaudeCodeRecallReceiptPort } from "./claude-code-recall-receipts.js";
+import { createHash, randomUUID } from "node:crypto";
 import type { BreathSemanticCandidate } from "../breath/breath-semantic-recall.js";
 import { NativeLiveMindLoopService, type SubjectStateRuntimePort, type MindLoopConfig } from "./native-live-mind-loop-service.js";
 
@@ -6,6 +7,7 @@ export type ClaudeCodeRecallInput = {
   userId: string;
   sessionId: string;
   query: string;
+  contextEpoch?: number;
   excludeIds: string[];
   semanticCandidates?: BreathSemanticCandidate[];
   semanticScores?: ReadonlyMap<string, number>;
@@ -18,6 +20,7 @@ export class ClaudeCodeMindRecallService {
     reader: Pick<SubjectStateRuntimePort, "list">,
     config: MindLoopConfig,
     private readonly subjectId: string,
+    private readonly receipts: ClaudeCodeRecallReceiptPort,
   ) {
     const forbidden = async (): Promise<never> => { throw new Error("Read-only Mind adapter cannot write."); };
     this.loop = new NativeLiveMindLoopService({
@@ -37,13 +40,24 @@ export class ClaudeCodeMindRecallService {
       },
       userMessageId: randomUUID(), userText: input.query,
       snapshotSequence: 0, assembledAt: now,
-      contextLineage: { epoch: 0, seenStateIds: input.excludeIds },
+      contextLineage: { epoch: input.contextEpoch ?? 0, seenStateIds: input.excludeIds },
       semanticCandidates: input.semanticCandidates, semanticScores: input.semanticScores,
     });
+    const context = result.assembled.contextData;
+    const receipt = context ? await this.receipts.create({
+      userId: input.userId, subjectId: this.subjectId, conversationId: `claude-code:${input.sessionId}`,
+      contextEpoch: input.contextEpoch ?? 0, stateIds: result.assembled.breathStateIds,
+      contextSha256: createHash("sha256").update(context).digest("hex"), recalledAt: now,
+    }) : {};
     return {
+      ...receipt,
       context: result.assembled.contextData,
       memory_ids: result.assembled.breathStateIds,
       semantic_candidates: result.semanticCandidates,
     };
   }
+  async confirm(input: {userId: string; recallId: string; contextSha256: string}) {
+    return this.receipts.confirm(input);
+  }
+
 }

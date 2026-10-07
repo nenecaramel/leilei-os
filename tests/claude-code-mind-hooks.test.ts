@@ -74,6 +74,7 @@ test("compact, clear and fork each reset epoch; changed session IDs need no pare
   await runHook({hook_event_name: "SessionStart", session_id: "new-id", source: "compact"});
   await runHook(prompt("new-id"), async () => {count++;});
   assert.equal(count, 5); assert.equal((await f.state()).length, 2);
+  assert.ok((await f.state()).some(state => state.context_epoch === 0));
   assert.ok(f.calls.every(c => c.exclude_ids.length === 0));
 });
 
@@ -148,7 +149,7 @@ test("installer preserves independent time hook and other settings, is idempoten
   await writeFile(join(home, "settings.json"), JSON.stringify(original));
   await install({claudeHome: home, serverName: "LeileiOS"});
   const first = JSON.parse(await readFile(join(home, "settings.json"), "utf8"));
-  assert.deepEqual(first.hooks.UserPromptSubmit[0], time); assert.equal(first.theme, "dark"); assert.deepEqual(first.hooks.Stop, original.hooks.Stop);
+  assert.deepEqual(first.hooks.UserPromptSubmit[0], time); assert.equal(first.theme, "dark"); assert.deepEqual(first.hooks.Stop[0], original.hooks.Stop[0]); assert.equal(first.hooks.Stop.length, 2);
   assert.equal(first.hooks.PostToolUse[0].matcher, "^mcp__LeileiOS__write_memory$");
   assert.equal(first.hooks.UserPromptSubmit[1].hooks[0].timeout, 5);
   await install({claudeHome: home, serverName: "LeileiOS"});
@@ -172,4 +173,22 @@ test("large bounded CJK semantic plans preserve keyword fallback instead of drop
   const result = await childHook(f.home, prompt());
   assert.equal(result.status, 0);
   assert.equal(result.stdout, `${CONTEXT}\n`);
+});
+
+
+test("state v1 migrates to v2 preserving seen IDs and random epoch; resets advance numeric context epoch", async t => {
+  const f = await fixture(t);
+  await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: TOOL, tool_response: receipt()});
+  const files = await readdir(join(f.home, "state")); const file = join(f.home, "state", files.find(f => f.endsWith(".json"))!);
+  const state = (await f.state())[0]; const old = {...state, version: 1}; delete old.context_epoch; delete old.pending_recalls;
+  await writeFile(file, JSON.stringify(old));
+  await runHook({hook_event_name: "SessionStart", session_id: "s", source: "resume"});
+  const migrated = (await f.state())[0]; assert.equal(migrated.version, 2); assert.equal(migrated.epoch, old.epoch);
+  assert.deepEqual(migrated.written_ids, [ID]); assert.equal(migrated.context_epoch, 0);
+  for (const source of ["compact", "clear", "fork"]) {
+    const previous = (await f.state())[0];
+    await runHook({hook_event_name: "SessionStart", session_id: "s", source});
+    const next = (await f.state())[0]; assert.equal(next.context_epoch, previous.context_epoch + 1);
+    assert.notEqual(next.epoch, previous.epoch); assert.deepEqual(next.written_ids, []);
+  }
 });

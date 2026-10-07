@@ -304,5 +304,12 @@ test(
       afterCompact.map((hit) => hit.state.id),
       [stateId],
     );
+
+    const rowBeforeRejectedSource = (await database.db.select().from(runtimeSubjectStates).where(eq(runtimeSubjectStates.id, stateId)))[0];
+    await database.db.update(conversations).set({lifecycleStatus: "archived"}).where(eq(conversations.id, conversation.id));
+    await port.recordBreathRecall({userId, subjectId: "G", conversationId: conversation.id, contextEpoch: 1,
+      stateIds: [stateId], recalledAt: "2026-09-23T10:00:00.000Z", salienceBoost: .08, sourceMessageId: canonicalUserTurn.id});
+    assert.deepEqual((await database.db.select().from(runtimeSubjectStates).where(eq(runtimeSubjectStates.id, stateId)))[0], rowBeforeRejectedSource);
+
   },
 );

@@ -359,68 +359,7 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
       `);
       if (activeSource.length !== 1) return;
 
-      for (const stateId of [...new Set(input.stateIds)]) {
-        const [row] = await transaction
-          .select({
-            id: runtimeSubjectStates.id,
-            kind: runtimeSubjectStates.kind,
-            payload: runtimeSubjectStates.payload,
-            updatedAt: runtimeSubjectStates.updatedAt,
-          })
-          .from(runtimeSubjectStates)
-          .where(
-            and(
-              eq(runtimeSubjectStates.id, stateId),
-              eq(runtimeSubjectStates.userId, input.userId),
-              eq(runtimeSubjectStates.subjectId, input.subjectId),
-              eq(runtimeSubjectStates.settlementStatus, "settled"),
-              eq(runtimeSubjectStates.pathStatus, "current"),
-              eq(runtimeSubjectStates.validityStatus, "valid"),
-            ),
-          )
-          .for("update")
-          .limit(1);
-
-        if (!row || row.kind !== "memory") continue;
-
-        let update;
-        try {
-          update = evaluateRecallReinforcement(
-            {
-              stateId: row.id,
-              kind: row.kind,
-              payload: row.payload,
-              updatedAt: row.updatedAt.toISOString(),
-            },
-            recalledAt.toISOString(),
-            input.salienceBoost,
-            input.sourceMessageId,
-            input.lifecyclePolicy,
-            {
-              conversationId: input.conversationId,
-              epoch: input.contextEpoch,
-            },
-          );
-        } catch {
-          continue;
-        }
-        if (!update) continue;
-
-        await transaction
-          .update(runtimeSubjectStates)
-          .set({
-            payload: update.nextPayload,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(runtimeSubjectStates.id, stateId),
-              eq(runtimeSubjectStates.userId, input.userId),
-              eq(runtimeSubjectStates.subjectId, input.subjectId),
-              eq(runtimeSubjectStates.validityStatus, "valid"),
-            ),
-          );
-      }
+      await applyFinalizedMemoryRecall(transaction, {...input, sourceId: input.sourceMessageId});
     });
   }
 
@@ -557,5 +496,84 @@ export class DrizzleSubjectStateRuntimePort implements SubjectStateRuntimePort {
         );
       }
     });
+  }
+}
+
+
+export type FinalizedMemoryRecallInput = {
+  userId: string; subjectId: string; conversationId: string; contextEpoch: number;
+  stateIds: readonly string[]; recalledAt: string; salienceBoost: number; sourceId: string;
+  lifecyclePolicy?: MemoryLifecyclePolicy; globalOnly?: boolean;
+};
+
+/** Caller validates its canonical causal proof; mutation and receipt commit in the caller transaction. */
+export async function applyFinalizedMemoryRecall(
+  transaction: Parameters<Parameters<Database["transaction"]>[0]>[0],
+  input: FinalizedMemoryRecallInput,
+): Promise<void> {
+  const recalledAt = new Date(input.recalledAt);
+  if (!Number.isFinite(recalledAt.getTime())) throw new Error("Invalid recall timestamp.");
+  for (const stateId of [...new Set(input.stateIds)].sort()) {
+    const [row] = await transaction
+      .select({
+        id: runtimeSubjectStates.id,
+        kind: runtimeSubjectStates.kind,
+        payload: runtimeSubjectStates.payload,
+        updatedAt: runtimeSubjectStates.updatedAt,
+      })
+      .from(runtimeSubjectStates)
+      .where(
+        and(
+          eq(runtimeSubjectStates.id, stateId),
+          eq(runtimeSubjectStates.userId, input.userId),
+          eq(runtimeSubjectStates.subjectId, input.subjectId),
+          ...(input.globalOnly ? [eq(runtimeSubjectStates.scopeApplicability, "global")] : []),
+          eq(runtimeSubjectStates.settlementStatus, "settled"),
+          eq(runtimeSubjectStates.pathStatus, "current"),
+          eq(runtimeSubjectStates.validityStatus, "valid"),
+        ),
+      )
+      .for("update")
+      .limit(1);
+
+    if (!row || row.kind !== "memory") continue;
+
+    let update;
+    try {
+      update = evaluateRecallReinforcement(
+        {
+          stateId: row.id,
+          kind: row.kind,
+          payload: row.payload,
+          updatedAt: row.updatedAt.toISOString(),
+        },
+        recalledAt.toISOString(),
+        input.salienceBoost,
+        input.sourceId,
+        input.lifecyclePolicy,
+        {
+          conversationId: input.conversationId,
+          epoch: input.contextEpoch,
+        },
+      );
+    } catch {
+      continue;
+    }
+    if (!update) continue;
+
+    await transaction
+      .update(runtimeSubjectStates)
+      .set({
+        payload: update.nextPayload,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(runtimeSubjectStates.id, stateId),
+          eq(runtimeSubjectStates.userId, input.userId),
+          eq(runtimeSubjectStates.subjectId, input.subjectId),
+          eq(runtimeSubjectStates.validityStatus, "valid"),
+        ),
+      );
   }
 }

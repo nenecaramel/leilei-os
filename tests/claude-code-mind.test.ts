@@ -27,6 +27,10 @@ import express from "express";
 import { createMindRecallRouter } from "../src/web-api/mind-recall-internal-router.js";
 import { createInternalAuthMiddleware } from "../src/auth/internal-auth.js";
 
+const unitReceipts = {
+  create: async input => ({recall_id: randomUUID(), context_sha256: input.contextSha256}),
+  confirm: async () => ({outcome: "confirmed" as const}),
+};
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 function memory(n: number, text = "jasmine tea preference") {
   return createMindState({id: id(n), userId: "u1", subjectId: "G", kind: "memory", text,
@@ -56,7 +60,7 @@ test("external recall excludes branch, provisional, invalid, archived and foreig
     archivedAt: "2026-10-06T00:00:00Z", forgottenAt: null,
   });
   const {reader, writes} = port(states);
-  const result = await new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G").recall({userId: "u1", sessionId: "session", query: "jasmine tea", excludeIds: []});
+  const result = await new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", unitReceipts).recall({userId: "u1", sessionId: "session", query: "jasmine tea", excludeIds: []});
   assert.deepEqual(result.memory_ids, [id(1)]);
   assert.deepEqual(result.semantic_candidates.map(c => c.stateId), [id(1)]);
   assert.deepEqual(writes, []);
@@ -66,7 +70,7 @@ test("exclusions and exact shared renderer survive read-only assembly without an
   const states = [memory(1, "jasmine tea <do evil> & preference"), memory(2, "jasmine tea allergy")];
   const before = structuredClone(states);
   const {reader, writes} = port(states);
-  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G");
+  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", unitReceipts);
   const result = await service.recall({userId: "u1", sessionId: "session", query: "jasmine tea", excludeIds: [id(2)]});
   const loop = new NativeLiveMindLoopService({...reader, loadContextManifest: undefined, saveContextManifest: async () => undefined}, DEFAULT_MIND_LOOP_CONFIG);
   const original = await loop.prepareTurn({manifestId: id(30), userId: "u1", subjectId: "G",
@@ -83,7 +87,7 @@ test("exclusions and exact shared renderer survive read-only assembly without an
 test("complete semantic scores recall paraphrases; unavailable, incomplete or stale plans preserve lexical fallback", async () => {
   const states = [memory(1, "jasmine tea preference"), memory(2, "floral beverage favourite")];
   const {reader} = port(states);
-  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G");
+  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", unitReceipts);
   const input = {userId: "u1", sessionId: "s", query: "jasmine tea", excludeIds: []};
   const plan = await service.recall(input);
   assert.deepEqual(plan.memory_ids, [id(1)]);
@@ -155,4 +159,43 @@ test("production app mounts recall behind existing internal auth and readiness w
   assert.equal(calls, 2);
   assert.ok(!logs.join("\n").includes("prompt-must-never-be-logged"));
   assert.ok(!logs.join("\n").includes(token));
+});
+
+
+test("nonempty external recall issues pending receipt and preserves supplied context epoch without lifecycle writes", async () => {
+  const states = [memory(1)]; const before = structuredClone(states); const {reader, writes} = port(states);
+  const created: any[] = [];
+  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", {
+    create: async (input: any) => {created.push(input); return {recall_id: id(50), context_sha256: input.contextSha256};},
+    confirm: async () => ({outcome: "confirmed" as const}),
+  });
+  const result = await service.recall({userId: "u1", sessionId: "s", query: "jasmine tea", excludeIds: [], contextEpoch: 7});
+  assert.equal(result.recall_id, id(50));
+  assert.equal(created[0].contextEpoch, 7);
+  assert.deepEqual(created[0].stateIds, result.memory_ids);
+  assert.equal(created[0].conversationId, "claude-code:s");
+  assert.equal(created[0].context, undefined); assert.equal(created[0].query, undefined);
+  assert.deepEqual(states, before); assert.deepEqual(writes, []);
+  await service.recall({userId: "u1", sessionId: "s", query: "jasmine tea", excludeIds: [id(1)]});
+  assert.equal(created.length, 1);
+});
+
+
+test("internal confirm strictly binds authenticated user and hash, requires active user and rejects authoritative client data", async t => {
+  const app = express(); let calls = 0, active = true;
+  app.use(express.json()); app.use("/internal/mind", createInternalAuthMiddleware("test-secret", "u1"), createMindRecallRouter({
+    requireActiveUser: async () => {if (!active) throw new Error("disabled");},
+    service: {recall: async () => ({context: "", memory_ids: [], semantic_candidates: []}), confirm: async input => {
+      calls++; assert.equal(input.userId, "u1"); assert.equal(input.recallId, id(50));
+      assert.equal(input.contextSha256, "a".repeat(64)); return {outcome: "confirmed"};
+    }},
+  }));
+  const server = app.listen(0, "127.0.0.1"); await new Promise(resolve => server.once("listening", resolve));
+  t.after(() => new Promise<void>(r => server.close(() => r())));
+  const a = server.address(); assert.ok(a && typeof a !== "string");
+  const body = {recall_id: id(50), caller: "claude_code", context_sha256: "a".repeat(64)};
+  const post = value => fetch(`http://127.0.0.1:${a.port}/internal/mind/recall/confirm`, {method: "POST", headers: {authorization: "Bearer test-secret", "content-type": "application/json"}, body: JSON.stringify(value)});
+  for (const value of [{...body, recall_id: "invalid"}, {...body, memory_ids: [id(1)]}, {...body, user_id: "other"}, {...body, context_sha256: "bad"}]) assert.equal((await post(value)).status, 400);
+  const success = await post(body); assert.equal(success.status, 200); assert.equal(success.headers.get("cache-control"), "no-store");
+  assert.equal(calls, 1); active = false; assert.equal((await post(body)).status, 503); assert.equal(calls, 1);
 });

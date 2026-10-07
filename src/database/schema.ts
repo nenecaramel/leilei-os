@@ -22,3 +22,4 @@ export * from "./schema/claude-album.js";
 export * from "./schema/universe.js";
 export { contentAuthorEnum } from "./schema/shared.js";
 export * from "./schema/native-live-session-continuity.js";
+export * from "./schema/claude-code-recall.js";

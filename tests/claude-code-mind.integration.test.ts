@@ -1,3 +1,4 @@
+import { DrizzleClaudeCodeRecallReceipts } from "../src/domains/runtime/mind/claude-code-recall-receipts.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -47,7 +48,7 @@ test("MCP concurrent retries commit one global confirmed memory; recall is a rea
   assert.equal(row.scopeConversationId, null); assert.equal(row.scopePathHeadMessageId, null); assert.equal(row.payload?.source, "mcp");
   assert.deepEqual(row.envelope.producer, {kind: "service", id: "mcp_client"});
   assert.deepEqual(row.envelope.provenance.sources, [{kind: "tool_result", id: `mcp:${row.id}`}]);
-  const service = new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), DEFAULT_MIND_LOOP_CONFIG, "G");
+  const service = new ClaudeCodeMindRecallService(new DrizzleSubjectStateRuntimePort(db), DEFAULT_MIND_LOOP_CONFIG, "G", new DrizzleClaudeCodeRecallReceipts(db));
   const first = await service.recall({userId, sessionId: "not-a-postgres-uuid", query: "jasmine tea", excludeIds: []});
   assert.deepEqual(first.memory_ids, [row.id]);
   const excluded = await service.recall({userId, sessionId: "not-a-postgres-uuid", query: "jasmine tea", excludeIds: [row.id]}); assert.deepEqual(excluded.memory_ids, []);
