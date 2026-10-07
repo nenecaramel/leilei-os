@@ -74,6 +74,28 @@ test("server archives A only after an isolated B is returned and exact head/chec
   assert.match(source, /return "stale" as const/);
 });
 
+test("public handoff maintenance reconciles crashed reservations without allowing an immediate second fork", () => {
+  const source =
+    read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
+
+  assert.match(
+    source,
+    /const DELIVERY_UNKNOWN_RECOVERY_TTL_MS =\s*15 \* 60_000/,
+  );
+  assert.match(
+    source,
+    /status = 'delivery_unknown'[\s\S]*status = 'reserved'[\s\S]*reservation_expires_at <= now\(\)/,
+  );
+  assert.match(
+    source,
+    /status = 'failed'[\s\S]*failure_code = 'RECOVERY_EXPIRED'[\s\S]*status = 'delivery_unknown'/,
+  );
+  assert.match(
+    source,
+    /status IN \('pending','reserved','delivery_unknown'\)/,
+  );
+});
+
 test("expired Claude handoff reservations preserve the original owner so a durable B receipt can arrive late", () => {
   const source =
     read("src/domains/bridge/provider-session/native-live-claude-handoff.ts");
