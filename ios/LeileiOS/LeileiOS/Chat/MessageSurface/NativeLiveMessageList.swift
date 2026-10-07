@@ -12,7 +12,7 @@ func nativeLiveMessageList<Pagination: View>(
     onCopyMessage: @escaping (String, String) -> Void,
     onRetryMessage: @escaping (String) -> Void,
     onEditMessage: @escaping (NativeLiveCurrentPathMessage) -> Void,
-    onResolveRuntimeInteraction: @escaping (NativeLiveRuntimeInteractionSnapshot, [String: NativeLiveJSONValue]) async throws -> Void,
+    onResolveRuntimeInteraction: ((NativeLiveRuntimeInteractionSnapshot, [String: NativeLiveJSONValue]) async throws -> Void)?,
     @ViewBuilder pagination: @escaping () -> Pagination
 ) -> some View {
     LazyVStack(spacing: ChatPresentationLayout.turnSpacing) {
