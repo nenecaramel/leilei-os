@@ -11,7 +11,7 @@ struct MindItemDetailView: View {
     @State private var item: MindProductItem
     @State private var showingDelete = false
     @State private var deleting = false
-    @State private var failed = false
+    @State private var deleteFailed = false
 
     init(
         initialItem: MindProductItem,
@@ -32,20 +32,26 @@ struct MindItemDetailView: View {
             }
 
             Section {
-                LabeledContent("Kind", value: item.kind.displayName)
-                LabeledContent("Source", value: sourceText)
+                LabeledContent(
+                    "Source",
+                    value: MindPresentation.sourceLabel(item.source)
+                )
 
-                if let occurredAt = dateText(item.occurredAt) {
+                if let occurredAt = MindPresentation.dateText(
+                    item.occurredAt
+                ) {
                     LabeledContent("Occurred", value: occurredAt)
                 }
 
                 LabeledContent(
                     "Created",
-                    value: dateText(item.createdAt) ?? item.createdAt
+                    value: MindPresentation.dateText(item.createdAt)
+                        ?? item.createdAt
                 )
                 LabeledContent(
                     "Updated",
-                    value: dateText(item.updatedAt) ?? item.updatedAt
+                    value: MindPresentation.dateText(item.updatedAt)
+                        ?? item.updatedAt
                 )
             }
 
@@ -99,7 +105,7 @@ struct MindItemDetailView: View {
                             value: protected ? "Yes" : "No"
                         )
                     }
-                    if let value = dateText(
+                    if let value = MindPresentation.dateText(
                         item.lifecycle.lastRecalledAt
                     ) {
                         LabeledContent(
@@ -107,7 +113,7 @@ struct MindItemDetailView: View {
                             value: value
                         )
                     }
-                    if let value = dateText(
+                    if let value = MindPresentation.dateText(
                         item.lifecycle.resolvedAt
                     ) {
                         LabeledContent(
@@ -115,7 +121,7 @@ struct MindItemDetailView: View {
                             value: value
                         )
                     }
-                    if let value = dateText(
+                    if let value = MindPresentation.dateText(
                         item.lifecycle.dormantAt
                     ) {
                         LabeledContent(
@@ -141,13 +147,12 @@ struct MindItemDetailView: View {
                     )
 
                     if !item.provenance.sourceKinds.isEmpty {
-                        Text(
-                            item.provenance.sourceKinds
+                        LabeledContent(
+                            "Types",
+                            value: item.provenance.sourceKinds
                                 .map(titleCase)
                                 .joined(separator: ", ")
                         )
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
                     }
                 }
             }
@@ -165,15 +170,15 @@ struct MindItemDetailView: View {
                     Image(systemName: "trash")
                 }
                 .disabled(deleting)
-                .accessibilityLabel("Delete Mind")
+                .accessibilityLabel("Delete Memory")
             }
         }
         .task {
             await refreshDetail()
         }
         .appConfirmationAlert(
-            title: "Delete Mind?",
-            message: "This Mind state will be deleted.",
+            title: "Delete Memory?",
+            message: "This memory will be deleted.",
             actionTitle: "Delete",
             actionRole: .destructive,
             isPresented: $showingDelete
@@ -183,17 +188,11 @@ struct MindItemDetailView: View {
             }
         }
         .alert(
-            "Failed",
-            isPresented: $failed
+            "Couldn’t Delete Memory",
+            isPresented: $deleteFailed
         ) {
             Button("OK", role: .cancel) {}
         }
-    }
-
-    private var sourceText: String {
-        item.source == "manual"
-            ? "Manual"
-            : "Runtime"
     }
 
     private var hasLifecycle: Bool {
@@ -234,7 +233,7 @@ struct MindItemDetailView: View {
             onDeleted()
             dismiss()
         } catch {
-            failed = true
+            deleteFailed = true
         }
     }
 }
@@ -258,26 +257,3 @@ private func integerLikeText(_ value: Double) -> String {
     return decimalText(value)
 }
 
-private func dateText(_ value: String?) -> String? {
-    guard let value else { return nil }
-
-    let fractional = ISO8601DateFormatter()
-    fractional.formatOptions = [
-        .withInternetDateTime,
-        .withFractionalSeconds
-    ]
-
-    let standard = ISO8601DateFormatter()
-    standard.formatOptions = [.withInternetDateTime]
-
-    guard let date =
-        fractional.date(from: value)
-        ?? standard.date(from: value) else {
-        return nil
-    }
-
-    return date.formatted(
-        date: .abbreviated,
-        time: .shortened
-    )
-}

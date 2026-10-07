@@ -1,10 +1,8 @@
 import SwiftUI
 import Foundation
 
-struct MindKindDetailView: View {
+struct MindMemoryListView: View {
     @EnvironmentObject private var appModel: AppModel
-
-    let kind: MindProductKind
 
     @State private var items: [MindProductItem] = []
     @State private var nextCursor: String?
@@ -30,7 +28,7 @@ struct MindKindDetailView: View {
                     reloadToken = UUID()
                 }
             } else if items.isEmpty {
-                AppStateSurface(title: "Nothing here")
+                AppStateSurface(title: "No memories yet")
             } else {
                 List {
                     ForEach(items) { item in
@@ -70,8 +68,6 @@ struct MindKindDetailView: View {
             }
         }
         .background(Color(.systemBackground))
-        .navigationTitle(kind.displayName)
-        .navigationBarTitleDisplayMode(.inline)
         .task(id: reloadToken) {
             await reload()
         }
@@ -86,7 +82,7 @@ struct MindKindDetailView: View {
 
         do {
             let page = try await appModel.api.mindPage(
-                kind: kind
+                kind: .memory
             )
             items = page.items
             nextCursor = page.nextCursor
@@ -106,7 +102,7 @@ struct MindKindDetailView: View {
 
         do {
             let page = try await appModel.api.mindPage(
-                kind: kind,
+                kind: .memory,
                 cursor: nextCursor
             )
             let existing = Set(items.map(\.id))
@@ -126,33 +122,27 @@ private struct MindItemRow: View {
     let item: MindProductItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(displayText)
                 .foregroundStyle(.primary)
-                .lineLimit(2)
+                .lineLimit(3)
 
-            HStack(spacing: 8) {
-                Text(sourceText)
-                if let state = MindPresentation.normalized(item.lifecycle.state) {
-                    Text(state.replacingOccurrences(
-                        of: "_",
-                        with: " "
-                    ))
+            HStack(spacing: 6) {
+                Text(MindPresentation.sourceLabel(item.source))
+                if let occurred = MindPresentation.dateText(
+                    item.occurredAt ?? item.createdAt
+                ) {
+                    Text("·")
+                    Text(occurred)
                 }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
     }
 
     private var displayText: String {
-        MindPresentation.normalized(item.text) ?? item.kind.displayName
-    }
-
-    private var sourceText: String {
-        item.source == "manual"
-            ? "Manual"
-            : "Runtime"
+        MindPresentation.normalized(item.text) ?? "Memory"
     }
 }

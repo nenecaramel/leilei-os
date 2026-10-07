@@ -79,8 +79,10 @@ test(
     const coordinator = new NativeLiveBackendTurnCoordinator(
       new DrizzleNativeLiveBackendTurnPort(database.db),
     );
+    const relayRepository =
+      new DrizzleNativeLiveBackendRelayRepository(database.db);
     const relay = new NativeLiveBackendRelayService(
-      new DrizzleNativeLiveBackendRelayRepository(database.db),
+      relayRepository,
       coordinator,
     );
 
@@ -325,6 +327,71 @@ test(
     assert.equal(messages.filter((row) => row.role === "assistant").length, 1);
     const [head] = await database.db.select({ id: conversations.currentHeadMessageId }).from(conversations).where(eq(conversations.id, conversation.id));
     assert.equal(head.id, firstCommit.assistantMessageId);
+
+    const conflictRequestId = crypto.randomUUID();
+    const conflict = await coordinator.prepare(user.id, {
+      dispatch_target: "claude_code",
+      request_id: conflictRequestId,
+      operation: "send",
+      conversation_id: conversation.id,
+      expected_head_message_id: firstCommit.assistantMessageId,
+      text: "terminal conflict fixture",
+    });
+    assert.equal(conflict.ok, true);
+    if (!conflict.ok) throw new Error("expected conflict fixture prepare success");
+    await relay.enqueuePreparation({
+      userId: user.id,
+      prepareId: conflict.command.prepare_id,
+    });
+    const conflictReservation = await relay.reserveNext({
+      userId: user.id,
+      listenerInstanceId: listenerA,
+      dispatchTarget: "claude_code",
+    });
+    assert.ok(conflictReservation);
+    await relay.markExecutionStarted({
+      userId: user.id,
+      listenerInstanceId: listenerA,
+      reservationId: conflictReservation.reservationId,
+    });
+    assert.equal(
+      await relayRepository.markFinalizeRejected({
+        userId: user.id,
+        listenerInstanceId: listenerA,
+        reservationId: conflictReservation.reservationId,
+        code: "FINALIZE_CONFLICT",
+      }),
+      "applied",
+    );
+    assert.equal(
+      await relayRepository.markFinalizeRejected({
+        userId: user.id,
+        listenerInstanceId: listenerA,
+        reservationId: conflictReservation.reservationId,
+        code: "FINALIZE_CONFLICT",
+      }),
+      "idempotent",
+    );
+    assert.equal(
+      await relayRepository.ownsSubmitReservation({
+        userId: user.id,
+        listenerInstanceId: listenerA,
+        reservationId: conflictReservation.reservationId,
+      }),
+      true,
+    );
+    const [conflictStored] = await database.db.select({
+      dispatchStatus: nativeLiveTurnPreparations.dispatchStatus,
+      reservedBy: nativeLiveTurnPreparations.reservedBy,
+      dispatchErrorCode: nativeLiveTurnPreparations.dispatchErrorCode,
+    }).from(nativeLiveTurnPreparations).where(
+      eq(nativeLiveTurnPreparations.id, conflictReservation.reservationId),
+    );
+    assert.deepEqual(conflictStored, {
+      dispatchStatus: "rejected",
+      reservedBy: listenerA,
+      dispatchErrorCode: "FINALIZE_CONFLICT",
+    });
 
   },
 );

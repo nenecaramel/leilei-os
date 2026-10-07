@@ -104,6 +104,62 @@ test("internal relay reserve and result endpoints preserve listener ownership da
   );
 });
 
+test("internal relay returns a 200 receipt for terminal canonical finalize conflicts", async () => {
+  const relayService = new FakeRelayService();
+  relayService.submitResult = async (input: unknown) => {
+    relayService.calls.push({ name: "submitResult", input });
+    return {
+      ok: false as const,
+      prepareId,
+      requestId,
+      conversationId,
+      code: "FINALIZE_CONFLICT" as const,
+    };
+  };
+
+  await withServer(
+    (app) => {
+      app.use((request, _response, next) => {
+        request.mcpUserId = userId;
+        next();
+      });
+      app.use(
+        "/internal/native-live-relay",
+        createNativeLiveRelayInternalRouter({ relayService }),
+      );
+    },
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/internal/native-live-relay/reservations/${prepareId}/result`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            listener_instance_id: listenerId,
+            result: {
+              protocol_version: 4,
+              prepare_id: prepareId,
+              request_id: requestId,
+              conversation_id: conversationId,
+              status: "failure",
+              error_code: "CLAUDE_PROCESS_FAILED",
+            },
+          }),
+        },
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(
+        (await response.json() as { data: unknown }).data,
+        {
+          accepted: true,
+          canonicalOutcome: "FINALIZE_CONFLICT",
+        },
+      );
+    },
+  );
+});
+
 test("internal relay work wait renews the listener lease and waits in authenticated user scope", async () => {
   const relayService = new FakeRelayService();
   const waitCalls: unknown[] = [];

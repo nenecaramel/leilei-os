@@ -93,6 +93,11 @@ class FakePort implements NativeLiveBackendRelayPort {
     return this.mutation;
   }
 
+  async markFinalizeRejected(input: unknown) {
+    this.calls.push({ name: "markFinalizeRejected", input });
+    return this.mutation;
+  }
+
   async markDeliveryUnknown(input: unknown) {
     this.calls.push({ name: "markDeliveryUnknown", input });
     return this.mutation;
@@ -300,8 +305,8 @@ test("reservation identity mismatch is rejected before canonical finalize", asyn
   assert.equal(coordinator.calls.length, 0);
 });
 
-test("canonical finalize conflicts do not mark transport complete", async () => {
-  const { port, coordinator, service } = setup();
+test("canonical finalize conflicts become receipted terminal rejects instead of poison retries", async () => {
+  const { port, coordinator, wake, service } = setup();
   coordinator.result = {
     ok: false,
     prepareId,
@@ -310,23 +315,37 @@ test("canonical finalize conflicts do not mark transport complete", async () => 
     code: "FINALIZE_CONFLICT",
   };
 
-  await assert.rejects(
-    () =>
-      service.submitResult({
+  const finalized = await service.submitResult({
+    userId,
+    listenerInstanceId,
+    reservationId: prepareId,
+    result: failureResult(),
+  });
+
+  assert.equal(finalized.ok, false);
+  if (finalized.ok) throw new Error("expected finalize conflict");
+  assert.equal(finalized.code, "FINALIZE_CONFLICT");
+  assert.deepEqual(
+    port.calls.filter((entry) => entry.name === "markFinalizeRejected"),
+    [{
+      name: "markFinalizeRejected",
+      input: {
         userId,
         listenerInstanceId,
         reservationId: prepareId,
-        result: failureResult(),
-      }),
-    (error: unknown) =>
-      error instanceof NativeLiveBackendRelayError
-      && error.code === "FINALIZE_REJECTED",
+        code: "FINALIZE_CONFLICT",
+      },
+    }],
   );
-
   assert.equal(
     port.calls.filter((entry) => entry.name === "markCompleted").length,
     0,
   );
+  assert.deepEqual(wake.calls, [{
+    userId,
+    kind: "turn_terminal",
+    prepareId,
+  }]);
 });
 
 test("relay mutations accept applied/idempotent outcomes and reject stale ownership", async () => {

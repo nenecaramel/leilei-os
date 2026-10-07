@@ -31,6 +31,8 @@ export type ParsedMindIntents = {
 };
 
 const TAG_PATTERN = /<(memory)>([\s\S]*?)<\/\1>/gi;
+const EMPTY_MIND_WRITE_WRAPPER_PATTERN =
+  /<leileios_mind_write>\s*<\/leileios_mind_write>/gi;
 
 /**
  * Retired tags (feel, thought, drive, curiosity, topic, dream) are not parsed and are never
@@ -86,6 +88,11 @@ export function parseMindWriteIntents(source: string): ParsedMindIntents {
       visibleText.slice(0, range.start)
       + visibleText.slice(range.end);
   }
+
+  visibleText = visibleText.replace(
+    EMPTY_MIND_WRITE_WRAPPER_PATTERN,
+    "",
+  );
 
   return {
     visibleText: normalizeMindVisibleText(visibleText),

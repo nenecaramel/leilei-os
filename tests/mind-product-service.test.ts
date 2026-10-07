@@ -152,6 +152,23 @@ test("Mind product list exposes bounded product projection and opaque cursor", a
   assert.ok(page.nextCursor);
 });
 
+test("Mind detail and delete accept deterministic UUIDv8 runtime state ids", async () => {
+  const runtimeStateId = "85e6f4b7-6ca4-86b3-ad1a-e81d9390a360";
+  const repository = new Repository();
+  repository.row = row({ id: runtimeStateId });
+  const service = new MindProductService(repository, "G");
+
+  assert.equal(
+    (await service.get({ userId, stateId: runtimeStateId })).id,
+    runtimeStateId,
+  );
+  assert.deepEqual(
+    await service.delete({ userId, stateId: runtimeStateId }),
+    { deletedStateCount: 2 },
+  );
+  assert.equal(repository.deleted?.stateId, runtimeStateId);
+});
+
 test("manual Mind create is user_asserted, global, settled, and keeps historical occurrence separate", async () => {
   const repository = new Repository();
   const service = new MindProductService(

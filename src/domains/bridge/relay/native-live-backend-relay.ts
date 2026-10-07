@@ -67,6 +67,12 @@ export interface NativeLiveBackendRelayPort {
     listenerInstanceId: string;
     reservationId: string;
   }): Promise<RelayMutationOutcome>;
+  markFinalizeRejected(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    code: "FINALIZE_CONFLICT";
+  }): Promise<RelayMutationOutcome>;
   markDeliveryUnknown(input: {
     userId: string;
     listenerInstanceId: string;
@@ -571,7 +577,13 @@ implements NativeLiveBackendRelayPort {
             nativeLiveTurnPreparations.reservedBy,
             input.listenerInstanceId,
           ),
-          sql`${nativeLiveTurnPreparations.dispatchStatus} IN ('executing', 'delivery_unknown', 'completed')`,
+          sql`(
+            ${nativeLiveTurnPreparations.dispatchStatus} IN ('executing', 'delivery_unknown', 'completed')
+            OR (
+              ${nativeLiveTurnPreparations.dispatchStatus} = 'rejected'
+              AND ${nativeLiveTurnPreparations.dispatchErrorCode} = 'FINALIZE_CONFLICT'
+            )
+          )`,
         ),
       )
       .limit(1);
@@ -630,6 +642,69 @@ implements NativeLiveBackendRelayPort {
       .set({
         dispatchStatus: "completed",
         dispatchErrorCode: null,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.reservationId),
+          eq(
+            nativeLiveTurnPreparations.reservedBy,
+            input.listenerInstanceId,
+          ),
+          sql`${nativeLiveTurnPreparations.dispatchStatus} IN ('executing', 'delivery_unknown')`,
+        ),
+      )
+      .returning({ id: nativeLiveTurnPreparations.id });
+
+    return updated.length === 1 ? "applied" : "conflict";
+  }
+
+  async markFinalizeRejected(input: {
+    userId: string;
+    listenerInstanceId: string;
+    reservationId: string;
+    code: "FINALIZE_CONFLICT";
+  }): Promise<RelayMutationOutcome> {
+    const [current] = await this.db
+      .select({
+        status: nativeLiveTurnPreparations.dispatchStatus,
+        reservedBy: nativeLiveTurnPreparations.reservedBy,
+        errorCode: nativeLiveTurnPreparations.dispatchErrorCode,
+      })
+      .from(nativeLiveTurnPreparations)
+      .where(
+        and(
+          eq(nativeLiveTurnPreparations.userId, input.userId),
+          eq(nativeLiveTurnPreparations.id, input.reservationId),
+        ),
+      )
+      .limit(1);
+
+    if (!current) return "not_found";
+    if (
+      current.reservedBy === input.listenerInstanceId
+      && current.status === "rejected"
+      && current.errorCode === input.code
+    ) {
+      return "idempotent";
+    }
+    if (
+      current.reservedBy !== input.listenerInstanceId
+      || (
+        current.status !== "executing"
+        && current.status !== "delivery_unknown"
+      )
+    ) {
+      return "conflict";
+    }
+
+    const updated = await this.db
+      .update(nativeLiveTurnPreparations)
+      .set({
+        dispatchStatus: "rejected",
+        reservationExpiresAt: null,
+        dispatchErrorCode: input.code,
         updatedAt: sql`now()`,
       })
       .where(
@@ -931,6 +1006,24 @@ export class NativeLiveBackendRelayService {
       input.userId,
       input.result,
     );
+    if (
+      !finalized.ok
+      && finalized.code === "FINALIZE_CONFLICT"
+    ) {
+      const outcome = await this.repository.markFinalizeRejected({
+        userId: input.userId,
+        listenerInstanceId: input.listenerInstanceId,
+        reservationId: input.reservationId,
+        code: finalized.code,
+      });
+      this.requireMutation(outcome);
+      await this.bestEffortTurnTerminalWake(
+        input.userId,
+        input.reservationId,
+      );
+      return finalized;
+    }
+
     if (
       !finalized.ok
       && !isAcceptedTerminalFinalize(finalized)
