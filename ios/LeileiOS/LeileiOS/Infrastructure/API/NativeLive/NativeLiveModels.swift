@@ -5,6 +5,7 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
     let title: String?
     let currentHeadMessageId: String?
     let lastMessageAt: String?
+    let claudeHandoffSessionId: String?
     let createdAt: String
     let updatedAt: String
 
@@ -13,6 +14,7 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
         title: String?,
         currentHeadMessageId: String?,
         lastMessageAt: String? = nil,
+        claudeHandoffSessionId: String? = nil,
         createdAt: String,
         updatedAt: String
     ) {
@@ -20,6 +22,8 @@ struct NativeLiveConversationSummary: Decodable, Sendable, Equatable, Identifiab
         self.title = title
         self.currentHeadMessageId = currentHeadMessageId
         self.lastMessageAt = lastMessageAt
+        self.claudeHandoffSessionId =
+            claudeHandoffSessionId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
