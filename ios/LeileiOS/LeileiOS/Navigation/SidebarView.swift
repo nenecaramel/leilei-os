@@ -9,7 +9,7 @@ struct SidebarView: View {
     let conversations: [NativeLiveConversationSummary]
     let activeConversationID: UUID?
     let onOpenConversation: (NativeLiveConversationSummary) -> Void
-    let onSettings: (() -> Void)?
+    let onSettings: () -> Void
     let onSelect: () -> Void
 
     var body: some View {
@@ -78,12 +78,7 @@ struct SidebarView: View {
                         symbol: "gearshape",
                         accessibilityLabel: "Settings"
                     ) {
-                        if let onSettings {
-                            onSettings()
-                        } else {
-                            selectedPage = .account
-                            onSelect()
-                        }
+                        onSettings()
                     }
                 }
                 .padding(.leading, SidebarLayout.footerLeadingInset)

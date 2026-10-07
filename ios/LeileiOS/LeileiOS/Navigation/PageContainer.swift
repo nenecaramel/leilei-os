@@ -226,42 +226,47 @@ struct PageContainer: View {
 
     @ViewBuilder
     private var pageContent: some View {
-        if selectedPage == .chat {
+        switch selectedPage {
+        case .chat:
             ChatView(
                 isDraftConversation: isDraftConversation,
                 draftConversationID: draftConversationID,
                 onDraftCommitted: onDraftCommitted
             )
-        } else if selectedPage == .globalSearch {
+
+        case .globalSearch:
             GlobalSearchView(
                 service: LeileiGlobalSearchService(api: appModel.api),
                 onOpenDiary: onOpenDiary,
                 onOpenDaySpace: onOpenDaySpace,
                 onOpenUniverseNode: onOpenUniverseNode
             )
-        } else if selectedPage == .diary {
+
+        case .diary:
             DiaryView(
                 target: diaryTarget,
                 onTargetConsumed: onDiaryTargetConsumed
             )
-        } else if selectedPage == .daySpace {
+
+        case .daySpace:
             DaySpaceView(
                 target: daySpaceTarget,
                 onTargetConsumed: onDaySpaceTargetConsumed
             )
-        } else if selectedPage == .mind {
+
+        case .mind:
             MindView()
-        } else if selectedPage == .universe {
+
+        case .universe:
             UniverseView(
                 targetNodeID: universeTargetNodeID,
                 onTargetConsumed: onUniverseTargetConsumed
             )
-        } else if selectedPage == .conversations {
+
+        case .conversations:
             ConversationsView(
                 onOpenConversation: onOpenConversation
             )
-        } else {
-            PlaceholderPage(page: selectedPage)
         }
     }
 

@@ -10,11 +10,5 @@ enum AppPage: String, Identifiable {
 
     case globalSearch = "Global Search"
 
-    case account = "Account"
-    case connections = "Connections"
-    case data = "Data"
-    case activity = "Activity"
-    case about = "About"
-
     var id: String { rawValue }
 }
