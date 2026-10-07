@@ -182,6 +182,15 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.doesNotMatch(root, /NativeLiveTurnActivityView/);
 });
 
+const mediaPresentationPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaPresentation.swift";
+const mediaRendererPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveMediaRenderer.swift";
+const attachmentCachePath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveAttachmentCache.swift";
+const filePreviewPath =
+  "ios/LeileiOS/LeileiOS/Chat/MessageSurface/NativeLiveFilePreviewLifecycle.swift";
+
 test("current attachment presentation is extracted from the message surface", () => {
   const root = fs.readFileSync(rootPath, "utf8");
   const presentation = readExisting(mediaPresentationPath);
