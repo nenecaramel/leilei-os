@@ -83,7 +83,7 @@ const sql = postgres(databaseUrl, {
 
 let leaf: Leaf;
 try {
-  const rows = await sql<Leaf[]>\`
+  const rows = await sql<Leaf[]>`
     SELECT
       c.id::text AS conversation_id,
       c.title,
@@ -97,7 +97,7 @@ try {
       AND p.conversation_id = c.id
       AND p.canonical_message_id = c.current_head_message_id
       AND p.provider = 'claude_code'
-    WHERE c.user_id = \${userId}::uuid
+    WHERE c.user_id = ${userId}::uuid
       AND c.origin = 'native_live'
       AND c.lifecycle_status = 'active'
       AND c.current_head_message_id IS NOT NULL
@@ -105,7 +105,7 @@ try {
       AND p.effective_working_directory IS NOT NULL
     ORDER BY c.updated_at DESC, p.created_at DESC
     LIMIT 1
-  \`;
+  `;
   const current = rows[0];
   if (!current) {
     throw new Error(
@@ -358,7 +358,7 @@ function localTranscriptPath(
   const configDirectory =
     firstNonblank(process.env.CLAUDE_CONFIG_DIR)
     ?? join(homedir(), ".claude");
-  const projectKey = workingDirectory.replace(/\\//gu, "-");
+  const projectKey = workingDirectory.replace(/\//gu, "-");
   return join(resolve(configDirectory), "projects", projectKey, sessionId + ".jsonl");
 }
 
