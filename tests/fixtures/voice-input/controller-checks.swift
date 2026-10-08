@@ -54,8 +54,16 @@ struct ControllerChecks {
         SFSpeechRecognizer.emit("partial", final: false)
         await pause()
         controller.release()
-        await pause(5.2)
-        precondition(controller.phase == .idle && controller.errorMessage != nil)
+        await pause(5.0)
+        for _ in 0..<30 {
+            if controller.phase == .idle { break }
+            await pause(0.1)
+        }
+        precondition(
+            controller.phase == .idle
+                && controller.errorMessage == "Speech recognition did not finish. Please try again.",
+            "timeout must finish with the expected error"
+        )
         precondition(sent.count == 2, "timeout must fail without sending partial text")
 
         controller.begin { sent.append($0) }
