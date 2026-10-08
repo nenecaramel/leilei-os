@@ -114,6 +114,7 @@ export type MindMemorySearchPage = {
 };
 
 export interface MindProductRepository {
+  listDates(input: {userId: string; subjectId: string}): Promise<string[]>;
   search(input: {
     userId: string;
     subjectId: string;
@@ -270,6 +271,10 @@ export class MindProductService {
       }),
       nextCursor: page.nextCursor,
     };
+  }
+
+  async listDates(input: {userId: string}): Promise<{dates: string[]}> {
+    return {dates: await this.repository.listDates({...input, subjectId:this.subjectId})};
   }
 
   async readDay(input: {

@@ -71,10 +71,7 @@ private struct DaySpacePaperCard: View {
                     )
 
                 case .memory(_, let items):
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Memory").font(.headline)
-                        ForEach(Array(items.prefix(3))) { item in Text(item.text ?? "").lineLimit(2) }
-                    }
+                    DaySpaceProsePreview(title: "Memory", paragraphs: items.map { $0.text ?? "" }, size: size, multiple: true)
                 case .diary(let diary):
                     DaySpaceDiaryPreview(
                         diary: diary,
@@ -191,33 +188,33 @@ private struct DaySpaceTodoMark: View {
 private struct DaySpaceDiaryPreview: View {
     let diary: DaySpaceDiary
     let size: DaySpacePaperSize
-
-    private var contentLines: Int {
-        switch size {
-        case .small:
-            return 3
-        case .medium:
-            return 4
-        case .large:
-            return 5
-        }
+    var body: some View {
+        DaySpaceProsePreview(title: diary.title, paragraphs: [diary.content], size: size, multiple: false)
     }
+}
 
+private struct DaySpaceProsePreview: View {
+    let title: String
+    let paragraphs: [String]
+    let size: DaySpacePaperSize
+    let multiple: Bool
+    private var limit: Int {
+        switch size { case .small: return 2; case .medium: return 3; case .large: return 4 }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(diary.title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            Text(diary.content)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineSpacing(2.6)
-                .lineLimit(contentLines)
-                .multilineTextAlignment(.leading)
+            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
+                .lineLimit(2).multilineTextAlignment(.leading)
+            ForEach(Array(paragraphs.prefix(multiple ? limit : 1).enumerated()), id: \.offset) { _, text in
+                Text(text).font(.system(size: 10)).foregroundStyle(.secondary)
+                    .lineSpacing(2.6).lineLimit(multiple ? 2 : limit + 1).multilineTextAlignment(.leading)
+            }
+            if multiple && paragraphs.count > limit {
+                Text("...").font(.system(size: 11)).foregroundStyle(.tertiary)
+            }
         }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
     }
 }
 

@@ -8,7 +8,7 @@ import {
 export type MindApiDependencies = {
   mindService: Pick<
     MindProductService,
-    "list" | "get" | "createManual" | "delete" | "readMessageWrites" | "search" | "readDay" | "update"
+    "listDates" | "list" | "get" | "createManual" | "delete" | "readMessageWrites" | "search" | "readDay" | "update"
   >;
 };
 
@@ -29,6 +29,7 @@ export function createMindApiRouter(
     });
   }));
 
+  router.get("/dates", handler(async request => dependencies.mindService.listDates({userId:request.webUserId!})));
   router.get(
     "/search",
     handler(async (request) =>

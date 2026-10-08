@@ -5,7 +5,7 @@ const PAPER_EDITOR_MIN_HEIGHT = 240;
  * The off-flow clone can be reset for measurement without changing the live
  * textarea's contribution to document layout or its selection.
  */
-export function resizePaperTextarea(node: HTMLTextAreaElement): void {
+export function resizePaperTextarea(node: HTMLTextAreaElement, minimumHeight = PAPER_EDITOR_MIN_HEIGHT): void {
   const measuringNode = node.cloneNode(false) as HTMLTextAreaElement;
   measuringNode.value = node.value;
   measuringNode.style.position = "absolute";
@@ -26,5 +26,5 @@ export function resizePaperTextarea(node: HTMLTextAreaElement): void {
   const contentHeight = measuringNode.scrollHeight;
   measuringNode.remove();
 
-  node.style.height = `${Math.max(PAPER_EDITOR_MIN_HEIGHT, contentHeight)}px`;
+  node.style.height = `${Math.max(minimumHeight, contentHeight)}px`;
 }

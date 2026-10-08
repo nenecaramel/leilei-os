@@ -5771,6 +5771,8 @@ body:has(.system-page) {
 /* auth-search-state-polish-2026-08-09:end */
 
 /* leilei-day-space-mobile-2026-08-09:start */
+/* Paper geometry is shared; mobile viewport freezing stays mobile-only. */
+@media (max-width: 760px) {
   html:has(.day-space-page),
   body:has(.day-space-page),
   #root:has(.day-space-page),
@@ -5791,6 +5793,8 @@ body:has(.system-page) {
       "Helvetica Neue",
       sans-serif;
   }
+
+}
 
   .day-space-page {
     width: min(860px, calc(100% - 48px));
@@ -7451,12 +7455,12 @@ body:has(.system-page) {
   cursor: pointer;
 }
 
-.memory-editor { display: grid; gap: 16px; padding: 12px 0; }
-.memory-editor label { display: grid; gap: 8px; font-size: 13px; }
-.memory-editor textarea { min-height: 180px; resize: vertical; width: 100%; font: inherit; line-height: 1.7; background: transparent; border: 1px solid #bbb8; border-radius: 4px; padding: 8px; box-sizing: border-box; }
-.memory-editor input { max-width: 100%; font: inherit; padding: 8px; background: transparent; border: 1px solid #bbb8; border-radius: 4px; }
+.memory-page .memory-editor { display: grid; gap: 16px; padding: 12px 0; }
+.memory-page .memory-editor label { display: grid; gap: 8px; font-size: 13px; }
+.memory-page .memory-editor textarea { min-height: 180px; resize: vertical; width: 100%; font: inherit; line-height: 1.7; background: transparent; border: 1px solid #bbb8; border-radius: 4px; padding: 8px; box-sizing: border-box; }
+.memory-page .memory-editor input { max-width: 100%; font: inherit; padding: 8px; background: transparent; border: 1px solid #bbb8; border-radius: 4px; }
 
-.memory-editor .memory-paper-control,
+.memory-page .memory-editor .memory-paper-control,
 .memory-page .memory-paper-control,
 .paper-detail-paper[id^="memory-"] .memory-paper-control {
   width: fit-content;
@@ -7468,6 +7472,29 @@ body:has(.system-page) {
   font-size: 13px;
   cursor: pointer;
 }
-.memory-editor .memory-paper-control:disabled { opacity: 0.45; cursor: default; }
+.memory-page .memory-editor .memory-paper-control:disabled { opacity: 0.45; cursor: default; }
 .day-space-paper-memory .day-space-diary-preview { max-height: calc(100% - 20px); overflow: hidden; }
-@media (max-width: 760px) { .memory-editor input, .memory-editor textarea { font-size: 16px; } }
+@media (max-width: 760px) { .memory-page .memory-editor input, .memory-page .memory-editor textarea { font-size: 16px; } }
+
+/* Prose papers share typography, height measurement and one outer scroll area. */
+.paper-body-editor {
+  display: block; width: 100%; max-width: 100%; margin: 0; padding: 0;
+  border: 0; border-radius: 0; outline: none; background: transparent; box-shadow: none;
+  color: #252525; resize: none; overflow: hidden; font: inherit; font-size: 14px; line-height: 30px;
+}
+.paper-body-editor:focus { border: 0; outline: none; background: transparent; box-shadow: none; }
+.memory-paper-entries { display: grid; gap: 30px; }
+.memory-paper-entry { min-width: 0; }
+.memory-entry-date { display: flex; align-items: center; justify-content: space-between; min-height: 30px; color: #6d6d6d; font-size: 13px; }
+.memory-entry-date-editor { position: relative; display: inline-block; font-size: 13px; }
+.memory-entry-date-editor input[type="datetime-local"] { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.memory-entry-date-editor:focus-within { outline: 1px solid #999; outline-offset: 3px; }
+.paper-detail-paper[id^="memory-"] .memory-entry-date .memory-paper-control { padding: 0 4px; font-size: 13px !important; }
+.memory-paper-conflict { margin: 15px 0; color: #6d6d6d; font-size: 13px; line-height: 30px; }
+.memory-paper-conflict p { margin: 0; }
+.memory-paper-conflict-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.day-space-paper-memory .day-space-diary-preview p { -webkit-line-clamp: 2; }
+@media (min-width: 761px) {
+  .day-space-page { min-height: calc(100dvh - 80px); }
+  .day-space-page .memory-page-title { font: inherit; }
+}

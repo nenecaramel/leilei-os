@@ -31,7 +31,7 @@ test("Day Space reusable presentation and paper detail views have focused bounda
 
 test("Day Space UIKit editors preserve existing concrete bridges in editor modules", () => {
   check("Editors/DaySpaceTodoEditor.swift", ["DaySpaceTodoLineEditor", "DaySpaceTodoNativeTextView"]);
-  check("Editors/DaySpaceDiaryEditor.swift", ["DaySpaceDiaryBodyEditor"]);
+  check("Editors/DaySpacePaperBodyEditor.swift", ["DaySpacePaperBodyEditor"]);
   const todo = fs.readFileSync(`${root}DaySpace/Editors/DaySpaceTodoEditor.swift`, "utf8");
   assert.match(todo, /UIViewRepresentable/);
   assert.match(todo, /func updateUIView/);

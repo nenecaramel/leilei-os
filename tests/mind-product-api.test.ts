@@ -23,6 +23,8 @@ class FakeMindService {
     if (this.failure) throw this.failure;
   }
 
+  async listDates(input: unknown) { this.calls.push({name:"dates",input}); return {dates:["2026-10-08"]}; }
+
   async list(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "list", input });
@@ -329,4 +331,17 @@ test("Mind search/day routes and PATCH share authenticated service and strict ed
       409,
     );
   });
+});
+
+
+test("Memory dates are authenticated, no-store and routed before state IDs", async () => {
+ const service = new FakeMindService();
+ await withServer(service, async base => {
+   const response = await fetch(base+"/dates");
+   assert.equal(response.status,200);
+   assert.match(response.headers.get("cache-control")!, /no-store/);
+   assert.deepEqual((await response.json()).data,{dates:["2026-10-08"]});
+   assert.deepEqual(service.calls,[{name:"dates",input:{userId}}]);
+ });
+ await withServer(new FakeMindService(), async base => assert.equal((await fetch(base+"/dates")).status,401),false);
 });

@@ -83,6 +83,14 @@ implements MindProductRepository {
     });
   }
 
+  async listDates(input: {userId: string; subjectId: string}): Promise<string[]> {
+    const date = sql<string>`to_char(${memoryOccurredAtSql()} AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')`;
+    const rows = await this.db.selectDistinct({date}).from(runtimeSubjectStates)
+      .where(and(...memoryConditions(input), sql`${memoryOccurredAtSql()} IS NOT NULL`))
+      .orderBy(sql`1 DESC`);
+    return rows.map(row => row.date);
+  }
+
   async search(input: {
     userId: string;
     subjectId: string;

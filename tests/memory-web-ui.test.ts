@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import * as React from "../web/node_modules/react/index.js";
 import { MemoryRouter } from "../web/node_modules/react-router-dom/dist/index.mjs";
 import { DaySpacePageContent } from "../web/src/pages/DaySpacePage.js";
-import { MemoryDetail } from "../web/src/pages/MemoryDetail.js";
+import { MemoryDetail, MemoryPaper } from "../web/src/pages/MemoryDetail.js";
 import { WebApiError } from "../web/src/api/web-api-error.js";
 
 async function render(element: React.ReactNode) {
@@ -123,11 +123,15 @@ test("daily Memory paper groups all pages, only views/edits and regroups after d
       /这一天还没有内容/,
     );
     await ui.click(paper);
-    await ui.click(
-      ui.dom.window.document.querySelector(
-        ".paper-detail-dialog .memory-row",
-      ) ?? ui.dom.window.document.querySelector(".memory-row")!,
+    assert.ok(
+      ui.dom.window.document.querySelector(".diary-paper-content-editor"),
+      "one click opens the actual paper body editor",
     );
+    assert.equal(
+      ui.dom.window.document.querySelectorAll('[role="dialog"]').length,
+      1,
+    );
+    assert.equal(ui.dom.window.document.querySelector(".memory-row"), null);
     assert.equal(
       [...ui.dom.window.document.querySelectorAll("button")].some(
         (b) => b.textContent === "删除",
@@ -371,6 +375,150 @@ test("late response from a previous day cannot replace the currently selected da
     assert.doesNotMatch(
       ui.dom.window.document.body.textContent!,
       /Stale previous day/,
+    );
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("one daily paper keeps per-record versions and does not replay successful edits after a later conflict", async () => {
+  const writes: any[] = [];
+  const committed: string[] = [];
+  let closes = 0;
+  const second = {
+    ...item,
+    id: "memory-b",
+    contentVersion: "b1",
+    text: "Second memory",
+  };
+  const api = {
+    request: async (path: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        const body = JSON.parse(init.body as string);
+        writes.push({ path, ...body });
+        if (path.endsWith("memory-b") && body.expected_version === "b1")
+          throw new WebApiError(409, "MIND_CONFLICT", "Conflict");
+        return {
+          data: {
+            ...(path.endsWith("memory-b") ? second : item),
+            occurredAt: null,
+            contentVersion: "saved",
+          },
+        };
+      }
+      return { data: { ...second, contentVersion: "b2" } };
+    },
+  } as any;
+  const ui = await render(
+    React.createElement(MemoryPaper, {
+      api,
+      initial: [item, second],
+      date: "2026-10-08",
+      triggerRef: { current: null },
+      onSaved: (x: any) => committed.push(x.id),
+      onClose: () => closes++,
+    }),
+  );
+  try {
+    assert.equal(ui.dom.window.document.querySelectorAll("textarea").length, 2);
+    const clear = [...ui.dom.window.document.querySelectorAll("button")].filter(
+      (x) => x.textContent === "未指定日期",
+    );
+    await ui.click(clear[0]);
+    await ui.click(clear[1]);
+    await ui.click(ui.button("保存"));
+    assert.deepEqual(committed, ["memory-a"]);
+    assert.equal(closes, 0);
+    assert.equal(ui.button("保存").disabled, true);
+    await ui.click(ui.button("保留草稿继续编辑"));
+    await ui.click(ui.button("保存"));
+    assert.deepEqual(
+      writes.map((x) => [x.path, x.expected_version]),
+      [
+        ["/mind/memory-a", "v1"],
+        ["/mind/memory-b", "b1"],
+        ["/mind/memory-b", "b2"],
+      ],
+    );
+    assert.deepEqual(committed, ["memory-a", "memory-b"]);
+    assert.equal(closes, 1);
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("closing a clean daily paper returns focus to its actual card", async () => {
+  function Host() {
+    const [open, setOpen] = React.useState(true);
+    const trigger = React.useRef<HTMLButtonElement | null>(null);
+    return React.createElement(
+      "div",
+      null,
+      React.createElement("button", { ref: trigger }, "Card"),
+      open
+        ? React.createElement(MemoryPaper, {
+            api: {} as any,
+            initial: [item],
+            date: "2026-10-08",
+            triggerRef: trigger,
+            onSaved: () => {},
+            onClose: () => setOpen(false),
+          })
+        : null,
+    );
+  }
+  const ui = await render(React.createElement(Host));
+  try {
+    await ui.click(ui.button("取消"));
+    assert.equal(ui.dom.window.document.querySelector('[role="dialog"]'), null);
+    assert.equal(ui.dom.window.document.activeElement, ui.button("Card"));
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("same-day full retry reloads Memory after all modules fail", async () => {
+  let failed = true;
+  let reads = 0;
+  const api = {
+    webClient: {
+      request: async () => {
+        reads++;
+        if (failed) throw Error("offline");
+        return { data: { items: [item], nextCursor: null } };
+      },
+    },
+    listTodoDates: async () => [],
+    listDiaryDates: async () => [],
+    loadTodoDay: async (date: string) => {
+      if (failed) throw Error("offline");
+      return { date, papers: { L: null, G: null, C: null } };
+    },
+    loadDiariesByDate: async () => {
+      if (failed) throw Error("offline");
+      return { diaries: [] };
+    },
+  } as any;
+  const ui = await render(
+    React.createElement(
+      MemoryRouter,
+      { initialEntries: ["/day-space?date=2026-10-08"] },
+      React.createElement(DaySpacePageContent, { api }),
+    ),
+  );
+  try {
+    assert.match(
+      ui.dom.window.document.body.textContent!,
+      /Unable to read Day Space/,
+    );
+    const before = reads;
+    failed = false;
+    await ui.click(ui.button("Retry"));
+    assert.ok(reads > before);
+    assert.ok(ui.dom.window.document.querySelector(".day-space-paper-memory"));
+    assert.doesNotMatch(
+      ui.dom.window.document.body.textContent!,
+      /Reading\.\.\./,
     );
   } finally {
     await ui.cleanup();
