@@ -1,6 +1,6 @@
 import { promptAnchor, provesFinalizedDelivery } from "./transcript.mjs";
 import { createHash, randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { constants, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { request as httpRequest } from "node:http";
@@ -16,6 +16,33 @@ const validSignedToken = token => typeof token === "string" && token.length >= 8
 const root = () => process.env.LEILEI_MIND_HOME || join(homedir(), ".claude", "leileios-mind");
 const hash = value => createHash("sha256").update(value).digest("hex");
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const DIAGNOSTIC_REASONS = new Set(["no_pending", "no_anchor", "read_rejected", "read_transient_exhausted",
+  "turn_mismatch", "no_summary", "summary_unclean", "hash_mismatch", "confirm_http"]);
+const DIAGNOSTIC_EVENTS = new Set(["UserPromptSubmit", "Notification", "SessionEnd"]);
+
+// Opt-in only: emit bounded reason codes, never prompt, tokens, IDs, hashes,
+// transcript content, or other request/response data.
+async function recordDiagnostic(config, event, reason) {
+  if (!config.diagnostics || !DIAGNOSTIC_EVENTS.has(event) || !DIAGNOSTIC_REASONS.has(reason)) return;
+  const filePath = join(root(), "finalization-reasons.jsonl");
+  const lock = `${filePath}.lock`;
+  let file; let locked = false;
+  try {
+    // Best effort: never wait for another writer (or a crashed writer's lock).
+    await fs.mkdir(lock, {mode: 0o700}); locked = true;
+    file = await fs.open(filePath,
+      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
+    const stat = await file.stat();
+    const line = JSON.stringify({ts: new Date().toISOString(), event, reason}) + "\n";
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size + Buffer.byteLength(line) > 64 * 1024 ||
+        (stat.mode & 0o077) !== 0 || stat.uid !== process.getuid?.()) return;
+    await file.writeFile(line);
+  } catch { /* Diagnostics never affect hook delivery. */ }
+  finally {
+    await file?.close().catch(() => undefined);
+    if (locked) await fs.rmdir(lock).catch(() => undefined);
+  }
+}
 
 async function readConfig() {
   const file = process.env.LEILEI_MIND_CONFIG || join(root(), "mind.env");
@@ -32,6 +59,7 @@ async function readConfig() {
     url: read("LEILEI_MIND_RECALL_URL"), token: read("LEILEI_MIND_RECALL_TOKEN"),
     mcp_tool_name: `mcp__${serverName}__write_memory`,
     semantic_socket: read("LEILEI_MIND_SEMANTIC_SOCKET"),
+    diagnostics: read("LEILEI_MIND_DIAGNOSTICS") === "1",
   };
   const url = new URL(config.url);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new Error("Invalid URL.");
@@ -237,9 +265,16 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     const requireDuration = input.hook_event_name === "SessionEnd";
     const snapshot = await withState(config, input.session_id, async state => structuredClone(state));
     const pending = snapshot.pending_recalls.find(p => p.epoch === snapshot.epoch && p.turn_id === snapshot.active_turn && p.context_epoch === snapshot.context_epoch);
-    if (pending && await provesFinalizedDelivery(input.transcript_path, input.session_id, pending, nextPrompt, requireDuration)) await withState(config, input.session_id, async (state, save) => {
+    let reason = pending ? null : "no_pending";
+    const proof = pending && await provesFinalizedDelivery(input.transcript_path, input.session_id, pending,
+      nextPrompt, requireDuration, value => { reason = value; });
+    if (proof) await withState(config, input.session_id, async (state, save) => {
       if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn ||
-          !state.pending_recalls.some(p => p.recall_id === pending.recall_id) || !(await provesFinalizedDelivery(input.transcript_path, input.session_id, pending, nextPrompt, requireDuration))) return;
+          !state.pending_recalls.some(p => p.recall_id === pending.recall_id)) {
+        reason = "turn_mismatch"; return;
+      }
+      if (!(await provesFinalizedDelivery(input.transcript_path, input.session_id, pending,
+          nextPrompt, requireDuration, value => { reason = value; }))) return;
       const response = await fetch(`${config.url}/internal/mind/recall/confirm`, {
         method: "POST", redirect: "error", signal: AbortSignal.timeout(1200),
         headers: {authorization: `Bearer ${config.token}`, "content-type": "application/json"},
@@ -251,12 +286,15 @@ export async function runHook(input, output = text => new Promise((resolve, reje
         }),
       });
       // Confirm has a tiny response; status alone is not enough to consume local metadata.
-      if (!response.ok) { await response.body?.cancel(); return; }
+      if (!response.ok) { reason = "confirm_http"; await response.body?.cancel(); return; }
       const result = await readResponse(response, 2000);
-      if (result.success !== true || result.data?.recall_id !== pending.recall_id || !["confirmed", "replayed"].includes(result.data?.outcome)) return;
+      if (result.success !== true || result.data?.recall_id !== pending.recall_id || !["confirmed", "replayed"].includes(result.data?.outcome)) {
+        reason = "confirm_http"; return;
+      }
       state.pending_recalls = state.pending_recalls.filter(p => p.recall_id !== pending.recall_id);
       await save(state);
-    }).catch(() => undefined); // Failure must not suppress the next prompt's recall.
+    }).catch(() => { reason ||= "confirm_http"; }); // Failure must not suppress the next prompt's recall.
+    await recordDiagnostic(config, input.hook_event_name, reason);
     if (!nextPrompt) return;
   }
   if (input.hook_event_name !== "UserPromptSubmit" || typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 16000) return;
@@ -264,7 +302,10 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     // A new prompt retires all unconfirmed prior turns, including interrupted ones.
     state.active_turn = randomUUID(); state.pending_recalls = []; await save(state); return structuredClone(state);
   });
-  const turnAnchor = await promptAnchor(input.transcript_path, input.session_id, input.prompt);
+  let anchorReason = null;
+  const turnAnchor = await promptAnchor(input.transcript_path, input.session_id, input.prompt,
+    value => { anchorReason = value; });
+  if (!turnAnchor) await recordDiagnostic(config, "UserPromptSubmit", anchorReason || "no_anchor");
   const exclude = [...new Set([...snapshot.injected_ids, ...snapshot.written_ids])];
   const body = {
     session_id: input.session_id,
