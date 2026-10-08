@@ -16,26 +16,25 @@ export type RuntimeRetentionSpec = {
 
 export type SubjectStateRetentionKind = "memory";
 export type SubjectStateRetentionPolicy = {
-  automaticForgetting: true;
-  mechanism: "decay_forget_purge";
+  automaticForgetting: false;
+  mechanism: "permanent_salience_decay";
 };
 
-/** Persistent memories use their lifecycle, never a generic age-based TTL. */
+/** Memories persist; lifecycle may decay salience but never archive/forget/purge. */
 export function subjectStateRetentionPolicy(
   kind: SubjectStateRetentionKind,
 ): SubjectStateRetentionPolicy {
   if (kind !== "memory") {
     throw new Error("Unhandled Subject State retention kind: " + String(kind));
   }
-  return { automaticForgetting: true, mechanism: "decay_forget_purge" };
+  return { automaticForgetting: false, mechanism: "permanent_salience_decay" };
 }
 
 /**
  * Minimal lifecycle guardrail for new Runtime persistence.
  *
- * Canonical history is the durable authority, subject state is allowed to be
- * born and later truly forgotten/purged, and operational/debug records must
- * declare a bounded TTL instead of silently becoming permanent history.
+ * Canonical history and persistent Memory survive by design. Only
+ * operational/debug records require bounded TTL.
  */
 export function validateRuntimeRetentionSpec(
   spec: RuntimeRetentionSpec,

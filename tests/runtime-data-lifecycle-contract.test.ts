@@ -93,7 +93,7 @@ test("archived is explicitly non-terminal while forgotten and purged are termina
 });
 
 
-test("memory retention uses lifecycle and rejects retired kinds", () => {
-  assert.deepEqual(subjectStateRetentionPolicy("memory"), {automaticForgetting:true, mechanism:"decay_forget_purge"});
+test("memory retention is permanent with decay-only ranking", () => {
+  assert.deepEqual(subjectStateRetentionPolicy("memory"), {automaticForgetting:false, mechanism:"permanent_salience_decay"});
   for (const kind of ["thought", "feel", "drive", "curiosity", "topic"]) assert.throws(() => subjectStateRetentionPolicy(kind as never), /Unhandled/);
 });

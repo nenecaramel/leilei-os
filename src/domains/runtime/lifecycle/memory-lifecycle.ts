@@ -21,13 +21,13 @@ export type MemoryLifecyclePolicy = {
   fadingThreshold: number;
   archiveThreshold: number;
   /**
-   * Time an archived state remains recoverable before its semantic payload is
-   * scrubbed. Omitted means forgetting is disabled.
+   * Legacy configuration field. Automatic forgetting is permanently disabled.
+   * Retained for configuration compatibility; its value is ignored.
    */
   forgetAfterHours?: number;
   /**
-   * Time a forgotten tombstone remains before the row is physically removed.
-   * Omitted means physical purge is disabled.
+   * Legacy configuration field. Automatic purging is permanently disabled.
+   * Retained for configuration compatibility; its value is ignored.
    */
   purgeAfterHours?: number;
 };
@@ -164,46 +164,24 @@ export class MemoryLifecycleService {
     const updates = candidates
       .map((candidate) => evaluateLifecycle(candidate, now, this.policy))
       .filter((value): value is MemoryLifecycleUpdate => value !== null);
-    const forgets = candidates
-      .map((candidate) => evaluateForgetting(candidate, now, this.policy))
-      .filter((value): value is MemoryLifecycleForget => value !== null);
-
     const committed = await this.port.applyUpdates({
       userId: input.userId,
       subjectId: input.subjectId,
       updates,
     });
-    const forgotten = await this.port.forgetArchived({
-      userId: input.userId,
-      subjectId: input.subjectId,
-      forgets,
-    });
 
-    const forgottenCandidates = await this.port.listForgottenCandidates({
-      userId: input.userId,
-      subjectId: input.subjectId,
-      limit,
-    });
-    const purges = forgottenCandidates
-      .map((candidate) => evaluatePurge(candidate, now, this.policy))
-      .filter((value): value is MemoryLifecyclePurge => value !== null);
-    const purged = await this.port.purgeForgotten({
-      userId: input.userId,
-      subjectId: input.subjectId,
-      purges,
-    });
-
+    // Permanent Memory: maintenance only changes salience/active/fading.
+    // Never call forgetArchived, listForgottenCandidates or purgeForgotten.
     return {
       scanned: candidates.length,
-      forgottenScanned: forgottenCandidates.length,
-      applied: committed.applied + forgotten.applied + purged.applied,
-      conflicts:
-        committed.conflicts + forgotten.conflicts + purged.conflicts,
+      forgottenScanned: 0,
+      applied: committed.applied,
+      conflicts: committed.conflicts,
       initialized: updates.filter((update) => update.reason === "initialize").length,
       faded: updates.filter((update) => update.lifecycle.status === "fading").length,
-      archived: updates.filter((update) => update.lifecycle.status === "archived").length,
-      forgotten: forgotten.applied,
-      purged: purged.applied,
+      archived: 0,
+      forgotten: 0,
+      purged: 0,
     };
   }
 
@@ -220,16 +198,14 @@ export class MemoryLifecycleService {
     });
   }
 
-  archive(input: {
+  archive(_input: {
     userId: string;
     subjectId: string;
     stateId: string;
     at: string;
   }): Promise<boolean> {
-    return this.port.archive({
-      ...input,
-      at: normalizeIso(input.at, "at"),
-    });
+    // Retain the old method signature but never archive a Memory.
+    return Promise.resolve(false);
   }
 }
 
@@ -260,17 +236,35 @@ export function evaluateLifecycle(
     };
   }
 
-  if (current.status === "archived" || current.status === "forgotten") {
-    return null;
-  }
+  // Previously archived records still contain their content. Restore their
+  // participation in decay and recall without rewriting provenance or identity.
+  // Already forgotten tombstones may have lost their text and cannot be restored.
+  if (current.status === "forgotten") return null;
+  const restored = current.status === "archived";
+  const active: SubjectStateLifecycle = restored
+    ? {
+        ...current,
+        status: lifecycleStatusForSalience(current.salience, policy),
+        archivedAt: null,
+        forgottenAt: null,
+      }
+    : current;
 
   const nowMs = Date.parse(now);
   const lastMs = Date.parse(current.lastDecayedAt);
-  if (nowMs <= lastMs) return null;
+  if (nowMs <= lastMs) {
+    return restored ? {
+      stateId: candidate.stateId,
+      expectedUpdatedAt: candidate.updatedAt,
+      nextPayload: writeSubjectStateLifecycle(candidate.payload, active),
+      lifecycle: active,
+      reason: "decay",
+    } : null;
+  }
 
-  if (current.protected) {
+  if (active.protected) {
     const lifecycle: SubjectStateLifecycle = {
-      ...current,
+      ...active,
       lastDecayedAt: now,
     };
     return {
@@ -299,11 +293,11 @@ export function evaluateLifecycle(
   }));
 
   const lifecycle: SubjectStateLifecycle = {
-    ...current,
+    ...active,
     status,
     salience,
     lastDecayedAt: now,
-    archivedAt: status === "archived" ? now : null,
+    archivedAt: null,
     forgottenAt: null,
   };
 
@@ -357,12 +351,9 @@ export function evaluateRecallReinforcement(
   }
 
   const current = readSubjectStateLifecycle(candidate.payload);
-  if (
-    current?.status === "archived"
-    || current?.status === "forgotten"
-  ) {
-    return null;
-  }
+  // Legacy archived items remain recallable while their original text exists.
+  // Forgotten tombstones no longer contain the semantic content.
+  if (current?.status === "forgotten") return null;
 
   const existingContributions =
     readRecallReinforcementContributions(candidate.payload);
@@ -448,14 +439,14 @@ export function evaluateRecallReinforcement(
 
   const status = policy
     ? lifecycleStatusForSalience(salience, policy)
-    : lifecycleBase.status;
+    : lifecycleBase.status === "archived" ? "fading" : lifecycleBase.status;
   const lifecycle: SubjectStateLifecycle = {
     ...lifecycleBase,
     status,
     salience,
     lastDecayedAt: nextLastDecayedAt,
     lastRecalledAt: recalledAt,
-    archivedAt: status === "archived" ? nextLastDecayedAt : null,
+    archivedAt: null,
     forgottenAt: null,
   };
 
@@ -561,65 +552,21 @@ export function removeRecallReinforcementSources(
   };
 }
 
+/** Legacy entrypoints remain for API compatibility, but cannot erase Memory. */
 export function evaluateForgetting(
-  candidate: MemoryLifecycleCandidate,
-  nowIso: string,
-  policy: MemoryLifecyclePolicy,
+  _candidate: MemoryLifecycleCandidate,
+  _nowIso: string,
+  _policy: MemoryLifecyclePolicy,
 ): MemoryLifecycleForget | null {
-  const now = normalizeIso(nowIso, "now");
-  const current = readSubjectStateLifecycle(candidate.payload);
-  if (
-    !current
-    || current.status !== "archived"
-    || current.protected
-    || !current.archivedAt
-  ) {
-    return null;
-  }
-
-  const retentionHours = policy.forgetAfterHours;
-  if (retentionHours === undefined) return null;
-  const elapsedHours =
-    (Date.parse(now) - Date.parse(current.archivedAt)) / 3_600_000;
-  if (elapsedHours < retentionHours) return null;
-
-  return {
-    stateId: candidate.stateId,
-    expectedUpdatedAt: candidate.updatedAt,
-    lifecycle: {
-      ...current,
-      status: "forgotten",
-      salience: 0,
-      protected: false,
-      lastDecayedAt: now,
-      forgottenAt: now,
-    },
-  };
+  return null;
 }
 
 export function evaluatePurge(
-  candidate: MemoryLifecycleCandidate,
-  nowIso: string,
-  policy: MemoryLifecyclePolicy,
+  _candidate: MemoryLifecycleCandidate,
+  _nowIso: string,
+  _policy: MemoryLifecyclePolicy,
 ): MemoryLifecyclePurge | null {
-  const now = normalizeIso(nowIso, "now");
-  const current = readSubjectStateLifecycle(candidate.payload);
-  if (
-    !current
-    || current.status !== "forgotten"
-    || !current.forgottenAt
-  ) {
-    return null;
-  }
-  const retentionHours = policy.purgeAfterHours;
-  if (retentionHours === undefined) return null;
-  const elapsedHours =
-    (Date.parse(now) - Date.parse(current.forgottenAt)) / 3_600_000;
-  if (elapsedHours < retentionHours) return null;
-  return {
-    stateId: candidate.stateId,
-    expectedUpdatedAt: candidate.updatedAt,
-  };
+  return null;
 }
 
 export function readSubjectStateLifecycle(
@@ -785,28 +732,19 @@ function writeLifecycleAndRecallReinforcement(
   return next;
 }
 
+/** Legacy helper is intentionally disabled: no code may scrub Memory text. */
 export function forgottenSubjectStatePayload(
-  lifecycle: SubjectStateLifecycle,
+  _lifecycle: SubjectStateLifecycle,
 ): Record<string, unknown> {
-  if (lifecycle.status !== "forgotten" || !lifecycle.forgottenAt) {
-    throw new Error(
-      "Forgotten Subject State payload requires forgotten lifecycle.",
-    );
-  }
-  return {
-    [LIFECYCLE_KEY]: lifecycle,
-  };
+  throw new Error("Automatic Memory forgetting and content scrubbing are disabled.");
 }
 
 function lifecycleStatusForSalience(
   salience: number,
   policy: MemoryLifecyclePolicy,
 ): SubjectStateLifecycleStatus {
-  return salience <= policy.archiveThreshold
-    ? "archived"
-    : salience <= policy.fadingThreshold
-      ? "fading"
-      : "active";
+  // The old archive threshold no longer removes a Memory from eligibility.
+  return salience <= policy.fadingThreshold ? "fading" : "active";
 }
 
 function validatePolicy(policy: MemoryLifecyclePolicy): void {

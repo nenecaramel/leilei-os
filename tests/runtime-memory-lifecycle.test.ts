@@ -7,8 +7,8 @@ import {
   evaluateRecallReinforcement,
   readSubjectStateRecallContext,
   removeRecallReinforcementSources,
-  forgottenSubjectStatePayload,
   MemoryLifecycleService,
+  forgottenSubjectStatePayload,
   type MemoryLifecyclePolicy,
 } from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
 
@@ -39,7 +39,7 @@ test("lifecycle initializes lazily instead of inventing an age for pre-existing 
   assert.equal(update.lifecycle.forgottenAt, null);
 });
 
-test("memory crosses fading and archive thresholds under a configurable half-life", () => {
+test("memory decay below archive threshold stays fading and never loses text", () => {
   const initialized = evaluateLifecycle(
     {
       stateId: "m1",
@@ -78,9 +78,9 @@ test("memory crosses fading and archive thresholds under a configurable half-lif
     policy,
   );
   assert.ok(archived);
-  assert.equal(archived.lifecycle.status, "archived");
+  assert.equal(archived.lifecycle.status, "fading");
   assert.equal(archived.lifecycle.salience, 0.125);
-  assert.equal(archived.lifecycle.archivedAt, "2026-09-23T00:00:00.000Z");
+  assert.equal(archived.lifecycle.archivedAt, null);
 });
 
 test("protected lifecycle freezes salience while advancing the decay anchor", () => {
@@ -168,87 +168,56 @@ test("decay-only policy keeps archived/forgotten retention fail-closed", () => {
   );
 });
 
-test("archived state becomes a content-free forgotten tombstone after the forgetting window", () => {
-  const archived = {
-    lifecycle_v1: {
-      status: "archived",
-      salience: 0.1,
-      protected: false,
-      lastDecayedAt: "2026-09-20T00:00:00.000Z",
-      lastRecalledAt: "2026-09-19T00:00:00.000Z",
-      archivedAt: "2026-09-20T00:00:00.000Z",
-      forgottenAt: null,
+test("legacy archived Memory stays intact and is reactivated by decay", () => {
+  const candidate = {
+    stateId: "legacy",
+    kind: "memory" as const,
+    updatedAt: "2026-09-20T00:00:01.000Z",
+    payload: {
+      lifecycle_v1: {
+        status: "archived", salience: 0.1, protected: false,
+        lastDecayedAt: "2026-09-20T00:00:00.000Z",
+        lastRecalledAt: null, archivedAt: "2026-09-20T00:00:00.000Z",
+        forgottenAt: null,
+      },
+      semantic_detail: "preserve this",
     },
-    semantic_detail: "this must disappear",
   };
-  const forget = evaluateForgetting(
-    {
-      stateId: "m1",
-      kind: "memory",
-      payload: archived,
-      updatedAt: "2026-09-20T00:00:01.000Z",
-    },
-    "2026-09-21T00:00:00.000Z",
-    policy,
-  );
-  assert.ok(forget);
-  assert.equal(forget.lifecycle.status, "forgotten");
-  assert.equal(forget.lifecycle.salience, 0);
-  assert.equal(forget.lifecycle.forgottenAt, "2026-09-21T00:00:00.000Z");
-
-  const tombstone = forgottenSubjectStatePayload(forget.lifecycle);
-  assert.deepEqual(Object.keys(tombstone), ["lifecycle_v1"]);
-  assert.equal("semantic_detail" in tombstone, false);
+  assert.equal(evaluateForgetting(candidate, "2030-09-21T00:00:00.000Z", policy), null);
+  const restored = evaluateLifecycle(candidate, "2026-09-21T00:00:00.000Z", policy);
+  assert.ok(restored);
+  assert.equal(restored.lifecycle.status, "fading");
+  assert.equal(restored.lifecycle.archivedAt, null);
+  assert.equal(restored.nextPayload.semantic_detail, "preserve this");
 });
 
-test("forgotten tombstone becomes purge-eligible only after its purge window", () => {
-  const payload = {
-    lifecycle_v1: {
-      status: "forgotten",
-      salience: 0,
-      protected: false,
+test("legacy content-scrubbing helper is disabled", () => {
+  assert.throws(() => forgottenSubjectStatePayload({
+    status: "forgotten", salience: 0, protected: false,
+    lastDecayedAt: "2026-09-21T00:00:00.000Z",
+    lastRecalledAt: null, archivedAt: "2026-09-20T00:00:00.000Z",
+    forgottenAt: "2026-09-21T00:00:00.000Z",
+  }), /content scrubbing are disabled/);
+});
+
+test("legacy forgotten tombstones cannot be purged", () => {
+  assert.equal(evaluatePurge({
+    stateId: "forgotten", kind: "memory",
+    updatedAt: "2026-09-21T00:00:00.000Z",
+    payload: {lifecycle_v1: {
+      status: "forgotten", salience: 0, protected: false,
       lastDecayedAt: "2026-09-21T00:00:00.000Z",
-      lastRecalledAt: null,
-      archivedAt: "2026-09-20T00:00:00.000Z",
+      lastRecalledAt: null, archivedAt: "2026-09-20T00:00:00.000Z",
       forgottenAt: "2026-09-21T00:00:00.000Z",
-    },
-  };
-
-  assert.equal(
-    evaluatePurge(
-      {
-        stateId: "m1",
-        kind: "memory",
-        payload,
-        updatedAt: "2026-09-21T00:00:00.000Z",
-      },
-      "2026-09-21T23:59:59.000Z",
-      policy,
-    ),
-    null,
-  );
-  assert.deepEqual(
-    evaluatePurge(
-      {
-        stateId: "m1",
-        kind: "memory",
-        payload,
-        updatedAt: "2026-09-21T00:00:00.000Z",
-      },
-      "2026-09-22T00:00:00.000Z",
-      policy,
-    ),
-    {
-      stateId: "m1",
-      expectedUpdatedAt: "2026-09-21T00:00:00.000Z",
-    },
-  );
+    }},
+  }, "2040-09-22T00:00:00.000Z", policy), null);
 });
 
-test("MemoryLifecycleService keeps product rates injectable and runs forget/purge ports", async () => {
+test("MemoryLifecycleService never invokes destructive maintenance ports", async () => {
   const committed: unknown[] = [];
   const forgotten: unknown[] = [];
   const purged: unknown[] = [];
+  let forgottenQueries = 0;
   const service = new MemoryLifecycleService(
     {
       async listCandidates() {
@@ -260,6 +229,7 @@ test("MemoryLifecycleService keeps product rates injectable and runs forget/purg
         }];
       },
       async listForgottenCandidates() {
+        forgottenQueries += 1;
         return [];
       },
       async applyUpdates(input) {
@@ -288,6 +258,10 @@ test("MemoryLifecycleService keeps product rates injectable and runs forget/purg
   assert.equal(committed.length, 1);
   assert.equal(forgotten.length, 0);
   assert.equal(purged.length, 0);
+  assert.equal(forgottenQueries, 0);
+  assert.equal(result.forgotten, 0);
+  assert.equal(result.purged, 0);
+  assert.equal(await service.archive({userId:"u1",subjectId:"G",stateId:"m1",at:"2026-09-22T00:00:00.000Z"}), false);
 });
 
 
@@ -423,85 +397,24 @@ test("recall reinforcement is idempotent for the same or older recall evidence",
   );
 });
 
-test("recall cannot resurrect archived or forgotten Memory", () => {
-  for (const status of ["archived", "forgotten"] as const) {
-    const at = "2026-09-21T00:00:00.000Z";
-    const payload = {
-      lifecycle_v1: {
-        status,
-        salience: status === "forgotten" ? 0 : 0.1,
-        protected: false,
-        lastDecayedAt: at,
-        lastRecalledAt: null,
-        archivedAt: at,
-        forgottenAt: status === "forgotten" ? at : null,
-      },
-    };
-    assert.equal(
-      evaluateRecallReinforcement(
-        {
-          stateId: "m-" + status,
-          kind: "memory",
-          payload,
-          updatedAt: at,
-        },
-        "2026-09-22T00:00:00.000Z",
-        0.08,
-        "u-recall",
-        policy,
-      ),
-      null,
-    );
-  }
-});
-
-test("zero recall boost records recency without creating reinforcement ledger", () => {
-  const update = evaluateRecallReinforcement(
-    {
-      stateId: "m-zero-boost",
-      kind: "memory",
-      payload: {
-        lifecycle_v1: {
-          status: "active",
-          salience: 0.5,
-          protected: false,
-          lastDecayedAt: "2026-09-20T00:00:00.000Z",
-          lastRecalledAt: null,
-          archivedAt: null,
-          forgottenAt: null,
-        },
-      },
-      updatedAt: "2026-09-20T00:00:01.000Z",
-    },
-    "2026-09-20T01:00:00.000Z",
-    0,
-    "u-zero-boost",
-    undefined,
-    {
-      conversationId: "c-zero",
-      epoch: 4,
-    },
-  );
-
-  assert.ok(update);
-  assert.equal(update.lifecycle.salience, 0.5);
-  assert.equal(
-    update.lifecycle.lastRecalledAt,
-    "2026-09-20T01:00:00.000Z",
-  );
-  assert.equal(
-    "recall_reinforcement_v1" in update.nextPayload,
-    false,
-  );
-  assert.deepEqual(
-    readSubjectStateRecallContext(update.nextPayload),
-    {
-      conversationId: "c-zero",
-      epoch: 4,
-      sourceMessageId: "u-zero-boost",
-      recalledAt: "2026-09-20T01:00:00.000Z",
-    },
-  );
+test("legacy archived content can regain recall metadata; forgotten cannot", () => {
+  const at = "2026-09-21T00:00:00.000Z";
+  const candidate = (status: "archived" | "forgotten") => ({
+    stateId: "m-" + status, kind: "memory" as const, updatedAt: at,
+    payload: {lifecycle_v1: {
+      status, salience: status === "archived" ? 0.1 : 0,
+      protected: false, lastDecayedAt: at, lastRecalledAt: null,
+      archivedAt: at, forgottenAt: status === "forgotten" ? at : null,
+    }},
+  });
+  const recalled = evaluateRecallReinforcement(candidate("archived"),
+    "2026-09-22T00:00:00.000Z",0.08,"u-recall",policy);
+  assert.ok(recalled);
+  assert.equal(recalled.lifecycle.status,"fading");
+  assert.equal(recalled.lifecycle.archivedAt,null);
+  assert.equal(recalled.lifecycle.lastRecalledAt,"2026-09-22T00:00:00.000Z");
+  assert.equal(evaluateRecallReinforcement(candidate("forgotten"),
+    "2026-09-22T00:00:00.000Z",0.08,"u-recall",policy),null);
 });
 
 test("recall reinforcement without decay policy starts a new non-retroactive baseline", () => {
