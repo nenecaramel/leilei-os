@@ -44,4 +44,10 @@ The repository checks active-user status, locks the current state row, checks th
 
 An explicit non-null edited date is `user_supplied` with no temporal sourceMessageId. A text-only edit preserves existing temporal basis/sourceMessageId. Clearing the date removes temporal metadata and clears the legacy manual date when present. Original envelope provenance, authority, scope, state ID, creation time, notes, lifecycle and recall context are retained.
 
-No UI changes are included. Dayspace and Mind detail can reuse this same PATCH interface in PR B; day views need not offer create/delete. Web and iOS share this backend contract.
+## Web and iOS (PR B)
+
+Both clients read the same `/mind/days/:date`, `/mind/search`, detail and PATCH endpoints. Day Space groups all pages of a Beijing `occurredAt` day into one Memory paper alongside Todo/Diary, with view/edit only. Moving or clearing the event date refreshes day membership. The Mind feed retains create/delete and adds a separate paginated undated entry (`undated=true`); unknown event dates are never replaced with creation dates. Day Space keeps its existing Todo/Diary default-date discovery; users can select any date with the date navigator.
+
+The shared editor on each client sends `contentVersion` as `expected_version` and only changed editable fields. Text-only edits omit `occurred_at`, preserving temporal provenance. Date controls explicitly use Beijing time; clearing the date sends null. HTTP 409 reads the latest detail, retains the draft, blocks saving, and asks the user to use the latest content or explicitly keep/reconcile the draft before another save. A failed conflict read remains blocked with a retry action. No automatic conflict overwrite, edit history, copied Memory data, MCP change, or lifecycle mutation is introduced.
+
+Web now exposes `/mind` in Core navigation, and the existing Day Space paper styles also render at desktop widths. iOS uses its existing Mind detail and Day Space paper containers. Production and authenticated physical-device acceptance remain separate from local synthetic-data UI checks and simulator builds.

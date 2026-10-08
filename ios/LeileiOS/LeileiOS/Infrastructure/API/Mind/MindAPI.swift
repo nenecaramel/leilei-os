@@ -91,6 +91,38 @@ extension LeileiAPIClient {
         )
     }
 
+    func memorySearch(undated: Bool, cursor: String? = nil) async throws -> MemorySearchPage {
+        var components = URLComponents()
+        components.path = "/api/v1/mind/search"
+        components.queryItems = [URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "undated", value: String(undated))]
+        if let cursor { components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
+        let envelope: MemorySearchEnvelope = try await request(path: components.string!, authenticated: true)
+        return envelope.data
+    }
+
+    func memoryDay(_ date: String) async throws -> [MindProductItem] {
+        var items: [MindProductItem] = []
+        var cursor: String?
+        repeat {
+            try Task.checkCancellation()
+            var components = URLComponents()
+            components.path = "/api/v1/mind/days/\(date)"
+            components.queryItems = [URLQueryItem(name: "limit", value: "200")]
+            if let cursor { components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
+            let envelope: MindProductPageEnvelope = try await request(path: components.string!, authenticated: true)
+            items.append(contentsOf: envelope.data.items)
+            cursor = envelope.data.nextCursor
+        } while cursor != nil
+        return items
+    }
+
+    func updateMemory(item: MindProductItem, text: String, occurredAt: Date?) async throws -> MindProductItem {
+        guard let version = item.contentVersion else { throw LeileiAPIError.invalidResponse }
+        let body = try JSONEncoder().encode(MemoryUpdateBody(expectedVersion: version, text: text == (item.text ?? "") ? nil : text, occurredAt: occurredAt, includeOccurredAt: occurredAt != MemoryDate.parse(item.occurredAt)))
+        let envelope: MindProductItemEnvelope = try await request(path: "/api/v1/mind/\(item.id)", method: "PATCH", body: body, authenticated: true)
+        return envelope.data
+    }
+
     func mindWrites(
         messageID: String
     ) async throws -> MindProductMessageWriteProjection {
@@ -145,3 +177,14 @@ private struct MindManualCreateBody: Encodable, Sendable {
         case note
     }
 }
+
+struct MemorySearchPage: Decodable, Sendable {
+    struct Entry: Decodable, Sendable, Identifiable {
+        let id: String
+        let snippet: String
+        let date: String?
+    }
+    let items: [Entry]
+    let nextCursor: String?
+}
+private struct MemorySearchEnvelope: Decodable { let data: MemorySearchPage }

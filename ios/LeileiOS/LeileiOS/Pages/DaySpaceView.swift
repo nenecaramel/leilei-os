@@ -9,6 +9,8 @@ struct DaySpaceView: View {
     let target: DaySpaceNavigationTarget?
     let onTargetConsumed: () -> Void
 
+    @State private var memoryRevision = 0
+    @State private var memoryState: DaySpaceModuleState<[MindProductItem]> = .loading(nil)
     @State private var query = ""
     @State private var searchState: DaySpaceTodoSearchState = .idle
     @State private var completeTodoSearch:
@@ -32,6 +34,8 @@ struct DaySpaceView: View {
                 searchContent
             } else {
                 DaySpaceContent(
+                    memoryState: memoryState,
+                    onRetryMemory: { memoryRevision += 1 },
                     selectedDate: selectedDate,
                     discoveryState: discoveryState,
                     discoveryIncomplete: discoveryIncomplete,
@@ -152,6 +156,8 @@ struct DaySpaceView: View {
                         }
                     )
 
+                case .memory(let date, let items):
+                    DaySpaceMemoryDetail(date: date, items: items, onChanged: { memoryRevision += 1 }, onClosed: { selection = nil })
                 case .diary(let diary):
                     DaySpaceDiaryPaperDetail(
                         diary: diary,
@@ -179,6 +185,15 @@ struct DaySpaceView: View {
             } else if selectedDate == nil {
                 await discoverAndLoad()
             }
+        }
+        .task(id: "\(selectedDate ?? ""):\(memoryRevision)") {
+            memoryState = .loading(nil)
+            guard let date = selectedDate else { return }
+            do {
+                let items = try await appModel.api.memoryDay(date)
+                try Task.checkCancellation()
+                if selectedDate == date { memoryState = .ready(items) }
+            } catch { if !Task.isCancelled { memoryState = .error(nil) } }
         }
         .task(id: query) {
             await searchTodoIfNeeded()

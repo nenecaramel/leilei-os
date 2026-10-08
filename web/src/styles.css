@@ -5771,7 +5771,6 @@ body:has(.system-page) {
 /* auth-search-state-polish-2026-08-09:end */
 
 /* leilei-day-space-mobile-2026-08-09:start */
-@media (max-width: 760px) {
   html:has(.day-space-page),
   body:has(.day-space-page),
   #root:has(.day-space-page),
@@ -6113,13 +6112,7 @@ body:has(.system-page) {
   .day-space-paper-medium .day-space-diary-preview p {
     -webkit-line-clamp: 4;
   }
-}
 
-@media (min-width: 761px) {
-  .day-space-page {
-    display: none;
-  }
-}
 /* leilei-day-space-mobile-2026-08-09:end */
 
 /* leilei-mobile-module-state-polish-2026-08-09:start */
@@ -7457,3 +7450,24 @@ body:has(.system-page) {
   line-height: 1.4;
   cursor: pointer;
 }
+
+.memory-editor { display: grid; gap: 16px; padding: 12px 0; }
+.memory-editor label { display: grid; gap: 8px; font-size: 13px; }
+.memory-editor textarea { min-height: 180px; resize: vertical; width: 100%; font: inherit; line-height: 1.7; background: transparent; border: 1px solid #bbb8; border-radius: 4px; padding: 8px; box-sizing: border-box; }
+.memory-editor input { max-width: 100%; font: inherit; padding: 8px; background: transparent; border: 1px solid #bbb8; border-radius: 4px; }
+
+.memory-editor .memory-paper-control,
+.memory-page .memory-paper-control,
+.paper-detail-paper[id^="memory-"] .memory-paper-control {
+  width: fit-content;
+  padding: 4px;
+  border: 0;
+  color: #666;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.memory-editor .memory-paper-control:disabled { opacity: 0.45; cursor: default; }
+.day-space-paper-memory .day-space-diary-preview { max-height: calc(100% - 20px); overflow: hidden; }
+@media (max-width: 760px) { .memory-editor input, .memory-editor textarea { font-size: 16px; } }

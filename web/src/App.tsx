@@ -17,6 +17,7 @@ import { SystemDataPage } from "./pages/SystemDataPage";
 import { UniversePage } from "./pages/UniversePageContainer";
 
 import { DaySpacePage } from "./pages/DaySpacePageContainer";
+import { MindPage } from "./pages/MindPageContainer";
 export default function App() {
   return (
     <BrowserRouter>
@@ -25,6 +26,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
 
+            <Route path="mind" element={<MindPage />} />
             <Route path="diary" element={<DiaryPage />} />
             <Route path="day-space" element={<DaySpacePage />} />
             <Route path="search" element={<GlobalSearchPage />} />

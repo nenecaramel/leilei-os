@@ -44,6 +44,7 @@ struct MindProductItem: Decodable, Sendable, Equatable, Identifiable {
     let source: String
     let authority: String?
     let occurredAt: String?
+    let contentVersion: String?
     let note: String?
     let lifecycle: MindProductLifecycleSnapshot
     let provenance: MindProductProvenanceSnapshot
@@ -70,4 +71,32 @@ struct MindProductMessageWriteProjection:
     let messageId: String
     let total: Int
     let kinds: [KindCount]
+}
+
+struct MemoryUpdateBody: Encodable {
+    let expectedVersion: String
+    let text: String?
+    let occurredAt: Date?
+    var includeOccurredAt = true
+    enum CodingKeys: String, CodingKey { case expectedVersion = "expected_version", text, occurredAt = "occurred_at" }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(expectedVersion, forKey: .expectedVersion)
+        if let text { try values.encode(text, forKey: .text) }
+        guard includeOccurredAt else { return }
+        if let occurredAt {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            try values.encode(formatter.string(from: occurredAt), forKey: .occurredAt)
+        } else { try values.encodeNil(forKey: .occurredAt) }
+    }
+}
+
+enum MemoryDate {
+    static func parse(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
 }

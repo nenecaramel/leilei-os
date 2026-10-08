@@ -8,6 +8,11 @@ import { DaySpacePageContent } from "../web/src/pages/DaySpacePage.js";
 import type { DaySpaceApi } from "../web/src/pages/day-space-api.js";
 
 async function render(api: DaySpaceApi) {
+  const original = api.webClient;
+  api = {...api, webClient: {request: async <T>(path: string, init?: RequestInit) => {
+    if (path.startsWith("/mind/days/")) return {data:{items:[], nextCursor:null}} as T;
+    return original.request<T>(path, init);
+  }}};
   const dom = new JSDOM("<main id=\"root\"></main>", {
     url: "https://leilei-os.test/day-space?date=2026-08-12",
   });

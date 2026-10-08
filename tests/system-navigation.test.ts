@@ -61,13 +61,13 @@ test("System navigation exposes exactly the five approved modules", () => {
     EXPECTED_SYSTEM_ENTRIES,
   );
 
-  assert.equal(NAV_ITEMS.length, 10);
+  assert.equal(NAV_ITEMS.length, 11);
   assert.equal(NAV_ITEMS.some((entry) => entry.to === "/shared-paper"), false);
   assert.equal(NAV_ITEMS.some((entry) => entry.to === "/memory"), false);
   assert.equal(NAV_ITEMS.some((entry) => entry.to === "/task"), false);
   assert.equal(NAV_ITEMS.some((entry) => entry.to === "/conversations"), false);
   assert.equal(NAV_ITEMS.some((entry) => entry.to === "/sentinel"), false);
-  assert.deepEqual(NAV_GROUPS.find((group) => group.label === "Core")?.entries.map(({ to }) => to), ["/", "/diary", "/day-space", "/universe"]);
+  assert.deepEqual(NAV_GROUPS.find((group) => group.label === "Core")?.entries.map(({ to }) => to), ["/", "/mind", "/diary", "/day-space", "/universe"]);
   assert.doesNotMatch(
     navigationSource,
     /includeSecondarySystemItems|General|Appearance|Data & Backup/,
