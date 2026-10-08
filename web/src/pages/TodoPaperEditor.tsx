@@ -13,7 +13,7 @@ import {
 import type { TodoAuthor, TodoEntry, TodoEntryKind } from "./todo-types";
 import { createTodoPaperEntryId } from "./todo-paper-storage";
 
-type EditableTodoRow = TodoEntry & { creation?: boolean };
+import { normalizeRows, withText, splitTodoText, splitPastedTodoLines, planTodoPaste, mergeTodoRows, type EditableTodoRow } from "./todo-row-transforms";
 
 export type TodoPaperEditorHandle = {
   getNormalizedEntries(): TodoEntry[];
@@ -91,23 +91,6 @@ function createInitialRows(
 function resizeTodoTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = "auto";
   textarea.style.height = `${textarea.scrollHeight}px`;
-}
-
-function normalizeRows(rows: readonly EditableTodoRow[]): TodoEntry[] {
-  return rows
-    .map(({ id, kind, text }) => ({ id, kind, text: text.trim() }))
-    .filter((entry) => entry.text.length > 0);
-}
-
-function withText(
-  row: EditableTodoRow,
-  text: string,
-): EditableTodoRow {
-  return {
-    ...row,
-    text,
-    creation: text.trim().length === 0 ? (row.creation ?? true) : undefined,
-  };
 }
 
 export const TodoPaperEditor = forwardRef<
@@ -225,8 +208,7 @@ export const TodoPaperEditor = forwardRef<
       const row = current[index];
       if (!row) return current;
 
-      const before = row.text.slice(0, selectionStart);
-      const after = row.text.slice(selectionEnd);
+      const { before, after } = splitTodoText(row.text, selectionStart, selectionEnd);
       const next = [...current];
       next[index] = withText(row, before);
 
@@ -257,45 +239,19 @@ export const TodoPaperEditor = forwardRef<
     if (index <= 0) return;
 
     setRows((current) => {
-      const row = current[index];
-      const previous = current[index - 1];
-      if (!row || !previous) return current;
-
-      const previousLength = previous.text.length;
-      const next = [...current];
-      next[index - 1] = withText(previous, previous.text + row.text);
-      next.splice(index, 1);
-
-      pendingCaretRef.current = {
-        rowId: previous.id,
-        offset: previousLength,
-      };
-
-      return normalizeVisibleRows(author, next);
+      const change = mergeTodoRows(current, index, "previous");
+      if (!change) return current;
+      pendingCaretRef.current = change.caret;
+      return normalizeVisibleRows(author, change.rows);
     });
   };
 
   const mergeWithNext = (index: number) => {
     setRows((current) => {
-      const row = current[index];
-      const nextRow = current[index + 1];
-
-      if (!row || !nextRow) return current;
-      if (nextRow.creation && nextRow.text.length === 0) {
-        return current;
-      }
-
-      const caretOffset = row.text.length;
-      const next = [...current];
-      next[index] = withText(row, row.text + nextRow.text);
-      next.splice(index + 1, 1);
-
-      pendingCaretRef.current = {
-        rowId: row.id,
-        offset: caretOffset,
-      };
-
-      return normalizeVisibleRows(author, next);
+      const change = mergeTodoRows(current, index, "next");
+      if (!change) return current;
+      pendingCaretRef.current = change.caret;
+      return normalizeVisibleRows(author, change.rows);
     });
   };
 
@@ -311,25 +267,20 @@ export const TodoPaperEditor = forwardRef<
     const textarea = event.currentTarget;
     const start = textarea.selectionStart ?? textarea.value.length;
     const end = textarea.selectionEnd ?? start;
-    const lines = clipboardText.replace(/\r\n?/g, "\n").split("\n");
+    const lines = splitPastedTodoLines(clipboardText);
 
     setRows((current) => {
       const row = current[index];
       if (!row) return current;
 
-      const prefix = row.text.slice(0, start);
-      const suffix = row.text.slice(end);
+      const plan = planTodoPaste(row.text, start, end, lines);
       const next = [...current];
 
-      next[index] = withText(row, prefix + (lines[0] ?? ""));
+      next[index] = withText(row, plan.first);
 
-      const insertedRows = lines.slice(1).map((line, lineIndex, rest) => {
-        const isLast = lineIndex === rest.length - 1;
-        return withText(
-          createCreationRow(author),
-          isLast ? line + suffix : line,
-        );
-      });
+      const insertedRows = plan.following.map((text) =>
+        withText(createCreationRow(author), text)
+      );
 
       next.splice(index + 1, 0, ...insertedRows);
 
@@ -337,7 +288,7 @@ export const TodoPaperEditor = forwardRef<
       if (target) {
         pendingCaretRef.current = {
           rowId: target.id,
-          offset: (lines.at(-1) ?? "").length,
+          offset: plan.caretOffset,
         };
       }
 
