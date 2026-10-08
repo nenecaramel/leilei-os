@@ -22,7 +22,11 @@ test('MessageRows render and callback equivalence against exact main, including 
  const dir=process.env.UI_ROWS_RENDER_CACHE??mkdtempSync(path.join(os.tmpdir(),'leilei-rows-render-'));mkdirSync(dir,{recursive:true});const sim=process.env.UI_ROWS_SIMULATOR_ID!,bundle='com.leileios.tests.rows-equivalence';
  try {
   cpSync('ios/LeileiOS',path.join(dir,'ios'),{recursive:true,filter:p=>!p.includes('xcuserdata')});const root=path.join(dir,'ios/LeileiOS/Chat/MessageSurface');
-  const originals=files.map(f=>readFileSync('tests/fixtures/message-rows-main-72a67f44/'+f,'utf8'));
+  // The album badge and its network readback have been explicitly retired.
+  // Compare every remaining row pixel/callback with the immutable historical baseline.
+  const originals=files.map(f=>readFileSync('tests/fixtures/message-rows-main-72a67f44/'+f,'utf8')
+    .replace('AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)', '')
+    .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', ''));
   const names=new Set(originals.flatMap(s=>[...s.matchAll(/\b(?:struct|class|enum|protocol)\s+(\w+)/g)].map(m=>m[1])));
   for(const f of [...files,...moved])writeFileSync(path.join(root,f),instrument(readFileSync('ios/LeileiOS/LeileiOS/Chat/MessageSurface/'+f,'utf8'),f));
   for(let i=0;i<files.length;i++)writeFileSync(path.join(root,'Baseline'+files[i]),instrument(originals[i],files[i]).replace(new RegExp('\\b('+[...names].join('|')+')\\b','g'),n=>'Baseline'+n));

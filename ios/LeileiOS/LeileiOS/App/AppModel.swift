@@ -81,8 +81,6 @@ final class AppModel: ObservableObject {
     var nativeLivePresentationAssembler = NativeLiveConversationPresentationAssembler()
     @Published var mindWritesByMessageID:
         [String: MindProductMessageWriteProjection] = [:]
-    @Published var albumSavesByUserMessageID:
-        [String: ClaudeAlbumMessageSaveProjection] = [:]
 
     var nativeLiveRuntimeMetadataByConversationID:
         [UUID: NativeLiveRuntimeMetadata] = [:]
@@ -93,7 +91,6 @@ final class AppModel: ObservableObject {
         [String: Task<Void, Never>] = [:]
     var nativeLiveBackgroundSurfaceOrder: [String] = []
     var mindWriteRequestsInFlight: Set<String> = []
-    var albumSaveRequestsInFlight: Set<String> = []
     var currentHeadMindWriteRefreshTask: Task<Void, Never>?
     var conversationBootstrapInFlight = false
     var conversationPaginationInFlight = false
@@ -145,8 +142,6 @@ final class AppModel: ObservableObject {
         nativeLiveRuntimeMetadataByConversationID.removeAll()
         mindWritesByMessageID.removeAll()
         mindWriteRequestsInFlight.removeAll()
-        albumSavesByUserMessageID.removeAll()
-        albumSaveRequestsInFlight.removeAll()
         currentHeadMindWriteRefreshTask?.cancel()
         currentHeadMindWriteRefreshTask = nil
         nativeLiveRuntimeObservationTask?.cancel()

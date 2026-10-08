@@ -9,7 +9,7 @@ const boundaries = [
   ["NativeLiveTurnController", "sendNativeLiveMessage", "retryNativeLiveMessage", "editNativeLiveMessage", "waitForNativeLiveTurn"],
   ["NativeLiveRuntimeStore", "refreshNativeLiveRuntimeSurface", "resolveNativeLiveRuntimeInteraction", "interruptNativeLiveTurn"],
   ["NativeLiveAttachmentCoordination", "uploadNativeLiveAttachment", "nativeLiveAttachmentBytes"],
-  ["MessageProjectionCoordination", "refreshMindWrites", "refreshAlbumSaves"],
+  ["MessageProjectionCoordination", "refreshMindWrites"],
 ] as const;
 
 for (const [file, ...methods] of boundaries) {

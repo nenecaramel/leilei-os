@@ -18,7 +18,6 @@ export * from "./schema/runtime-subject.js";
 export * from "./schema/conversation-favorite.js";
 export * from "./schema/claude-account-usage.js";
 export * from "./schema/runtime-context.js";
-export * from "./schema/claude-album.js";
 export * from "./schema/universe.js";
 export { contentAuthorEnum } from "./schema/shared.js";
 export * from "./schema/native-live-session-continuity.js";

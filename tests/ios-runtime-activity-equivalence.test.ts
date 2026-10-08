@@ -33,7 +33,13 @@ function conserve(file: string, source: string) {
   if (file === 'NativeLiveToolActivity.swift') source = source
     .replace(/            if tool.state != \.running,[\s\S]*?            \} else \{\n/, '')
     .replace(/\n            \}\n\n            ForEach/, '\n\n            ForEach');
-  assert.equal(normalize(source), normalize(expected(boundaries[file])), file);
+  let baseline = expected(boundaries[file]);
+  if (file === 'NativeLiveToolPresentation.swift') {
+    // Only the four retired album display labels and their prefix are removed.
+    baseline = baseline.split('\n').filter(line => !line.includes('"mcp__leileios_album__')).join('\n');
+    assert.doesNotMatch(source, /mcp__leileios_album__/);
+  }
+  assert.equal(normalize(source), normalize(baseline), file);
 }
 test('Runtime Activity baseline fixtures are exact 8efd5977 Git blobs', () => {
   const manifest = JSON.parse(readFileSync(fixture + 'blobs.json', 'utf8'));

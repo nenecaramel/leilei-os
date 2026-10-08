@@ -6,6 +6,10 @@ const root='ios/LeileiOS/LeileiOS/Chat/MessageSurface/';
 const fixture='tests/fixtures/message-rows-main-72a67f44/';
 const read=(name:string)=>readFileSync(root+name,'utf8');
 const old=(name:string)=>readFileSync(fixture+name,'utf8');
+// Keep immutable historical blobs. Only the explicitly retired album seams are excluded.
+const withoutRetiredAlbum=(s:string)=>s
+ .replace('AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)', '')
+ .replace('if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }', '');
 const compact=(s:string)=>s.replace(/\s/g,'');
 function block(s:string,marker:string) {
  const start=s.indexOf(marker);assert.notEqual(start,-1,marker);const open=s.indexOf('{',start);let depth=1,end=open+1;
@@ -39,13 +43,14 @@ test('User row and history/divider moves retain complete presentation and intera
 test('Assistant organization conserves activity bindings, refresh owner, indicators and action routes',()=>{
  const baseline=old('NativeLiveAssistantTurnRow.swift'),current=read('NativeLiveAssistantTurnRow.swift');
  equal(block(current,'private var activityArea:'),block(baseline,'VStack(alignment:.leading,spacing:ChatPresentationLayout.assistantSpacing)').split('NativeLiveMessagePresentationView')[0], 'activity area');
- equal(block(current,'.task(id:turn.canonicalMessageID)'),block(baseline,'.task(id:turn.canonicalMessageID)'), 'refresh order/head/IDs');
+ equal(block(current,'.task(id:turn.canonicalMessageID)'),withoutRetiredAlbum(block(baseline,'.task(id:turn.canonicalMessageID)')), 'Mind refresh order/head/IDs');
  equal(block(current,'private var mindWrites:'),block(baseline,'private var mindWrites:'),'Mind lookup');
  const rawAction=read('NativeLiveAssistantActions.swift');
  const action=process.env.ROWS_CALLBACK_NEGATIVE ? rawAction.replace('onRetryMessage(user)','onRetryMessage(turn.id)'):rawAction;
  equal(block(action,'HStack('),block(baseline,'HStack('),'copy and retry callbacks/targets/order/disabled');
  assert.ok(compact(action).includes(compact('}.font(.system(size:14)).foregroundStyle(.secondary).buttonStyle(.plain).padding(.top,ChatPresentationLayout.actionTopInset)')));
- for(const exact of ['NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)','MindWriteIndicator(items:mindWrites)','AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)']) assert.ok(compact(current).includes(compact(exact)),exact);
+ for(const exact of ['NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)','MindWriteIndicator(items:mindWrites)']) assert.ok(compact(current).includes(compact(exact)),exact);
+ assert.doesNotMatch(current, /AlbumSaveIndicator|refreshAlbumSaves/);
  const route=read('NativeLiveMessageRows.swift');
  assert.ok(compact(route).includes(compact('nativeLiveUserMessageRow(row:row,user:user,appModel:appModel,isTurnInFlight:isTurnInFlight,onCopyMessage:onCopyMessage,onEditMessage:onEditMessage)')));
 });
@@ -63,7 +68,7 @@ test('Full router and assistant body recompose to the original ordered blocks',(
  const assistant=read('NativeLiveAssistantTurnRow.swift');
  // The new optional Spotify slot is verified separately; conserve all existing blocks.
  const composed=block(assistant,'var body:').replace('spotifyResultArea','').replace('activityArea',block(assistant,'private var activityArea:')).replace(/nativeLiveAssistantActions\([\s\S]*?onRetryMessage:onRetryMessage\)/,block(read('NativeLiveAssistantActions.swift'),'func nativeLiveAssistantActions('));
- equal(composed,block(old('NativeLiveAssistantTurnRow.swift'),'var body:'),'assistant entire ordered body and task');
+ equal(composed,withoutRetiredAlbum(block(old('NativeLiveAssistantTurnRow.swift'),'var body:')),'assistant entire ordered body and task except retired album');
 });
 test('UIKit context menu and tap coordinator implementation remains byte identical',()=>{
  assert.equal(read('NativeLiveMessageActions.swift'),old('NativeLiveMessageActions.swift'));

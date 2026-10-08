@@ -104,18 +104,6 @@ extension LeileiAPIClient {
         return envelope.data
     }
 
-    func albumSaves(
-        userMessageID: String
-    ) async throws -> ClaudeAlbumMessageSaveProjection {
-        let envelope: ClaudeAlbumMessageSaveEnvelope =
-            try await request(
-                path:
-                    "/api/v1/album/saves/messages/"
-                    + userMessageID,
-                authenticated: true
-            )
-        return envelope.data
-    }
 }
 
 private struct MindProductPageEnvelope: Decodable, Sendable {
@@ -133,13 +121,6 @@ private struct MindProductMessageWriteEnvelope:
     Sendable {
     let success: Bool
     let data: MindProductMessageWriteProjection
-}
-
-private struct ClaudeAlbumMessageSaveEnvelope:
-    Decodable,
-    Sendable {
-    let success: Bool
-    let data: ClaudeAlbumMessageSaveProjection
 }
 
 private struct MindDeleteEnvelope: Decodable, Sendable {

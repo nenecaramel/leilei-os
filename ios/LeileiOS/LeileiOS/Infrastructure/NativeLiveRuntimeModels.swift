@@ -670,7 +670,7 @@ struct NativeLiveRuntimeSurfaceState:
 
                 let payload = event.event.payload ?? [:]
                 switch payload["kind"]?.stringValue {
-                case "album_saved", "api_retry":
+                case "api_retry":
                     return true
                 case "command_lifecycle":
                     return [

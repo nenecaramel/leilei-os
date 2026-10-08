@@ -2357,7 +2357,7 @@ test("interactive foreground turn injects the local send_file MCP only when a ha
   });
 });
 
-test("interactive foreground turn injects the local album MCP only when handlers are present", async () => {
+test("interactive foreground turn ignores retired album handlers and never registers album MCP", async () => {
   let call;
   let capturedHandlers = null;
   const localAlbumServer = {
@@ -2415,10 +2415,9 @@ test("interactive foreground turn injects the local album MCP only when handlers
     result.providerSessionId,
     "provider-album-tools",
   );
-  assert.equal(capturedHandlers, albumHandlers);
+  assert.equal(capturedHandlers, null);
   assert.deepEqual(call.options.mcpServers, {
     leileios: remoteServer,
-    leileios_album: localAlbumServer,
   });
 });
 

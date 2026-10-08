@@ -332,22 +332,6 @@ test("trusted LeileiOS and local Native Live tools bypass interactive permission
       "leileios_read",
     ],
     [
-      "mcp__leileios_album__save_photo",
-      "leileios_album",
-    ],
-    [
-      "mcp__leileios_album__search_photos",
-      "leileios_album",
-    ],
-    [
-      "mcp__leileios_album__view_photo",
-      "leileios_album",
-    ],
-    [
-      "mcp__leileios_album__send_photo",
-      "leileios_album",
-    ],
-    [
       "mcp__leileios_local__send_file",
       "leileios_local_send_file",
     ],
@@ -452,6 +436,22 @@ test("future unknown local tools do not inherit trust automatically", async () =
   }
 
   assert.equal(permissionCalls, 2);
+});
+
+test("retired photo album tools never receive trusted automatic permission", async () => {
+  let calls = 0;
+  const callback = createAgentSdkPermissionCallback({
+    permissionHandler: async () => {
+      calls += 1;
+      return { decision: "deny", message: "Retired tool" };
+    },
+  });
+  for (const name of ["save_photo", "search_photos", "view_photo", "send_photo"]) {
+    const tool = `mcp__leileios_album__${name}`;
+    assert.equal(trustedNativeLiveToolPolicy(tool), null);
+    assert.equal((await callback(tool, {}, {})).behavior, "deny");
+  }
+  assert.equal(calls, 4);
 });
 
 test("non-LeileiOS tools remain on the interactive permission path", async () => {

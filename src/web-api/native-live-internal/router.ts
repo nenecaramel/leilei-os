@@ -32,12 +32,6 @@ import {
   completeInternalAttachmentUploadHandler,
   createInternalAttachmentDownloadSlotHandler,
 } from "./attachments.js";
-import {
-  saveAlbumPhotoHandler,
-  searchAlbumPhotosHandler,
-  viewAlbumPhotoHandler,
-  sendAlbumPhotoHandler,
-} from "./album.js";
 import { appendRuntimeEventBatchHandler } from "./runtime-events.js";
 import {
   createRuntimeInteractionHandler,
@@ -137,26 +131,6 @@ export function createNativeLiveRelayInternalRouter(
     router.post(
       "/attachments/:attachmentId/download-slot",
       createInternalAttachmentDownloadSlotHandler(dependencies),
-    );
-  }
-  if (dependencies.photoAlbumService) {
-    router.post(
-      "/album/photos/save",
-      saveAlbumPhotoHandler(dependencies),
-    );
-    router.post(
-      "/album/photos/search",
-      searchAlbumPhotosHandler(dependencies),
-    );
-    router.post(
-      "/album/photos/:photoId/view",
-      viewAlbumPhotoHandler(dependencies),
-    );
-  }
-  if (dependencies.photoAlbumSender) {
-    router.post(
-      "/album/photos/:photoId/send",
-      sendAlbumPhotoHandler(dependencies),
     );
   }
   if (dependencies.providerSessionCleanupService) {

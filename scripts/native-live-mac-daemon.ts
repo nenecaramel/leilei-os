@@ -221,7 +221,6 @@ const executor = new NativeLiveMacRuntimeExecutor(
       }) + "\n",
     );
   },
-  relay,
   new NativeLiveMacMemeSender(
     outputAttachmentSender,
     memeGitHubConfig,

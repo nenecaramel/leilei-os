@@ -170,13 +170,6 @@ const TRUSTED_LEILEIOS_READ_TOOLS = new Set([
   "read_notion_database", "read_notion_data_source",
 ].map((name) => `mcp__leileios__${name}`));
 
-const TRUSTED_LOCAL_ALBUM_TOOLS = new Set([
-  "mcp__leileios_album__save_photo",
-  "mcp__leileios_album__search_photos",
-  "mcp__leileios_album__view_photo",
-  "mcp__leileios_album__send_photo",
-]);
-
 export function trustedNativeLiveToolPolicy(
   toolName,
   input = {},
@@ -190,10 +183,6 @@ export function trustedNativeLiveToolPolicy(
 
   if (toolName === "mcp__leileios_memes__send_meme") {
     return "leileios_memes";
-  }
-
-  if (TRUSTED_LOCAL_ALBUM_TOOLS.has(toolName)) {
-    return "leileios_album";
   }
 
   if (toolName === "mcp__leileios_local__send_file") {

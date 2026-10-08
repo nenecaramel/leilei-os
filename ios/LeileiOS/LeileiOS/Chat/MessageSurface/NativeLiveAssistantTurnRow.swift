@@ -16,7 +16,6 @@ struct NativeLiveAssistantTurnRow: View {
             spotifyResultArea
             NativeLiveMessagePresentationView(presentation:turn.bodyPresentation).textSelection(.enabled)
             MindWriteIndicator(items:mindWrites)
-            AlbumSaveIndicator(count:turn.parentUserMessageID.flatMap { appModel.albumSavesByUserMessageID[$0]?.total } ?? 0)
             nativeLiveAssistantActions(turn:turn,isTurnInFlight:isTurnInFlight,isCopied:isCopied,
                 onCopyMessage:onCopyMessage,onRetryMessage:onRetryMessage)
         }
@@ -24,7 +23,6 @@ struct NativeLiveAssistantTurnRow: View {
         .task(id:turn.canonicalMessageID) {
             guard let id = turn.canonicalMessageID else { return }
             await appModel.refreshMindWrites(messageID:id)
-            if let user = turn.parentUserMessageID { await appModel.refreshAlbumSaves(userMessageID:user,force:isCurrentHead) }
         }
     }
     @ViewBuilder private var activityArea: some View {

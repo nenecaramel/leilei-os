@@ -736,6 +736,13 @@
       "when": 1791381600000,
       "tag": "0104_claude_code_recall_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791420797167,
+      "tag": "0105_retire_claude_photo_album",
+      "breakpoints": true
     }
   ]
 }
