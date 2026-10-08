@@ -7,18 +7,30 @@ struct MindView: View {
     var body: some View {
         MindMemoryListView()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        addPresented = true
-                    } label: {
-                        Image(systemName: "plus")
+                if #available(iOS 26.0, *) {
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        createMemoryButton
                     }
-                    .accessibilityLabel("Add Memory")
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        createMemoryButton
+                    }
                 }
             }
             .sheet(isPresented: $addPresented) {
                 MindManualEntrySheet()
                     .environmentObject(appModel)
             }
+    }
+
+    private var createMemoryButton: some View {
+        Button {
+            addPresented = true
+        } label: {
+            Image(systemName: "square.and.pencil")
+        }
+        .accessibilityLabel("New Memory")
     }
 }

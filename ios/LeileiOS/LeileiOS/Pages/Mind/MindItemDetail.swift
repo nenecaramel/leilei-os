@@ -171,16 +171,22 @@ struct MindItemDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Edit") { editing = true }.disabled(deleting || item.contentVersion == nil)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(role: .destructive) {
-                    showingDelete = true
+                Menu {
+                    Button("Edit") {
+                        editing = true
+                    }
+                    .disabled(deleting || item.contentVersion == nil)
+
+                    Button("Delete", role: .destructive) {
+                        showingDelete = true
+                    }
+                    .disabled(deleting)
                 } label: {
-                    Image(systemName: "trash")
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 18, weight: .medium))
                 }
+                .accessibilityLabel("Memory actions")
                 .disabled(deleting)
-                .accessibilityLabel("Delete Memory")
             }
         }
         .task {

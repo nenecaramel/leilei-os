@@ -91,12 +91,32 @@ extension LeileiAPIClient {
         )
     }
 
-    func memorySearch(undated: Bool, cursor: String? = nil) async throws -> MemorySearchPage {
+    func memorySearch(
+        query: String? = nil,
+        undated: Bool = false,
+        cursor: String? = nil
+    ) async throws -> MemorySearchPage {
         var components = URLComponents()
         components.path = "/api/v1/mind/search"
-        components.queryItems = [URLQueryItem(name: "limit", value: "100"), URLQueryItem(name: "undated", value: String(undated))]
-        if let cursor { components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
-        let envelope: MemorySearchEnvelope = try await request(path: components.string!, authenticated: true)
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        if let query, !query.isEmpty {
+            components.queryItems?.append(URLQueryItem(name: "query", value: query))
+        }
+        if undated {
+            components.queryItems?.append(URLQueryItem(name: "undated", value: "true"))
+        }
+        if let cursor {
+            components.queryItems?.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        guard let path = components.string else {
+            throw LeileiAPIError.invalidResponse
+        }
+        let envelope: MemorySearchEnvelope = try await request(
+            path: path,
+            authenticated: true
+        )
         return envelope.data
     }
 
