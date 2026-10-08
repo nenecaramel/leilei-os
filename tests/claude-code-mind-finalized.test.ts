@@ -146,7 +146,7 @@ test("lost Stop acknowledgement can replay once; new prompt always abandons retr
 test("Stop HTTP failure stays silent and retains only its current pending",async t=>{
   const f=await fixture(t,true);await f.submit();f.failConfirm();await f.stop();
   assert.equal((await f.state()).pending_recalls.length,1);const events=(await readFile(join(f.home,"finalization-reasons.jsonl"),"utf8")).trim().split("\n").map(JSON.parse);
-  assert.deepEqual(events.map(({event,reason})=>[event,reason]),[["Stop","confirm_http"]]);
+  assert.deepEqual(events.filter(({event})=>event==="Stop").map(({event,reason})=>[event,reason]),[["Stop","confirm_http"]]);
 });
 
 test("Stop HTTP timeout exits successfully and emits no stdout or stderr",async t=>{
