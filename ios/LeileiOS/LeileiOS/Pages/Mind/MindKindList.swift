@@ -10,10 +10,19 @@ struct MindMemoryListView: View {
     @State private var loadingMore = false
     @State private var failed = false
     @State private var reloadToken = UUID()
+    @State private var query = ""
+    @State private var searchRows: [MemorySearchPage.Entry] = []
+    @State private var searchCursor: String?
+    @State private var searchLoading = false
+    @State private var searchLoadingMore = false
+    @State private var searchFailed = false
+    @State private var searchGeneration = 0
 
     var body: some View {
         Group {
-            if loading && items.isEmpty {
+            if isSearching {
+                searchContent
+            } else if loading && items.isEmpty {
                 ProgressView()
                     .controlSize(.small)
                     .frame(
@@ -59,7 +68,7 @@ struct MindMemoryListView: View {
                         }
                     }
                 }
-                .listStyle(.plain)
+                .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
                 .background(Color(.systemBackground))
                 .refreshable {
@@ -67,14 +76,130 @@ struct MindMemoryListView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top) {
-            HStack {
-                NavigationLink("未指定日期") { MindUndatedList() }
-                Spacer()
-            }.padding(.horizontal).padding(.vertical, 8)
-        }
+        .searchable(text: $query, prompt: "Search")
         .task(id: reloadToken) {
             await reload()
+        }
+        .task(id: "\(query)|\(reloadToken)") {
+            await searchIfNeeded()
+        }
+    }
+
+    private var isSearching: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @ViewBuilder
+    private var searchContent: some View {
+        if searchLoading && searchRows.isEmpty {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if searchFailed && searchRows.isEmpty {
+            AppStateSurface(title: "Unavailable", actionTitle: "Retry") {
+                Task { await searchIfNeeded(skipDelay: true) }
+            }
+        } else if searchRows.isEmpty {
+            AppStateSurface(title: "Nothing here")
+        } else {
+            List {
+                ForEach(searchRows) { row in
+                    NavigationLink {
+                        MindMemoryReadView(id: row.id) {
+                            reloadToken = UUID()
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(row.snippet)
+                                .foregroundStyle(.primary)
+                                .lineLimit(3)
+                            if let date = row.date {
+                                Text(date)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                if searchCursor != nil {
+                    Button("More") {
+                        Task { await loadMoreSearch() }
+                    }
+                    .disabled(searchLoadingMore)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+                if searchFailed {
+                    Button("Retry") {
+                        Task { await loadMoreSearch() }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemBackground))
+            .refreshable { await searchIfNeeded(skipDelay: true) }
+        }
+    }
+
+    @MainActor
+    private func searchIfNeeded(skipDelay: Bool = false) async {
+        searchGeneration += 1
+        let ticket = searchGeneration
+        searchRows = []
+        searchCursor = nil
+        searchFailed = false
+        guard isSearching else {
+            searchLoading = false
+            return
+        }
+        searchLoading = true
+        if !skipDelay {
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+        }
+        guard ticket == searchGeneration, !Task.isCancelled else { return }
+        do {
+            let page = try await appModel.api.memorySearch(
+                query: query.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            guard ticket == searchGeneration, !Task.isCancelled else { return }
+            searchRows = page.items
+            searchCursor = page.nextCursor
+        } catch {
+            guard ticket == searchGeneration, !Task.isCancelled else { return }
+            searchFailed = true
+        }
+        if ticket == searchGeneration { searchLoading = false }
+    }
+
+    @MainActor
+    private func loadMoreSearch() async {
+        guard !searchLoadingMore, !searchLoading, let cursor = searchCursor else {
+            return
+        }
+        let ticket = searchGeneration
+        let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchLoadingMore = true
+        searchFailed = false
+        defer { searchLoadingMore = false }
+        do {
+            let page = try await appModel.api.memorySearch(
+                query: requestedQuery,
+                cursor: cursor
+            )
+            guard ticket == searchGeneration,
+                  !Task.isCancelled,
+                  requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines)
+            else { return }
+            var ids = Set(searchRows.map(\.id))
+            searchRows.append(contentsOf: page.items.filter { ids.insert($0.id).inserted })
+            searchCursor = page.nextCursor
+        } catch {
+            if ticket == searchGeneration, !Task.isCancelled { searchFailed = true }
         }
     }
 
@@ -149,5 +274,39 @@ private struct MindItemRow: View {
 
     private var displayText: String {
         MindPresentation.normalized(item.text) ?? "Memory"
+    }
+}
+
+private struct MindMemoryReadView: View {
+    @EnvironmentObject private var appModel: AppModel
+    let id: String
+    let onChanged: () -> Void
+
+    @State private var item: MindProductItem?
+    @State private var failed = false
+    @State private var retryToken = UUID()
+
+    var body: some View {
+        Group {
+            if let item {
+                MindItemDetailView(initialItem: item, onDeleted: onChanged)
+            } else if failed {
+                AppStateSurface(title: "Unavailable", actionTitle: "Retry") {
+                    retryToken = UUID()
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: retryToken) {
+            do {
+                let latest = try await appModel.api.mindItem(stateID: id)
+                guard !Task.isCancelled else { return }
+                item = latest
+                failed = false
+            } catch {
+                if !Task.isCancelled { failed = true }
+            }
+        }
     }
 }
