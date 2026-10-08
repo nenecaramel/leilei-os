@@ -123,3 +123,18 @@ test("update rejects empty, unsupported, invalid date and missing preconditions"
     { code: "INVALID_MIND" },
   );
 });
+
+test("undated validates booleans and cannot combine with date bounds", async () => {
+  const service = new MindProductService(
+    { search: async () => ({ rows: [], nextCursor: null }) } as never,
+    "G",
+  );
+  for (const input of [
+    { undated: "true" },
+    { undated: true, dateFrom: "2026-10-08" },
+    { undated: true, dateTo: "2026-10-08" },
+  ])
+    await assert.rejects(service.search({ userId: "u", ...input } as any), {
+      code: "INVALID_MIND",
+    });
+});

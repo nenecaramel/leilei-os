@@ -10,6 +10,7 @@ async function connect(
   t: test.TestContext,
   authorized = true,
   editable = false,
+  observeSearch?: (input: unknown) => void,
 ) {
   const state = createMindState({
     id,
@@ -27,7 +28,10 @@ async function connect(
   const service = new MindProductService(
     {
       get: async () => row,
-      search: async () => ({ rows: [row], nextCursor: null }),
+      search: async (input: unknown) => {
+        observeSearch?.(input);
+        return { rows: [row], nextCursor: null };
+      },
       update: async (input: {
         userId: string;
         subjectId: string;
@@ -161,4 +165,26 @@ test("Memory MCP edit returns a mutation receipt and latest detail readback", as
     arguments: data.detail_arguments,
   });
   assert.equal((after.structuredContent as any).data.text, "latest content");
+});
+
+test("search_memory accepts a strict optional undated boolean", async (t) => {
+  let observed: any;
+  const c = await connect(t, true, false, (input) => {
+    observed = input;
+  });
+  const result = await c.callTool({
+    name: "search_memory",
+    arguments: { undated: true },
+  });
+  assert.equal(result.isError, undefined);
+  assert.equal(observed.undated, true);
+  assert.equal(
+    (
+      await c.callTool({
+        name: "search_memory",
+        arguments: { undated: "true" },
+      })
+    ).isError,
+    true,
+  );
 });

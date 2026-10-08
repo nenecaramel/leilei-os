@@ -1,3 +1,4 @@
+import { SUBJECT_STATE_ISO_PATTERN, SUBJECT_STATE_TRIM_CHARS } from "../subject-state/subject-state-temporal.js";
 import { memoryContentVersion, patchMemoryTemporal } from "./mind-memory-content.js";
 import { requireActiveUserInTransaction } from "../../require-active-user-transaction.js";
 import {
@@ -88,6 +89,7 @@ implements MindProductRepository {
     query: string;
     occurredFrom?: string;
     occurredBefore?: string;
+    undated?: boolean;
     limit: number;
     cursor: MindMemoryCursor | null;
   }) {
@@ -98,6 +100,7 @@ implements MindProductRepository {
         sql`regexp_replace(normalize(${runtimeSubjectStates.text}, NFC), ${"\\s+"}, ' ', 'g') ILIKE ${`%${literal}%`} ESCAPE ${"\\"}`,
       );
     }
+    if (input.undated) conditions.push(sql`${memoryOccurredAtSql()} IS NULL`);
     if (input.occurredFrom || input.occurredBefore) {
       const occurredAt = memoryOccurredAtSql();
       if (input.occurredFrom)
@@ -188,6 +191,7 @@ implements MindProductRepository {
       eq(runtimeSubjectStates.settlementStatus, "settled"),
       eq(runtimeSubjectStates.pathStatus, "current"),
       eq(runtimeSubjectStates.validityStatus, "valid"),
+      productVisibilityCondition(),
     ];
     if (input.kind) {
       conditions.push(eq(runtimeSubjectStates.kind, input.kind));
@@ -245,6 +249,7 @@ implements MindProductRepository {
         eq(runtimeSubjectStates.settlementStatus, "settled"),
         eq(runtimeSubjectStates.pathStatus, "current"),
         eq(runtimeSubjectStates.validityStatus, "valid"),
+        productVisibilityCondition(),
         ))
       .limit(1);
     return row ? toProductRow(row) : null;
@@ -691,7 +696,12 @@ function memoryConditions(input: { userId: string; subjectId: string }) {
     eq(runtimeSubjectStates.settlementStatus, "settled"),
     eq(runtimeSubjectStates.pathStatus, "current"),
     eq(runtimeSubjectStates.validityStatus, "valid"),
+    productVisibilityCondition(),
   ];
+}
+
+function productVisibilityCondition() {
+  return sql`${runtimeSubjectStates.envelope}->'scope'->>'visibility' IS DISTINCT FROM 'hidden_system'`;
 }
 
 /** Match the canonical temporal reader, including legacy manual dates. Bad
@@ -700,13 +710,17 @@ function memoryOccurredAtSql() {
   const payload = runtimeSubjectStates.payload;
   const raw = sql`CASE WHEN jsonb_typeof(${payload}->'temporal_v1') = 'object' THEN
     CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'occurredAt') = 'string' AND (
-      (${payload}->'temporal_v1'->>'basis' = 'user_supplied' AND (CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' THEN btrim(${payload}->'temporal_v1'->>'sourceMessageId') ELSE '' END) = '') OR
-      (${payload}->'temporal_v1'->>'basis' = 'source_message' AND jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' AND btrim(${payload}->'temporal_v1'->>'sourceMessageId') <> '')
+      (${payload}->'temporal_v1'->>'basis' = 'user_supplied' AND (CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' THEN btrim(${payload}->'temporal_v1'->>'sourceMessageId', ${SUBJECT_STATE_TRIM_CHARS}) ELSE '' END) = '') OR
+      (${payload}->'temporal_v1'->>'basis' = 'source_message' AND jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' AND btrim(${payload}->'temporal_v1'->>'sourceMessageId', ${SUBJECT_STATE_TRIM_CHARS}) <> '')
     ) THEN ${payload}->'temporal_v1'->>'occurredAt' END
     ELSE CASE WHEN jsonb_typeof(${payload}->'manual_v1'->'occurredAt') = 'string' THEN ${payload}->'manual_v1'->>'occurredAt' END END`;
-  // The temporal reader trims input and treats legacy ISO date-only values as
-  // UTC midnight. Do not let the database session timezone reinterpret them.
-  const iso = sql`CASE WHEN btrim(${raw}) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-    THEN btrim(${raw}) || 'T00:00:00Z' ELSE btrim(${raw}) END`;
-  return sql`CASE WHEN ${iso} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' AND pg_input_is_valid(${iso}, 'timestamp with time zone') THEN (${iso})::timestamptz END`;
+  const trimmed = sql`btrim(${raw}, ${SUBJECT_STATE_TRIM_CHARS})`;
+  const iso = sql`CASE WHEN length(${trimmed}) = 10
+    THEN ${trimmed} || 'T00:00:00Z' ELSE upper(${trimmed}) END`;
+  // Match the canonical reader's millisecond truncation before PG can round
+  // sub-millisecond digits across a day boundary.
+  const milliseconds = sql`regexp_replace(${iso}, ${"(\\.[0-9]{3})[0-9]+(Z|[+-].*)$"}, ${"\\1\\2"})`;
+  return sql`CASE WHEN ${trimmed} ~ ${SUBJECT_STATE_ISO_PATTERN}
+    AND ${trimmed} !~ '^0000-' AND pg_input_is_valid(${milliseconds}, 'timestamp with time zone')
+    THEN (${milliseconds})::timestamptz END`;
 }

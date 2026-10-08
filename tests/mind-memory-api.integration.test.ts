@@ -444,6 +444,197 @@ test(
         );
       },
     );
+    await t.test(
+      "hidden_system is excluded while subject_private remains readable and editable",
+      async () => {
+        const hidden = await make(
+          "visibility regression hidden",
+          "2026-10-12T00:00:00Z",
+        );
+        const visible = await make(
+          "visibility regression private",
+          "2026-10-12T00:00:00Z",
+        );
+        await db.db.execute(
+          sql`UPDATE runtime_subject_states SET envelope=jsonb_set(envelope, '{scope,visibility}', '"hidden_system"') WHERE id=${hidden.id}::uuid`,
+        );
+        await db.db.execute(
+          sql`UPDATE runtime_subject_states SET envelope=jsonb_set(envelope, '{scope,visibility}', '"subject_private"') WHERE id=${visible.id}::uuid`,
+        );
+        assert.deepEqual(
+          (
+            await service.search({
+              userId: user.id,
+              query: "visibility regression",
+            })
+          ).items.map((x) => x.id),
+          [visible.id],
+        );
+        assert.ok(
+          !(await service.list({ userId: user.id })).items.some(
+            (x) => x.id === hidden.id,
+          ),
+        );
+        assert.deepEqual(
+          (
+            await service.readDay({ userId: user.id, date: "2026-10-12" })
+          ).items.map((x) => x.id),
+          [visible.id],
+        );
+        await assert.rejects(
+          service.get({ userId: user.id, stateId: hidden.id }),
+          { code: "MIND_NOT_FOUND" },
+        );
+        await assert.rejects(
+          service.update({
+            userId: user.id,
+            stateId: hidden.id,
+            expectedVersion: hidden.contentVersion,
+            text: "must not apply",
+          }),
+          { code: "MIND_NOT_FOUND" },
+        );
+        assert.equal(
+          (await service.get({ userId: user.id, stateId: visible.id })).id,
+          visible.id,
+        );
+        assert.equal(
+          (
+            await service.update({
+              userId: user.id,
+              stateId: visible.id,
+              expectedVersion: visible.contentVersion,
+              text: "private edited",
+            })
+          ).text,
+          "private edited",
+        );
+        const [stored] = await db.db
+          .select({ text: runtimeSubjectStates.text })
+          .from(runtimeSubjectStates)
+          .where(eq(runtimeSubjectStates.id, hidden.id));
+        assert.equal(stored!.text, hidden.text);
+      },
+    );
+    await t.test(
+      "historical dates have identical detail, day and undated semantics without rewrites",
+      async () => {
+        const cases: Array<[string, string | null]> = [
+          ["2026-10-13t00:00:00z", "2026-10-13T00:00:00.000Z"],
+          ["2026-10-13T00:00Z", "2026-10-13T00:00:00.000Z"],
+          ["2026-10-13 00:00:00+0000", "2026-10-13T00:00:00.000Z"],
+          [
+            "\u00a0\u20032026-10-13T00:00:00Z\ufeff",
+            "2026-10-13T00:00:00.000Z",
+          ],
+          ["2026-02-29T00:00:00Z", null],
+          ["2026-10-13T24:00:00Z", null],
+          ["2026-10-13T00:00:60Z", null],
+          ["not-a-date", null],
+
+          ["\t\n2026-10-13T00:00:00Z\r\n", "2026-10-13T00:00:00.000Z"],
+          ["2026-02-30T00:00:00Z", null],
+          ["2026-10-13T15:59:59.999999999Z", "2026-10-13T15:59:59.999Z"],
+          ["2026-10-13T00:00:00+08:00", "2026-10-12T16:00:00.000Z"],
+        ];
+        for (const legacy of [false, true])
+          for (const [raw, expected] of cases) {
+            const item = await make("temporal consistency regression", null);
+            const payload = legacy
+              ? { manual_v1: { occurredAt: raw } }
+              : {
+                  temporal_v1: {
+                    basis: "user_supplied",
+                    sourceMessageId: null,
+                    occurredAt: raw,
+                  },
+                };
+            await db.db
+              .update(runtimeSubjectStates)
+              .set({ payload })
+              .where(eq(runtimeSubjectStates.id, item.id));
+            const snapshot = await repo.get({
+              userId: user.id,
+              subjectId: "G",
+              stateId: item.id,
+            });
+            assert.equal(
+              (await service.get({ userId: user.id, stateId: item.id }))
+                .occurredAt,
+              expected,
+              raw,
+            );
+            const day = await service.readDay({
+              userId: user.id,
+              date: "2026-10-13",
+            });
+            assert.equal(
+              day.items.some((x) => x.id === item.id),
+              expected !== null,
+              raw,
+            );
+            const unknown = await service.search({
+              userId: user.id,
+              query: "temporal consistency regression",
+              undated: true,
+            } as any);
+            assert.equal(
+              unknown.items.some((x) => x.id === item.id),
+              expected === null,
+              raw,
+            );
+            assert.deepEqual(
+              await repo.get({
+                userId: user.id,
+                subjectId: "G",
+                stateId: item.id,
+              }),
+              snapshot,
+            );
+          }
+      },
+    );
+    await t.test(
+      "undated filtering happens before pagination and binds the cursor",
+      async () => {
+        const a = await make("undated pagination regression A", null);
+        const b = await make("undated pagination regression B", null);
+        await make(
+          "undated pagination regression dated newest",
+          "2026-10-14T00:00:00Z",
+        );
+        const input = {
+          userId: user.id,
+          query: "undated pagination regression",
+          undated: true,
+          limit: 1,
+        };
+        const first = await service.search(input as any);
+        assert.equal(first.items[0]!.occurredAt, null);
+        assert.ok(first.nextCursor);
+        const second = await service.search({
+          ...input,
+          cursor: first.nextCursor,
+        } as any);
+        assert.equal(second.nextCursor, null);
+        assert.deepEqual(
+          new Set([...first.items, ...second.items].map((x) => x.id)),
+          new Set([a.id, b.id]),
+        );
+        await assert.rejects(
+          service.search({
+            ...input,
+            undated: false,
+            cursor: first.nextCursor,
+          } as any),
+          { code: "INVALID_MIND" },
+        );
+        await assert.rejects(
+          service.search({ ...input, dateFrom: "2026-10-14" } as any),
+          { code: "INVALID_MIND" },
+        );
+      },
+    );
     for (const stopFirst of [true, false])
       await t.test(
         `Stop/edit row-lock ordering (${stopFirst ? "Stop first" : "edit first"}) preserves both writes`,

@@ -263,11 +263,22 @@ test("Mind search/day routes and PATCH share authenticated service and strict ed
     assert.equal(
       (
         await fetch(
-          `${base}/search?query=tea&date_from=2026-10-08&date_to=2026-10-09&limit=2`,
+          `${base}/search?query=tea&undated=false&date_from=2026-10-08&date_to=2026-10-09&limit=2`,
         )
       ).status,
       200,
     );
+    assert.equal(
+      (service.calls.find((x) => x.name === "search")!.input as any).undated,
+      false,
+    );
+    assert.equal((await fetch(`${base}/search?undated=true`)).status, 200);
+    assert.equal(
+      (service.calls.filter((x) => x.name === "search").at(-1)!.input as any)
+        .undated,
+      true,
+    );
+    assert.equal((await fetch(`${base}/search?undated=yes`)).status, 400);
     assert.equal((await fetch(`${base}/days/2026-10-08?limit=2`)).status, 200);
     const r = await fetch(`${base}/${stateId}`, {
       method: "PATCH",

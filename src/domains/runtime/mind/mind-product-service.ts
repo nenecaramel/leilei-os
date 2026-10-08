@@ -91,6 +91,7 @@ export type MindMemorySearchInput = {
   query?: string;
   dateFrom?: string;
   dateTo?: string;
+  undated?: boolean;
   limit?: number;
   cursor?: string | null;
 };
@@ -119,6 +120,7 @@ export interface MindProductRepository {
     query: string;
     occurredFrom?: string;
     occurredBefore?: string;
+    undated?: boolean;
     limit: number;
     cursor: MindMemoryCursor | null;
   }): Promise<{ rows: MindProductRow[]; nextCursor: MindMemoryCursor | null }>;
@@ -293,6 +295,8 @@ export class MindProductService {
         : input.query.normalize("NFC").trim().replace(/\s+/gu, " ");
     const limit = input.limit ?? 50;
     if (
+      (input.undated !== undefined && typeof input.undated !== "boolean") ||
+      (input.undated === true && (input.dateFrom !== undefined || input.dateTo !== undefined)) ||
       (input.query !== undefined && !query) ||
       [...query].length > 200 ||
       !Number.isInteger(limit) ||
@@ -317,6 +321,7 @@ export class MindProductService {
       query,
       input.dateFrom ?? null,
       input.dateTo ?? null,
+      input.undated ?? false,
     ]);
     let cursor: MindMemoryCursor | null = null;
     if (input.cursor) {
@@ -349,6 +354,7 @@ export class MindProductService {
       query,
       occurredFrom,
       occurredBefore,
+      undated: input.undated ?? false,
       limit,
       cursor,
     });

@@ -37,6 +37,7 @@ export function createMindApiRouter(
         query: readOptionalString(request.query.query, "query"),
         dateFrom: readOptionalString(request.query.date_from, "date_from"),
         dateTo: readOptionalString(request.query.date_to, "date_to"),
+        undated: readOptionalBoolean(request.query.undated),
         limit: readOptionalLimit(request.query.limit),
         cursor: readOptionalString(request.query.cursor, "cursor"),
       }),
@@ -366,4 +367,14 @@ function sendMindError(response: Response, error: unknown): void {
       message: "Mind is temporarily unavailable.",
     },
   });
+}
+
+function readOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new MindProductServiceError(
+    "INVALID_MIND",
+    "undated must be true or false.",
+  );
 }
