@@ -95,13 +95,18 @@ test("compact, clear and fork each reset epoch; changed session IDs need no pare
   assert.ok(f.calls.every(c => c.exclude_ids.length === 0));
 });
 
-test("PostToolUse accepts successful structured/text receipts only for exact configured MCP name", async t => {
+test("PostToolUse accepts validated receipts for configured and dynamic connector tool names only", async t => {
   const f = await fixture(t);
   for (const response of [{structuredContent: receipt()}, {content: [{type: "text", text: JSON.stringify({...receipt(ID2), data: {...receipt(ID2).data, outcome: "replayed"}})}]}]) {
     await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: TOOL, tool_response: response});
   }
-  await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: "mcp__Other__write_memory", tool_response: receipt("33333333-3333-4333-8333-333333333333")});
-  assert.deepEqual((await f.state())[0].written_ids, [ID, ID2]);
+  const dynamicTool = "mcp__d9e79932-abcd_5432__write_memory";
+  const ID3 = "33333333-3333-4333-8333-333333333333";
+  await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: dynamicTool, tool_response: {structuredContent: receipt(ID3)}});
+  for (const tool_name of ["mcp__Other__write_diary", "mcp__Other__write_memory_extra", "mcp__write_memory", "not_mcp__Other__write_memory"]) {
+    await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name, tool_response: receipt("44444444-4444-4444-8444-444444444444")});
+  }
+  assert.deepEqual((await f.state())[0].written_ids, [ID, ID2, ID3]);
   for (const response of [{success: false, data: receipt().data}, {isError: true, structuredContent: receipt()}, "not json", {...receipt(), data: {...receipt().data, outcome: "no_op"}}]) assert.equal(writtenMemoryId(response), null);
 });
 
@@ -172,7 +177,7 @@ test("hook process exits 0 silently for HTTP/auth failures, malformed JSON, time
   const hard = await childHook(f.home, "", true); assert.equal(hard.status, 0); assert.equal(hard.stdout, ""); assert.ok(hard.duration < 4200 && hard.duration >= 3700);
 });
 
-test("installer preserves independent time hook and other settings, is idempotent and uses exact MCP matcher", async t => {
+test("installer preserves independent hooks, is idempotent and matches dynamic MCP write_memory tools", async t => {
   const home = await mkdtemp(join(tmpdir(), "claude-mind-install-")); t.after(() => rm(home, {recursive: true, force: true}));
   const time = {hooks: [{type: "command", command: 'echo "现在时间：$(date)"'}]};
   const original = {theme: "dark", hooks: {UserPromptSubmit: [time], Stop: [{hooks: [{type: "command", command: "other"}]}]}};
@@ -180,7 +185,9 @@ test("installer preserves independent time hook and other settings, is idempoten
   await install({claudeHome: home, serverName: "LeileiOS"});
   const first = JSON.parse(await readFile(join(home, "settings.json"), "utf8"));
   assert.deepEqual(first.hooks.UserPromptSubmit[0], time); assert.equal(first.theme, "dark"); assert.deepEqual(first.hooks.Stop[0], original.hooks.Stop[0]); assert.equal(first.hooks.Stop.length, 2);
-  assert.equal(first.hooks.PostToolUse[0].matcher, "^mcp__LeileiOS__write_memory$");
+  assert.equal(first.hooks.PostToolUse[0].matcher, "^mcp__[A-Za-z0-9_-]+__write_memory$");
+  assert.match("mcp__d9e79932-abcd__write_memory", new RegExp(first.hooks.PostToolUse[0].matcher));
+  assert.doesNotMatch("mcp__Other__write_diary", new RegExp(first.hooks.PostToolUse[0].matcher));
   assert.equal(first.hooks.UserPromptSubmit[1].hooks[0].timeout, 5);
   await install({claudeHome: home, serverName: "LeileiOS"});
   assert.deepEqual(JSON.parse(await readFile(join(home, "settings.json"), "utf8")), first);
