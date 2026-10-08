@@ -69,7 +69,6 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         durationSeconds?: number;
       }>;
       memeHandlers?: NativeLiveMemeRuntimeHandlers;
-      albumHandlers?: NativeLiveClaudeAlbumRuntimeHandlers;
       controlPump?: (
         controller: NativeLiveMacActiveTurnController,
         context: { signal: AbortSignal },
@@ -102,11 +101,6 @@ import type {
 import type {
   NativeLiveMacOutputAttachmentSender,
 } from "./native-live-mac-output-attachment-sender.js";
-import type {
-  ClaudeAlbumRuntimeSaveInput,
-  NativeLiveClaudeAlbumRuntimeHandlers,
-  NativeLiveClaudeAlbumToolClient,
-} from "../../album/claude-photo-album-tool-contract.js";
 import {
   NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION,
   parseNativeLiveRuntimeCommand,
@@ -139,8 +133,6 @@ export class NativeLiveMacRuntimeExecutor {
       Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
     private readonly onRuntimeFailure:
       ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null = null,
-    private readonly albumToolClient:
-      NativeLiveClaudeAlbumToolClient | null = null,
     private readonly memeSender: NativeLiveMemeRuntimeHandlers | null = null,
   ) {
     if ("resolveWorkingDirectoryRuntime" in runtimeOrResolver) {
@@ -297,69 +289,6 @@ export class NativeLiveMacRuntimeExecutor {
                     });
                   }
                   return attachment;
-                },
-              }
-            : {}),
-          ...(this.albumToolClient
-            && command.protocol_version
-              === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
-            ? {
-                albumHandlers: {
-                  savePhoto: async (
-                    input: ClaudeAlbumRuntimeSaveInput,
-                  ) => {
-                    if (!command.canonical_user_message_id) {
-                      throw new Error(
-                        "Saving a new album photo is unavailable during a silence wake.",
-                      );
-                    }
-                    const result =
-                      await this.albumToolClient!.savePhoto({
-                        ...input,
-                        triggerUserMessageId:
-                          command.canonical_user_message_id,
-                      });
-                    if (
-                      result.created
-                      && options.onNormalizedEvent
-                    ) {
-                      await options.onNormalizedEvent({
-                        type: "runtime",
-                        payload: {
-                          kind: "album_saved",
-                          photo_id: result.photo.id,
-                          filename: result.photo.filename,
-                          source_attachment_id:
-                            result.photo.sourceAttachmentId,
-                          user_message_uuid:
-                            command.canonical_user_message_id,
-                        },
-                      });
-                    }
-                    return result;
-                  },
-                  searchPhotos: (input: {
-                    query: string | null;
-                    limit: number;
-                  }) =>
-                    this.albumToolClient!.searchPhotos(
-                      input,
-                    ),
-                  viewPhoto: (input: {
-                    photoId: string;
-                  }) =>
-                    this.albumToolClient!.viewPhoto(
-                      input,
-                    ),
-                  sendPhoto: async (input: {
-                    photoId: string;
-                  }) => {
-                    return sendOutput(
-                      () => this.albumToolClient!.sendPhoto(input),
-                      result => result.attachment.attachmentId,
-                      "Album photo send would exceed the 8-file turn limit.",
-                    );
-                  },
                 },
               }
             : {}),

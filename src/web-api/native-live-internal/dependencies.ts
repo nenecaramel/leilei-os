@@ -12,8 +12,6 @@ import type { NativeLiveProviderSessionCleanupService } from "../../domains/brid
 import type { NativeLiveManualCompactService } from "../../domains/bridge/turn/native-live-manual-compact.js";
 import type { NativeLiveExternalSessionBridgeService } from "../../domains/bridge/provider-session/native-live-external-session-bridge.js";
 import type { NativeLiveAttachmentService } from "../../domains/bridge/attachment/native-live-attachment-service.js";
-import type { ClaudePhotoAlbumService } from "../../domains/album/claude-photo-album-service.js";
-import type { ClaudeAlbumPhotoAttachmentSender } from "../../domains/album/claude-photo-album-output-sender.js";
 
 export type NativeLiveRelayInternalDependencies = {
   relayService: Pick<
@@ -81,13 +79,5 @@ export type NativeLiveRelayInternalDependencies = {
   attachmentService?: Pick<
     NativeLiveAttachmentService,
     "createUploadSlot" | "completeUpload" | "createDownloadSlot"
-  >;
-  photoAlbumService?: Pick<
-    ClaudePhotoAlbumService,
-    "savePhoto" | "searchPhotos" | "createPhotoDownload"
-  >;
-  photoAlbumSender?: Pick<
-    ClaudeAlbumPhotoAttachmentSender,
-    "sendPhoto"
   >;
 };

@@ -37,10 +37,6 @@ private let nativeLiveLeileiOSToolDisplayNames: [String: String] = [
     "mcp__leileios__get_health": "Read Health",
     "mcp__leileios__get_current_time": "Get Current Time",
     "mcp__leileios__render_note_card": "Render Note Card",
-    "mcp__leileios_album__save_photo": "Save Photo",
-    "mcp__leileios_album__search_photos": "Search Photos",
-    "mcp__leileios_album__view_photo": "View Photo",
-    "mcp__leileios_album__send_photo": "Send Photo",
     "mcp__leileios_local__send_file": "Send File",
     "mcp__leileios_memes__send_meme": "Send Sticker",
     "Send Meme": "Send Sticker",
@@ -56,7 +52,6 @@ func nativeLiveToolDisplayName(
 
     let prefixes = [
         "mcp__leileios__",
-        "mcp__leileios_album__",
         "mcp__leileios_local__",
         "mcp__leileios_memes__",
     ]

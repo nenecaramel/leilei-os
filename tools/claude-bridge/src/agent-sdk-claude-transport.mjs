@@ -248,244 +248,6 @@ async function createDefaultSendFileMcpServer(
   });
 }
 
-async function createDefaultAlbumMcpServer(
-  albumHandlers,
-) {
-  const sdk = await import("@anthropic-ai/claude-agent-sdk");
-  const { z } = await import("zod");
-  if (
-    typeof sdk.createSdkMcpServer !== "function"
-    || typeof sdk.tool !== "function"
-  ) {
-    throw runtimeError(
-      "Claude Agent SDK did not expose in-process MCP helpers.",
-      { runtimeCode: "RUNTIME_UNAVAILABLE" },
-    );
-  }
-
-  const savePhotoTool = sdk.tool(
-    "save_photo",
-    [
-      "Save one available user-owned image attachment into your private photo album.",
-      "The attachment may come from the current turn or an earlier turn if it is still available.",
-      "Use this when you genuinely want to keep a photo; do not save every image.",
-      "Pass an exact attachment_id that LeileiOS previously exposed to you.",
-      "why_saved must be your own reason for keeping it at the time you save it.",
-    ].join(" "),
-    {
-      source_attachment_id: z.string().min(1),
-      why_saved: z.string().min(1).max(4000),
-      description: z.string().max(2000).optional(),
-      tags: z.array(
-        z.string().min(1).max(80),
-      ).max(12).optional(),
-    },
-    async ({
-      source_attachment_id,
-      why_saved,
-      description,
-      tags,
-    }) => {
-      try {
-        const result = await albumHandlers.savePhoto({
-          sourceAttachmentId: source_attachment_id,
-          description: description ?? null,
-          whySaved: why_saved,
-          tags: tags ?? [],
-        });
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              saved: result.created,
-              photo: result.photo,
-            }),
-          }],
-        };
-      } catch (cause) {
-        return {
-          isError: true,
-          content: [{
-            type: "text",
-            text:
-              "save_photo failed: "
-              + (
-                cause instanceof Error
-                  ? cause.message
-                  : "unknown error"
-              ),
-          }],
-        };
-      }
-    },
-  );
-
-  const searchPhotosTool = sdk.tool(
-    "search_photos",
-    [
-      "Search your private photo album.",
-      "Use this when you want to recall or choose a photo you previously saved.",
-      "Omit query to browse the most recent photos, newest first.",
-      "Search returns compact metadata only, never image bytes.",
-    ].join(" "),
-    {
-      query: z.string().max(500).optional(),
-      limit: z.number().int().min(1).max(20).optional(),
-    },
-    async ({ query, limit }) => {
-      try {
-        const photos = await albumHandlers.searchPhotos({
-          query: query ?? null,
-          limit: limit ?? 10,
-        });
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              photos: photos.map(projectAlbumSearchPhoto),
-            }),
-          }],
-        };
-      } catch (cause) {
-        return {
-          isError: true,
-          content: [{
-            type: "text",
-            text:
-              "search_photos failed: "
-              + (
-                cause instanceof Error
-                  ? cause.message
-                  : "unknown error"
-              ),
-          }],
-        };
-      }
-    },
-  );
-
-  const viewPhotoTool = sdk.tool(
-    "view_photo",
-    [
-      "Open one photo from your private album so you can visually inspect it again.",
-      "Use a photo id from search_photos.",
-      "This previews the image to you without sending it to the user.",
-    ].join(" "),
-    {
-      photo_id: z.string().min(1),
-    },
-    async ({ photo_id }) => {
-      try {
-        const result = await albumHandlers.viewPhoto({
-          photoId: photo_id,
-        });
-        return {
-          content: [
-            {
-              type: "image",
-              data: result.image.data,
-              mimeType: result.image.mimeType,
-            },
-            {
-              type: "text",
-              text: JSON.stringify({
-                photo: projectAlbumSearchPhoto(
-                  result.photo,
-                ),
-              }),
-            },
-          ],
-        };
-      } catch (cause) {
-        return {
-          isError: true,
-          content: [{
-            type: "text",
-            text:
-              "view_photo failed: "
-              + (
-                cause instanceof Error
-                  ? cause.message
-                  : "unknown error"
-              ),
-          }],
-        };
-      }
-    },
-  );
-
-  const sendPhotoTool = sdk.tool(
-    "send_photo",
-    [
-      "Send one photo from your private album to the user.",
-      "Choose a photo id from search_photos or from album metadata already in context.",
-      "The image is delivered through LeileiOS attachments; do not encode image bytes in text.",
-    ].join(" "),
-    {
-      photo_id: z.string().min(1),
-    },
-    async ({ photo_id }) => {
-      try {
-        const result = await albumHandlers.sendPhoto({
-          photoId: photo_id,
-        });
-        return {
-          content: [{
-            type: "text",
-            text:
-              "Sent album photo to the user: "
-              + result.photo.filename,
-          }],
-        };
-      } catch (cause) {
-        return {
-          isError: true,
-          content: [{
-            type: "text",
-            text:
-              "send_photo failed: "
-              + (
-                cause instanceof Error
-                  ? cause.message
-                  : "unknown error"
-              ),
-          }],
-        };
-      }
-    },
-  );
-
-  return sdk.createSdkMcpServer({
-    name: "leileios-local-album",
-    version: "1.0.0",
-    tools: [
-      savePhotoTool,
-      searchPhotosTool,
-      viewPhotoTool,
-      sendPhotoTool,
-    ],
-  });
-}
-
-function projectAlbumSearchPhoto(photo) {
-  return {
-    id: photo.id,
-    filename: photo.filename,
-    mime_type: photo.mimeType,
-    description: clippedAlbumText(photo.description, 600),
-    why_saved: clippedAlbumText(photo.whySaved, 800),
-    tags: Array.isArray(photo.tags)
-      ? photo.tags.slice(0, 12)
-      : [],
-    created_at: photo.createdAt,
-  };
-}
-
-function clippedAlbumText(value, maxLength) {
-  if (typeof value !== "string") return null;
-  if (value.length <= maxLength) return value;
-  return value.slice(0, maxLength) + "…";
-}
 
 function nonblankString(value) {
   return typeof value === "string" && value.trim() ? value : null;
@@ -650,13 +412,11 @@ function normalizeLeileiosMcpServerConfig(value) {
 function leileiosMcpQueryOptions(
   config,
   localSendFileServer = null,
-  localAlbumServer = null,
   localMemeServer = null,
 ) {
   if (
     !config
     && !localSendFileServer
-    && !localAlbumServer
     && !localMemeServer
   ) return {};
   return {
@@ -666,9 +426,6 @@ function leileiosMcpQueryOptions(
         ? { leileios_local: localSendFileServer }
         : {}),
       ...(localMemeServer ? { leileios_memes: localMemeServer } : {}),
-      ...(localAlbumServer
-        ? { leileios_album: localAlbumServer }
-        : {}),
     },
   };
 }
@@ -689,8 +446,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     mcpServerConfig = null,
     createSendFileMcpServerImpl =
       createDefaultSendFileMcpServer,
-    createAlbumMcpServerImpl =
-      createDefaultAlbumMcpServer,
     createMemeMcpServerImpl = createMemeMcpServer,
     prepareLocalCheckpointForkImpl = prepareLocalCheckpointFork,
     environment = process.env,
@@ -717,8 +472,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       normalizeLeileiosMcpServerConfig(mcpServerConfig);
     this.createSendFileMcpServerImpl =
       createSendFileMcpServerImpl;
-    this.createAlbumMcpServerImpl =
-      createAlbumMcpServerImpl;
     this.createMemeMcpServerImpl = createMemeMcpServerImpl;
     this.prepareLocalCheckpointForkImpl =
       prepareLocalCheckpointForkImpl;
@@ -790,7 +543,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       questionHandler = null,
       trustedReadPaths = [],
       sendFileHandler = null,
-      albumHandlers = null,
       memeHandlers = null,
       controlPump = null,
     } = {},
@@ -890,13 +642,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             sendFileHandler,
           )
         : null;
-    const localAlbumServer =
-      albumHandlers
-        ? await this.createAlbumMcpServerImpl(
-            albumHandlers,
-          )
-        : null;
-
     const localMemeServer = memeHandlers
       ? await this.createMemeMcpServerImpl(memeHandlers)
       : null;
@@ -948,7 +693,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
           localSendFileServer,
-          localAlbumServer,
           localMemeServer,
         ),
         ...(this.sessionStore

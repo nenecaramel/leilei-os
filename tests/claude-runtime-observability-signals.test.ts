@@ -220,7 +220,8 @@ test("iOS Runtime UI prefers SDK tool display names and surfaces API retry state
     /payload\["display_name"\]\?\.stringValue[\s\S]*payload\["tool_name"\]\?\.stringValue/,
   );
   assert.match(lifecycle, /case "api_retry":/);
-  assert.match(models, /case "album_saved", "api_retry":\s*return true/);
+  assert.match(models, /case "api_retry":\s*return true/);
+  assert.doesNotMatch(models, /album_saved/);
 });
 
 test("Agent SDK transport enables native session state events for every turn", async () => {

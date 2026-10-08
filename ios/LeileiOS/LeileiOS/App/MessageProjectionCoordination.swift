@@ -38,46 +38,6 @@ extension AppModel {
         }
     }
 
-    func refreshAlbumSaves(
-        userMessageID: String,
-        force: Bool = false
-    ) async {
-        guard isAuthenticated,
-              !userMessageID.isEmpty else {
-            return
-        }
-
-        if !force,
-           albumSavesByUserMessageID[userMessageID] != nil {
-            return
-        }
-
-        guard !albumSaveRequestsInFlight.contains(
-            userMessageID
-        ) else {
-            return
-        }
-
-        albumSaveRequestsInFlight.insert(userMessageID)
-        defer {
-            albumSaveRequestsInFlight.remove(userMessageID)
-        }
-
-        do {
-            let projection = try await api.albumSaves(
-                userMessageID: userMessageID
-            )
-            albumSavesByUserMessageID[userMessageID] =
-                projection
-        } catch LeileiAPIError.missingAccessToken {
-            clearNativeLiveSessionData()
-        } catch LeileiAPIError.unauthorized {
-            clearNativeLiveSessionData()
-        } catch {
-            // Album save projection is fail-soft.
-        }
-    }
-
     func scheduleCurrentHeadMindWriteRefresh() {
         currentHeadMindWriteRefreshTask?.cancel()
 

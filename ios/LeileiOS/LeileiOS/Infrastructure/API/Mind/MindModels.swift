@@ -56,14 +56,6 @@ struct MindProductPage: Decodable, Sendable, Equatable {
     let nextCursor: String?
 }
 
-struct ClaudeAlbumMessageSaveProjection:
-    Decodable,
-    Sendable,
-    Equatable {
-    let userMessageId: String
-    let total: Int
-}
-
 struct MindProductMessageWriteProjection:
     Decodable,
     Sendable,

@@ -155,7 +155,6 @@ test("Native Live internal route methods and registration order remain stable", 
     runtimeEventService: {}, runtimeInteractionService: {}, runtimeControlService: {},
     companionBackgroundOpportunity: {}, workWaitService: {}, providerSessionCleanupService: {},
     manualCompactService: {}, externalSessionBridgeService: {}, attachmentService: {},
-    photoAlbumService: {}, photoAlbumSender: {},
   } as any;
   const router = createNativeLiveRelayInternalRouter(dependencies);
   assert.deepEqual(router.stack.filter((layer: any) => layer.route)
@@ -222,22 +221,6 @@ test("Native Live internal route methods and registration order remain stable", 
   ],
   [
     "post",
-    "/album/photos/save"
-  ],
-  [
-    "post",
-    "/album/photos/search"
-  ],
-  [
-    "post",
-    "/album/photos/:photoId/view"
-  ],
-  [
-    "post",
-    "/album/photos/:photoId/send"
-  ],
-  [
-    "post",
     "/provider-session-cleanup/reserve"
   ],
   [
@@ -298,7 +281,6 @@ test("Native Live internal handler validation stays with its feature boundary", 
     ["interactions", "createRuntimeInteractionHandler"], ["controls", "waitRuntimeControlHandler"],
     ["background", "reserveBackgroundModelHandler"], ["semantic", "reserveSemanticHandler"],
     ["sessions", "reserveExternalSessionsHandler"], ["attachments", "createInternalAttachmentUploadSlotHandler"],
-    ["album", "saveAlbumPhotoHandler"],
   ]) {
     const path = `src/web-api/native-live-internal/${file}.ts`;
     assert.ok(fs.existsSync(path), `missing ${path}`);

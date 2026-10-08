@@ -174,7 +174,7 @@ test("runtime activity and tool presentation are extracted from the message surf
   assert.match(runtime, /"chevron\.right"/);
   assert.match(runtime, /"chevron\.down"/);
   assert.match(runtime, /"mcp__leileios__get_diary": "Read Diary"/);
-  assert.match(runtime, /"mcp__leileios_album__save_photo": "Save Photo"/);
+  assert.doesNotMatch(runtime, /mcp__leileios_album__/);
   assert.match(runtime, /"mcp__leileios_local__send_file": "Send File"/);
 
   const runtimeModels = readExisting(runtimeModelsPath);

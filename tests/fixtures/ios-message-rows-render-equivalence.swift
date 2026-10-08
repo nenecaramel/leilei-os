@@ -68,7 +68,6 @@ private struct RowsEnabled:ViewModifier {
   model.nativeLiveMessageUIState["user"].voiceTranscriptExpansion=name=="voice-expanded"
   if name=="assistant-activity" {model.nativeLiveMessageUIState["assistant"].activityExpansion = .userExpanded}
   if name=="mind" {model.mindWritesByMessageID["assistant"] = .init(messageId:"assistant",total:2,kinds:[.init(kind:.thought,count:2)])}
-  if name=="album" {model.albumSavesByUserMessageID["user"] = .init(userMessageId:"user",total:2)}
   return model
  }
  static func host(_ name:String,_ baseline:Bool)->AnyView {

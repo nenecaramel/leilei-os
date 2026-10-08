@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type {
   NativeLiveDaemonLeaseState,
   NativeLiveDaemonRejectCode,
@@ -17,9 +17,6 @@ import {
   parseNativeLiveBackgroundModelCommand,
   type NativeLiveBackgroundModelExecutionResult,
 } from "../background/native-live-background-model-protocol.js";
-import type {
-  ClaudeAlbumToolPhoto,
-} from "../../album/claude-photo-album-tool-contract.js";
 import type {
   NativeLiveSilenceWakeIgnoredReason,
   NativeLiveSilenceWakeSchedule,
@@ -165,190 +162,6 @@ implements NativeLiveMacDaemonRelayClient {
     };
   }
 
-  async savePhoto(input: {
-    sourceAttachmentId: string;
-    triggerUserMessageId: string;
-    description: string | null;
-    whySaved: string;
-    tags: string[];
-  }): Promise<{
-    photo: ClaudeAlbumToolPhoto;
-    created: boolean;
-  }> {
-    let payload: unknown;
-    try {
-      payload = await this.post(
-        "/album/photos/save",
-        {
-          source_attachment_id:
-            input.sourceAttachmentId,
-          trigger_user_message_id:
-            input.triggerUserMessageId,
-          description: input.description,
-          why_saved: input.whySaved,
-          tags: input.tags,
-        },
-      );
-    } catch (error) {
-      if (
-        error
-        && typeof error === "object"
-        && "relayCode" in error
-        && error.relayCode === "SOURCE_ATTACHMENT_UNAVAILABLE"
-        && "relayMessage" in error
-        && typeof error.relayMessage === "string"
-        && error.relayMessage.trim()
-      ) {
-        throw Object.assign(
-          new Error(error.relayMessage),
-          {
-            relayCode: error.relayCode,
-            httpStatus:
-              "httpStatus" in error
-                ? error.httpStatus
-                : null,
-          },
-        );
-      }
-      throw error;
-    }
-    const data = readRecord(payload);
-    return {
-      photo: parseAlbumPhoto(data.photo),
-      created: data.created === true,
-    };
-  }
-
-  async searchPhotos(input: {
-    query: string | null;
-    limit: number;
-  }): Promise<ClaudeAlbumToolPhoto[]> {
-    const data = readRecord(
-      await this.post(
-        "/album/photos/search",
-        {
-          query: input.query,
-          limit: input.limit,
-        },
-      ),
-    );
-    if (!Array.isArray(data.photos)) {
-      throw new Error(
-        "Native live album search response is invalid.",
-      );
-    }
-    return data.photos.map(parseAlbumPhoto);
-  }
-
-  async viewPhoto(input: {
-    photoId: string;
-  }): Promise<{
-    photo: ClaudeAlbumToolPhoto;
-    image: {
-      data: string;
-      mimeType: string;
-      sizeBytes: number;
-      sha256: string;
-    };
-  }> {
-    const data = readRecord(
-      await this.post(
-        "/album/photos/"
-          + encodeURIComponent(input.photoId)
-          + "/view",
-        {},
-      ),
-    );
-    const photo = parseAlbumPhoto(data.photo);
-    const download = readRecord(data.download);
-    if (
-      typeof download.url !== "string"
-      || download.method !== "GET"
-    ) {
-      throw new Error(
-        "Native live album preview response is invalid.",
-      );
-    }
-
-    const response = await this.fetchImpl(
-      new URL(
-        download.url,
-        this.baseUrl + "/",
-      ).toString(),
-      {
-        method: "GET",
-        headers: readStringRecord(download.headers),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(
-        "Album photo preview download failed with HTTP "
-          + response.status
-          + ".",
-      );
-    }
-
-    const bytes = Buffer.from(await response.arrayBuffer());
-    const sha256 = createHash("sha256")
-      .update(bytes)
-      .digest("hex");
-    if (
-      bytes.byteLength !== photo.sizeBytes
-      || sha256 !== photo.sha256.toLowerCase()
-    ) {
-      throw new Error(
-        "Album photo preview bytes did not match stored metadata.",
-      );
-    }
-
-    return {
-      photo,
-      image: {
-        data: bytes.toString("base64"),
-        mimeType: photo.mimeType,
-        sizeBytes: bytes.byteLength,
-        sha256,
-      },
-    };
-  }
-
-  async sendPhoto(input: {
-    photoId: string;
-  }): Promise<{
-    photo: ClaudeAlbumToolPhoto;
-    attachment: {
-      attachmentId: string;
-      filename: string;
-      mimeType: string;
-      sizeBytes: number;
-      sha256: string;
-      kind: "image";
-    };
-  }> {
-    const data = readRecord(
-      await this.post(
-        "/album/photos/"
-          + encodeURIComponent(input.photoId)
-          + "/send",
-        {},
-      ),
-    );
-    const attachment = parseAttachmentDescriptor(
-      data.attachment,
-    );
-    if (attachment.kind !== "image") {
-      throw new Error(
-        "Native live album send response did not return an image.",
-      );
-    }
-    return {
-      photo: parseAlbumPhoto(data.photo),
-      attachment: {
-        ...attachment,
-        kind: "image",
-      },
-    };
-  }
 
   async reserveSemanticScoring(input: {
     listenerInstanceId: string;
@@ -1218,51 +1031,6 @@ function parseAttachmentDescriptor(
     sizeBytes: attachment.sizeBytes,
     sha256: attachment.sha256,
     kind: attachment.kind,
-  };
-}
-
-function parseAlbumPhoto(
-  value: unknown,
-): ClaudeAlbumToolPhoto {
-  const photo = readRecord(value);
-  if (
-    typeof photo.id !== "string"
-    || typeof photo.filename !== "string"
-    || typeof photo.mimeType !== "string"
-    || typeof photo.sizeBytes !== "number"
-    || typeof photo.sha256 !== "string"
-    || (
-      photo.description !== null
-      && typeof photo.description !== "string"
-    )
-    || typeof photo.whySaved !== "string"
-    || !Array.isArray(photo.tags)
-    || !photo.tags.every(
-      (tag) => typeof tag === "string",
-    )
-    || typeof photo.sourceAttachmentId !== "string"
-    || (
-      photo.sourceMessageId !== null
-      && typeof photo.sourceMessageId !== "string"
-    )
-    || typeof photo.createdAt !== "string"
-  ) {
-    throw new Error(
-      "Native live album photo descriptor is invalid.",
-    );
-  }
-  return {
-    id: photo.id,
-    filename: photo.filename,
-    mimeType: photo.mimeType,
-    sizeBytes: photo.sizeBytes,
-    sha256: photo.sha256,
-    description: photo.description,
-    whySaved: photo.whySaved,
-    tags: [...photo.tags] as string[],
-    sourceAttachmentId: photo.sourceAttachmentId,
-    sourceMessageId: photo.sourceMessageId,
-    createdAt: photo.createdAt,
   };
 }
 
