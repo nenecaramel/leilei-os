@@ -3,9 +3,11 @@ import SwiftUI
 struct MindView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var addPresented = false
+    @State private var refreshToken = UUID()
 
     var body: some View {
         MindMemoryListView()
+            .id(refreshToken)
             .toolbar {
                 if #available(iOS 26.0, *) {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
@@ -19,7 +21,9 @@ struct MindView: View {
                     }
                 }
             }
-            .sheet(isPresented: $addPresented) {
+            .sheet(isPresented: $addPresented, onDismiss: {
+                refreshToken = UUID()
+            }) {
                 MindManualEntrySheet()
                     .environmentObject(appModel)
             }
