@@ -91,6 +91,79 @@ async function deliveredTurn(f: any, parent: string | null, prompt = "tea") {
   return {prompt: p, output, reply: f.transcript.reply(tail)};
 }
 
+
+test("resume copies successful write result: new session excludes the written memory", async t => {
+  const f = await fixture(t);
+  f.transcript.sessionId = "parent";
+  const root = f.transcript.reply(f.transcript.prompt(null, "hello").uuid);
+  const last = writeTurn(f, root.uuid);
+  await runHook({hook_event_name: "PostToolUse", session_id: "parent",
+    tool_name: "mcp__d9e79932-abcd__write_memory", tool_response: {structuredContent: {
+      success: true, data: {memory_id: ID, entity_id: ID, entity_type: "memory", outcome: "applied"},
+    }}});
+  f.transcript.sessionId = "child";
+  await runHook({hook_event_name: "SessionStart", session_id: "child", source: "resume"});
+  f.transcript.prompt(last.uuid, "tea"); await f.transcript.flush();
+  let output = "";
+  await runHook(submit(f, "tea", "child"), async (s: string) => {output += s;});
+  assert.deepEqual(f.calls[0].exclude_ids, [ID]);
+  assert.equal(output, CONTEXT2 + "\n");
+});
+
+test("a write on an abandoned branch or before compact is not excluded in a new session", async t => {
+  const f = await fixture(t);
+  const root = f.transcript.reply(f.transcript.prompt(null, "hello").uuid);
+  const abandoned = writeTurn(f, root.uuid);
+  f.transcript.sessionId = "rewound";
+  f.transcript.prompt(root.uuid, "tea"); await f.transcript.flush();
+  await runHook(submit(f, "tea", "rewound"), async () => undefined);
+  assert.deepEqual(f.calls[0].exclude_ids, []);
+  const boundary = f.transcript.add({type: "system", subtype: "compact_boundary", parentUuid: null,
+    logicalParentUuid: abandoned.uuid});
+  const summary = f.transcript.add({type: "user", parentUuid: boundary.uuid, isCompactSummary: true,
+    message: {role: "user", content: "summary"}});
+  f.transcript.prompt(summary.uuid, "tea"); await f.transcript.flush();
+  await runHook(submit(f, "tea", "compacted"), async () => undefined);
+  assert.deepEqual(f.calls[1].exclude_ids, []);
+});
+
+test("chain write evidence needs paired write_memory use and valid non-error receipt", async t => {
+  const f = await fixture(t);
+  let head = f.transcript.reply(f.transcript.prompt(null, "hello").uuid);
+  for (const options of [
+    {toolName: "mcp__Other__write_diary"},
+    {toolName: "mcp__Other__write_memory_extra"},
+    {toolName: "mcp__d9e79932__write_memory", outcome: "no_op"},
+    {toolName: "mcp__d9e79932__write_memory", isError: true},
+  ]) head = writeTurn(f, head.uuid, options);
+  const spoof = f.transcript.add({type: "user", parentUuid: head.uuid, message: {role: "user", content: [{
+    type: "tool_result", tool_use_id: "missing-tool", content: JSON.stringify({
+      success: true, data: {memory_id: ID, entity_id: ID, entity_type: "memory", outcome: "applied"},
+    }),
+  }]}});
+  f.transcript.prompt(f.transcript.reply(spoof.uuid).uuid, "tea"); await f.transcript.flush();
+  await runHook(submit(f), async () => undefined);
+  assert.deepEqual(f.calls[0].exclude_ids, []);
+});
+
+test("tail truncation cannot validate a tool result whose tool_use is outside the window", async t => {
+  const f = await fixture(t);
+  const root = f.transcript.reply(f.transcript.prompt(null, "hello").uuid);
+  const toolId = "toolu_legacy";
+  const use = f.transcript.add({type: "assistant", parentUuid: root.uuid, message: {role: "assistant",
+    content: [{type: "tool_use", id: toolId, name: "mcp__d9e79932__write_memory", input: {}}]}});
+  let parent = use.uuid;
+  for (let i = 0; i < 70; i++) parent = f.transcript.add({type: "assistant", parentUuid: parent,
+    message: {role: "assistant", content: [{type: "text", text: "x".repeat(64 * 1024)}]}}).uuid;
+  const result = f.transcript.add({type: "user", parentUuid: parent, message: {role: "user",
+    content: [{type: "tool_result", tool_use_id: toolId, content: JSON.stringify({
+      success: true, data: {memory_id: ID, entity_id: ID, entity_type: "memory", outcome: "applied"},
+    })}]}});
+  f.transcript.prompt(result.uuid, "tea"); await f.transcript.flush();
+  await runHook(submit(f), async () => undefined);
+  assert.deepEqual(f.calls[0].exclude_ids, []);
+});
+
 test("same branch: a context still on the chain is excluded and the server re-ranks; ledger written after stdout", async t => {
   const f = await fixture(t);
   const first = await deliveredTurn(f, null);
