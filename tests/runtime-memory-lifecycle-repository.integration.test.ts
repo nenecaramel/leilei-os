@@ -168,6 +168,31 @@ test(
       updatedAt: new Date(),
     }).where(eq(runtimeSubjectStates.id, stateId));
 
+    const [legacyRow] = await database.db.select({
+      updatedAt: runtimeSubjectStates.updatedAt,
+    }).from(runtimeSubjectStates).where(eq(runtimeSubjectStates.id, stateId)).limit(1);
+    assert.ok(legacyRow);
+    const directPort = new DrizzleMemoryLifecycleRuntimePort(database.db);
+    const noForget = await directPort.forgetArchived({
+      userId, subjectId: "G", forgets: [{
+        stateId, expectedUpdatedAt: legacyRow.updatedAt.toISOString(),
+        lifecycle: {
+          status: "forgotten", salience: 0, protected: false,
+          lastDecayedAt: t5, lastRecalledAt: null,
+          archivedAt: t5, forgottenAt: "2026-09-26T00:00:00.000Z",
+        },
+      }],
+    });
+    assert.deepEqual(noForget, {applied: 0, conflicts: 0});
+    assert.deepEqual(await directPort.purgeForgotten({
+      userId, subjectId: "G", purges: [{
+        stateId, expectedUpdatedAt: legacyRow.updatedAt.toISOString(),
+      }],
+    }), {applied: 0, conflicts: 0});
+    assert.equal(await directPort.archive({
+      userId, subjectId: "G", stateId, at: t5,
+    }), false);
+
     [listed] = await subjectPort.list({
       userId, subjectId: "G", conversationId: crypto.randomUUID(),
     });
