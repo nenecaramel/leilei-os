@@ -46,7 +46,7 @@ function port(states: SubjectStateWrite[]) {
   return {reader, writes};
 }
 
-test("external recall excludes branch, provisional, invalid, archived and foreign memories before scoring", async () => {
+test("external recall includes intact legacy archives while excluding branch, provisional, invalid and foreign memories", async () => {
   const states = [memory(1), memory(2), memory(3), memory(4), memory(5), memory(6), memory(7), memory(8), memory(9), memory(10)];
   states[1]!.envelope.scope = {...states[1]!.envelope.scope, applicability: "path", conversationId: "ordinary", pathHeadMessageId: "a1"};
   states[2]!.envelope.scope = {...states[2]!.envelope.scope, applicability: "conversation", conversationId: "claude-code:session"};
@@ -61,11 +61,17 @@ test("external recall excludes branch, provisional, invalid, archived and foreig
     lastDecayedAt: "2026-10-06T00:00:00Z", lastRecalledAt: null,
     archivedAt: "2026-10-06T00:00:00Z", forgottenAt: null,
   });
+  const before = structuredClone(states);
   const {reader, writes} = port(states);
-  const result = await new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", unitReceipts).recall({userId: "u1", sessionId: "session", query: "jasmine tea", excludeIds: []});
+  const service = new ClaudeCodeMindRecallService(reader, DEFAULT_MIND_LOOP_CONFIG, "G", unitReceipts);
+  const result = await service.recall({userId: "u1", sessionId: "session", query: "jasmine tea", excludeIds: []});
+  // Identical text is still subject to the existing diversity ranking.
   assert.deepEqual(result.memory_ids, [id(1)]);
-  assert.deepEqual(result.semantic_candidates.map(c => c.stateId), [id(1)]);
+  assert.deepEqual(result.semantic_candidates.map(c => c.stateId), [id(1), id(10)]);
+  const archivedOnly = await service.recall({userId: "u1", sessionId: "session", query: "jasmine tea", excludeIds: [id(1)]});
+  assert.deepEqual(archivedOnly.memory_ids, [id(10)]);
   assert.deepEqual(writes, []);
+  assert.deepEqual(states, before, "recall does not revive archives by mutating stored state");
 });
 
 test("exclusions and exact shared renderer survive read-only assembly without any state change", async () => {
