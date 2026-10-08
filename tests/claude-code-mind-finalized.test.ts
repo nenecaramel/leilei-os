@@ -171,6 +171,15 @@ test("legacy V2 anchor/delivered_at state remains readable while injected histor
   assert.equal(f.calls.at(-1).body.exclude_ids.includes(memoryId),false);
 });
 
+test("subagent UserPromptSubmit cannot retrieve Mind or invalidate main pending",async t=>{
+  const f=await fixture(t);await f.submit();
+  const before=await f.state(),count=f.calls.length;
+  let output="";
+  await runHook({hook_event_name:"UserPromptSubmit",session_id:"s",agent_id:"child",prompt:"tea"},async s=>{output+=s;});
+  assert.equal(output,"");assert.equal(f.calls.length,count);assert.deepEqual(await f.state(),before);
+  await f.stop();assert.equal(f.applied.size,1);
+});
+
 test("subagent Stop and StopFailure cannot consume main session pending",async t=>{
   const f=await fixture(t);await f.submit();for(const event of ["Stop","StopFailure"])await runHook({hook_event_name:event,session_id:"s",agent_id:"child"});
   assert.equal(f.calls.length,1);assert.equal((await f.state()).pending_recalls.length,1);await f.stop();assert.equal(f.applied.size,1);
