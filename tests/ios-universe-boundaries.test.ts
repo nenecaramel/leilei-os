@@ -61,3 +61,18 @@ test("Universe geometry and viewport gestures have local layout boundaries", () 
   assert.match(read("Map/UniverseMapGeometry.swift"), /UserDefaults\.standard/);
   assert.match(fs.readFileSync(`${root}UniverseMapView.swift`, "utf8"), /"universe\.native\.viewport\.v1"/);
 });
+
+test("Universe import parsing and readback share a focused boundary separate from wire models", () => {
+  const parser = read("Import/UniverseImportParser.swift");
+  const models = fs.readFileSync(`${root}UniverseModels.swift`, "utf8");
+  for (const symbol of ["UniverseImportPreview", "UniverseImportValidationError", "UniverseImportParser"]) {
+    const declaration = new RegExp(`(?:struct|enum) ${symbol}\\b`);
+    assert.match(parser, declaration);
+    assert.doesNotMatch(models, declaration);
+  }
+  for (const symbol of ["UniverseNode", "UniverseSnapshot", "UniverseRevision", "UniverseExportPayload"]) {
+    assert.match(models, new RegExp(`struct ${symbol}\\b`));
+    assert.doesNotMatch(parser, new RegExp(`struct ${symbol}\\b`));
+  }
+  assert.doesNotMatch(parser, /import SwiftUI|@State\b|@Published\b|ObservableObject/);
+});
