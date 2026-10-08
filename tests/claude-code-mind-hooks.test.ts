@@ -107,6 +107,8 @@ test("PostToolUse accepts validated receipts for configured and dynamic connecto
     await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name, tool_response: receipt("44444444-4444-4444-8444-444444444444")});
   }
   assert.deepEqual((await f.state())[0].written_ids, [ID, ID2, ID3]);
+  await runHook(prompt(), async () => undefined);
+  assert.deepEqual(new Set(f.calls[0].exclude_ids), new Set([ID, ID2, ID3]));
   for (const response of [{success: false, data: receipt().data}, {isError: true, structuredContent: receipt()}, "not json", {...receipt(), data: {...receipt().data, outcome: "no_op"}}]) assert.equal(writtenMemoryId(response), null);
 });
 
