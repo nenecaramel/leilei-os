@@ -24,7 +24,7 @@ test("Mind lifecycle contract covers every persisted Subject State kind", () => 
   assert.equal(SUBJECT_STATE_KINDS.includes("dream" as never), false);
 });
 
-test("Memory follows the recoverable decay chain before physical purge", () => {
+test("Memory never archives, forgets or physically purges as a lifecycle transition", () => {
   for (const kind of ["memory"] as const) {
     const profile = mindLifecycleProfile(kind);
     assert.equal(profile.management, "managed");
@@ -51,9 +51,11 @@ test("Memory follows the recoverable decay chain before physical purge", () => {
         from: "archived",
         to: "forgotten",
       }),
-      true,
+      false,
     );
-    assert.equal(canPurgeMindState({ kind, state: "forgotten" }), true);
+    assert.equal(isMindLifecycleTransitionAllowed({kind,from:"active",to:"archived"}), false);
+    assert.equal(isMindLifecycleTransitionAllowed({kind,from:"archived",to:"fading"}), true);
+    assert.equal(canPurgeMindState({ kind, state: "forgotten" }), false);
     assert.equal(canPurgeMindState({ kind, state: "active" }), false);
   }
 });
