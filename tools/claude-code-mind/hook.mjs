@@ -25,16 +25,23 @@ const DIAGNOSTIC_EVENTS = new Set(["UserPromptSubmit", "Notification", "SessionE
 async function recordDiagnostic(config, event, reason) {
   if (!config.diagnostics || !DIAGNOSTIC_EVENTS.has(event) || !DIAGNOSTIC_REASONS.has(reason)) return;
   const filePath = join(root(), "finalization-reasons.jsonl");
-  let file;
+  const lock = `${filePath}.lock`;
+  let file; let locked = false;
   try {
+    // Best effort: never wait for another writer (or a crashed writer's lock).
+    await fs.mkdir(lock, {mode: 0o700}); locked = true;
     file = await fs.open(filePath,
-      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
     const stat = await file.stat();
-    if (!stat.isFile() || stat.size >= 64 * 1024 ||
+    const line = JSON.stringify({ts: new Date().toISOString(), event, reason}) + "\n";
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size + Buffer.byteLength(line) > 64 * 1024 ||
         (stat.mode & 0o077) !== 0 || stat.uid !== process.getuid?.()) return;
-    await file.writeFile(JSON.stringify({ts: new Date().toISOString(), event, reason}) + "\n");
+    await file.writeFile(line);
   } catch { /* Diagnostics never affect hook delivery. */ }
-  finally { await file?.close().catch(() => undefined); }
+  finally {
+    await file?.close().catch(() => undefined);
+    if (locked) await fs.rmdir(lock).catch(() => undefined);
+  }
 }
 
 async function readConfig() {

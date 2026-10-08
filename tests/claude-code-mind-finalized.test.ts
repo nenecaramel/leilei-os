@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, link, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { createServer } from "node:http";
 import { runHook } from "../tools/claude-code-mind/hook.mjs";
@@ -128,6 +128,13 @@ test("Desktop pre-prompt attachments preserve the current prompt anchor", async 
   assert.equal(await promptAnchor(f.transcript, "s", "tea"), prompt.uuid);
   await f.submit();
   assert.equal((await f.state()).pending_recalls[0].turn_anchor, prompt.uuid);
+  const delivered = attachment(context, clock.uuid);
+  const response = {type: "assistant", uuid: randomUUID(), parentUuid: delivered.uuid,
+    sessionId: "s", message: {role: "assistant", content: [{type: "text", text: "response"}]}};
+  await writeFile(f.transcript, jsonl([prompt, deferred, reminder, clock, delivered, response, summary(response.uuid)]));
+  await f.accept();
+  assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
+  assert.deepEqual((await f.state()).pending_recalls, []);
 });
 
 test("completed identical-text predecessor with assistant/Stop is never the new prompt anchor", async t => {
@@ -163,6 +170,67 @@ test("reason diagnostics are disabled unless explicitly enabled", async t => {
   await f.submit(); await f.accept();
   await assert.rejects(readFile(join(f.home, "finalization-reasons.jsonl"), "utf8"), {code: "ENOENT"});
 });
+
+test("reason diagnostics refuse a record that would exceed the exact 64 KiB limit", async t => {
+  const f = await fixture(t, true);
+  const path = join(f.home, "finalization-reasons.jsonl");
+  const original = "x".repeat(64 * 1024 - 1);
+  await writeFile(path, original, {mode: 0o600});
+  await f.submit();
+  assert.equal(await readFile(path, "utf8"), original);
+  assert.equal(f.calls.length, 1); // Logging refusal never suppresses recall.
+});
+
+test("concurrent diagnostic writers never exceed the exact 64 KiB limit", async t => {
+  const f = await fixture(t, true);
+  const path = join(f.home, "finalization-reasons.jsonl");
+  await writeFile(path, "x".repeat(64 * 1024 - 100), {mode: 0o600});
+  await Promise.all(Array.from({length: 16}, (_, index) => runHook({
+    hook_event_name: "Notification", notification_type: "idle_prompt", session_id: `parallel-${index}`,
+  })));
+  assert.ok((await stat(path)).size <= 64 * 1024);
+});
+
+test("FIFO diagnostic path cannot block lexical recall or consume the hook deadline", async t => {
+  const f = await fixture(t, true);
+  execFileSync("mkfifo", [join(f.home, "finalization-reasons.jsonl")]);
+  const started = Date.now();
+  const result = await new Promise<{status: number | null; stdout: string; stderr: string}>(done => {
+    const child = spawn(process.execPath, [resolve("tools/claude-code-mind/hook.mjs")], {
+      env: {...process.env, LEILEI_MIND_HOME: f.home}, stdio: "pipe",
+    });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", b => stdout += b); child.stderr.on("data", b => stderr += b);
+    const watchdog = setTimeout(() => child.kill("SIGKILL"), 4500);
+    child.on("close", status => {clearTimeout(watchdog); done({status, stdout, stderr});});
+    child.stdin.end(JSON.stringify({hook_event_name: "UserPromptSubmit", session_id: "s", prompt: "tea", transcript_path: f.transcript}));
+  });
+  assert.equal(result.status, 0); assert.equal(result.stderr, "");
+  assert.equal(result.stdout, `${context}\n`);
+  assert.ok(Date.now() - started < 1500);
+});
+
+for (const kind of ["symlink", "hardlink", "public-file", "held-lock"]) {
+  test(`unsafe or busy ${kind} diagnostic destination stays untouched without suppressing recall`, async t => {
+    const f = await fixture(t, true);
+    const path = join(f.home, "finalization-reasons.jsonl");
+    const target = join(f.home, "sentinel");
+    await writeFile(target, "untouched", {mode: 0o600});
+    if (kind === "symlink") await symlink(target, path);
+    if (kind === "hardlink") await link(target, path);
+    if (kind === "public-file") await writeFile(path, "untouched", {mode: 0o644});
+    if (kind === "held-lock") {
+      const {mkdir} = await import("node:fs/promises");
+      await mkdir(`${path}.lock`, {mode: 0o700});
+    }
+    let output = "";
+    await f.submit(async value => {output += value;});
+    assert.equal(output, `${context}\n`);
+    assert.equal(await readFile(target, "utf8"), "untouched");
+    if (kind === "held-lock") await assert.rejects(readFile(path), {code: "ENOENT"});
+    else assert.equal(await readFile(path, "utf8"), "untouched");
+  });
+}
 
 test("promptAnchor waits for a partially appended Desktop prompt record", async t => {
   const home = await mkdtemp(join(tmpdir(), "mind-v2-transcript-race-"));
@@ -513,7 +581,7 @@ for (const change of ["epoch", "active-turn"]) {
 }
 
 test("new prompt recall keeps lexical output within deadline after snapshot retries and a slow confirmation", async t => {
-  const f = await fixture(t); await f.submit(); const delivered = attachment(), done = summary();
+  const f = await fixture(t, true); await f.submit(); const delivered = attachment(), done = summary();
   await writeFile(f.transcript, jsonl([message(), delivered, done])); f.timeoutConfirm(); f.delayRecall(2000);
   const state = await f.state(); state.injected_ids = []; await writeFile(await f.file(), JSON.stringify(state));
   await interceptRead(t, f.transcript, async (n, file) => {
@@ -538,3 +606,13 @@ for (const kind of ["different-text", "tool-result", "sidechain"]) {
 }
 
 test("snapshot rejects truncate between pathname stat and open", async t => {
+  const path = await transcriptFixture(t, [message()]);
+  const {promises: io} = await import("node:fs");
+  const open = io.open.bind(io); let opens = 0;
+  t.mock.method(io, "open", async (...args: any[]) => {
+    if (args[0] === path) {opens++; await writeFile(path, "");}
+    return open(...args as [any, any]);
+  });
+  assert.equal(await promptAnchor(path, "s", "tea"), null);
+  assert.equal(opens, 1); // Shrink is terminal, not a transient retry.
+});
