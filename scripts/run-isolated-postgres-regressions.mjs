@@ -83,6 +83,7 @@ run([
   "tests/claude-code-mind.integration.test.ts",
   "tests/claude-code-mind-finalized.integration.test.ts",
   "tests/mind-product-repository.integration.test.ts",
+  "tests/mind-memory-api.integration.test.ts",
   "tests/runtime-memory-lifecycle-repository.integration.test.ts",
   "tests/native-live-mind-followup.integration.test.ts",
   "tests/native-live-semantic-handshake.integration.test.ts",

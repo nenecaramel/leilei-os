@@ -736,6 +736,7 @@ export function createProcessRuntime(
     const createMcpSessionServer = createProductionMcpSessionServerFactory({
     activeUserRepository: systemRepository,
     memoryRepository: mindRepository,
+    mindService: mindProductService,
     memorySubjectId: DEFAULT_NATIVE_LIVE_SUBJECT_ID,
     diaryService,
     diaryCommentService,

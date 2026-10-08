@@ -1,3 +1,4 @@
+import type { MindProductService } from "../../domains/runtime/mind/mind-product-service.js";
 import type { WriteMemoryDependencies } from "../tools/write-memory/register.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { DiaryService } from "../../domains/diary/diary-service.js";
@@ -35,6 +36,7 @@ export type McpSessionServerFactory = (
 
 export function createProductionMcpSessionServerFactory(input: {
   activeUserRepository: ActiveUserRepository;
+  mindService?: MindProductService;
   memoryRepository?: WriteMemoryDependencies["repository"];
   memorySubjectId?: string;
   diaryService: DiaryService;
@@ -60,6 +62,7 @@ export function createProductionMcpSessionServerFactory(input: {
     );
     const dependencies: McpServerDependencies = {
       activeUserAuthorization,
+      ...(input.mindService ? {memoryTools: {mindService: input.mindService, requireActiveUser: activeUserAuthorization}} : {}),
       ...(input.memoryRepository ? {writeMemory: {
         repository: input.memoryRepository, subjectId: input.memorySubjectId ?? "G",
         requireActiveUser: activeUserAuthorization,

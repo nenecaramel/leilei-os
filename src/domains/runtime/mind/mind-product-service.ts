@@ -1,3 +1,7 @@
+import { Temporal } from "@js-temporal/polyfill";
+import { createBodyMatchSnippet, createLeadingPreview } from "../../compact-text.js";
+import { getProductDate, PRODUCT_TIMEZONE } from "../../time/current-time.js";
+import { memoryContentVersion } from "./mind-memory-content.js";
 import { randomUUID } from "node:crypto";
 import {
   hashProductCreateRequest,
@@ -44,6 +48,7 @@ export type MindProductItem = {
   source: MindProductSource;
   authority: PersistentAuthority | null;
   occurredAt: string | null;
+  contentVersion: string;
   note: string | null;
   lifecycle: MindProductLifecycleProjection;
   provenance: MindProductProvenanceProjection;
@@ -80,7 +85,52 @@ export type MindProductCursor = {
   id: string;
 };
 
+export type MindMemoryCursor = { createdAt: string; id: string };
+export type MindMemorySearchInput = {
+  userId: string;
+  query?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  undated?: boolean;
+  limit?: number;
+  cursor?: string | null;
+};
+export type MindMemoryPatch = { text?: string; occurredAt?: string | null };
+export type MindMemoryUpdateInput = MindMemoryPatch & {
+  userId: string;
+  stateId: string;
+  expectedVersion: string;
+};
+export type MindMemorySearchPage = {
+  items: Array<{
+    id: string;
+    occurredAt: string | null;
+    date: string | null;
+    snippet: string;
+    detailTool: "get_memory";
+    detailArguments: { id: string };
+  }>;
+  nextCursor: string | null;
+};
+
 export interface MindProductRepository {
+  search(input: {
+    userId: string;
+    subjectId: string;
+    query: string;
+    occurredFrom?: string;
+    occurredBefore?: string;
+    undated?: boolean;
+    limit: number;
+    cursor: MindMemoryCursor | null;
+  }): Promise<{ rows: MindProductRow[]; nextCursor: MindMemoryCursor | null }>;
+  update(
+    input: MindMemoryUpdateInput & { subjectId: string },
+  ): Promise<
+    | { outcome: "updated"; row: MindProductRow }
+    | { outcome: "not_found" | "conflict" }
+  >;
+
   list(input: {
     userId: string;
     subjectId: string;
@@ -128,6 +178,7 @@ export class MindProductServiceError extends Error {
       | "INVALID_MIND"
       | "MIND_NOT_FOUND"
       | "MIND_FAILED"
+      | "MIND_CONFLICT"
       | "INVALID_IDEMPOTENCY_KEY"
       | "IDEMPOTENCY_CONFLICT",
     message?: string,
@@ -197,6 +248,173 @@ export class MindProductService {
       throw new MindProductServiceError("MIND_NOT_FOUND");
     }
     return projectRow(row);
+  }
+
+  async search(input: MindMemorySearchInput): Promise<MindMemorySearchPage> {
+    const page = await this.queryMemory(input);
+    return {
+      items: page.rows.map((row) => {
+        const item = projectRow(row);
+        return {
+          id: item.id,
+          occurredAt: item.occurredAt,
+          date: item.occurredAt
+            ? getProductDate(new Date(item.occurredAt))
+            : null,
+          snippet:
+            createBodyMatchSnippet(item.text ?? "", input.query ?? "") ??
+            createLeadingPreview(item.text ?? ""),
+          detailTool: "get_memory" as const,
+          detailArguments: { id: item.id },
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async readDay(input: {
+    userId: string;
+    date: string;
+    limit?: number;
+    cursor?: string | null;
+  }): Promise<MindProductPage> {
+    const page = await this.queryMemory({
+      userId: input.userId,
+      dateFrom: input.date,
+      dateTo: input.date,
+      limit: input.limit,
+      cursor: input.cursor,
+    });
+    return { items: page.rows.map(projectRow), nextCursor: page.nextCursor };
+  }
+
+  private async queryMemory(input: MindMemorySearchInput) {
+    const query =
+      input.query === undefined
+        ? ""
+        : input.query.normalize("NFC").trim().replace(/\s+/gu, " ");
+    const limit = input.limit ?? 50;
+    if (
+      (input.undated !== undefined && typeof input.undated !== "boolean") ||
+      (input.undated === true && (input.dateFrom !== undefined || input.dateTo !== undefined)) ||
+      (input.query !== undefined && !query) ||
+      [...query].length > 200 ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 200
+    ) {
+      throw new MindProductServiceError("INVALID_MIND");
+    }
+    const occurredFrom =
+      input.dateFrom === undefined
+        ? undefined
+        : memoryDayBoundary(input.dateFrom);
+    const occurredBefore =
+      input.dateTo === undefined
+        ? undefined
+        : memoryDayBoundary(input.dateTo, true);
+    if (input.dateFrom && input.dateTo && input.dateFrom > input.dateTo)
+      throw new MindProductServiceError("INVALID_MIND");
+    const context = JSON.stringify([
+      input.userId,
+      this.subjectId,
+      query,
+      input.dateFrom ?? null,
+      input.dateTo ?? null,
+      input.undated ?? false,
+    ]);
+    let cursor: MindMemoryCursor | null = null;
+    if (input.cursor) {
+      try {
+        if (input.cursor.length > 2048) throw Error();
+        const parsed = JSON.parse(
+          Buffer.from(input.cursor, "base64url").toString(),
+        );
+        if (
+          parsed.context !== context ||
+          typeof parsed.createdAt !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(
+            parsed.createdAt,
+          )
+        )
+          throw Error();
+        Temporal.Instant.from(parsed.createdAt);
+        requireUuid(parsed.id, "cursor.id");
+        cursor = { createdAt: parsed.createdAt, id: parsed.id };
+      } catch {
+        throw new MindProductServiceError(
+          "INVALID_MIND",
+          "Memory cursor is invalid for this query.",
+        );
+      }
+    }
+    const page = await this.repository.search({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      query,
+      occurredFrom,
+      occurredBefore,
+      undated: input.undated ?? false,
+      limit,
+      cursor,
+    });
+    return {
+      rows: page.rows,
+      nextCursor: page.nextCursor
+        ? Buffer.from(JSON.stringify({ ...page.nextCursor, context })).toString(
+            "base64url",
+          )
+        : null,
+    };
+  }
+
+  async update(input: MindMemoryUpdateInput): Promise<MindProductItem> {
+    const allowed = new Set([
+      "userId",
+      "stateId",
+      "expectedVersion",
+      "text",
+      "occurredAt",
+    ]);
+    if (
+      Object.keys(input).some((key) => !allowed.has(key)) ||
+      !/^[a-f0-9]{64}$/.test(input.expectedVersion ?? "") ||
+      (input.text === undefined && input.occurredAt === undefined)
+    )
+      throw new MindProductServiceError("INVALID_MIND");
+    requireUuid(input.stateId, "stateId");
+    if (
+      input.text !== undefined &&
+      (typeof input.text !== "string" ||
+        !input.text.trim() ||
+        input.text.trim().length > 20_000)
+    )
+      throw new MindProductServiceError("INVALID_MIND");
+    let occurredAt = input.occurredAt;
+    if (occurredAt !== undefined && occurredAt !== null) {
+      try {
+        occurredAt = Temporal.Instant.from(occurredAt).toString({
+          fractionalSecondDigits: 3,
+        });
+      } catch {
+        throw new MindProductServiceError("INVALID_MIND");
+      }
+    }
+    const result = await this.repository.update({
+      userId: input.userId,
+      subjectId: this.subjectId,
+      stateId: input.stateId,
+      expectedVersion: input.expectedVersion,
+      ...(input.text === undefined ? {} : { text: input.text.trim() }),
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    });
+    if (result.outcome === "not_found")
+      throw new MindProductServiceError("MIND_NOT_FOUND");
+    if (result.outcome === "conflict")
+      throw new MindProductServiceError("MIND_CONFLICT");
+    if (result.outcome !== "updated")
+      throw new MindProductServiceError("MIND_FAILED");
+    return projectRow(result.row);
   }
 
   async createManual(input: {
@@ -325,6 +543,7 @@ function projectRow(row: MindProductRow): MindProductItem {
         : "runtime",
     authority,
     occurredAt: readSubjectStateOccurredAt(payload),
+    contentVersion: memoryContentVersion(row),
     note: stringOrNull(manual?.note),
     lifecycle: lifecycleProjection(row.kind, payload),
     provenance: provenanceProjection(row.envelope),
@@ -501,4 +720,12 @@ function isoOrNull(value: unknown): string | null {
   return typeof value === "string" && Number.isFinite(Date.parse(value))
     ? new Date(value).toISOString()
     : null;
+}
+
+function memoryDayBoundary(value: string, next = false): string {
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Error();
+    const date = Temporal.PlainDate.from(value);
+    return (next ? date.add({days: 1}) : date).toZonedDateTime(PRODUCT_TIMEZONE).toInstant().toString({fractionalSecondDigits: 3});
+  } catch { throw new MindProductServiceError("INVALID_MIND", "Memory date is invalid."); }
 }

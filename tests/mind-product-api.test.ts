@@ -242,3 +242,91 @@ test("manual API rejects retired Mind kinds before calling the writer", async ()
     assert.deepEqual(service.calls,[]);
   });
 });
+
+test("Mind search/day routes and PATCH share authenticated service and strict edit fields", async () => {
+  const service = new FakeMindService();
+  Object.assign(service, {
+    search: async (input: unknown) => {
+      service.calls.push({ name: "search", input });
+      return { items: [], nextCursor: null };
+    },
+    readDay: async (input: unknown) => {
+      service.calls.push({ name: "day", input });
+      return { items: [], nextCursor: null };
+    },
+    update: async (input: unknown) => {
+      service.calls.push({ name: "update", input });
+      return { id: stateId };
+    },
+  });
+  await withServer(service, async (base) => {
+    assert.equal(
+      (
+        await fetch(
+          `${base}/search?query=tea&undated=false&date_from=2026-10-08&date_to=2026-10-09&limit=2`,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (service.calls.find((x) => x.name === "search")!.input as any).undated,
+      false,
+    );
+    assert.equal((await fetch(`${base}/search?undated=true`)).status, 200);
+    assert.equal(
+      (service.calls.filter((x) => x.name === "search").at(-1)!.input as any)
+        .undated,
+      true,
+    );
+    assert.equal((await fetch(`${base}/search?undated=yes`)).status, 400);
+    assert.equal((await fetch(`${base}/days/2026-10-08?limit=2`)).status, 200);
+    const r = await fetch(`${base}/${stateId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: "edited",
+        occurred_at: null,
+        expected_version: "a".repeat(64),
+      }),
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("cache-control"), "private, no-store");
+    const edit = service.calls.find((x) => x.name === "update")!.input as any;
+    assert.equal(edit.userId, userId);
+    assert.equal(edit.occurredAt, null);
+    assert.equal(edit.expectedVersion, "a".repeat(64));
+    for (const body of [
+      { text: "edited", expected_version: "a".repeat(64), salience: 1 },
+      { text: "edited", expected_version: "a".repeat(64), user_id: "foreign" },
+    ])
+      assert.equal(
+        (
+          await fetch(`${base}/${stateId}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        ).status,
+        400,
+      );
+    service.failure = new MindProductServiceError("MIND_CONFLICT");
+    Object.assign(service, {
+      update: async () => {
+        throw service.failure;
+      },
+    });
+    assert.equal(
+      (
+        await fetch(`${base}/${stateId}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            text: "edited",
+            expected_version: "a".repeat(64),
+          }),
+        })
+      ).status,
+      409,
+    );
+  });
+});

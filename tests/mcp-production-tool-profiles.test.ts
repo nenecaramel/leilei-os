@@ -65,6 +65,10 @@ test("production public MCP defaults expose current core, device, and UI tools o
     "get_diary",
     "create_diary",
     "write_memory",
+    "search_memory",
+    "get_memory",
+    "read_memory_day",
+    "update_memory",
     "update_diary",
     "read_todo_day",
     "append_todo_entries",
@@ -134,6 +138,10 @@ test("production internal MCP defaults expose current advanced maintenance inven
     "get_notion_connection",
     "create_diary",
     "write_memory",
+    "search_memory",
+    "get_memory",
+    "read_memory_day",
+    "update_memory",
     "replace_todo_paper",
   ]) {
     assert.equal(

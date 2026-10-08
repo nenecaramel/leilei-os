@@ -1,3 +1,5 @@
+import { SUBJECT_STATE_ISO_PATTERN, SUBJECT_STATE_TRIM_CHARS } from "../subject-state/subject-state-temporal.js";
+import { memoryContentVersion, patchMemoryTemporal } from "./mind-memory-content.js";
 import { requireActiveUserInTransaction } from "../../require-active-user-transaction.js";
 import {
   and,
@@ -34,6 +36,8 @@ import {
   type SubjectStateWrite,
 } from "../subject-state/subject-state-contract.js";
 import type {
+  MindMemoryCursor,
+  MindMemoryUpdateInput,
   MindProductCursor,
   MindProductRepository,
   MindProductRow,
@@ -79,6 +83,97 @@ implements MindProductRepository {
     });
   }
 
+  async search(input: {
+    userId: string;
+    subjectId: string;
+    query: string;
+    occurredFrom?: string;
+    occurredBefore?: string;
+    undated?: boolean;
+    limit: number;
+    cursor: MindMemoryCursor | null;
+  }) {
+    const conditions = memoryConditions(input);
+    if (input.query) {
+      const literal = input.query.replace(/[\\%_]/g, (value) => `\\${value}`);
+      conditions.push(
+        sql`regexp_replace(normalize(${runtimeSubjectStates.text}, NFC), ${"\\s+"}, ' ', 'g') ILIKE ${`%${literal}%`} ESCAPE ${"\\"}`,
+      );
+    }
+    if (input.undated) conditions.push(sql`${memoryOccurredAtSql()} IS NULL`);
+    if (input.occurredFrom || input.occurredBefore) {
+      const occurredAt = memoryOccurredAtSql();
+      if (input.occurredFrom)
+        conditions.push(
+          sql`${occurredAt} >= ${input.occurredFrom}::timestamptz`,
+        );
+      if (input.occurredBefore)
+        conditions.push(
+          sql`${occurredAt} < ${input.occurredBefore}::timestamptz`,
+        );
+    }
+    if (input.cursor)
+      conditions.push(
+        sql`(${runtimeSubjectStates.createdAt}, ${runtimeSubjectStates.id}) < (${input.cursor.createdAt}::timestamptz, ${input.cursor.id}::uuid)`,
+      );
+    const rows = await this.db
+      .select({
+        ...rowSelection(),
+        cursorCreatedAt: sql<string>`to_char(${runtimeSubjectStates.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+      })
+      .from(runtimeSubjectStates)
+      .where(and(...conditions))
+      .orderBy(
+        desc(runtimeSubjectStates.createdAt),
+        desc(runtimeSubjectStates.id),
+      )
+      .limit(input.limit + 1);
+    const page = rows.slice(0, input.limit);
+    const last = page.at(-1);
+    return {
+      rows: page.map(toProductRow),
+      nextCursor:
+        rows.length > input.limit && last
+          ? { createdAt: last.cursorCreatedAt, id: last.id }
+          : null,
+    };
+  }
+
+  async update(input: MindMemoryUpdateInput & { subjectId: string }) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [row] = await transaction
+        .select(rowSelection())
+        .from(runtimeSubjectStates)
+        .where(
+          and(
+            ...memoryConditions(input),
+            eq(runtimeSubjectStates.id, input.stateId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!row) return { outcome: "not_found" as const };
+      if (memoryContentVersion(row) !== input.expectedVersion)
+        return { outcome: "conflict" as const };
+      // Merge only editable fields from the locked, latest row. Stop also locks
+      // this row, so neither operation can overwrite the other's payload.
+      const [updated] = await transaction
+        .update(runtimeSubjectStates)
+        .set({
+          ...(input.text === undefined ? {} : { text: input.text }),
+          ...(input.occurredAt === undefined
+            ? {}
+            : { payload: patchMemoryTemporal(row.payload, input.occurredAt) }),
+          updatedAt: new Date(),
+        })
+        .where(eq(runtimeSubjectStates.id, row.id))
+        .returning(rowSelection());
+      if (!updated) throw Error("Memory update failed.");
+      return { outcome: "updated" as const, row: toProductRow(updated) };
+    });
+  }
+
   async list(input: {
     userId: string;
     subjectId: string;
@@ -96,6 +191,7 @@ implements MindProductRepository {
       eq(runtimeSubjectStates.settlementStatus, "settled"),
       eq(runtimeSubjectStates.pathStatus, "current"),
       eq(runtimeSubjectStates.validityStatus, "valid"),
+      productVisibilityCondition(),
     ];
     if (input.kind) {
       conditions.push(eq(runtimeSubjectStates.kind, input.kind));
@@ -153,6 +249,7 @@ implements MindProductRepository {
         eq(runtimeSubjectStates.settlementStatus, "settled"),
         eq(runtimeSubjectStates.pathStatus, "current"),
         eq(runtimeSubjectStates.validityStatus, "valid"),
+        productVisibilityCondition(),
         ))
       .limit(1);
     return row ? toProductRow(row) : null;
@@ -589,4 +686,41 @@ async function insertMindState(transaction: Transaction, state: SubjectStateWrit
       state.envelope as unknown as Record<string, unknown>,
   }).returning(rowSelection());
   return row;
+}
+
+function memoryConditions(input: { userId: string; subjectId: string }) {
+  return [
+    eq(runtimeSubjectStates.userId, input.userId),
+    eq(runtimeSubjectStates.subjectId, input.subjectId),
+    eq(runtimeSubjectStates.kind, "memory"),
+    eq(runtimeSubjectStates.settlementStatus, "settled"),
+    eq(runtimeSubjectStates.pathStatus, "current"),
+    eq(runtimeSubjectStates.validityStatus, "valid"),
+    productVisibilityCondition(),
+  ];
+}
+
+function productVisibilityCondition() {
+  return sql`${runtimeSubjectStates.envelope}->'scope'->>'visibility' IS DISTINCT FROM 'hidden_system'`;
+}
+
+/** Match the canonical temporal reader, including legacy manual dates. Bad
+ * metadata is undated, rather than making one row abort an entire date query. */
+function memoryOccurredAtSql() {
+  const payload = runtimeSubjectStates.payload;
+  const raw = sql`CASE WHEN jsonb_typeof(${payload}->'temporal_v1') = 'object' THEN
+    CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'occurredAt') = 'string' AND (
+      (${payload}->'temporal_v1'->>'basis' = 'user_supplied' AND (CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' THEN btrim(${payload}->'temporal_v1'->>'sourceMessageId', ${SUBJECT_STATE_TRIM_CHARS}) ELSE '' END) = '') OR
+      (${payload}->'temporal_v1'->>'basis' = 'source_message' AND jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' AND btrim(${payload}->'temporal_v1'->>'sourceMessageId', ${SUBJECT_STATE_TRIM_CHARS}) <> '')
+    ) THEN ${payload}->'temporal_v1'->>'occurredAt' END
+    ELSE CASE WHEN jsonb_typeof(${payload}->'manual_v1'->'occurredAt') = 'string' THEN ${payload}->'manual_v1'->>'occurredAt' END END`;
+  const trimmed = sql`btrim(${raw}, ${SUBJECT_STATE_TRIM_CHARS})`;
+  const iso = sql`CASE WHEN length(${trimmed}) = 10
+    THEN ${trimmed} || 'T00:00:00Z' ELSE upper(${trimmed}) END`;
+  // Match the canonical reader's millisecond truncation before PG can round
+  // sub-millisecond digits across a day boundary.
+  const milliseconds = sql`regexp_replace(${iso}, ${"(\\.[0-9]{3})[0-9]+(Z|[+-].*)$"}, ${"\\1\\2"})`;
+  return sql`CASE WHEN ${trimmed} ~ ${SUBJECT_STATE_ISO_PATTERN}
+    AND ${trimmed} !~ '^0000-' AND pg_input_is_valid(${milliseconds}, 'timestamp with time zone')
+    THEN (${milliseconds})::timestamptz END`;
 }
