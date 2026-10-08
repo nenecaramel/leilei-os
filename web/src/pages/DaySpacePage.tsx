@@ -26,11 +26,17 @@ import type { DaySpaceApi, DaySpaceDiary } from "./day-space-api.js";
 import type { TodoAuthor, TodoDay, TodoPaper } from "./todo-types.js";
 import type { TodoSearchEntry } from "./todo-api.js";
 
+import { DaySpaceMemoryDialog } from "./DaySpaceMemoryPaper";
+
+import { loadMemoryDay, memoryDay, type MemoryItem } from "./memory-api";
+
 type DaySpacePaper =
   | { type: "todo"; id: string; paper: TodoPaper }
-  | { type: "diary"; id: string; diary: DaySpaceDiary };
+  | { type: "diary"; id: string; diary: DaySpaceDiary }
+  | { type: "memory"; id: string; items: MemoryItem[] };
 
 function densityForPaper(paper: DaySpacePaper): number {
+  if (paper.type === "memory") return Math.max(1, paper.items.length);
   if (paper.type === "todo") return Math.max(1, paper.paper.entries.length);
   return Math.max(2, Math.min(6, Math.ceil((paper.diary.title.length + paper.diary.content.length) / 44)));
 }
@@ -47,6 +53,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const [discoveryRetry, setDiscoveryRetry] = useState(0);
   const [todoState, setTodoState] = useState<DaySpaceModuleState<TodoDay>>({ status: "loading" });
   const [diaryState, setDiaryState] = useState<DaySpaceModuleState<DaySpaceDiary[]>>({ status: "loading" });
+  const [memoryState, setMemoryState] = useState<DaySpaceModuleState<MemoryItem[]>>({status:"loading"});
+  const [memoryRevision,setMemoryRevision] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openPaperId, setOpenPaperId] = useState<string | null>(null);
   const [todoSearchOpen, setTodoSearchOpen] = useState(false);
@@ -80,6 +88,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
     const diaryTicket = ++diaryRequest.current;
     selectedDateRef.current = date;
     setSelectedDate(date);
+    setMemoryState({status:"loading"});
     setOpenPaperId(null);
     setTodoState({ status: "loading" });
     setDiaryState({ status: "loading" });
@@ -167,6 +176,16 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   }, [api, location.search, loadDate, today, discoveryRetry]);
 
   useEffect(() => {
+    const abort = new AbortController();
+    if(!selectedDate) return;
+    setMemoryState(current=>({status:"loading",value:current.value}));
+    void loadMemoryDay(api.webClient, selectedDate, abort.signal).then(items=>{
+      if(!abort.signal.aborted) setMemoryState({status:"ready",value:items});
+    }).catch(()=>{if(!abort.signal.aborted) setMemoryState(current=>({status:"error",value:current.value}));});
+    return ()=>abort.abort();
+  },[api.webClient,selectedDate,memoryRevision]);
+
+  useEffect(() => {
     const element = stageMeasureRef.current;
     if (!element) return;
     const update = () => setStageWidth(Math.max(280, element.clientWidth));
@@ -181,9 +200,20 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
     if (!selectedDate) return [];
     return [
       ...(todoState.value ? composeDaySpacePapers(selectedDate, todoState.value, []).filter((p) => p.type === "todo") : []),
+      ...(memoryState.value?.length ? [{type:"memory" as const,id:`memory:${selectedDate}`,items:memoryState.value}] : []),
       ...(diaryState.value ? diaryState.value.map((diary) => ({ type: "diary" as const, id: `diary:${diary.id}`, diary })) : []),
     ] as DaySpacePaper[];
-  }, [selectedDate, todoState, diaryState]);
+  }, [selectedDate, todoState, diaryState, memoryState]);
+
+  const applyMemory = (item: MemoryItem) => {
+    setMemoryState(current => ({
+      status: "ready",
+      value: (current.value ?? []).flatMap(entry => entry.id !== item.id
+        ? [entry]
+        : memoryDay(item.occurredAt) === selectedDate ? [item] : []),
+    }));
+    setMemoryRevision(value => value + 1);
+  };
 
   const layout = useMemo(() => selectedDate ? layoutDaySpacePapers(selectedDate, papers.map((paper) => ({ id: paper.id, density: densityForPaper(paper) })), stageWidth) : null, [papers, selectedDate, stageWidth]);
   const layoutById = useMemo(() => new Map((layout?.items ?? []).map((item) => [item.id, item])), [layout]);
@@ -279,8 +309,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const bothModulesFailed = todoState.status === "error"
     && diaryState.status === "error"
     && todoState.value === undefined
-    && diaryState.value === undefined;
-  const completeEmpty = todoState.status === "ready" && diaryState.status === "ready" && papers.length === 0;
+    && diaryState.value === undefined && memoryState.status !== "loading" && !memoryState.value?.length;
+  const completeEmpty = memoryState.status === "ready" && todoState.status === "ready" && diaryState.status === "ready" && papers.length === 0;
 
   return (
     <main className="day-space-page">
@@ -309,8 +339,9 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       </div>
       {discoveryIncomplete && selectedDate ? <div className="day-space-warning" role="status">最新日期发现不完整，当前日期仍可查看。</div> : null}
       {selectedDate && moduleWarning && !bothModulesFailed ? <div className="day-space-warning" role="alert">部分 Day Space 内容暂时无法读取。{todoState.status === "error" ? <button type="button" onClick={() => retryTodo(selectedDate)}>重试 Todo</button> : null}{diaryState.status === "error" ? <button type="button" onClick={() => retryDiary(selectedDate)}>重试 Diary</button> : null}</div> : null}
+      {memoryState.status === "error" ? <div className="day-space-warning" role="alert">Memory 暂时无法读取。<button onClick={()=>setMemoryRevision(n=>n+1)}>重试 Memory</button></div> : null}
       <div ref={stageMeasureRef} className="day-space-stage-measure">
-        {discoveryStatus === "loading" && !selectedDate ? <PageState state="loading" message="Reading..." /> : discoveryStatus === "error" ? <PageState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => setDiscoveryRetry((value) => value + 1)} /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <PageState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => selectedDate && loadDate(selectedDate)} /> : moduleWarning && papers.length === 0 ? null : papers.length === 0 ? <PageState state="loading" message="Reading..." /> : (
+        {discoveryStatus === "loading" && !selectedDate ? <PageState state="loading" message="Reading..." /> : discoveryStatus === "error" ? <PageState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => setDiscoveryRetry((value) => value + 1)} /> : completeEmpty ? <ModuleState state="empty" message="这一天还没有内容" className="day-space-stage-state" /> : bothModulesFailed ? <PageState state="error" message="Unable to read Day Space." retryLabel="Retry" onRetry={() => selectedDate && loadDate(selectedDate)} /> : (moduleWarning || memoryState.status === "error") && papers.length === 0 ? null : papers.length === 0 ? <PageState state="loading" message="Reading..." /> : (
           <section className="day-space-stage" aria-label={`${selectedDate} 的内容`} style={{ height: `${layout?.stageHeight ?? 0}px` }}>
             {papers.map((paper) => {
               const item = layoutById.get(paper.id); if (!item) return null;
@@ -318,16 +349,16 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
               const todoEntries = paper.type === "todo" ? paper.paper.entries : [];
               const previewLimit = item.size === "small" ? 2 : item.size === "medium" ? 3 : 4;
               return <button type="button" key={paper.id} className={`day-space-paper day-space-paper-${paper.type} day-space-paper-${item.size}`} style={style} onClick={(event) => { paperTriggerRef.current = event.currentTarget; setOpenPaperId(paper.id); }}>
-                {paper.type === "todo" ? <div className="day-space-todo-preview">{todoEntries.slice(0, previewLimit).map((entry) => <div key={entry.id} className={`day-space-todo-line day-space-todo-${entry.kind}`}><span className="day-space-todo-dot" aria-hidden="true" /><span>{entry.text}</span></div>)}{todoEntries.length > previewLimit ? <div className="day-space-preview-ellipsis" aria-hidden="true">...</div> : null}</div> : <div className="day-space-diary-preview"><strong>{paper.diary.title}</strong><p>{paper.diary.content}</p></div>}
-                <span className="day-space-paper-signature">{paper.type === "todo" ? paper.paper.author : paper.diary.author ?? "—"}</span>
+                {paper.type === "memory" ? <div className="day-space-diary-preview"><strong>Memory</strong>{paper.items.slice(0,previewLimit).map(item=><p key={item.id}>{item.text}</p>)}</div> : paper.type === "todo" ? <div className="day-space-todo-preview">{todoEntries.slice(0, previewLimit).map((entry) => <div key={entry.id} className={`day-space-todo-line day-space-todo-${entry.kind}`}><span className="day-space-todo-dot" aria-hidden="true" /><span>{entry.text}</span></div>)}{todoEntries.length > previewLimit ? <div className="day-space-preview-ellipsis" aria-hidden="true">...</div> : null}</div> : <div className="day-space-diary-preview"><strong>{paper.diary.title}</strong><p>{paper.diary.content}</p></div>}
+                <span className="day-space-paper-signature">{paper.type === "memory" ? "Memory" : paper.type === "todo" ? paper.paper.author : paper.diary.author ?? "—"}</span>
               </button>;
             })}
           </section>
         )}
       </div>
+      {openPaper?.type === "memory" && selectedDate ? <DaySpaceMemoryDialog key={selectedDate} api={api.webClient} date={selectedDate} items={openPaper.items} onSaved={applyMemory} onRefresh={()=>setMemoryRevision(n=>n+1)} onClose={()=>setOpenPaperId(null)} /> : null}
       {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.value?.papers ?? { L: null, G: null, C: null }), [paper.author]: paper.entries.length > 0 ? paper : null } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
       {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState((current) => ({ status: "ready", value: current.value ? current.value.map((entry) => entry.id === next.id ? next : entry) : [next] })); void refreshDiary(next.date, next); }} onClosed={() => setOpenPaperId(null)} /> : null}
     </main>
   );
 }
-

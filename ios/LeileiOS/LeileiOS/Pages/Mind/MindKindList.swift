@@ -67,7 +67,12 @@ struct MindMemoryListView: View {
                 }
             }
         }
-        .background(Color(.systemBackground))
+        .safeAreaInset(edge: .top) {
+            HStack {
+                NavigationLink("未指定日期") { MindUndatedList() }
+                Spacer()
+            }.padding(.horizontal).padding(.vertical, 8)
+        }
         .task(id: reloadToken) {
             await reload()
         }
@@ -130,7 +135,7 @@ private struct MindItemRow: View {
             HStack(spacing: 6) {
                 Text(MindPresentation.sourceLabel(item.source))
                 if let occurred = MindPresentation.dateText(
-                    item.occurredAt ?? item.createdAt
+                    item.occurredAt
                 ) {
                     Text("·")
                     Text(occurred)

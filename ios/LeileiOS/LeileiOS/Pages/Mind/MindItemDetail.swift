@@ -9,6 +9,7 @@ struct MindItemDetailView: View {
     let onDeleted: () -> Void
 
     @State private var item: MindProductItem
+    @State private var editing = false
     @State private var showingDelete = false
     @State private var deleting = false
     @State private var deleteFailed = false
@@ -162,7 +163,16 @@ struct MindItemDetailView: View {
         .background(Color.settingsBackground)
         .navigationTitle(item.kind.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $editing) {
+            MemoryEditorSheet(initialItem: item) { updated in
+                item = updated
+                onDeleted()
+            }
+        }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") { editing = true }.disabled(deleting || item.contentVersion == nil)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(role: .destructive) {
                     showingDelete = true

@@ -70,6 +70,11 @@ private struct DaySpacePaperCard: View {
                         size: size
                     )
 
+                case .memory(_, let items):
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Memory").font(.headline)
+                        ForEach(Array(items.prefix(3))) { item in Text(item.text ?? "").lineLimit(2) }
+                    }
                 case .diary(let diary):
                     DaySpaceDiaryPreview(
                         diary: diary,
