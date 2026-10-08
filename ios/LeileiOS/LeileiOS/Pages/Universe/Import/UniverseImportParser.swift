@@ -329,4 +329,3 @@ enum UniverseImportParser {
         let revisions: [UniverseRevision]
     }
 }
-

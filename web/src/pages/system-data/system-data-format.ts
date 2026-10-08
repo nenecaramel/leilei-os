@@ -50,4 +50,3 @@ export function formatModuleCounts(counts: WebImportModuleSummary): string {
   if (counts.invalid > 0) parts.push(`${counts.invalid} invalid`);
   return parts.length > 0 ? parts.join(" · ") : "No records";
 }
-
