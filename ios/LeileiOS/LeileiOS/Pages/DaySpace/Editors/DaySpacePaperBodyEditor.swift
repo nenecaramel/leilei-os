@@ -1,10 +1,11 @@
 import SwiftUI
 import UIKit
 
-struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
+struct DaySpacePaperBodyEditor: UIViewRepresentable {
     let text: String
     let disabled: Bool
     let onTextChange: (String) -> Void
+    var minimumHeight: CGFloat = 420
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -75,7 +76,7 @@ struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
         return CGSize(
             width: width,
             height: max(
-                420,
+                minimumHeight,
                 ceil(fitting.height)
             )
         )
@@ -116,10 +117,10 @@ struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: DaySpaceDiaryBodyEditor
+        var parent: DaySpacePaperBodyEditor
 
         init(
-            parent: DaySpaceDiaryBodyEditor
+            parent: DaySpacePaperBodyEditor
         ) {
             self.parent = parent
         }

@@ -117,7 +117,9 @@ enum DaySpacePaperSelection: Identifiable {
 
     var density: Int {
         switch self {
-        case .memory(_, let items): return max(1, items.count)
+        case .memory(_, let items):
+            let length = items.reduce(0) { $0 + ($1.text?.utf16.count ?? 0) }
+            return max(1, min(6, max(items.count, Int(ceil(Double(length) / 44.0)))))
         case .todo(let paper):
             return max(1, paper.entries.count)
 

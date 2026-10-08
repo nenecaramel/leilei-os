@@ -9,8 +9,11 @@ import {
   DiaryPaperMetadataEditor,
 } from "../web/src/pages/DiaryPaperEditor.js";
 
-async function withDom(element: React.ReactElement, check: (root: Element, window: Window) => void | Promise<void>) {
-  const dom = new JSDOM("<main id=\"root\"></main>");
+async function withDom(
+  element: React.ReactElement,
+  check: (root: Element, window: Window) => void | Promise<void>,
+) {
+  const dom = new JSDOM('<main id="root"></main>');
   const prior = new Map<PropertyKey, PropertyDescriptor | undefined>();
   const install = (name: PropertyKey, value: unknown) => {
     prior.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
@@ -58,13 +61,17 @@ test("Diary paper editor exposes title and content as direct paper fields", asyn
     }),
     (root) => {
       assert.equal(
-        root.querySelector<HTMLInputElement>('input[aria-label="日记标题"]')?.value,
+        root.querySelector<HTMLInputElement>('input[aria-label="日记标题"]')
+          ?.value,
         "Title",
       );
       assert.equal(
-        root.querySelector<HTMLTextAreaElement>('textarea[aria-label="日记正文"]')?.value,
+        root.querySelector<HTMLTextAreaElement>(
+          'textarea[aria-label="日记正文"]',
+        )?.value,
         "Body",
       );
+      assert.equal(root.querySelector("textarea")?.placeholder, "Content");
     },
   );
 });
@@ -107,6 +114,33 @@ test("Diary paper metadata keeps mood and tags as free text", async () => {
       assert.equal(mood?.style.width, "6ch");
       assert.equal(tags?.value, "work, MCP");
       assert.equal(tags?.style.width, "11ch");
+    },
+  );
+});
+
+test("shared paper body remeasures wrapped content when the viewport changes", async () => {
+  await withDom(
+    React.createElement(DiaryPaperEditor, {
+      title: "Title",
+      content: "A long body keeps its content after rotation",
+      disabled: false,
+      onTitleChange() {},
+      onContentChange() {},
+    }),
+    async (root, window) => {
+      const editor = root.querySelector<HTMLTextAreaElement>("textarea")!;
+      Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", {
+        configurable: true,
+        get: () => 600,
+      });
+      await React.act(async () =>
+        window.dispatchEvent(new window.Event("resize")),
+      );
+      assert.equal(editor.style.height, "600px");
+      assert.equal(
+        editor.value,
+        "A long body keeps its content after rotation",
+      );
     },
   );
 });
