@@ -1,3 +1,5 @@
+import { formatDiarySourceDate, sourceOptionFromSummary, formatUniverseNodeTimestamp, formatStandaloneDate, formatMembershipWeight, canonicalWeightTextToPercentText, percentWeightTextToCanonicalText } from "./universe-node-presentation";
+import { DiaryProvenanceTimeline } from "./DiaryProvenanceTimeline";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { PaperDetailDialog } from "../PaperDetailDialog";
 import type { UniverseDiarySourceOption, UniverseDiarySourceSummary, UniverseGalaxy, UniverseNode, UniverseRelation } from "./universe-types";
@@ -14,33 +16,6 @@ export type UniverseNodePaperMode =
 
 export type UniverseNodePaperDraft = Pick<UniverseNode, "title" | "summary" | "content" | "type" | "tags" | "galaxies"> & { importance: string; sourceDiaryIds: string[] };
 
-function formatDiarySourceDate(value: string): string {
-  const match = value.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[1]}.${match[2]}.${match[3]}` : value;
-}
-
-function sourceOptionFromSummary(source: UniverseDiarySourceSummary): UniverseDiarySourceOption {
-  return { id: source.diaryId, title: source.title, date: source.date, status: source.status };
-}
-
-function DiaryProvenanceTimeline({ sources, onOpen }: { sources: UniverseDiarySourceSummary[]; onOpen?: (diaryId: string) => void }) {
-  if (!sources.length) return null;
-  const ordered = sources.slice().sort((left, right) => left.date.localeCompare(right.date) || left.diaryId.localeCompare(right.diaryId));
-  return (
-    <div className="universe-diary-provenance" aria-label="来源日记">
-      {ordered.map((source) => (
-        <div className="universe-diary-provenance-row" key={source.diaryId}>
-          <span className="universe-diary-provenance-line" aria-hidden="true"><i /></span>
-          <button type="button" className="universe-diary-provenance-link" onClick={() => onOpen?.(source.diaryId)}>
-            <span className="universe-diary-provenance-date">{formatDiarySourceDate(source.date)}</span>
-            <span className="universe-diary-provenance-title" title={source.title}>{source.title}</span>
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 const NODE_TYPES: UniverseNode["type"][] = ["concept", "question", "claim", "experience", "project", "source", "reflection"];
 const NODE_TYPE_LABELS: Record<string, string> = {
   concept: "概念",
@@ -51,42 +26,6 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   source: "来源",
   reflection: "反思",
 };
-
-function formatUniverseNodeTimestamp(value: string, timeZone?: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "时间未知";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone,
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
-  return `${get("year")}.${get("month")}.${get("day")} ${get("hour")}:${get("minute")}`;
-}
-
-function formatStandaloneDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "时间未知";
-  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric" }).format(date);
-}
-
-function formatMembershipWeight(weight: number): string {
-  if (weight >= 0 && weight <= 1) return `${Math.round(weight * 100)}%`;
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(weight);
-}
-
-function canonicalWeightTextToPercentText(weightText: string): string {
-  if (!weightText.trim()) return "";
-  const percent = Number(weightText) * 100;
-  if (!Number.isFinite(percent)) return "";
-  return String(Number(percent.toFixed(3)));
-}
-
-function percentWeightTextToCanonicalText(percentText: string): string {
-  if (!percentText.trim()) return "";
-  const canonical = Number(percentText) / 100;
-  if (!Number.isFinite(canonical)) return "";
-  return String(Number(canonical.toFixed(6)));
-}
 
 export function UniverseNodePaper({
   node,

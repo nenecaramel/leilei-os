@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { WebApiClient } from "../api/useWebApiClient";
-import { PageState } from "../components/StateSurface";
+import { UniverseHeader, UniverseFrame, UniverseLoadingState, UniverseStatus } from "./universe/UniversePagePresentation";
 import "./universe-state-polish.css";
 import {
   createLeileiOSUniverseAdapter,
@@ -379,48 +379,6 @@ function UniversePageContent({ api }: { api: WebApiClient }) {
       />
     </div>
   );
-}
-
-function UniverseHeader({ actions, notice }: { actions?: ReactNode; notice?: string | null }) {
-  return (
-    <header className="memory-page-header universe-page-header">
-      <div className="memory-page-heading universe-page-heading">
-        <div className="memory-page-title">Universe</div>
-        {notice ? <span className="universe-header-notice" role="status">{formatUniverseNotice(notice)}</span> : null}
-      </div>
-      {actions ? <div className="universe-page-tools">{actions}</div> : null}
-    </header>
-  );
-}
-
-function UniverseFrame({ children }: { children: ReactNode }) {
-  return <div className="page memory-page universe-page"><UniverseHeader />{children}</div>;
-}
-
-function UniverseLoadingState() {
-  return (
-    <PageState
-      state="loading"
-      message="Reading..."
-      className="universe-cosmos universe-cosmos-loading"
-    />
-  );
-}
-
-function UniverseStatus({ onRetry }: { onRetry?: () => void }) {
-  return (
-    <PageState
-      state="error"
-      message="Unable to read Universe."
-      retryLabel="Retry"
-      onRetry={onRetry}
-      className="universe-cosmos universe-cosmos-state"
-    />
-  );
-}
-
-function formatUniverseNotice(message: string): string {
-  return message.trim().replace(/[。．.!！？?]+$/u, "");
 }
 
 function safeUniverseError(error: unknown): string {

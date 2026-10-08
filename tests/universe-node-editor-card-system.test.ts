@@ -5,7 +5,7 @@ import test from "node:test";
 const nodePaper = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
-);
+) + readFileSync(new URL("../web/src/pages/universe/universe-node-presentation.ts", import.meta.url), "utf8");
 const shellCss = readFileSync(
   new URL("../web/src/pages/universe/universe-node-detail-memory-shell.css", import.meta.url),
   "utf8",

@@ -5,7 +5,7 @@ import test from "node:test";
 const pageSource = readFileSync(
   new URL("../web/src/pages/UniversePage.tsx", import.meta.url),
   "utf8",
-);
+) + readFileSync(new URL("../web/src/pages/universe/UniversePagePresentation.tsx", import.meta.url), "utf8");
 const stateCss = readFileSync(
   new URL("../web/src/pages/universe-state-polish.css", import.meta.url),
   "utf8",
