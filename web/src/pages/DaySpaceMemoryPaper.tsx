@@ -23,6 +23,7 @@ export function DaySpaceMemoryDialog({
       api={api}
       date={date}
       initial={items}
+      showEntryDates={false}
       triggerRef={triggerRef}
       onSaved={onSaved}
       onClose={onClose}

@@ -31,6 +31,7 @@ export function MemoryPaper({
   onSaved,
   onClose,
   onDelete,
+  showEntryDates = true,
 }: {
   api: WebApiClient;
   initial: MemoryItem[];
@@ -39,6 +40,7 @@ export function MemoryPaper({
   onSaved(item: MemoryItem): void;
   onClose(): void;
   onDelete?: () => Promise<void>;
+  showEntryDates?: boolean;
 }) {
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     initial.map((item) => ({
@@ -161,45 +163,47 @@ export function MemoryPaper({
       <div className="memory-paper-entries">
         {drafts.map((draft, index) => (
           <section className="memory-paper-entry" key={draft.item.id}>
-            <div className="memory-entry-date">
-              <label className="diary-paper-date-editor memory-entry-date-editor">
-                <span>
-                  {draft.date
-                    ? draft.date
-                        .replace("T", " ")
-                        .slice(0, 16)
-                        .replaceAll("-", ".")
-                    : "未指定日期"}
-                </span>
-                <input
-                  type="datetime-local"
-                  aria-label={`Memory ${index + 1} 发生时间（北京时间）`}
-                  step="60"
-                  value={draft.date}
-                  disabled={busy}
-                  onChange={(e) => {
-                    patch(draft.item.id, { date: e.target.value });
-                    setError(null);
-                  }}
-                  onInput={(e) => {
-                    patch(draft.item.id, { date: e.currentTarget.value });
-                    setError(null);
-                  }}
-                />
-              </label>
-              {draft.date ? (
-                <button
-                  className="memory-paper-control"
-                  disabled={busy}
-                  onClick={() => {
-                    patch(draft.item.id, { date: "" });
-                    setError(null);
-                  }}
-                >
-                  未指定日期
-                </button>
-              ) : null}
-            </div>
+            {showEntryDates ? (
+              <div className="memory-entry-date">
+                <label className="diary-paper-date-editor memory-entry-date-editor">
+                  <span>
+                    {draft.date
+                      ? draft.date
+                          .replace("T", " ")
+                          .slice(0, 16)
+                          .replaceAll("-", ".")
+                      : "未指定日期"}
+                  </span>
+                  <input
+                    type="datetime-local"
+                    aria-label={`Memory ${index + 1} 发生时间（北京时间）`}
+                    step="60"
+                    value={draft.date}
+                    disabled={busy}
+                    onChange={(e) => {
+                      patch(draft.item.id, { date: e.target.value });
+                      setError(null);
+                    }}
+                    onInput={(e) => {
+                      patch(draft.item.id, { date: e.currentTarget.value });
+                      setError(null);
+                    }}
+                  />
+                </label>
+                {draft.date ? (
+                  <button
+                    className="memory-paper-control"
+                    disabled={busy}
+                    onClick={() => {
+                      patch(draft.item.id, { date: "" });
+                      setError(null);
+                    }}
+                  >
+                    未指定日期
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <PaperBodyEditor
               label={`Memory ${index + 1} 正文`}
               value={draft.text}
@@ -218,11 +222,13 @@ export function MemoryPaper({
                     <p className="memory-paper-conflict-text">
                       {draft.conflict.text}
                     </p>
-                    <p>
-                      {memoryLocalTime(draft.conflict.occurredAt)
-                        .replace("T", " ")
-                        .slice(0, 16) || "未指定日期"}
-                    </p>
+                    {showEntryDates ? (
+                      <p>
+                        {memoryLocalTime(draft.conflict.occurredAt)
+                          .replace("T", " ")
+                          .slice(0, 16) || "未指定日期"}
+                      </p>
+                    ) : null}
                     <button
                       className="memory-paper-control"
                       disabled={busy}
@@ -246,6 +252,13 @@ export function MemoryPaper({
                       onClick={() => {
                         patch(draft.item.id, {
                           item: draft.conflict!,
+                          ...(!showEntryDates
+                            ? {
+                                date: memoryLocalTime(
+                                  draft.conflict!.occurredAt,
+                                ),
+                              }
+                            : {}),
                           conflict: null,
                           unresolved: false,
                         });

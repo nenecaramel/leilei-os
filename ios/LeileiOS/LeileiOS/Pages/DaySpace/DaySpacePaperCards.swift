@@ -71,7 +71,7 @@ private struct DaySpacePaperCard: View {
                     )
 
                 case .memory(_, let items):
-                    DaySpaceProsePreview(title: "Memory", paragraphs: items.map { $0.text ?? "" }, size: size, multiple: true)
+                    DaySpaceProsePreview(title: nil, paragraphs: items.map { $0.text ?? "" }, size: size, multiple: true)
                 case .diary(let diary):
                     DaySpaceDiaryPreview(
                         diary: diary,
@@ -194,7 +194,7 @@ private struct DaySpaceDiaryPreview: View {
 }
 
 private struct DaySpaceProsePreview: View {
-    let title: String
+    let title: String?
     let paragraphs: [String]
     let size: DaySpacePaperSize
     let multiple: Bool
@@ -203,8 +203,10 @@ private struct DaySpaceProsePreview: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
-                .lineLimit(2).multilineTextAlignment(.leading)
+            if let title {
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+            }
             ForEach(Array(paragraphs.prefix(multiple ? limit : 1).enumerated()), id: \.offset) { _, text in
                 Text(text).font(.system(size: 10)).foregroundStyle(.secondary)
                     .lineSpacing(2.6).lineLimit(multiple ? 2 : limit + 1).multilineTextAlignment(.leading)

@@ -3,13 +3,12 @@ import SwiftUI
 private struct MemoryPaperDraft: Identifiable {
     var item: MindProductItem
     var text: String
-    var date: Date?
     var conflict: MindProductItem?
     var unresolved = false
     var id: String { item.id }
-    var dirty: Bool { text != (item.text ?? "") || date != MemoryDate.parse(item.occurredAt) }
+    var dirty: Bool { text != (item.text ?? "") }
     init(_ item: MindProductItem) {
-        self.item = item; text = item.text ?? ""; date = MemoryDate.parse(item.occurredAt)
+        self.item = item; text = item.text ?? ""
     }
 }
 
@@ -46,26 +45,12 @@ struct DaySpaceMemoryDetail: View {
             VStack(alignment: .leading, spacing: 30) {
                 ForEach($drafts) { $draft in
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            if let value = draft.date {
-                                DatePicker("Occurred · Beijing time", selection: Binding(get: { draft.date ?? value }, set: { draft.date = $0; message = nil }))
-                                    .labelsHidden().datePickerStyle(.compact)
-                                    .environment(\.timeZone, TimeZone(identifier: "Asia/Shanghai")!)
-                                Spacer()
-                                Button("No date") { draft.date = nil; message = nil }
-                            } else {
-                                Button("No date · Set date") { draft.date = .now; message = nil }
-                            }
-                        }
-                        .font(.system(size: 13)).foregroundStyle(Color(white: 0.43))
-                        .frame(minHeight: 30).disabled(saving)
                         DaySpacePaperBodyEditor(text: draft.text, disabled: saving, onTextChange: { draft.text = $0; message = nil }, minimumHeight: 30)
                         if draft.unresolved {
                             VStack(alignment: .leading, spacing: 8) {
                                 if let latest = draft.conflict {
                                     Text("Latest content").font(.system(size: 13))
                                     Text(latest.text ?? "").textSelection(.enabled)
-                                    Text(MemoryDate.beijingLabel(latest.occurredAt)).font(.system(size: 13))
                                     Button("Use latest version") { draft = MemoryPaperDraft(latest); message = nil }
                                     Button("Keep my draft") { draft.item = latest; draft.conflict = nil; draft.unresolved = false; message = "Review your draft before saving again." }
                                 } else {
@@ -104,7 +89,7 @@ struct DaySpaceMemoryDetail: View {
         defer { if !committed.isEmpty { onSaved(committed) } }
         for index in drafts.indices where drafts[index].dirty {
             do {
-                let updated = try await appModel.api.updateMemory(item: drafts[index].item, text: drafts[index].text, occurredAt: drafts[index].date)
+                let updated = try await appModel.api.updateMemory(item: drafts[index].item, text: drafts[index].text, occurredAt: MemoryDate.parse(drafts[index].item.occurredAt))
                 drafts[index] = MemoryPaperDraft(updated)
                 committed.append(updated)
             } catch LeileiAPIError.backend(let status, _, _) where status == 409 {

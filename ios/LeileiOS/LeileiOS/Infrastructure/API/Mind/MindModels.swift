@@ -93,14 +93,6 @@ struct MemoryUpdateBody: Encodable {
 }
 
 enum MemoryDate {
-    static func beijingLabel(_ value: String?) -> String {
-        guard let date = parse(value) else { return "No date" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
-        formatter.dateFormat = "yyyy.MM.dd HH:mm"
-        return formatter.string(from: date)
-    }
     static func parse(_ value: String?) -> Date? {
         guard let value else { return nil }
         let formatter = ISO8601DateFormatter()
