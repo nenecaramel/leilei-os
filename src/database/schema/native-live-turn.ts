@@ -221,11 +221,23 @@ export const nativeLiveTurnPreparations = pgTable(
     ),
     check(
       "native_live_turn_preparations_dispatch_reservation_consistency",
-      sql`(${table.dispatchStatus} IN ('staged', 'pending', 'rejected')
+      sql`(${table.dispatchStatus} IN ('staged', 'pending')
           AND ${table.reservedBy} IS NULL
           AND ${table.reservedAt} IS NULL
           AND ${table.reservationExpiresAt} IS NULL
           AND ${table.executionStartedAt} IS NULL)
+        OR (${table.dispatchStatus} = 'rejected'
+          AND ${table.reservedBy} IS NULL
+          AND ${table.reservedAt} IS NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.executionStartedAt} IS NULL
+          AND ${table.dispatchErrorCode} IS DISTINCT FROM 'FINALIZE_CONFLICT')
+        OR (${table.dispatchStatus} = 'rejected'
+          AND ${table.reservedBy} IS NOT NULL
+          AND ${table.reservedAt} IS NOT NULL
+          AND ${table.reservationExpiresAt} IS NULL
+          AND ${table.executionStartedAt} IS NOT NULL
+          AND ${table.dispatchErrorCode} IS NOT DISTINCT FROM 'FINALIZE_CONFLICT')
         OR (${table.dispatchStatus} = 'reserved'
           AND ${table.reservedBy} IS NOT NULL
           AND ${table.reservedAt} IS NOT NULL
