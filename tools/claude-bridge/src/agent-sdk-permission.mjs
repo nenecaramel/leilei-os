@@ -181,10 +181,6 @@ export function trustedNativeLiveToolPolicy(
     return "leileios_read";
   }
 
-  if (toolName === "mcp__leileios_memes__send_meme") {
-    return "leileios_memes";
-  }
-
   if (toolName === "mcp__leileios_local__send_file") {
     return "leileios_local_send_file";
   }

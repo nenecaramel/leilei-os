@@ -3,10 +3,6 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { NativeLiveMacResultOutbox } from "../src/domains/bridge/mac/native-live-mac-result-outbox.js";
-import {
-  consumeNativeLiveMacMemeGitHubConfig,
-  NativeLiveMacMemeSender,
-} from "../src/domains/bridge/mac/native-live-mac-meme-sender.js";
 import "dotenv/config";
 import {
   NativeLiveMacDaemonLoop,
@@ -100,9 +96,6 @@ await cleanupOrphanedLocalCheckpointForks({
     }) + "\n",
   );
 });
-
-const memeGitHubConfig =
-  consumeNativeLiveMacMemeGitHubConfig(process.env);
 
 const {
   relayBaseUrl,
@@ -221,10 +214,6 @@ const executor = new NativeLiveMacRuntimeExecutor(
       }) + "\n",
     );
   },
-  new NativeLiveMacMemeSender(
-    outputAttachmentSender,
-    memeGitHubConfig,
-  ),
 );
 const backgroundModelExecutor =
   new NativeLiveMacBackgroundModelExecutor(runtime);

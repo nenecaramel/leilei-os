@@ -69,6 +69,8 @@ test("Mac daemon strips LeileiOS credentials from Claude Code environment", () =
       LEILEI_NATIVE_LIVE_RELAY_TOKEN: "relay-secret",
       NATIVE_LIVE_RELAY_AUTH_TOKEN: "railway-relay-secret",
       MCP_AUTH_TOKEN: "broad-mcp-secret",
+      LEILEI_MEME_GITHUB_TOKEN: "retired-secret",
+      LEILEI_MEME_GH_PATH: "/old/gh",
       SAFE_FLAG: "visible",
     }),
     {
