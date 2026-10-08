@@ -103,12 +103,15 @@ test("PostToolUse accepts validated receipts for configured and dynamic connecto
   const dynamicTool = "mcp__d9e79932-abcd_5432__write_memory";
   const ID3 = "33333333-3333-4333-8333-333333333333";
   await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: dynamicTool, tool_response: {structuredContent: receipt(ID3)}});
+  // Some connector hosts pass a whole JSON receipt as a string, not structuredContent.
+  const ID4 = "44444444-4444-4444-8444-444444444444";
+  await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: dynamicTool, tool_response: JSON.stringify(receipt(ID4))});
   for (const tool_name of ["mcp__Other__write_diary", "mcp__Other__write_memory_extra", "mcp__write_memory", "not_mcp__Other__write_memory"]) {
-    await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name, tool_response: receipt("44444444-4444-4444-8444-444444444444")});
+    await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name, tool_response: receipt("55555555-5555-4555-8555-555555555555")});
   }
-  assert.deepEqual((await f.state())[0].written_ids, [ID, ID2, ID3]);
+  assert.deepEqual((await f.state())[0].written_ids, [ID, ID2, ID3, ID4]);
   await runHook(prompt(), async () => undefined);
-  assert.deepEqual(new Set(f.calls[0].exclude_ids), new Set([ID, ID2, ID3]));
+  assert.deepEqual(new Set(f.calls[0].exclude_ids), new Set([ID, ID2, ID3, ID4]));
   for (const response of [{success: false, data: receipt().data}, {isError: true, structuredContent: receipt()}, "not json", {...receipt(), data: {...receipt().data, outcome: "no_op"}}]) assert.equal(writtenMemoryId(response), null);
 });
 
