@@ -16,42 +16,55 @@ export function contextHashMatches(content, expected) {
     (sha256(content) === expected || (content.endsWith("</leileios_context>\n") && sha256(content.slice(0, -1)) === expected));
 }
 
-async function readTranscriptOnce(path, sessionId) {
+async function readTranscriptOnce(path, sessionId, identity) {
   let file;
   try {
-    file = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const stat = await file.stat();
-    if (!stat.isFile()) return {status: "rejected"};
-    const start = Math.max(0, stat.size - MAX_TRANSCRIPT_BYTES);
-    const buffer = Buffer.alloc(stat.size - start);
+    const before = await fs.lstat(path, {bigint: true});
+    if (!before.isFile() || identity && (before.dev !== identity.dev || before.ino !== identity.ino || before.size < identity.size)) return {status: "rejected"};
+    file = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const stat = await file.stat({bigint: true});
+    if (!stat.isFile() || stat.dev !== before.dev || stat.ino !== before.ino || stat.size < before.size) return {status: "rejected"};
+    const size = Number(stat.size);
+    if (!Number.isSafeInteger(size)) return {status: "rejected"};
+    const start = Math.max(0, size - MAX_TRANSCRIPT_BYTES);
+    const buffer = Buffer.alloc(size - start);
     const {bytesRead} = await file.read(buffer, 0, buffer.length, start);
-    const after = await file.stat();
+    const after = await file.stat({bigint: true});
+    const named = await fs.lstat(path, {bigint: true});
+    if (!named.isFile() || named.dev !== stat.dev || named.ino !== stat.ino || after.size < stat.size || named.size < stat.size) return {status: "rejected"};
     // Claude Desktop appends several records around UserPromptSubmit. A changing
     // file is a transient snapshot race, not evidence that the transcript is bad.
-    if (bytesRead !== buffer.length || stat.size !== after.size || stat.mtimeMs !== after.mtimeMs) {
-      return {status: "transient"};
+    if (bytesRead !== buffer.length || stat.size !== after.size
+      || stat.mtimeNs !== after.mtimeNs || stat.ctimeNs !== after.ctimeNs
+      || after.size !== named.size || after.mtimeNs !== named.mtimeNs || after.ctimeNs !== named.ctimeNs) {
+      return {status: "transient", identity: named};
     }
-    let text = buffer.toString("utf8");
-    if (start) {
-      const newline = text.indexOf("\n");
-      if (newline < 0) return {status: "rejected"};
-      text = text.slice(newline + 1);
+    // Trim the potentially partial first line as bytes, before strict decoding.
+    const newline = start ? buffer.indexOf(10) : -1;
+    if (start && newline < 0) return {status: "rejected"};
+    const bytes = start ? buffer.subarray(newline + 1) : buffer;
+    const lines = []; let offset = 0;
+    for (let index = 0; index < bytes.length; index++) {
+      if (bytes[index] === 10) {
+        lines.push(bytes.subarray(offset, index)); offset = index + 1;
+        if (lines.length >= 20000) return {status: "rejected"};
+      }
     }
-    const lines = text.split("\n");
+    lines.push(bytes.subarray(offset));
     if (lines.length > 20000) return {status: "rejected"};
     const records = new Map(); let head = null;
-    const trailingPartial = !text.endsWith("\n");
+    const trailingPartial = bytes.length > 0 && bytes.at(-1) !== 10;
+    const decoder = new TextDecoder("utf-8", {fatal: true, ignoreBOM: true});
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
-      if (!line) continue;
-      if (Buffer.byteLength(line) > MAX_LINE_BYTES) return {status: "rejected"};
+      if (!line.length) continue;
+      if (line.length > MAX_LINE_BYTES) return {status: "rejected"};
       let record;
-      try {
-        record = JSON.parse(line);
-      } catch {
-        // Only an incomplete final line can be caused by a concurrent append.
-        // Corruption anywhere else remains fail-closed.
-        if (trailingPartial && index === lines.length - 1) return {status: "transient"};
+      try { record = JSON.parse(decoder.decode(line)); }
+      catch {
+        // A partial UTF-8/JSON tail may complete. Never accept repaired bytes or
+        // ignore invalid data; corruption in a newline-terminated line is fatal.
+        if (trailingPartial && index === lines.length - 1) return {status: "transient", identity: stat};
         return {status: "rejected"};
       }
       if (!record || typeof record !== "object") return {status: "rejected"};
@@ -60,7 +73,7 @@ async function readTranscriptOnce(path, sessionId) {
       if (records.has(record.uuid)) return {status: "rejected"};
       records.set(record.uuid, record); head = record.uuid;
     }
-    return {status: "ok", value: {records, head}};
+    return {status: "ok", identity: stat, value: {records, head}};
   } catch {
     return {status: "rejected"};
   } finally {
@@ -68,15 +81,25 @@ async function readTranscriptOnce(path, sessionId) {
   }
 }
 
-export async function readTranscript(path, sessionId) {
+// One attempt budget per public operation: boundary retries do not multiply
+// snapshot retries. Pin the inode throughout; replacement is never a retry.
+async function readWithRetries(path, sessionId, attempts, evaluate) {
   if (typeof path !== "string" || !path || path.length > 4096) return null;
-  for (let attempt = 0; attempt < READ_ATTEMPTS; attempt++) {
-    const result = await readTranscriptOnce(path, sessionId);
-    if (result.status === "ok") return result.value;
+  let identity;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const result = await readTranscriptOnce(path, sessionId, identity);
     if (result.status === "rejected") return null;
-    if (attempt + 1 < READ_ATTEMPTS) await sleep(RETRY_DELAY_MS);
+    identity = result.identity;
+    if (result.status === "ok") {
+      const decision = evaluate(result.value);
+      if (decision.done) return decision.value;
+    }
+    if (attempt + 1 < attempts) await sleep(RETRY_DELAY_MS);
   }
   return null;
+}
+export async function readTranscript(path, sessionId) {
+  return readWithRetries(path, sessionId, READ_ATTEMPTS, value => ({done: true, value}));
 }
 
 function isPrompt(record) {
@@ -97,17 +120,16 @@ export function currentTurn(transcript) {
   return null;
 }
 export async function promptAnchor(path, sessionId, prompt) {
-  // UserPromptSubmit can fire just before Desktop has finished appending the
-  // current prompt record. Retry that boundary briefly instead of permanently
-  // storing a null turn_anchor from a transiently stale snapshot.
-  for (let attempt = 0; attempt < BOUNDARY_ATTEMPTS; attempt++) {
-    const turn = currentTurn(await readTranscript(path, sessionId));
+  return readWithRetries(path, sessionId, BOUNDARY_ATTEMPTS, transcript => {
+    const turn = currentTurn(transcript);
+    if (!turn && transcript.head) return {done: true, value: null};
     const content = turn?.prompt.message.content;
     const text = typeof content === "string" ? content : Array.isArray(content) ? content.filter(b => b.type === "text").map(b => b.text).join("\n") : null;
-    if (text === prompt) return turn.prompt.uuid;
-    if (attempt + 1 < BOUNDARY_ATTEMPTS) await sleep(RETRY_DELAY_MS);
-  }
-  return null;
+    // A predecessor with downstream activity is not this submission, even if
+    // the user repeated exactly the same text. Wait for the new prompt itself.
+    if (turn?.chain.length === 1 && text === prompt) return {done: true, value: turn.prompt.uuid};
+    return {done: false};
+  });
 }
 export async function provesDelivery(path, sessionId, pending) {
   if (!pending.turn_anchor) return false;
@@ -123,16 +145,12 @@ export async function provesDelivery(path, sessionId, pending) {
 // summary alone precedes other possible continuation paths and is not finality.
 export async function provesFinalizedDelivery(path, sessionId, pending, nextPrompt = false, requireDuration = false) {
   if (!pending.turn_anchor) return false;
-  let transcript; let turn;
-  // On the next-prompt boundary, Desktop can invoke this hook before the new
-  // user record is visible in the JSONL. Treat "still on the prior prompt" as
-  // transient for a short bounded window; all safety failures below stay strict.
-  for (let attempt = 0; attempt < (nextPrompt ? BOUNDARY_ATTEMPTS : 1); attempt++) {
-    transcript = await readTranscript(path, sessionId);
-    turn = currentTurn(transcript);
-    if (!nextPrompt || turn && turn.prompt.uuid !== pending.turn_anchor) break;
-    if (attempt + 1 < BOUNDARY_ATTEMPTS) await sleep(RETRY_DELAY_MS);
-  }
+  const transcript = await readWithRetries(path, sessionId, nextPrompt ? BOUNDARY_ATTEMPTS : READ_ATTEMPTS, snapshot => {
+    const turn = currentTurn(snapshot);
+    if (!turn && snapshot.head) return {done: true, value: null};
+    return {done: !nextPrompt || !!turn && turn.prompt.uuid !== pending.turn_anchor, value: snapshot};
+  });
+  let turn = currentTurn(transcript);
   if (nextPrompt) {
     if (!turn || turn.prompt.uuid === pending.turn_anchor) return false;
     turn = currentTurn({...transcript, head: turn.prompt.parentUuid});
