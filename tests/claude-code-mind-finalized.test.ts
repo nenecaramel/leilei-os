@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -24,7 +24,7 @@ const summary = (parentUuid = attachmentId, feedback = "", uuid = randomUUID()) 
 const duration = (parentUuid) => ({type: "system", subtype: "turn_duration", durationMs: 100, uuid: randomUUID(), parentUuid, sessionId: "s", isSidechain: false});
 const jsonl = records => records.map(r => JSON.stringify(r)).join("\n") + "\n";
 
-async function fixture(t) {
+async function fixture(t, diagnostics = false) {
   const home = await mkdtemp(join(tmpdir(), "mind-v2-hook-test-")); const transcript = join(home, "transcript.jsonl");
   await writeFile(transcript, jsonl([message()]));
   const calls: {path: string; body: any}[] = []; let available: boolean | null = true, hit = true, loseAck = false, recallDelay = 0; const applied = new Set<string>();
@@ -47,7 +47,7 @@ async function fixture(t) {
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const a = server.address(); assert.ok(a && typeof a !== "string");
-  await writeFile(join(home, "mind.env"), `LEILEI_MIND_RECALL_URL=http://127.0.0.1:${a.port}\nLEILEI_MIND_RECALL_TOKEN=test-secret\n`, {mode: 0o600});
+  await writeFile(join(home, "mind.env"), `LEILEI_MIND_RECALL_URL=http://127.0.0.1:${a.port}\nLEILEI_MIND_RECALL_TOKEN=test-secret\n${diagnostics ? "LEILEI_MIND_DIAGNOSTICS=1\\n" : ""}`, {mode: 0o600});
   const old = process.env.LEILEI_MIND_HOME; process.env.LEILEI_MIND_HOME = home;
   t.after(async () => {if (old === undefined) delete process.env.LEILEI_MIND_HOME; else process.env.LEILEI_MIND_HOME = old;
     server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); await rm(home, {recursive: true, force: true});});
@@ -112,6 +112,56 @@ test("confirm network failure retains pending but a later prompt retires it; loc
   await writeFile(await f.file(), JSON.stringify(state)); await f.accept();
   assert.equal(f.calls.filter(c => c.path.endsWith("/confirm")).length, 1);
   await runHook({hook_event_name: "SessionStart", session_id: "s", source: "resume"}); assert.deepEqual((await f.state()).pending_recalls, []);
+});
+
+test("Desktop pre-prompt attachments preserve the current prompt anchor", async t => {
+  const prompt = message();
+  const deferred = {type: "attachment", uuid: randomUUID(), parentUuid: prompt.uuid,
+    sessionId: "s", timestamp: new Date().toISOString(), attachment: {type: "deferred_tools_delta"}};
+  const reminder = {type: "attachment", uuid: randomUUID(), parentUuid: deferred.uuid,
+    sessionId: "s", timestamp: new Date().toISOString(), attachment: {type: "total_tokens_reminder"}};
+  const clock = {type: "attachment", uuid: randomUUID(), parentUuid: reminder.uuid,
+    sessionId: "s", timestamp: new Date().toISOString(), attachment: {type: "hook_success",
+      hookEvent: "UserPromptSubmit", hookName: "time", exitCode: 0, content: "time only"}};
+  const f = await fixture(t);
+  await writeFile(f.transcript, jsonl([prompt, deferred, reminder, clock]));
+  assert.equal(await promptAnchor(f.transcript, "s", "tea"), prompt.uuid);
+  await f.submit();
+  assert.equal((await f.state()).pending_recalls[0].turn_anchor, prompt.uuid);
+});
+
+test("completed identical-text predecessor with assistant/Stop is never the new prompt anchor", async t => {
+  const f = await fixture(t);
+  await writeFile(f.transcript, jsonl([message(), attachment(), {
+    type: "assistant", uuid: randomUUID(), parentUuid: attachmentId, sessionId: "s",
+    message: {role: "assistant", content: [{type: "text", text: "response"}]},
+  }]));
+  assert.equal(await promptAnchor(f.transcript, "s", "tea"), null);
+  await writeFile(f.transcript, jsonl([message(), attachment(), summary()]));
+  assert.equal(await promptAnchor(f.transcript, "s", "tea"), null);
+});
+
+test("opt-in reason diagnostics are 0600 and contain only fixed codes, not user data", async t => {
+  const f = await fixture(t, true);
+  const diagnosticPath = join(f.home, "finalization-reasons.jsonl");
+  await f.submit(); // no previous pending
+  await f.accept(); // pending exists, but no clean Stop summary yet
+  const lines = (await readFile(diagnosticPath, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  assert.deepEqual(lines.map(({event, reason}) => [event, reason]), [
+    ["UserPromptSubmit", "no_pending"], ["Notification", "no_summary"],
+  ]);
+  for (const item of lines) assert.deepEqual(Object.keys(item).sort(), ["event", "reason", "ts"]);
+  assert.equal((await stat(diagnosticPath)).mode & 0o077, 0);
+  const persisted = await readFile(diagnosticPath, "utf8");
+  for (const sensitive of [context, recallToken, memoryId, digest, "test-secret", "tea"]) {
+    assert.equal(persisted.includes(sensitive), false);
+  }
+});
+
+test("reason diagnostics are disabled unless explicitly enabled", async t => {
+  const f = await fixture(t);
+  await f.submit(); await f.accept();
+  await assert.rejects(readFile(join(f.home, "finalization-reasons.jsonl"), "utf8"), {code: "ENOENT"});
 });
 
 test("promptAnchor waits for a partially appended Desktop prompt record", async t => {
