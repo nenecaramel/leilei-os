@@ -8,6 +8,7 @@ import {
   readSubjectStateRecallContext,
   removeRecallReinforcementSources,
   MemoryLifecycleService,
+  forgottenSubjectStatePayload,
   type MemoryLifecyclePolicy,
 } from "../src/domains/runtime/lifecycle/memory-lifecycle.js";
 
@@ -188,6 +189,15 @@ test("legacy archived Memory stays intact and is reactivated by decay", () => {
   assert.equal(restored.lifecycle.status, "fading");
   assert.equal(restored.lifecycle.archivedAt, null);
   assert.equal(restored.nextPayload.semantic_detail, "preserve this");
+});
+
+test("legacy content-scrubbing helper is disabled", () => {
+  assert.throws(() => forgottenSubjectStatePayload({
+    status: "forgotten", salience: 0, protected: false,
+    lastDecayedAt: "2026-09-21T00:00:00.000Z",
+    lastRecalledAt: null, archivedAt: "2026-09-20T00:00:00.000Z",
+    forgottenAt: "2026-09-21T00:00:00.000Z",
+  }), /content scrubbing are disabled/);
 });
 
 test("legacy forgotten tombstones cannot be purged", () => {
