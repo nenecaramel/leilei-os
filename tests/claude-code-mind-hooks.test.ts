@@ -65,7 +65,7 @@ function childHook(home, input, leaveStdinOpen = false) {
   });
 }
 
-test("same epoch excludes both injected and written IDs; resumed sessions keep their epoch", async t => {
+test("same epoch excludes only written IDs; rewind/resume can retrieve prior injected memories", async t => {
   const f = await fixture(t); let output = "";
   await runHook({hook_event_name: "SessionStart", session_id: "s", source: "startup"});
   const epoch = (await f.state())[0].epoch;
@@ -73,10 +73,10 @@ test("same epoch excludes both injected and written IDs; resumed sessions keep t
   await runHook({hook_event_name: "PostToolUse", session_id: "s", tool_name: TOOL, tool_response: {structuredContent: receipt(ID2)}});
   await runHook({hook_event_name: "SessionStart", session_id: "s", source: "resume"});
   await runHook(prompt(), async s => {output += s;});
-  assert.equal(output, `${CONTEXT}\n`);
-  assert.deepEqual(new Set(f.calls[1].exclude_ids), new Set([ID, ID2]));
+  assert.equal(output, `${CONTEXT}\n${CONTEXT}\n`);
+  assert.deepEqual(new Set(f.calls[1].exclude_ids), new Set([ID2]));
   const state = (await f.state())[0]; assert.equal(state.epoch, epoch);
-  assert.deepEqual(state.injected_ids, [ID]); assert.deepEqual(state.written_ids, [ID2]);
+  assert.deepEqual(state.injected_ids, []); assert.deepEqual(state.written_ids, [ID2]);
 });
 
 test("compact, clear and fork each reset epoch; changed session IDs need no parent lookup", async t => {
@@ -185,6 +185,15 @@ test("installer preserves independent time hook and other settings, is idempoten
   await install({claudeHome: home, serverName: "LeileiOS"});
   assert.deepEqual(JSON.parse(await readFile(join(home, "settings.json"), "utf8")), first);
   assert.throws(() => configureHooks(original, {home, serverName: "bad|wildcard"}));
+});
+
+test("fresh installer produces a working standalone hook without transcript parser dependency",async t=>{
+  const f=await fixture(t);const claudeHome=join(f.home,"fresh-claude");await mkdir(claudeHome);
+  const installed=await install({claudeHome,serverName:"LeileiOS"});
+  await writeFile(join(installed,"mind.env"),envContent(f.config),{mode:0o600});
+  const result=await childHook(installed,prompt());
+  assert.equal(result.status,0);assert.equal(result.stdout,`${CONTEXT}\n`);assert.equal(result.stderr,"");
+  await assert.rejects(readFile(join(installed,"transcript.mjs")),{code:"ENOENT"});
 });
 
 test("Native Live managed SDK hooks skip recall and state access", async t => {

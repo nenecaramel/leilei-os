@@ -1,4 +1,3 @@
-import { promptAnchor, provesFinalizedDelivery } from "./transcript.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { constants, promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -16,9 +15,8 @@ const validSignedToken = token => typeof token === "string" && token.length >= 8
 const root = () => process.env.LEILEI_MIND_HOME || join(homedir(), ".claude", "leileios-mind");
 const hash = value => createHash("sha256").update(value).digest("hex");
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const DIAGNOSTIC_REASONS = new Set(["no_pending", "no_anchor", "read_rejected", "read_transient_exhausted",
-  "turn_mismatch", "no_summary", "summary_unclean", "hash_mismatch", "confirm_http"]);
-const DIAGNOSTIC_EVENTS = new Set(["UserPromptSubmit", "Notification", "SessionEnd"]);
+const DIAGNOSTIC_REASONS = new Set(["no_pending", "turn_mismatch", "receipt_expired", "confirm_http", "budget_exhausted"]);
+const DIAGNOSTIC_EVENTS = new Set(["Stop"]);
 
 // Opt-in only: emit bounded reason codes, never prompt, tokens, IDs, hashes,
 // transcript content, or other request/response data.
@@ -76,7 +74,10 @@ function validState(state) {
       (p.recall_token === undefined || validSignedToken(p.recall_token)) &&
       UUID.test(p.epoch) && UUID.test(p.turn_id) &&
       Number.isInteger(p.context_epoch) && p.context_epoch >= 0 && p.context_epoch <= 2147483647 &&
-      Number.isFinite(p.delivered_at) && (p.turn_anchor === null || typeof p.turn_anchor === "string" && p.turn_anchor.length <= 256) &&
+      Number.isFinite(p.issued_at ?? p.delivered_at) &&
+      (p.issued_at === undefined || Number.isFinite(p.issued_at)) &&
+      (p.delivered_at === undefined || Number.isFinite(p.delivered_at)) &&
+      (p.turn_anchor === undefined || p.turn_anchor === null || typeof p.turn_anchor === "string" && p.turn_anchor.length <= 256) &&
       Array.isArray(p.memory_ids) && p.memory_ids.length > 0 && p.memory_ids.length <= 4 && p.memory_ids.every(id => UUID.test(id))) &&
     Array.isArray(state.injected_ids) && Array.isArray(state.written_ids) &&
     state.injected_ids.length + state.written_ids.length <= MAX_SEEN &&
@@ -112,7 +113,7 @@ async function withState(config, sessionId, operation) {
       state = JSON.parse(await fs.readFile(file, "utf8"));
       if (state?.version === 1) state = {...state, version: 2, context_epoch: 0, active_turn: null, pending_recalls: []};
       if (!validState(state)) throw new Error("Invalid state.");
-      state.pending_recalls = state.pending_recalls.filter(p => Date.now() - p.delivered_at < 86400000);
+      state.pending_recalls = state.pending_recalls.filter(p => Date.now() - (p.issued_at ?? p.delivered_at) < 86400000);
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       state = freshState(); isNew = true;
@@ -225,10 +226,54 @@ async function semanticScores(config, query, candidates) {
   });
 }
 
+// Weak host signal only: Stop does not prove accepted completion or memory use.
+async function acknowledgeStop(config, sessionId, invocationStarted) {
+  let request, pending, fence; let reason = "no_pending";
+  try {
+    await withState(config, sessionId, async state => {
+      pending = state.pending_recalls.find(p => p.epoch === state.epoch && p.turn_id === state.active_turn && p.context_epoch === state.context_epoch);
+      if (!pending) return;
+      const issuedAt = pending.issued_at ?? pending.delivered_at;
+      if (issuedAt > Date.now() || Date.now() - issuedAt >= 86400000) { reason = "receipt_expired"; return; }
+      const remaining = HOOK_DEADLINE_MS - (Date.now() - invocationStarted) - DELIVERY_RESERVE_MS;
+      if (remaining < 1200) { reason = "budget_exhausted"; return; }
+      fence = {epoch: state.epoch, active_turn: state.active_turn, context_epoch: state.context_epoch};
+      pending = structuredClone(pending); reason = null;
+      // Dispatch after the locked consistency check, but never await HTTP here.
+      request = fetch(`${config.url}/internal/mind/recall/confirm`, {
+        method: "POST", redirect: "error", signal: AbortSignal.timeout(Math.min(1200, remaining)),
+        headers: {authorization: `Bearer ${config.token}`, "content-type": "application/json"},
+        body: JSON.stringify({recall_id: pending.recall_id,
+          ...(pending.recall_token ? {recall_token: pending.recall_token} : {}),
+          context_sha256: pending.context_sha256, caller: "claude_code"}),
+      });
+      request.catch(() => undefined);
+    });
+    if (request) {
+      const response = await request;
+      if (!response.ok) { reason = "confirm_http"; await response.body?.cancel(); }
+      else {
+        const result = await readResponse(response, 2000);
+        if (result.success !== true || result.data?.recall_id !== pending.recall_id || !["confirmed", "replayed"].includes(result.data?.outcome)) reason = "confirm_http";
+        else await withState(config, sessionId, async (state, save) => {
+          if (state.epoch !== fence.epoch || state.context_epoch !== fence.context_epoch || state.active_turn !== fence.active_turn) {
+            reason = "turn_mismatch"; return;
+          }
+          // Never overwrite a newer turn or clear its newly generated receipt.
+          if (state.pending_recalls.some(p => p.recall_id === pending.recall_id && p.context_sha256 === pending.context_sha256)) {
+            state.pending_recalls = state.pending_recalls.filter(p => p.recall_id !== pending.recall_id); await save(state);
+          }
+        });
+      }
+    }
+  } catch { reason = "confirm_http"; }
+  await recordDiagnostic(config, "Stop", reason);
+}
+
 export async function runHook(input, output = text => new Promise((resolve, reject) => process.stdout.write(text, error => error ? reject(error) : resolve()))) {
   const invocationStarted = Date.now();
   if (process.env.LEILEI_MIND_HOOK_DISABLED === "1" ||
-      (input?.agent_id && ["Stop", "StopFailure", "Notification", "SessionEnd"].includes(input.hook_event_name))) return;
+      (input?.agent_id && ["UserPromptSubmit", "Stop", "StopFailure", "Notification", "SessionEnd"].includes(input.hook_event_name))) return;
   if (!input || typeof input.session_id !== "string" || !input.session_id || input.session_id.length > 256) return;
   const config = await readConfig();
   if (input.hook_event_name === "SessionStart") {
@@ -247,66 +292,22 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     });
     return;
   }
-  // No synchronous Stop callback can know what its parallel peers will decide.
-  // Keep it registered so Claude writes an aggregate even with no other Stop hooks.
-  if (input.hook_event_name === "Stop") return;
+  if (input.hook_event_name === "Stop") {
+    await acknowledgeStop(config, input.session_id, invocationStarted); return;
+  }
   if (input.hook_event_name === "StopFailure") {
     await withState(config, input.session_id, async (state, save) => {
-      state.pending_recalls = []; await save(state);
+      state.active_turn = null; state.pending_recalls = []; await save(state);
     });
     return;
   }
-  const nextPrompt = input.hook_event_name === "UserPromptSubmit";
-  const completedBoundary = nextPrompt || input.hook_event_name === "SessionEnd" ||
-    (input.hook_event_name === "Notification" && input.notification_type === "idle_prompt");
-  if (completedBoundary) {
-    // A directly-following next prompt is itself the desktop completion boundary once
-    // the previous turn ends at a clean aggregate. SessionEnd remains conservative.
-    const requireDuration = input.hook_event_name === "SessionEnd";
-    const snapshot = await withState(config, input.session_id, async state => structuredClone(state));
-    const pending = snapshot.pending_recalls.find(p => p.epoch === snapshot.epoch && p.turn_id === snapshot.active_turn && p.context_epoch === snapshot.context_epoch);
-    let reason = pending ? null : "no_pending";
-    const proof = pending && await provesFinalizedDelivery(input.transcript_path, input.session_id, pending,
-      nextPrompt, requireDuration, value => { reason = value; });
-    if (proof) await withState(config, input.session_id, async (state, save) => {
-      if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn ||
-          !state.pending_recalls.some(p => p.recall_id === pending.recall_id)) {
-        reason = "turn_mismatch"; return;
-      }
-      if (!(await provesFinalizedDelivery(input.transcript_path, input.session_id, pending,
-          nextPrompt, requireDuration, value => { reason = value; }))) return;
-      const response = await fetch(`${config.url}/internal/mind/recall/confirm`, {
-        method: "POST", redirect: "error", signal: AbortSignal.timeout(1200),
-        headers: {authorization: `Bearer ${config.token}`, "content-type": "application/json"},
-        body: JSON.stringify({
-          recall_id: pending.recall_id,
-          ...(pending.recall_token ? {recall_token: pending.recall_token} : {}),
-          context_sha256: pending.context_sha256,
-          caller: "claude_code",
-        }),
-      });
-      // Confirm has a tiny response; status alone is not enough to consume local metadata.
-      if (!response.ok) { reason = "confirm_http"; await response.body?.cancel(); return; }
-      const result = await readResponse(response, 2000);
-      if (result.success !== true || result.data?.recall_id !== pending.recall_id || !["confirmed", "replayed"].includes(result.data?.outcome)) {
-        reason = "confirm_http"; return;
-      }
-      state.pending_recalls = state.pending_recalls.filter(p => p.recall_id !== pending.recall_id);
-      await save(state);
-    }).catch(() => { reason ||= "confirm_http"; }); // Failure must not suppress the next prompt's recall.
-    await recordDiagnostic(config, input.hook_event_name, reason);
-    if (!nextPrompt) return;
-  }
   if (input.hook_event_name !== "UserPromptSubmit" || typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 16000) return;
   const snapshot = await withState(config, input.session_id, async (state, save) => {
-    // A new prompt retires all unconfirmed prior turns, including interrupted ones.
-    state.active_turn = randomUUID(); state.pending_recalls = []; await save(state); return structuredClone(state);
+    // Rewind/resend needs no event detection. No previous delivery blocks recall.
+    state.active_turn = randomUUID(); state.pending_recalls = []; state.injected_ids = [];
+    await save(state); return structuredClone(state);
   });
-  let anchorReason = null;
-  const turnAnchor = await promptAnchor(input.transcript_path, input.session_id, input.prompt,
-    value => { anchorReason = value; });
-  if (!turnAnchor) await recordDiagnostic(config, "UserPromptSubmit", anchorReason || "no_anchor");
-  const exclude = [...new Set([...snapshot.injected_ids, ...snapshot.written_ids])];
+  const exclude = [...new Set(snapshot.written_ids)];
   const body = {
     session_id: input.session_id,
     query: input.prompt,
@@ -315,7 +316,7 @@ export async function runHook(input, output = text => new Promise((resolve, reje
     context_epoch: snapshot.context_epoch,
     receipt_mode: "signed_v1",
   };
-  // A previous-turn confirm may already have spent 1.2s of this invocation.
+  // Stop accounting never consumes this invocation's retrieval budget.
   const firstTimeout = Math.min(2500, HOOK_DEADLINE_MS - DELIVERY_RESERVE_MS - (Date.now() - invocationStarted));
   if (firstTimeout <= 0) return;
   let data = await recall(config, body, firstTimeout);
@@ -334,15 +335,15 @@ export async function runHook(input, output = text => new Promise((resolve, reje
   if (!data.context || data.memory_ids.some(id => exclude.includes(id))) return;
   await withState(config, input.session_id, async (state, save) => {
     // Compact/fork or another hook may have changed the view while networking.
-    const seen = new Set([...state.injected_ids, ...state.written_ids]);
+    const seen = new Set(state.written_ids);
     if (state.epoch !== snapshot.epoch || state.active_turn !== snapshot.active_turn || data.memory_ids.some(id => seen.has(id))) return;
     if (seen.size + data.memory_ids.length > MAX_SEEN) return;
+    const issuedAt = Date.now();
     await output(`${data.context}\n`);
-    state.injected_ids = [...new Set([...state.injected_ids, ...data.memory_ids])];
     if (data.recall_id) state.pending_recalls = [{recall_id: data.recall_id, context_sha256: data.context_sha256,
       ...(data.recall_token ? {recall_token: data.recall_token} : {}),
       memory_ids: data.memory_ids, epoch: state.epoch, context_epoch: state.context_epoch,
-      turn_id: state.active_turn, turn_anchor: turnAnchor, delivered_at: Date.now()}];
+      turn_id: state.active_turn, issued_at: issuedAt}];
     await save(state);
   });
 }

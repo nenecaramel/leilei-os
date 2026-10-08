@@ -52,7 +52,7 @@ test("durable pending→confirm is atomic, zero-boost, idempotent, identity/expi
   assert.deepEqual(readSubjectStateRecallContext(finalized.payload), {conversationId: "claude-code:session", epoch: 7, sourceMessageId: r.id, recalledAt: r.recalledAt.toISOString()});
   const [unused] = await db.select().from(claudeCodeRecallReceipts).where(eq(claudeCodeRecallReceipts.id, first.recall_id!)); assert.equal(unused!.confirmedAt, null);
   await receiptPort.confirm(confirm); assert.deepEqual(await stored(), finalized);
-  const sameEpoch = await service.recall(input); assert.equal(sameEpoch.context, ""); assert.equal(sameEpoch.recall_id, undefined);
+  const sameEpoch = await service.recall(input); assert.deepEqual(sameEpoch.memory_ids, [state.id]); assert.ok(sameEpoch.recall_id);
   const afterCompact = await service.recall({...input, contextEpoch: 8}); assert.deepEqual(afterCompact.memory_ids, [state.id]);
   await db.update(claudeCodeRecallReceipts).set({recalledAt: new Date(Date.now() - 2 * 86400000), expiresAt: new Date(Date.now() - 86400000)})
     .where(eq(claudeCodeRecallReceipts.id, afterCompact.recall_id!));

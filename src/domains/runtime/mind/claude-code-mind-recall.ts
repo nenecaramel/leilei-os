@@ -24,10 +24,12 @@ export class ClaudeCodeMindRecallService {
     private readonly receipts: ClaudeCodeRecallReceiptPort,
   ) {
     const forbidden = async (): Promise<never> => { throw new Error("Read-only Mind adapter cannot write."); };
+    // Each external prompt is a fresh retrieval, including rewind/resend. Keep
+    // shared scoring weights; only disable the same-context cooldown exclusion.
     this.loop = new NativeLiveMindLoopService({
       list: input => reader.list(input), append: forbidden,
       transition: forbidden, saveContextManifest: forbidden,
-    }, config);
+    }, {...config, breathCooldownHours: 0});
   }
 
   async recall(input: ClaudeCodeRecallInput) {
