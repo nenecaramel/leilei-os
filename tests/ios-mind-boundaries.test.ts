@@ -12,7 +12,7 @@ test("Mind entry stays thin and opens the direct memory feed plus native compose
   assert.ok(source.trimEnd().split("\n").length <= 120, "MindView must remain a thin entry");
   assert.match(source, /struct MindView: View/);
   assert.match(source, /MindMemoryListView\(\)/);
-  assert.match(source, /\.sheet\(isPresented: \$addPresented\)/);
+  assert.match(source, /\.sheet\(isPresented: \$addPresented, onDismiss:/);
   assert.match(source, /MindManualEntrySheet\(\)/);
   assert.doesNotMatch(source, /MindProductKind\.allCases|MindKindDetailView|appModel\.api\.|func (?:reload|loadMore|save|delete|dateText)\b/);
 });
@@ -101,10 +101,16 @@ test("Mind iOS uses native search/composer and its own Memory editor design", ()
   assert.match(detail, /Image\(systemName: "ellipsis"\)/);
   assert.match(detail, /Button\("Delete", role: \.destructive\)/);
   assert.doesNotMatch(detail, /Image\(systemName: "trash"\)/);
-  assert.match(editor, /ScrollView \{/);
+  assert.match(editor, /Form \{/);
+  assert.match(editor, /\.formStyle\(\.grouped\)/);
+  assert.match(editor, /Section\("Mind"\)/);
+  assert.match(editor, /Section\("Time"\)/);
   assert.match(editor, /TextEditor\(text: \$text\)/);
   assert.match(editor, /DatePicker\(/);
-  assert.doesNotMatch(editor, /\bForm \{|\bSection\(/);
+  assert.match(editor, /Color\.settingsBackground/);
+  assert.doesNotMatch(editor, /ScrollView \{|RoundedRectangle/);
+  assert.equal((feed.match(/\.listStyle\(\.plain\)/g) ?? []).length, 2);
+  assert.doesNotMatch(feed, /\.listStyle\(\.insetGrouped\)/);
   assert.match(editor, /conflictUnresolved/);
   assert.match(editor, /Button\("Keep my draft"\)/);
 });
