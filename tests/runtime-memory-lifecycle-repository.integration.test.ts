@@ -12,7 +12,7 @@ import type { SubjectStateWrite } from "../src/domains/runtime/subject-state/sub
 const enabled = process.env.RUN_RUNTIME_LIFECYCLE_DATABASE_TEST === "1";
 
 test(
-  "Memory lifecycle persists protect/decay/archive then scrubs forgotten content and purges the tombstone",
+  "Memory lifecycle never forgets or purges and reactivates legacy archives",
   { skip: !enabled },
   async (t) => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -151,77 +151,49 @@ test(
 
     assert.equal(
       await lifecycle.archive({
-        userId,
-        subjectId: "G",
-        stateId,
-        at: "2026-09-25T01:00:00.000Z",
-      }),
-      true,
+        userId, subjectId: "G", stateId, at: "2026-09-25T01:00:00.000Z",
+      }), false,
     );
+
+    // The old archive flag must not block recall while the text remains.
+    await database.db.update(runtimeSubjectStates).set({
+      payload: {
+        ...(listed.payload ?? {}),
+        lifecycle_v1: {
+          ...((listed.payload?.lifecycle_v1 ?? {}) as Record<string, unknown>),
+          status: "archived",
+          archivedAt: t5,
+        },
+      },
+      updatedAt: new Date(),
+    }).where(eq(runtimeSubjectStates.id, stateId));
 
     [listed] = await subjectPort.list({
-      userId,
-      subjectId: "G",
-      conversationId: crypto.randomUUID(),
+      userId, subjectId: "G", conversationId: crypto.randomUUID(),
     });
     assert.ok(listed);
-
-    const recalled = recallBreath(
-      "lifecycle marker",
-      [listed],
-      {
-        userId,
-        subjectId: "G",
-        conversationId: crypto.randomUUID(),
-        currentPathMessageIds: new Set(),
-        limit: 5,
-      },
-    );
-    assert.deepEqual(recalled, []);
-
-    const forgetAt = "2026-09-26T02:00:00.000Z";
-    const forgot = await lifecycle.runOnce({
-      userId,
-      subjectId: "G",
-      now: forgetAt,
+    const recalled = recallBreath("lifecycle marker", [listed], {
+      userId, subjectId: "G", conversationId: crypto.randomUUID(),
+      currentPathMessageIds: new Set(), limit: 5,
     });
-    assert.equal(forgot.forgotten, 1);
+    assert.ok(recalled.length > 0, "legacy archived Memory remains eligible");
 
-    let [forgottenRow] = await database.db
-      .select({
-        text: runtimeSubjectStates.text,
-        payload: runtimeSubjectStates.payload,
-        validityStatus: runtimeSubjectStates.validityStatus,
-      })
-      .from(runtimeSubjectStates)
-      .where(eq(runtimeSubjectStates.id, stateId))
-      .limit(1);
-    assert.ok(forgottenRow);
-    assert.equal(forgottenRow.text, null);
-    assert.equal(forgottenRow.validityStatus, "tombstoned");
-    assert.deepEqual(Object.keys(forgottenRow.payload ?? {}), ["lifecycle_v1"]);
-    assert.equal(
-      (forgottenRow.payload?.lifecycle_v1 as { status?: unknown } | undefined)?.status,
-      "forgotten",
-    );
-
-    const purgeAt = "2026-09-27T02:00:00.000Z";
-    const purge = await lifecycle.runOnce({
-      userId,
-      subjectId: "G",
-      now: purgeAt,
+    const result = await lifecycle.runOnce({
+      userId, subjectId: "G", now: "2026-10-01T00:00:00.000Z",
     });
-    assert.equal(purge.purged, 1);
+    assert.equal(result.forgottenScanned, 0);
+    assert.equal(result.archived, 0);
+    assert.equal(result.forgotten, 0);
+    assert.equal(result.purged, 0);
 
-    [forgottenRow] = await database.db
-      .select({
-        text: runtimeSubjectStates.text,
-        payload: runtimeSubjectStates.payload,
-        validityStatus: runtimeSubjectStates.validityStatus,
-      })
-      .from(runtimeSubjectStates)
-      .where(eq(runtimeSubjectStates.id, stateId))
-      .limit(1);
-    assert.equal(forgottenRow, undefined);
+    const [persisted] = await database.db.select({
+      text: runtimeSubjectStates.text,
+      payload: runtimeSubjectStates.payload,
+      validityStatus: runtimeSubjectStates.validityStatus,
+    }).from(runtimeSubjectStates).where(eq(runtimeSubjectStates.id, stateId)).limit(1);
+    assert.ok(persisted);
+    assert.equal(persisted.text, "lifecycle marker");
+    assert.equal(persisted.validityStatus, "valid");
+    assert.equal((persisted.payload?.lifecycle_v1 as {status?: string})?.status, "fading");
   },
 );
