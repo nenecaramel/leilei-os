@@ -68,7 +68,7 @@ struct MindMemoryListView: View {
                         }
                     }
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .background(Color(.systemBackground))
                 .refreshable {
@@ -135,7 +135,7 @@ struct MindMemoryListView: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Color(.systemBackground))
             .refreshable { await searchIfNeeded(skipDelay: true) }

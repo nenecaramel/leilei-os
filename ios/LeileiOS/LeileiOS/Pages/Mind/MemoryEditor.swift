@@ -31,96 +31,85 @@ struct MemoryEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+            Form {
+                Section("Mind") {
                     TextEditor(text: $text)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 240)
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.secondarySystemGroupedBackground))
+                        .frame(minHeight: 120)
+                        .disabled(saving)
+                }
+
+                Section("Time") {
+                    Toggle("Occurred at", isOn: $hasDate)
+                        .disabled(saving)
+
+                    if hasDate {
+                        DatePicker(
+                            "Date",
+                            selection: $date
+                        )
+                        .environment(
+                            \.timeZone,
+                            TimeZone(identifier: "Asia/Shanghai")!
                         )
                         .disabled(saving)
-                        .accessibilityLabel("Memory text")
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Occurred")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        if hasDate {
-                            DatePicker(
-                                "Beijing time",
-                                selection: $date,
-                                displayedComponents: [.date, .hourAndMinute]
-                            )
-                            .environment(
-                                \.timeZone,
-                                TimeZone(identifier: "Asia/Shanghai")!
-                            )
-                            .datePickerStyle(.compact)
-                            .disabled(saving)
-                        } else {
-                            Button("Set occurred time") {
-                                hasDate = true
-                            }
-                            .disabled(saving)
-                        }
                     }
+                }
 
-                    if let message {
+                if let note = MindPresentation.normalized(item.note) {
+                    Section("Note") {
+                        Text(note)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                if let message {
+                    Section {
                         Text(message)
-                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
+                }
 
-                    if let conflict {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("Latest version")
-                                .font(.headline)
-                            Text(conflict.text ?? "")
-                                .textSelection(.enabled)
-                            Text(MindPresentation.dateText(conflict.occurredAt) ?? "No date")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Button("Use latest version") {
-                                item = conflict
-                                text = conflict.text ?? ""
-                                hasDate = conflict.occurredAt != nil
-                                date = MemoryDate.parse(conflict.occurredAt) ?? .now
-                                self.conflict = nil
-                                conflictUnresolved = false
-                                message = nil
-                            }
-                            .disabled(saving)
-                            Button("Keep my draft") {
-                                item = conflict
-                                self.conflict = nil
-                                conflictUnresolved = false
-                                message = "Review your draft before saving again."
-                            }
-                            .disabled(saving)
+                if let conflict {
+                    Section("Latest content") {
+                        Text(conflict.text ?? "")
+                            .textSelection(.enabled)
+                        Text(MindPresentation.dateText(conflict.occurredAt) ?? "No date")
+                            .foregroundStyle(.secondary)
+
+                        Button("Use latest version") {
+                            item = conflict
+                            text = conflict.text ?? ""
+                            hasDate = conflict.occurredAt != nil
+                            date = MemoryDate.parse(conflict.occurredAt) ?? .now
+                            self.conflict = nil
+                            conflictUnresolved = false
+                            message = nil
                         }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.secondarySystemGroupedBackground))
-                        )
-                    } else if conflictUnresolved {
+                        .buttonStyle(.borderless)
+                        .disabled(saving)
+
+                        Button("Keep my draft") {
+                            item = conflict
+                            self.conflict = nil
+                            conflictUnresolved = false
+                            message = "Review your draft before saving again."
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(saving)
+                    }
+                } else if conflictUnresolved {
+                    Section {
                         Button("Read latest version") {
                             Task { await readConflict() }
                         }
                         .disabled(saving)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
             }
-            .background(Color(.systemBackground))
-            .navigationTitle("Edit Memory")
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.settingsBackground)
+            .navigationTitle("Edit Mind")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -133,6 +122,7 @@ struct MemoryEditorSheet: View {
                     }
                     .disabled(saving)
                 }
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button(saving ? "Saving…" : "Done") {
                         Task { await save() }
@@ -149,11 +139,14 @@ struct MemoryEditorSheet: View {
                 isPresented: $confirmDiscard,
                 titleVisibility: .visible
             ) {
-                Button("Discard changes", role: .destructive) { dismiss() }
+                Button("Discard changes", role: .destructive) {
+                    dismiss()
+                }
                 Button("Keep editing", role: .cancel) {}
             }
             .interactiveDismissDisabled()
         }
+        .background(Color.settingsBackground)
     }
 
     @MainActor
