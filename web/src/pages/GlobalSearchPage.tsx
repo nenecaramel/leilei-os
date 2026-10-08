@@ -1,3 +1,4 @@
+import { decodeSearchSnapshot, keyOf, uniqueResults, groupGlobalSearchResults, type SearchSnapshot } from "./global-search-state";
 import {
   useEffect,
   useMemo,
@@ -46,61 +47,12 @@ type SearchResponse = {
 
 type SearchState = "idle" | "loading" | "ready" | "empty" | "error";
 
-type SearchSnapshot = {
-  version: 1;
-  url: string;
-  results: GlobalSearchResult[];
-  cursor: string | null;
-  scrollY: number;
-  focusKey: string | null;
-};
-
 type Props = {
   api: WebApiClient;
 };
 
-function keyOf(result: GlobalSearchResult): string {
-  return `${result.entity_type}:${result.entity_id}`;
-}
-
-function uniqueResults(results: GlobalSearchResult[]): GlobalSearchResult[] {
-  return [
-    ...new Map(results.map((result) => [keyOf(result), result])).values(),
-  ];
-}
-
 function readSnapshot(url: string): SearchSnapshot | null {
-  const candidate = window.history.state?.globalSearch as
-    | Partial<SearchSnapshot>
-    | undefined;
-
-  if (
-    !candidate ||
-    candidate.version !== 1 ||
-    candidate.url !== url ||
-    !Array.isArray(candidate.results)
-  ) {
-    return null;
-  }
-
-  if (
-    candidate.cursor !== null &&
-    typeof candidate.cursor !== "string"
-  ) {
-    return null;
-  }
-
-  if (
-    !Number.isFinite(candidate.scrollY) ||
-    (
-      typeof candidate.focusKey !== "string" &&
-      candidate.focusKey !== null
-    )
-  ) {
-    return null;
-  }
-
-  return candidate as SearchSnapshot;
+  return decodeSearchSnapshot(window.history.state?.globalSearch, url);
 }
 
 export function GlobalSearchPageContent({ api }: Props) {
@@ -501,15 +453,7 @@ export function GlobalSearchPageContent({ api }: Props) {
 
   const groupedResults = useMemo(
     () =>
-      SEARCH_MODULES
-        .map((module) => ({
-          module,
-          items: results.filter(
-            (result) =>
-              result.entity_type === module,
-          ),
-        }))
-        .filter((group) => group.items.length > 0),
+      groupGlobalSearchResults(results),
     [results],
   );
 
