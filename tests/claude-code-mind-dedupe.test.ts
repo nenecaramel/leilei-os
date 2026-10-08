@@ -67,7 +67,7 @@ const submit = (f: any, prompt = "tea", session_id = "s") =>
   ({hook_event_name: "UserPromptSubmit", session_id, prompt, transcript_path: f.transcript.path});
 
 // Persist a paired MCP tool call/result in the transcript: this survives copied sessions.
-function writeTurn(f: any, parent: string, options: {toolName?: string; id?: string; outcome?: string; isError?: boolean} = {}) {
+function writeTurn(f: any, parent: string, options: {toolName?: string; id?: string; outcome?: string; isError?: boolean; plainJson?: boolean} = {}) {
   const toolName = options.toolName ?? "mcp__d9e79932-abcd__write_memory";
   const memoryId = options.id ?? ID;
   const toolId = `toolu_${uuid()}`;
@@ -77,7 +77,8 @@ function writeTurn(f: any, parent: string, options: {toolName?: string; id?: str
   const content = JSON.stringify({success: true, data: {memory_id: memoryId, entity_id: memoryId,
     entity_type: "memory", outcome: options.outcome ?? "applied"}});
   const result = f.transcript.add({type: "user", parentUuid: use.uuid, message: {
-    role: "user", content: [{type: "tool_result", tool_use_id: toolId, content: [{type: "text", text: content}],
+    role: "user", content: [{type: "tool_result", tool_use_id: toolId,
+      content: options.plainJson ? content : [{type: "text", text: content}],
       ...(options.isError ? {is_error: true} : {})}],
   }});
   return f.transcript.reply(result.uuid);
@@ -91,6 +92,16 @@ async function deliveredTurn(f: any, parent: string | null, prompt = "tea") {
   return {prompt: p, output, reply: f.transcript.reply(tail)};
 }
 
+
+test("real connector format: plain JSON string tool_result excludes applied/replayed writes only", async t => {
+  const f = await fixture(t);
+  const root = f.transcript.reply(f.transcript.prompt(null, "hello").uuid);
+  const applied = writeTurn(f, root.uuid, {id: ID, plainJson: true});
+  const failed = writeTurn(f, applied.uuid, {id: ID2, plainJson: true, isError: true});
+  f.transcript.prompt(failed.uuid, "tea"); await f.transcript.flush();
+  await runHook(submit(f), async () => undefined);
+  assert.deepEqual(f.calls[0].exclude_ids, [ID]);
+});
 
 test("resume copies successful write result: new session excludes the written memory", async t => {
   const f = await fixture(t);
