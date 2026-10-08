@@ -269,7 +269,6 @@ function eligibleBreathEntries(
     if (
       !allowedKinds.has(state.kind)
       || !isConsolidationEligible(state.envelope.status)
-      || lifecycle?.status === "archived"
       || !scopeApplies(state, input)
       || input.excludedStateIds?.has(state.id)
       || !state.text

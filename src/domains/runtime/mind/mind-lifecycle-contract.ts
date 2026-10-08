@@ -47,11 +47,12 @@ export const MIND_LIFECYCLE_PROFILES = {
     drivers: ["time_decay", "reinforcement", "recall"],
     initialState: "active",
     transitions: {
-      active: ["fading", "archived"],
-      fading: ["active", "archived"],
-      archived: ["forgotten"],
+      active: ["fading"],
+      fading: ["active"],
+      // Legacy archived records can return without losing content.
+      archived: ["active", "fading"],
     },
-    purgeFrom: ["forgotten"],
+    purgeFrom: [],
   },
 } as const satisfies Record<CurrentSubjectStateKind, MindLifecycleProfile>;
 
