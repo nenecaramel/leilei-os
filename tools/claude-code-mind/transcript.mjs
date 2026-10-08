@@ -2,7 +2,9 @@ import { constants, promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 
 export const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
-const MAX_LINE_BYTES = 512 * 1024;
+// The complete read window bounds parsing memory. A single Desktop tool-result
+// record may legitimately exceed 512 KiB without exceeding that window.
+const MAX_LINE_BYTES = MAX_TRANSCRIPT_BYTES;
 const READ_ATTEMPTS = 3;
 const BOUNDARY_ATTEMPTS = 4;
 const RETRY_DELAY_MS = 30;

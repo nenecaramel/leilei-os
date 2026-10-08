@@ -535,12 +535,46 @@ test("retry head advancing to a new prompt cannot rehabilitate an unclean predec
   assert.equal(await provesFinalizedDelivery(path, "s", {turn_anchor: promptId, context_sha256: digest, delivered_at: Date.parse(delivered.timestamp) - 1}, true), false);
 });
 
+test("900 KiB tool-result JSONL line preserves current prompt anchoring and finalized confirm", async t => {
+  const f = await fixture(t);
+  const priorPrompt = message();
+  const largeToolResult = {
+    type: "user", uuid: randomUUID(), parentUuid: priorPrompt.uuid, sessionId: "s", isSidechain: false,
+    toolUseResult: {type: "tool_result"},
+    message: {role: "user", content: [{type: "tool_result", tool_use_id: "large-tool", content: "x".repeat(900 * 1024)}]},
+  };
+  const currentPrompt = message(randomUUID(), largeToolResult.uuid);
+  const initial = [priorPrompt, largeToolResult, currentPrompt];
+  const largeLineBytes = Buffer.byteLength(JSON.stringify(largeToolResult));
+  assert.ok(largeLineBytes > 512 * 1024 && largeLineBytes < MAX_TRANSCRIPT_BYTES);
+  await writeFile(f.transcript, jsonl(initial));
+  const parsed = await readTranscript(f.transcript, "s");
+  assert.equal(parsed?.records.size, 3);
+  assert.equal(await promptAnchor(f.transcript, "s", "tea"), currentPrompt.uuid);
+
+  let output = "";
+  await f.submit(async text => {output += text;});
+  assert.equal(output, `${context}\n`);
+  const pending = (await f.state()).pending_recalls;
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].turn_anchor, currentPrompt.uuid);
+
+  const delivered = attachment(context, currentPrompt.uuid);
+  const acceptedStop = summary(delivered.uuid);
+  const nextPrompt = message(randomUUID(), acceptedStop.uuid);
+  await writeFile(f.transcript, jsonl([...initial, delivered, acceptedStop, nextPrompt]));
+  await f.submit();
+  assert.equal(f.calls.filter(call => call.path.endsWith("/confirm")).length, 1);
+  assert.deepEqual((await f.state()).pending_recalls, []);
+});
+
 test("snapshot limits and regular nonsymlink type remain enforced", async t => {
   const path = await transcriptFixture(t);
   const {symlink, chmod} = await import("node:fs/promises");
   await symlink(path, `${path}.link`); assert.equal(await readTranscript(`${path}.link`, "s"), null);
   assert.equal(await readTranscript(join(path, "missing"), "s"), null);
-  await writeFile(path, JSON.stringify({...message(), message: {role: "user", content: "x".repeat(512 * 1024)}}));
+  // A single line larger than the entire 4 MiB read window is still rejected.
+  await writeFile(path, JSON.stringify({...message(), message: {role: "user", content: "x".repeat(MAX_TRANSCRIPT_BYTES)}}));
   assert.equal(await readTranscript(path, "s"), null);
   await writeFile(path, "\n".repeat(20000)); assert.equal(await readTranscript(path, "s"), null);
   await writeFile(path, jsonl([message()])); await chmod(path, 0);
