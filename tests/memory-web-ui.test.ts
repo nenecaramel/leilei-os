@@ -74,18 +74,13 @@ const item = {
   createdAt: "2026-10-07T16:10:00.000Z",
   updatedAt: "2026-10-07T16:10:00.000Z",
 };
-test("daily Memory paper groups all pages, only views/edits and regroups after date removal", async () => {
-  let present = true;
+test("daily Memory paper shows prose and one signature without per-record date controls", async () => {
   const methods: string[] = [];
   const webClient = {
     async request(path: string, init?: RequestInit) {
       methods.push(init?.method ?? "GET");
-      if (init?.method === "PATCH") {
-        present = false;
-        return { data: { ...item, occurredAt: null, contentVersion: "v2" } };
-      }
       if (path.startsWith("/mind/days/"))
-        return { data: { items: present ? [item] : [], nextCursor: null } };
+        return { data: { items: [item], nextCursor: null } };
       return { data: item };
     },
   } as any;
@@ -122,6 +117,14 @@ test("daily Memory paper groups all pages, only views/edits and regroups after d
       ui.dom.window.document.body.textContent!,
       /这一天还没有内容/,
     );
+    assert.ok(
+      !paper.querySelector("strong"),
+      "preview must not repeat the Memory signature",
+    );
+    assert.equal(
+      paper.querySelector(".day-space-paper-signature")?.textContent,
+      "Memory",
+    );
     await ui.click(paper);
     assert.ok(
       ui.dom.window.document.querySelector(".diary-paper-content-editor"),
@@ -138,12 +141,16 @@ test("daily Memory paper groups all pages, only views/edits and regroups after d
       ),
       false,
     );
-    await ui.click(ui.button("未指定日期"));
-    await ui.click(ui.button("保存"));
-    assert.equal(
-      ui.dom.window.document.querySelector(".day-space-paper-memory"),
-      null,
+    assert.ok(
+      !ui.dom.window.document.querySelector('input[type="datetime-local"]'),
+      "daily paper has no per-record date controls",
     );
+    assert.doesNotMatch(
+      ui.dom.window.document.querySelector('[role="dialog"]')!.textContent!,
+      /未指定日期|No date|00:10/,
+    );
+    await ui.click(ui.button("取消"));
+    assert.equal(ui.dom.window.document.querySelector('[role="dialog"]'), null);
     assert.equal(methods.includes("POST") || methods.includes("DELETE"), false);
   } finally {
     await ui.cleanup();
