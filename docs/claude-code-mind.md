@@ -67,7 +67,7 @@ node tools/claude-code-mind/install.mjs leileios
 
 The script copies `hook.mjs` to `~/.claude/leileios-mind/` and atomically updates only its entries in `~/.claude/settings.json`:
 
-- `UserPromptSubmit`: independent command hook, no matcher; emits only complete server context.
+- `UserPromptSubmit`: independent command hook, no matcher; emits only complete server context. Agent-scoped hook calls (`agent_id` present) are intentionally skipped: subagents neither recall through this standalone hook nor replace the main session pending receipt. This keeps child messages from invalidating main-turn Stop accounting.
 - `SessionStart`, matcher `startup|resume|compact|clear|fork`: startup/resume preserve both epochs; compact/clear/fork create a fresh random UUID epoch and increment numeric context_epoch (new session IDs start at zero). The handler also accepts normal/start sources and never searches for a parent session.
 - `Stop`: silent weak acknowledgement of the current session/epoch/active_turn pending receipt, with at most 1200ms HTTP wait. No stdout, context, block decision or transcript access.
 - `StopFailure`: clears pending receipts without confirmation.
