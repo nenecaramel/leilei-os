@@ -623,7 +623,9 @@ export async function runHook(input, output = text => new Promise((resolve, reje
   });
   // Memories whose delivered context is provably still on the active chain.
   const chainIds = await chainExclusions(config, input, invocationStarted, snapshot.active_turn);
-  const exclude = [...new Set([...snapshot.written_ids, ...chainIds])];
+  // Keep existing written IDs first; the server accepts at most MAX_SEEN.
+  // If the chain contributes too many IDs, dropping the tail only weakens dedupe.
+  const exclude = [...new Set([...snapshot.written_ids, ...chainIds])].slice(0, MAX_SEEN);
   const body = {
     session_id: input.session_id,
     query: input.prompt,
