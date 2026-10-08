@@ -732,17 +732,11 @@ function writeLifecycleAndRecallReinforcement(
   return next;
 }
 
+/** Legacy helper is intentionally disabled: no code may scrub Memory text. */
 export function forgottenSubjectStatePayload(
-  lifecycle: SubjectStateLifecycle,
+  _lifecycle: SubjectStateLifecycle,
 ): Record<string, unknown> {
-  if (lifecycle.status !== "forgotten" || !lifecycle.forgottenAt) {
-    throw new Error(
-      "Forgotten Subject State payload requires forgotten lifecycle.",
-    );
-  }
-  return {
-    [LIFECYCLE_KEY]: lifecycle,
-  };
+  throw new Error("Automatic Memory forgetting and content scrubbing are disabled.");
 }
 
 function lifecycleStatusForSalience(
