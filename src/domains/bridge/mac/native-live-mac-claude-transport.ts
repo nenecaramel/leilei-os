@@ -1,4 +1,3 @@
-import type { NativeLiveMemeRuntimeHandlers } from "./native-live-mac-meme-sender.js";
 import { isAbsolute } from "node:path";
 import type {
   NativeLiveClaudeRuntime,
@@ -58,7 +57,6 @@ export type NativeLiveMacInteractiveTurnOptions = {
     sha256: string;
     kind: "image" | "file";
   }>;
-  memeHandlers?: NativeLiveMemeRuntimeHandlers;
   controlPump?: (
     controller: NativeLiveMacActiveTurnController,
     context: { signal: AbortSignal },
@@ -180,7 +178,10 @@ export function sanitizeNativeLiveClaudeEnvironment(
 ): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(environment).filter(
-      ([key]) => !NATIVE_LIVE_CLAUDE_ENV_DENYLIST.has(key),
+      // Quarantine retired configuration still present in the owner's env;
+      // it is not consumed, and must never become a Claude child credential.
+      ([key]) => !NATIVE_LIVE_CLAUDE_ENV_DENYLIST.has(key)
+        && !key.startsWith("LEILEI_MEME_"),
     ),
   );
 }

@@ -1,4 +1,3 @@
-import type { NativeLiveMemeRuntimeHandlers } from "./native-live-mac-meme-sender.js";
 import type {
   NativeLiveClaudeRuntime,
   NativeLiveNormalizedEvent,
@@ -68,7 +67,6 @@ type NativeLiveForegroundRuntime = NativeLiveClaudeRuntime & {
         kind: "image" | "file";
         durationSeconds?: number;
       }>;
-      memeHandlers?: NativeLiveMemeRuntimeHandlers;
       controlPump?: (
         controller: NativeLiveMacActiveTurnController,
         context: { signal: AbortSignal },
@@ -133,7 +131,6 @@ export class NativeLiveMacRuntimeExecutor {
       Pick<NativeLiveMacOutputAttachmentSender, "sendFile"> | null = null,
     private readonly onRuntimeFailure:
       ((diagnostics: NativeLiveMacRuntimeFailureDiagnostics) => void) | null = null,
-    private readonly memeSender: NativeLiveMemeRuntimeHandlers | null = null,
   ) {
     if ("resolveWorkingDirectoryRuntime" in runtimeOrResolver) {
       this.runtime = null;
@@ -289,18 +286,6 @@ export class NativeLiveMacRuntimeExecutor {
                     });
                   }
                   return attachment;
-                },
-              }
-            : {}),
-          ...(this.memeSender
-            && command.protocol_version === NATIVE_LIVE_RUNTIME_PROTOCOL_VERSION
-            ? {
-                memeHandlers: {
-                  sendMeme: (input: { memeId: string }) => sendOutput(
-                    () => this.memeSender!.sendMeme(input),
-                    attachment => attachment.attachmentId,
-                    "Meme send would exceed the 8-file turn limit.",
-                  ),
                 },
               }
             : {}),

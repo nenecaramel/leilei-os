@@ -147,3 +147,19 @@ test("send_file rejects working directory escape including symlinks", async (t) 
   );
   assert.equal(relayCalls, 0);
 });
+
+test("ordinary files enforce the configured size limit before creating any upload", async t => {
+  const workspace = await mkdtemp(join(tmpdir(), "leileios-file-size-"));
+  t.after(() => rm(workspace, {recursive: true, force: true}));
+  let calls = 0;
+  const sender = new NativeLiveMacOutputAttachmentSender({
+    async createAttachmentUploadSlot() {calls++; throw new Error("unused");},
+    async completeAttachmentUpload() {throw new Error("unused");},
+  }, fetch, 10);
+  for (const size of [0, 11]) {
+    const path = join(workspace, `${size}.webp`);
+    await writeFile(path, Buffer.alloc(size));
+    await assert.rejects(sender.sendFile({path, workingDirectory: workspace}), /limit/);
+  }
+  assert.equal(calls, 0);
+});

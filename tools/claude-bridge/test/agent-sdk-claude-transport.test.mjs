@@ -2501,26 +2501,25 @@ test("interactive foreground turn does not inject local send_file MCP without a 
   assert.equal(call.options.mcpServers, undefined);
 });
 
-test("meme handler adds only its local SDK server and a sparse reaction hint",async()=>{
-  let call,captured;
-  const server={type:"sdk",name:"meme-test"};
-  const handlers={async sendMeme(){throw new Error("unused");}};
-  const transport=new AgentSdkClaudeTransport({environment:{},createMemeMcpServerImpl:async input=>{captured=input;return server;},queryImpl:input=>{call=input;return fakeQuery(successFixture("provider-meme"));}});
-  await transport.executeTurn("hello",{mode:"new",parentProviderSessionId:null,streaming:true,memeHandlers:handlers});
-  assert.equal(captured,handlers);
-  assert.deepEqual(call.options.mcpServers,{leileios_memes:server});
-  assert.match(call.options.systemPrompt.append,/nenecaramel\/leileios-album/);
-  assert.match(call.options.systemPrompt.append,/existing GitHub\/Bash access/);
-  assert.match(call.options.systemPrompt.append,/do not force one into every reply/);
-  assert.equal(call.options.systemPrompt.append.includes("search_memes"),false);
-});
-
-test("without meme handler no meme server or hint is added",async()=>{
-  let call;
-  const transport=new AgentSdkClaudeTransport({environment:{},createMemeMcpServerImpl:async()=>{throw new Error("must not create");},queryImpl:input=>{call=input;return fakeQuery(successFixture("ordinary"));}});
-  await transport.executeTurn("hello",{mode:"new",parentProviderSessionId:null,streaming:true});
-  assert.equal(call.options.mcpServers,undefined);assert.equal(call.options.systemPrompt.append.includes("send_meme"),false);
-  assert.match(call.options.systemPrompt.append,/To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+test("retired meme options cannot register a server or inject a hint; send_file remains available", async () => {
+  let call; let retiredFactoryCalls = 0;
+  const fileServer = {type: "sdk", name: "files"};
+  const transport = new AgentSdkClaudeTransport({
+    environment: {},
+    createMemeMcpServerImpl: async () => {retiredFactoryCalls++; return {type: "sdk", name: "retired"};},
+    createSendFileMcpServerImpl: async () => fileServer,
+    queryImpl: input => {call = input; return fakeQuery(successFixture("ordinary"));},
+  });
+  await transport.executeTurn("hello", {
+    mode: "new", parentProviderSessionId: null, streaming: true,
+    memeHandlers: {sendMeme: async () => {throw new Error("retired");}},
+    sendFileHandler: async () => {throw new Error("unused");},
+  });
+  assert.equal(retiredFactoryCalls, 0);
+  assert.deepEqual(call.options.mcpServers, {leileios_local: fileServer});
+  assert.equal(call.options.systemPrompt.append.includes("send_meme"), false);
+  assert.equal(call.options.systemPrompt.append.includes("leileios-album"), false);
+  assert.match(call.options.systemPrompt.append, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
 });
 
  test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {

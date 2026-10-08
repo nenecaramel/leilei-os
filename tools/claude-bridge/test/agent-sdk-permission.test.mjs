@@ -475,12 +475,16 @@ test("non-LeileiOS tools remain on the interactive permission path", async () =>
   assert.equal(permissionCalls, 1);
 });
 
-test("only the local send_meme tool bypasses interactive permission",async()=>{
-  let calls=0;
-  const callback=createAgentSdkPermissionCallback({permissionHandler:async()=>{calls++;return {decision:"deny",message:"untrusted"};}});
-  assert.deepEqual(await callback("mcp__leileios_memes__send_meme",{},{}),{behavior:"allow"});assert.equal(calls,0);
-  for(const name of ["mcp__leileios_memes__search_memes","mcp__leileios_memes__fetch_url","mcp__leileios_memes__github"]){assert.equal(trustedNativeLiveToolPolicy(name),null);assert.equal((await callback(name,{},{})).behavior,"deny");}
-  assert.equal(calls,3);
+test("retired meme and unknown tools have no trusted policy and require permission", async () => {
+  let calls = 0;
+  const callback = createAgentSdkPermissionCallback({permissionHandler: async () => {
+    calls++; return {decision: "deny", message: "untrusted"};
+  }});
+  for (const name of ["mcp__leileios_memes__send_meme", "mcp__leileios_memes__search_memes", "mcp__leileios_memes__fetch_url", "mcp__leileios_memes__github"]) {
+    assert.equal(trustedNativeLiveToolPolicy(name), null);
+    assert.equal((await callback(name, {}, {})).behavior, "deny");
+  }
+  assert.equal(calls, 4);
 });
 
 test("LeileiOS mutations, destructive and unknown tools always enter the permission handler", async () => {

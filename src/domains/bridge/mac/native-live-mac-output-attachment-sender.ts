@@ -133,26 +133,6 @@ export class NativeLiveMacOutputAttachmentSender {
       : { ...attachment, durationSeconds };
   }
 
-  // Internal runtime entrypoint; does not add a Claude-visible arbitrary bytes tool.
-  async sendBytes(input: {
-    bytes: Uint8Array;
-    filename: string;
-  }): Promise<NativeLiveMacOutputAttachmentDescriptor> {
-    if (!Number.isSafeInteger(input.bytes.byteLength)
-      || input.bytes.byteLength <= 0
-      || input.bytes.byteLength > this.maxFileBytes) {
-      throw new Error("Output bytes exceed the allowed attachment limit.");
-    }
-    const filename = normalizeDisplayName(input.filename, input.filename);
-    const mimeType = mimeTypeForFilename(filename);
-    const bytes = Buffer.from(input.bytes);
-    return this.uploadBytes({
-      bytes, filename, mimeType, sizeBytes: bytes.length,
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-      kind: mimeType.startsWith("image/") ? "image" : "file",
-    });
-  }
-
   private async uploadBytes(input: {
     bytes: Buffer;
     filename: string;

@@ -1,4 +1,3 @@
-import { createMemeMcpServer, MEME_SYSTEM_HINT } from "./send-meme-mcp.mjs";
 import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
@@ -412,12 +411,10 @@ function normalizeLeileiosMcpServerConfig(value) {
 function leileiosMcpQueryOptions(
   config,
   localSendFileServer = null,
-  localMemeServer = null,
 ) {
   if (
     !config
     && !localSendFileServer
-    && !localMemeServer
   ) return {};
   return {
     mcpServers: {
@@ -425,7 +422,6 @@ function leileiosMcpQueryOptions(
       ...(localSendFileServer
         ? { leileios_local: localSendFileServer }
         : {}),
-      ...(localMemeServer ? { leileios_memes: localMemeServer } : {}),
     },
   };
 }
@@ -446,7 +442,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     mcpServerConfig = null,
     createSendFileMcpServerImpl =
       createDefaultSendFileMcpServer,
-    createMemeMcpServerImpl = createMemeMcpServer,
     prepareLocalCheckpointForkImpl = prepareLocalCheckpointFork,
     environment = process.env,
     cwd = process.cwd(),
@@ -472,7 +467,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       normalizeLeileiosMcpServerConfig(mcpServerConfig);
     this.createSendFileMcpServerImpl =
       createSendFileMcpServerImpl;
-    this.createMemeMcpServerImpl = createMemeMcpServerImpl;
     this.prepareLocalCheckpointForkImpl =
       prepareLocalCheckpointForkImpl;
     this.localCheckpointAncestry = new Map();
@@ -543,7 +537,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       questionHandler = null,
       trustedReadPaths = [],
       sendFileHandler = null,
-      memeHandlers = null,
       controlPump = null,
     } = {},
   ) {
@@ -642,9 +635,6 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
             sendFileHandler,
           )
         : null;
-    const localMemeServer = memeHandlers
-      ? await this.createMemeMcpServerImpl(memeHandlers)
-      : null;
 
     let localCheckpointFork = null;
     if (
@@ -685,15 +675,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: memeHandlers
-            ? LEILEIOS_INTERACTIVE_SYSTEM_PROMPT + "\n\n" + MEME_SYSTEM_HINT
-            : LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
+          append: LEILEIOS_INTERACTIVE_SYSTEM_PROMPT,
         },
         ...executionOptions,
         ...leileiosMcpQueryOptions(
           this.mcpServerConfig,
           localSendFileServer,
-          localMemeServer,
         ),
         ...(this.sessionStore
           ? { sessionStore: mode === "fork" || portability.checkpointRecovered

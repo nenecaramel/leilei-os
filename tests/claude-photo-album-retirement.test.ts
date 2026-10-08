@@ -11,12 +11,11 @@ test("retired private album has no domain, schema, API, runtime or iOS wiring", 
     assert.doesNotMatch(read(path), /ClaudeAlbum|PhotoAlbum|albumHandlers|albumToolClient|leileios_album|save_photo|search_photos|view_photo|send_photo|refreshAlbumSaves|AlbumSaveIndicator/, path);
   }
 });
-test("shared current-turn attachments and file/meme output remain wired", () => {
+test("shared current-turn attachments and file output remain wired", () => {
   assert.match(read("src/app/process-runtime.ts"), /new NativeLiveAttachmentService/);
   assert.match(read("src/web-api/native-live-internal/router.ts"), /createInternalAttachmentDownloadSlotHandler/);
   assert.match(read("src/domains/bridge/mac/native-live-mac-runtime-executor.ts"), /sendFileHandler/);
   assert.match(read("tools/claude-bridge/src/agent-sdk-claude-transport.mjs"), /createDefaultSendFileMcpServer/);
-  assert.match(read("tools/claude-bridge/src/agent-sdk-claude-transport.mjs"), /createMemeMcpServer/);
 });
 
 test("retired dependency objects cannot register any internal album endpoint", async () => {
