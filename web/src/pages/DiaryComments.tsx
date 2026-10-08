@@ -1,25 +1,12 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WebApiError, type WebApiClient } from "../api/useWebApiClient";
-import {
-  PaperAuthorSignature,
-  type PaperAuthor,
-} from "./PaperAuthorSignature";
+import type { PaperAuthor } from "./PaperAuthorSignature";
+import type { DiaryComment, DiaryCommentsMetadata } from "./diary/comments/diary-comment-types";
+import { mergeComments, replaceComment } from "./diary/comments/diary-comment-transforms";
+import { DiaryCommentComposer } from "./diary/comments/DiaryCommentComposer";
+import { DiaryCommentRow } from "./diary/comments/DiaryCommentRows";
 
-export type DiaryComment = {
-  id: string;
-  diary_id: string;
-  author: PaperAuthor;
-  content: string;
-  revision: number;
-  created_at: string;
-  updated_at: string;
-};
-
-export type DiaryCommentsMetadata = {
-  count: number;
-  returned: number;
-  truncated: boolean;
-};
+export type { DiaryComment, DiaryCommentsMetadata } from "./diary/comments/diary-comment-types";
 
 type DiaryCommentListResponse = {
   success: true;
@@ -49,35 +36,6 @@ type AddDiaryCommentResponse = {
     };
   };
 };
-
-function formatCommentTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return [
-    `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`,
-    `${pad(date.getHours())}:${pad(date.getMinutes())}`,
-  ].join(" ");
-}
-
-function mergeComments(
-  existing: readonly DiaryComment[],
-  incoming: readonly DiaryComment[],
-): DiaryComment[] {
-  const byId = new Map(existing.map((comment) => [comment.id, comment]));
-  for (const comment of incoming) byId.set(comment.id, comment);
-  return [...byId.values()].sort((left, right) => {
-    const byTime = left.created_at.localeCompare(right.created_at);
-    return byTime === 0 ? left.id.localeCompare(right.id) : byTime;
-  });
-}
-
-function replaceComment(
-  comments: readonly DiaryComment[],
-  next: DiaryComment,
-): DiaryComment[] {
-  return comments.map((comment) => comment.id === next.id ? next : comment);
-}
 
 function createIdempotencyKey(): string {
   return `web:diary-comment:${crypto.randomUUID()}`;
@@ -385,52 +343,21 @@ export function DiaryCommentsSection({
     <section className="diary-comments" aria-label="Diary comments">
       {!readOnly ? (
         composerOpen ? (
-          <div className="diary-comment-composer" ref={composerRef}>
-            <textarea
-              ref={composerTextareaRef}
-              aria-label="写一条评论"
-              placeholder="写一条评论…"
-              value={composerContent}
-              disabled={savingCreate || disabled}
-              rows={1}
-              onChange={(event) => {
-                setComposerContent(event.target.value);
-                setError("");
-              }}
-            />
-            <div className="diary-comment-composer-actions">
-              <PaperAuthorSignature
-                value={composerAuthor}
-                editable
-                placement="inline"
-                disabled={savingCreate || disabled}
-                onChange={setComposerAuthor}
-              />
-              <span className="diary-comment-composer-buttons">
-                <button
-                  type="button"
-                  className="memory-paper-control"
-                  disabled={savingCreate}
-                  onClick={cancelComposer}
-                >
-                  取消
-                </button>
-                <span>·</span>
-                <button
-                  type="button"
-                  className="memory-paper-control"
-                  disabled={
-                    savingCreate ||
-                    disabled ||
-                    !composerContent.trim()
-                  }
-                  onClick={() => void saveComposer()}
-                >
-                  {savingCreate ? "保存中…" : "保存"}
-                </button>
-              </span>
-            </div>
-          </div>
+          <DiaryCommentComposer
+            content={composerContent}
+            author={composerAuthor}
+            saving={savingCreate}
+            disabled={disabled}
+            composerRef={composerRef}
+            textareaRef={composerTextareaRef}
+            onContentChange={(event) => {
+              setComposerContent(event.target.value);
+              setError("");
+            }}
+            onAuthorChange={setComposerAuthor}
+            onCancel={cancelComposer}
+            onSave={() => void saveComposer()}
+          />
         ) : (
           <button
             type="button"
@@ -461,177 +388,41 @@ export function DiaryCommentsSection({
           const confirmingDelete = deleteConfirmId === comment.id;
           const deleting = deletingId === comment.id;
           return (
-            <article
-              className="diary-comment"
+            <DiaryCommentRow
               key={comment.id}
-              data-comment-id={comment.id}
-            >
-              <div className="diary-comment-meta">
-                <span>
-                  {comment.author} · {formatCommentTime(comment.created_at)}
-                  {edited ? " · 已编辑" : ""}
-                </span>
-                {!readOnly && !editing ? (
-                  <>
-                    <span className="diary-comment-desktop-actions">
-                      {confirmingDelete ? (
-                        <>
-                          <button
-                            type="button"
-                            className="memory-paper-control"
-                            disabled={deleting || disabled}
-                            onClick={() => setDeleteConfirmId(null)}
-                          >
-                            取消
-                          </button>
-                          <span>·</span>
-                          <button
-                            type="button"
-                            className="memory-paper-control"
-                            disabled={deleting || disabled}
-                            onClick={() => void deleteComment(comment)}
-                          >
-                            {deleting ? "删除中…" : "确认删除"}
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="memory-paper-control"
-                            disabled={disabled}
-                            onClick={() => beginEdit(comment)}
-                          >
-                            编辑
-                          </button>
-                          <span>·</span>
-                          <button
-                            type="button"
-                            className="memory-paper-control"
-                            disabled={disabled}
-                            onClick={() => setDeleteConfirmId(comment.id)}
-                          >
-                            删除
-                          </button>
-                        </>
-                      )}
-                    </span>
-                    <span className="diary-comment-mobile-menu">
-                      <button
-                        type="button"
-                        className="diary-comment-menu-trigger memory-paper-control"
-                        aria-label="评论操作"
-                        aria-expanded={openMenuId === comment.id}
-                        disabled={disabled}
-                        onClick={() =>
-                          setOpenMenuId((current) =>
-                            current === comment.id ? null : comment.id
-                          )
-                        }
-                      >
-                        ···
-                      </button>
-                      {openMenuId === comment.id ? (
-                        <span className="diary-comment-menu-popover">
-                          {confirmingDelete ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={deleting || disabled}
-                                onClick={() => {
-                                  setDeleteConfirmId(null);
-                                  setOpenMenuId(null);
-                                }}
-                              >
-                                取消
-                              </button>
-                              <button
-                                type="button"
-                                disabled={deleting || disabled}
-                                onClick={() => void deleteComment(comment)}
-                              >
-                                {deleting ? "删除中…" : "确认删除"}
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => beginEdit(comment)}
-                              >
-                                编辑
-                              </button>
-                              <button
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => setDeleteConfirmId(comment.id)}
-                              >
-                                删除
-                              </button>
-                            </>
-                          )}
-                        </span>
-                      ) : null}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              {editing ? (
-                <div className="diary-comment-editor">
-                  <textarea
-                    ref={editingTextareaRef}
-                    aria-label="编辑评论"
-                    value={editingContent}
-                    disabled={savingEdit || disabled}
-                    rows={1}
-                    onChange={(event) => {
-                      setEditingContent(event.target.value);
-                      setError("");
-                    }}
-                  />
-                  {conflictId === comment.id ? (
-                    <div className="diary-comment-conflict" role="alert">
-                      <span>这条评论已经发生变化。</span>
-                      <button
-                        type="button"
-                        className="memory-paper-control"
-                        onClick={() => void loadConflictLatest()}
-                      >
-                        载入最新
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="diary-comment-edit-actions">
-                    <button
-                      type="button"
-                      className="memory-paper-control"
-                      disabled={savingEdit}
-                      onClick={cancelEdit}
-                    >
-                      取消
-                    </button>
-                    <span>·</span>
-                    <button
-                      type="button"
-                      className="memory-paper-control"
-                      disabled={
-                        savingEdit ||
-                        disabled ||
-                        !editingContent.trim() ||
-                        conflictId === comment.id
-                      }
-                      onClick={() => void saveEdit()}
-                    >
-                      {savingEdit ? "保存中…" : "保存"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="diary-comment-content">{comment.content}</p>
-              )}
-            </article>
+              comment={comment}
+              edited={edited}
+              editing={editing}
+              confirmingDelete={confirmingDelete}
+              deleting={deleting}
+              menuOpen={openMenuId === comment.id}
+              readOnly={readOnly}
+              disabled={disabled}
+              editingContent={editingContent}
+              savingEdit={savingEdit}
+              conflict={conflictId === comment.id}
+              editingTextareaRef={editingTextareaRef}
+              onCancelDelete={() => setDeleteConfirmId(null)}
+              onConfirmDelete={() => void deleteComment(comment)}
+              onBeginEdit={() => beginEdit(comment)}
+              onBeginDelete={() => setDeleteConfirmId(comment.id)}
+              onToggleMenu={() =>
+                setOpenMenuId((current) =>
+                  current === comment.id ? null : comment.id
+                )
+              }
+              onCancelMenuDelete={() => {
+                setDeleteConfirmId(null);
+                setOpenMenuId(null);
+              }}
+              onEditingContentChange={(event) => {
+                setEditingContent(event.target.value);
+                setError("");
+              }}
+              onLoadConflictLatest={() => void loadConflictLatest()}
+              onCancelEdit={cancelEdit}
+              onSaveEdit={() => void saveEdit()}
+            />
           );
         })}
       </div>
