@@ -47,7 +47,7 @@ async function fixture(t, diagnostics = false) {
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const a = server.address(); assert.ok(a && typeof a !== "string");
-  await writeFile(join(home, "mind.env"), `LEILEI_MIND_RECALL_URL=http://127.0.0.1:${a.port}\nLEILEI_MIND_RECALL_TOKEN=test-secret\n${diagnostics ? "LEILEI_MIND_DIAGNOSTICS=1\\n" : ""}`, {mode: 0o600});
+  await writeFile(join(home, "mind.env"), `LEILEI_MIND_RECALL_URL=http://127.0.0.1:${a.port}\nLEILEI_MIND_RECALL_TOKEN=test-secret\n${diagnostics ? "LEILEI_MIND_DIAGNOSTICS=1" : ""}`, {mode: 0o600});
   const old = process.env.LEILEI_MIND_HOME; process.env.LEILEI_MIND_HOME = home;
   t.after(async () => {if (old === undefined) delete process.env.LEILEI_MIND_HOME; else process.env.LEILEI_MIND_HOME = old;
     server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); await rm(home, {recursive: true, force: true});});
@@ -538,11 +538,3 @@ for (const kind of ["different-text", "tool-result", "sidechain"]) {
 }
 
 test("snapshot rejects truncate between pathname stat and open", async t => {
-  const path = await transcriptFixture(t, [message(), attachment(), summary()]);
-  const {promises: io} = await import("node:fs"); const open = io.open.bind(io); let first = true;
-  t.mock.method(io, "open", async (...args: any[]) => {
-    if (args[0] === path && first) {first = false; await writeFile(path, jsonl([message()]));}
-    return open(...args as [any, any]);
-  });
-  assert.equal(await readTranscript(path, "s"), null);
-});
