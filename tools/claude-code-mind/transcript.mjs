@@ -83,19 +83,30 @@ async function readTranscriptOnce(path, sessionId, identity) {
 
 // One attempt budget per public operation: boundary retries do not multiply
 // snapshot retries. Pin the inode throughout; replacement is never a retry.
-async function readWithRetries(path, sessionId, attempts, evaluate) {
-  if (typeof path !== "string" || !path || path.length > 4096) return null;
-  let identity;
+async function readWithRetries(path, sessionId, attempts, evaluate, onReason) {
+  if (typeof path !== "string" || !path || path.length > 4096) {
+    onReason?.("read_rejected"); return null;
+  }
+  let identity; let lastReason = "read_transient_exhausted";
   for (let attempt = 0; attempt < attempts; attempt++) {
     const result = await readTranscriptOnce(path, sessionId, identity);
-    if (result.status === "rejected") return null;
+    if (result.status === "rejected") {
+      onReason?.("read_rejected"); return null;
+    }
     identity = result.identity;
     if (result.status === "ok") {
       const decision = evaluate(result.value);
-      if (decision.done) return decision.value;
+      if (decision.done) {
+        if (decision.value === null && decision.reason) onReason?.(decision.reason);
+        return decision.value;
+      }
+      lastReason = decision.reason || "turn_mismatch";
+    } else {
+      lastReason = "read_transient_exhausted";
     }
     if (attempt + 1 < attempts) await sleep(RETRY_DELAY_MS);
   }
+  onReason?.(lastReason);
   return null;
 }
 export async function readTranscript(path, sessionId) {
@@ -119,17 +130,22 @@ export function currentTurn(transcript) {
   }
   return null;
 }
-export async function promptAnchor(path, sessionId, prompt) {
+export async function promptAnchor(path, sessionId, prompt, onReason) {
   return readWithRetries(path, sessionId, BOUNDARY_ATTEMPTS, transcript => {
     const turn = currentTurn(transcript);
-    if (!turn && transcript.head) return {done: true, value: null};
+    if (!turn && transcript.head) return {done: true, value: null, reason: "turn_mismatch"};
     const content = turn?.prompt.message.content;
     const text = typeof content === "string" ? content : Array.isArray(content) ? content.filter(b => b.type === "text").map(b => b.text).join("\n") : null;
-    // A predecessor with downstream activity is not this submission, even if
-    // the user repeated exactly the same text. Wait for the new prompt itself.
-    if (turn?.chain.length === 1 && text === prompt) return {done: true, value: turn.prompt.uuid};
-    return {done: false};
-  });
+    // Desktop attaches deferred_tools_delta, total_tokens_reminder and other
+    // UserPromptSubmit hook records immediately after the prompt, sometimes
+    // before this hook starts. These attachments are not model activity.
+    // A completed predecessor with assistant/system activity cannot anchor a
+    // repeated identical prompt while the new prompt has not appeared.
+    if (turn && turn.chain.slice(0, -1).every(record => record.type === "attachment") && text === prompt) {
+      return {done: true, value: turn.prompt.uuid};
+    }
+    return {done: false, reason: "no_anchor"};
+  }, onReason);
 }
 export async function provesDelivery(path, sessionId, pending) {
   if (!pending.turn_anchor) return false;
@@ -143,22 +159,24 @@ export async function provesDelivery(path, sessionId, pending) {
 // Stop is a proposal: the aggregate is written only after all matching hooks resolve.
 // A later host boundary (idle, next prompt, session end) is required as well. The
 // summary alone precedes other possible continuation paths and is not finality.
-export async function provesFinalizedDelivery(path, sessionId, pending, nextPrompt = false, requireDuration = false) {
-  if (!pending.turn_anchor) return false;
+export async function provesFinalizedDelivery(path, sessionId, pending, nextPrompt = false, requireDuration = false, onReason) {
+  const reject = reason => { onReason?.(reason); return false; };
+  if (!pending.turn_anchor) return reject("no_anchor");
   const transcript = await readWithRetries(path, sessionId, nextPrompt ? BOUNDARY_ATTEMPTS : READ_ATTEMPTS, snapshot => {
     const turn = currentTurn(snapshot);
-    if (!turn && snapshot.head) return {done: true, value: null};
-    return {done: !nextPrompt || !!turn && turn.prompt.uuid !== pending.turn_anchor, value: snapshot};
-  });
+    if (!turn && snapshot.head) return {done: true, value: null, reason: "turn_mismatch"};
+    return {done: !nextPrompt || !!turn && turn.prompt.uuid !== pending.turn_anchor, value: snapshot, reason: "turn_mismatch"};
+  }, onReason);
+  if (!transcript) return false;
   let turn = currentTurn(transcript);
   if (nextPrompt) {
-    if (!turn || turn.prompt.uuid === pending.turn_anchor) return false;
+    if (!turn || turn.prompt.uuid === pending.turn_anchor) return reject("turn_mismatch");
     turn = currentTurn({...transcript, head: turn.prompt.parentUuid});
   }
-  if (turn?.prompt.uuid !== pending.turn_anchor) return false;
+  if (turn?.prompt.uuid !== pending.turn_anchor) return reject("turn_mismatch");
   const index = turn.chain.findIndex(r => r.type === "system" && r.subtype === "stop_hook_summary" && r.hookLabel === undefined);
-  if (index < 0) return false;
-  if (requireDuration && !turn.chain.slice(0, index).some(r => r.type === "system" && r.subtype === "turn_duration" && Number.isFinite(r.durationMs) && r.durationMs >= 0)) return false;
+  if (index < 0) return reject("no_summary");
+  if (requireDuration && !turn.chain.slice(0, index).some(r => r.type === "system" && r.subtype === "turn_duration" && Number.isFinite(r.durationMs) && r.durationMs >= 0)) return reject("summary_unclean");
   const summary = turn.chain[index];
   // Do not confuse preventContinuation (continue:false) with decision:block.
   // Both blocking errors and additionalContext are continuation evidence.
@@ -166,11 +184,12 @@ export async function provesFinalizedDelivery(path, sessionId, pending, nextProm
       !Number.isInteger(summary.hookCount) || summary.hookCount < 1 ||
       !Array.isArray(summary.hookErrors) || summary.hookErrors.length ||
       !Array.isArray(summary.hookAdditionalContext) || summary.hookAdditionalContext.length ||
-      Date.parse(summary.timestamp) < pending.delivered_at || !Number.isFinite(Date.parse(summary.timestamp))) return false;
+      Date.parse(summary.timestamp) < pending.delivered_at || !Number.isFinite(Date.parse(summary.timestamp))) return reject("summary_unclean");
   // Fail closed on activity after this Stop, including API errors, tool calls,
   // TaskCompleted/TeammateIdle feedback and cancellation attachments.
-  if (turn.chain.slice(0, index).some(r => !(r.type === "system" && r.subtype === "turn_duration"))) return false;
-  return turn.chain.slice(index + 1).some(record => record.type === "attachment" && record.attachment?.type === "hook_success" &&
+  if (turn.chain.slice(0, index).some(r => !(r.type === "system" && r.subtype === "turn_duration"))) return reject("summary_unclean");
+  if (!turn.chain.slice(index + 1).some(record => record.type === "attachment" && record.attachment?.type === "hook_success" &&
     record.attachment.hookEvent === "UserPromptSubmit" && record.attachment.exitCode === 0 &&
-    Date.parse(record.timestamp) >= pending.delivered_at && contextHashMatches(record.attachment.content, pending.context_sha256));
+    Date.parse(record.timestamp) >= pending.delivered_at && contextHashMatches(record.attachment.content, pending.context_sha256))) return reject("hash_mismatch");
+  return true;
 }
