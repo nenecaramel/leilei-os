@@ -128,6 +128,7 @@ test("default production public surface stays compact and reports final inventor
     "delete_universe_relation",
     "get_current_time",
     "get_diary",
+    "get_memory",
     "get_diary_comment",
     "get_health",
     "get_universe_diary_sources",
@@ -139,13 +140,16 @@ test("default production public surface stays compact and reports final inventor
     "list_universe_galaxies",
     "list_universe_nodes",
     "read_todo_day",
+    "read_memory_day",
     "replace_todo_paper",
     "render_note_card",
     "search_diary",
     "search_todo",
+    "search_memory",
     "toy_set",
     "toy_stop",
     "update_diary",
+    "update_memory",
     "update_diary_comment",
     "update_todo_entry",
     "update_universe_node",
@@ -158,7 +162,7 @@ test("default production public surface stays compact and reports final inventor
     expectedPublicNames.sort(),
     "default public inventory must stay exact",
   );
-  assert.equal(tools.length, 36);
+  assert.equal(tools.length, 40);
   assert.ok(
     tools.length < fullTools.length,
     "default public surface must be smaller than internal full",
@@ -179,10 +183,7 @@ test("default production public surface stays compact and reports final inventor
   const fullNames = new Set(fullTools.map((tool) => tool.name));
   for (const retired of [
     "read_memory",
-    "search_memory",
-    "get_memory",
     "create_memory",
-    "update_memory",
     "create_task",
     "update_task",
     "transition_task",

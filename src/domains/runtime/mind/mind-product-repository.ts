@@ -1,3 +1,4 @@
+import { memoryContentVersion, patchMemoryTemporal } from "./mind-memory-content.js";
 import { requireActiveUserInTransaction } from "../../require-active-user-transaction.js";
 import {
   and,
@@ -34,6 +35,8 @@ import {
   type SubjectStateWrite,
 } from "../subject-state/subject-state-contract.js";
 import type {
+  MindMemoryCursor,
+  MindMemoryUpdateInput,
   MindProductCursor,
   MindProductRepository,
   MindProductRow,
@@ -76,6 +79,95 @@ implements MindProductRepository {
         requestHash: input.requestHash, resourceType: "mind_state", resourceId: row.id,
       });
       return { memoryId: row.id, replayed: false };
+    });
+  }
+
+  async search(input: {
+    userId: string;
+    subjectId: string;
+    query: string;
+    occurredFrom?: string;
+    occurredBefore?: string;
+    limit: number;
+    cursor: MindMemoryCursor | null;
+  }) {
+    const conditions = memoryConditions(input);
+    if (input.query) {
+      const literal = input.query.replace(/[\\%_]/g, (value) => `\\${value}`);
+      conditions.push(
+        sql`regexp_replace(normalize(${runtimeSubjectStates.text}, NFC), ${"\\s+"}, ' ', 'g') ILIKE ${`%${literal}%`} ESCAPE ${"\\"}`,
+      );
+    }
+    if (input.occurredFrom || input.occurredBefore) {
+      const occurredAt = memoryOccurredAtSql();
+      if (input.occurredFrom)
+        conditions.push(
+          sql`${occurredAt} >= ${input.occurredFrom}::timestamptz`,
+        );
+      if (input.occurredBefore)
+        conditions.push(
+          sql`${occurredAt} < ${input.occurredBefore}::timestamptz`,
+        );
+    }
+    if (input.cursor)
+      conditions.push(
+        sql`(${runtimeSubjectStates.createdAt}, ${runtimeSubjectStates.id}) < (${input.cursor.createdAt}::timestamptz, ${input.cursor.id}::uuid)`,
+      );
+    const rows = await this.db
+      .select({
+        ...rowSelection(),
+        cursorCreatedAt: sql<string>`to_char(${runtimeSubjectStates.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+      })
+      .from(runtimeSubjectStates)
+      .where(and(...conditions))
+      .orderBy(
+        desc(runtimeSubjectStates.createdAt),
+        desc(runtimeSubjectStates.id),
+      )
+      .limit(input.limit + 1);
+    const page = rows.slice(0, input.limit);
+    const last = page.at(-1);
+    return {
+      rows: page.map(toProductRow),
+      nextCursor:
+        rows.length > input.limit && last
+          ? { createdAt: last.cursorCreatedAt, id: last.id }
+          : null,
+    };
+  }
+
+  async update(input: MindMemoryUpdateInput & { subjectId: string }) {
+    return this.db.transaction(async (transaction) => {
+      await requireActiveUserInTransaction(transaction, input.userId);
+      const [row] = await transaction
+        .select(rowSelection())
+        .from(runtimeSubjectStates)
+        .where(
+          and(
+            ...memoryConditions(input),
+            eq(runtimeSubjectStates.id, input.stateId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!row) return { outcome: "not_found" as const };
+      if (memoryContentVersion(row) !== input.expectedVersion)
+        return { outcome: "conflict" as const };
+      // Merge only editable fields from the locked, latest row. Stop also locks
+      // this row, so neither operation can overwrite the other's payload.
+      const [updated] = await transaction
+        .update(runtimeSubjectStates)
+        .set({
+          ...(input.text === undefined ? {} : { text: input.text }),
+          ...(input.occurredAt === undefined
+            ? {}
+            : { payload: patchMemoryTemporal(row.payload, input.occurredAt) }),
+          updatedAt: new Date(),
+        })
+        .where(eq(runtimeSubjectStates.id, row.id))
+        .returning(rowSelection());
+      if (!updated) throw Error("Memory update failed.");
+      return { outcome: "updated" as const, row: toProductRow(updated) };
     });
   }
 
@@ -589,4 +681,32 @@ async function insertMindState(transaction: Transaction, state: SubjectStateWrit
       state.envelope as unknown as Record<string, unknown>,
   }).returning(rowSelection());
   return row;
+}
+
+function memoryConditions(input: { userId: string; subjectId: string }) {
+  return [
+    eq(runtimeSubjectStates.userId, input.userId),
+    eq(runtimeSubjectStates.subjectId, input.subjectId),
+    eq(runtimeSubjectStates.kind, "memory"),
+    eq(runtimeSubjectStates.settlementStatus, "settled"),
+    eq(runtimeSubjectStates.pathStatus, "current"),
+    eq(runtimeSubjectStates.validityStatus, "valid"),
+  ];
+}
+
+/** Match the canonical temporal reader, including legacy manual dates. Bad
+ * metadata is undated, rather than making one row abort an entire date query. */
+function memoryOccurredAtSql() {
+  const payload = runtimeSubjectStates.payload;
+  const raw = sql`CASE WHEN jsonb_typeof(${payload}->'temporal_v1') = 'object' THEN
+    CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'occurredAt') = 'string' AND (
+      (${payload}->'temporal_v1'->>'basis' = 'user_supplied' AND (CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' THEN btrim(${payload}->'temporal_v1'->>'sourceMessageId') ELSE '' END) = '') OR
+      (${payload}->'temporal_v1'->>'basis' = 'source_message' AND jsonb_typeof(${payload}->'temporal_v1'->'sourceMessageId') = 'string' AND btrim(${payload}->'temporal_v1'->>'sourceMessageId') <> '')
+    ) THEN ${payload}->'temporal_v1'->>'occurredAt' END
+    ELSE CASE WHEN jsonb_typeof(${payload}->'manual_v1'->'occurredAt') = 'string' THEN ${payload}->'manual_v1'->>'occurredAt' END END`;
+  // The temporal reader trims input and treats legacy ISO date-only values as
+  // UTC midnight. Do not let the database session timezone reinterpret them.
+  const iso = sql`CASE WHEN btrim(${raw}) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    THEN btrim(${raw}) || 'T00:00:00Z' ELSE btrim(${raw}) END`;
+  return sql`CASE WHEN ${iso} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' AND pg_input_is_valid(${iso}, 'timestamp with time zone') THEN (${iso})::timestamptz END`;
 }

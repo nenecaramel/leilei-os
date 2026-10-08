@@ -224,3 +224,7 @@ Keep the existing private mind.env and OAuth registration; no new credential or 
 - Existing production runtime, hybrid Breath, writer, product, MCP and Claude bridge gates protect original behavior. Isolated PostgreSQL CI runner now includes this integration test.
 
 Task-specific executed counts, complete baseline comparison, commit and PR URL are recorded in the closeout evidence report, not guessed here. No iOS/Web behavior changes, production deployment, live daemon restart, local credential/MCP activation or actual production memory writes are included in this patch.
+
+## Memory read and edit tools
+
+Backend API and MCP `search_memory`, `get_memory`, `read_memory_day`, and `update_memory` share the existing Mind store. See [Mind Memory API](./mind-memory-api.md) for Beijing event-day queries, pagination, and conflict-safe in-place editing. These tools do not change automatic Hook recall, Rewind, Stop confirmation, or permanent retention.

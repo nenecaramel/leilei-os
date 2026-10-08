@@ -1,3 +1,4 @@
+import { registerMemoryTools, type MemoryToolDependencies } from "../tools/memory/register.js";
 import { registerWriteMemoryTool, type WriteMemoryDependencies } from "../tools/write-memory/register.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { env } from "../../config/env.js";
@@ -303,6 +304,7 @@ type UniverseProvenanceToolsDependencies = {
 export type McpServerDependencies = {
   activeUserAuthorization?: () => Promise<string>;
   writeMemory?: WriteMemoryDependencies;
+  memoryTools?: MemoryToolDependencies;
   diaryTools?: {
     diaryService: WriteDiaryToolDependencies["diaryService"] &
       SearchDiaryToolDependencies["diaryService"] &
@@ -339,6 +341,19 @@ export function createMcpServer(
     createMissingActiveUserAuthorizer(authenticatedUserId);
 
   if (mcpToolSurfaceEnabled(toolExposure, "core")) {
+  registerMemoryTools(
+    server,
+    dependencies.memoryTools ?? {
+      requireActiveUser: activeUserAuthorization,
+      mindService: {
+        search: async () => missingDatabaseService(),
+        get: async () => missingDatabaseService(),
+        readDay: async () => missingDatabaseService(),
+        update: async () => missingDatabaseService(),
+      },
+    },
+  );
+
   registerWriteMemoryTool(server, dependencies.writeMemory ?? {
     subjectId: "G", requireActiveUser: activeUserAuthorization,
     repository: { insertMcpIdempotent: async () => { throw new Error("Memory writer unavailable."); } },

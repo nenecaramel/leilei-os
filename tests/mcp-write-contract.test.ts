@@ -240,6 +240,7 @@ test("MCP exposes only the surviving core write surface", async (t) => {
 
   assert.deepEqual(MCP_WRITE_TOOL_NAMES, [
     "write_memory",
+    "update_memory",
     "write_diary",
     "toy_set",
     "toy_stop",
@@ -283,6 +284,7 @@ test("MCP exposes only the surviving core write surface", async (t) => {
     "toy_stop",
     "update_diary",
     "update_diary_comment",
+    "update_memory",
     "update_todo_entry",
     "update_universe_node",
     "update_universe_relation",

@@ -128,6 +128,7 @@ test("Mind product list exposes bounded product projection and opaque cursor", a
     source: "runtime",
     authority: "subject_authorized",
     occurredAt: null,
+    contentVersion: page.items[0]!.contentVersion,
     note: null,
     lifecycle: {
       state: "fading",

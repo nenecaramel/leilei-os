@@ -8,7 +8,7 @@ import {
 export type MindApiDependencies = {
   mindService: Pick<
     MindProductService,
-    "list" | "get" | "createManual" | "delete" | "readMessageWrites"
+    "list" | "get" | "createManual" | "delete" | "readMessageWrites" | "search" | "readDay" | "update"
   >;
 };
 
@@ -28,6 +28,54 @@ export function createMindApiRouter(
       ...(cursor ? { cursor } : {}),
     });
   }));
+
+  router.get(
+    "/search",
+    handler(async (request) =>
+      dependencies.mindService.search({
+        userId: request.webUserId!,
+        query: readOptionalString(request.query.query, "query"),
+        dateFrom: readOptionalString(request.query.date_from, "date_from"),
+        dateTo: readOptionalString(request.query.date_to, "date_to"),
+        limit: readOptionalLimit(request.query.limit),
+        cursor: readOptionalString(request.query.cursor, "cursor"),
+      }),
+    ),
+  );
+  router.get(
+    "/days/:date",
+    handler(async (request) =>
+      dependencies.mindService.readDay({
+        userId: request.webUserId!,
+        date: routeParam(request.params.date),
+        limit: readOptionalLimit(request.query.limit),
+        cursor: readOptionalString(request.query.cursor, "cursor"),
+      }),
+    ),
+  );
+  router.patch(
+    "/:stateId",
+    handler(async (request) => {
+      const body = bodyRecord(request.body);
+      rejectUnknownFields(body, ["text", "occurred_at", "expected_version"]);
+      return dependencies.mindService.update({
+        userId: request.webUserId!,
+        stateId: routeParam(request.params.stateId),
+        expectedVersion: readRequiredString(
+          body.expected_version,
+          "expected_version",
+        ),
+        ...(body.text === undefined
+          ? {}
+          : { text: readRequiredString(body.text, "text") }),
+        ...(body.occurred_at === undefined
+          ? {}
+          : {
+              occurredAt: readNullableString(body.occurred_at, "occurred_at"),
+            }),
+      });
+    }),
+  );
 
   router.get(
     "/writes/messages/:messageId",
@@ -284,6 +332,10 @@ function sendMindError(response: Response, error: unknown): void {
           "Idempotency-Key is required for durable create requests.",
       },
     });
+    return;
+  }
+  if (error.code === "MIND_CONFLICT") {
+    response.status(409).json({success: false, error: {code: error.code, message: "Memory changed. Read the latest content before editing again."}});
     return;
   }
   if (error.code === "IDEMPOTENCY_CONFLICT") {
