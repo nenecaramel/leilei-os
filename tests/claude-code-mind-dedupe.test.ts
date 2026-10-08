@@ -66,6 +66,23 @@ class Transcript {
 const submit = (f: any, prompt = "tea", session_id = "s") =>
   ({hook_event_name: "UserPromptSubmit", session_id, prompt, transcript_path: f.transcript.path});
 
+// Persist a paired MCP tool call/result in the transcript: this survives copied sessions.
+function writeTurn(f: any, parent: string, options: {toolName?: string; id?: string; outcome?: string; isError?: boolean} = {}) {
+  const toolName = options.toolName ?? "mcp__d9e79932-abcd__write_memory";
+  const memoryId = options.id ?? ID;
+  const toolId = `toolu_${uuid()}`;
+  const use = f.transcript.add({type: "assistant", parentUuid: parent, message: {
+    role: "assistant", content: [{type: "tool_use", id: toolId, name: toolName, input: {text: "remember"}}],
+  }});
+  const content = JSON.stringify({success: true, data: {memory_id: memoryId, entity_id: memoryId,
+    entity_type: "memory", outcome: options.outcome ?? "applied"}});
+  const result = f.transcript.add({type: "user", parentUuid: use.uuid, message: {
+    role: "user", content: [{type: "tool_result", tool_use_id: toolId, content: [{type: "text", text: content}],
+      ...(options.isError ? {is_error: true} : {})}],
+  }});
+  return f.transcript.reply(result.uuid);
+}
+
 // One delivered turn on the active branch: prompt -> hook context -> reply.
 async function deliveredTurn(f: any, parent: string | null, prompt = "tea") {
   const p = f.transcript.prompt(parent, prompt); await f.transcript.flush();
