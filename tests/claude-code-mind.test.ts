@@ -290,3 +290,14 @@ test("signed issuance fails closed when the signing secret is absent or too shor
       contextEpoch: 0, stateIds: [id(1)], contextSha256: "a".repeat(64), recalledAt: new Date().toISOString()}), /RECALL_RECEIPT_UNAVAILABLE/);
   }
 });
+
+
+test("external stateless recall does not suppress a just-confirmed memory in the same rewind session",async()=>{
+  const state=memory(1),now=new Date().toISOString();
+  state.payload=writeSubjectStateLifecycle(state.payload,{status:"active",salience:.5,protected:false,lastDecayedAt:now,lastRecalledAt:now,archivedAt:null,forgottenAt:null});
+  state.payload={...state.payload,recall_context_v1:{conversationId:"claude-code:session",epoch:0,sourceMessageId:randomUUID(),recalledAt:now}};
+  const {reader,writes}=port([state]);const service=new ClaudeCodeMindRecallService(reader,{...DEFAULT_MIND_LOOP_CONFIG,breathCooldownHours:24},"G",unitReceipts);
+  for(let i=0;i<3;i++)assert.deepEqual((await service.recall({userId:"u1",sessionId:"session",contextEpoch:0,query:"jasmine tea",excludeIds:[]})).memory_ids,[id(1)]);
+  assert.deepEqual((await service.recall({userId:"u1",sessionId:"session",query:"jasmine tea",excludeIds:[id(1)]})).memory_ids,[]);
+  assert.deepEqual(writes,[]);
+});

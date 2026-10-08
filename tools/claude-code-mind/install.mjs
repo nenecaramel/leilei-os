@@ -40,9 +40,6 @@ export async function install({claudeHome = join(homedir(), ".claude"), serverNa
   catch (error) { if (error.code !== "ENOENT") throw error; settings = {}; }
   const next = configureHooks(settings, {home, serverName, nodeCommand});
   const source = join(dirname(fileURLToPath(import.meta.url)), "hook.mjs");
-  // Install the dependency before publishing a hook that imports it.
-  await fs.copyFile(join(dirname(source), "transcript.mjs"), join(home, "transcript.mjs"));
-  await fs.chmod(join(home, "transcript.mjs"), 0o600);
   await fs.copyFile(source, join(home, "hook.mjs"));
   await fs.chmod(join(home, "hook.mjs"), 0o600);
   const temporary = `${settingsPath}.${randomUUID()}.tmp`;
