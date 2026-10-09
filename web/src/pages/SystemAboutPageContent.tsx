@@ -30,7 +30,7 @@ export function SystemAboutPageContent({
       }
     >
       <PageHeader
-        eyebrow="System"
+        eyebrow="Settings"
         title="About"
         description="Build information for this Leilei OS client."
       />

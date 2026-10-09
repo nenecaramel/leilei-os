@@ -14,7 +14,7 @@ test("Home replaces the old module-card icon contract with grouped shell navigat
   assert.doesNotMatch(dashboardSource, /iconClass|space-icon|quickTarget/);
   assert.match(navigationSource, /label: "Home"/);
   assert.match(navigationSource, /label: "Global Search"/);
-  assert.match(navigationSource, /label: "System"/);
+  assert.match(navigationSource, /label: "Settings"/);
 });
 
 function luminance(hex: string): number {

@@ -33,14 +33,3 @@ test("backup and restore rows use the existing System separator", () => {
     /\.system-import-row\s*\{[\s\S]*?border-top:\s*1px solid rgba\(0, 0, 0, 0\.08\);/,
   );
 });
-
-test("diagnostic audit control remains a text control without a selection tile", () => {
-  assert.match(
-    css,
-    /\.system-export-audit\s*\{[\s\S]*?-webkit-tap-highlight-color:\s*transparent;/,
-  );
-  assert.match(
-    css,
-    /\.system-export-audit:hover,[\s\S]*?\.system-export-audit:focus-within\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?outline:\s*0;/,
-  );
-});

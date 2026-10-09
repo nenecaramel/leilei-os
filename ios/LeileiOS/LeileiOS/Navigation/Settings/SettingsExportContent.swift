@@ -3,7 +3,6 @@ import SwiftUI
 struct SettingsExportContent: View {
     let dataService: any SettingsDataService
 
-    @State private var includesAuditAndLifecycleEvents = false
     @State private var isExporting = false
     @State private var errorMessage: String?
     @State private var exportedDocument: SettingsExportDocument?
@@ -11,14 +10,9 @@ struct SettingsExportContent: View {
     var body: some View {
         Form {
             Section("Export") {
-                Toggle(
-                    "Include audit & lifecycle events",
-                    isOn: $includesAuditAndLifecycleEvents
-                )
-
                 Text(
-                    "Audit and lifecycle events are diagnostic only and are not restored. "
-                    + "Full Backup excludes machine-local working directory paths."
+                    "Full Backup excludes machine-local working directory paths. "
+                    + "Mind includes Memory and retained historical records."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -67,11 +61,7 @@ struct SettingsExportContent: View {
         defer { isExporting = false }
 
         do {
-            exportedDocument = try await dataService.exportData(
-                SettingsExportRequest(
-                    includeAuditAndLifecycleEvents: includesAuditAndLifecycleEvents
-                )
-            )
+            exportedDocument = try await dataService.exportData()
         } catch {
             errorMessage = settingsDataErrorMessage(error)
         }

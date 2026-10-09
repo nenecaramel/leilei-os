@@ -11,7 +11,7 @@ The current codebase includes:
 - **Dashboard and Day Space** — authenticated date-scoped views backed by the real API.
 - **Universe** — nodes, weighted galaxy memberships, relations, revisions, provenance, backup/import/export, search, and explicit MCP writes.
 - **Global Search** — authenticated cross-module search and deep links.
-- **System** — Account, Connections, Activity, Data, and About surfaces.
+- **Settings** — Account, Status, Data (Summary / Export / Restore), and About surfaces.
 - **Health v2** — owner-scoped daily summaries with optional iPhone Shortcut sync and MCP reads.
 - **Notion integration** — authenticated discovery and reads plus explicit verified page/comment writes through MCP tools.
 - **PWA Web runtime** — Vite PWA assets, service-worker registration, update prompts, and online/update status UI.

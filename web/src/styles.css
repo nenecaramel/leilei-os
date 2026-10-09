@@ -5389,91 +5389,6 @@ body:has(.system-page) {
   line-height: 1.3;
 }
 
-.system-activity-page .system-activity-list-section {
-  overflow: visible;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: #ffffff;
-  box-shadow: none;
-}
-
-.system-activity-day {
-  overflow: hidden;
-  margin: 0 0 12px;
-  padding: 0 13px;
-  border: 1px solid rgba(0, 0, 0, 0.11);
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.055);
-}
-
-.system-activity-day:last-child {
-  margin-bottom: 0;
-}
-
-.system-activity-day h2 {
-  min-height: 36px;
-  margin: 0 -13px;
-  padding: 0 13px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  color: #8a8a8a;
-  background: #fafafa;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.3;
-}
-
-.system-activity-day ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.system-activity-row {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 12px;
-  min-height: 60px;
-  align-items: center;
-  border: 0;
-}
-
-.system-activity-row + .system-activity-row {
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.system-activity-row time {
-  color: #8a8a8a;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  line-height: 1.3;
-}
-
-.system-activity-main {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.system-activity-label {
-  overflow-wrap: anywhere;
-  color: #171717;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.3;
-}
-
-.system-activity-main > span {
-  color: #8a8a8a;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.3;
-}
-
 .system-product-name {
   display: flex;
   min-height: 60px;
@@ -5517,10 +5432,6 @@ body:has(.system-page) {
     min-width: 45px;
   }
 
-  .system-activity-row {
-    grid-template-columns: 54px minmax(0, 1fr);
-    gap: 10px;
-  }
 }
 
 /* Mobile drawer active-tile polish */

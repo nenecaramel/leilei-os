@@ -25,13 +25,6 @@ extension LeileiAPIClient {
         return envelope.data
     }
 
-    func systemActivity() async throws -> [SystemActivitySnapshot] {
-        let envelope: SystemActivityEnvelope = try await request(
-            path: "/api/v1/system/activity",
-            authenticated: true
-        )
-        return envelope.data.events
-    }
 }
 
 private struct SystemClaudeUsageEnvelope: Decodable, Sendable {
@@ -47,13 +40,4 @@ private struct SystemConnectionsEnvelope: Decodable, Sendable {
 private struct SystemDataSummaryEnvelope: Decodable, Sendable {
     let success: Bool
     let data: SystemDataSummarySnapshot
-}
-
-private struct SystemActivityEnvelope: Decodable, Sendable {
-    struct ActivityData: Decodable, Sendable {
-        let events: [SystemActivitySnapshot]
-    }
-
-    let success: Bool
-    let data: ActivityData
 }

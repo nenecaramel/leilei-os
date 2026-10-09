@@ -65,6 +65,17 @@ The versioned application Export/Restore feature is useful for user-facing
 portability and recovery, but it is not a substitute for a full database
 backup before schema changes.
 
+Current Full Backup v4 exports Mind as Memory-only while retaining
+`mind_continuity` as historical archive data. Product Restore accepts v2/v3/v4
+within their existing supported scope, normalizes legacy `feel`, and never writes
+retired Mind state kinds. Historical Continuity restoration requires valid owned
+Memory and canonical evidence dependencies; it does not restart old processing.
+See [Mind backup compatibility](../mind.md#full-backup-v4-and-historical-archives)
+for archive contents and limits. Keep historical JSON files that cannot be restored
+into the current product model. Full historical database recovery remains the
+verified encrypted logical-backup path below, using a compatible schema in a
+disposable instance rather than weakening current production constraints.
+
 ## Create an encrypted logical backup
 
 Obtain production credentials through an approved secret source. Do not put
@@ -333,3 +344,25 @@ Disposable database deleted: yes / no
 Operator:
 Notes and unresolved risks:
 ```
+
+### Settings and portable backup contract
+
+Web Settings has Account, Status, Data and About at `/settings/account`,
+`/settings/status`, `/settings/data` and `/settings/about`. `/settings` defaults to
+Account. Old `/system`, `/system/account`, `/system/connections`, `/system/data` and
+`/system/about` bookmarks redirect to their corresponding Settings destination.
+The former Activity bookmark redirects to Account. Backend `/system/connections`,
+`/system/data` and `/system/claude-usage` retain their API paths and meanings.
+
+System/Settings Activity is retired on Web and iOS; its dedicated HTTP endpoint,
+page DTOs and read queries are removed. This does not retire Native Live Tool,
+Task or Runtime Activity, log writers, resource lifecycle processing or their
+stored records. No log tables or historical records are deleted.
+
+New Full Backup v4 files omit `audit` entirely, and both clients no longer offer
+an audit export switch. The export service no longer queries audit/log tables.
+Legacy export URLs with `include_audit` have no effect, like other unused query
+parameters; they cannot enable audit export. Historical v2/v3/v4 files may still
+contain valid `audit.lifecycle` and `audit.tool_activity`; preview identifies
+these diagnostics and restores only the supported product modules, never the
+historical audit rows. Normal safe restore-run auditing remains active.

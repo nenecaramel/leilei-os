@@ -367,7 +367,9 @@ const mindContinuityBundle = z.object({
       .max(MAX_IMPORT_RECORDS_PER_MODULE),
 }).strict();
 
-const mindStateRecord = z.object({
+// Read historical vocabulary; feel is normalized, other retired kinds are rejected
+// by the planner before any write. Current exports use ExportMindStateRecord.
+const historicalMindStateRecord = z.object({
   id: uuid,
   subject_id: nonBlankString(),
   kind: z.enum([
@@ -440,7 +442,7 @@ const dataV3Schema = z.object({
     .optional(),
   todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   projects: projectsBundle.optional(),
-  mind: z.array(mindStateRecord)
+  mind: z.array(historicalMindStateRecord)
     .max(MAX_IMPORT_RECORDS_PER_MODULE)
     .optional(),
   mind_continuity: mindContinuityBundle.optional(),
@@ -455,7 +457,7 @@ const dataV4Schema = z.object({
     .optional(),
   todo: z.array(todoPaper).max(MAX_IMPORT_RECORDS_PER_MODULE).optional(),
   workspaces: workspacesBundle.optional(),
-  mind: z.array(mindStateRecord)
+  mind: z.array(historicalMindStateRecord)
     .max(MAX_IMPORT_RECORDS_PER_MODULE)
     .optional(),
   mind_continuity: mindContinuityBundle.optional(),

@@ -21,9 +21,6 @@ export type SystemDataSummary = {
     active: number;
     count: number;
   };
-  workspaces: {
-    count: number;
-  };
   conversations: {
     active: number;
     archived: number;
@@ -39,23 +36,4 @@ export type SystemDataSummary = {
 export type SystemDataResponse = {
   success: true;
   data: SystemDataSummary;
-};
-
-export type SystemActivityItem = {
-  id: string;
-  occurred_at: string;
-  label: string;
-  source:
-    | "Web"
-    | "MCP"
-    | "Internal"
-    | "System";
-  outcome: "success" | "failed";
-};
-
-export type SystemActivityResponse = {
-  success: true;
-  data: {
-    events: SystemActivityItem[];
-  };
 };

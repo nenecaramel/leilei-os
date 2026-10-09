@@ -43,10 +43,6 @@ test("all ordinary System information rows share the accepted 60px baseline", ()
   );
   assert.match(
     systemBlock,
-    /\.system-activity-row\s*\{[\s\S]*?min-height:\s*60px/,
-  );
-  assert.match(
-    systemBlock,
     /\.system-product-name\s*\{[\s\S]*?min-height:\s*60px/,
   );
 });
@@ -59,10 +55,6 @@ test("ordinary primary labels use the accepted 14px 500 hierarchy while secondar
   assert.match(
     systemBlock,
     /\.system-status-row > strong\s*\{[\s\S]*?font-size:\s*12px/,
-  );
-  assert.match(
-    systemBlock,
-    /\.system-activity-main > span\s*\{[\s\S]*?font-size:\s*12px/,
   );
 });
 
