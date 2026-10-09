@@ -82,7 +82,7 @@ struct MindMemoryListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Picker("排列顺序", selection: $sort) {
+                    Picker("Sort By", selection: $sort) {
                         ForEach(MindListSort.allCases, id: \.self) { order in
                             Text(order.displayName).tag(order)
                         }
