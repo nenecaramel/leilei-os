@@ -4,7 +4,7 @@ import test from "node:test";
 import * as React from "../web/node_modules/react/index.js";
 import { renderToStaticMarkup } from "../web/node_modules/react-dom/server.js";
 
-// Baselines were captured from the unmodified page at main@76a9d74e.
+// Baselines were captured from the unmodified page; editing/saving refreshed against main@372735d4 autosize.
 // Compare real rendered HTML, including hierarchy, attributes, copy and order.
 const list = await import("../web/src/pages/diary/DiaryListPresentation.js");
 const detail = await import("../web/src/pages/diary/DiaryDetailPresentation.js");
@@ -52,8 +52,8 @@ const expected: Record<string, string> = {
   "rows": "13991c1e875aa315df688f7768a8874753318dd02a8a18bd36ee04496c7f8467",
   "busyRows": "d104ec6c6cd5a84f5638eae7a8603f57a19a3b5d4e6b3b63b76e788634711c50",
   "detail": "c1c7c39e690085a911519a1855444062a30a75988f92c9c71f2c5d3580b42b06",
-  "editing": "22e04a5e75ada2eeb6a1ce1b4f12f7c532a398f5fc42e2d6821070990115b2f2",
-  "saving": "691927f1ef7d0cb7463bb01633dc7603eb99f338d8f79b536d9ad5b3d10f511c",
+  "editing": "a85f1ce912fe574c4aca68285a35297f3fe76316ff2991697cfa2d5824b80ff5",
+  "saving": "2215576dade0412472b22ff356d9ba6abc929c609ded7edb8650713669ce35c6",
   "detailLoading": "dad1343ec64cff8d3184b28bc181b7fcb5be554576ccba24994b572a74de20c7",
   "detailError": "91e3c1b21a9fb24d11566b182ec4503f5ed6af097b1ff32b50464dc8691aa826",
   "archiveList": "7a7d189adef124fe728e47dedd8c3b775dcecad6dababde78231b92b9120105e",
