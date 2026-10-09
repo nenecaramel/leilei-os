@@ -8,6 +8,7 @@ struct GlobalSearchResultsList: View {
     let onOpenDiary: (DiaryNavigationTarget) -> Void
     let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
     let onOpenUniverseNode: (String) -> Void
+    let onOpenMemory: (String) -> Void
 
     private var groups: [GlobalSearchResultGroup] {
         GlobalSearchModule.allCases.compactMap { module in
@@ -32,7 +33,8 @@ struct GlobalSearchResultsList: View {
                             result: result,
                             onOpenDiary: onOpenDiary,
                             onOpenDaySpace: onOpenDaySpace,
-                            onOpenUniverseNode: onOpenUniverseNode
+                            onOpenUniverseNode: onOpenUniverseNode,
+                            onOpenMemory: onOpenMemory
                         )
                     }
                 }

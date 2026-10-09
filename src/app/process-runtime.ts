@@ -353,7 +353,7 @@ export function createProcessRuntime(
     new DrizzleToyCommandRepository(db),
     runtimeEnv.LEILEI_TOY_BRIDGE_USER_ID,
   );
-  const globalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db));
+  const globalSearchService = new GlobalSearchService(new DrizzleGlobalSearchRepository(db, DEFAULT_NATIVE_LIVE_SUBJECT_ID));
   const systemRepository = new DrizzleSystemRepository(db);
   const claudeAccountUsageRepository =
     new DrizzleClaudeAccountUsageRepository(db);

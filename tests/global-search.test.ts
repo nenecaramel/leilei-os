@@ -78,11 +78,11 @@ test("Global Search defaults to Diary Todo and Universe", async () => {
 
   assert.deepEqual(
     result.metadata.searched_modules,
-    ["diary", "todo", "universe"],
+    ["diary", "todo", "universe", "mind"],
   );
   assert.deepEqual(
     repository.queries[0]?.modules,
-    ["diary", "todo", "universe"],
+    ["diary", "todo", "universe", "mind"],
   );
   assert.equal(repository.queries[0]?.author, undefined);
   assert.equal(result.metadata.searched_author, null);

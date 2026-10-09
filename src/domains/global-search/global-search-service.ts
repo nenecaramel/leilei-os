@@ -12,7 +12,7 @@ import type {
   GlobalSearchTimeBasis,
 } from "./global-search-repository.js";
 
-const DEFAULT_MODULES = ["diary", "todo", "universe"] as const;
+const DEFAULT_MODULES = ["diary", "todo", "universe", "mind"] as const;
 const MODULES = DEFAULT_MODULES;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_BASE64URL = /^[A-Za-z0-9_-]+$/;
@@ -43,11 +43,11 @@ export type GlobalSearchItem = {
   matched_field: GlobalSearchMatchedField;
   match_reason: GlobalSearchMatchReason;
   lifecycle_status: "active" | "archived";
-  business_time: string;
+  business_time: string | null;
   time_basis: GlobalSearchTimeBasis;
   updated_at: string;
   author: ContentAuthor | null;
-  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | null;
+  detail_tool: "get_diary" | "read_todo_day" | "get_universe_node" | "get_memory" | null;
   detail_arguments:
     | { id: string; scope: "active" | "archived" }
     | { id: string }
@@ -124,7 +124,7 @@ export class GlobalSearchService {
         matched_field: row.matchedField,
         match_reason: row.matchReason,
         lifecycle_status: row.lifecycleStatus,
-        business_time: row.businessTime.toISOString(),
+        business_time: row.timeBasis === "undated" ? null : row.businessTime.toISOString(),
         time_basis: row.timeBasis,
         updated_at: row.updatedAt.toISOString(),
         author: row.author,
@@ -155,6 +155,7 @@ function detailTool(
   entityType: GlobalSearchModule,
 ): GlobalSearchItem["detail_tool"] {
   if (entityType === "universe") return "get_universe_node";
+  if (entityType === "mind") return "get_memory";
   if (entityType === "todo") return "read_todo_day";
   return "get_diary";
 }
@@ -162,7 +163,7 @@ function detailTool(
 function detailArguments(
   row: GlobalSearchRow,
 ): GlobalSearchItem["detail_arguments"] {
-  if (row.entityType === "universe") {
+  if (row.entityType === "universe" || row.entityType === "mind") {
     return { id: row.entityId };
   }
   if (row.entityType === "todo") return todoDetailArguments(row);

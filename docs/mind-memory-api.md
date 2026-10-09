@@ -1,6 +1,6 @@
 # Mind Memory API and MCP (PR A)
 
-All operations share `MindProductService` and canonical `runtime_subject_states`. No new Memory store, history, index, vectors or global_search module is introduced. Reading/searching does not update lifecycle, recall accounting, salience or exclusions. Hook #959 and permanent retention #961 are unchanged.
+All operations share `MindProductService` and canonical `runtime_subject_states`. No new Memory store, history, index or vectors are introduced. Reading/searching does not update lifecycle, recall accounting, salience or exclusions. Hook #959 and permanent retention #961 are unchanged.
 
 ## HTTP
 
@@ -51,3 +51,11 @@ Both clients read the same `/mind/days/:date`, `/mind/search`, detail and PATCH 
 The shared editor on each client sends `contentVersion` as `expected_version` and only changed editable fields. Text-only edits omit `occurred_at`, preserving temporal provenance. Date controls explicitly use Beijing time; clearing the date sends null. HTTP 409 reads the latest detail, retains the draft, blocks saving, and asks the user to use the latest content or explicitly keep/reconcile the draft before another save. A failed conflict read remains blocked with a retry action. No automatic conflict overwrite, edit history, copied Memory data, MCP change, or lifecycle mutation is introduced.
 
 Web exposes `/mind` in Core navigation, and the existing Day Space paper styles also render at desktop widths. Daily Memory opens directly in the existing paper container and shares the Diary body editor on both clients. The preview has no repeated Memory heading; the bottom-right signature identifies the paper. The opened daily paper shows prose without per-record timestamps or undated/date-edit controls. Event dates remain editable in Mind details. There is no intermediate record list or nested editor sheet. Each record retains its own ID, date and content version. A partial batch save retains successful edits and unsaved drafts; retry does not replay successful writes. Refresh failures retain cached papers and use the shared partial-failure controls. iOS Mind retains its native Form editor. Production and authenticated physical-device acceptance remain separate from local synthetic-data UI checks and simulator builds.
+
+## Global Search
+
+`/search` and MCP `global_search` include `mind` alongside `diary`, `todo`, and `universe` by default. Memory body matching runs inside the unified bounded SQL union with the same NFC, literal substring, normal/phrase matching and ranking/keyset cursor rules. It does not combine separate `/mind/search` pages or update Recall accounting.
+
+Mind results have `entity_type: "mind"`, an empty `stable_name` (Memory has no independent title), a body `snippet`, and the exact `get_memory` pointer `{id}`. Web opens `/mind?memoryId=...` and returns to the saved search; iOS uses the existing Memory reader in the search navigation stack.
+
+Memory date ranges use canonical `occurredAt` in Beijing time, including legacy manual timestamps. Invalid temporal metadata remains undated. Dated results use `time_basis: "memory_date"`; undated results use `business_time: null` and `time_basis: "undated"`. Only internal cursor ordering uses `updated_at` for undated records; it is never presented as an occurrence date. Memory has no archive or L/G/C author: `scope=archived` or any author filter excludes Mind results; active/all includes valid current settled product-visible Memory. `hidden_system`, other users/subjects and invalidated/superseded records remain excluded; ordinary `subject_private` Memory remains visible.

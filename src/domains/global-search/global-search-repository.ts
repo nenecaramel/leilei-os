@@ -1,13 +1,15 @@
-import { sql, type SQL } from "drizzle-orm";
+import { and, sql, type SQL } from "drizzle-orm";
+import { runtimeSubjectStates } from "../../database/schema.js";
+import { memoryConditions, memoryOccurredAtSql } from "../runtime/mind/mind-product-repository.js";
 import type { createDatabase } from "../../database/client.js";
 import type { ContentAuthor } from "../content-author.js";
 
-export type GlobalSearchModule = "diary" | "todo" | "universe";
+export type GlobalSearchModule = "diary" | "todo" | "universe" | "mind";
 export type GlobalSearchScope = "active" | "archived" | "all";
 export type GlobalSearchMode = "phrase" | "normal";
 export type GlobalSearchMatchReason = "exact_stable_name" | "exact_phrase" | "stable_name_prefix" | "field_match";
 export type GlobalSearchMatchedField = "title" | "content" | "tags" | "mood" | "text";
-export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "todo_date";
+export type GlobalSearchTimeBasis = "updated_at" | "diary_date" | "todo_date" | "memory_date" | "undated";
 
 export type GlobalSearchUser = { status: "active" | "disabled"; timezone: string };
 export type GlobalSearchCursorTuple = { rank: number; businessTime: string; updatedAt: string; entityType: GlobalSearchModule; entityId: string };
@@ -49,7 +51,7 @@ export interface GlobalSearchRepository {
 type Database = ReturnType<typeof createDatabase>["db"];
 
 export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly subjectId: string) {}
 
   async findUser(userId: string): Promise<GlobalSearchUser | null> {
     const result = await this.db.execute(sql<GlobalSearchUser>`
@@ -68,6 +70,7 @@ export class DrizzleGlobalSearchRepository implements GlobalSearchRepository {
     if (input.modules.includes("diary")) moduleQueries.push(diaryQuery(input, queryText, pattern, prefix));
     if (input.modules.includes("todo") && input.scope !== "archived") moduleQueries.push(todoQuery(input, queryText, pattern));
     if (input.modules.includes("universe") && input.scope !== "archived" && input.author === undefined) moduleQueries.push(universeQuery(input, queryText, pattern, prefix));
+    if (input.modules.includes("mind") && input.scope !== "archived" && input.author === undefined) moduleQueries.push(memoryQuery(input, this.subjectId, queryText, pattern));
     if (moduleQueries.length === 0) return [];
     const union = sql.join(moduleQueries, sql` union all `);
     const result = await this.db.execute(sql<GlobalSearchRow>`
@@ -219,3 +222,20 @@ function universeQuery(input: GlobalSearchQuery, query: string, pattern: string,
       and ${dates(businessDate, input)}`, input);
 }
 
+function memoryQuery(input: GlobalSearchQuery, subjectId: string, query: string, pattern: string): SQL {
+  const memory = runtimeSubjectStates;
+  const occurredAt = memoryOccurredAtSql();
+  const text = normalized(sql`${memory.text}`, input.mode);
+  // Undated rows use updated_at only for the existing non-null cursor ordering.
+  // The service exposes a null business_time and explicit undated time_basis.
+  return bounded(sql`select 'mind'::text entity_type, ${memory.id}::text entity_id,
+    ''::text stable_name, 'text'::text matched_field, ${memory.text} matched_value,
+    case when ${text} = ${query} then 'exact_phrase' else 'field_match' end::text match_reason,
+    'active'::text lifecycle_status, null::text author,
+    coalesce(${occurredAt}, ${memory.updatedAt}) business_time,
+    case when ${occurredAt} is null then 'undated' else 'memory_date' end::text time_basis,
+    ${memory.updatedAt} updated_at, null::date business_date
+    from ${memory} where ${and(...memoryConditions({userId: input.userId, subjectId}))}
+      and ${text} like ${pattern} escape '\\'
+      and ${dates(sql`(${occurredAt} at time zone 'Asia/Shanghai')::date`, input)}`, input);
+}

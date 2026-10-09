@@ -308,7 +308,7 @@ private struct MindItemRow: View {
     }
 }
 
-private struct MindMemoryReadView: View {
+struct MindMemoryReadView: View {
     @EnvironmentObject private var appModel: AppModel
     let id: String
     let onChanged: () -> Void

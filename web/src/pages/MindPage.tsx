@@ -15,6 +15,9 @@ import {
   type MemorySummary,
 } from "./memory-api";
 
+import { getSafeGlobalSearchReturnTo } from "./global-search-location";
+import { navigateWithinApp } from "./app-navigation";
+
 type Filters = { query: string; dateFrom: string; dateTo: string };
 function readLocation() {
   const query = new URLSearchParams(window.location.search);
@@ -197,6 +200,14 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
     return () => abort.abort();
   }, [api, id, detailRevision]);
   function closeDetail() {
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    if (returnTo) {
+      const url = getSafeGlobalSearchReturnTo(returnTo);
+      // Back restores the original search snapshot (loaded pages, focus, scroll).
+      if (window.history.state?.globalSearchReturnTo === url) window.history.back();
+      else navigateWithinApp(url);
+      return true;
+    }
     navigate({ ...currentLocation.current, id: null });
     return true;
   }

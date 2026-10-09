@@ -21,7 +21,7 @@ const RUN =
 class Rollback extends Error {}
 
 test(
-  "real PostgreSQL Global Search covers active Diary Todo and Universe without side effects",
+  "real PostgreSQL Global Search covers four modules, pagination, Memory dates and isolation without side effects",
   { skip: !RUN },
   async () => {
     const client = postgres(
@@ -151,6 +151,33 @@ test(
             importance: "normal",
           });
 
+          const datedMemory = randomUUID();
+          const undatedMemory = randomUUID();
+          const invalidMemory = randomUUID();
+          const baseMemory = {
+            subjectId: "G", kind: "memory" as const, text: "海边旅行", scopeApplicability: "global" as const,
+            settlementStatus: "settled" as const, pathStatus: "current" as const, validityStatus: "valid" as const,
+            envelope: {scope: {visibility: "subject_private"}}, createdAt: now, updatedAt: now,
+          };
+          await tx.insert(schema.runtimeSubjectStates).values([
+            {...baseMemory, id: datedMemory, userId: owner, payload: {temporal_v1: {occurredAt: "\t2026-08-12t16:00:00z\n", basis: "user_supplied", sourceMessageId: null}, memory_v1: {reinforcementCount: 7}}},
+            {...baseMemory, id: undatedMemory, userId: owner, payload: null},
+            {...baseMemory, id: invalidMemory, userId: owner, payload: {manual_v1: {occurredAt: "2026-02-30T00:00:00Z"}}},
+            {...baseMemory, id: randomUUID(), userId: owner, envelope: {scope: {visibility: "hidden_system"}}},
+            {...baseMemory, id: randomUUID(), userId: other},
+            {...baseMemory, id: randomUUID(), userId: owner, subjectId: "other-subject"},
+            {...baseMemory, id: randomUUID(), userId: owner, validityStatus: "tombstoned"},
+            {...baseMemory, id: randomUUID(), userId: owner, pathStatus: "superseded"},
+            {...baseMemory, id: randomUUID(), userId: owner, settlementStatus: "unsettled"},
+          ]);
+          const literalMemory = randomUUID();
+          const unicodeMemory = randomUUID();
+          await tx.insert(schema.runtimeSubjectStates).values([
+            {...baseMemory, id: literalMemory, userId: owner, text: "literal 100%_marker"},
+            {...baseMemory, id: randomUUID(), userId: owner, text: "literal 100xxmarker"},
+            {...baseMemory, id: unicodeMemory, userId: owner, text: "cafe\u0301\n  preference"},
+          ]);
+          const memoryBefore = await tx.select().from(schema.runtimeSubjectStates);
           const before = {
             tool: (
               await tx
@@ -165,9 +192,7 @@ test(
           };
 
           const service = new GlobalSearchService(
-            new DrizzleGlobalSearchRepository(
-              tx as never,
-            ),
+            new DrizzleGlobalSearchRepository(tx as never, "G"),
           );
 
           const result = await service.search({
@@ -177,12 +202,13 @@ test(
               "diary",
               "todo",
               "universe",
+              "mind",
             ],
             scope: "active",
             limit: 25,
           });
 
-          assert.equal(result.results.length, 3);
+          assert.equal(result.results.length, 6);
           assert.equal(
             result.results.some(
               (entry) =>
@@ -242,6 +268,7 @@ test(
               "diary",
               "todo",
               "universe",
+              "mind",
             ],
             scope: "active",
             author: "C",
@@ -257,6 +284,39 @@ test(
           );
           assert.equal(authored.metadata.searched_author, "C");
 
+          const memoryResults = result.results.filter(row => row.entity_type === "mind");
+          assert.deepEqual(new Set(memoryResults.map(row => row.entity_id)), new Set([datedMemory, undatedMemory, invalidMemory]));
+          assert.ok(memoryResults.every(row => row.stable_name === "" && row.author === null && row.detail_tool === "get_memory"));
+          assert.equal(memoryResults.find(row => row.entity_id === datedMemory)?.business_time, "2026-08-12T16:00:00.000Z");
+          assert.ok(memoryResults.filter(row => row.entity_id !== datedMemory).every(row => row.business_time === null && row.time_basis === "undated"));
+          // Memory uses Beijing occurredAt even if the user's timezone differs.
+          await tx.update(schema.userSettings).set({timezone: "America/Los_Angeles"});
+          const dated = await service.search({userId: owner, query: "海边旅行", modules: ["mind"], date_from: "2026-08-13", date_to: "2026-08-13"});
+          assert.deepEqual(dated.results.map(row => row.entity_id), [datedMemory]);
+          assert.deepEqual((await service.search({userId: owner, query: "海边旅行", modules: ["mind"], date_to: "2026-08-12"})).results, []);
+          assert.deepEqual((await service.search({userId: owner, query: "海边旅行", modules: ["mind"], scope: "archived"})).results, []);
+          for (const author of ["L", "G", "C"]) {
+            assert.deepEqual((await service.search({userId: owner, query: "海边旅行", modules: ["mind"], author})).results, []);
+          }
+          for (const modules of [undefined, ["diary"], ["todo"], ["universe"], ["mind"]]) {
+            const full = await service.search({userId: owner, query: "海边旅行", modules, limit: 25});
+            const paged: string[] = [];
+            let cursor: string | undefined;
+            do {
+              const page = await service.search({userId: owner, query: "海边旅行", modules, limit: 1, cursor});
+              paged.push(...page.results.map(row => `${row.entity_type}:${row.entity_id}`));
+              cursor = page.metadata.next_cursor ?? undefined;
+              assert.ok(paged.length <= 6, "cursor must terminate without repeats");
+            } while (cursor);
+            assert.deepEqual(paged, full.results.map(row => `${row.entity_type}:${row.entity_id}`));
+            assert.equal(new Set(paged).size, paged.length);
+          }
+          assert.deepEqual((await service.search({userId: owner, query: "100%_", modules: ["mind"]})).results.map(row => row.entity_id), [literalMemory]);
+          assert.deepEqual((await service.search({userId: owner, query: "CAFÉ preference", modules: ["mind"]})).results.map(row => row.entity_id), [unicodeMemory]);
+          assert.deepEqual((await service.search({userId: owner, query: "café preference", modules: ["mind"], mode: "phrase"})).results, []);
+          const phrase = await service.search({userId: owner, query: "café\n  preference", modules: ["mind"], mode: "phrase"});
+          assert.equal(phrase.results[0]?.match_reason, "exact_phrase");
+          assert.deepEqual(await tx.select().from(schema.runtimeSubjectStates), memoryBefore);
           const after = {
             tool: (
               await tx

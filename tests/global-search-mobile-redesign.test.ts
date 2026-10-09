@@ -59,7 +59,7 @@ test("Global Search full page uses the active-module mobile presentation", async
   assert.match(pageSource, /GlobalSearchPageHeader/);
   assert.doesNotMatch(pageSource, /匹配方式/);
   assert.doesNotMatch(pageSource, /exact_phrase|精确短语/);
-  assert.match(pageSource, /默认搜索 Diary、Todo 与 Universe；Conversations 可在模块筛选中开启/);
+  assert.match(pageSource, /默认搜索 Diary、Todo、Universe 与 Mind/);
   assert.match(pageSource, /没有找到匹配内容/);
   assert.match(pageSource, /SEARCH_MODULES\.map/);
   assert.match(pageSource, /global-search-result-button/);

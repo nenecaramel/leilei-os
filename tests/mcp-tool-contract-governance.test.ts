@@ -72,7 +72,7 @@ test("stable MCP defaults are explicit in tools/list", async () => {
   assert.ok(globalSearch);
   assert.deepEqual(
     property(globalSearch, "modules").default,
-    ["diary", "todo", "universe"],
+    ["diary", "todo", "universe", "mind"],
   );
   assert.equal(property(globalSearch, "scope").default, "active");
   assert.equal(property(globalSearch, "mode").default, "normal");
@@ -129,7 +129,7 @@ test("discovery contracts keep Global Search cross-domain and dedicated tools do
 
   const globalSearch = byName.get("global_search");
   assert.ok(globalSearch?.description);
-  assert.match(globalSearch.description, /LeileiOS Diary, Todo, and Universe/iu);
+  assert.match(globalSearch.description, /LeileiOS Diary, Todo, Universe, and Mind Memory/iu);
   assert.match(globalSearch.description, /domain search when the domain is known/iu);
   const globalMode = property(globalSearch, "mode");
   assert.match(String(globalMode.description ?? ""), /normal collapses runs of whitespace/iu);
@@ -576,7 +576,7 @@ test("global_search runtime defaults cannot reintroduce retired modules", async 
               count: 0,
               has_more: false,
               next_cursor: null,
-              searched_modules: input.modules as ["diary", "todo", "universe"],
+              searched_modules: input.modules as ["diary", "todo", "universe", "mind"],
               searched_scope: "active" as const,
               searched_author: null,
             },
@@ -599,7 +599,7 @@ test("global_search runtime defaults cannot reintroduce retired modules", async 
       arguments: { query: "needle" },
     });
     assert.notEqual(result.isError, true);
-    assert.deepEqual(captured?.modules, ["diary", "todo", "universe"]);
+    assert.deepEqual(captured?.modules, ["diary", "todo", "universe", "mind"]);
   } finally {
     await client.close();
     await server.close();

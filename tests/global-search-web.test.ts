@@ -37,6 +37,7 @@ test("Global Search URL state exposes only active modules", () => {
       "diary",
       "universe",
       "todo",
+      "mind",
     ],
   );
 });
