@@ -1,3 +1,4 @@
+import { ModuleListLoading, ModuleListEmpty } from "./ModuleListState";
 import {
   useEffect,
   useRef,
@@ -17,7 +18,7 @@ import {
   PaperAuthorSignature,
   type PaperAuthorValue,
 } from "./PaperAuthorSignature";
-import { MobileDiaryLoading, MobileDiaryRows } from "./diary/DiaryListPresentation";
+import { MobileDiaryRows } from "./diary/DiaryListPresentation";
 import { MobileDiaryDetail } from "./diary/DiaryDetailPresentation";
 import { MobileArchivedDiaryList, MobileArchivedDiaryDetail } from "./diary/DiaryArchivePresentation";
 import type { DiaryEntry, LoadState, DetailState } from "./diary/diary-page-types";
@@ -1171,37 +1172,11 @@ export function DiaryPageContent({
                       openDiary(id);
                     }}
                   />
-                ) : filters.q ? (
-                  <ModuleStateMessage
-                    state="empty"
-                    emptyText="没有符合条件的日记"
-                    errorText=""
-                    action={<button type="button" className="secondary-button memory-empty-clear" onClick={clearFilters}>清除条件</button>}
-                  />
-                ) : (
-                  <section className="memory-empty-state">
-                    <p>
-                      {hasFilters(filters)
-                        ? "没有符合条件的日记"
-                        : "还没有日记"}
-                    </p>
-                    {hasFilters(filters) ? (
-                      <button
-                        type="button"
-                        className="secondary-button memory-empty-clear"
-                        onClick={clearFilters}
-                      >
-                        清除条件
-                      </button>
-                    ) : null}
-                  </section>
-                )
+                ) : <ModuleListEmpty searching={Boolean(filters.q)} filtered={hasFilters(filters)} noun="日记" onClear={clearFilters} />
               ) : null}
 
               {state.status === "loading" ? (
-                filters.q ? (
-                  <ModuleStateMessage state="loading" placement="module" emptyText="" errorText="" loadingText="Searching..." />
-                ) : <MobileDiaryLoading label="Diary 加载中" />
+                <ModuleListLoading searching={Boolean(filters.q)} label="Diary 加载中" loadingText="正在读取日记…" />
               ) : null}
 
               {state.status === "error" ? (

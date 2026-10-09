@@ -258,16 +258,25 @@ test("detail retry stays in the paper and close restores focus to the clicked ro
     failed = false;
     await ui.click(ui.button("Retry"));
     assert.equal(
-      (ui.dom.window.document.querySelector("textarea") as HTMLTextAreaElement)
-        .value,
+      ui.dom.window.document.querySelector(".memory-paper-content")
+        ?.textContent,
       item.text,
     );
+    await ui.click(ui.button("编辑"));
     assert.ok(
       ui.dom.window.document.querySelector(
         '.paper-detail-date input[type="datetime-local"]',
       ),
     );
     await ui.click(ui.button("取消"));
+    await React.act(async () => {
+      ui.dom.window.document.dispatchEvent(
+        new ui.dom.window.KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+        }),
+      );
+    });
     assert.equal(ui.dom.window.document.querySelector('[role="dialog"]'), null);
     assert.equal(ui.dom.window.document.activeElement, row);
   } finally {
@@ -285,7 +294,9 @@ test("creation blocks duplicate submits, keeps failed drafts and reuses idempote
         if (fail) throw Error("offline");
         return { data: item };
       }
-      return { data: { items: [], nextCursor: null } };
+      if (_path.startsWith("/mind/search"))
+        return { data: { items: [], nextCursor: null } };
+      return { data: item };
     },
   } as any;
   const ui = await render(React.createElement(MindPageContent, { api }));
@@ -297,6 +308,15 @@ test("creation blocks duplicate submits, keeps failed drafts and reuses idempote
       ui,
       ui.dom.window.document.querySelector("textarea")!,
       "New local memory",
+    );
+    const defaultDate = (
+      ui.dom.window.document.querySelector(
+        'input[type="datetime-local"]',
+      ) as HTMLInputElement
+    ).value;
+    assert.equal(
+      defaultDate.slice(0, 10),
+      new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10),
     );
     const save = ui.button("保存");
     await React.act(async () => {
@@ -318,9 +338,14 @@ test("creation blocks duplicate submits, keeps failed drafts and reuses idempote
     assert.deepEqual(JSON.parse(writes[1].body as string), {
       kind: "memory",
       text: "New local memory",
-      occurred_at: null,
+      occurred_at: new Date(`${defaultDate}+08:00`).toISOString(),
     });
-    assert.equal(ui.dom.window.document.querySelector('[role="dialog"]'), null);
+    assert.equal(
+      ui.dom.window.document.querySelector(".memory-paper-content")
+        ?.textContent,
+      item.text,
+    );
+    assert.match(ui.dom.window.location.search, /memoryId=a/);
   } finally {
     await ui.cleanup();
   }
@@ -336,6 +361,7 @@ test("browser Back cannot silently discard an edited memory and restores filters
   const ui = await render(React.createElement(MindPageContent, { api }));
   try {
     await ui.click(ui.dom.window.document.querySelector(".memory-row")!);
+    await ui.click(ui.button("编辑"));
     await setInput(
       ui,
       ui.dom.window.document.querySelector("textarea")!,
@@ -370,7 +396,7 @@ test("browser Back cannot silently discard an edited memory and restores filters
   }
 });
 
-test("saving uses the original version and focuses the refreshed record; deleting focuses the create control", async () => {
+test("saving stays in reading mode with the refreshed record; deleting focuses the create control", async () => {
   let current = { ...item };
   let deleted = false;
   const writes: any[] = [];
@@ -399,6 +425,7 @@ test("saving uses the original version and focuses the refreshed record; deletin
   const ui = await render(React.createElement(MindPageContent, { api }));
   try {
     await ui.click(ui.dom.window.document.querySelector(".memory-row")!);
+    await ui.click(ui.button("编辑"));
     await setInput(
       ui,
       ui.dom.window.document.querySelector("textarea")!,
@@ -409,9 +436,12 @@ test("saving uses the original version and focuses the refreshed record; deletin
       { expected_version: "v1", text: "Updated text" },
     ]);
     const row = ui.dom.window.document.querySelector(".memory-row")!;
-    assert.equal(ui.dom.window.document.activeElement, row);
+    assert.ok(ui.dom.window.document.querySelector('[role="dialog"]'));
+    assert.ok(
+      !ui.dom.window.document.querySelector("textarea"),
+      "reading mode has no textarea",
+    );
     assert.match(row.textContent!, /Updated text/);
-    await ui.click(row);
     ui.dom.window.confirm = () => true;
     assert.ok(ui.button("删除").closest(".paper-detail-top-right"));
     assert.equal(ui.button("删除").closest(".paper-detail-bottom-left"), null);
@@ -475,6 +505,213 @@ test("Back from a clean detail retains the current paginated list and row focus"
     assert.equal(reads, 1);
     assert.equal(ui.dom.window.document.querySelector('[role="dialog"]'), null);
     assert.equal(ui.dom.window.document.activeElement, row);
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("Memory detail starts in reading mode; cancel restores content and save stays in reading mode", async () => {
+  let closes = 0;
+  const writes: any[] = [];
+  const api = {
+    request: async (_path: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      writes.push(body);
+      return {
+        data: {
+          ...item,
+          text: body.text,
+          contentVersion: `v${writes.length + 1}`,
+        },
+      };
+    },
+  } as any;
+  const ui = await render(
+    React.createElement(MemoryDetail, {
+      api,
+      initial: item,
+      onSaved: () => {},
+      onClose: () => closes++,
+    }),
+  );
+  try {
+    assert.ok(
+      !ui.dom.window.document.querySelector("textarea"),
+      "reading mode has no textarea",
+    );
+    assert.equal(
+      ui.dom.window.document.querySelector(".memory-paper-content")
+        ?.textContent,
+      item.text,
+    );
+    await ui.click(ui.button("编辑"));
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector("textarea")!,
+      "Discarded text",
+    );
+    ui.dom.window.confirm = () => true;
+    await ui.click(ui.button("取消"));
+    assert.equal(closes, 0);
+    assert.equal(
+      ui.dom.window.document.querySelector(".memory-paper-content")
+        ?.textContent,
+      item.text,
+    );
+    await ui.click(ui.button("编辑"));
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector("textarea")!,
+      "Saved text",
+    );
+    await ui.click(ui.button("保存"));
+    assert.equal(closes, 0);
+    assert.ok(
+      !ui.dom.window.document.querySelector("textarea"),
+      "reading mode has no textarea",
+    );
+    assert.equal(
+      ui.dom.window.document.querySelector(".memory-paper-content")
+        ?.textContent,
+      "Saved text",
+    );
+    await ui.click(ui.button("编辑"));
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector("textarea")!,
+      "Second save",
+    );
+    await ui.click(ui.button("保存"));
+    assert.equal(writes[1].expected_version, "v2");
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("Mind groups by Beijing occurrence descending across pages, with undated last", async () => {
+  const api = {
+    request: async (path: string) => ({
+      data: {
+        items: [
+          { ...summary, id: "undated", date: null, occurredAt: null },
+          {
+            ...summary,
+            id: "old",
+            date: "2026-01-01",
+            occurredAt: "2025-12-31T16:00:00Z",
+          },
+          {
+            ...summary,
+            id: "early",
+            date: "2026-10-09",
+            occurredAt: "2026-10-08T16:00:00Z",
+          },
+          {
+            ...summary,
+            id: "late",
+            date: "2026-10-09",
+            occurredAt: "2026-10-09T01:00:00Z",
+          },
+        ].slice(
+          path.includes("cursor=") ? 2 : 0,
+          path.includes("cursor=") ? 4 : 2,
+        ),
+        nextCursor: path.includes("cursor=") ? null : "second-page",
+      },
+    }),
+  } as any;
+  const ui = await render(React.createElement(MindPageContent, { api }));
+  try {
+    assert.deepEqual(
+      [...ui.dom.window.document.querySelectorAll("[data-memory-id]")].map(
+        (x) => x.getAttribute("data-memory-id"),
+      ),
+      ["late", "early", "old", "undated"],
+    );
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("Mind reuses Diary empty layout and search loading instead of list skeletons", async (t) => {
+  const api = {
+    request: async (path: string) =>
+      path.includes("query=wait")
+        ? new Promise(() => {})
+        : { data: { items: [], nextCursor: null } },
+  } as any;
+  const ui = await render(React.createElement(MindPageContent, { api }));
+  try {
+    assert.ok(ui.dom.window.document.querySelector(".memory-empty-state"));
+    assert.match(ui.dom.window.document.body.textContent!, /还没有记忆/);
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    await ui.click(
+      ui.dom.window.document.querySelector('[aria-label="搜索记忆"]')!,
+    );
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector('input[type="text"]')!,
+      "none",
+    );
+    await React.act(async () => t.mock.timers.tick(250));
+    assert.match(
+      ui.dom.window.document.body.textContent!,
+      /没有符合条件的记忆/,
+    );
+    await ui.click(ui.button("清除条件"));
+    assert.ok(ui.dom.window.document.querySelector(".memory-empty-state"));
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector('input[type="text"]')!,
+      "wait",
+    );
+    await React.act(async () => t.mock.timers.tick(250));
+    assert.match(ui.dom.window.document.body.textContent!, /Searching\.\.\./);
+    assert.ok(!ui.dom.window.document.querySelector(".memory-month-skeleton"));
+  } finally {
+    t.mock.timers.reset();
+    await ui.cleanup();
+  }
+});
+
+test("default occurrence is not a dirty draft; explicitly clearing it still creates an undated memory", async () => {
+  let confirms = 0;
+  let posted: any;
+  const api = {
+    request: async (path: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posted = JSON.parse(init.body as string);
+        return { data: { ...item, occurredAt: null } };
+      }
+      return path.startsWith("/mind/search")
+        ? { data: { items: [], nextCursor: null } }
+        : { data: { ...item, occurredAt: null } };
+    },
+  } as any;
+  const ui = await render(React.createElement(MindPageContent, { api }));
+  try {
+    ui.dom.window.confirm = () => {
+      confirms++;
+      return true;
+    };
+    const create = ui.dom.window.document.querySelector(
+      '[aria-label="新增记忆"]',
+    )!;
+    await ui.click(create);
+    await ui.click(ui.button("取消"));
+    assert.equal(confirms, 0);
+    assert.ok(!ui.dom.window.document.querySelector('[role="dialog"]'));
+    await ui.click(create);
+    await ui.click(ui.button("未指定日期"));
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector("textarea")!,
+      "Undated draft",
+    );
+    await ui.click(ui.button("保存"));
+    assert.equal(posted.occurred_at, null);
+    assert.match(ui.dom.window.location.search, /memoryId=a/);
+    assert.ok(ui.button("编辑"));
   } finally {
     await ui.cleanup();
   }

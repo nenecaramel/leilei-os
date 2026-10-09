@@ -179,6 +179,7 @@ test("409 retains the draft, disables save until explicit reconciliation and use
     }),
   );
   try {
+    await ui.click(ui.button("编辑"));
     await ui.click(ui.button("未指定日期"));
     await ui.click(ui.button("保存"));
     assert.equal(
@@ -238,8 +239,10 @@ test("Mind keeps undated records in the full paginated list and opens editable d
     assert.match(calls.at(-1)!, /cursor=page2/);
     assert.match(ui.dom.window.document.body.textContent!, /Second undated/);
     await ui.click(ui.dom.window.document.querySelector(".memory-row")!);
-    assert.ok(ui.dom.window.document.querySelector("textarea"));
+    assert.equal(ui.dom.window.document.querySelector("textarea"), null);
     assert.ok(ui.button("删除"));
+    await ui.click(ui.button("编辑"));
+    assert.ok(ui.dom.window.document.querySelector("textarea"));
     assert.ok(ui.button("保存"));
   } finally {
     await ui.cleanup();
@@ -264,6 +267,7 @@ test("Beijing datetime edit sends the new event instant and leaves text untouche
     }),
   );
   try {
+    await ui.click(ui.button("编辑"));
     const input = ui.dom.window.document.querySelector(
       'input[type="datetime-local"]',
     ) as HTMLInputElement;
@@ -279,6 +283,8 @@ test("Beijing datetime edit sends the new event instant and leaves text untouche
       expected_version: "v1",
       occurred_at: "2026-10-09T04:30:00.000Z",
     });
+    assert.equal(ui.dom.window.document.querySelector(".paper-detail-date")?.textContent, "2026.10.09");
+    assert.ok(!ui.dom.window.document.querySelector("textarea"));
   } finally {
     await ui.cleanup();
   }
@@ -305,6 +311,7 @@ test("failed conflict read blocks saving until latest content is retrieved", asy
     }),
   );
   try {
+    await ui.click(ui.button("编辑"));
     await ui.click(ui.button("未指定日期"));
     await ui.click(ui.button("保存"));
     assert.equal(ui.button("保存").disabled, true);

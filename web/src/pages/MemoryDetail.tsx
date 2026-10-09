@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { useUnsavedChanges } from "./use-unsaved-changes";
 import { PaperDetailDialog } from "./PaperDetailDialog";
+import { PaperDetailActions } from "./PaperDetailActions";
 import { PaperBodyEditor } from "./PaperBodyEditor";
 import {
   getMemory,
@@ -64,7 +65,9 @@ export function MemoryPaper({
   onDelete,
   showEntryDates = true,
   registerNavigationGuard,
+  readFirst = false,
 }: {
+  readFirst?: boolean;
   api: WebApiClient;
   initial: MemoryItem[];
   date?: string;
@@ -82,6 +85,7 @@ export function MemoryPaper({
       date: memoryLocalTime(item.occurredAt),
     })),
   );
+  const [editing, setEditing] = useState(!readFirst);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +128,8 @@ export function MemoryPaper({
         });
         onSaved(result.item);
       }
-      onClose();
+      if (readFirst) setEditing(false);
+      else onClose();
     } catch {
       setError("保存失败，请重试");
     } finally {
@@ -138,13 +143,26 @@ export function MemoryPaper({
     onClose();
     return true;
   }
+  function cancelEdit() {
+    if (inFlight.current || (dirty && !window.confirm("放弃未保存的修改？")))
+      return;
+    setDrafts((old) =>
+      old.map(({ item }) => ({
+        item,
+        text: item.text ?? "",
+        date: memoryLocalTime(item.occurredAt),
+      })),
+    );
+    setError(null);
+    setEditing(false);
+  }
   return (
     <PaperDetailDialog
       id={`memory-${date ?? initial[0]?.id}`}
       label="Memory"
       open
       dateLabel={
-        showEntryDates && drafts.length === 1 ? (
+        editing && showEntryDates && drafts.length === 1 ? (
           <MemoryPaperDateEditor
             value={drafts[0].date}
             disabled={busy}
@@ -155,7 +173,7 @@ export function MemoryPaper({
             }}
           />
         ) : (
-          ((date ?? memoryDay(initial[0]?.occurredAt ?? null))?.replaceAll(
+          ((date ?? memoryDay(drafts[0]?.item.occurredAt ?? null))?.replaceAll(
             "-",
             ".",
           ) ?? "未指定日期")
@@ -166,53 +184,51 @@ export function MemoryPaper({
       onRequestClose={close}
       errorMessage={error}
       topRight={
-        <>
-          {onDelete ? (
-            <button
-              className="memory-paper-control"
-              disabled={busy}
-              onClick={() => {
-                if (!window.confirm("删除这条 Memory？")) return;
-                inFlight.current = true;
-                setBusy(true);
-                void onDelete()
-                  .catch(() => setError("删除失败，请重试"))
-                  .finally(() => {
-                    inFlight.current = false;
-                    setBusy(false);
-                  });
-              }}
-            >
-              删除
-            </button>
-          ) : null}
-          {onDelete ? <span>·</span> : null}
-          <button
-            className="memory-paper-control"
-            disabled={busy}
-            onClick={close}
-          >
-            取消
-          </button>
-          <span>·</span>
-          <button
-            className="memory-paper-control"
-            disabled={
-              busy ||
-              !dirty ||
-              drafts.some(
-                (d) => d.unresolved || !d.text.trim() || d.text.length > 20000,
-              )
-            }
-            onClick={() => void save()}
-          >
-            {busy ? "保存中…" : "保存"}
-          </button>
-        </>
+        <PaperDetailActions
+          editing={editing}
+          busy={busy}
+          invalid={
+            !dirty ||
+            drafts.some(
+              (d) => d.unresolved || !d.text.trim() || d.text.length > 20000,
+            )
+          }
+          onCancel={readFirst ? cancelEdit : close}
+          onSave={() => void save()}
+          onEdit={() => {
+            setError(null);
+            setEditing(true);
+          }}
+          readingAction={
+            onDelete ? (
+              <button
+                className="memory-paper-control"
+                disabled={busy}
+                onClick={() => {
+                  if (inFlight.current || !window.confirm("删除这条 Memory？"))
+                    return;
+                  inFlight.current = true;
+                  setBusy(true);
+                  void onDelete()
+                    .catch(() => setError("删除失败，请重试"))
+                    .finally(() => {
+                      inFlight.current = false;
+                      setBusy(false);
+                    });
+                }}
+              >
+                {busy ? "删除中…" : "删除"}
+              </button>
+            ) : undefined
+          }
+        />
       }
       bottomLeft={
         <>
-          {showEntryDates && drafts.length === 1 && drafts[0].date ? (
+          {editing &&
+          showEntryDates &&
+          drafts.length === 1 &&
+          drafts[0].date ? (
             <button
               className="memory-paper-control"
               disabled={busy}
@@ -255,16 +271,20 @@ export function MemoryPaper({
                 ) : null}
               </div>
             ) : null}
-            <PaperBodyEditor
-              label={`Memory ${index + 1} 正文`}
-              value={draft.text}
-              disabled={busy}
-              minimumHeight={30}
-              onChange={(text) => {
-                patch(draft.item.id, { text });
-                setError(null);
-              }}
-            />
+            {editing ? (
+              <PaperBodyEditor
+                label={`Memory ${index + 1} 正文`}
+                value={draft.text}
+                disabled={busy}
+                minimumHeight={30}
+                onChange={(text) => {
+                  patch(draft.item.id, { text });
+                  setError(null);
+                }}
+              />
+            ) : (
+              <p className="memory-paper-content">{draft.item.text}</p>
+            )}
             {draft.unresolved ? (
               <div className="memory-paper-conflict" role="alert">
                 {draft.conflict ? (
@@ -371,6 +391,7 @@ export function MemoryDetail({
   );
   return (
     <MemoryPaper
+      readFirst
       registerNavigationGuard={registerNavigationGuard}
       api={api}
       initial={[initial]}

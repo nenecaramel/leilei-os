@@ -5,7 +5,11 @@ import { PaperBodyEditor } from "./PaperBodyEditor";
 import { useUnsavedChanges } from "./use-unsaved-changes";
 import { confirmUnsavedChanges, createSubmissionGate } from "./submission-gate";
 import { MemoryPaperDateEditor } from "./MemoryDetail";
-import { memoryTimestamp } from "./memory-api";
+import {
+  memoryLocalTime,
+  memoryTimestamp,
+  type MemoryItem,
+} from "./memory-api";
 
 export function MemoryCreatePaper({
   api,
@@ -16,12 +20,16 @@ export function MemoryCreatePaper({
 }: {
   api: WebApiClient;
   triggerRef: RefObject<HTMLElement | null>;
-  onCreated(): void;
+  onCreated(item: MemoryItem): void;
   onClose(): void;
   registerNavigationGuard?(guard: (() => boolean) | null): void;
 }) {
   const [text, setText] = useState("");
-  const [date, setDate] = useState("");
+  const [initialDate] = useState(() =>
+    memoryLocalTime(new Date().toISOString()).slice(0, 16),
+  );
+  const [date, setDate] = useState(initialDate);
+  const dirty = Boolean(text || date !== initialDate);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -34,23 +42,19 @@ export function MemoryCreatePaper({
       live.current = false;
     };
   }, []);
-  useUnsavedChanges(Boolean(text || date));
+  useUnsavedChanges(dirty);
   useEffect(() => {
     registerNavigationGuard?.(
       () =>
         !inFlight.current &&
-        confirmUnsavedChanges(Boolean(text || date), (message) =>
-          window.confirm(message),
-        ),
+        confirmUnsavedChanges(dirty, (message) => window.confirm(message)),
     );
     return () => registerNavigationGuard?.(null);
-  }, [busy, text, date, registerNavigationGuard]);
+  }, [busy, dirty, registerNavigationGuard]);
   function close() {
     if (
       inFlight.current ||
-      !confirmUnsavedChanges(Boolean(text || date), (message) =>
-        window.confirm(message),
-      )
+      !confirmUnsavedChanges(dirty, (message) => window.confirm(message))
     )
       return false;
     onClose();
@@ -69,14 +73,14 @@ export function MemoryCreatePaper({
       });
       if (identity.current?.body !== body)
         identity.current = { body, id: crypto.randomUUID() };
-      await api.request("/mind", {
+      const response = await api.request<{ data: MemoryItem }>("/mind", {
         method: "POST",
         headers: { "Idempotency-Key": identity.current.id },
         body,
       });
       if (live.current) {
-        onCreated();
         onClose();
+        onCreated(response.data);
       }
     } catch {
       if (live.current) setError("保存失败，请重试");
