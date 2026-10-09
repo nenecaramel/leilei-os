@@ -7280,6 +7280,8 @@ body:has(.system-page) {
 
 
 /* Day Space Todo creation follows the existing module-tool and paper popover pattern. */
+/* The date navigation is z-index: 30; raise the open author menu above it. */
+.day-space-header--create-open { position: relative; z-index: 40; }
 .day-space-header .day-space-create-wrap { position: relative; }
 @media (min-width: 761px) {
   .day-space-header .day-space-create-wrap > button {
@@ -7324,6 +7326,12 @@ body:has(.system-page) {
     cursor: pointer;
   }
 }
-.day-space-header .day-space-create-wrap > button:disabled { opacity: .45; cursor: default; }
+.day-space-header .day-space-create-wrap > button:disabled { opacity: 1; cursor: default; }
+@media (max-width: 760px) {
+  .day-space-header .day-space-create-popover > button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
 .day-space-header .day-space-create-popover button:hover,
 .day-space-header .day-space-create-popover button:focus-visible { background: #f2f2f2; }

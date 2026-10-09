@@ -348,7 +348,7 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
 
   return (
     <main className="day-space-page">
-      <header className="page-header memory-page-header day-space-header">
+      <header className={`page-header memory-page-header day-space-header${createOpen ? " day-space-header--create-open" : ""}`}>
         <div className="memory-page-heading"><div className="memory-page-title">Day Space</div></div>
         <div className="memory-page-tools">
           <ModuleSearchButton label="搜索 Todo" expanded={todoSearchOpen} onClick={() => { setCreateOpen(false); setTodoSearchOpen((value) => !value); }} />
