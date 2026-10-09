@@ -15,12 +15,17 @@ test("Day Space is an active route and navigation destination", () => {
   assert.match(nav, /to:\s*["']\/day-space["']/);
 });
 
-test("Day Space keeps the approved mobile shell and no create CTA", () => {
+test("Day Space keeps the approved mobile shell and reuses its native paper controls for Todo creation", () => {
   assert.match(page, /className="day-space-page"/);
   assert.match(page, />Day Space</);
   assert.match(page, /这一天还没有内容/);
   assert.match(page, /buildDaySpaceLocation/);
-  assert.doesNotMatch(page, /新增|创建|create CTA/i);
+  assert.match(page, /aria-label="新增 Todo"/);
+  assert.match(page, /<PlusIcon\s*\/>/);
+  assert.match(page, /memory-page-tool-wrap day-space-create-wrap/);
+  assert.match(page, /memory-page-popover day-space-create-popover/);
+  assert.match(page, /<TodoPaperDialog/);
+  assert.doesNotMatch(page, /createTodoPaper|create-todo-overlay/);
   assert.match(styles, /\.day-space-page\s*\{/);
   assert.match(styles, /calc\(100% - 48px\)/);
 });

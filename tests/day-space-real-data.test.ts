@@ -618,3 +618,90 @@ test("Day Space search Retry uses the global Retry typography", () => {
     /\.module-search-state > button:not\(\.secondary-button\)\s*\{[^}]*font-size:\s*11px[^}]*font-weight:\s*500[^}]*line-height:\s*1\.4[^}]*text-decoration:\s*none/s,
   );
 });
+
+
+test("Day Space creates a missing Todo paper through its existing editor, without changing the Home Todo page", async () => {
+  let calls = 0;
+  const saveRequests: Array<{ path: string; body: { revision: number | null; entries: Array<{ text: string }> } }> = [];
+  const created = { author: "G" as const, date, revision: 1, entries: [{ id: "g-new", kind: "pending" as const, text: "Day Space entry" }] };
+  const api: DaySpaceApi = {
+    webClient: {
+      request: async <T>(path: string, init?: RequestInit) => {
+        if (path === "/todo/2026-08-12/G" && init?.method === "PUT") {
+          saveRequests.push({ path, body: JSON.parse(String(init.body)) });
+          return { success: true, data: created } as T;
+        }
+        throw new Error("Unexpected request: " + path);
+      },
+    },
+    listTodoDates: async () => [],
+    loadTodoDay: async () => {
+      calls += 1;
+      return { date, papers: { L: null, G: calls === 1 ? null : created, C: null } };
+    },
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => ({ date, diaries: [] }),
+    updateDiary: async () => { throw new Error("unexpected diary update"); },
+  };
+  const page = await render(api);
+  await page.settle();
+  assert.match(page.container.textContent ?? "", /这一天还没有内容/);
+  const create = page.container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]');
+  assert.ok(create);
+  assert.equal(create.disabled, false);
+  await React.act(async () => { create.click(); });
+  const choices = [...page.container.querySelectorAll<HTMLButtonElement>('.day-space-create-popover [role="menuitem"]')];
+  assert.deepEqual(choices.map((button) => button.textContent?.trim()), ["L", "G", "C"]);
+  await React.act(async () => { choices[1]!.click(); });
+  await page.settle();
+  const dialog = page.container.querySelector('[role="dialog"]');
+  assert.ok(dialog);
+  assert.match(dialog.getAttribute("aria-label") ?? "", /G Todo/);
+  const textarea = page.container.querySelector<HTMLTextAreaElement>('.todo-paper-editor textarea');
+  assert.ok(textarea);
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(textarea), "value")?.set?.call(textarea, "Day Space entry");
+    textarea.dispatchEvent(new page.container.ownerDocument.defaultView!.Event("input", { bubbles: true }));
+  });
+  await page.settle();
+  const veil = page.container.querySelector<HTMLButtonElement>(".paper-detail-veil");
+  assert.ok(veil);
+  await React.act(async () => { veil.click(); });
+  await page.settle();
+  assert.equal(saveRequests.length, 1);
+  assert.equal(saveRequests[0]?.path, "/todo/2026-08-12/G");
+  assert.equal(saveRequests[0]?.body.revision, null);
+  assert.equal(saveRequests[0]?.body.entries[0]?.text, "Day Space entry");
+  assert.equal(page.container.querySelector(".day-space-paper-signature")?.textContent, "G");
+  assert.match(page.container.textContent ?? "", /Day Space entry/);
+  await page.cleanup();
+});
+
+test("Day Space create controls reuse an existing author's revision instead of overwriting it", async () => {
+  const api: DaySpaceApi = {
+    webClient: { request: async () => { throw new Error("Unexpected write"); } },
+    listTodoDates: async () => [],
+    loadTodoDay: async () => todo,
+    listDiaryDates: async () => [],
+    loadDiariesByDate: async () => ({ date, diaries: [] }),
+    updateDiary: async () => { throw new Error("Unexpected diary write"); },
+  };
+  const page = await render(api);
+  await page.settle();
+  const create = page.container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]');
+  assert.ok(create);
+  await React.act(async () => { create.click(); });
+  const l = page.container.querySelector<HTMLButtonElement>('.day-space-create-popover [role="menuitem"]');
+  assert.ok(l);
+  await React.act(async () => { l.click(); });
+  await page.settle();
+  const dialog = page.container.querySelector('[role="dialog"]');
+  assert.ok(dialog);
+  assert.match(dialog.textContent ?? "", /Keep Todo|todo/i);
+  const textarea = page.container.querySelector<HTMLTextAreaElement>('.todo-paper-editor textarea');
+  assert.ok(textarea);
+  assert.equal(textarea.value, "Keep Todo");
+  await React.act(async () => { page.container.querySelector<HTMLButtonElement>(".paper-detail-veil")?.click(); });
+  await page.settle();
+  await page.cleanup();
+});
