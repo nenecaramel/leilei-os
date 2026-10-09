@@ -44,17 +44,19 @@ export function PaperBodyEditor({
     };
   }, [minimumHeight]);
   return (
-    <textarea
-      ref={ref}
-      className="memory-paper-content-editor diary-paper-content-editor paper-body-editor"
-      aria-label={label}
-      placeholder={placeholder}
-      value={value}
-      disabled={disabled}
-      rows={1}
-      onFocus={onFocus}
-      style={{ minHeight: minimumHeight }}
-      onChange={(event) => onChange(event.target.value)}
-    />
+    <div className="paper-textarea-layout">
+      <textarea
+        ref={ref}
+        className="memory-paper-content-editor diary-paper-content-editor paper-body-editor"
+        aria-label={label}
+        placeholder={placeholder}
+        value={value}
+        disabled={disabled}
+        rows={1}
+        onFocus={onFocus}
+        style={{ minHeight: minimumHeight }}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
   );
 }
