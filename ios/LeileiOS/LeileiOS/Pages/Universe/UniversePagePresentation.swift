@@ -119,6 +119,12 @@ extension UniverseView {
                             }
                             .buttonStyle(.bordered)
                             .disabled(importCommitting)
+
+                            Button("Cancel") {
+                                discardImportSelection()
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(importCommitting)
                         }
                     }
                 }

@@ -55,8 +55,8 @@ extension UniverseNodeSheet {
                 Menu {
                     if revisionsAvailable {
                         Button {
-                                confirmation = .restoreVersion
-                            } label: {
+                            confirmation = .restoreVersion
+                        } label: {
                             Label(
                                 "Restore Previous Version",
                                 systemImage: "clock.arrow.circlepath"

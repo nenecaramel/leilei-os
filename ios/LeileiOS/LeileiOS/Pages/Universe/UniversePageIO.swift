@@ -3,6 +3,13 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UniverseView {
+    func discardImportSelection() {
+        guard !importCommitting, !importUncertain else { return }
+        importFileName = nil
+        importPreview = nil
+        importError = nil
+    }
+
     func recheckImport() async {
         importError = nil
         importUncertain = false
