@@ -622,13 +622,13 @@ test("Day Space search Retry uses the global Retry typography", () => {
 
 test("Day Space creates a missing Todo paper through its existing editor, without changing the Home Todo page", async () => {
   let calls = 0;
-  let saveRequest: { path: string; body: { revision: number | null; entries: Array<{ text: string }> } } | null = null;
+  const saveRequests: Array<{ path: string; body: { revision: number | null; entries: Array<{ text: string }> } }> = [];
   const created = { author: "G" as const, date, revision: 1, entries: [{ id: "g-new", kind: "pending" as const, text: "Day Space entry" }] };
   const api: DaySpaceApi = {
     webClient: {
       request: async <T>(path: string, init?: RequestInit) => {
         if (path === "/todo/2026-08-12/G" && init?.method === "PUT") {
-          saveRequest = { path, body: JSON.parse(String(init.body)) };
+          saveRequests.push({ path, body: JSON.parse(String(init.body)) });
           return { success: true, data: created } as T;
         }
         throw new Error("Unexpected request: " + path);
@@ -668,9 +668,10 @@ test("Day Space creates a missing Todo paper through its existing editor, withou
   assert.ok(veil);
   await React.act(async () => { veil.click(); });
   await page.settle();
-  assert.equal(saveRequest?.path, "/todo/2026-08-12/G");
-  assert.equal(saveRequest?.body.revision, null);
-  assert.equal(saveRequest?.body.entries[0]?.text, "Day Space entry");
+  assert.equal(saveRequests.length, 1);
+  assert.equal(saveRequests[0]?.path, "/todo/2026-08-12/G");
+  assert.equal(saveRequests[0]?.body.revision, null);
+  assert.equal(saveRequests[0]?.body.entries[0]?.text, "Day Space entry");
   assert.equal(page.container.querySelector(".day-space-paper-signature")?.textContent, "G");
   assert.match(page.container.textContent ?? "", /Day Space entry/);
   await page.cleanup();
