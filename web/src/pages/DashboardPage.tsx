@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
+import { PlusIcon } from "../components/icons";
 import { CalendarPreview, type CalendarLoadState } from "./CalendarPreview";
 import { listDiaryDates } from "./day-space-api";
 import { mergeCalendarContentDates } from "./home-calendar-data";
@@ -111,7 +112,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
     <div className="page home-prototype">
       <div className="home-page-heading">
         <h1 className="home-page-title">Todo</h1>
-        <div className="home-create-wrap" ref={createWrapRef} onKeyDown={(event) => {
+        <div className="home-create-wrap memory-page-tool-wrap" ref={createWrapRef} onKeyDown={(event) => {
           if (event.key === "Escape") {
             setCreateOpen(false);
             createTriggerRef.current?.focus();
@@ -125,9 +126,9 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
             aria-expanded={createOpen}
             disabled={!api || loadState !== "ready"}
             onClick={() => setCreateOpen((value) => !value)}
-          >+</button>
+          ><PlusIcon /></button>
           {createOpen ? (
-            <div className="home-create-options" role="group" aria-label="选择 Todo 作者">
+            <div className="home-create-options memory-page-popover" role="group" aria-label="选择 Todo 作者">
               {(["L", "G", "C"] as const).map((author) => (
                 <button type="button" key={author} onClick={() => openTodoPaper(author, true)}>
                   {author}
