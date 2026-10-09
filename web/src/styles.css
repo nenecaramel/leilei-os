@@ -7278,65 +7278,52 @@ body:has(.system-page) {
   .day-space-page .memory-page-title { font: inherit; }
 }
 
-/* Web Todo creation uses the same icon geometry and popover styling as Diary / Global Search. */
-.home-create-wrap {
-  grid-column: 3;
-  justify-self: end;
-  align-self: center;
-  position: relative;
-  z-index: 5;
+
+/* Day Space Todo creation follows the existing module-tool and paper popover pattern. */
+.day-space-header .day-space-create-wrap { position: relative; }
+@media (min-width: 761px) {
+  .day-space-header .day-space-create-wrap > button {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    color: #171717;
+    background: transparent;
+    cursor: pointer;
+  }
+  .day-space-header .day-space-create-wrap > button svg { width: 19px; height: 19px; }
+  .day-space-header .day-space-create-popover {
+    position: absolute;
+    z-index: 20;
+    top: 46px;
+    right: 0;
+    width: max-content;
+    min-width: 136px;
+    padding: 5px;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+  }
+  .day-space-header .day-space-create-popover button {
+    display: flex;
+    width: 100%;
+    min-height: 36px;
+    align-items: center;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    color: #303030;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
 }
-.home-create-trigger {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  color: #3f3f3f;
-  background: transparent;
-  cursor: pointer;
-}
-.home-create-trigger svg {
-  width: 20px;
-  height: 20px;
-}
-.home-create-trigger:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.home-create-options {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 6px);
-  right: 0;
-  display: grid;
-  width: max-content;
-  min-width: 136px;
-  padding: 5px;
-  border: 1px solid #e5e5e5;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
-}
-.home-create-options button {
-  display: flex;
-  width: 100%;
-  min-height: 36px;
-  align-items: center;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: 7px;
-  color: #303030;
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.home-create-options button:hover,
-.home-create-options button:focus-visible {
-  background: #f2f2f2;
-}
+.day-space-header .day-space-create-wrap > button:disabled { opacity: .45; cursor: default; }
+.day-space-header .day-space-create-popover button:hover,
+.day-space-header .day-space-create-popover button:focus-visible { background: #f2f2f2; }

@@ -65,7 +65,6 @@ test("Dashboard renders server-backed Home papers", async () => {
     "Dashboard Home render",
   );
   assert.equal(container.querySelector("h1")?.textContent, "Todo");
-  assert.equal(container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]')?.disabled, false);
   assert.doesNotMatch(container.textContent ?? "", /Today|Wednesday|August 5|最新更新|新增/);
   assert.equal(container.querySelectorAll(".today-panel").length, 3);
   assert.equal(container.querySelectorAll(".sticky-card").length, 0);
@@ -106,30 +105,6 @@ test("C Todo panel opens a modal with its own fixture notes", async () => {
     env.dom.window.document.activeElement === panels[2],
     "paper detail modal close",
   );
-  root.unmount();
-  await waitForPaint();
-  env.restore();
-});
-
-
-test("Todo create entry reuses author-specific paper editor", async () => {
-  const env = installDashboardDom();
-  const container = env.dom.window.document.getElementById("root")!;
-  const root = createRoot(container);
-  root.render(React.createElement(BrowserRouter, null, React.createElement(DashboardPageContent, {
-    api: { request: async (path: string) => ({ success: true, data: { date: path.split("/").at(-1), papers: { L: null, G: null, C: null } } }) },
-  })));
-  await waitForCondition(() => !!container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]:not(:disabled)'), "create action enabled");
-  const create = container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]')!;
-  create.click();
-  await waitForCondition(() => create.getAttribute("aria-expanded") === "true", "Todo author options expanded");
-  const choices = container.querySelectorAll<HTMLButtonElement>(".home-create-options button");
-  assert.deepEqual([...choices].map((button) => button.textContent), ["L", "G", "C"]);
-  choices[1]!.click();
-  await waitForCondition(() => container.querySelector('[role="dialog"]') !== null, "create G Todo dialog");
-  assert.match(container.querySelector('[role="dialog"]')?.getAttribute("aria-label") ?? container.querySelector('[role="dialog"]')?.textContent ?? "", /G/);
-  container.querySelector<HTMLButtonElement>(".paper-detail-veil")?.click();
-  await waitForCondition(() => container.querySelector('[role="dialog"]') === null, "create Todo dialog closed");
   root.unmount();
   await waitForPaint();
   env.restore();

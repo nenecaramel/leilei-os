@@ -19,6 +19,7 @@ import {
 import { DaySpaceDatePicker } from "./DaySpaceDatePicker.js";
 import { DaySpaceDiaryDialog } from "./DaySpaceDiaryDialog.js";
 import { TodoPaperDialog } from "./TodoPaperDialog.js";
+import { PlusIcon } from "../components/icons.js";
 import { ModuleSearchButton, ModuleSearchField, ModuleStateMessage, type ModuleSearchState } from "../components/ModuleSearch";
 import { ModuleState, PageState } from "../components/StateSurface";
 import { composeDaySpacePapers, resolveDaySpaceDefaultDate, type DaySpaceModuleState } from "./day-space-data.js";
@@ -57,6 +58,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const [memoryRevision,setMemoryRevision] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openPaperId, setOpenPaperId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createAuthor, setCreateAuthor] = useState<TodoAuthor | null>(null);
   const [todoSearchOpen, setTodoSearchOpen] = useState(false);
   const [todoSearchDraft, setTodoSearchDraft] = useState("");
   const [todoSearchState, setTodoSearchState] = useState<ModuleSearchState>("idle");
@@ -65,6 +68,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const [stageWidth, setStageWidth] = useState(345);
   const stageMeasureRef = useRef<HTMLDivElement | null>(null);
   const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const createTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const createWrapRef = useRef<HTMLDivElement | null>(null);
   const generation = useRef(0);
   const todoRequest = useRef(0);
   const diaryRequest = useRef(0);
@@ -75,6 +80,17 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
   const openedRequestedPaper = useRef<string | null>(null);
   const selectedDateRef = useRef<string | null>(selectedDate);
   selectedDateRef.current = selectedDate;
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!createWrapRef.current?.contains(event.target as Node)) {
+        setCreateOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeOutside);
+    return () => document.removeEventListener("mousedown", closeOutside);
+  }, [createOpen]);
 
   const loadDate = useCallback((date: string) => {
     const current = ++generation.current;
@@ -91,6 +107,8 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
     setMemoryState({status:"loading"});
     setMemoryRevision(n => n + 1);
     setOpenPaperId(null);
+    setCreateOpen(false);
+    setCreateAuthor(null);
     setTodoState({ status: "loading" });
     setDiaryState({ status: "loading" });
     void api.loadTodoDay(date, todoAbort.signal).then((value) => {
@@ -302,6 +320,20 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
     }
   }, [api]);
 
+  const onTodoSaved = (date: string, paper: TodoPaper) => {
+    setTodoState((current) => ({
+      status: "ready",
+      value: {
+        date,
+        papers: {
+          ...(current.value?.papers ?? { L: null, G: null, C: null }),
+          [paper.author]: paper.entries.length > 0 ? paper : null,
+        },
+      },
+    }));
+    void refreshTodo(date, paper);
+  };
+
   const go = (date: string) => {
     setPickerOpen(false);
     navigate(buildDaySpaceLocation(date));
@@ -319,7 +351,47 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
       <header className="page-header memory-page-header day-space-header">
         <div className="memory-page-heading"><div className="memory-page-title">Day Space</div></div>
         <div className="memory-page-tools">
-          <ModuleSearchButton label="搜索 Todo" expanded={todoSearchOpen} onClick={() => setTodoSearchOpen((value) => !value)} />
+          <ModuleSearchButton label="搜索 Todo" expanded={todoSearchOpen} onClick={() => { setCreateOpen(false); setTodoSearchOpen((value) => !value); }} />
+          <div
+            className="memory-page-tool-wrap day-space-create-wrap"
+            ref={createWrapRef}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.stopPropagation();
+              setCreateOpen(false);
+              createTriggerRef.current?.focus();
+            }}
+          >
+            <button
+              ref={createTriggerRef}
+              type="button"
+              aria-label="新增 Todo"
+              aria-haspopup="menu"
+              aria-expanded={createOpen}
+              disabled={!selectedDate || todoState.status !== "ready"}
+              onClick={() => { setTodoSearchOpen(false); setCreateOpen((value) => !value); }}
+            >
+              <PlusIcon />
+            </button>
+            {createOpen ? (
+              <div className="memory-page-popover day-space-create-popover" role="menu" aria-label="Todo 作者">
+                {(["L", "G", "C"] as const).map((author) => (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    key={author}
+                    onClick={() => {
+                      setCreateOpen(false);
+                      setOpenPaperId(null);
+                      setCreateAuthor(author);
+                    }}
+                  >
+                    {author}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
         {todoSearchOpen ? <ModuleSearchField ariaLabel="搜索 Todo 内容" placeholder="Search todos..." value={todoSearchDraft} onChange={setTodoSearchDraft} /> : null}
       </header>
@@ -362,7 +434,20 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
         )}
       </div>
       {openPaper?.type === "memory" && selectedDate ? <DaySpaceMemoryDialog key={selectedDate} api={api.webClient} date={selectedDate} items={openPaper.items} triggerRef={paperTriggerRef} onSaved={applyMemory} onClose={()=>setOpenPaperId(null)} /> : null}
-      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => { setTodoState((current) => ({ status: "ready", value: { date: selectedDate, papers: { ...(current.value?.papers ?? { L: null, G: null, C: null }), [paper.author]: paper.entries.length > 0 ? paper : null } } })); void refreshTodo(selectedDate, paper); }} onClosed={() => setOpenPaperId(null)} /> : null}
+      {openPaper?.type === "todo" && selectedDate ? <TodoPaperDialog api={api.webClient} author={openPaper.paper.author} date={businessDateToLocalDate(selectedDate) ?? new Date()} open paper={openPaper.paper} triggerRef={paperTriggerRef} onSaved={(paper) => onTodoSaved(selectedDate, paper)} onClosed={() => setOpenPaperId(null)} /> : null}
+      {createAuthor && selectedDate && todoState.value ? (
+        <TodoPaperDialog
+          key={`${selectedDate}:${createAuthor}`}
+          api={api.webClient}
+          author={createAuthor}
+          date={businessDateToLocalDate(selectedDate) ?? new Date()}
+          open
+          paper={todoState.value.papers[createAuthor]}
+          triggerRef={createTriggerRef}
+          onSaved={(paper) => onTodoSaved(selectedDate, paper)}
+          onClosed={() => setCreateAuthor(null)}
+        />
+      ) : null}
       {openPaper?.type === "diary" ? <DaySpaceDiaryDialog diary={openPaper.diary} api={api} open triggerRef={paperTriggerRef} onSaved={(next) => { setDiaryState((current) => ({ status: "ready", value: current.value ? current.value.map((entry) => entry.id === next.id ? next : entry) : [next] })); void refreshDiary(next.date, next); }} onClosed={() => setOpenPaperId(null)} /> : null}
     </main>
   );
