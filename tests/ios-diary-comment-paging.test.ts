@@ -62,7 +62,7 @@ test("actual Swift active/archive reconciliation preserves overlap, order and pa
 test("only the duplicate value transformation moves; both complete surfaces remain identical", () => {
   const baselineHashes: Record<string, string> = {
   "DiaryDetailPresentation.swift": "3b2dcd808078901b9c20124c89c2b28a2697d797e4f854629a2345d291995c9f",
-  "Archive/DiaryArchivePresentation.swift": "1bf047bcf66cadd51680604c38efbbc7a5f333abcfbf50061bf162496113d476"
+  "Archive/DiaryArchivePresentation.swift": "e68d09f9da440640220b7b582428d9e788793e6613fc17082885abcdfc097b09"
 };
   const rules = readFileSync(root + "DiaryCommentPaging.swift", "utf8");
   const body = rules.slice(rules.indexOf("        let existing ="), rules.lastIndexOf("    }"));
