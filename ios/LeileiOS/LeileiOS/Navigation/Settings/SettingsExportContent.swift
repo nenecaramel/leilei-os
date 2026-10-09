@@ -18,7 +18,8 @@ struct SettingsExportContent: View {
 
                 Text(
                     "Audit and lifecycle events are diagnostic only and are not restored. "
-                    + "Full Backup excludes machine-local working directory paths."
+                    + "Full Backup excludes machine-local working directory paths. "
+                    + "Mind includes Memory and retained historical records."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)

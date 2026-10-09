@@ -16,6 +16,7 @@ import type {
   ExportUniverseBundle,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
+import { mindState as memoryFixture } from "./helpers/import-service-fixtures.js";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 
 const USER_ID = "user-export-service";
@@ -384,4 +385,17 @@ test("ExportService does not return a partial document after a repository failur
     ),
     /database unavailable/u,
   );
+});
+
+test("new v4 backups emit only memory without changing record data or order", async () => {
+  const repository = createRepository();
+  const first = { ...memoryFixture, text: "  remembered\nexactly  " };
+  const second = { ...memoryFixture, id: "00000000-0000-4000-8000-000000000070",
+    validity_status: "tombstoned" as const, text: null,
+    payload: { lifecycle_v1: { status: "forgotten" }, temporal_v1: { occurredAt: null } } };
+  repository.listMind = async () => [first, { ...first, kind: "thought" }, second] as ExportMindStateRecord[];
+  const expected = structuredClone([first, second]);
+  const document = await new ExportService(repository).createExport(USER_ID, false);
+  assert.equal(document.schema_version, 4);
+  assert.deepEqual(document.data.mind, expected);
 });

@@ -195,6 +195,7 @@ test("Data restore auto-previews complete v4 metadata and all portable modules",
   )!;
   assert.match(card.textContent ?? "", /v4/);
   assert.match(card.textContent ?? "", /Included · diagnostic only/);
+  assert.match(card.textContent ?? "", /Mind \(Memory & history\)/);
   for (const label of [
     "Diary",
     "Diary comments",

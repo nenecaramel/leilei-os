@@ -96,6 +96,7 @@ test("Data renders truthful Backup actions and inactive diagnostic audit control
   assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
   assert.deepEqual(labels, ["Full Backup"]);
+  assert.match(card.textContent ?? "", /Mind includes Memory and retained historical records/);
 
   const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
   assert.ok(auditControl);

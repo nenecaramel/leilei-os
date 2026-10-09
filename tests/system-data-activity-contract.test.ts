@@ -36,9 +36,8 @@ test("Data reads active-module counts and exposes active export actions", () => 
     assert.match(dataContentSource, new RegExp(label));
   }
 
-  for (const retired of ["Memory", "Task", "Shared Paper"]) {
-    assert.doesNotMatch(dataContentSource, new RegExp(retired));
-  }
+  // Rendered module rows are verified by system-data-activity-ui.test.ts.
+  // Backup explanations may name Memory without introducing a separate module.
 
   assert.match(dataContentSource, /`\/system\/export\$\{includeAudit/);
   assert.match(dataContentSource, /Full Backup/);

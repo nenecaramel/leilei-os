@@ -90,7 +90,7 @@ enum SettingsRestoreModule: String, Identifiable, Hashable {
         case .diaryComments: "Diary comments"
         case .todo: "Todo"
         case .conversations: "Conversation records"
-        case .mind: "Mind records"
+        case .mind: "Mind (Memory & history)"
         case .universe: "Universe"
         }
     }

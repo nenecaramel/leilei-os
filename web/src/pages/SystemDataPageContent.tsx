@@ -71,7 +71,7 @@ const IMPORT_MODULE_LABELS: Record<WebImportModule, string> = {
   todo: "Todo",
   workspaces: "Workspaces",
   conversations: "Conversation records",
-  mind: "Mind records",
+  mind: "Mind (Memory & history)",
   universe: "Universe",
 };
 
@@ -489,7 +489,7 @@ export function SystemDataPageContent({
         <p className="system-backup-note">
           Audit events are diagnostic only and are not restored. Full Backup
           contains portable LeileiOS product data; machine-local Workspace
-          paths are not included.
+          paths are not included. Mind includes Memory and retained historical records.
         </p>
 
         {exportState.status === "error" ? (

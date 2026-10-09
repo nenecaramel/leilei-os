@@ -120,7 +120,10 @@ test("Data renders authenticated user-scoped counts from /system/data", async ()
   ]) {
     assert.match(text, new RegExp(expected));
   }
-  assert.doesNotMatch(text, /Memory|Task|Shared Paper/);
+  assert.deepEqual(
+    Array.from(container.querySelectorAll(".system-data-row > strong"), row => row.textContent),
+    ["Diary", "Diary comments", "Todo", "Workspaces", "Conversations", "Mind", "Universe"],
+  );
 
   const todoRow = Array.from(container.querySelectorAll(".system-data-row")).find((row) => row.textContent?.includes("Todo"));
   assert.ok(todoRow);
@@ -163,7 +166,10 @@ test("Data renders only active modules", async () => {
   const text = container.textContent ?? "";
   assert.match(text, /Diary/);
   assert.match(text, /Todo/);
-  assert.doesNotMatch(text, /Memory|Task|Shared Paper/);
+  assert.deepEqual(
+    Array.from(container.querySelectorAll(".system-data-row > strong"), row => row.textContent),
+    ["Diary", "Diary comments", "Todo", "Workspaces", "Conversations", "Mind", "Universe"],
+  );
 
   root.unmount();
   await waitForPaint();

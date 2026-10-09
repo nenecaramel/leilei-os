@@ -69,3 +69,54 @@ compatibility. They do not drive current Mind behavior.
 Recall quality still needs a labelled evaluation set before tuning. Proactivity remains
 disabled by default and runs in a separate model session. Historical drive satisfaction,
 curiosity resolution, distillation watermark and semantic grouping tables remain retained.
+
+
+## Full Backup v4 and historical archives
+
+New Full Backups emit `data.mind` with `kind: "memory"` only. They retain every
+Memory's ID, subject, exact text, payload (including temporal/lifecycle metadata),
+envelope/provenance, scope, settlement/path/validity statuses, and creation/update
+times. Export keeps the repository's existing ordering and does not write Memory.
+Current export types and historical import types are separate; no v5 is introduced.
+
+`data.mind_continuity` remains a **historical archive**, not an active Mind feature.
+It contains drive satisfaction events, curiosity resolution events, distillation
+watermarks and completed semantic grouping results, including original IDs,
+evidence, candidate snapshots, scores and timestamps. Removing it would discard
+retained history from the portable backup. Pending/reserved/fallback grouping work,
+queues, embeddings and other operational runtime data are not product archives;
+use the encrypted PostgreSQL backup for complete database recovery.
+
+Restore is add-only and runs in one transaction. Historical event names and grouping
+kinds do not require a current state of that retired kind: state foreign keys must
+resolve to owned Memory IDs with matching subjects, either already present or in the
+same valid restore plan. Conversation/message/block evidence must also resolve and
+pass the existing shape/role checks. Grouping candidates are archived snapshots, not
+foreign keys; a deleted candidate does not invalidate its saved text/kind/score. The
+query state still requires a valid owned Memory. Grouping results restore only as
+`completed`, with no reservation or new work; no retired behavior is scheduled.
+
+Compatibility remains bounded by the existing product restore contract:
+
+- v2: Diary/Todo, as before; it has no Mind archive module.
+- v3/v4: current Memory and legacy `feel` (normalized to `memory`) preserve all other
+  fields. Retained Continuity can restore with valid Memory and canonical evidence
+  dependencies. Missing/foreign dependencies are not synthesized or remapped.
+- Legacy `drive`, `thought`, `curiosity` and `topic` **state records** remain readable
+  by the historical schema but are rejected at restore preview before writes, as
+  before this change. Unknown kinds fail schema validation. They cannot bypass the
+  current Memory-only database CHECK. Keep the original file; this change does not
+  claim to import retired state into current Mind.
+- Duplicate IDs inside a package remain invalid; same-ID differences and occupied
+  archive keys remain conflicts. Exact repeats are duplicates and nothing is
+  overwritten. Empty/all-duplicate backups preview successfully with no writes and
+  report nothing to restore; audit/lifecycle logs remain diagnostic only.
+- Existing limits (size/record counts/owner fingerprint, retired Product Workspace
+  data rejection and portable conversation scope) remain unchanged. Restore does
+  not reconstruct absent attachment bytes or machine-local paths.
+
+For historical files whose retired state or dependencies cannot enter the current
+product model, preserve the original JSON and use a verified encrypted database
+backup restored into a disposable, schema-compatible PostgreSQL instance for full
+historical recovery. Do not disable constraints, invent Memory rows or remove
+history to force a product restore. See the [backup runbook](operations/database-backup-and-restore.md).

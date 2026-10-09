@@ -65,6 +65,17 @@ The versioned application Export/Restore feature is useful for user-facing
 portability and recovery, but it is not a substitute for a full database
 backup before schema changes.
 
+Current Full Backup v4 exports Mind as Memory-only while retaining
+`mind_continuity` as historical archive data. Product Restore accepts v2/v3/v4
+within their existing supported scope, normalizes legacy `feel`, and never writes
+retired Mind state kinds. Historical Continuity restoration requires valid owned
+Memory and canonical evidence dependencies; it does not restart old processing.
+See [Mind backup compatibility](../mind.md#full-backup-v4-and-historical-archives)
+for archive contents and limits. Keep historical JSON files that cannot be restored
+into the current product model. Full historical database recovery remains the
+verified encrypted logical-backup path below, using a compatible schema in a
+disposable instance rather than weakening current production constraints.
+
 ## Create an encrypted logical backup
 
 Obtain production credentials through an approved secret source. Do not put

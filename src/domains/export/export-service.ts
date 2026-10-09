@@ -155,7 +155,7 @@ export class ExportService {
       diary,
       diary_comments: diaryComments,
       todo,
-      mind,
+      mind: mind.filter((record) => record.kind === "memory"),
       mind_continuity: mindContinuity,
       conversations,
       universe,

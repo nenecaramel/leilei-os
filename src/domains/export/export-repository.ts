@@ -599,7 +599,10 @@ export class DrizzleExportRepository implements ExportRepository {
       createdAt: runtimeSubjectStates.createdAt,
       updatedAt: runtimeSubjectStates.updatedAt,
     }).from(runtimeSubjectStates)
-      .where(eq(runtimeSubjectStates.userId, userId))
+      .where(and(
+        eq(runtimeSubjectStates.userId, userId),
+        eq(runtimeSubjectStates.kind, "memory"),
+      ))
       .orderBy(
         asc(runtimeSubjectStates.subjectId),
         asc(runtimeSubjectStates.kind),

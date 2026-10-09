@@ -258,6 +258,7 @@ export type ExportMindSemanticGroupingResultRecord = {
   completed_at: string;
 };
 
+/** Historical archive only; restore never schedules retired Mind processing. */
 export type ExportMindContinuityBundle = {
   drive_satisfaction_events: ExportMindDriveSatisfactionEventRecord[];
   curiosity_resolution_events: ExportMindCuriosityResolutionEventRecord[];
@@ -265,10 +266,10 @@ export type ExportMindContinuityBundle = {
   semantic_grouping_results: ExportMindSemanticGroupingResultRecord[];
 };
 
-export type ExportMindStateRecord = {
+/** Historical v3/v4 archive vocabulary; never a current database write contract. */
+export type HistoricalMindStateRecord = {
   id: string;
   subject_id: string;
-  // Portable historical archive vocabulary; import normalizes or rejects before writing.
   kind: "feel" | "memory" | "drive" | "thought" | "curiosity" | "topic";
   text: string | null;
   payload: Record<string, unknown> | null;
@@ -281,6 +282,11 @@ export type ExportMindStateRecord = {
   envelope: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+/** New Full Backups contain only current Memory records, with metadata unchanged. */
+export type ExportMindStateRecord = Omit<HistoricalMindStateRecord, "kind"> & {
+  kind: "memory";
 };
 
 export type ExportLifecycleEvent = {
@@ -312,7 +318,7 @@ export type ExportDataV2 = {
 export type ExportDataV3 = ExportDataV2 & {
   diary_comments?: ExportDiaryCommentRecord[];
   projects?: ExportProjectsBundle;
-  mind?: ExportMindStateRecord[];
+  mind?: HistoricalMindStateRecord[];
   mind_continuity?: ExportMindContinuityBundle;
   conversations?: ExportConversationsBundle;
   universe?: ExportUniverseBundle | null;
@@ -356,9 +362,14 @@ export type ExportDocumentV4 = {
   audit?: ExportAudit;
 };
 
+/** v4 files written before Memory-only remain readable with the historical vocabulary. */
+export type HistoricalExportDocumentV4 = Omit<ExportDocumentV4, "data"> & {
+  data: Omit<ExportDataV4, "mind"> & { mind?: HistoricalMindStateRecord[] };
+};
+
 export type RestorableExportDocument =
   | ExportDocumentV2
   | ExportDocumentV3
-  | ExportDocumentV4;
+  | HistoricalExportDocumentV4;
 
 export type ExportDocument = ExportDocumentV4;
