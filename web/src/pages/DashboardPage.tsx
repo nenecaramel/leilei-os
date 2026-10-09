@@ -20,6 +20,8 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const [calendarContentDates, setCalendarContentDates] = useState<string[]>([]);
   const [calendarLoadState, setCalendarLoadState] = useState<CalendarLoadState>("loading");
   const [dialogAuthor, setDialogAuthor] = useState<TodoAuthor | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createdFromHeader, setCreatedFromHeader] = useState(false);
   const [dialogDirty, setDialogDirty] = useState(false);
   const [, setPendingDate] = useState<string | null>(null);
   const loadGeneration = useRef(0);
@@ -27,6 +29,25 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   const lTriggerRef = useRef<HTMLButtonElement>(null);
   const gTriggerRef = useRef<HTMLButtonElement>(null);
   const cTriggerRef = useRef<HTMLButtonElement>(null);
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
+  const createWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!createWrapRef.current?.contains(event.target as Node)) {
+        setCreateOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [createOpen]);
+
+  const openTodoPaper = (author: TodoAuthor, fromHeader: boolean) => {
+    setDialogAuthor(author);
+    setCreatedFromHeader(fromHeader);
+    setCreateOpen(false);
+  };
 
   const loadDay = useCallback(async (nextDate: string) => {
     if (!api) { setLoadState("error"); return; }
@@ -84,18 +105,43 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
   }, [dateKey, dialogDirty, now]);
 
   const selectedPaper = dialogAuthor ? papers[dialogAuthor] : null;
-  const selectedTriggerRef = dialogAuthor === "L" ? lTriggerRef : dialogAuthor === "G" ? gTriggerRef : cTriggerRef;
+  const selectedTriggerRef = createdFromHeader ? createTriggerRef : dialogAuthor === "L" ? lTriggerRef : dialogAuthor === "G" ? gTriggerRef : cTriggerRef;
 
   return (
     <div className="page home-prototype">
       <div className="home-page-heading">
         <h1 className="home-page-title">Todo</h1>
+        <div className="home-create-wrap" ref={createWrapRef} onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setCreateOpen(false);
+            createTriggerRef.current?.focus();
+          }
+        }}>
+          <button
+            ref={createTriggerRef}
+            type="button"
+            className="home-create-trigger"
+            aria-label="新增 Todo"
+            aria-expanded={createOpen}
+            disabled={!api || loadState !== "ready"}
+            onClick={() => setCreateOpen((value) => !value)}
+          >+</button>
+          {createOpen ? (
+            <div className="home-create-options" role="group" aria-label="选择 Todo 作者">
+              {(["L", "G", "C"] as const).map((author) => (
+                <button type="button" key={author} onClick={() => openTodoPaper(author, true)}>
+                  {author}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         {loadState === "error" ? <div className="home-inline-unavailable" role="alert"><span>Unable to read Todo.</span><button type="button" onClick={() => void loadDay(dateKey)}>Retry</button></div> : null}
       </div>
       <main className="home-prototype-content">
-        <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => setDialogAuthor("L")} />
-        <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => setDialogAuthor("G")} />
-        <TodayPanel author="C" notes={loadState === "ready" ? papers.C?.entries ?? [] : []} triggerRef={cTriggerRef} onOpen={() => setDialogAuthor("C")} />
+        <TodayPanel author="L" notes={loadState === "ready" ? papers.L?.entries ?? [] : []} triggerRef={lTriggerRef} onOpen={() => openTodoPaper("L", false)} />
+        <TodayPanel author="G" notes={loadState === "ready" ? papers.G?.entries ?? [] : []} triggerRef={gTriggerRef} onOpen={() => openTodoPaper("G", false)} />
+        <TodayPanel author="C" notes={loadState === "ready" ? papers.C?.entries ?? [] : []} triggerRef={cTriggerRef} onOpen={() => openTodoPaper("C", false)} />
         <CalendarPreview
           contentDates={calendarContentDates}
           date={today}
@@ -103,7 +149,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
           onRetry={loadCalendar}
         />
       </main>
-      {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); void loadCalendar(); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(now()); setDateKey(nextDate); } return null; }); }} /> : null}
+      {dialogAuthor ? <TodoPaperDialog api={api} author={dialogAuthor} date={today} open paper={selectedPaper} triggerRef={selectedTriggerRef} onSaved={(paper) => { setPapers((current) => ({ ...current, [paper.author]: paper })); void loadCalendar(); }} onDirtyChange={setDialogDirty} onClosed={() => { setDialogAuthor(null); setCreatedFromHeader(false); setDialogDirty(false); setPendingDate((nextDate) => { if (nextDate) { setToday(now()); setDateKey(nextDate); } return null; }); }} /> : null}
     </div>
   );
 }

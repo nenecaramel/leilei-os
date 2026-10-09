@@ -7277,3 +7277,54 @@ body:has(.system-page) {
   .day-space-page { min-height: calc(100dvh - 80px); }
   .day-space-page .memory-page-title { font: inherit; }
 }
+
+
+/* Web Todo: explicit create entry, reusing the author paper dialog. */
+.home-create-wrap {
+  grid-column: 3;
+  justify-self: end;
+  align-self: center;
+  position: relative;
+  z-index: 5;
+}
+.home-create-trigger {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.home-create-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.home-create-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+}
+.home-create-options button {
+  min-width: 38px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.home-create-options button:hover,
+.home-create-options button:focus-visible {
+  background: #f0f0f0;
+}
