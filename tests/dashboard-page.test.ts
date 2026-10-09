@@ -122,7 +122,7 @@ test("Todo create entry reuses author-specific paper editor", async () => {
   await waitForCondition(() => !!container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]:not(:disabled)'), "create action enabled");
   const create = container.querySelector<HTMLButtonElement>('[aria-label="新增 Todo"]')!;
   create.click();
-  assert.equal(create.getAttribute("aria-expanded"), "true");
+  await waitForCondition(() => create.getAttribute("aria-expanded") === "true", "Todo author options expanded");
   const choices = container.querySelectorAll<HTMLButtonElement>(".home-create-options button");
   assert.deepEqual([...choices].map((button) => button.textContent), ["L", "G", "C"]);
   choices[1]!.click();
