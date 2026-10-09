@@ -5,14 +5,14 @@ import UniformTypeIdentifiers
 extension UniverseNodeSheet {
     var contextLine: String? {
         if isCreate {
-            return "新星 · 待点亮"
+            return "New Node · Draft"
         }
 
         guard let node else {
             return nil
         }
 
-        return "当前思想 · \(node.title)"
+        return "Current Node · \(node.title)"
     }
 
     var isCreate: Bool {

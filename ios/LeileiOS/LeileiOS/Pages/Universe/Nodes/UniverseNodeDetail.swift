@@ -38,7 +38,7 @@ extension UniverseNodeSheet {
                     }
 
                     Text(
-                        "创建于 \(formattedDate(node.createdAt)) · 更新于 \(formattedDate(node.updatedAt))"
+                        "Created \(formattedDate(node.createdAt)) · Updated \(formattedDate(node.updatedAt))"
                     )
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -57,14 +57,11 @@ extension UniverseNodeSheet {
                 detailMetadata(node)
 
                 HStack(spacing: 6) {
-                    Text("一阶关联")
+                    Text("Connections")
                         .foregroundStyle(.secondary)
 
                     Text("\(connections.count)")
                         .fontWeight(.semibold)
-
-                    Text("条")
-                        .foregroundStyle(.secondary)
                 }
                 .font(.subheadline)
 
@@ -108,7 +105,7 @@ extension UniverseNodeSheet {
                     )
                 )
                 metadataPill(
-                    node.importance ?? "normal"
+                    UniverseNodeOptions.importanceLabel(node.importance ?? "normal")
                 )
             }
 
@@ -144,7 +141,7 @@ extension UniverseNodeSheet {
                     alignment: .leading,
                     spacing: 8
                 ) {
-                    Text("星系")
+                    Text("Galaxies")
                         .font(
                             .subheadline.weight(
                                 .medium
@@ -242,7 +239,7 @@ extension UniverseNodeSheet {
                             }
                         } label: {
                             Label(
-                                "移除连接",
+                                "Remove Connection",
                                 systemImage:
                                     "link.badge.minus"
                             )
@@ -254,7 +251,7 @@ extension UniverseNodeSheet {
                                 height: 32
                             )
                     }
-                    .accessibilityLabel("连接操作")
+                    .accessibilityLabel("Connection actions")
                 }
                 .padding(.vertical, 7)
 
@@ -271,7 +268,7 @@ extension UniverseNodeSheet {
             alignment: .leading,
             spacing: 10
         ) {
-            Text("来源日记")
+            Text("Source Diaries")
                 .font(.headline)
 
             ForEach(

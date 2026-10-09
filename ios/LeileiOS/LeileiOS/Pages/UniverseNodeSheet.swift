@@ -139,9 +139,9 @@ struct UniverseNodeSheet: View {
             )
             .navigationTitle(
                 isCreate
-                    ? "点亮一颗新星"
+                    ? "Add Node"
                     : isEditing
-                        ? "调整这颗星球"
+                        ? "Edit Node"
                         : "Universe"
             )
             .navigationBarTitleDisplayMode(.inline)
@@ -189,12 +189,12 @@ struct UniverseNodeSheet: View {
             .environment(\.colorScheme, .dark)
         }
         .confirmationDialog(
-            "让它离开宇宙？",
+            "Delete Node?",
             isPresented: $deletePresented,
             titleVisibility: .visible
         ) {
             Button(
-                "让它离开宇宙",
+                "Delete",
                 role: .destructive
             ) {
                 guard let node else {
@@ -207,7 +207,7 @@ struct UniverseNodeSheet: View {
             }
 
             Button(
-                "取消",
+                "Cancel",
                 role: .cancel
             ) {
             }

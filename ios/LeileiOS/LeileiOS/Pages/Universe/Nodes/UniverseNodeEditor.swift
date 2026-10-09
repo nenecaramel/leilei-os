@@ -16,10 +16,10 @@ extension UniverseNodeSheet {
                 }
 
                 editorField(
-                    title: "它叫什么？"
+                    title: "Title"
                 ) {
                     TextField(
-                        "一个概念、问题或经历",
+                        "Enter a title",
                         text: Binding(
                             get: {
                                 draft.title
@@ -35,10 +35,10 @@ extension UniverseNodeSheet {
                 }
 
                 editorField(
-                    title: "一句话描述 · 可选"
+                    title: "Summary (Optional)"
                 ) {
                     TextField(
-                        "为什么它值得留在你的宇宙？",
+                        "Add a short summary",
                         text: $draft.summary,
                         axis: .vertical
                     )
@@ -46,7 +46,7 @@ extension UniverseNodeSheet {
                 }
 
                 editorField(
-                    title: "此刻的理解"
+                    title: "Content"
                 ) {
                     TextEditor(
                         text: $draft.content
@@ -67,7 +67,7 @@ extension UniverseNodeSheet {
 
                 if !draft.memberships.isEmpty,
                    draft.canonicalMemberships == nil {
-                    Text("请填写星系权重")
+                    Text("Enter a weight for each selected galaxy")
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
@@ -132,7 +132,7 @@ extension UniverseNodeSheet {
                             availableImportance,
                             id: \.self
                         ) { importance in
-                            Text(importance)
+                            Text(UniverseNodeOptions.importanceLabel(importance))
                                 .tag(importance)
                         }
                     }
@@ -140,16 +140,16 @@ extension UniverseNodeSheet {
                     .pickerStyle(.inline)
                 } label: {
                     metadataPill(
-                        draft.importance
+                        UniverseNodeOptions.importanceLabel(draft.importance)
                     )
                 }
             }
 
             editorField(
-                title: "标签"
+                title: "Tags"
             ) {
                 TextField(
-                    "自我观察, 认知演化",
+                    "e.g. Reflection, Learning",
                     text: $draft.tagsText
                 )
             }
@@ -158,7 +158,7 @@ extension UniverseNodeSheet {
                 alignment: .leading,
                 spacing: 12
             ) {
-                Text("它同时闪耀在哪些星系？")
+                Text("Galaxies")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
 
@@ -179,7 +179,7 @@ extension UniverseNodeSheet {
             spacing: 10
         ) {
             HStack {
-                Text("来源日记 · 可选")
+                Text("Source Diaries (Optional)")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
 
@@ -189,7 +189,7 @@ extension UniverseNodeSheet {
                     sourcePickerPresented = true
                 } label: {
                     Label(
-                        "添加",
+                        "Add",
                         systemImage: "plus"
                     )
                 }
@@ -197,7 +197,7 @@ extension UniverseNodeSheet {
             }
 
             if draft.sourceDiaryIDs.isEmpty {
-                Text("没有关联来源")
+                Text("No source diaries")
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
             } else {
@@ -363,7 +363,7 @@ extension UniverseNodeSheet {
                             }
                         ) {
                 HStack {
-                    Text("权重")
+                    Text("Weight")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

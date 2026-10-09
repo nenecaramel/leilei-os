@@ -7,7 +7,7 @@ extension UniverseMapView {
     var modeHint: some View {
         switch mode {
         case .placingNode:
-            Label("点击星图放置新星球", systemImage: "plus.circle")
+            Label("Tap the map to place a node", systemImage: "plus.circle")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
@@ -16,10 +16,10 @@ extension UniverseMapView {
 
         case .movingNode:
             HStack(spacing: 8) {
-                Text("拖动星球调整位置")
+                Text("Drag to move the node")
                     .font(.subheadline)
 
-                Button("取消") {
+                Button("Cancel") {
                     draftPositions.removeAll()
                     onModeChange(.browse)
                 }
@@ -89,8 +89,8 @@ extension UniverseMapView {
         .accessibilityLabel(node.title)
         .accessibilityHint(
             isSelected
-                ? "再次轻点打开详情，长按拖动位置"
-                : "轻点选择，长按拖动位置"
+                ? "Tap again for details. Long press to move."
+                : "Tap to select. Long press to move."
         )
     }
 

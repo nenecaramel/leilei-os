@@ -15,7 +15,7 @@ extension UniverseNodeSheet {
                 }
             } label: {
                 if isEditing, !isCreate {
-                    Text("取消")
+                    Text("Cancel")
                 } else {
                     Image(systemName: "xmark")
                 }
@@ -34,7 +34,7 @@ extension UniverseNodeSheet {
                                 }
                             } label: {
                                 Label(
-                                    "恢复上一版本",
+                                    "Restore Previous Version",
                                     systemImage: "clock.arrow.circlepath"
                                 )
                             }
@@ -46,14 +46,14 @@ extension UniverseNodeSheet {
                             deletePresented = true
                         } label: {
                             Label(
-                                "让它离开宇宙",
+                                "Delete",
                                 systemImage: "trash"
                             )
                         }
                     } label: {
                         Image(systemName: "ellipsis")
                     }
-                    .accessibilityLabel("更多星球操作")
+                    .accessibilityLabel("Node actions")
                     .disabled(isSaving)
                 }
 
@@ -67,8 +67,8 @@ extension UniverseNodeSheet {
                     } else {
                         Text(
                             isCreate
-                                ? "点亮"
-                                : "保存"
+                                ? "Add"
+                                : "Done"
                         )
                     }
                 }
@@ -79,10 +79,10 @@ extension UniverseNodeSheet {
                 } label: {
                     Image(systemName: "link")
                 }
-                .accessibilityLabel("建立思想连接")
+                .accessibilityLabel("Add Connection")
                 .disabled(isSaving)
 
-                Button("编辑") {
+                Button("Edit") {
                     resetDraft()
                     isEditing = true
                 }
@@ -96,7 +96,7 @@ extension UniverseNodeSheet {
                             }
                         } label: {
                             Label(
-                                "恢复上一版本",
+                                "Restore Previous Version",
                                 systemImage: "clock.arrow.circlepath"
                             )
                         }
@@ -108,14 +108,14 @@ extension UniverseNodeSheet {
                         deletePresented = true
                     } label: {
                         Label(
-                            "让它离开宇宙",
+                            "Delete",
                             systemImage: "trash"
                         )
                     }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
-                .accessibilityLabel("更多星球操作")
+                .accessibilityLabel("Node actions")
                 .disabled(isSaving)
             }
         }

@@ -22,17 +22,17 @@ struct UniverseRelationSheet: View {
             Form {
                 Section {
                     LabeledContent(
-                        "当前思想",
+                        "Current Node",
                         value: source.title
                     )
                 }
 
                 Section {
                     Picker(
-                        "连接到",
+                        "Connect to",
                         selection: $targetID
                     ) {
-                        Text("选择另一个思想")
+                        Text("Select a node")
                             .tag("")
 
                         ForEach(nodes) { node in
@@ -42,7 +42,7 @@ struct UniverseRelationSheet: View {
                     }
 
                     Picker(
-                        "关系",
+                        "Relationship",
                         selection: $relationType
                     ) {
                         ForEach(
@@ -57,7 +57,7 @@ struct UniverseRelationSheet: View {
                 }
 
                 Section(
-                    "连接强度"
+                    "Strength"
                 ) {
                     Slider(
                         value: $strength,
@@ -86,7 +86,7 @@ struct UniverseRelationSheet: View {
                 UniversePalette.background
             )
             .navigationTitle(
-                "连接另一个思想"
+                "Add Connection"
             )
             .navigationBarTitleDisplayMode(
                 .inline
@@ -95,7 +95,7 @@ struct UniverseRelationSheet: View {
                 ToolbarItem(
                     placement: .cancellationAction
                 ) {
-                    Button("取消") {
+                    Button("Cancel") {
                         dismiss()
                     }
                     .disabled(isSaving)
@@ -112,7 +112,7 @@ struct UniverseRelationSheet: View {
                         if isSaving {
                             ProgressView()
                         } else {
-                            Text("建立连接")
+                            Text("Add")
                         }
                     }
                     .disabled(

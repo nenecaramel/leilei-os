@@ -203,7 +203,7 @@ extension UniverseView {
             )
         else {
             showNotice(
-                "这颗星球已不在当前 Universe"
+                "This node is no longer available in Universe"
             )
             return
         }

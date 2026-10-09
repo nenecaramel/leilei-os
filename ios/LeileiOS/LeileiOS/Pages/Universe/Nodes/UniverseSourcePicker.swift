@@ -215,20 +215,20 @@ struct UniverseDiarySourcePicker: View {
                     .ignoresSafeArea()
             )
             .navigationTitle(
-                "选择来源日记"
+                "Select Source Diaries"
             )
             .navigationBarTitleDisplayMode(
                 .inline
             )
             .searchable(
                 text: $query,
-                prompt: "搜索标题、日期或标签"
+                prompt: "Search title, date, or tags"
             )
             .toolbar {
                 ToolbarItem(
                     placement: .cancellationAction
                 ) {
-                    Button("取消") {
+                    Button("Cancel") {
                         dismiss()
                     }
                 }
@@ -236,7 +236,7 @@ struct UniverseDiarySourcePicker: View {
                 ToolbarItem(
                     placement: .confirmationAction
                 ) {
-                    Button("完成") {
+                    Button("Done") {
                         let ordered =
                             selected.sorted {
                                 left,

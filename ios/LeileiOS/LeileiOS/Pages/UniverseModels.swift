@@ -72,26 +72,26 @@ enum UniverseRelationType: String, Codable, CaseIterable, Identifiable, Sendable
     var label: String {
         switch self {
         case .relatedTo:
-            return "相关"
+            return "Related to"
         case .supports:
-            return "支持"
+            return "Supports"
         case .contradicts:
-            return "矛盾"
+            return "Contradicts"
         case .extends:
-            return "延伸"
+            return "Extends"
         case .partOf:
-            return "属于"
+            return "Part of"
         case .raises:
-            return "引出"
+            return "Raises"
         }
     }
 
     var standaloneLabel: String {
         switch self {
         case .relatedTo:
-            return "彼此相关"
+            return "Related"
         case .contradicts:
-            return "彼此矛盾"
+            return "Contradicts"
         default:
             return label
         }
@@ -254,22 +254,35 @@ enum UniverseNodeOptions {
         "normal",
     ]
 
+    static func importanceLabel(_ value: String) -> String {
+        switch value {
+        case "anchor":
+            return "Anchor"
+        case "major":
+            return "Major"
+        case "normal":
+            return "Normal"
+        default:
+            return value
+        }
+    }
+
     static func typeLabel(_ value: String) -> String {
         switch value {
         case "concept":
-            return "概念"
+            return "Concept"
         case "question":
-            return "问题"
+            return "Question"
         case "claim":
-            return "观点"
+            return "Claim"
         case "experience":
-            return "经历"
+            return "Experience"
         case "project":
-            return "项目"
+            return "Project"
         case "source":
-            return "来源"
+            return "Source"
         case "reflection":
-            return "反思"
+            return "Reflection"
         default:
             return value
         }
