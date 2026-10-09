@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { layoutDaySpacePapers } from "./day-space-layout.js";
+import { daySpacePreviewLineLimit, layoutDaySpacePapers } from "./day-space-layout.js";
 import {
   buildDaySpaceLocation,
   businessDateToLocalDate,
@@ -349,7 +349,11 @@ export function DaySpacePageContent({ api }: { api: DaySpaceApi }) {
               const style = { left: item.left, top: item.top, width: item.width, height: item.height, zIndex: item.zIndex, transform: `rotate(${item.rotation.toFixed(2)}deg)` } satisfies CSSProperties;
               const todoEntries = paper.type === "todo" ? paper.paper.entries : [];
               const previewLimit = item.size === "small" ? 2 : item.size === "medium" ? 3 : 4;
-              return <button type="button" key={paper.id} className={`day-space-paper day-space-paper-${paper.type} day-space-paper-${item.size}`} style={style} onClick={(event) => { paperTriggerRef.current = event.currentTarget; setOpenPaperId(paper.id); }}>
+              const entriesCount = paper.type === "memory" ? paper.items.length : todoEntries.length;
+              const previewStyle = paper.type === "diary" ? undefined : {
+                "--day-space-preview-lines": daySpacePreviewLineLimit(item.size, paper.type, Math.min(previewLimit, entriesCount), entriesCount > previewLimit),
+              } as CSSProperties;
+              return <button type="button" key={paper.id} className={`day-space-paper day-space-paper-${paper.type} day-space-paper-${item.size}`} style={{ ...style, ...previewStyle }} onClick={(event) => { paperTriggerRef.current = event.currentTarget; setOpenPaperId(paper.id); }}>
                 {paper.type === "memory" ? <div className="day-space-diary-preview">{paper.items.slice(0,previewLimit).map(item=><p key={item.id}>{item.text}</p>)}{paper.items.length > previewLimit ? <div className="day-space-preview-ellipsis">...</div> : null}</div> : paper.type === "todo" ? <div className="day-space-todo-preview">{todoEntries.slice(0, previewLimit).map((entry) => <div key={entry.id} className={`day-space-todo-line day-space-todo-${entry.kind}`}><span className="day-space-todo-dot" aria-hidden="true" /><span>{entry.text}</span></div>)}{todoEntries.length > previewLimit ? <div className="day-space-preview-ellipsis" aria-hidden="true">...</div> : null}</div> : <div className="day-space-diary-preview"><strong>{paper.diary.title}</strong><p>{paper.diary.content}</p></div>}
                 <span className="day-space-paper-signature">{paper.type === "memory" ? "Memory" : paper.type === "todo" ? paper.paper.author : paper.diary.author ?? "—"}</span>
               </button>;

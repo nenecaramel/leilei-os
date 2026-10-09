@@ -2830,28 +2830,6 @@ body:has(.home-prototype) {
 }
 
 @media (max-width: 760px) {
-  .memory-paper-title {
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    color: #171717;
-    font-size: 17px;
-    font-weight: 500;
-    line-height: 30px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .memory-paper-content {
-    margin: 0;
-    color: #252525;
-    font-size: 14px;
-    line-height: 30px;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-
   .memory-paper-status {
     margin: 0;
     color: #6f6f6f;
@@ -2863,43 +2841,6 @@ body:has(.home-prototype) {
     display: grid;
     min-width: 0;
     align-content: start;
-  }
-
-  .memory-paper-key {
-    width: 100%;
-    min-width: 0;
-    height: 30px;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    outline: 0;
-    color: #171717;
-    background: transparent;
-    box-shadow: none;
-    font: inherit;
-    font-size: 17px;
-    font-weight: 500;
-    line-height: 30px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .memory-paper-content-editor {
-    width: 100%;
-    min-height: 240px;
-    margin: 0;
-    padding: 0;
-    resize: none;
-    overflow: hidden;
-    border: 0;
-    outline: 0;
-    color: #252525;
-    background: transparent;
-    box-shadow: none;
-    font: inherit;
-    font-size: 14px;
-    line-height: 30px;
   }
 
   .memory-paper-key:focus,
@@ -3216,52 +3157,6 @@ body:has(.home-prototype) {
     touch-action: manipulation;
   }
 
-  .paper-detail-paper[id^="memory-"] .memory-paper-title,
-  .paper-detail-paper[id^="memory-"] .memory-paper-title-input,
-  .paper-detail-paper[id^="memory-"] .memory-paper-key,
-  .paper-detail-paper[id^="memory-"] input[aria-label*="Key"],
-  .paper-detail-paper[id^="memory-"] input[placeholder="Key"] {
-    display: block;
-    width: 100%;
-    height: 23px;
-    min-height: 23px;
-    margin: 0 0 14px;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    outline: none;
-    overflow: hidden;
-    color: #171717;
-    background: transparent;
-    box-shadow: none;
-    font-size: 17px;
-    font-weight: 500;
-    line-height: 23px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .paper-detail-paper[id^="memory-"] .memory-paper-content,
-  .paper-detail-paper[id^="memory-"] .memory-paper-content-input,
-  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
-  .paper-detail-paper[id^="memory-"] .memory-paper-editor textarea,
-  .paper-detail-paper[id^="memory-"] textarea {
-    display: block;
-    width: 100%;
-    min-height: 240px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    outline: none;
-    color: #252525;
-    background: transparent;
-    box-shadow: none;
-    resize: none;
-    font-size: 14px;
-    line-height: 30px;
-  }
-
   .paper-detail-paper[id^="memory-"] input,
   .paper-detail-paper[id^="memory-"] textarea,
   .paper-detail-paper[id^="memory-"] select {
@@ -3414,47 +3309,6 @@ body:has(.home-prototype) {
     cursor: pointer;
   }
 
-  .paper-detail-paper[id^="diary-"] .memory-paper-title,
-  .paper-detail-paper[id^="diary-"] .diary-paper-title-input {
-    display: block;
-    width: 100%;
-    height: 23px;
-    min-height: 23px;
-    margin: 0 0 14px;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    border-radius: 0;
-    outline: 0;
-    color: #171717;
-    background: transparent;
-    box-shadow: none;
-    font-size: 17px;
-    font-weight: 500;
-    line-height: 23px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .paper-detail-paper[id^="diary-"] .memory-paper-content,
-  .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
-    display: block;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    outline: 0;
-    color: #252525;
-    background: transparent;
-    box-shadow: none;
-    resize: none;
-    font-size: 14px;
-    line-height: 30px;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-
   .paper-detail-paper[id^="diary-"] input,
   .paper-detail-paper[id^="diary-"] textarea,
   .paper-detail-paper[id^="diary-"] select,
@@ -3576,10 +3430,6 @@ body:has(.home-prototype) {
     color: #444444;
   }
 
-  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor {
-    font-size: 16px;
-  }
-
   .paper-detail-paper[id^="memory-"] .memory-paper-tags {
     font-size: 16px;
   }
@@ -3606,11 +3456,6 @@ body:has(.home-prototype) {
 
 /* leilei-final-mobile-visual-round-2026-08-08:start */
 @media (max-width: 760px) {
-  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
-  .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
-    font-size: 16px !important;
-  }
-
   .paper-detail-paper[id^="memory-"] .memory-paper-tags,
   .paper-detail-paper[id^="diary-"] .diary-paper-mood,
   .paper-detail-paper[id^="diary-"] .diary-paper-tags {
@@ -3754,22 +3599,6 @@ body:has(.home-prototype) {
     .paper-detail-top-right
     .memory-paper-control {
     font-size: 13px !important;
-  }
-
-  /*
-   * Keep a real/computed 16px editor font for Safari focus safety, then
-   * optically return the body to the 14px reading size.
-   * 16 * 0.875 = 14.
-   */
-  .paper-detail-paper[id^="memory-"] .memory-paper-content-editor,
-  .paper-detail-paper[id^="diary-"] .diary-paper-content-editor {
-    min-height: 240px;
-    font-size: 16px !important;
-    line-height: 34.285714px !important;
-    transform: scale(0.875);
-    transform-origin: top left;
-    width: 114.285714% !important;
-    max-width: 114.285714% !important;
   }
 
   /*
@@ -6057,7 +5886,8 @@ body:has(.system-page) {
     overflow-wrap: anywhere;
     text-overflow: ellipsis;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: var(--day-space-preview-lines, 2);
+    white-space: pre-wrap;
   }
 
   .day-space-todo-completed {
@@ -6078,9 +5908,11 @@ body:has(.system-page) {
     border-radius: 1px;
   }
 
+  .day-space-diary-preview { display: grid; gap: 8px; }
+
   .day-space-diary-preview strong {
     display: -webkit-box;
-    margin-bottom: 8px;
+    margin-bottom: 0;
     overflow: hidden;
     color: #2d2d2d;
     font-family:
@@ -6093,6 +5925,7 @@ body:has(.system-page) {
     font-size: 12px;
     font-weight: 500;
     line-height: 1.3;
+    white-space: pre-wrap;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
@@ -6104,17 +5937,19 @@ body:has(.system-page) {
     color: #777777;
     font-size: 10px;
     line-height: 1.52;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     text-overflow: ellipsis;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 5;
   }
 
   .day-space-paper-small .day-space-diary-preview p {
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
   }
 
   .day-space-paper-medium .day-space-diary-preview p {
-    -webkit-line-clamp: 4;
+    -webkit-line-clamp: 3;
   }
 
 /* leilei-day-space-mobile-2026-08-09:end */
@@ -7473,16 +7308,49 @@ body:has(.system-page) {
   cursor: pointer;
 }
 .memory-page .memory-editor .memory-paper-control:disabled { opacity: 0.45; cursor: default; }
-.day-space-paper-memory .day-space-diary-preview { max-height: calc(100% - 20px); overflow: hidden; }
+.day-space-paper-memory .day-space-diary-preview { max-height: 100%; overflow: hidden; }
 @media (max-width: 760px) { .memory-page .memory-editor input, .memory-page .memory-editor textarea { font-size: 16px; } }
 
-/* Prose papers share typography, height measurement and one outer scroll area. */
-.paper-body-editor {
-  display: block; width: 100%; max-width: 100%; margin: 0; padding: 0;
-  border: 0; border-radius: 0; outline: none; background: transparent; box-shadow: none;
-  color: #252525; resize: none; overflow: hidden; font: inherit; font-size: 14px; line-height: 30px;
+/* Shared ruled-paper typography: one 30px grid in read and edit modes. */
+.paper-detail-paper:has(.todo-paper-editor, .diary-paper-editor, .memory-paper-entries, .memory-paper-content) {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
 }
-.paper-body-editor:focus { border: 0; outline: none; background: transparent; box-shadow: none; }
+.paper-detail-paper .memory-paper-title,
+.paper-detail-paper .memory-paper-key {
+  display: block;
+  width: 100%; min-width: 0; height: 30px; min-height: 30px;
+  margin: 0; padding: 0; border: 0; border-radius: 0; outline: none;
+  color: #171717; background: transparent; box-shadow: none;
+  font: inherit; font-size: 17px; font-weight: 500; line-height: 30px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.paper-detail-paper .memory-paper-content {
+  margin: 0; padding: 0; color: #252525;
+  font-size: 14px; line-height: 30px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.paper-detail-paper .memory-paper-editor { display: grid; align-content: start; min-width: 0; }
+.paper-detail-paper .paper-textarea-layout > textarea.paper-body-editor { color: #252525; }
+.paper-textarea-layout { position: relative; min-width: 0; min-height: 30px; }
+.paper-detail-paper .paper-textarea-layout > textarea {
+  --paper-editor-scale: 1;
+  position: absolute; top: 0; left: 0; display: block;
+  width: 100%; max-width: none; min-height: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0; outline: none;
+  color: inherit; background: transparent; box-shadow: none;
+  font: inherit; font-size: 14px; line-height: 30px;
+  resize: none; overflow: hidden; overflow-wrap: anywhere;
+  transform-origin: top left;
+}
+@media (max-width: 760px) {
+  /* Safari's focus-safe font is scaled inside a measured layout box. */
+  .paper-detail-paper .paper-textarea-layout > textarea {
+    --paper-editor-scale: 0.875;
+    font-size: 16px; line-height: 34.285714px;
+    width: 114.285714%; transform: scale(0.875);
+  }
+}
+
 .memory-paper-entries { display: grid; gap: 30px; }
 .memory-paper-entry { min-width: 0; }
 .memory-entry-date { display: flex; align-items: center; justify-content: space-between; min-height: 30px; color: #6d6d6d; font-size: 13px; }
@@ -7493,7 +7361,7 @@ body:has(.system-page) {
 .memory-paper-conflict { margin: 15px 0; color: #6d6d6d; font-size: 13px; line-height: 30px; }
 .memory-paper-conflict p { margin: 0; }
 .memory-paper-conflict-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.day-space-paper-memory .day-space-diary-preview p { -webkit-line-clamp: 2; }
+.day-space-paper-memory .day-space-diary-preview p { -webkit-line-clamp: var(--day-space-preview-lines, 2); }
 @media (min-width: 761px) {
   .day-space-page { min-height: calc(100dvh - 80px); }
   .day-space-page .memory-page-title { font: inherit; }
