@@ -332,3 +332,20 @@ test("Mind create rejects invalid text and list rejects malformed cursor", async
     /cursor/i,
   );
 });
+
+test("undated list keeps sorting and fences cursors against a different filter", async () => {
+  const repository = new Repository();
+  const calls: any[] = [];
+  (repository as MindProductRepository).list = async (input: any) => {
+    calls.push(input);
+    return {rows:[row()],nextCursor:{id:stateId,updatedAt:"2026-10-09T00:00:00Z"}};
+  };
+  const service = new MindProductService(repository,"G");
+  const page = await service.list({userId,kind:"memory",undated:true} as any);
+  assert.equal(calls[0].undated,true);
+  assert.equal(calls[0].sort,"updated_desc");
+  await service.list({userId,kind:"memory",undated:true,cursor:page.nextCursor} as any);
+  await assert.rejects(service.list({userId,kind:"memory",cursor:page.nextCursor}), MindProductServiceError);
+  const all = await service.list({userId,kind:"memory"});
+  await assert.rejects(service.list({userId,kind:"memory",undated:true,cursor:all.nextCursor} as any), MindProductServiceError);
+});

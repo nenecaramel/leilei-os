@@ -20,12 +20,14 @@ export function createMindApiRouter(
   router.get("/", handler(async (request) => {
     const kind = readOptionalKind(request.query.kind);
     const sort = readOptionalSort(request.query.sort);
+    const undated = readOptionalBoolean(request.query.undated);
     const limit = readOptionalLimit(request.query.limit);
     const cursor = readOptionalString(request.query.cursor, "cursor");
     return dependencies.mindService.list({
       userId: request.webUserId!,
       ...(kind ? { kind } : {}),
       ...(sort ? { sort } : {}),
+      ...(undated === undefined ? {} : { undated }),
       ...(limit ? { limit } : {}),
       ...(cursor ? { cursor } : {}),
     });

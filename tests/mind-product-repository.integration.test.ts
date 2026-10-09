@@ -543,3 +543,38 @@ test("live Mind excludes legacy storage kinds without changing stored rows", { s
     .where(eq(runtimeSubjectStates.userId, userId));
   assert.deepEqual(stored.map(({ id }) => id).sort(), legacy.map(({ id }) => id).sort());
 });
+
+test("undated Mind list filters before pagination without changing either existing sort", {skip: !enabled}, async t => {
+  const url = process.env.DATABASE_URL;
+  assert.ok(url && /test|scratch|regression/.test(new URL(url).pathname));
+  const database = createDatabase(url, {ssl:false});
+  const [user] = await database.db.insert(users).values({email:`undated-list-${crypto.randomUUID()}@example.com`,displayName:"Undated list test"}).returning({id:users.id});
+  assert.ok(user);
+  t.after(async () => {
+    await database.db.delete(runtimeSubjectStates).where(eq(runtimeSubjectStates.userId,user.id));
+    await database.db.delete(productCreateIdempotency).where(eq(productCreateIdempotency.userId,user.id));
+    await database.db.delete(users).where(eq(users.id,user.id));
+    await database.close();
+  });
+  const service = new MindProductService(new DrizzleMindProductRepository(database.db),"G");
+  const expected: string[] = [];
+  for (let index=0;index<4;index++) {
+    const item = await service.createManual({userId:user.id,kind:"memory",text:`list fixture ${index}`,idempotencyKey:crypto.randomUUID(),occurredAt:index===2 ? "2026-10-09T00:00:00Z" : null});
+    if(index!==2) expected.push(item.id);
+  }
+  for(const sort of ["updated_desc","occurred_desc"] as const) {
+    const ids: string[] = [];
+    let cursor: string|null = null;
+    do {
+      const page = await service.list({userId:user.id,kind:"memory",sort,undated:true,limit:1,cursor});
+      assert.equal(page.items.length,1);
+      assert.equal(page.items[0]!.occurredAt,null);
+      ids.push(page.items[0]!.id);
+      cursor = page.nextCursor;
+    } while(cursor);
+    assert.deepEqual([...ids].sort(),[...expected].sort());
+    assert.equal(new Set(ids).size,3);
+    const unfiltered = await service.list({userId:user.id,kind:"memory",sort});
+    assert.deepEqual(ids,unfiltered.items.filter(item=>item.occurredAt===null).map(item=>item.id));
+  }
+});

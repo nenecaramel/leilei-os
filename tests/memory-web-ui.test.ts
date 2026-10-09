@@ -7,9 +7,9 @@ import { DaySpacePageContent } from "../web/src/pages/DaySpacePage.js";
 import { MemoryDetail, MemoryPaper } from "../web/src/pages/MemoryDetail.js";
 import { WebApiError } from "../web/src/api/web-api-error.js";
 
-async function render(element: React.ReactNode) {
+async function render(element: React.ReactNode, url = "http://localhost/day-space?date=2026-10-08") {
   const dom = new JSDOM('<div id="root"></div>', {
-    url: "http://localhost/day-space?date=2026-10-08",
+    url,
   });
   const previous = new Map<string, PropertyDescriptor | undefined>();
   const values: Record<string, unknown> = {
@@ -556,4 +556,51 @@ test("same-day full retry reloads Memory after all modules fail", async () => {
   } finally {
     await ui.cleanup();
   }
+});
+
+test("Mind date menu filters undated records and restores all-time mode", async () => {
+  const {MindPageContent} = await import("../web/src/pages/MindPage.js");
+  const calls: string[] = [];
+  const api = {async request(path: string) {
+    calls.push(path);
+    return {data: {items: [],nextCursor:null}};
+  }} as any;
+  const ui = await render(React.createElement(MindPageContent,{api}));
+  try {
+    assert.doesNotMatch(ui.dom.window.document.body.textContent!, /未指定日期/);
+    await ui.click(ui.dom.window.document.querySelector('[aria-label="按日期筛选"]')!);
+    await ui.click(ui.button("未指定日期"));
+    assert.equal(ui.button("未指定日期").getAttribute("aria-checked"),"true");
+    assert.equal(new URL(calls.at(-1)!,"http://localhost").searchParams.get("undated"),"true");
+    assert.equal(new URL(ui.dom.window.location.href).searchParams.get("undated"),"true");
+    await ui.click(ui.button("全部时间"));
+    assert.equal(ui.button("未指定日期").getAttribute("aria-checked"),"false");
+    assert.equal(new URL(calls.at(-1)!,"http://localhost").searchParams.has("undated"),false);
+    assert.equal(ui.dom.window.location.search,"");
+    await ui.click(ui.button("未指定日期"));
+    await ui.click(ui.button("自定义范围"));
+    assert.equal(ui.button("未指定日期").getAttribute("aria-checked"),"false");
+    assert.ok(ui.dom.window.document.querySelector('[aria-label="Mind 自定义开始时间"]'));
+    assert.equal(new URL(calls.at(-1)!,"http://localhost").searchParams.has("undated"),false);
+  } finally {await ui.cleanup();}
+});
+
+
+test("Mind restores undated and keyword from URL without sending incompatible range bounds", async () => {
+  const {MindPageContent} = await import("../web/src/pages/MindPage.js");
+  const paths: string[] = [];
+  const api = {async request(path: string) {paths.push(path);return {data:{items:[],nextCursor:null}};}} as any;
+  const ui = await render(React.createElement(MindPageContent,{api}),"http://localhost/mind?q=sample&undated=true&dateFrom=2026-10-01");
+  try {
+    const params = new URL(paths[0]!,"http://localhost").searchParams;
+    assert.equal(params.get("query"),"sample");
+    assert.equal(params.get("undated"),"true");
+    assert.equal(params.has("date_from"),false);
+    await ui.click(ui.dom.window.document.querySelector('[aria-label="按日期筛选"]')!);
+    assert.equal(ui.button("未指定日期").getAttribute("aria-checked"),"true");
+    await ui.click(ui.button("全部时间"));
+    const allParams = new URL(paths.at(-1)!,"http://localhost").searchParams;
+    assert.equal(allParams.get("query"),"sample");
+    assert.equal(allParams.has("undated"),false);
+  } finally {await ui.cleanup();}
 });

@@ -4,6 +4,7 @@ extension LeileiAPIClient {
     func mindPage(
         kind: MindProductKind? = nil,
         sort: MindListSort = .updatedDesc,
+        undated: Bool = false,
         limit: Int = 100,
         cursor: String? = nil
     ) async throws -> MindProductPage {
@@ -23,6 +24,9 @@ extension LeileiAPIClient {
         }
         if sort != .updatedDesc {
             queryItems.append(URLQueryItem(name: "sort", value: sort.rawValue))
+        }
+        if undated {
+            queryItems.append(URLQueryItem(name: "undated", value: "true"))
         }
         if let cursor {
             guard !cursor.isEmpty else {

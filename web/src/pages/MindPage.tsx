@@ -18,14 +18,15 @@ import {
 import { getSafeGlobalSearchReturnTo } from "./global-search-location";
 import { navigateWithinApp } from "./app-navigation";
 
-type Filters = { query: string; dateFrom: string; dateTo: string };
+type Filters = { query: string; dateFrom: string; dateTo: string; undated: boolean };
 function readLocation() {
   const query = new URLSearchParams(window.location.search);
   return {
     filters: {
       query: query.get("q") ?? "",
-      dateFrom: query.get("dateFrom") ?? "",
-      dateTo: query.get("dateTo") ?? "",
+      dateFrom: query.get("undated") === "true" ? "" : query.get("dateFrom") ?? "",
+      dateTo: query.get("undated") === "true" ? "" : query.get("dateTo") ?? "",
+      undated: query.get("undated") === "true",
     },
     id: query.get("memoryId"),
   };
@@ -33,8 +34,9 @@ function readLocation() {
 function buildLocation(filters: Filters, id: string | null) {
   const query = new URLSearchParams();
   if (filters.query) query.set("q", filters.query);
-  if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
-  if (filters.dateTo) query.set("dateTo", filters.dateTo);
+  if (filters.undated) query.set("undated", "true");
+  if (!filters.undated && filters.dateFrom) query.set("dateFrom", filters.dateFrom);
+  if (!filters.undated && filters.dateTo) query.set("dateTo", filters.dateTo);
   if (id) query.set("memoryId", id);
   return `${window.location.pathname}${query.size ? `?${query}` : ""}`;
 }
@@ -99,7 +101,7 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
       ? "开始日期不能晚于结束日期"
       : "";
   const searchPending = searchDraft !== filters.query;
-  const filtered = Boolean(filters.query || filters.dateFrom || filters.dateTo);
+  const filtered = Boolean(filters.query || filters.dateFrom || filters.dateTo || filters.undated);
   function navigate(next: typeof location) {
     const url = buildLocation(next.filters, next.id);
     if (url !== `${window.location.pathname}${window.location.search}`)
@@ -130,7 +132,8 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
       if (
         next.filters.query === previous.filters.query &&
         next.filters.dateFrom === previous.filters.dateFrom &&
-        next.filters.dateTo === previous.filters.dateTo
+        next.filters.dateTo === previous.filters.dateTo &&
+        next.filters.undated === previous.filters.undated
       )
         next.filters = previous.filters;
       if (previous.id && !next.id) focusAfterRefresh.current = previous.id;
@@ -214,7 +217,7 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
   function clearFilters() {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     setSearchDraft("");
-    commitFilters({ query: "", dateFrom: "", dateTo: "" });
+    commitFilters({ query: "", dateFrom: "", dateTo: "", undated: false });
   }
   return (
     <div className="page memory-page mind-page">
@@ -224,6 +227,11 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
         searchLabel="搜索记忆"
         searchPlaceholder="Search memories..."
         createLabel="新增记忆"
+        undated={filters.undated}
+        onUndatedChange={(undated) => {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          commitFilters({ ...filters, query: searchDraft, undated, dateFrom: "", dateTo: "" });
+        }}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
         searchDraft={searchDraft}
@@ -231,11 +239,11 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
         busy={Boolean(id) || adding}
         onDateFromChange={(dateFrom) => {
           if (searchTimer.current) clearTimeout(searchTimer.current);
-          commitFilters({ ...filters, query: searchDraft, dateFrom });
+          commitFilters({ ...filters, query: searchDraft, dateFrom, undated: false });
         }}
         onDateToChange={(dateTo) => {
           if (searchTimer.current) clearTimeout(searchTimer.current);
-          commitFilters({ ...filters, query: searchDraft, dateTo });
+          commitFilters({ ...filters, query: searchDraft, dateTo, undated: false });
         }}
         onDateRangeClear={() => {
           if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -244,6 +252,7 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
             query: searchDraft,
             dateFrom: "",
             dateTo: "",
+            undated: false,
           });
         }}
         onSearchChange={(query) => {

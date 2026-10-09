@@ -42,6 +42,7 @@ export async function getMemory(
   ).data;
 }
 export type MemorySearchFilters = {
+  undated?: boolean;
   query?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -56,8 +57,11 @@ export async function searchMemory(
   if (typeof filters === "boolean") query.set("undated", String(filters));
   else {
     if (filters.query?.trim()) query.set("query", filters.query.trim());
-    if (filters.dateFrom) query.set("date_from", filters.dateFrom);
-    if (filters.dateTo) query.set("date_to", filters.dateTo);
+    if (filters.undated) query.set("undated", "true");
+    else {
+      if (filters.dateFrom) query.set("date_from", filters.dateFrom);
+      if (filters.dateTo) query.set("date_to", filters.dateTo);
+    }
   }
   if (cursor) query.set("cursor", cursor);
   return (

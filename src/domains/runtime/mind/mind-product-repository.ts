@@ -188,6 +188,7 @@ implements MindProductRepository {
     subjectId: string;
     kind?: CurrentSubjectStateKind;
     sort?: MindProductSort;
+    undated?: boolean;
     limit: number;
     cursor?: MindProductCursor | null;
   }): Promise<{
@@ -206,6 +207,7 @@ implements MindProductRepository {
     if (input.kind) {
       conditions.push(eq(runtimeSubjectStates.kind, input.kind));
     }
+    if (input.undated) conditions.push(sql`${memoryOccurredAtSql()} IS NULL`);
     const occurredSort = input.sort === "occurred_desc";
     const occurredOrdering = sql`coalesce(${memoryOccurredAtSql()}, '-infinity'::timestamptz)`;
     if (input.cursor) {
@@ -217,7 +219,7 @@ implements MindProductRepository {
         conditions.push(sql`(
           ${occurredOrdering}, ${runtimeSubjectStates.updatedAt}, ${runtimeSubjectStates.id}
         ) < (
-          ${occurredCursor}, ${updatedAt}, ${input.cursor.id}::uuid
+          ${occurredCursor}, ${updatedAt.toISOString()}::timestamptz, ${input.cursor.id}::uuid
         )`);
       } else {
         const cursorCondition = or(
