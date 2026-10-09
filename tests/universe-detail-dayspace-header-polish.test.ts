@@ -25,7 +25,7 @@ const relationPaperSource = readFileSync(
 const universePageSource = readFileSync(
   new URL("../web/src/pages/UniversePage.tsx", import.meta.url),
   "utf8",
-);
+) + readFileSync(new URL("../web/src/pages/universe/UniversePagePresentation.tsx", import.meta.url), "utf8");
 
 test("Universe detail keeps its title in scrolling content and lifts title plus summary", () => {
   assert.match(nodePaperSource, /universe-standalone-detail-scroll[\s\S]*?<h2>\{effectiveNode!\.title\}<\/h2>[\s\S]*?universe-standalone-summary/);

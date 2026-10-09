@@ -18,6 +18,10 @@ const projects = readFileSync(
   "ios/LeileiOS/LeileiOS/Pages/ContextOverviewSheet.swift",
   "utf8",
 );
+const contextEnvironment = readFileSync(
+  "ios/LeileiOS/LeileiOS/Pages/Context/ContextEnvironmentSection.swift",
+  "utf8",
+);
 const runtimeStore = readFileSync(
   "ios/LeileiOS/LeileiOS/App/NativeLiveRuntimeStore.swift",
   "utf8",
@@ -59,20 +63,20 @@ test("ported PR 793 conversation menu uses concise fork label and red delete aff
 
 test("ported PR 793 Context puts Manual Compact before dense Session Environment blocks", () => {
   const manualIndex = projects.indexOf('Section("Manual Compact")');
-  const environmentIndex = projects.indexOf('Section("Session Environment")');
+  const environmentIndex = projects.indexOf("ContextEnvironmentSection(");
   assert.ok(manualIndex >= 0);
   assert.ok(environmentIndex >= 0);
   assert.ok(manualIndex < environmentIndex);
 
   assert.match(
-    projects,
+    contextEnvironment,
     /environmentBlockRow\(\s*"Working Directory"/,
   );
-  assert.match(projects, /environmentBlockRow\(\s*"MCP"/);
-  assert.match(projects, /environmentBlockRow\(\s*"Plugins"/);
-  assert.match(projects, /environmentBlockRow\(\s*"Plugin Errors"/);
+  assert.match(contextEnvironment, /environmentBlockRow\(\s*"MCP"/);
+  assert.match(contextEnvironment, /environmentBlockRow\(\s*"Plugins"/);
+  assert.match(contextEnvironment, /environmentBlockRow\(\s*"Plugin Errors"/);
   assert.match(
-    projects,
+    contextEnvironment,
     /normalizedValues\.joined\(separator: " · "\)/,
   );
 });
@@ -83,7 +87,7 @@ test("Context keeps a Session Environment skeleton until metadata fetch succeeds
     /@State private var hasLoadedRuntimeMetadata = false/,
   );
   assert.match(
-    projects,
+    contextEnvironment,
     /else if !hasLoadedRuntimeMetadata \{\s*Section\("Session Environment"\)[\s\S]*"Runtime Model"[\s\S]*"Working Directory"[\s\S]*"Permission"[\s\S]*"Claude Code"[\s\S]*"Agent SDK"/,
   );
   assert.match(

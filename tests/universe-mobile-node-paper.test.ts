@@ -5,7 +5,7 @@ import test from "node:test";
 const paperSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseNodePaper.tsx", import.meta.url),
   "utf8",
-);
+) + readFileSync(new URL("../web/src/pages/universe/DiaryProvenanceTimeline.tsx", import.meta.url), "utf8");
 const relationSource = readFileSync(
   new URL("../web/src/pages/universe/UniverseRelationPaper.tsx", import.meta.url),
   "utf8",

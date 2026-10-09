@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
 test("actual Swift send encoder adds voice identity without changing ordinary wire shape", {skip:process.platform !== "darwin"}, () => {
-  const source = readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveAPI.swift", "utf8");
-  const body = source.slice(source.indexOf("private struct NativeLiveSendBody:"), source.indexOf("private struct NativeLiveRetryBody:"));
+  const source = readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveAPIContracts.swift", "utf8");
+  const body = source.slice(source.indexOf("struct NativeLiveSendBody:"), source.indexOf("struct NativeLiveRetryBody:"));
   const mode = readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/NativeLive/NativeLiveInputMode.swift", "utf8");
   const dir=mkdtempSync(join(tmpdir(),"leileios-voice-encoder-"));
   try {
