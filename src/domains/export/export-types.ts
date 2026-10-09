@@ -359,12 +359,12 @@ export type ExportDocumentV4 = {
   owner_fingerprint: string;
   exported_at: string;
   data: ExportDataV4;
-  audit?: ExportAudit;
 };
 
 /** v4 files written before Memory-only remain readable with the historical vocabulary. */
 export type HistoricalExportDocumentV4 = Omit<ExportDocumentV4, "data"> & {
   data: Omit<ExportDataV4, "mind"> & { mind?: HistoricalMindStateRecord[] };
+  audit?: ExportAudit;
 };
 
 export type RestorableExportDocument =

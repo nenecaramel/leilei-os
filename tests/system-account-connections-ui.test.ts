@@ -155,10 +155,8 @@ test("Connections exposes an explicit retry after API failure", async () => {
   );
 
   await waitForPaint();
-  assert.match(
-    container.textContent ?? "",
-    /Unable to read connection status/,
-  );
+  assert.match(container.textContent ?? "", /Unable to read connection status/);
+  assert.deepEqual(Array.from(container.querySelectorAll(".system-status-row > strong"), row => row.textContent), ["Unavailable", "Unavailable", "Unavailable"]);
 
   const retry = Array.from(
     container.querySelectorAll<HTMLButtonElement>("button"),

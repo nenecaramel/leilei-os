@@ -170,52 +170,15 @@ test("system Claude usage returns the latest account-level snapshot", async () =
   });
 });
 
-test("system activity returns bounded data and maps service failures safely", async () => {
-  await withServer({
-    async readActivity(userId: string) {
-      assert.equal(userId, USER_ID);
-      return [{
-        id: "event-1",
-        occurred_at: "2026-08-09T00:00:00.000Z",
-        label: "Diary archived",
-        source: "Web",
-        outcome: "success",
-      }];
-    },
-  }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/system/activity`, {
-      headers: { "x-test-user": "authenticated" },
-    });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      success: true,
-      data: { events: [{
-        id: "event-1",
-        occurred_at: "2026-08-09T00:00:00.000Z",
-        label: "Diary archived",
-        source: "Web",
-        outcome: "success",
-      }] },
-    });
+test("retired Activity API is absent even for authenticated clients", async () => {
+  let calls = 0;
+  await withServer({ readActivity() { calls++; return []; } }, async baseUrl => {
+    for (const headers of [{}, { "x-test-user": "authenticated" }]) {
+      const response = await fetch(`${baseUrl}/api/v1/system/activity`, { headers });
+      assert.equal(response.status, 404);
+    }
   });
-
-  await withServer({
-    async readActivity() {
-      throw new Error("database unavailable");
-    },
-  }, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/v1/system/activity`, {
-      headers: { "x-test-user": "authenticated" },
-    });
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), {
-      success: false,
-      error: {
-        code: "SYSTEM_UNAVAILABLE",
-        message: "System data is temporarily unavailable.",
-      },
-    });
-  });
+  assert.equal(calls, 0);
 });
 
 test("retired settings route is not mounted", async () => {

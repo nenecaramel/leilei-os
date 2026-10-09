@@ -20,6 +20,8 @@ const STATUS_LABELS = {
   online: "Online",
   available: "Available",
   not_enabled: "Not enabled",
+  loading: "Loading…",
+  unavailable: "Unavailable",
 } as const;
 
 function ConnectionRow({
@@ -82,8 +84,8 @@ export function SystemConnectionsPageContent({
       }
     >
       <PageHeader
-        eyebrow="System"
-        title="Connections"
+        eyebrow="Settings"
+        title="Status"
         description={
           "Read-only service availability."
         }
@@ -118,28 +120,20 @@ export function SystemConnectionsPageContent({
           </div>
         ) : null}
 
-        {state.status === "ready" ? (
-          <div className="system-status-list">
+        <div className="system-status-list">
+          {([
+            ["Web API", "web_api"],
+            ["ChatGPT / Claude MCP", "public_mcp"],
+            ["Internal MCP", "internal_mcp"],
+          ] as const).map(([label, key]) => (
             <ConnectionRow
-              label="Web API"
-              status={
-                state.connections.web_api
-              }
+              key={key}
+              label={label}
+              status={state.status === "ready" ? state.connections[key]
+                : state.status === "loading" ? "loading" : "unavailable"}
             />
-            <ConnectionRow
-              label="ChatGPT / Claude MCP"
-              status={
-                state.connections.public_mcp
-              }
-            />
-            <ConnectionRow
-              label="Internal MCP"
-              status={
-                state.connections.internal_mcp
-              }
-            />
-          </div>
-        ) : null}
+          ))}
+        </div>
       </section>
     </div>
   );

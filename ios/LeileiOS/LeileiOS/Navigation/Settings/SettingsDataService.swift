@@ -1,7 +1,7 @@
 import Foundation
 
 protocol SettingsDataService {
-    func exportData(_ request: SettingsExportRequest) async throws -> SettingsExportDocument
+    func exportData() async throws -> SettingsExportDocument
     func previewRestore(fileURL: URL) async throws -> SettingsRestorePreview
     func executeRestore(
         fileURL: URL,
@@ -9,7 +9,6 @@ protocol SettingsDataService {
     ) async throws -> SettingsRestoreResult
     func readDataSummary() async throws -> SettingsDataSummary
     func readRuntimeStatus() async throws -> SettingsRuntimeStatus
-    func readActivity() async throws -> [SettingsActivityRecord]
 }
 
 protocol SettingsAuthService {
@@ -31,7 +30,7 @@ enum SettingsDataServiceError: LocalizedError {
 }
 
 struct UnavailableSettingsDataService: SettingsDataService {
-    func exportData(_ request: SettingsExportRequest) async throws -> SettingsExportDocument {
+    func exportData() async throws -> SettingsExportDocument {
         throw SettingsDataServiceError.unavailable
     }
 
@@ -54,19 +53,12 @@ struct UnavailableSettingsDataService: SettingsDataService {
         throw SettingsDataServiceError.unavailable
     }
 
-    func readActivity() async throws -> [SettingsActivityRecord] {
-        throw SettingsDataServiceError.unavailable
-    }
 }
 
 struct UnavailableSettingsAuthService: SettingsAuthService {
     func signOut() async throws {
         throw SettingsDataServiceError.unavailable
     }
-}
-
-struct SettingsExportRequest {
-    let includeAuditAndLifecycleEvents: Bool
 }
 
 struct SettingsExportDocument: Identifiable {
@@ -158,14 +150,6 @@ struct SettingsRuntimeStatus {
     let internalMCP: String
 }
 
-struct SettingsActivityRecord: Identifiable {
-    let id: String
-    let timestamp: Date
-    let label: String
-    let source: String
-    let result: String
-}
-
 final class LeileiSettingsDataService: SettingsDataService {
     private let api: LeileiAPIClient
 
@@ -173,12 +157,8 @@ final class LeileiSettingsDataService: SettingsDataService {
         self.api = api
     }
 
-    func exportData(
-        _ request: SettingsExportRequest
-    ) async throws -> SettingsExportDocument {
-        let data = try await api.exportData(
-            includeAudit: request.includeAuditAndLifecycleEvents
-        )
+    func exportData() async throws -> SettingsExportDocument {
+        let data = try await api.exportData()
         let timestamp = Self.exportTimestamp(Date())
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -259,37 +239,6 @@ final class LeileiSettingsDataService: SettingsDataService {
                         ? "Not enabled"
                         : status.internalMCP
         )
-    }
-
-    func readActivity() async throws -> [SettingsActivityRecord] {
-        let records = try await api.systemActivity()
-        return records.compactMap { record in
-            guard let timestamp = Self.parseTimestamp(record.occurredAt) else {
-                return nil
-            }
-            return SettingsActivityRecord(
-                id: record.id,
-                timestamp: timestamp,
-                label: record.label,
-                source: record.source,
-                result: record.outcome == "success" ? "Success" : "Failed"
-            )
-        }
-    }
-
-    private static func parseTimestamp(_ value: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds
-        ]
-        if let date = fractional.date(from: value) {
-            return date
-        }
-
-        let standard = ISO8601DateFormatter()
-        standard.formatOptions = [.withInternetDateTime]
-        return standard.date(from: value)
     }
 
     private static func restoreModules(

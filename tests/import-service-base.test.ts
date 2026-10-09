@@ -223,3 +223,27 @@ test("disabled users cannot preview imports", async () => {
     ),
   );
 });
+
+for (const version of [2, 3, 4]) {
+  test(`historical v${version} audit is readable but never restored as product records`, async () => {
+    const base = JSON.parse(new TextDecoder().decode(packageBytes()));
+    const audit = {
+      lifecycle: [{ id: "00000000-0000-4000-8000-000000000090", resource_type: "diary", resource_id: diary.id, action: "archive", actor_type: "user", channel: "web", created_at: base.exported_at }],
+      tool_activity: [{ id: "00000000-0000-4000-8000-000000000091", tool_name: "write_diary", operation: "create", resource_type: "diary", resource_id: diary.id, status: "success", error_code: null, created_at: base.exported_at }],
+    };
+    const raw = new TextEncoder().encode(JSON.stringify({ ...base, schema_version: version, audit }));
+    const repository = new FakeImportRepository();
+    const service = new ImportService(repository);
+    const preview = await service.preview(raw, USER_ID);
+    assert.equal(preview.audit_included, true);
+    assert.equal(preview.can_execute, true);
+    assert.equal(repository.writes, 0);
+    await service.execute(raw, USER_ID, preview.preview_fingerprint);
+    assert.deepEqual(repository.state.diary, [diary]);
+    assert.deepEqual(repository.state.todo, [todo]);
+    assert.equal(repository.writes, 2);
+    assert.equal(repository.audits.length, 1); // The existing safe restore-run record, not imported logs.
+    assert.ok(!JSON.stringify(repository.audits).includes("00000000-0000-4000-8000-000000000090"));
+    assert.ok(!JSON.stringify(repository.audits).includes("00000000-0000-4000-8000-000000000091"));
+  });
+}

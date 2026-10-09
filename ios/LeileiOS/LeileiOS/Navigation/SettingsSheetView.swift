@@ -46,7 +46,6 @@ enum SettingsDetailPage: Hashable {
     case export
     case restore
     case status
-    case activity
     case about
 
     var title: String {
@@ -59,8 +58,6 @@ enum SettingsDetailPage: Hashable {
             "Restore"
         case .status:
             "Status"
-        case .activity:
-            "Activity"
         case .about:
             "About"
         }
@@ -88,8 +85,6 @@ private struct SettingsDetailLayer: View {
             SettingsRestoreContent(dataService: dataService)
         case .status:
             SettingsStatusContent(dataService: dataService)
-        case .activity:
-            SettingsActivityContent(dataService: dataService)
         case .about:
             SettingsAboutContent()
         }

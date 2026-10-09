@@ -37,7 +37,7 @@ test("iOS keeps the existing Summary Export Restore Settings structure", () => {
 
   assert.match(exportView, /Form \{/);
   assert.doesNotMatch(exportView, /Picker\("Scope"/);
-  assert.match(exportView, /Toggle\(/);
+  assert.doesNotMatch(exportView, /Toggle\(|Include audit/);
   assert.match(exportView, /Create Full Backup/);
   assert.match(exportView, /ShareLink/);
 
@@ -48,11 +48,11 @@ test("iOS keeps the existing Summary Export Restore Settings structure", () => {
   assert.match(restoreView, /Text\(isRestoring \? "Restoring…" : "Restore"\)/);
 });
 
-test("iOS Export uses Full Backup wording, timestamp filenames, and diagnostic audit semantics", () => {
+test("iOS Export uses Full Backup wording, timestamp filenames, without an audit export option", () => {
   assert.doesNotMatch(dataService, /SettingsExportScope/);
   assert.match(dataService, /leileios-full-backup_/);
   assert.match(dataService, /yyyyMMdd'T'HHmmss'Z'/);
-  assert.match(exportView, /Audit and lifecycle events are diagnostic only and are not restored/);
+  assert.doesNotMatch(exportView, /Audit|audit/);
   assert.match(exportView, /Full Backup excludes machine-local working directory paths/);
   assert.match(exportView, /settingsDataErrorMessage\(error\)/);
 });
@@ -142,4 +142,16 @@ test("iOS no longer calls retired partial export scopes", () => {
     assert.doesNotMatch(source, /exportData\s*\(\s*scope\s*:/u);
     assert.doesNotMatch(source, /scope:\s*"(?:diary|todo)"/u);
   }
+});
+
+test("iOS retires only Settings Activity and audit export while retaining historical restore metadata", () => {
+  const home = fs.readFileSync("ios/LeileiOS/LeileiOS/Navigation/Settings/SettingsHomeContent.swift", "utf8");
+  const systemAPI = fs.readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/System/SystemAPI.swift", "utf8");
+  const exportAPI = fs.readFileSync("ios/LeileiOS/LeileiOS/Infrastructure/API/Import/ImportAPI.swift", "utf8");
+  assert.equal(fs.existsSync("ios/LeileiOS/LeileiOS/Navigation/Settings/SettingsActivityContent.swift"), false);
+  assert.doesNotMatch(home + settingsView, /SettingsDetailPage\.activity|case activity|SettingsActivityContent/);
+  assert.doesNotMatch(systemAPI + dataService, /systemActivity|readActivity|SettingsActivityRecord/);
+  assert.doesNotMatch(exportAPI + exportView + dataService, /includeAudit|include_audit|SettingsExportRequest/);
+  assert.match(exportAPI, /path: "\/api\/v1\/system\/export"/);
+  assert.match(dataService, /auditIncluded: preview\.auditIncluded/);
 });

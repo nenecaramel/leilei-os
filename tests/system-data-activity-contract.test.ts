@@ -10,19 +10,7 @@ const dataContentSource = readFileSync(
   new URL("../web/src/pages/SystemDataPageContent.tsx", import.meta.url),
   "utf8",
 );
-const activityWrapperSource = readFileSync(
-  new URL("../web/src/pages/SystemActivityPage.tsx", import.meta.url),
-  "utf8",
-);
-const activityContentSource = readFileSync(
-  new URL("../web/src/pages/SystemActivityPageContent.tsx", import.meta.url),
-  "utf8",
-);
-
 const dataSource = dataWrapperSource + dataContentSource;
-const activitySource =
-  activityWrapperSource + activityContentSource;
-
 test("Data reads active-module counts and exposes active export actions", () => {
   assert.match(dataWrapperSource, /useWebApiClient/);
   assert.match(dataContentSource, /"\/system\/data"/);
@@ -39,7 +27,7 @@ test("Data reads active-module counts and exposes active export actions", () => 
   // Rendered module rows are verified by system-data-activity-ui.test.ts.
   // Backup explanations may name Memory without introducing a separate module.
 
-  assert.match(dataContentSource, /`\/system\/export\$\{includeAudit/);
+  assert.match(dataContentSource, /"\/system\/export"/);
   assert.match(dataContentSource, /Full Backup/);
   assert.doesNotMatch(dataContentSource, /export\?scope=/);
   const order = dataContentSource.match(/const IMPORT_MODULE_ORDER: WebImportModule\[\] = \[([\s\S]*?)\];/)?.[1];
@@ -47,32 +35,4 @@ test("Data reads active-module counts and exposes active export actions", () => 
   assert.deepEqual([...order.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]),
     ["diary", "diary_comments", "todo", "workspaces", "conversations", "mind", "universe"]);
 
-});
-
-test("Activity reads the approved endpoint and renders only safe public event fields", () => {
-  assert.match(activityWrapperSource, /useWebApiClient/);
-  assert.match(
-    activityContentSource,
-    /"\/system\/activity"/,
-  );
-
-  for (const field of [
-    "occurred_at",
-    "label",
-    "source",
-    "outcome",
-  ]) {
-    assert.match(
-      activityContentSource,
-      new RegExp(field),
-    );
-  }
-
-  assert.match(activityContentSource, /No activity yet/);
-  assert.match(activityContentSource, /Retry/);
-
-  assert.doesNotMatch(
-    activitySource,
-    /payload|hash|token|secret|request_body|result_payload/i,
-  );
 });

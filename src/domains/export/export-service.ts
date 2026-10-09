@@ -3,10 +3,8 @@ import type {
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
   ExportDocument,
-  ExportLifecycleEvent,
   ExportMindContinuityBundle,
   ExportMindStateRecord,
-  ExportToolActivity,
   ExportTodoPaper,
   ExportUniverseBundle,
 } from "./export-types.js";
@@ -33,8 +31,6 @@ export interface ExportRepository {
   hasIncompleteBackgroundModelJobs(userId: string): Promise<boolean>;
   listConversations(userId: string): Promise<ExportConversationsBundle>;
   listUniverse(userId: string): Promise<ExportUniverseBundle | null>;
-  listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>;
-  listToolActivity(userId: string): Promise<ExportToolActivity[]>;
 }
 
 export type ExportServiceErrorCode =
@@ -72,14 +68,12 @@ export class ExportService {
 
   async createExport(
     userId: string,
-    includeAudit: boolean,
   ): Promise<ExportDocument> {
     return this.repository.withConsistentSnapshot(
       async (repository) =>
         this.createExportFromSnapshot(
           repository,
           userId,
-          includeAudit,
         ),
     );
   }
@@ -87,7 +81,6 @@ export class ExportService {
   private async createExportFromSnapshot(
     repository: ExportRepository,
     userId: string,
-    includeAudit: boolean,
   ): Promise<ExportDocument> {
     try {
       await requireActiveUser(repository, userId);
@@ -167,13 +160,6 @@ export class ExportService {
       exported_at: this.now().toISOString(),
       data,
     };
-    if (includeAudit) {
-      const [lifecycle, tool_activity] = await Promise.all([
-        repository.listLifecycleAudit(userId),
-        repository.listToolActivity(userId),
-      ]);
-      document.audit = { lifecycle, tool_activity };
-    }
     const serializedBytes = Buffer.byteLength(
       JSON.stringify(document),
       "utf8",

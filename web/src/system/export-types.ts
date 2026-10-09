@@ -3,8 +3,4 @@ export type WebExportDocument = {
   owner_fingerprint: string;
   exported_at: string;
   data: Record<string, unknown>;
-  audit?: {
-    lifecycle: unknown[];
-    tool_activity: unknown[];
-  };
 };

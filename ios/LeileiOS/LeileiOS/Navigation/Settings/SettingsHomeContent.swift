@@ -93,10 +93,6 @@ struct SettingsHomeContent: View {
                     Label("Status", systemImage: "network")
                 }
 
-                NavigationLink(value: SettingsDetailPage.activity) {
-                    Label("Activity", systemImage: "clock.arrow.circlepath")
-                }
-
                 NavigationLink(value: SettingsDetailPage.about) {
                     Label("About", systemImage: "info.circle")
                 }

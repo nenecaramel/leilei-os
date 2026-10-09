@@ -20,7 +20,7 @@ const runIntegration =
 class RollbackExportTest extends Error {}
 
 test(
-  "real export repository scopes Diary Todo and audit to one user",
+  "real export repository scopes Diary and Todo to one user",
   { skip: !runIntegration },
   async () => {
     const client = postgres(
@@ -222,6 +222,11 @@ test(
             )[0]!.value,
           };
 
+          const logsBefore = {
+            lifecycle: await transaction.select().from(schema.resourceLifecycleEvents),
+            tools: await transaction.select().from(schema.toolCalls),
+          };
+
           const repository =
             new DrizzleExportRepository(
               transaction as never,
@@ -259,36 +264,6 @@ test(
             "late todo",
           );
 
-          const lifecycle =
-            await repository.listLifecycleAudit(
-              owner,
-            );
-          assert.deepEqual(
-            lifecycle.map((row) => row.id),
-            [lifecycleId],
-          );
-          assert.equal(
-            JSON.stringify(lifecycle).includes(
-              "PRIVATE_LIFECYCLE_METADATA",
-            ),
-            false,
-          );
-
-          const tools =
-            await repository.listToolActivity(
-              owner,
-            );
-          assert.deepEqual(
-            tools.map((row) => row.id),
-            [toolId],
-          );
-          assert.equal(
-            JSON.stringify(tools).includes(
-              "PRIVATE_REQUEST_SUMMARY",
-            ),
-            false,
-          );
-
           const after = {
             diary: (
               await transaction
@@ -302,6 +277,10 @@ test(
             )[0]!.value,
           };
           assert.deepEqual(after, before);
+          assert.deepEqual({
+            lifecycle: await transaction.select().from(schema.resourceLifecycleEvents),
+            tools: await transaction.select().from(schema.toolCalls),
+          }, logsBefore);
 
           throw new RollbackExportTest();
         }),

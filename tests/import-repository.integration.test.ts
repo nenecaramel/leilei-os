@@ -422,9 +422,10 @@ test(
           db as never,
         ),
         () => now,
-      ).createExport(userId, false);
+      ).createExport(userId);
 
       assert.equal(exported.schema_version, 4);
+      assert.equal("audit" in exported, false);
       assert.equal(exported.data.mind?.length, 3);
       assert.ok(exported.data.mind?.every(record => record.kind === "memory"));
       assert.equal(exported.data.mind_continuity?.drive_satisfaction_events.length, 1);
@@ -763,7 +764,7 @@ test(
       });
 
       const reexported = await new ExportService(new DrizzleExportRepository(db as never), () => now)
-        .createExport(userId, false);
+        .createExport(userId);
       assert.deepEqual(reexported.data.mind, exported.data.mind);
       assert.deepEqual(reexported.data.mind_continuity, exported.data.mind_continuity);
       const repeated = await service.preview(raw, userId);
@@ -772,7 +773,7 @@ test(
       assert.equal(repeated.can_execute, false);
       await assert.rejects(service.execute(raw, userId, repeated.preview_fingerprint), /IMPORT_NOTHING_TO_RESTORE/);
       assert.deepEqual((await new ExportService(new DrizzleExportRepository(db as never), () => now)
-        .createExport(userId, false)).data.mind_continuity, exported.data.mind_continuity);
+        .createExport(userId)).data.mind_continuity, exported.data.mind_continuity);
 
     } finally {
       await db

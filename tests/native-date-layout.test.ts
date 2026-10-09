@@ -303,13 +303,13 @@ test("Web shell reserves the iPhone safe area and preloads route-aware theme col
 
 test("grouped navigation keeps every entry reachable in the mobile drawer", () => {
   assert.match(navigationSource, /label: "Account"/);
-  assert.match(navigationSource, /label: "Connections"/);
+  assert.match(navigationSource, /label: "Status"/);
   assert.match(navigationSource, /label: "Data"/);
-  assert.match(navigationSource, /label: "Activity"/);
+  assert.doesNotMatch(navigationSource, /label: "Activity"/);
   assert.match(navigationSource, /label: "About"/);
   assert.match(navigationSource, /label: "Home"/);
   assert.match(navigationSource, /label: "Global Search"/);
-  assert.match(navigationSource, /label: "System"/);
+  assert.match(navigationSource, /label: "Settings"/);
   assert.match(navigationSource, /label: "Day Space"[\s\S]{0,160}?to: "\/day-space"/);
   assert.doesNotMatch(navigationSource, /General|Appearance|Data & Backup|includeSecondarySystemItems/);
   assert.match(styles, /\.mobile-drawer-panel\s*\{[\s\S]*?width:\s*min\(82vw,\s*280px\)/);

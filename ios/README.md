@@ -19,7 +19,7 @@ The app currently includes a real backend health probe and an authenticated `/ap
 3. Under Signing & Capabilities, select your Apple Development Team.
 4. Give the target a bundle identifier owned by that team if Xcode asks.
 5. Connect/select the iPhone and press Run.
-6. Open System → Connections in the app. The backend API row should report `leilei-os: ok` whenever Railway production is running.
+6. Open Settings → Status in the app. Web API reports `Online`, ChatGPT / Claude MCP reports `Available`, and Internal MCP reports `Available` or `Not enabled`, using `/system/connections`.
 
 ## Runtime configuration
 

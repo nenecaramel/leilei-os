@@ -89,19 +89,3 @@ struct SystemDataSummarySnapshot: Decodable, Sendable, Equatable {
         case universe
     }
 }
-
-struct SystemActivitySnapshot: Decodable, Sendable, Equatable, Identifiable {
-    let id: String
-    let occurredAt: String
-    let label: String
-    let source: String
-    let outcome: String
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case occurredAt = "occurred_at"
-        case label
-        case source
-        case outcome
-    }
-}

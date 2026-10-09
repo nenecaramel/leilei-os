@@ -110,7 +110,7 @@ Compatibility remains bounded by the existing product restore contract:
 - Duplicate IDs inside a package remain invalid; same-ID differences and occupied
   archive keys remain conflicts. Exact repeats are duplicates and nothing is
   overwritten. Empty/all-duplicate backups preview successfully with no writes and
-  report nothing to restore; audit/lifecycle logs remain diagnostic only.
+  report nothing to restore; historical audit/lifecycle logs remain diagnostic only.
 - Existing limits (size/record counts/owner fingerprint, retired Product Workspace
   data rejection and portable conversation scope) remain unchanged. Restore does
   not reconstruct absent attachment bytes or machine-local paths.
