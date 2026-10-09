@@ -132,12 +132,6 @@ export const DataIcon = (props: IconProps) => (
   </IconBase>
 );
 
-export const ActivityIcon = (props: IconProps) => (
-  <IconBase {...props}>
-    <path d="M3 12h4l2.2-5.5 4.1 11 2.2-5.5H21" />
-  </IconBase>
-);
-
 export const AboutIcon = (props: IconProps) => (
   <IconBase {...props}>
     <circle cx="12" cy="12" r="9" />

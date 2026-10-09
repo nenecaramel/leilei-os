@@ -19,7 +19,6 @@ import {
   nativeLiveBackgroundModelJobs,
   nativeLiveMindFollowUps,
   nativeLiveTurnPreparations,
-  resourceLifecycleEvents,
   runtimeCuriosityResolutionEvents,
   runtimeDistillationWatermarks,
   runtimeDriveSatisfactionEvents,
@@ -27,21 +26,17 @@ import {
   runtimeSubjectStates,
   todoEntries,
   todoPapers,
-  toolCalls,
   users,
 } from "../../database/schema.js";
-import { MCP_WRITE_TOOL_NAMES } from "../../mcp/tools/write-context.js";
 import { DrizzleUniverseRepository } from "../universe/universe-repository-drizzle.js";
 import type { ExportRepository } from "./export-service.js";
 import type {
   ExportConversationsBundle,
   ExportDiaryCommentRecord,
   ExportDiaryRecord,
-  ExportLifecycleEvent,
   ExportMindContinuityBundle,
   ExportMindStateRecord,
   ExportProjectsBundle,
-  ExportToolActivity,
   ExportTodoPaper,
   ExportUniverseBundle,
 } from "./export-types.js";
@@ -599,7 +594,10 @@ export class DrizzleExportRepository implements ExportRepository {
       createdAt: runtimeSubjectStates.createdAt,
       updatedAt: runtimeSubjectStates.updatedAt,
     }).from(runtimeSubjectStates)
-      .where(eq(runtimeSubjectStates.userId, userId))
+      .where(and(
+        eq(runtimeSubjectStates.userId, userId),
+        eq(runtimeSubjectStates.kind, "memory"),
+      ))
       .orderBy(
         asc(runtimeSubjectStates.subjectId),
         asc(runtimeSubjectStates.kind),
@@ -625,36 +623,4 @@ export class DrizzleExportRepository implements ExportRepository {
     }));
   }
 
-  async listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]> {
-    const rows = await this.db.select({
-      id: resourceLifecycleEvents.id, resourceType: resourceLifecycleEvents.resourceType,
-      resourceId: resourceLifecycleEvents.resourceId, action: resourceLifecycleEvents.action,
-      actorType: resourceLifecycleEvents.actorType, channel: resourceLifecycleEvents.channel,
-      createdAt: resourceLifecycleEvents.createdAt,
-    }).from(resourceLifecycleEvents).where(eq(resourceLifecycleEvents.userId, userId))
-      .orderBy(asc(resourceLifecycleEvents.createdAt), asc(resourceLifecycleEvents.id));
-    return rows.map((row) => ({
-      id: row.id, resource_type: row.resourceType, resource_id: row.resourceId, action: row.action,
-      actor_type: row.actorType, channel: row.channel, created_at: toIso(row.createdAt),
-    }));
-  }
-
-  async listToolActivity(userId: string): Promise<ExportToolActivity[]> {
-    const rows = await this.db.select({
-      id: toolCalls.id, toolName: toolCalls.toolName, operation: toolCalls.operation,
-      resourceType: toolCalls.resourceType, resourceId: toolCalls.resourceId,
-      status: toolCalls.status, errorCode: toolCalls.errorCode, createdAt: toolCalls.createdAt,
-    }).from(toolCalls).where(and(
-      eq(toolCalls.userId, userId),
-      inArray(toolCalls.toolName, [...MCP_WRITE_TOOL_NAMES]),
-      isNotNull(toolCalls.idempotencyKey),
-      isNotNull(toolCalls.resourceId),
-    ))
-      .orderBy(asc(toolCalls.createdAt), asc(toolCalls.id));
-    return rows.map((row) => ({
-      id: row.id, tool_name: row.toolName, operation: row.operation, resource_type: row.resourceType,
-      resource_id: row.resourceId, status: row.status, error_code: row.errorCode,
-      created_at: toIso(row.createdAt),
-    }));
-  }
 }

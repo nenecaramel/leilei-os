@@ -9,6 +9,8 @@ struct DaySpaceView: View {
     let target: DaySpaceNavigationTarget?
     let onTargetConsumed: () -> Void
 
+    @State private var memoryRevision = 0
+    @State private var memoryState: DaySpaceModuleState<[MindProductItem]> = .loading(nil)
     @State private var query = ""
     @State private var searchState: DaySpaceTodoSearchState = .idle
     @State private var completeTodoSearch:
@@ -32,6 +34,8 @@ struct DaySpaceView: View {
                 searchContent
             } else {
                 DaySpaceContent(
+                    memoryState: memoryState,
+                    onRetryMemory: { memoryRevision += 1 },
                     selectedDate: selectedDate,
                     discoveryState: discoveryState,
                     discoveryIncomplete: discoveryIncomplete,
@@ -152,6 +156,8 @@ struct DaySpaceView: View {
                         }
                     )
 
+                case .memory(let date, let items):
+                    DaySpaceMemoryDetail(date: date, items: items, onSaved: applyMemory, onClosed: { selection = nil })
                 case .diary(let diary):
                     DaySpaceDiaryPaperDetail(
                         diary: diary,
@@ -179,6 +185,15 @@ struct DaySpaceView: View {
             } else if selectedDate == nil {
                 await discoverAndLoad()
             }
+        }
+        .task(id: "\(selectedDate ?? ""):\(memoryRevision)") {
+            guard let date = selectedDate else { memoryState = .loading(nil); return }
+            memoryState = .loading(memoryState.value)
+            do {
+                let items = try await appModel.api.memoryDay(date)
+                try Task.checkCancellation()
+                if selectedDate == date { memoryState = .ready(items) }
+            } catch { if !Task.isCancelled { memoryState = .error(memoryState.value) } }
         }
         .task(id: query) {
             await searchTodoIfNeeded()
@@ -325,9 +340,7 @@ struct DaySpaceView: View {
             if let completeTodoSearch {
                 all = completeTodoSearch
             } else {
-                let data = try await appModel.api.exportData(
-                    includeAudit: false
-                )
+                let data = try await appModel.api.exportData()
                 let snapshot = try JSONDecoder().decode(
                     LeileiExportSnapshot.self,
                     from: data
@@ -387,22 +400,24 @@ struct DaySpaceView: View {
 
         async let todoDates = readDates(path: "/api/v1/todo/dates")
         async let diaryDates = readDates(path: "/api/v1/diary/dates")
+        async let memoryDates = readDates(path: "/api/v1/mind/dates")
 
         let todoResult = await todoDates
         let diaryResult = await diaryDates
+        let memoryResult = await memoryDates
 
         let todoSucceeded = todoResult != nil
         let diarySucceeded = diaryResult != nil
 
-        guard todoSucceeded || diarySucceeded else {
+        guard todoSucceeded || diarySucceeded || memoryResult != nil else {
             discoveryState = .unavailable
             return
         }
 
-        discoveryIncomplete = !(todoSucceeded && diarySucceeded)
+        discoveryIncomplete = !(todoSucceeded && diarySucceeded && memoryResult != nil)
 
         let today = DaySpaceDate.businessDate(.now)
-        let latest = ((todoResult ?? []) + (diaryResult ?? []))
+        let latest = ((todoResult ?? []) + (diaryResult ?? []) + (memoryResult ?? []))
             .filter(DaySpaceDate.isValid)
             .max()
             ?? today
@@ -432,6 +447,8 @@ struct DaySpaceView: View {
 
         selectedDate = date
         selection = nil
+        memoryState = .loading(nil)
+        memoryRevision += 1
         todoState = .loading(nil)
         diaryState = .loading(nil)
 
@@ -460,6 +477,19 @@ struct DaySpaceView: View {
         case .failure:
             diaryState = .error(diaryState.value)
         }
+    }
+
+    @MainActor
+    private func applyMemory(_ updated: [MindProductItem]) {
+        guard let selectedDate else { return }
+        let replacements = Dictionary(uniqueKeysWithValues: updated.map { ($0.id, $0) })
+        let items = (memoryState.value ?? []).compactMap { original -> MindProductItem? in
+            let item = replacements[original.id] ?? original
+            guard let instant = MemoryDate.parse(item.occurredAt), DaySpaceDate.businessDate(instant) == selectedDate else { return nil }
+            return item
+        }
+        memoryState = .ready(items)
+        memoryRevision += 1
     }
 
     @MainActor

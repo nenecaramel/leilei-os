@@ -23,6 +23,8 @@ class FakeMindService {
     if (this.failure) throw this.failure;
   }
 
+  async listDates(input: unknown) { this.calls.push({name:"dates",input}); return {dates:["2026-10-08"]}; }
+
   async list(input: unknown) {
     this.maybeFail();
     this.calls.push({ name: "list", input });
@@ -148,6 +150,21 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
         input: { userId, stateId },
       },
     ]);
+  });
+});
+
+test("Mind API accepts occurred-desc sorting and rejects unsupported sort values", async () => {
+  const service = new FakeMindService();
+  await withServer(service, async baseUrl => {
+    assert.equal((await fetch(`${baseUrl}?kind=memory&sort=occurred_desc&limit=20`)).status, 200);
+    assert.deepEqual(service.calls.at(-1), {
+      name: "list",
+      input: { userId, kind: "memory", sort: "occurred_desc", limit: 20 },
+    });
+    for (const invalid of ["newest", "", "occurred_desc&sort=updated_desc"]) {
+      assert.equal((await fetch(`${baseUrl}?sort=${invalid}`)).status, 400);
+    }
+    assert.equal(service.calls.length, 1);
   });
 });
 
@@ -329,4 +346,17 @@ test("Mind search/day routes and PATCH share authenticated service and strict ed
       409,
     );
   });
+});
+
+
+test("Memory dates are authenticated, no-store and routed before state IDs", async () => {
+ const service = new FakeMindService();
+ await withServer(service, async base => {
+   const response = await fetch(base+"/dates");
+   assert.equal(response.status,200);
+   assert.match(response.headers.get("cache-control")!, /no-store/);
+   assert.deepEqual((await response.json()).data,{dates:["2026-10-08"]});
+   assert.deepEqual(service.calls,[{name:"dates",input:{userId}}]);
+ });
+ await withServer(new FakeMindService(), async base => assert.equal((await fetch(base+"/dates")).status,401),false);
 });

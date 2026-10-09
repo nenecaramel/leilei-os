@@ -19,7 +19,7 @@ const runIntegration =
 class RollbackSystemTest extends Error {}
 
 test(
-  "real System repository scopes active-module counts and activity to one user",
+  "real System repository scopes active-module counts to one user",
   { skip: !runIntegration },
   async () => {
     const client = postgres(
@@ -226,31 +226,6 @@ test(
               mind: { count: 0 },
               universe: { nodes: 0 },
             },
-          );
-
-          const lifecycle =
-            await repository.listLifecycleActivity(
-              owner,
-              10,
-            );
-          assert.equal(lifecycle.length, 1);
-          assert.equal(
-            lifecycle[0]?.resourceType,
-            "diary",
-          );
-
-          const tools =
-            await repository.listToolActivity(
-              owner,
-              10,
-            );
-          assert.deepEqual(
-            tools.map((row) => row.source),
-            ["mcp"],
-          );
-          assert.deepEqual(
-            tools.map((row) => row.toolName),
-            ["write_diary"],
           );
 
           throw new RollbackSystemTest();

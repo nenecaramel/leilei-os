@@ -100,7 +100,6 @@ export function SystemDataPageContent({
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [exportState, setExportState] =
     useState<ExportState>({ status: "idle" });
-  const [includeAudit, setIncludeAudit] = useState(false);
   const [importState, setImportState] =
     useState<ImportState>({ status: "idle" });
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -109,7 +108,7 @@ export function SystemDataPageContent({
   async function runExport(): Promise<void> {
     setExportState({ status: "loading" });
     const path =
-      `/system/export${includeAudit ? "?include_audit=true" : ""}`;
+      "/system/export";
     try {
       const document = await api.request<WebExportDocument>(path);
       downloadExportDocument(document);
@@ -242,7 +241,7 @@ export function SystemDataPageContent({
   return (
     <div className="page system-page system-data-page">
       <PageHeader
-        eyebrow="System"
+        eyebrow="Settings"
         title="Data"
         description="Portable data, backups, and add-only restore."
       />
@@ -279,10 +278,6 @@ export function SystemDataPageContent({
               value={state.summary.diary_comments.count}
             />
             <SimpleCountRow label="Todo" value={state.summary.todo.count} />
-            <SimpleCountRow
-              label="Workspaces"
-              value={state.summary.workspaces.count}
-            />
             <ArchivedCountRow
               label="Conversations"
               active={state.summary.conversations.active}
@@ -319,29 +314,10 @@ export function SystemDataPageContent({
           </button>
         </div>
 
-        <label
-          className="system-export-audit"
-          data-active={includeAudit ? "true" : "false"}
-        >
-          <input
-            className="sr-only system-export-audit-input"
-            type="checkbox"
-            checked={includeAudit}
-            onChange={(event) => setIncludeAudit(event.target.checked)}
-          />
-          <span className="system-export-audit-text">
-            Include diagnostic audit/lifecycle events
-          </span>
-          {includeAudit ? (
-            <span className="system-export-audit-check" aria-hidden="true">
-              ✓
-            </span>
-          ) : null}
-        </label>
         <p className="system-backup-note">
-          Audit events are diagnostic only and are not restored. Full Backup
+          Full Backup
           contains portable LeileiOS product data; machine-local Workspace
-          paths are not included.
+          paths are not included. Mind includes Memory and retained historical records.
         </p>
 
         {exportState.status === "error" ? (

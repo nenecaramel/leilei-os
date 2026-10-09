@@ -23,7 +23,6 @@ import {
   todoEntries,
   todoPapers,
   users,
-  type RuntimeSubjectStateKind,
 } from "../../database/schema.js";
 import type {
   ExportConversationAttachmentRecord,
@@ -38,7 +37,7 @@ import type {
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
   ExportMindSemanticGroupingResultRecord,
-  ExportMindStateRecord,
+  HistoricalMindStateRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
 } from "../export/export-types.js";
@@ -127,7 +126,7 @@ export interface ImportRepository {
 
   insertMind(
     userId: string,
-    record: ExportMindStateRecord,
+    record: HistoricalMindStateRecord,
   ): Promise<void>;
 
   insertMindDriveSatisfactionEvent(
@@ -1169,15 +1168,14 @@ implements ImportRepository {
 
   async insertMind(
     userId: string,
-    record: ExportMindStateRecord,
+    record: HistoricalMindStateRecord,
   ): Promise<void> {
     if (record.kind !== "memory") throw new Error("Import writes require the current memory kind.");
     await this.db.insert(runtimeSubjectStates).values({
       id: record.id,
       userId,
       subjectId: record.subject_id,
-      // The import planner rejects packages holding retired Mind kinds.
-      kind: record.kind as RuntimeSubjectStateKind,
+      kind: record.kind,
       text: record.text,
       payload: record.payload,
       scopeApplicability: record.scope_applicability,

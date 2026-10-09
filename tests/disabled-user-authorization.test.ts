@@ -75,19 +75,17 @@ test("TodoService rechecks durable status for an already-established caller", as
   assert.equal(reads, 1);
 });
 
-test("SystemService rejects disabled and missing users before summary or activity reads", async () => {
+test("SystemService rejects disabled and missing users before summary or connections reads", async () => {
   for (const user of [DISABLED, null]) {
     let reads = 0;
     const repository = {
       findUserById: async () => user,
       readDataSummary: async () => { reads += 1; return { memory: { active: 0, archived: 0 }, diary: { active: 0, archived: 0 }, task: { active: 0, archived: 0 }, shared_paper: { active: 0, archived: 0 }, todo: { active: 0 } }; },
-      listLifecycleActivity: async () => { reads += 1; return []; },
-      listToolActivity: async () => { reads += 1; return []; },
     } as unknown as SystemRepository;
     const service = new SystemService(repository);
     const code = user ? "USER_DISABLED" : "USER_NOT_FOUND";
     await assert.rejects(() => service.readDataSummary(USER_ID), (error: unknown) => assertUserRejection(error, code));
-    await assert.rejects(() => service.readActivity(USER_ID), (error: unknown) => assertUserRejection(error, code));
+    await assert.rejects(() => service.readConnections(USER_ID), (error: unknown) => assertUserRejection(error, code));
     assert.equal(reads, 0);
   }
 });
@@ -137,8 +135,6 @@ function createExportRepository(user: { status: "active" | "disabled" } | null, 
       };
     },
     async listUniverse() { calls.push("universe"); return null; },
-    async listLifecycleAudit() { calls.push("lifecycle"); return []; },
-    async listToolActivity() { calls.push("tool"); return []; },
   };
   return repository as unknown as ExportRepository;
 }
@@ -148,7 +144,7 @@ test("ExportService rejects disabled and missing users before export reads", asy
     const calls: string[] = [];
     const service = new ExportService(createExportRepository(user, calls));
     const code = user ? "USER_DISABLED" : "USER_NOT_FOUND";
-    await assert.rejects(() => service.createExport(USER_ID, "all", true), (error: unknown) => assertUserRejection(error, code));
+    await assert.rejects(() => service.createExport(USER_ID), (error: unknown) => assertUserRejection(error, code));
     assert.deepEqual(calls, []);
   }
 });
@@ -188,7 +184,7 @@ async function withApiServer(dependencies: Record<string, unknown>, callback: (u
 test("affected Web routes map durable user rejection to generic 403 envelopes", async () => {
   await withApiServer({
     todo: { todoService: { readDay: async () => { throw new TodoServiceError("USER_DISABLED" as never, "private disabled detail"); }, listDates: async () => [], replacePaper: async () => ({}) } },
-    system: { systemService: { readConnections: async () => ({}), readDataSummary: async () => { throw new SystemServiceError("USER_DISABLED"); }, readActivity: async () => [] } },
+    system: { systemService: { readConnections: async () => ({}), readDataSummary: async () => { throw new SystemServiceError("USER_DISABLED"); } } },
     export: { exportService: { createExport: async () => { throw new ExportServiceError("USER_NOT_FOUND"); } } },
     import: { importService: { preview: async () => { throw new ImportAuthorizationError("USER_DISABLED"); }, execute: async () => { throw new ImportAuthorizationError("USER_DISABLED"); } } },
   }, async (url) => {

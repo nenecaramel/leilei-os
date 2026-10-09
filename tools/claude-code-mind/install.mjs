@@ -23,7 +23,8 @@ export function configureHooks(settings, {home, serverName = "leileios", nodeCom
     hooks[event].push({
       ...(event === "SessionStart" ? {matcher: "startup|resume|compact|clear|fork"} : {}),
       ...(event === "Notification" ? {matcher: "idle_prompt"} : {}),
-      ...(event === "PostToolUse" ? {matcher: `^mcp__${serverName}__write_memory$`} : {}),
+      // Claude.ai connector tool names have dynamic namespaces; hook validates receipts.
+      ...(event === "PostToolUse" ? {matcher: "^mcp__[A-Za-z0-9_-]+__write_memory$"} : {}),
       hooks: [definition],
     });
   }

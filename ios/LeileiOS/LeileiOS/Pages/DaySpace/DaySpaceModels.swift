@@ -103,11 +103,13 @@ enum DaySpaceModuleState<Value> {
 enum DaySpacePaperSelection: Identifiable {
     case todo(DaySpaceTodoPaper)
     case diary(DaySpaceDiary)
+    case memory(String, [MindProductItem])
 
     var id: String {
         switch self {
         case .todo(let paper):
             return "todo:\(paper.date):\(paper.author.rawValue)"
+        case .memory(let date, _): return "memory:\(date)"
         case .diary(let diary):
             return "diary:\(diary.id)"
         }
@@ -115,6 +117,9 @@ enum DaySpacePaperSelection: Identifiable {
 
     var density: Int {
         switch self {
+        case .memory(_, let items):
+            let length = items.reduce(0) { $0 + ($1.text?.utf16.count ?? 0) }
+            return max(1, min(6, max(items.count, Int(ceil(Double(length) / 44.0)))))
         case .todo(let paper):
             return max(1, paper.entries.count)
 
@@ -133,6 +138,7 @@ enum DaySpacePaperSelection: Identifiable {
 
     var authorLabel: String {
         switch self {
+        case .memory: return "Memory"
         case .todo(let paper):
             return paper.author.rawValue
         case .diary(let diary):

@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct DaySpaceContent: View {
+    let memoryState: DaySpaceModuleState<[MindProductItem]>
+    let onRetryMemory: () -> Void
+    private var memories: [MindProductItem] { memoryState.value ?? [] }
+    private var memoryFailed: Bool { memoryState.isError }
+    private var memoryLoading: Bool { memoryState.isLoading }
+
     let selectedDate: String?
     let discoveryState: DaySpaceDiscoveryState
     let discoveryIncomplete: Bool
@@ -38,6 +44,8 @@ struct DaySpaceContent: View {
                    !bothModulesFailed {
                     DaySpacePartialFailure(
                         todoFailed: todoState.isError,
+                        memoryFailed: memoryFailed,
+                        onRetryMemory: onRetryMemory,
                         diaryFailed: diaryState.isError,
                         onRetryTodo: {
                             onRetryTodo(selectedDate)
@@ -77,7 +85,7 @@ struct DaySpaceContent: View {
         } else if let selectedDate {
             let papers = currentPapers
 
-            if bothModulesFailed {
+            if bothModulesFailed && memories.isEmpty && !memoryLoading {
                 AppStateSurface(
                     title: "Unavailable",
                     actionTitle: "Retry"
@@ -89,7 +97,7 @@ struct DaySpaceContent: View {
                     minHeight: daySpaceStateHeight,
                     alignment: .center
                 )
-            } else if todoState.isLoading && diaryState.isLoading && papers.isEmpty {
+            } else if (todoState.isLoading || diaryState.isLoading || memoryLoading) && papers.isEmpty {
                 DaySpaceReadingState()
             } else if completeEmpty {
                 AppStateSurface(
@@ -112,11 +120,11 @@ struct DaySpaceContent: View {
     }
 
     private var hasPartialFailure: Bool {
-        todoState.isError || diaryState.isError
+        todoState.isError || diaryState.isError || memoryFailed
     }
 
     private var bothModulesFailed: Bool {
-        todoState.isErrorWithoutValue && diaryState.isErrorWithoutValue
+        todoState.isErrorWithoutValue && diaryState.isErrorWithoutValue && memoryState.isErrorWithoutValue
     }
 
     private var completeEmpty: Bool {
@@ -126,7 +134,7 @@ struct DaySpaceContent: View {
             return false
         }
 
-        return todo.visiblePapers.isEmpty && diaries.isEmpty
+        return todo.visiblePapers.isEmpty && diaries.isEmpty && memories.isEmpty && !memoryLoading && !memoryFailed
     }
 
     private var currentPapers: [DaySpacePaperSelection] {
@@ -144,6 +152,7 @@ struct DaySpaceContent: View {
             })
         }
 
+        if let selectedDate, !memories.isEmpty { result.append(.memory(selectedDate, memories)) }
         return result
     }
 }

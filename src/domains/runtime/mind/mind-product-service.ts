@@ -80,9 +80,12 @@ export type MindProductRow = {
   updatedAt: string;
 };
 
+export type MindProductSort = "updated_desc" | "occurred_desc";
+
 export type MindProductCursor = {
   updatedAt: string;
   id: string;
+  occurredAt?: string | null;
 };
 
 export type MindMemoryCursor = { createdAt: string; id: string };
@@ -114,6 +117,7 @@ export type MindMemorySearchPage = {
 };
 
 export interface MindProductRepository {
+  listDates(input: {userId: string; subjectId: string}): Promise<string[]>;
   search(input: {
     userId: string;
     subjectId: string;
@@ -135,6 +139,7 @@ export interface MindProductRepository {
     userId: string;
     subjectId: string;
     kind?: CurrentSubjectStateKind;
+    sort?: MindProductSort;
     limit: number;
     cursor?: MindProductCursor | null;
   }): Promise<{
@@ -198,9 +203,14 @@ export class MindProductService {
   async list(input: {
     userId: string;
     kind?: CurrentSubjectStateKind;
+    sort?: MindProductSort;
     limit?: number;
     cursor?: string | null;
   }): Promise<MindProductPage> {
+    const sort = input.sort ?? "updated_desc";
+    if (sort !== "updated_desc" && sort !== "occurred_desc") {
+      throw new MindProductServiceError("INVALID_MIND", "Mind sort is invalid.");
+    }
     const limit = input.limit ?? 100;
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
       throw new MindProductServiceError(
@@ -216,12 +226,13 @@ export class MindProductService {
     }
 
     const cursor = input.cursor
-      ? decodeCursor(input.cursor)
+      ? decodeCursor(input.cursor, sort)
       : null;
     const page = await this.repository.list({
       userId: input.userId,
       subjectId: this.subjectId,
       ...(input.kind ? { kind: input.kind } : {}),
+      sort,
       limit,
       cursor,
     });
@@ -270,6 +281,10 @@ export class MindProductService {
       }),
       nextCursor: page.nextCursor,
     };
+  }
+
+  async listDates(input: {userId: string}): Promise<{dates: string[]}> {
+    return {dates: await this.repository.listDates({...input, subjectId:this.subjectId})};
   }
 
   async readDay(input: {
@@ -603,28 +618,31 @@ function encodeCursor(cursor: MindProductCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
-function decodeCursor(value: string): MindProductCursor {
+function decodeCursor(value: string, sort: MindProductSort): MindProductCursor {
   try {
-    const parsed = JSON.parse(
-      Buffer.from(value, "base64url").toString("utf8"),
-    ) as Record<string, unknown>;
-    if (
-      typeof parsed.updatedAt !== "string"
-      || !Number.isFinite(Date.parse(parsed.updatedAt))
-      || typeof parsed.id !== "string"
-    ) {
-      throw new Error("invalid");
-    }
-    requireUuid(parsed.id, "cursor.id");
+    if (value.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(value)) throw Error();
+    const bytes = Buffer.from(value, "base64url");
+    if (bytes.toString("base64url") !== value) throw Error();
+    const parsed: unknown = JSON.parse(bytes.toString("utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw Error();
+    const record = parsed as Record<string, unknown>;
+    if (typeof record.updatedAt !== "string" || !Number.isFinite(Date.parse(record.updatedAt))
+      || typeof record.id !== "string") throw Error();
+    requireUuid(record.id, "cursor.id");
+    const hasOccurred = sort === "occurred_desc";
+    const keys = Object.keys(record).sort().join(",");
+    if (keys !== (hasOccurred ? "id,occurredAt,updatedAt" : "id,updatedAt")) throw Error();
+    if (hasOccurred && record.occurredAt !== null
+      && (typeof record.occurredAt !== "string"
+        || !Number.isFinite(Date.parse(record.occurredAt)))) throw Error();
     return {
-      updatedAt: new Date(parsed.updatedAt).toISOString(),
-      id: parsed.id,
+      updatedAt: new Date(record.updatedAt).toISOString(),
+      id: record.id,
+      ...(hasOccurred ? { occurredAt: record.occurredAt === null
+        ? null : new Date(record.occurredAt as string).toISOString() } : {}),
     };
   } catch {
-    throw new MindProductServiceError(
-      "INVALID_MIND",
-      "Mind cursor is invalid.",
-    );
+    throw new MindProductServiceError("INVALID_MIND", "Mind cursor is invalid.");
   }
 }
 

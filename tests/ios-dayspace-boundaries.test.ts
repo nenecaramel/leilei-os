@@ -31,7 +31,7 @@ test("Day Space reusable presentation and paper detail views have focused bounda
 
 test("Day Space UIKit editors preserve existing concrete bridges in editor modules", () => {
   check("Editors/DaySpaceTodoEditor.swift", ["DaySpaceTodoLineEditor", "DaySpaceTodoNativeTextView"]);
-  check("Editors/DaySpaceDiaryEditor.swift", ["DaySpaceDiaryBodyEditor"]);
+  check("Editors/DaySpacePaperBodyEditor.swift", ["DaySpacePaperBodyEditor"]);
   const todo = fs.readFileSync(`${root}DaySpace/Editors/DaySpaceTodoEditor.swift`, "utf8");
   assert.match(todo, /UIViewRepresentable/);
   assert.match(todo, /func updateUIView/);
@@ -71,7 +71,7 @@ test("Day Space search and main content presentation are focused and stateless",
   }
   const content = fs.readFileSync(`${root}DaySpace/DaySpaceContent.swift`, "utf8");
   assert.match(content, /todoState.isErrorWithoutValue && diaryState.isErrorWithoutValue/);
-  assert.match(content, /todoState.isLoading && diaryState.isLoading && papers.isEmpty/);
+  assert.match(content, /\(todoState.isLoading \|\| diaryState.isLoading \|\| memoryLoading\) && papers.isEmpty/);
   assert.match(content, /DaySpacePartialFailure\(/);
   assert.match(content, /DaySpaceStage\(/);
   const search = fs.readFileSync(`${root}DaySpace/DaySpaceSearch.swift`, "utf8");

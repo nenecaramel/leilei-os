@@ -70,6 +70,8 @@ private struct DaySpacePaperCard: View {
                         size: size
                     )
 
+                case .memory(_, let items):
+                    DaySpaceProsePreview(title: nil, paragraphs: items.map { $0.text ?? "" }, size: size, multiple: true)
                 case .diary(let diary):
                     DaySpaceDiaryPreview(
                         diary: diary,
@@ -142,7 +144,7 @@ private struct DaySpaceTodoPreview: View {
                                 : Color.secondary
                         )
                         .strikethrough(entry.kind == .completed)
-                        .lineLimit(2)
+                        .lineLimit(previewLineLimit(size: size, count: min(previewLimit, paper.entries.count), hasMore: paper.entries.count > previewLimit, todo: true))
                         .multilineTextAlignment(.leading)
                         .frame(
                             maxWidth: .infinity,
@@ -186,33 +188,35 @@ private struct DaySpaceTodoMark: View {
 private struct DaySpaceDiaryPreview: View {
     let diary: DaySpaceDiary
     let size: DaySpacePaperSize
-
-    private var contentLines: Int {
-        switch size {
-        case .small:
-            return 3
-        case .medium:
-            return 4
-        case .large:
-            return 5
-        }
+    var body: some View {
+        DaySpaceProsePreview(title: diary.title, paragraphs: [diary.content], size: size, multiple: false)
     }
+}
 
+private struct DaySpaceProsePreview: View {
+    let title: String?
+    let paragraphs: [String]
+    let size: DaySpacePaperSize
+    let multiple: Bool
+    private var limit: Int {
+        switch size { case .small: return 2; case .medium: return 3; case .large: return 4 }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(diary.title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            Text(diary.content)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineSpacing(2.6)
-                .lineLimit(contentLines)
-                .multilineTextAlignment(.leading)
+            if let title {
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+            }
+            ForEach(Array(paragraphs.prefix(multiple ? limit : 1).enumerated()), id: \.offset) { _, text in
+                Text(text).font(.system(size: 10)).foregroundStyle(.secondary)
+                    .lineSpacing(2.6).lineLimit(multiple ? previewLineLimit(size: size, count: min(limit, paragraphs.count), hasMore: paragraphs.count > limit, todo: false) : (size == .large ? 5 : limit)).multilineTextAlignment(.leading)
+            }
+            if multiple && paragraphs.count > limit {
+                Text("...").font(.system(size: 11)).foregroundStyle(.tertiary)
+            }
         }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
     }
 }
 
@@ -220,7 +224,7 @@ struct DaySpacePaperRules: View {
     var body: some View {
         GeometryReader { proxy in
             Path { path in
-                var y: CGFloat = 29.5
+                var y = DaySpacePaperTypography.lineHeight - 0.5
 
                 while y < proxy.size.height {
                     path.move(
@@ -235,7 +239,7 @@ struct DaySpacePaperRules: View {
                             y: y
                         )
                     )
-                    y += 30
+                    y += DaySpacePaperTypography.lineHeight
                 }
             }
             .stroke(
@@ -245,4 +249,13 @@ struct DaySpacePaperRules: View {
         }
         .allowsHitTesting(false)
     }
+}
+
+// Same complete-line budget as Web; reserve the existing paper padding/signature.
+private func previewLineLimit(size: DaySpacePaperSize, count: Int, hasMore: Bool, todo: Bool) -> Int {
+    let height: Double = size == .small ? 112 : size == .medium ? 134 : 158
+    let line: Double = todo ? 14.7 : 15.2
+    let gap: Double = todo ? 7 : 8
+    let needed = Double(count) * 2 * line + Double(max(0, count - 1)) * gap + (hasMore ? 11 + gap : 0)
+    return needed <= height - 39 ? 2 : 1
 }

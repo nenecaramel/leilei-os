@@ -27,7 +27,7 @@ test("Account is Auth0-owned and exposes only the approved identity surface", ()
 
   assert.doesNotMatch(
     accountSource,
-    /Settings|preferred_name|accent_color|timezone|password|delete account/i,
+    /preferred_name|accent_color|timezone|password|delete account/i,
   );
   assert.doesNotMatch(
     accountSource,

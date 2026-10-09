@@ -58,6 +58,12 @@ test(
     const before = await make("marker before", "2026-10-07T15:59:59.999Z");
     const after = await make("marker after", "2026-10-08T16:00:00Z");
     const undated = await make("marker undated", null);
+    await t.test("Memory date discovery uses canonical Beijing days, identity and null semantics without writes", async () => {
+      const snapshot = await repo.get({userId:user.id, subjectId:"G",stateId:dayStart.id});
+      assert.deepEqual(await service.listDates({userId:user.id}), {dates:["2026-10-09","2026-10-08","2026-10-07"]});
+      assert.deepEqual(await repo.listDates({userId:user.id,subjectId:"other"}), []);
+      assert.deepEqual(await repo.get({userId:user.id,subjectId:"G",stateId:dayStart.id}), snapshot);
+    });
     await t.test(
       "date boundaries, undated preservation and read-only lookup",
       async () => {
@@ -514,6 +520,10 @@ test(
           .from(runtimeSubjectStates)
           .where(eq(runtimeSubjectStates.id, hidden.id));
         assert.equal(stored!.text, hidden.text);
+        await db.db.execute(sql`UPDATE runtime_subject_states SET payload=jsonb_set(payload, '{temporal_v1,occurredAt}', '"2030-01-01T00:00:00Z"') WHERE id=${hidden.id}::uuid`);
+        const dates = (await service.listDates({userId:user.id})).dates;
+        assert.ok(dates.includes("2026-10-12"));
+        assert.ok(!dates.includes("2030-01-01"));
       },
     );
     await t.test(

@@ -24,7 +24,7 @@ struct DaySpaceTodoLineEditor: UIViewRepresentable {
         let textView = DaySpaceTodoNativeTextView()
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
-        textView.textContainerInset = .zero
+        textView.textContainerInset = DaySpacePaperTypography.bodyInsets
         textView.textContainer.lineFragmentPadding = 0
         textView.delegate = context.coordinator
         textView.autocorrectionType = .default
@@ -111,9 +111,9 @@ struct DaySpaceTodoLineEditor: UIViewRepresentable {
 
         return CGSize(
             width: width,
-            height: max(
-                30,
-                ceil(fitting.height)
+            height: DaySpacePaperTypography.layoutHeight(
+                fitting.height,
+                minimum: DaySpacePaperTypography.lineHeight
             )
         )
     }
@@ -148,10 +148,6 @@ struct DaySpaceTodoLineEditor: UIViewRepresentable {
         to textView: DaySpaceTodoNativeTextView,
         coordinator: Coordinator
     ) {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 30
-        paragraph.maximumLineHeight = 30
-
         let textColor: UIColor = kind == .completed
             ? UIColor(
                 white: 0.56,
@@ -163,11 +159,9 @@ struct DaySpaceTodoLineEditor: UIViewRepresentable {
             )
 
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(
-                ofSize: 14
-            ),
+            .font: DaySpacePaperTypography.bodyFont,
             .foregroundColor: textColor,
-            .paragraphStyle: paragraph,
+            .paragraphStyle: DaySpacePaperTypography.bodyParagraphStyle,
             .strikethroughStyle: kind == .completed
                 ? NSUnderlineStyle.single.rawValue
                 : 0,

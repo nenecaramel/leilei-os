@@ -20,7 +20,7 @@ const IMPORT_MODULE_LABELS: Record<WebImportModule, string> = {
   todo: "Todo",
   workspaces: "Workspaces",
   conversations: "Conversation records",
-  mind: "Mind records",
+  mind: "Mind (Memory & history)",
   universe: "Universe",
 };
 

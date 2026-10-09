@@ -8,7 +8,7 @@ import {
 export type MindApiDependencies = {
   mindService: Pick<
     MindProductService,
-    "list" | "get" | "createManual" | "delete" | "readMessageWrites" | "search" | "readDay" | "update"
+    "listDates" | "list" | "get" | "createManual" | "delete" | "readMessageWrites" | "search" | "readDay" | "update"
   >;
 };
 
@@ -19,16 +19,19 @@ export function createMindApiRouter(
 
   router.get("/", handler(async (request) => {
     const kind = readOptionalKind(request.query.kind);
+    const sort = readOptionalSort(request.query.sort);
     const limit = readOptionalLimit(request.query.limit);
     const cursor = readOptionalString(request.query.cursor, "cursor");
     return dependencies.mindService.list({
       userId: request.webUserId!,
       ...(kind ? { kind } : {}),
+      ...(sort ? { sort } : {}),
       ...(limit ? { limit } : {}),
       ...(cursor ? { cursor } : {}),
     });
   }));
 
+  router.get("/dates", handler(async request => dependencies.mindService.listDates({userId:request.webUserId!})));
   router.get(
     "/search",
     handler(async (request) =>
@@ -199,6 +202,12 @@ function readOptionalKind(
     throw new MindProductServiceError("INVALID_MIND");
   }
   return readKind(value);
+}
+
+function readOptionalSort(value: unknown): "updated_desc" | "occurred_desc" | undefined {
+  if (value === undefined) return undefined;
+  if (value === "updated_desc" || value === "occurred_desc") return value;
+  throw new MindProductServiceError("INVALID_MIND", "Mind sort is invalid.");
 }
 
 function readOptionalLimit(value: unknown): number | undefined {

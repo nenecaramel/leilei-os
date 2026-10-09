@@ -54,7 +54,7 @@ test("import summary uses canonical module order, filters missing modules and ke
     includedModules: ["mind", "diary", "mind"] as ("mind" | "diary")[],
   };
   const ordinary = renderToStaticMarkup(React.createElement(ModuleSummaryRows, props));
-  assert.equal(ordinary, '<div class="system-import-row system-import-module-row"><span class="system-import-row-label">Diary</span><span class="system-import-row-value">2 new</span></div><div class="system-import-row system-import-module-row"><span class="system-import-row-label">Mind records</span><span class="system-import-row-value">No records</span></div>');
+  assert.equal(ordinary, '<div class="system-import-row system-import-module-row"><span class="system-import-row-label">Diary</span><span class="system-import-row-value">2 new</span></div><div class="system-import-row system-import-module-row"><span class="system-import-row-label">Mind (Memory &amp; history)</span><span class="system-import-row-value">No records</span></div>');
   const blocked = renderToStaticMarkup(React.createElement(ModuleSummaryRows, { ...props, blocked: true }));
   assert.equal(blocked, ordinary.replaceAll('class="system-import-row-value"', 'class="system-import-row-value system-import-row-value-blocked"'));
 });

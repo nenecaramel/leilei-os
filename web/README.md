@@ -12,7 +12,7 @@ Leilei OS 的 Auth0 保护 React Web 应用。它通过已认证的 `/api/v1` AP
 - Shared Paper：单一 canonical 正文、revision-aware 编辑、历史和生命周期操作；
 - Universe：空间画布、节点/关系、加权星系、导入导出与搜索深链；
 - Global Search：Memory、Diary、Task、Todo、Universe、Shared Paper 六个 domain 的统一发现与精确详情深链；
-- System：Account、Connections、Activity、Data 和 About；
+- Settings：Account、Status、Data（Summary / Export / Restore）和 About；
 - PWA：安装清单、service worker 更新提示以及在线/离线状态提示。
 
 后端服务仍是持久化数据的权威来源；Web 不使用本地 IndexedDB 或隐式双写来替代

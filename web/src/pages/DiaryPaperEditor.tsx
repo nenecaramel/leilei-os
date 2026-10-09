@@ -1,11 +1,10 @@
 import {
   forwardRef,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
 } from "react";
 import { formatDiaryPaperDate } from "./diary-presentation";
-import { resizePaperTextarea } from "./paper-editor-autosize";
+import { PaperBodyEditor } from "./PaperBodyEditor";
 
 export type DiaryPaperEditorHandle = {
   focusTitle(): void;
@@ -33,7 +32,6 @@ export const DiaryPaperEditor = forwardRef<
   ref,
 ) {
   const titleRef = useRef<HTMLInputElement | null>(null);
-  const contentRef = useRef<HTMLTextAreaElement | null>(null);
 
   useImperativeHandle(ref, () => ({
     focusTitle() {
@@ -41,9 +39,6 @@ export const DiaryPaperEditor = forwardRef<
     },
   }), []);
 
-  useLayoutEffect(() => {
-    if (contentRef.current) resizePaperTextarea(contentRef.current);
-  }, [content]);
 
   return (
     <div className="memory-paper-editor diary-paper-editor">
@@ -59,16 +54,7 @@ export const DiaryPaperEditor = forwardRef<
         autoComplete="off"
         onChange={(event) => onTitleChange(event.target.value)}
       />
-      <textarea
-        ref={contentRef}
-        className="memory-paper-content-editor diary-paper-content-editor"
-        aria-label="日记正文"
-        placeholder="Content"
-        value={content}
-        disabled={disabled}
-        rows={8}
-        onChange={(event) => onContentChange(event.target.value)}
-      />
+      <PaperBodyEditor label="日记正文" placeholder="Content" value={content} disabled={disabled} onChange={onContentChange} />
     </div>
   );
 });

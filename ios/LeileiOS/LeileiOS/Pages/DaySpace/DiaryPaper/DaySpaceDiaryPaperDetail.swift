@@ -126,7 +126,7 @@ struct DaySpaceDiaryPaperDetail: View {
                     errorMessage = nil
                 }
 
-                DaySpaceDiaryBodyEditor(
+                DaySpacePaperBodyEditor(
                     text: content,
                     disabled: isSaving
                 ) { value in

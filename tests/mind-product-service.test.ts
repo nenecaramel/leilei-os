@@ -66,6 +66,7 @@ function row(
 }
 
 class Repository implements MindProductRepository {
+  async listDates() { return []; }
   inserted: Parameters<MindProductRepository["insertManualIdempotent"]>[0] | null = null;
   deleted: Parameters<MindProductRepository["delete"]>[0] | null = null;
   row: MindProductRow | null = row();
