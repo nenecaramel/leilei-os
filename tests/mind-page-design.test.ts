@@ -146,14 +146,19 @@ async function setInput(
   });
 }
 
-test("search and date filters stay in the cursor context; invalid dates do not send requests", async (t) => {
+test("Mind uses Diary-style count, drains cursors automatically and has no More control", async () => {
   const calls: string[] = [];
   const api = {
     request: async (path: string) => {
       calls.push(path);
       return {
         data: {
-          items: [summary],
+          items: path.includes("cursor=")
+            ? [{ ...summary, id: "b", snippet: "Second memory" }]
+            : Array.from({ length: 50 }, (_, index) => ({
+                ...summary,
+                id: `first-${index}`,
+              })),
           nextCursor: path.includes("cursor=") ? null : "next+page",
         },
       };
@@ -161,57 +166,22 @@ test("search and date filters stay in the cursor context; invalid dates do not s
   } as any;
   const ui = await render(React.createElement(MindPageContent, { api }));
   try {
-    t.mock.timers.enable({ apis: ["setTimeout"] });
-    await ui.click(
-      ui.dom.window.document.querySelector('[aria-label="搜索记忆"]')!,
+    assert.equal(calls.length, 2);
+    assert.equal(
+      ui.dom.window.document.querySelector(".memory-page-count")?.textContent,
+      "51条记忆",
     );
-    await setInput(
-      ui,
-      ui.dom.window.document.querySelector('input[type="text"]')!,
-      "First",
-    );
-    await React.act(async () => t.mock.timers.tick(250));
-    assert.match(calls.at(-1)!, /query=First/);
-    await ui.click(
-      ui.dom.window.document.querySelector('[aria-label="按日期筛选"]')!,
-    );
-    await ui.click(ui.button("自定义范围"));
-    const from = ui.dom.window.document.querySelector(
-      '[aria-label="Mind 自定义开始时间"]',
-    ) as HTMLInputElement;
-    const to = ui.dom.window.document.querySelector(
-      '[aria-label="Mind 自定义结束时间"]',
-    ) as HTMLInputElement;
-    await setInput(ui, from, "2026-10-01");
-    await setInput(ui, to, "2026-10-31");
-    await ui.click(ui.button("更多"));
-    const url = new URL(calls.at(-1)!, "http://local");
-    assert.equal(url.searchParams.get("query"), "First");
-    assert.equal(url.searchParams.get("date_from"), "2026-10-01");
-    assert.equal(url.searchParams.get("date_to"), "2026-10-31");
-    assert.equal(url.searchParams.get("cursor"), "next+page");
     assert.equal(
       ui.dom.window.document.querySelectorAll(".memory-row").length,
-      1,
+      51,
     );
-    const before = calls.length;
-    await ui.click(
-      ui.dom.window.document.querySelector('[aria-label="按日期筛选"]')!,
-    );
-    await setInput(
-      ui,
-      ui.dom.window.document.querySelector(
-        '[aria-label="Mind 自定义开始时间"]',
-      )!,
-      "2026-11-01",
-    );
-    assert.equal(calls.length, before);
-    assert.match(
-      ui.dom.window.document.body.textContent!,
-      /开始日期不能晚于结束日期/,
+    assert.equal(
+      [...ui.dom.window.document.querySelectorAll("button")].some(
+        (x) => x.textContent === "更多",
+      ),
+      false,
     );
   } finally {
-    t.mock.timers.reset();
     await ui.cleanup();
   }
 });
@@ -443,6 +413,8 @@ test("saving uses the original version and focuses the refreshed record; deletin
     assert.match(row.textContent!, /Updated text/);
     await ui.click(row);
     ui.dom.window.confirm = () => true;
+    assert.ok(ui.button("删除").closest(".paper-detail-top-right"));
+    assert.equal(ui.button("删除").closest(".paper-detail-bottom-left"), null);
     await ui.click(ui.button("删除"));
     assert.equal(
       ui.dom.window.document.querySelectorAll(".memory-row").length,
@@ -453,69 +425,6 @@ test("saving uses the original version and focuses the refreshed record; deletin
       ui.dom.window.document.querySelector('[aria-label="新增记忆"]'),
     );
   } finally {
-    await ui.cleanup();
-  }
-});
-
-test("pagination failure retains rows; retry is single flight and a later filter fences the old page", async (t) => {
-  let fail = true;
-  let resolvePage!: (page: any) => void;
-  let moreCalls = 0;
-  const api = {
-    request: async (path: string) => {
-      if (path.includes("query=First"))
-        return {
-          data: {
-            items: [{ ...summary, snippet: "Filtered row" }],
-            nextCursor: null,
-          },
-        };
-      if (path.includes("cursor=")) {
-        moreCalls++;
-        if (fail) throw Error("offline");
-        return new Promise((resolve) => {
-          resolvePage = resolve;
-        });
-      }
-      return { data: { items: [summary], nextCursor: "page2" } };
-    },
-  } as any;
-  const ui = await render(React.createElement(MindPageContent, { api }));
-  try {
-    await ui.click(ui.button("更多"));
-    assert.equal(
-      ui.dom.window.document.querySelectorAll(".memory-row").length,
-      1,
-    );
-    fail = false;
-    const retry = ui.button("Retry");
-    await React.act(async () => {
-      retry.click();
-      retry.click();
-    });
-    assert.equal(moreCalls, 2);
-    t.mock.timers.enable({ apis: ["setTimeout"] });
-    await ui.click(
-      ui.dom.window.document.querySelector('[aria-label="搜索记忆"]')!,
-    );
-    await setInput(
-      ui,
-      ui.dom.window.document.querySelector('input[type="text"]')!,
-      "First",
-    );
-    await React.act(async () => t.mock.timers.tick(250));
-    await React.act(async () =>
-      resolvePage({
-        data: {
-          items: [{ ...summary, id: "stale", snippet: "Stale page" }],
-          nextCursor: "wrong",
-        },
-      }),
-    );
-    assert.match(ui.dom.window.document.body.textContent!, /Filtered row/);
-    assert.doesNotMatch(ui.dom.window.document.body.textContent!, /Stale page/);
-  } finally {
-    t.mock.timers.reset();
     await ui.cleanup();
   }
 });

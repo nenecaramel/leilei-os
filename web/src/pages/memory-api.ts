@@ -41,7 +41,11 @@ export async function getMemory(
     })
   ).data;
 }
-export type MemorySearchFilters = { query?: string; dateFrom?: string; dateTo?: string };
+export type MemorySearchFilters = {
+  query?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
 export async function searchMemory(
   api: WebApiClient,
   filters: boolean | MemorySearchFilters,
@@ -63,6 +67,29 @@ export async function searchMemory(
     )
   ).data;
 }
+/** Match the complete-list presentation used by Diary without dropping cursor pages. */
+export async function loadMemoryList(
+  api: WebApiClient,
+  filters: MemorySearchFilters,
+  signal?: AbortSignal,
+): Promise<MemorySummary[]> {
+  const items = new Map<string, MemorySummary>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    signal?.throwIfAborted();
+    const page = await searchMemory(api, filters, cursor, signal);
+    signal?.throwIfAborted();
+    for (const item of page.items) items.set(item.id, item);
+    cursor = page.nextCursor;
+    if (cursor) {
+      if (cursors.has(cursor)) throw new Error("Repeated Memory cursor");
+      cursors.add(cursor);
+    }
+  } while (cursor);
+  return [...items.values()];
+}
+
 export async function loadMemoryDay(
   api: WebApiClient,
   date: string,
@@ -121,9 +148,27 @@ export async function saveMemory(
   }
 }
 
-export async function listMemoryDates(api: WebApiClient, signal?: AbortSignal): Promise<string[]> {
-  return (await api.request<Envelope<{dates: string[]}>>("/mind/dates", {signal})).data.dates;
+export async function listMemoryDates(
+  api: WebApiClient,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  return (
+    await api.request<Envelope<{ dates: string[] }>>("/mind/dates", { signal })
+  ).data.dates;
 }
-export function memoryPreviewDensity(items: readonly Pick<MemoryItem,"text">[]): number {
-  return Math.max(1, Math.min(6, Math.max(items.length, Math.ceil(items.reduce((n,item) => n+(item.text?.length ?? 0),0)/44))));
+export function memoryPreviewDensity(
+  items: readonly Pick<MemoryItem, "text">[],
+): number {
+  return Math.max(
+    1,
+    Math.min(
+      6,
+      Math.max(
+        items.length,
+        Math.ceil(
+          items.reduce((n, item) => n + (item.text?.length ?? 0), 0) / 44,
+        ),
+      ),
+    ),
+  );
 }

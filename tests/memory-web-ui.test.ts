@@ -235,7 +235,6 @@ test("Mind keeps undated records in the full paginated list and opens editable d
   const ui = await render(React.createElement(MindPageContent, { api }));
   try {
     assert.doesNotMatch(ui.dom.window.document.body.textContent!, /未指定日期/);
-    await ui.click(ui.button("更多"));
     assert.match(calls.at(-1)!, /cursor=page2/);
     assert.match(ui.dom.window.document.body.textContent!, /Second undated/);
     await ui.click(ui.dom.window.document.querySelector(".memory-row")!);

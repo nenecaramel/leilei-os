@@ -167,6 +167,26 @@ export function MemoryPaper({
       errorMessage={error}
       topRight={
         <>
+          {onDelete ? (
+            <button
+              className="memory-paper-control"
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm("删除这条 Memory？")) return;
+                inFlight.current = true;
+                setBusy(true);
+                void onDelete()
+                  .catch(() => setError("删除失败，请重试"))
+                  .finally(() => {
+                    inFlight.current = false;
+                    setBusy(false);
+                  });
+              }}
+            >
+              删除
+            </button>
+          ) : null}
+          {onDelete ? <span>·</span> : null}
           <button
             className="memory-paper-control"
             disabled={busy}
@@ -202,25 +222,6 @@ export function MemoryPaper({
               }}
             >
               未指定日期
-            </button>
-          ) : null}
-          {onDelete ? (
-            <button
-              className="memory-paper-control"
-              disabled={busy}
-              onClick={() => {
-                if (!window.confirm("删除这条 Memory？")) return;
-                inFlight.current = true;
-                setBusy(true);
-                void onDelete()
-                  .catch(() => setError("删除失败，请重试"))
-                  .finally(() => {
-                    inFlight.current = false;
-                    setBusy(false);
-                  });
-              }}
-            >
-              删除
             </button>
           ) : null}
         </>
