@@ -40,7 +40,7 @@ struct MindMemoryListView: View {
                     reloadToken = UUID()
                 }
             } else if items.isEmpty {
-                AppStateSurface(title: "No memories yet")
+                AppStateSurface(title: "Nothing here")
             } else {
                 List {
                     ForEach(items) { item in

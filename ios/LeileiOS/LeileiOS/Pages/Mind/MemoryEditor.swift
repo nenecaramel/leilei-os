@@ -99,6 +99,8 @@ struct MemoryEditorSheet: View {
                     }
                 } else if conflictUnresolved {
                     Section {
+                        Text("Your draft is preserved.")
+                            .foregroundStyle(.secondary)
                         Button("Read latest version") {
                             Task { await readConflict() }
                         }
@@ -157,7 +159,7 @@ struct MemoryEditorSheet: View {
             conflict = try await appModel.api.mindItem(stateID: item.id)
             message = "Memory changed. Your draft is preserved; choose how to continue."
         } catch {
-            message = "Unable to read the latest version. Your draft is preserved."
+            message = "Failed"
         }
     }
 
@@ -178,7 +180,7 @@ struct MemoryEditorSheet: View {
             conflictUnresolved = true
             await readConflict()
         } catch {
-            message = "Unable to save. Try again."
+            message = "Failed"
         }
         saving = false
     }

@@ -26,7 +26,7 @@ test("Mind memory feed owns loading, retry, pagination and useful row metadata",
   }
   assert.match(source, /else if failed && items\.isEmpty/);
   assert.match(source, /actionTitle: "Retry"/);
-  assert.match(source, /AppStateSurface\(title: "No memories yet"\)/);
+  assert.match(source, /else if items\.isEmpty \{\s*AppStateSurface\(title: "Nothing here"\)/);
   assert.match(source, /Button\("More"\)/);
   assert.match(source, /kind: \.memory/);
   assert.match(source, /cursor: nextCursor/);
@@ -45,7 +45,7 @@ test("Mind detail keeps refresh and delete coordination without redundant kind m
   assert.match(source, /mindItem\(\s*stateID: item\.id/);
   assert.match(source, /deleteMind\(\s*stateID: item\.id/);
   assert.match(source, /onDeleted\(\)\s*dismiss\(\)/);
-  assert.match(source, /"Couldn’t Delete Memory"/);
+  assert.match(source, /\.alert\(\s*"Failed",\s*isPresented: \$deleteFailed/);
   assert.match(source, /LabeledContent\(\s*"Types"/);
   assert.doesNotMatch(source, /LabeledContent\("Kind"/);
   assert.doesNotMatch(source, /private func dateText|createManualMind|mindPage/);

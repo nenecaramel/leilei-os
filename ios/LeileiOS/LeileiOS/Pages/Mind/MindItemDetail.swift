@@ -204,7 +204,7 @@ struct MindItemDetailView: View {
             }
         }
         .alert(
-            "Couldn’t Delete Memory",
+            "Failed",
             isPresented: $deleteFailed
         ) {
             Button("OK", role: .cancel) {}
