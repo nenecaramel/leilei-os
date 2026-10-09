@@ -5,9 +5,10 @@ import test from "node:test";
 import { extractNativeMobileDesktopCss, mirrorNativeMobilePageCss } from "../web/build/native-mobile-css-transform";
 import { extractNativeMobileDesktopCss as publicExtract, nativeMobilePageCssPlugin } from "../web/build/native-mobile-page-css";
 
-// Captured from main d5687a6a using the original transform; all eight outputs compared byte-for-byte before refreshing styles.css.
+// Seven layers retain the main d5687a6a baseline. styles.css is refreshed for the
+// authorized header-anchored date menu and shared Diary/Memory date hit area.
 const acceptedOutputs = [
-  ["styles.css", "b5a5c1c1ad0edbcc43ac70a0c417ad532e4ec2e1c67c0cf19ed8bb697c019481"],
+  ["styles.css", "3bd45204bb6a63e295d384eca09fc9f629252ec7b87bfa033454bbedbe07425a"],
   ["pages/lg-author-editor-layout-fix.css", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
   ["pages/universe/universe-node-detail-memory-shell.css", "07e2188c297e7f50d118ad1ecee14325190620e4100509944d34063368a6c9ae"],
   ["pages/universe-detail-dayspace-header-polish.css", "09e045be992b2b377cc03bb3a9cb262f3ba53d95113354eaa0a11c3e6e4aaf69"],

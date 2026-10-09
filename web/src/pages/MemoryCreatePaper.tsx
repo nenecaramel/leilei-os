@@ -126,17 +126,6 @@ export function MemoryCreatePaper({
           </button>
         </>
       }
-      bottomLeft={
-        date ? (
-          <button
-            className="memory-paper-control"
-            disabled={busy}
-            onClick={() => setDate("")}
-          >
-            未指定日期
-          </button>
-        ) : null
-      }
     >
       <div className="memory-paper-entries">
         <PaperBodyEditor

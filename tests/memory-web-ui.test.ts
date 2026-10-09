@@ -65,6 +65,18 @@ async function render(element: React.ReactNode) {
     },
   };
 }
+async function clearDate(
+  ui: Awaited<ReturnType<typeof render>>,
+  input: HTMLInputElement,
+) {
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(
+      ui.dom.window.HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(input, "");
+    input.dispatchEvent(new ui.dom.window.Event("input", { bubbles: true }));
+  });
+}
 const item = {
   id: "memory-a",
   text: "Sample memory",
@@ -180,7 +192,10 @@ test("409 retains the draft, disables save until explicit reconciliation and use
   );
   try {
     await ui.click(ui.button("编辑"));
-    await ui.click(ui.button("未指定日期"));
+    await clearDate(
+      ui,
+      ui.dom.window.document.querySelector('input[type="datetime-local"]')!,
+    );
     await ui.click(ui.button("保存"));
     assert.equal(
       (ui.dom.window.document.querySelector("textarea") as HTMLTextAreaElement)
@@ -283,7 +298,10 @@ test("Beijing datetime edit sends the new event instant and leaves text untouche
       expected_version: "v1",
       occurred_at: "2026-10-09T04:30:00.000Z",
     });
-    assert.equal(ui.dom.window.document.querySelector(".paper-detail-date")?.textContent, "2026.10.09");
+    assert.equal(
+      ui.dom.window.document.querySelector(".paper-detail-date")?.textContent,
+      "2026.10.09",
+    );
     assert.ok(!ui.dom.window.document.querySelector("textarea"));
   } finally {
     await ui.cleanup();
@@ -312,7 +330,10 @@ test("failed conflict read blocks saving until latest content is retrieved", asy
   );
   try {
     await ui.click(ui.button("编辑"));
-    await ui.click(ui.button("未指定日期"));
+    await clearDate(
+      ui,
+      ui.dom.window.document.querySelector('input[type="datetime-local"]')!,
+    );
     await ui.click(ui.button("保存"));
     assert.equal(ui.button("保存").disabled, true);
     assert.equal(
@@ -433,11 +454,11 @@ test("one daily paper keeps per-record versions and does not replay successful e
   );
   try {
     assert.equal(ui.dom.window.document.querySelectorAll("textarea").length, 2);
-    const clear = [...ui.dom.window.document.querySelectorAll("button")].filter(
-      (x) => x.textContent === "未指定日期",
+    const dates = ui.dom.window.document.querySelectorAll<HTMLInputElement>(
+      'input[type="datetime-local"]',
     );
-    await ui.click(clear[0]);
-    await ui.click(clear[1]);
+    await clearDate(ui, dates[0]);
+    await clearDate(ui, dates[1]);
     await ui.click(ui.button("保存"));
     assert.deepEqual(committed, ["memory-a"]);
     assert.equal(closes, 0);

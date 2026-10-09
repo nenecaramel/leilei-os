@@ -59,6 +59,7 @@ test("Sidebar renders identically to pinned main; rejects the former unified gut
     const sources: string[] = [];
     const originalView = readFileSync(baseline + "SidebarView.swift", "utf8")
       .replace(/\s*\.workspaces,/g, "")
+      .replace(/\.diary,\s*\.daySpace,\s*\.mind,/, ".diary, .mind, .daySpace,")
       .replace(
         /\s*if let onSettings \{\s*onSettings\(\)\s*\} else \{\s*selectedPage = \.account\s*onSelect\(\)\s*\}/,
         "\n                        onSettings?()",

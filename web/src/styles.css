@@ -2581,6 +2581,17 @@ body:has(.home-prototype) {
     position: relative;
   }
 
+  /* Date menus belong to the page header, not the icon's narrow wrapper.
+     The header's right edge is inside the content gutter at every width. */
+  .memory-page-date-tool-wrap {
+    position: static;
+  }
+
+  .memory-page-date-tool-wrap .task-time-popover {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .memory-page-popover {
     position: absolute;
     z-index: 20;
@@ -3296,7 +3307,7 @@ body:has(.home-prototype) {
     white-space: nowrap;
   }
 
-  .diary-paper-date-editor input[type="date"] {
+  .diary-paper-date-editor input:is([type="date"], [type="datetime-local"]) {
     position: absolute;
     inset: -8px;
     width: calc(100% + 16px);
@@ -7256,10 +7267,6 @@ body:has(.system-page) {
 .memory-paper-entries { display: grid; gap: 30px; }
 .memory-paper-entry { min-width: 0; }
 .memory-entry-date { display: flex; align-items: center; justify-content: space-between; min-height: 30px; color: #6d6d6d; font-size: 13px; }
-.memory-entry-date-editor { position: relative; display: inline-block; font-size: 13px; }
-.memory-entry-date-editor input[type="datetime-local"] { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
-.memory-entry-date-editor:focus-within { outline: 1px solid #999; outline-offset: 3px; }
-.paper-detail-paper[id^="memory-"] .memory-entry-date .memory-paper-control { padding: 0 4px; font-size: 13px !important; }
 .memory-paper-conflict { margin: 15px 0; color: #6d6d6d; font-size: 13px; line-height: 30px; }
 .memory-paper-conflict p { margin: 0; }
 .memory-paper-conflict-text { white-space: pre-wrap; overflow-wrap: anywhere; }
