@@ -128,11 +128,7 @@ export function layoutDaySpacePapers(
 
     const horizontalJitter =
       (seededUnit(`${seed}:x`) - 0.5) * Math.min(26, maxLeft * 0.14);
-    let left = clamp(
-      maxLeft * laneRatios[lane] + horizontalJitter,
-      0,
-      maxLeft,
-    );
+    let left = clamp(maxLeft * laneRatios[lane] + horizontalJitter, 0, maxLeft);
 
     const bandStep =
       103 +
@@ -185,4 +181,21 @@ export function layoutDaySpacePapers(
     items: placed,
     stageHeight: Math.max(260, finalBottom + 52),
   };
+}
+
+/** Keep complete preview lines above the signature, including overflow dots. */
+export function daySpacePreviewLineLimit(
+  size: DaySpacePaperSize,
+  kind: "todo" | "memory",
+  count: number,
+  hasMore: boolean,
+): 1 | 2 {
+  const height = size === "small" ? 112 : size === "medium" ? 134 : 158;
+  const lineHeight = kind === "todo" ? 14.7 : 15.2;
+  const gap = kind === "todo" ? 7 : 8;
+  const needed =
+    count * 2 * lineHeight +
+    Math.max(0, count - 1) * gap +
+    (hasMore ? 11 + gap : 0);
+  return needed <= height - 39 ? 2 : 1;
 }

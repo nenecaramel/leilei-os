@@ -1,6 +1,21 @@
 import SwiftUI
 import UIKit
 
+enum DaySpacePaperTypography {
+    static let bodySize: CGFloat = 14
+    static let lineHeight: CGFloat = 30
+
+    // UIKit places the extra fixed-line leading above the glyphs by default.
+    // Raise the baseline by half that leading to center text between rules.
+    static var bodyBaselineOffset: CGFloat {
+        (lineHeight - UIFont.systemFont(ofSize: bodySize).lineHeight) / 2
+    }
+
+    static func layoutHeight(_ height: CGFloat, minimum: CGFloat) -> CGFloat {
+        ceil(max(height, minimum) / lineHeight) * lineHeight
+    }
+}
+
 struct DaySpacePaperBodyEditor: UIViewRepresentable {
     let text: String
     let disabled: Bool
@@ -75,9 +90,9 @@ struct DaySpacePaperBodyEditor: UIViewRepresentable {
 
         return CGSize(
             width: width,
-            height: max(
-                minimumHeight,
-                ceil(fitting.height)
+            height: DaySpacePaperTypography.layoutHeight(
+                fitting.height,
+                minimum: minimumHeight
             )
         )
     }
@@ -92,18 +107,19 @@ struct DaySpacePaperBodyEditor: UIViewRepresentable {
         NSAttributedString.Key: Any
     ] {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 30
-        paragraph.maximumLineHeight = 30
+        paragraph.minimumLineHeight = DaySpacePaperTypography.lineHeight
+        paragraph.maximumLineHeight = DaySpacePaperTypography.lineHeight
 
         return [
             .font: UIFont.systemFont(
-                ofSize: 14
+                ofSize: DaySpacePaperTypography.bodySize
             ),
             .foregroundColor: UIColor(
                 white: 0.15,
                 alpha: 1
             ),
             .paragraphStyle: paragraph,
+            .baselineOffset: DaySpacePaperTypography.bodyBaselineOffset,
         ]
     }
 

@@ -144,7 +144,7 @@ private struct DaySpaceTodoPreview: View {
                                 : Color.secondary
                         )
                         .strikethrough(entry.kind == .completed)
-                        .lineLimit(2)
+                        .lineLimit(previewLineLimit(size: size, count: min(previewLimit, paper.entries.count), hasMore: paper.entries.count > previewLimit, todo: true))
                         .multilineTextAlignment(.leading)
                         .frame(
                             maxWidth: .infinity,
@@ -209,7 +209,7 @@ private struct DaySpaceProsePreview: View {
             }
             ForEach(Array(paragraphs.prefix(multiple ? limit : 1).enumerated()), id: \.offset) { _, text in
                 Text(text).font(.system(size: 10)).foregroundStyle(.secondary)
-                    .lineSpacing(2.6).lineLimit(multiple ? 2 : limit + 1).multilineTextAlignment(.leading)
+                    .lineSpacing(2.6).lineLimit(multiple ? previewLineLimit(size: size, count: min(limit, paragraphs.count), hasMore: paragraphs.count > limit, todo: false) : (size == .large ? 5 : limit)).multilineTextAlignment(.leading)
             }
             if multiple && paragraphs.count > limit {
                 Text("...").font(.system(size: 11)).foregroundStyle(.tertiary)
@@ -249,4 +249,13 @@ struct DaySpacePaperRules: View {
         }
         .allowsHitTesting(false)
     }
+}
+
+// Same complete-line budget as Web; reserve the existing paper padding/signature.
+private func previewLineLimit(size: DaySpacePaperSize, count: Int, hasMore: Bool, todo: Bool) -> Int {
+    let height: Double = size == .small ? 112 : size == .medium ? 134 : 158
+    let line: Double = todo ? 14.7 : 15.2
+    let gap: Double = todo ? 7 : 8
+    let needed = Double(count) * 2 * line + Double(max(0, count - 1)) * gap + (hasMore ? 11 + gap : 0)
+    return needed <= height - 39 ? 2 : 1
 }
