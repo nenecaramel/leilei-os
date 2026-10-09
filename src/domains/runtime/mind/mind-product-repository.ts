@@ -1,4 +1,4 @@
-import { SUBJECT_STATE_ISO_PATTERN, SUBJECT_STATE_TRIM_CHARS } from "../subject-state/subject-state-temporal.js";
+import { SUBJECT_STATE_ISO_PATTERN, SUBJECT_STATE_TRIM_CHARS, readSubjectStateOccurredAt } from "../subject-state/subject-state-temporal.js";
 import { memoryContentVersion, patchMemoryTemporal } from "./mind-memory-content.js";
 import { requireActiveUserInTransaction } from "../../require-active-user-transaction.js";
 import {
@@ -39,6 +39,7 @@ import type {
   MindMemoryCursor,
   MindMemoryUpdateInput,
   MindProductCursor,
+  MindProductSort,
   MindProductRepository,
   MindProductRow,
 } from "./mind-product-service.js";
@@ -81,6 +82,14 @@ implements MindProductRepository {
       });
       return { memoryId: row.id, replayed: false };
     });
+  }
+
+  async listDates(input: {userId: string; subjectId: string}): Promise<string[]> {
+    const date = sql<string>`to_char(${memoryOccurredAtSql()} AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')`;
+    const rows = await this.db.selectDistinct({date}).from(runtimeSubjectStates)
+      .where(and(...memoryConditions(input), sql`${memoryOccurredAtSql()} IS NOT NULL`))
+      .orderBy(sql`1 DESC`);
+    return rows.map(row => row.date);
   }
 
   async search(input: {
@@ -178,6 +187,7 @@ implements MindProductRepository {
     userId: string;
     subjectId: string;
     kind?: CurrentSubjectStateKind;
+    sort?: MindProductSort;
     limit: number;
     cursor?: MindProductCursor | null;
   }): Promise<{
@@ -196,16 +206,29 @@ implements MindProductRepository {
     if (input.kind) {
       conditions.push(eq(runtimeSubjectStates.kind, input.kind));
     }
+    const occurredSort = input.sort === "occurred_desc";
+    const occurredOrdering = sql`coalesce(${memoryOccurredAtSql()}, '-infinity'::timestamptz)`;
     if (input.cursor) {
       const updatedAt = new Date(input.cursor.updatedAt);
-      const cursorCondition = or(
-        lt(runtimeSubjectStates.updatedAt, updatedAt),
-        and(
-          eq(runtimeSubjectStates.updatedAt, updatedAt),
-          lt(runtimeSubjectStates.id, input.cursor.id),
-        ),
-      );
-      if (cursorCondition) conditions.push(cursorCondition);
+      if (occurredSort) {
+        const occurredCursor = input.cursor.occurredAt === null
+          ? sql`'-infinity'::timestamptz`
+          : sql`${input.cursor.occurredAt}::timestamptz`;
+        conditions.push(sql`(
+          ${occurredOrdering}, ${runtimeSubjectStates.updatedAt}, ${runtimeSubjectStates.id}
+        ) < (
+          ${occurredCursor}, ${updatedAt}, ${input.cursor.id}::uuid
+        )`);
+      } else {
+        const cursorCondition = or(
+          lt(runtimeSubjectStates.updatedAt, updatedAt),
+          and(
+            eq(runtimeSubjectStates.updatedAt, updatedAt),
+            lt(runtimeSubjectStates.id, input.cursor.id),
+          ),
+        );
+        if (cursorCondition) conditions.push(cursorCondition);
+      }
     }
 
     const rows = await this.db
@@ -213,6 +236,7 @@ implements MindProductRepository {
       .from(runtimeSubjectStates)
       .where(and(...conditions))
       .orderBy(
+        ...(occurredSort ? [desc(occurredOrdering)] : []),
         desc(runtimeSubjectStates.updatedAt),
         desc(runtimeSubjectStates.id),
       )
@@ -228,6 +252,7 @@ implements MindProductRepository {
           ? {
               updatedAt: last.updatedAt.toISOString(),
               id: last.id,
+              ...(occurredSort ? { occurredAt: readSubjectStateOccurredAt(last.payload) } : {}),
             }
           : null,
     };

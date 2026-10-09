@@ -1,10 +1,39 @@
 import SwiftUI
 import UIKit
 
-struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
+enum DaySpacePaperTypography {
+    static let bodySize: CGFloat = 14
+    static let lineHeight: CGFloat = 30
+
+    static let bodyFont = UIFont.systemFont(ofSize: bodySize)
+
+    // Keep the font's natural line box. In TextKit 2, baselineOffset on a
+    // fixed-height paragraph changes the line advance and drifts off the rules.
+    static var bodyParagraphStyle: NSParagraphStyle {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = bodyFont.lineHeight
+        paragraph.maximumLineHeight = bodyFont.lineHeight
+        paragraph.lineSpacing = lineHeight - bodyFont.lineHeight
+        return paragraph
+    }
+
+    // Share the unused row height equally above and below the text. Together
+    // with lineSpacing this gives a centered first row and a 30pt line advance.
+    static var bodyInsets: UIEdgeInsets {
+        let leading = (lineHeight - bodyFont.lineHeight) / 2
+        return UIEdgeInsets(top: leading, left: 0, bottom: leading, right: 0)
+    }
+
+    static func layoutHeight(_ height: CGFloat, minimum: CGFloat) -> CGFloat {
+        ceil(max(height, minimum) / lineHeight) * lineHeight
+    }
+}
+
+struct DaySpacePaperBodyEditor: UIViewRepresentable {
     let text: String
     let disabled: Bool
     let onTextChange: (String) -> Void
+    var minimumHeight: CGFloat = 420
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -16,7 +45,7 @@ struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
         let textView = UITextView()
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
-        textView.textContainerInset = .zero
+        textView.textContainerInset = DaySpacePaperTypography.bodyInsets
         textView.textContainer.lineFragmentPadding = 0
         textView.delegate = context.coordinator
         textView.autocorrectionType = .default
@@ -74,9 +103,9 @@ struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
 
         return CGSize(
             width: width,
-            height: max(
-                420,
-                ceil(fitting.height)
+            height: DaySpacePaperTypography.layoutHeight(
+                fitting.height,
+                minimum: minimumHeight
             )
         )
     }
@@ -90,19 +119,13 @@ struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
     private var textAttributes: [
         NSAttributedString.Key: Any
     ] {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 30
-        paragraph.maximumLineHeight = 30
-
         return [
-            .font: UIFont.systemFont(
-                ofSize: 14
-            ),
+            .font: DaySpacePaperTypography.bodyFont,
             .foregroundColor: UIColor(
                 white: 0.15,
                 alpha: 1
             ),
-            .paragraphStyle: paragraph,
+            .paragraphStyle: DaySpacePaperTypography.bodyParagraphStyle,
         ]
     }
 
@@ -116,10 +139,10 @@ struct DaySpaceDiaryBodyEditor: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: DaySpaceDiaryBodyEditor
+        var parent: DaySpacePaperBodyEditor
 
         init(
-            parent: DaySpaceDiaryBodyEditor
+            parent: DaySpacePaperBodyEditor
         ) {
             self.parent = parent
         }

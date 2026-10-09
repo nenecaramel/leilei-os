@@ -1,11 +1,9 @@
 import Foundation
 
 extension LeileiAPIClient {
-    func exportData(
-        includeAudit: Bool
-    ) async throws -> Data {
+    func exportData() async throws -> Data {
         try await rawRequest(
-            path: "/api/v1/system/export?include_audit=\(includeAudit ? "true" : "false")"
+            path: "/api/v1/system/export"
         )
     }
 

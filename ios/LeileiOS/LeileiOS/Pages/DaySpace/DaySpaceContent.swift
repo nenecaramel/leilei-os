@@ -44,6 +44,8 @@ struct DaySpaceContent: View {
                    !bothModulesFailed {
                     DaySpacePartialFailure(
                         todoFailed: todoState.isError,
+                        memoryFailed: memoryFailed,
+                        onRetryMemory: onRetryMemory,
                         diaryFailed: diaryState.isError,
                         onRetryTodo: {
                             onRetryTodo(selectedDate)
@@ -53,9 +55,6 @@ struct DaySpaceContent: View {
                         }
                     )
                     .padding(.bottom, 8)
-                }
-                if memoryFailed {
-                    Button("Memory unavailable · Retry") { onRetryMemory() }
                 }
                 content
             }
@@ -121,11 +120,11 @@ struct DaySpaceContent: View {
     }
 
     private var hasPartialFailure: Bool {
-        todoState.isError || diaryState.isError
+        todoState.isError || diaryState.isError || memoryFailed
     }
 
     private var bothModulesFailed: Bool {
-        todoState.isErrorWithoutValue && diaryState.isErrorWithoutValue
+        todoState.isErrorWithoutValue && diaryState.isErrorWithoutValue && memoryState.isErrorWithoutValue
     }
 
     private var completeEmpty: Bool {

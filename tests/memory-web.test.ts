@@ -118,3 +118,12 @@ test("text-only edits omit unchanged event time and preserve temporal provenance
   await saveMemory(api, item, "old", null);
   assert.deepEqual(body, { expected_version: "v1", occurred_at: null });
 });
+
+
+test("default day discovery includes Memory when Todo and Diary dates are unavailable", async () => {
+  const { resolveDaySpaceDefaultDate } = await import("../web/src/pages/day-space-data.js");
+  assert.deepEqual(resolveDaySpaceDefaultDate({
+    todo: {status:"error"}, diary: {status:"error"},
+    memory: {status:"success", dates:["2026-10-07", "2026-10-09"]},
+  }, "2026-10-08"), {status:"ready",date:"2026-10-09",discoveryIncomplete:true});
+});

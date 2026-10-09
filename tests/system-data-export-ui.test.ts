@@ -74,7 +74,7 @@ function render(api: WebApiClient) {
   return { root, container };
 }
 
-test("Data renders truthful Backup actions and inactive diagnostic audit control", async () => {
+test("Data renders truthful Backup actions and no diagnostic audit control", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const api: WebApiClient = {
@@ -96,21 +96,15 @@ test("Data renders truthful Backup actions and inactive diagnostic audit control
   assert.ok(card.querySelector(".system-export-action-row"));
   const labels = Array.from(card.querySelectorAll(".system-export-action"), (button) => button.textContent);
   assert.deepEqual(labels, ["Full Backup"]);
+  assert.match(card.textContent ?? "", /Mind includes Memory and retained historical records/);
 
-  const auditControl = card.querySelector<HTMLElement>(".system-export-audit");
-  assert.ok(auditControl);
-  assert.equal(auditControl.dataset.active, "false");
-  assert.equal(card.querySelector(".system-export-audit-check"), null);
-  const audit = card.querySelector<HTMLInputElement>(".system-export-audit-input");
-  assert.ok(audit);
-  assert.equal(audit.checked, false);
-
+  assert.equal(card.querySelector("input[type=checkbox]"), null);
   root.unmount();
   await waitForPaint();
   env.restore();
 });
 
-test("audit text control becomes active and full backup sends include_audit", async () => {
+test("Full Backup downloads intact product data without an audit option", async () => {
   const env = installDom("https://leilei.test/system/data");
   const paths: string[] = [];
   const blobs: Blob[] = [];
@@ -133,17 +127,11 @@ test("audit text control becomes active and full backup sends include_audit", as
   const { root, container } = render(api);
   await waitForPaint();
 
-  const audit = container.querySelector<HTMLInputElement>(".system-export-audit-input")!;
-  audit.click();
-  await waitForPaint();
-  const auditControl = container.querySelector<HTMLElement>(".system-export-audit")!;
-  assert.equal(auditControl.dataset.active, "true");
-  assert.equal(container.querySelector(".system-export-audit-check")?.textContent, "✓");
-
+  assert.equal(container.querySelector("input[type=checkbox]"), null);
   container.querySelector<HTMLButtonElement>(".system-export-action")!.click();
   await waitForPaint();
 
-  assert.deepEqual(paths, ["/system/data", "/system/export?include_audit=true"]);
+  assert.deepEqual(paths, ["/system/data", "/system/export"]);
   assert.equal(blobs.length, 1);
   assert.equal(clicked.length, 1);
   assert.equal(clicked[0].download, "leileios-full-backup_20260813T054200Z.json");

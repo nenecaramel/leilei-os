@@ -28,13 +28,23 @@ const EDITORS: readonly EditorCase[] = [
 
 async function withEditorDom(
   editor: EditorCase,
-  check: (body: HTMLTextAreaElement, dom: JSDOM, root: ReturnType<typeof createRoot>) => Promise<void>,
+  check: (
+    body: HTMLTextAreaElement,
+    dom: JSDOM,
+    root: ReturnType<typeof createRoot>,
+  ) => Promise<void>,
 ) {
-  const dom = new JSDOM("<main id=\"root\"></main>", { url: "https://leilei-os.test" });
+  const dom = new JSDOM('<main id="root"></main>', {
+    url: "https://leilei-os.test",
+  });
   const previous = new Map<PropertyKey, PropertyDescriptor | undefined>();
   const install = (name: PropertyKey, value: unknown) => {
     previous.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
-    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value,
+    });
   };
   install("window", dom.window);
   install("document", dom.window.document);
@@ -60,7 +70,10 @@ async function withEditorDom(
   const stylePrototype = Object.getPrototypeOf(
     dom.window.document.createElement("textarea").style,
   ) as object;
-  const heightDescriptor = Object.getOwnPropertyDescriptor(stylePrototype, "height");
+  const heightDescriptor = Object.getOwnPropertyDescriptor(
+    stylePrototype,
+    "height",
+  );
   assert.ok(heightDescriptor?.get && heightDescriptor.set);
   const liveStyles = new WeakSet<object>();
   Object.defineProperty(stylePrototype, "height", {
@@ -99,7 +112,10 @@ async function withEditorDom(
     assert.ok(body);
     liveStyles.add(body.style);
     const textareaPrototype = dom.window.HTMLTextAreaElement.prototype;
-    const previousScrollHeight = Object.getOwnPropertyDescriptor(textareaPrototype, "scrollHeight");
+    const previousScrollHeight = Object.getOwnPropertyDescriptor(
+      textareaPrototype,
+      "scrollHeight",
+    );
     Object.defineProperty(textareaPrototype, "scrollHeight", {
       configurable: true,
       get: () => {
@@ -113,18 +129,27 @@ async function withEditorDom(
     body.setSelectionRange(1, 3);
 
     await React.act(async () => {
-      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(body), "value")?.set?.call(
-        body,
-        `${initial}\nsecond line that grows the editor`,
-      );
+      Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(body),
+        "value",
+      )?.set?.call(body, `${initial}\nsecond line that grows the editor`);
       const change = new dom.window.Event("propertychange", { bubbles: true });
       Object.defineProperty(change, "propertyName", { value: "value" });
       body.dispatchEvent(change);
     });
 
-    assert.equal(scrollHeightReads, 1, `${editor.name} resized more than once for one edit`);
+    assert.equal(
+      scrollHeightReads,
+      1,
+      `${editor.name} resized more than once for one edit`,
+    );
     await check(body, dom, root);
-    if (previousScrollHeight) Object.defineProperty(textareaPrototype, "scrollHeight", previousScrollHeight);
+    if (previousScrollHeight)
+      Object.defineProperty(
+        textareaPrototype,
+        "scrollHeight",
+        previousScrollHeight,
+      );
     else Reflect.deleteProperty(textareaPrototype, "scrollHeight");
   } finally {
     await React.act(async () => root.unmount());
@@ -139,8 +164,16 @@ async function withEditorDom(
 test("long paper edits preserve page scroll while all paper editors autosize", async () => {
   for (const editor of EDITORS) {
     await withEditorDom(editor, async (body, dom) => {
-      assert.equal(dom.window.scrollY, 640, `${editor.name} edit clamped page scroll`);
-      assert.equal(body.style.height, "620px", `${editor.name} did not grow to measured content height`);
+      assert.equal(
+        dom.window.scrollY,
+        640,
+        `${editor.name} edit clamped page scroll`,
+      );
+      assert.equal(
+        body.style.height,
+        "630px",
+        `${editor.name} did not reserve complete paper lines`,
+      );
     });
   }
 });
@@ -149,7 +182,10 @@ test("paper autosize leaves the active text selection untouched", () => {
   const dom = new JSDOM("<textarea></textarea>");
   const body = dom.window.document.querySelector<HTMLTextAreaElement>("textarea");
   assert.ok(body);
-  Object.defineProperty(body, "scrollHeight", { configurable: true, value: 620 });
+  Object.defineProperty(body, "scrollHeight", {
+    configurable: true,
+    value: 620,
+  });
   body.value = "keep this selection while measuring";
   body.setSelectionRange(5, 12);
 
@@ -166,7 +202,10 @@ test("paper autosize follows content growth and shrink without dropping below 24
   assert.ok(body);
   let measuredHeight = 620;
   const textareaPrototype = dom.window.HTMLTextAreaElement.prototype;
-  const previousScrollHeight = Object.getOwnPropertyDescriptor(textareaPrototype, "scrollHeight");
+  const previousScrollHeight = Object.getOwnPropertyDescriptor(
+    textareaPrototype,
+    "scrollHeight",
+  );
   Object.defineProperty(textareaPrototype, "scrollHeight", {
     configurable: true,
     get: () => measuredHeight,
@@ -184,8 +223,56 @@ test("paper autosize follows content growth and shrink without dropping below 24
     resizePaperTextarea(body);
     assert.equal(body.style.height, "360px");
   } finally {
-    if (previousScrollHeight) Object.defineProperty(textareaPrototype, "scrollHeight", previousScrollHeight);
+    if (previousScrollHeight)
+      Object.defineProperty(
+        textareaPrototype,
+        "scrollHeight",
+        previousScrollHeight,
+      );
     else Reflect.deleteProperty(textareaPrototype, "scrollHeight");
   }
   dom.window.close();
+});
+
+test("scaled paper rows reserve their visual height on the 30px rule grid", () => {
+  const dom = new JSDOM(
+    '<div class="paper-textarea-layout"><textarea style="line-height:34.285714px;--paper-editor-scale:0.875"></textarea></div>',
+  );
+  const body =
+    dom.window.document.querySelector<HTMLTextAreaElement>("textarea")!;
+  const proto = dom.window.HTMLTextAreaElement.prototype;
+  const previous = Object.getOwnPropertyDescriptor(proto, "scrollHeight");
+  let measured = 103; // Three 34.285714px lines rounded by scrollHeight.
+  Object.defineProperty(proto, "scrollHeight", {
+    configurable: true,
+    get: () => measured,
+  });
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: dom.window,
+  });
+  try {
+    resizePaperTextarea(body, 30);
+    assert.equal(body.parentElement!.style.height, "90px");
+    assert.ok(Math.abs(parseFloat(body.style.height) * 0.875 - 90) < 0.01);
+    measured = 35;
+    resizePaperTextarea(body, 30);
+    assert.equal(body.parentElement!.style.height, "30px");
+    measured = 686;
+    resizePaperTextarea(body, 240);
+    assert.equal(body.parentElement!.style.height, "600px");
+    body.style.setProperty("--paper-editor-scale", "1");
+    body.style.lineHeight = "30px";
+    measured = 90;
+    resizePaperTextarea(body, 30);
+    assert.equal(body.parentElement!.style.height, "90px");
+    assert.equal(body.style.height, "90px");
+  } finally {
+    if (previous) Object.defineProperty(proto, "scrollHeight", previous);
+    else Reflect.deleteProperty(proto, "scrollHeight");
+    if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    dom.window.close();
+  }
 });

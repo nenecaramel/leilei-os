@@ -3,7 +3,6 @@ import { NavLink } from "react-router-dom";
 import {
   AboutIcon,
   AccountIcon,
-  ActivityIcon,
   ConnectionsIcon,
   DashboardIcon,
   DataIcon,
@@ -23,7 +22,7 @@ type NavigationEntry = {
 };
 
 type NavigationGroup = {
-  label: "Core" | "Utilities" | "System";
+  label: "Core" | "Utilities" | "Settings";
   entries: NavigationEntry[];
 };
 
@@ -49,31 +48,26 @@ export const NAV_GROUPS: NavigationGroup[] = [
     ],
   },
   {
-    label: "System",
+    label: "Settings",
     entries: [
       {
         label: "Account",
-        to: "/system/account",
+        to: "/settings/account",
         icon: AccountIcon,
       },
       {
-        label: "Connections",
-        to: "/system/connections",
+        label: "Status",
+        to: "/settings/status",
         icon: ConnectionsIcon,
       },
       {
         label: "Data",
-        to: "/system/data",
+        to: "/settings/data",
         icon: DataIcon,
       },
       {
-        label: "Activity",
-        to: "/system/activity",
-        icon: ActivityIcon,
-      },
-      {
         label: "About",
-        to: "/system/about",
+        to: "/settings/about",
         icon: AboutIcon,
       },
     ],

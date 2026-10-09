@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -9,6 +10,8 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
 } from "react";
+
+import { resizePaperTextarea } from "./paper-editor-autosize";
 
 import type { TodoAuthor, TodoEntry, TodoEntryKind } from "./todo-types";
 import { createTodoPaperEntryId } from "./todo-paper-storage";
@@ -89,17 +92,13 @@ function createInitialRows(
 }
 
 function resizeTodoTextarea(textarea: HTMLTextAreaElement) {
-  textarea.style.height = "auto";
-  textarea.style.height = `${textarea.scrollHeight}px`;
+  resizePaperTextarea(textarea, 30);
 }
 
 export const TodoPaperEditor = forwardRef<
   TodoPaperEditorHandle,
   TodoPaperEditorProps
->(function TodoPaperEditor(
-  { author, initialEntries, onDirtyChange },
-  ref,
-) {
+>(function TodoPaperEditor({ author, initialEntries, onDirtyChange }, ref) {
   const initialSnapshot = useMemo(
     () =>
       JSON.stringify(
@@ -119,7 +118,29 @@ export const TodoPaperEditor = forwardRef<
   );
 
   const textareaRefs = useRef(new Map<string, HTMLTextAreaElement>());
-  const pendingCaretRef = useRef<{ rowId: string; offset: number } | null>(null);
+  useLayoutEffect(() => {
+    const resize = () => textareaRefs.current.forEach(resizeTodoTextarea);
+    const first = textareaRefs.current.values().next().value;
+    const editor = first?.closest(".todo-paper-editor");
+    let width = editor?.clientWidth;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            if (editor?.clientWidth === width) return;
+            width = editor?.clientWidth;
+            resize();
+          });
+    if (editor) observer?.observe(editor);
+    window.addEventListener("resize", resize);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+  const pendingCaretRef = useRef<{ rowId: string; offset: number } | null>(
+    null,
+  );
   const isComposingRef = useRef(false);
 
   useEffect(() => {
@@ -131,26 +152,16 @@ export const TodoPaperEditor = forwardRef<
     onDirtyChange(currentSnapshot !== initialSnapshot);
   }, [initialSnapshot, onDirtyChange, rows]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pending = pendingCaretRef.current;
     if (!pending) return;
-
-    const frame = requestAnimationFrame(() => {
-      const textarea = textareaRefs.current.get(pending.rowId);
-      if (!textarea) return;
-
-      pendingCaretRef.current = null;
-      const offset = Math.max(
-        0,
-        Math.min(pending.offset, textarea.value.length),
-      );
-
-      textarea.focus();
-      textarea.setSelectionRange(offset, offset);
-      resizeTodoTextarea(textarea);
-    });
-
-    return () => cancelAnimationFrame(frame);
+    const textarea = textareaRefs.current.get(pending.rowId);
+    if (!textarea) return;
+    pendingCaretRef.current = null;
+    const offset = Math.max(0, Math.min(pending.offset, textarea.value.length));
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+    resizeTodoTextarea(textarea);
   }, [rows]);
 
   useImperativeHandle(
@@ -169,10 +180,7 @@ export const TodoPaperEditor = forwardRef<
     }
 
     requestAnimationFrame(() => {
-      const nextOffset = Math.max(
-        0,
-        Math.min(offset, textarea.value.length),
-      );
+      const nextOffset = Math.max(0, Math.min(offset, textarea.value.length));
       textarea.focus();
       textarea.setSelectionRange(nextOffset, nextOffset);
     });
@@ -421,33 +429,35 @@ export const TodoPaperEditor = forwardRef<
             <span aria-hidden="true" />
           </button>
 
-          <textarea
-            ref={(node) => {
-              if (!node) {
-                textareaRefs.current.delete(row.id);
-                return;
-              }
+          <div className="paper-textarea-layout">
+            <textarea
+              ref={(node) => {
+                if (!node) {
+                  textareaRefs.current.delete(row.id);
+                  return;
+                }
 
-              textareaRefs.current.set(row.id, node);
-              resizeTodoTextarea(node);
-            }}
-            rows={1}
-            value={row.text}
-            tabIndex={index === 0 ? 0 : -1}
-            aria-label={`Todo 第 ${index + 1} 行`}
-            onChange={(event) => handleChange(row.id, event)}
-            onPaste={(event) => pasteMultiline(index, event)}
-            onCompositionStart={() => {
-              isComposingRef.current = true;
-            }}
-            onCompositionEnd={() => {
-              isComposingRef.current = false;
-            }}
-            onKeyDown={(event) => handleKeyDown(index, event)}
-            onBlur={() => {
-              isComposingRef.current = false;
-            }}
-          />
+                textareaRefs.current.set(row.id, node);
+                resizeTodoTextarea(node);
+              }}
+              rows={1}
+              value={row.text}
+              tabIndex={index === 0 ? 0 : -1}
+              aria-label={`Todo 第 ${index + 1} 行`}
+              onChange={(event) => handleChange(row.id, event)}
+              onPaste={(event) => pasteMultiline(index, event)}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isComposingRef.current = false;
+              }}
+              onKeyDown={(event) => handleKeyDown(index, event)}
+              onBlur={() => {
+                isComposingRef.current = false;
+              }}
+            />
+          </div>
         </div>
       ))}
     </div>

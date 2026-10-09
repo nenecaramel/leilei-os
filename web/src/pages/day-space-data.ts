@@ -3,6 +3,7 @@ import type { DaySpaceDiary } from "./day-space-api";
 
 export type DiscoveryResult = {
   todo: { status: "success"; dates: string[] } | { status: "error" };
+  memory?: { status: "success"; dates: string[] } | { status: "error" };
   diary: { status: "success"; dates: string[] } | { status: "error" };
 };
 
@@ -21,11 +22,12 @@ export function resolveDaySpaceDefaultDate(
 ): ResolvedDaySpaceDate {
   const todoOk = result.todo.status === "success";
   const diaryOk = result.diary.status === "success";
-  if (!todoOk && !diaryOk) return { status: "error" };
+  const memoryOk = result.memory?.status === "success";
+  if (!todoOk && !diaryOk && !memoryOk) return { status: "error" };
   const todoDates = result.todo.status === "success" ? result.todo.dates : [];
   const diaryDates = result.diary.status === "success" ? result.diary.dates : [];
-  const date = latest([...todoDates, ...diaryDates]) ?? today;
-  return { status: "ready", date, discoveryIncomplete: !(todoOk && diaryOk) };
+  const date = latest([...todoDates, ...diaryDates, ...(result.memory?.status === "success" ? result.memory.dates : [])]) ?? today;
+  return { status: "ready", date, discoveryIncomplete: !(todoOk && diaryOk && (result.memory === undefined || memoryOk)) };
 }
 
 export type DaySpaceModuleState<T> =

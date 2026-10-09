@@ -121,6 +121,8 @@ struct DaySpaceWarning: View {
 
 struct DaySpacePartialFailure: View {
     let todoFailed: Bool
+    var memoryFailed: Bool = false
+    var onRetryMemory: () -> Void = {}
     let diaryFailed: Bool
     let onRetryTodo: () -> Void
     let onRetryDiary: () -> Void
@@ -136,6 +138,7 @@ struct DaySpacePartialFailure: View {
                     Button("Retry Todo", action: onRetryTodo)
                 }
 
+                if memoryFailed { Button("Retry Memory", action: onRetryMemory) }
                 if diaryFailed {
                     Button("Retry Diary", action: onRetryDiary)
                 }

@@ -2,7 +2,6 @@ import { Router, type RequestHandler, type Response } from "express";
 import {
   SystemServiceError,
   type ClaudeAccountUsageSnapshot,
-  type SystemActivityItem,
   type SystemConnections,
   type SystemDataSummary,
 } from "../domains/system/system-service.js";
@@ -11,7 +10,6 @@ export type SystemApiDependencies = {
   systemService: {
     readConnections(userId: string): Promise<SystemConnections>;
     readDataSummary(userId: string): Promise<SystemDataSummary>;
-    readActivity(userId: string): Promise<SystemActivityItem[]>;
     readClaudeUsage(userId: string): Promise<ClaudeAccountUsageSnapshot | null>;
   };
 };
@@ -22,7 +20,6 @@ export function createSystemApiRouter(
   const router = Router();
   router.get("/connections", createConnectionsSystemApiHandler(dependencies));
   router.get("/data", createDataSystemApiHandler(dependencies));
-  router.get("/activity", createActivitySystemApiHandler(dependencies));
   router.get("/claude-usage", createClaudeUsageSystemApiHandler(dependencies));
   return router;
 }
@@ -67,20 +64,6 @@ export function createClaudeUsageSystemApiHandler(
             request.webUserId!,
           ),
       });
-    } catch (error) {
-      sendSystemError(response, error);
-    }
-  };
-}
-
-export function createActivitySystemApiHandler(
-  dependencies: SystemApiDependencies,
-): RequestHandler {
-  return async (request, response) => {
-    if (!requireWebUser(response, request.webUserId)) return;
-    try {
-      const events = await dependencies.systemService.readActivity(request.webUserId!);
-      response.json({ success: true, data: { events } });
     } catch (error) {
       sendSystemError(response, error);
     }

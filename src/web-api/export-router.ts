@@ -20,20 +20,10 @@ export function createExportApiHandler(
     if (!requireWebUser(response, request.webUserId)) return;
 
     const scopeValue = exactlyOneOptionalQueryValue(request.query.scope);
-    const includeAuditValue = exactlyOneOptionalQueryValue(request.query.include_audit);
-    const includeAudit = includeAuditValue === undefined
-      ? false
-      : includeAuditValue === "false"
-        ? false
-        : includeAuditValue === "true"
-          ? true
-          : undefined;
-
     // scope=all remains accepted temporarily for older clients, but partial
     // product exports are retired. New clients omit scope entirely.
     if (
       (scopeValue !== undefined && scopeValue !== "all")
-      || includeAudit === undefined
     ) {
       sendInvalidExportRequest(response);
       return;
@@ -42,7 +32,6 @@ export function createExportApiHandler(
     try {
       const document = await dependencies.exportService.createExport(
         request.webUserId!,
-        includeAudit,
       );
       response.setHeader(
         "Content-Disposition",

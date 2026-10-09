@@ -50,7 +50,6 @@ test("missing or partial Toy configuration fails closed without affecting existi
             todo: { active: 0 },
           };
         },
-        async readActivity() { return []; },
       },
     },
     toy: { toyService: disabledToy },

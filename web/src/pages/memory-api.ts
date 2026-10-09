@@ -113,3 +113,10 @@ export async function saveMemory(
     throw error;
   }
 }
+
+export async function listMemoryDates(api: WebApiClient, signal?: AbortSignal): Promise<string[]> {
+  return (await api.request<Envelope<{dates: string[]}>>("/mind/dates", {signal})).data.dates;
+}
+export function memoryPreviewDensity(items: readonly Pick<MemoryItem,"text">[]): number {
+  return Math.max(1, Math.min(6, Math.max(items.length, Math.ceil(items.reduce((n,item) => n+(item.text?.length ?? 0),0)/44))));
+}
