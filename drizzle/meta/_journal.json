@@ -743,6 +743,13 @@
       "when": 1791420797167,
       "tag": "0105_retire_claude_photo_album",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1791539010224,
+      "tag": "0106_relay_finalize_rejection_constraint",
+      "breakpoints": true
     }
   ]
 }

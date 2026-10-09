@@ -14,7 +14,9 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const migrationsFolder = resolve(root, "drizzle");
 const journal = JSON.parse(readFileSync(resolve(migrationsFolder, "meta/_journal.json"), "utf8"));
 const head = journal.entries.at(-1);
-const previous = journal.entries.at(-2);
+const retirementIndex = journal.entries.findIndex((entry: { tag: string }) => entry.tag === "0105_retire_claude_photo_album");
+const retirement = journal.entries[retirementIndex];
+const previous = journal.entries[retirementIndex - 1];
 
 async function withDatabase(run: (sql: ReturnType<typeof postgres>, url: string) => Promise<void>) {
   const url = new URL(process.env.DATABASE_URL!);
@@ -64,8 +66,8 @@ async function snapshot(sql: ReturnType<typeof postgres>) {
 
 test("album retirement fresh DB discovers one 0104 then 0105 and bootstraps the official ledger", { skip: !enabled }, async () => {
   assert.equal(previous.tag, "0104_claude_code_recall_receipts");
-  assert.equal(head.tag, "0105_retire_claude_photo_album");
-  assert.ok(head.when > previous.when);
+  assert.equal(retirement.tag, "0105_retire_claude_photo_album");
+  assert.ok(retirement.when > previous.when);
   assert.equal(journal.entries.filter((entry: { tag: string }) => entry.tag.startsWith("0104_")).length, 1);
   await withDatabase(async (sql, url) => {
     await migrate(drizzle(sql), { migrationsFolder });
@@ -83,7 +85,7 @@ test("album retirement upgrades populated 0104 through the official runner witho
   const folder = mkdtempSync(resolve(tmpdir(), "album-retirement-migrations-"));
   try {
     cpSync(migrationsFolder, folder, { recursive: true });
-    writeFileSync(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.slice(0, -1) }));
+    writeFileSync(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.slice(0, retirementIndex) }));
     await withDatabase(async (sql, url) => {
       await migrate(drizzle(sql), { migrationsFolder: folder });
       const user = randomUUID(), attachment = randomUUID(), message = randomUUID();
@@ -118,10 +120,10 @@ test("album retirement upgrades populated 0104 through the official runner witho
       await assertRetired(sql);
       assert.deepEqual(await snapshot(sql), before, "every non-album table and row stays identical");
       const rows = await sql`select created_at::text as created_at from public.leilei_schema_migrations order by created_at`;
-      assert.deepEqual(rows.map(row => row.created_at), [String(previous.when), String(head.when)]);
+      assert.deepEqual(rows.map(row => row.created_at), journal.entries.slice(retirementIndex - 1).map((entry: { when: number }) => String(entry.when)));
       officialRunner(url);
       assert.deepEqual(await snapshot(sql), before);
-      assert.equal((await sql`select count(*)::int as count from public.leilei_schema_migrations`)[0].count, 2);
+      assert.equal((await sql`select count(*)::int as count from public.leilei_schema_migrations`)[0].count, journal.entries.length - retirementIndex + 1);
     });
   } finally { rmSync(folder, { recursive: true, force: true }); }
 });
