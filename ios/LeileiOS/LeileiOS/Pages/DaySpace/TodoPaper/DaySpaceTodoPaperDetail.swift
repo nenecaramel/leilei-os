@@ -205,21 +205,7 @@ struct DaySpaceTodoPaperDetail: View {
     }
 
     private var normalizedEntries: [DaySpaceTodoEntry] {
-        rows.compactMap { row -> DaySpaceTodoEntry? in
-            let text = row.text.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-
-            guard !text.isEmpty else {
-                return nil
-            }
-
-            return DaySpaceTodoEntry(
-                id: row.id,
-                kind: row.kind,
-                text: text
-            )
-        }
+        DaySpaceTodoRowTransforms.normalizedEntries(rows)
     }
 
     private var isDirty: Bool {
@@ -285,22 +271,14 @@ struct DaySpaceTodoPaperDetail: View {
             return false
         }
 
-        let source = rows[index].text as NSString
-        guard range.location >= 0,
-              NSMaxRange(range) <= source.length
-        else {
+        guard let parts = DaySpaceTodoRowTransforms.splitText(
+            rows[index].text,
+            range: range
+        ) else {
             return false
         }
-
-        let before = source.substring(
-            with: NSRange(
-                location: 0,
-                length: range.location
-            )
-        )
-        let after = source.substring(
-            from: NSMaxRange(range)
-        )
+        let before = parts.before
+        let after = parts.after
 
         rows[index].text = before
         rows[index].creation = before
@@ -359,13 +337,13 @@ struct DaySpaceTodoPaperDetail: View {
         }
 
         let previousIndex = index - 1
-        let previousLength = rows[previousIndex]
-            .text.utf16.count
-        let merged = rows[previousIndex].text
-            + rows[index].text
+        let merged = DaySpaceTodoRowTransforms.mergeText(
+            rows[previousIndex].text,
+            rows[index].text
+        )
 
-        rows[previousIndex].text = merged
-        rows[previousIndex].creation = merged
+        rows[previousIndex].text = merged.text
+        rows[previousIndex].creation = merged.text
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
@@ -376,7 +354,7 @@ struct DaySpaceTodoPaperDetail: View {
         normalizeVisibleRows()
         requestFocus(
             rowID: targetID,
-            offset: previousLength
+            offset: merged.caretOffset
         )
         errorMessage = nil
         return true
@@ -399,8 +377,11 @@ struct DaySpaceTodoPaperDetail: View {
             return true
         }
 
-        let caretOffset = rows[index].text.utf16.count
-        rows[index].text += next.text
+        let merged = DaySpaceTodoRowTransforms.mergeText(
+            rows[index].text,
+            next.text
+        )
+        rows[index].text = merged.text
         rows[index].creation = rows[index].text
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
@@ -410,7 +391,7 @@ struct DaySpaceTodoPaperDetail: View {
         normalizeVisibleRows()
         requestFocus(
             rowID: rowID,
-            offset: caretOffset
+            offset: merged.caretOffset
         )
         errorMessage = nil
         return true
@@ -461,41 +442,15 @@ struct DaySpaceTodoPaperDetail: View {
             return false
         }
 
-        let source = rows[index].text as NSString
-        guard range.location >= 0,
-              NSMaxRange(range) <= source.length
-        else {
+        guard let pasted = DaySpaceTodoRowTransforms.pasteText(
+            rows[index].text,
+            range: range,
+            text: text
+        ) else {
             return false
         }
 
-        let normalized = text.replacingOccurrences(
-            of: "\r\n",
-            with: "\n"
-        )
-        .replacingOccurrences(
-            of: "\r",
-            with: "\n"
-        )
-
-        let lines = normalized.components(
-            separatedBy: "\n"
-        )
-
-        guard lines.count > 1 else {
-            return false
-        }
-
-        let prefix = source.substring(
-            with: NSRange(
-                location: 0,
-                length: range.location
-            )
-        )
-        let suffix = source.substring(
-            from: NSMaxRange(range)
-        )
-
-        rows[index].text = prefix + (lines.first ?? "")
+        rows[index].text = pasted.first
         rows[index].creation = rows[index].text
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
@@ -504,13 +459,7 @@ struct DaySpaceTodoPaperDetail: View {
 
         var inserted: [DaySpaceEditableTodoEntry] = []
 
-        for lineIndex in 1..<lines.count {
-            let line = lines[lineIndex]
-            let isLast = lineIndex == lines.count - 1
-            let rowText = isLast
-                ? line + suffix
-                : line
-
+        for rowText in pasted.remaining {
             inserted.append(
                 DaySpaceEditableTodoEntry(
                     id: UUID().uuidString.lowercased(),
@@ -533,7 +482,7 @@ struct DaySpaceTodoPaperDetail: View {
         if let target = inserted.last {
             requestFocus(
                 rowID: target.id,
-                offset: (lines.last ?? "").utf16.count
+                offset: pasted.caretOffset
             )
         }
 
@@ -562,16 +511,7 @@ struct DaySpaceTodoPaperDetail: View {
     }
 
     private func normalizeVisibleRows() {
-        let lastContentIndex = rows.lastIndex {
-            !$0.text.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            ).isEmpty
-        }
-
-        let targetCount = max(
-            24,
-            (lastContentIndex ?? -1) + 2
-        )
+        let targetCount = DaySpaceTodoRowTransforms.visibleRowTargetCount(rows)
 
         while rows.count < targetCount {
             rows.append(

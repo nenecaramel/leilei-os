@@ -425,7 +425,7 @@ test("iOS Context reads durable system/init environment from runtime metadata", 
     "utf8",
   );
   const context = readFileSync(
-    new URL("../ios/LeileiOS/LeileiOS/Pages/ContextOverviewSheet.swift", import.meta.url),
+    new URL("../ios/LeileiOS/LeileiOS/Pages/Context/ContextEnvironmentSection.swift", import.meta.url),
     "utf8",
   );
 
