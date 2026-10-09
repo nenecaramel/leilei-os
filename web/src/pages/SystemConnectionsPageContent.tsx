@@ -95,12 +95,6 @@ export function SystemConnectionsPageContent({
         className="system-section"
         aria-label="Connection status"
       >
-        {state.status === "loading" ? (
-          <p className="system-state-copy" role="status" aria-live="polite">
-            Checking connections…
-          </p>
-        ) : null}
-
         {state.status === "error" ? (
           <div className="system-state-message">
             <p>

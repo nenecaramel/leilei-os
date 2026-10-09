@@ -15,14 +15,30 @@ test("Day Space is an active route and navigation destination", () => {
   assert.match(nav, /to:\s*["']\/day-space["']/);
 });
 
-test("Day Space keeps the approved mobile shell and no create CTA", () => {
+test("Day Space keeps the approved mobile shell and reuses its native paper controls for Todo creation", () => {
   assert.match(page, /className="day-space-page"/);
   assert.match(page, />Day Space</);
   assert.match(page, /这一天还没有内容/);
   assert.match(page, /buildDaySpaceLocation/);
-  assert.doesNotMatch(page, /新增|创建|create CTA/i);
+  assert.match(page, /aria-label="新增 Todo"/);
+  assert.match(page, /<PlusIcon\s*\/>/);
+  assert.match(page, /memory-page-tool-wrap day-space-create-wrap/);
+  assert.match(page, /memory-page-popover day-space-create-popover/);
+  assert.match(page, /<TodoPaperDialog/);
+  assert.doesNotMatch(page, /createTodoPaper|create-todo-overlay/);
   assert.match(styles, /\.day-space-page\s*\{/);
   assert.match(styles, /calc\(100% - 48px\)/);
+});
+
+test("Day Space create icon keeps its normal color while loading, and author choices sit above date navigation", () => {
+  assert.match(page, /day-space-header--create-open/);
+  const navigation = styles.match(/\.day-space-date-area\s*\{[^}]*z-index:\s*(\d+)/);
+  const popover = styles.match(/\.day-space-header--create-open\s*\{[^}]*z-index:\s*(\d+)/);
+  assert.ok(navigation, "Day Space date navigation layer exists");
+  assert.ok(popover, "Day Space create menu layer exists");
+  assert.ok(Number(popover[1]) > Number(navigation[1]), "create menu sits above the date navigator");
+  assert.match(styles, /\.day-space-header \.day-space-create-wrap > button:disabled\s*\{[^}]*opacity:\s*1\s*;/);
+  assert.match(styles, /\.day-space-header \.day-space-create-popover > button\s*\{[^}]*min-height:\s*44px/);
 });
 
 test("Day Space mixes signed Todo and Diary papers in one scatter stage", () => {

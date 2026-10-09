@@ -126,6 +126,36 @@ test("Connections loads the safe status contract from /system/connections", asyn
   env.restore();
 });
 
+test("Connections loading shows progress only in existing status rows, without a separate banner", async () => {
+  const env = installDom();
+  const container = env.dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const api: WebApiClient = {
+    async request<T>(): Promise<T> {
+      return new Promise<T>(() => {});
+    },
+  };
+
+  try {
+    root.render(React.createElement(SystemConnectionsPageContent, { api }));
+    await waitForPaint();
+
+    assert.equal(container.querySelector(".system-state-copy"), null);
+    assert.doesNotMatch(container.textContent ?? "", /Checking connections/i);
+    assert.deepEqual(
+      Array.from(
+        container.querySelectorAll(".system-status-row > strong"),
+        (row) => row.textContent,
+      ),
+      ["Loading…", "Loading…", "Loading…"],
+    );
+  } finally {
+    root.unmount();
+    await waitForPaint();
+    env.restore();
+  }
+});
+
 test("Connections exposes an explicit retry after API failure", async () => {
   const env = installDom();
   const container = env.dom.window.document.getElementById("root")!;

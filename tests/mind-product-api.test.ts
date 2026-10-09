@@ -153,6 +153,21 @@ test("Mind API lists, creates, deletes, and reads message write projection", asy
   });
 });
 
+test("Mind API accepts occurred-desc sorting and rejects unsupported sort values", async () => {
+  const service = new FakeMindService();
+  await withServer(service, async baseUrl => {
+    assert.equal((await fetch(`${baseUrl}?kind=memory&sort=occurred_desc&limit=20`)).status, 200);
+    assert.deepEqual(service.calls.at(-1), {
+      name: "list",
+      input: { userId, kind: "memory", sort: "occurred_desc", limit: 20 },
+    });
+    for (const invalid of ["newest", "", "occurred_desc&sort=updated_desc"]) {
+      assert.equal((await fetch(`${baseUrl}?sort=${invalid}`)).status, 400);
+    }
+    assert.equal(service.calls.length, 1);
+  });
+});
+
 test("Mind API maps durable create idempotency failures", async () => {
   const service = new FakeMindService();
   await withServer(service, async (baseUrl) => {
