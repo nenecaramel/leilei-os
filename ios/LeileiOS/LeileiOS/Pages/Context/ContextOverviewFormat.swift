@@ -25,7 +25,7 @@ enum ContextOverviewFormat {
         Int(value.rounded()).formatted()
     }
 
-    static func normalized(
+    nonisolated static func normalized(
         _ value: String?
     ) -> String? {
         guard let value else {

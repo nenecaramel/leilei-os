@@ -92,3 +92,19 @@ test("all moved display calculations and row builders conserve their exact basel
     for (const [marker, digest] of Object.entries(declarations)) assert.equal(hash(declaration(source, marker)), digest, `${file}: ${marker}`);
   }
 });
+
+test("Context normalization is safe in synchronous callbacks under default MainActor isolation", { skip: process.platform !== "darwin" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "context-isolation-"));
+  try {
+    const executable = path.join(dir, "check");
+    const production = path.join(dir, "Format.swift");
+    // Pin the reported isolation: newer compilers may infer stateless helpers
+    // differently even with the same default-MainActor project setting.
+    writeFileSync(production, readFileSync(root + "Context/ContextOverviewFormat.swift", "utf8").replace("enum ContextOverviewFormat", "@MainActor\nenum ContextOverviewFormat"));
+    const build = spawnSync("xcrun", ["swiftc", "-swift-version", "5", "-strict-concurrency=complete", "-warnings-as-errors", "-default-isolation", "MainActor", "-parse-as-library", "-module-cache-path", path.join(dir, "cache"), production, "tests/fixtures/context-overview-isolation.swift", "-o", executable], { encoding: "utf8", timeout: 120000 });
+    assert.equal(build.status, 0, build.stderr);
+    const run = spawnSync(executable, [], { encoding: "utf8", timeout: 60000 });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /Context isolation PASS/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
