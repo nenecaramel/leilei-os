@@ -3,7 +3,6 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { useUnsavedChanges } from "./use-unsaved-changes";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import { PaperDetailActions } from "./PaperDetailActions";
-import { PaperDateEditor } from "./PaperDateEditor";
 import { PaperBodyEditor } from "./PaperBodyEditor";
 import {
   getMemory,
@@ -25,15 +24,41 @@ export function MemoryPaperDateEditor({
   label: string;
   onChange(value: string): void;
 }) {
+  function openPicker(input: HTMLInputElement) {
+    if (disabled) return;
+    try {
+      input.showPicker?.();
+    } catch {
+      input.focus();
+    }
+  }
   return (
-    <PaperDateEditor
-      value={value}
-      disabled={disabled}
-      label={label}
-      type="datetime-local"
-      display={value.replace("T", " ").slice(0, 16).replaceAll("-", ".")}
-      onChange={onChange}
-    />
+    <label className="diary-paper-date-editor memory-entry-date-editor">
+      <span>
+        {value
+          ? value.replace("T", " ").slice(0, 16).replaceAll("-", ".")
+          : "选择日期"}
+      </span>
+      <input
+        type="datetime-local"
+        aria-label={label}
+        step="60"
+        value={value}
+        disabled={disabled}
+        onClick={(event) => openPicker(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" &&
+            typeof event.currentTarget.showPicker === "function"
+          ) {
+            event.preventDefault();
+            openPicker(event.currentTarget);
+          }
+        }}
+        onChange={(event) => onChange(event.target.value)}
+        onInput={(event) => onChange(event.currentTarget.value)}
+      />
+    </label>
   );
 }
 

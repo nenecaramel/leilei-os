@@ -6,9 +6,9 @@ import { extractNativeMobileDesktopCss, mirrorNativeMobilePageCss } from "../web
 import { extractNativeMobileDesktopCss as publicExtract, nativeMobilePageCssPlugin } from "../web/build/native-mobile-page-css";
 
 // Seven layers retain the main d5687a6a baseline. styles.css is refreshed for the
-// authorized header-anchored date menu and shared Diary/Memory date hit area.
+// authorized header-anchored date menu. Paper date selectors retain their original styles.
 const acceptedOutputs = [
-  ["styles.css", "3bd45204bb6a63e295d384eca09fc9f629252ec7b87bfa033454bbedbe07425a"],
+  ["styles.css", "95bfa2045b03a3d60b8442b564884632acd09799a6585e6258db8bbec3a73157"],
   ["pages/lg-author-editor-layout-fix.css", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
   ["pages/universe/universe-node-detail-memory-shell.css", "07e2188c297e7f50d118ad1ecee14325190620e4100509944d34063368a6c9ae"],
   ["pages/universe-detail-dayspace-header-polish.css", "09e045be992b2b377cc03bb3a9cb262f3ba53d95113354eaa0a11c3e6e4aaf69"],

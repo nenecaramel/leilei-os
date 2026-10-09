@@ -4,7 +4,6 @@ import {
   useRef,
 } from "react";
 import { formatDiaryPaperDate } from "./diary-presentation";
-import { PaperDateEditor } from "./PaperDateEditor";
 import { PaperBodyEditor } from "./PaperBodyEditor";
 
 export type DiaryPaperEditorHandle = {
@@ -69,7 +68,18 @@ export function DiaryPaperDateEditor({
   disabled: boolean;
   onChange(value: string): void;
 }) {
-  return <PaperDateEditor value={value} disabled={disabled} label="日记日期" display={formatDiaryPaperDate(value)} onChange={onChange} />;
+  return (
+    <label className="diary-paper-date-editor">
+      <span>{formatDiaryPaperDate(value)}</span>
+      <input
+        type="date"
+        aria-label="日记日期"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
 }
 
 export function DiaryPaperMetadataEditor({
