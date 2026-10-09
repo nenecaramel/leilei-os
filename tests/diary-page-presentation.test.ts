@@ -10,6 +10,7 @@ const list = await import("../web/src/pages/diary/DiaryListPresentation.js");
 const detail = await import("../web/src/pages/diary/DiaryDetailPresentation.js");
 const archive = await import("../web/src/pages/diary/DiaryArchivePresentation.js");
 Object.assign(globalThis, { React });
+const { ModuleMonthRows } = await import("../web/src/pages/ModuleMonthRows.js");
 const noop = () => {};
 const diary = {
   id: "entry-1", title: "Morning", content: "A quiet day.", date: "2026-08-08",
@@ -88,7 +89,8 @@ function button(node: React.ReactNode, text: string) {
 test("Diary rows preserve source order and forward exact id and trigger", () => {
   const calls: unknown[][] = [];
   const tree = list.MobileDiaryRows({ diaries: [diary, { ...diary, id: "other" }], busy: false, label: "Diary", onOpen: (...args) => calls.push(args) });
-  const rows = elements(tree).filter((child) => child.type === "button");
+  assert.equal(tree.type, ModuleMonthRows);
+  const rows = elements(ModuleMonthRows(tree.props)).filter((child) => child.type === "button");
   assert.deepEqual(rows.map((row) => row.props["data-diary-id"]), ["entry-1", "other"]);
   const trigger = {};
   rows[1].props.onClick({ currentTarget: trigger });
