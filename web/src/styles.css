@@ -7278,8 +7278,7 @@ body:has(.system-page) {
   .day-space-page .memory-page-title { font: inherit; }
 }
 
-
-/* Web Todo: explicit create entry, reusing the author paper dialog. */
+/* Web Todo creation uses the same icon geometry and popover styling as Diary / Global Search. */
 .home-create-wrap {
   grid-column: 3;
   justify-self: end;
@@ -7288,16 +7287,20 @@ body:has(.system-page) {
   z-index: 5;
 }
 .home-create-trigger {
+  display: grid;
+  place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border, #d8d8d8);
+  padding: 0;
+  border: 0;
   border-radius: 8px;
-  color: inherit;
+  color: #3f3f3f;
   background: transparent;
-  font: inherit;
-  font-size: 22px;
-  line-height: 1;
   cursor: pointer;
+}
+.home-create-trigger svg {
+  width: 20px;
+  height: 20px;
 }
 .home-create-trigger:disabled {
   opacity: 0.4;
@@ -7305,26 +7308,35 @@ body:has(.system-page) {
 }
 .home-create-options {
   position: absolute;
+  z-index: 20;
   top: calc(100% + 6px);
   right: 0;
-  display: flex;
-  gap: 4px;
-  padding: 6px;
-  border: 1px solid var(--border, #d8d8d8);
+  display: grid;
+  width: max-content;
+  min-width: 136px;
+  padding: 5px;
+  border: 1px solid #e5e5e5;
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
 }
 .home-create-options button {
-  min-width: 38px;
+  display: flex;
+  width: 100%;
   min-height: 36px;
+  align-items: center;
+  padding: 7px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
+  color: #303030;
   background: transparent;
-  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 .home-create-options button:hover,
 .home-create-options button:focus-visible {
-  background: #f0f0f0;
+  background: #f2f2f2;
 }
