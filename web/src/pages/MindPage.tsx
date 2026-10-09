@@ -2,11 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { ModuleStateMessage } from "../components/ModuleSearch";
 import { ModulePageHeader } from "./ModulePageHeader";
-import {
-  ModuleMonthLoading,
-  ModuleMonthRows,
-  type ModuleMonthGroup,
-} from "./ModuleMonthRows";
+import { ModuleMonthRows, type ModuleMonthGroup } from "./ModuleMonthRows";
+import { ModuleListLoading, ModuleListEmpty } from "./ModuleListState";
 import { MemoryDetail } from "./MemoryDetail";
 import { MemoryCreatePaper } from "./MemoryCreatePaper";
 import { PaperDetailDialog } from "./PaperDetailDialog";
@@ -40,7 +37,12 @@ function buildLocation(filters: Filters, id: string | null) {
 }
 function monthGroups(rows: MemorySummary[]): ModuleMonthGroup[] {
   const groups = new Map<string, ModuleMonthGroup>();
-  for (const row of rows) {
+  const ordered = [...rows].sort((a, b) => {
+    if (a.occurredAt === null) return b.occurredAt === null ? 0 : 1;
+    if (b.occurredAt === null) return -1;
+    return Date.parse(b.occurredAt) - Date.parse(a.occurredAt);
+  });
+  for (const row of ordered) {
     const key = row.date?.slice(0, 7) ?? "undated";
     if (!groups.has(key))
       groups.set(key, {
@@ -249,7 +251,11 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
         }}
       />
       {status === "loading" ? (
-        <ModuleMonthLoading label="Mind 加载中" loadingText="正在读取记忆…" />
+        <ModuleListLoading
+          searching={Boolean(filters.query)}
+          label="Mind 加载中"
+          loadingText="正在读取记忆…"
+        />
       ) : null}
       {status === "error" ? (
         <ModuleStateMessage
@@ -272,21 +278,11 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
             }}
           />
         ) : (
-          <ModuleStateMessage
-            state="empty"
-            placement="page"
-            emptyText={filtered ? "没有符合条件的记忆" : "还没有记忆"}
-            errorText=""
-            action={
-              filtered ? (
-                <button
-                  className="secondary-button memory-empty-clear"
-                  onClick={clearFilters}
-                >
-                  清除条件
-                </button>
-              ) : undefined
-            }
+          <ModuleListEmpty
+            searching={Boolean(filters.query)}
+            filtered={filtered}
+            noun="记忆"
+            onClear={clearFilters}
           />
         )
       ) : null}
@@ -296,7 +292,12 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
           api={api}
           triggerRef={createTrigger}
           onClose={() => setAdding(false)}
-          onCreated={() => setRevision((n) => n + 1)}
+          onCreated={(created) => {
+            detailTrigger.current = createTrigger.current;
+            navigate({ ...currentLocation.current, id: created.id });
+            setItem(created);
+            setRevision((n) => n + 1);
+          }}
         />
       ) : null}
       {id && !item ? (

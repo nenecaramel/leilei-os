@@ -1,3 +1,4 @@
+import { PaperDetailActions } from "../PaperDetailActions";
 import type { RefObject } from "react";
 import type { WebApiClient } from "../../api/useWebApiClient";
 import { DiaryCommentsSection, type DiaryComment, type DiaryCommentsMetadata } from "../DiaryComments";
@@ -111,47 +112,26 @@ export function MobileDiaryDetail({
       errorMessage={errorMessage}
       onRequestClose={onRequestClose}
       topRight={
-        editing ? (
-          <>
-            <button
-              className="memory-paper-control"
-              disabled={updating}
-              onClick={onCancel}
-            >
-              取消
-            </button>
-            <span>·</span>
-            <button
-              className="memory-paper-control"
-              disabled={updating || invalid}
-              onClick={onSave}
-            >
-              {updating ? "保存中…" : "保存"}
-            </button>
-          </>
-        ) : (
-          <>
+        <PaperDetailActions
+          editing={editing}
+          busy={editing ? updating : archiving}
+          invalid={invalid}
+          onCancel={onCancel}
+          onSave={onSave}
+          onEdit={() => onEdit(diary)}
+          readingAction={
             <button
               className="memory-paper-control"
               disabled={archiving}
               onClick={() => {
-                if (window.confirm(`确定归档“${diary.title}”吗？`)) {
+                if (window.confirm(`确定归档“${diary.title}”吗？`))
                   onArchive(diary.id);
-                }
               }}
             >
               {archiving ? "归档中…" : "归档"}
             </button>
-            <span>·</span>
-            <button
-              className="memory-paper-control"
-              disabled={archiving}
-              onClick={() => onEdit(diary)}
-            >
-              编辑
-            </button>
-          </>
-        )
+          }
+        />
       }
       bottomLeft={
         editing ? (

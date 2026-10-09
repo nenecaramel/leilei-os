@@ -11,6 +11,7 @@ const detail = await import("../web/src/pages/diary/DiaryDetailPresentation.js")
 const archive = await import("../web/src/pages/diary/DiaryArchivePresentation.js");
 Object.assign(globalThis, { React });
 const { ModuleMonthRows } = await import("../web/src/pages/ModuleMonthRows.js");
+const { PaperDetailActions } = await import("../web/src/pages/PaperDetailActions.js");
 const noop = () => {};
 const diary = {
   id: "entry-1", title: "Morning", content: "A quiet day.", date: "2026-08-08",
@@ -81,6 +82,7 @@ function elements(node: React.ReactNode): React.ReactElement<any>[] {
     ? [child, ...elements((child.props as any).children)] : []);
 }
 function button(node: React.ReactNode, text: string) {
+  if (React.isValidElement(node) && node.type === PaperDetailActions) node = PaperDetailActions(node.props as React.ComponentProps<typeof PaperDetailActions>);
   const found = elements(node).find((child) => child.type === "button" && child.props.children === text);
   assert.ok(found, `Missing button: ${text}`);
   return found.props;
