@@ -224,7 +224,7 @@ struct DaySpacePaperRules: View {
     var body: some View {
         GeometryReader { proxy in
             Path { path in
-                var y: CGFloat = 29.5
+                var y = DaySpacePaperTypography.lineHeight - 0.5
 
                 while y < proxy.size.height {
                     path.move(
@@ -239,7 +239,7 @@ struct DaySpacePaperRules: View {
                             y: y
                         )
                     )
-                    y += 30
+                    y += DaySpacePaperTypography.lineHeight
                 }
             }
             .stroke(
