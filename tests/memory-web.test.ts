@@ -119,11 +119,82 @@ test("text-only edits omit unchanged event time and preserve temporal provenance
   assert.deepEqual(body, { expected_version: "v1", occurred_at: null });
 });
 
-
 test("default day discovery includes Memory when Todo and Diary dates are unavailable", async () => {
-  const { resolveDaySpaceDefaultDate } = await import("../web/src/pages/day-space-data.js");
-  assert.deepEqual(resolveDaySpaceDefaultDate({
-    todo: {status:"error"}, diary: {status:"error"},
-    memory: {status:"success", dates:["2026-10-07", "2026-10-09"]},
-  }, "2026-10-08"), {status:"ready",date:"2026-10-09",discoveryIncomplete:true});
+  const { resolveDaySpaceDefaultDate } =
+    await import("../web/src/pages/day-space-data.js");
+  assert.deepEqual(
+    resolveDaySpaceDefaultDate(
+      {
+        todo: { status: "error" },
+        diary: { status: "error" },
+        memory: { status: "success", dates: ["2026-10-07", "2026-10-09"] },
+      },
+      "2026-10-08",
+    ),
+    { status: "ready", date: "2026-10-09", discoveryIncomplete: true },
+  );
+});
+
+test("complete Memory list keeps filters on every cursor page and deduplicates records", async () => {
+  const { loadMemoryList } = await import("../web/src/pages/memory-api.js");
+  const calls: string[] = [];
+  const signal = new AbortController().signal;
+  const api = {
+    request: async (path: string, init: RequestInit) => {
+      calls.push(path);
+      assert.equal(init.signal, signal);
+      const q = new URL(path, "http://local").searchParams;
+      assert.equal(q.get("query"), "needle");
+      assert.equal(q.get("date_from"), "2026-10-01");
+      assert.equal(q.get("date_to"), "2026-10-31");
+      return {
+        data: {
+          items:
+            calls.length === 1
+              ? [{ id: "a", snippet: "old" }]
+              : [{ id: "a", snippet: "latest" }, { id: "b" }],
+          nextCursor: calls.length === 1 ? "page+2" : null,
+        },
+      };
+    },
+  } as any;
+  assert.deepEqual(
+    await loadMemoryList(
+      api,
+      { query: "needle", dateFrom: "2026-10-01", dateTo: "2026-10-31" },
+      signal,
+    ),
+    [{ id: "a", snippet: "latest" }, { id: "b" }],
+  );
+  assert.equal(calls.length, 2);
+});
+
+test("complete list rejects cursor cycles and stops before another page after cancellation", async () => {
+  const { loadMemoryList } = await import("../web/src/pages/memory-api.js");
+  let calls = 0;
+  const api = {
+    request: async () => {
+      calls++;
+      return { data: { items: [], nextCursor: "same" } };
+    },
+  } as any;
+  await assert.rejects(loadMemoryList(api, {}), /Repeated Memory cursor/);
+  assert.equal(calls, 2);
+  const abort = new AbortController();
+  calls = 0;
+  await assert.rejects(
+    loadMemoryList(
+      {
+        request: async () => {
+          calls++;
+          abort.abort();
+          return { data: { items: [], nextCursor: "next" } };
+        },
+      } as any,
+      {},
+      abort.signal,
+    ),
+    { name: "AbortError" },
+  );
+  assert.equal(calls, 1);
 });

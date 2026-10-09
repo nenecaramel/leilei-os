@@ -13,7 +13,7 @@ import { PaperDetailDialog } from "./PaperDetailDialog";
 import { formatDiaryRowDate } from "./diary-presentation";
 import {
   getMemory,
-  searchMemory,
+  loadMemoryList,
   type MemoryItem,
   type MemorySummary,
 } from "./memory-api";
@@ -65,12 +65,9 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
   const { filters, id } = location;
   const [searchDraft, setSearchDraft] = useState(filters.query);
   const [rows, setRows] = useState<MemorySummary[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
-  const [moreBusy, setMoreBusy] = useState(false);
-  const [moreError, setMoreError] = useState(false);
   const [item, setItem] = useState<MemoryItem | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [detailRevision, setDetailRevision] = useState(0);
@@ -87,7 +84,6 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
   const readyFilters = useRef<Filters | null>(null);
   const focusAfterRefresh = useRef<string | null>(null);
   const generation = useRef(0);
-  const moreGate = useRef(false);
   const detailTrigger = useRef<HTMLElement | null>(null);
   const createTrigger = useRef<HTMLElement | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,21 +143,16 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
   useEffect(() => {
     const ticket = ++generation.current;
     const abort = new AbortController();
-    moreGate.current = false;
-    setMoreBusy(false);
-    setMoreError(false);
     setRows([]);
-    setCursor(null);
     if (filterError) {
       setStatus("ready");
       return () => abort.abort();
     }
     setStatus("loading");
-    void searchMemory(api, filters, null, abort.signal)
-      .then((page) => {
+    void loadMemoryList(api, filters, abort.signal)
+      .then((items) => {
         if (ticket !== generation.current || abort.signal.aborted) return;
-        setRows(page.items);
-        setCursor(page.nextCursor);
+        setRows(items);
         readyFilters.current = filters;
         setReadyRevision(revision);
         setStatus("ready");
@@ -203,29 +194,6 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
         });
     return () => abort.abort();
   }, [api, id, detailRevision]);
-  async function more() {
-    if (!cursor || moreGate.current) return;
-    const ticket = generation.current;
-    moreGate.current = true;
-    setMoreBusy(true);
-    setMoreError(false);
-    try {
-      const page = await searchMemory(api, filters, cursor);
-      if (ticket !== generation.current) return;
-      setRows((old) => [
-        ...old,
-        ...page.items.filter((row) => !old.some((x) => x.id === row.id)),
-      ]);
-      setCursor(page.nextCursor);
-    } catch {
-      if (ticket === generation.current) setMoreError(true);
-    } finally {
-      if (ticket === generation.current) {
-        moreGate.current = false;
-        setMoreBusy(false);
-      }
-    }
-  }
   function closeDetail() {
     navigate({ ...currentLocation.current, id: null });
     return true;
@@ -239,7 +207,7 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
     <div className="page memory-page mind-page">
       <ModulePageHeader
         title="Mind"
-        countLabel={status === "ready" ? `已读取 ${rows.length} 条记忆` : ""}
+        countLabel={`${status === "ready" ? rows.length : 0}条记忆`}
         searchLabel="搜索记忆"
         searchPlaceholder="Search memories..."
         createLabel="新增记忆"
@@ -321,25 +289,6 @@ export function MindPageContent({ api }: { api: WebApiClient }) {
             }
           />
         )
-      ) : null}
-      {moreError ? (
-        <ModuleStateMessage
-          state="error"
-          emptyText=""
-          errorText="Unable to read more memories."
-          onRetry={() => void more()}
-        />
-      ) : null}
-      {cursor && !moreError ? (
-        <div className="global-search-load-more">
-          <button
-            className="global-search-load-more-button"
-            disabled={moreBusy || searchPending}
-            onClick={() => void more()}
-          >
-            {moreBusy ? "Reading..." : "更多"}
-          </button>
-        </div>
       ) : null}
       {adding ? (
         <MemoryCreatePaper
