@@ -39,7 +39,7 @@ import type {
   MindMemoryCursor,
   MindMemoryUpdateInput,
   MindProductCursor,
-  type MindProductSort,
+  MindProductSort,
   MindProductRepository,
   MindProductRow,
 } from "./mind-product-service.js";
