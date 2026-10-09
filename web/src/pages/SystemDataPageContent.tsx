@@ -11,11 +11,19 @@ import {
   executeImport,
   previewImport,
   type WebImportExecution,
-  type WebImportModule,
-  type WebImportModuleSummary,
   type WebImportPreview,
 } from "../system/import-types";
 import { PageHeader } from "./PageHeader";
+import {
+  ArchivedCountRow,
+  ModuleSummaryRows,
+  SimpleCountRow,
+} from "./system-data/SystemDataSummary";
+import {
+  countImport,
+  fileSummary,
+  formatExportedAt,
+} from "./system-data/system-data-format";
 
 type LoadState =
   | { status: "loading" }
@@ -55,128 +63,6 @@ type ImportState =
     }
   | { status: "error"; message: string };
 
-const IMPORT_MODULE_ORDER: WebImportModule[] = [
-  "diary",
-  "diary_comments",
-  "todo",
-  "workspaces",
-  "conversations",
-  "mind",
-  "universe",
-];
-
-const IMPORT_MODULE_LABELS: Record<WebImportModule, string> = {
-  diary: "Diary",
-  diary_comments: "Diary comments",
-  todo: "Todo",
-  workspaces: "Workspaces",
-  conversations: "Conversation records",
-  mind: "Mind (Memory & history)",
-  universe: "Universe",
-};
-
-const EMPTY_COUNTS: WebImportModuleSummary = {
-  create: 0,
-  duplicate: 0,
-  conflict: 0,
-  invalid: 0,
-};
-
-function CountCell({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="system-count-cell">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function SimpleCountRow({
-  label,
-  value,
-  valueLabel = "Stored",
-}: {
-  label: string;
-  value: number | string;
-  valueLabel?: string;
-}) {
-  return (
-    <div className="system-data-row">
-      <strong>{label}</strong>
-      <div className="system-count-pair">
-        <CountCell label={valueLabel} value={value} />
-      </div>
-    </div>
-  );
-}
-
-function ArchivedCountRow({
-  label,
-  active,
-  archived,
-}: {
-  label: string;
-  active: number | string;
-  archived: number | string;
-}) {
-  return (
-    <div className="system-data-row">
-      <strong>{label}</strong>
-      <div className="system-count-pair">
-        <CountCell label="Active" value={active} />
-        <CountCell label="Archived" value={archived} />
-      </div>
-    </div>
-  );
-}
-
-function moduleCounts(
-  summary: Partial<Record<WebImportModule, WebImportModuleSummary>>,
-  module: WebImportModule,
-): WebImportModuleSummary {
-  return summary[module] ?? EMPTY_COUNTS;
-}
-
-function countImport(
-  summary: Partial<Record<WebImportModule, WebImportModuleSummary>>,
-  key: keyof WebImportModuleSummary,
-): number {
-  return Object.values(summary).reduce(
-    (total, counts) => total + (counts?.[key] ?? 0),
-    0,
-  );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatExportedAt(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-function fileSummary(filename: string, size: number): string {
-  return `${filename} · ${formatBytes(size)}`;
-}
-
-function formatModuleCounts(counts: WebImportModuleSummary): string {
-  const parts: string[] = [];
-  if (counts.create > 0) parts.push(`${counts.create} new`);
-  if (counts.duplicate > 0) parts.push(`${counts.duplicate} already here`);
-  if (counts.conflict > 0) parts.push(`${counts.conflict} conflict`);
-  if (counts.invalid > 0) parts.push(`${counts.invalid} invalid`);
-  return parts.length > 0 ? parts.join(" · ") : "No records";
-}
-
 function importBlocked(preview: WebImportPreview): boolean {
   return (
     countImport(preview.summary, "conflict") > 0
@@ -203,40 +89,6 @@ function exportErrorMessage(error: unknown): string {
   return error.message.trim().length > 0
     ? error.message
     : "Unable to create this backup.";
-}
-
-function ModuleSummaryRows({
-  summary,
-  includedModules,
-  blocked = false,
-}: {
-  summary: Partial<Record<WebImportModule, WebImportModuleSummary>>;
-  includedModules: WebImportModule[];
-  blocked?: boolean;
-}) {
-  const included = new Set(includedModules);
-  return (
-    <>
-      {IMPORT_MODULE_ORDER.filter((module) => included.has(module)).map(
-        (module) => (
-          <div className="system-import-row system-import-module-row" key={module}>
-            <span className="system-import-row-label">
-              {IMPORT_MODULE_LABELS[module]}
-            </span>
-            <span
-              className={
-                blocked
-                  ? "system-import-row-value system-import-row-value-blocked"
-                  : "system-import-row-value"
-              }
-            >
-              {formatModuleCounts(moduleCounts(summary, module))}
-            </span>
-          </div>
-        ),
-      )}
-    </>
-  );
 }
 
 export function SystemDataPageContent({
