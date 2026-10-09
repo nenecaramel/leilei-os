@@ -198,7 +198,7 @@ test("409 retains the draft, disables save until explicit reconciliation and use
     await ui.cleanup();
   }
 });
-test("Mind undated entry filters before pagination and opens editable detail", async () => {
+test("Mind keeps undated records in the full paginated list and opens editable detail", async () => {
   const { MindPageContent } = await import("../web/src/pages/MindPage.js");
   const calls: string[] = [];
   const api = {
@@ -234,10 +234,9 @@ test("Mind undated entry filters before pagination and opens editable detail", a
   } as any;
   const ui = await render(React.createElement(MindPageContent, { api }));
   try {
-    await ui.click(ui.button("未指定日期"));
-    assert.match(calls.at(-1)!, /undated=true/);
+    assert.doesNotMatch(ui.dom.window.document.body.textContent!, /未指定日期/);
     await ui.click(ui.button("更多"));
-    assert.match(calls.at(-1)!, /undated=true&cursor=page2/);
+    assert.match(calls.at(-1)!, /cursor=page2/);
     assert.match(ui.dom.window.document.body.textContent!, /Second undated/);
     await ui.click(ui.dom.window.document.querySelector(".memory-row")!);
     assert.ok(ui.dom.window.document.querySelector("textarea"));

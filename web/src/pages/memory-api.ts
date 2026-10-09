@@ -41,13 +41,20 @@ export async function getMemory(
     })
   ).data;
 }
+export type MemorySearchFilters = { query?: string; dateFrom?: string; dateTo?: string };
 export async function searchMemory(
   api: WebApiClient,
-  undated: boolean,
+  filters: boolean | MemorySearchFilters,
   cursor?: string | null,
   signal?: AbortSignal,
 ): Promise<MemoryPage<MemorySummary>> {
-  const query = new URLSearchParams({ limit: "50", undated: String(undated) });
+  const query = new URLSearchParams({ limit: "50" });
+  if (typeof filters === "boolean") query.set("undated", String(filters));
+  else {
+    if (filters.query?.trim()) query.set("query", filters.query.trim());
+    if (filters.dateFrom) query.set("date_from", filters.dateFrom);
+    if (filters.dateTo) query.set("date_to", filters.dateTo);
+  }
   if (cursor) query.set("cursor", cursor);
   return (
     await api.request<Envelope<MemoryPage<MemorySummary>>>(

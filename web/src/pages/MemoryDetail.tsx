@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
 import { useUnsavedChanges } from "./use-unsaved-changes";
 import { PaperDetailDialog } from "./PaperDetailDialog";
@@ -11,6 +11,37 @@ import {
   saveMemory,
   type MemoryItem,
 } from "./memory-api";
+
+export function MemoryPaperDateEditor({
+  value,
+  disabled,
+  label,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  label: string;
+  onChange(value: string): void;
+}) {
+  return (
+    <label className="diary-paper-date-editor memory-entry-date-editor">
+      <span>
+        {value
+          ? value.replace("T", " ").slice(0, 16).replaceAll("-", ".")
+          : "未指定日期"}
+      </span>
+      <input
+        type="datetime-local"
+        aria-label={label}
+        step="60"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        onInput={(event) => onChange(event.currentTarget.value)}
+      />
+    </label>
+  );
+}
 
 type Draft = {
   item: MemoryItem;
@@ -32,6 +63,7 @@ export function MemoryPaper({
   onClose,
   onDelete,
   showEntryDates = true,
+  registerNavigationGuard,
 }: {
   api: WebApiClient;
   initial: MemoryItem[];
@@ -41,6 +73,7 @@ export function MemoryPaper({
   onClose(): void;
   onDelete?: () => Promise<void>;
   showEntryDates?: boolean;
+  registerNavigationGuard?(guard: (() => boolean) | null): void;
 }) {
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     initial.map((item) => ({
@@ -53,6 +86,13 @@ export function MemoryPaper({
   const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = drafts.some(changed);
+  useEffect(() => {
+    registerNavigationGuard?.(
+      () =>
+        !inFlight.current && (!dirty || window.confirm("放弃未保存的修改？")),
+    );
+    return () => registerNavigationGuard?.(null);
+  }, [dirty, busy, registerNavigationGuard]);
   useUnsavedChanges(dirty);
   const patch = (id: string, values: Partial<Draft>) =>
     setDrafts((old) =>
@@ -104,10 +144,22 @@ export function MemoryPaper({
       label="Memory"
       open
       dateLabel={
-        (date ?? memoryDay(initial[0]?.occurredAt ?? null))?.replaceAll(
-          "-",
-          ".",
-        ) ?? "未指定日期"
+        showEntryDates && drafts.length === 1 ? (
+          <MemoryPaperDateEditor
+            value={drafts[0].date}
+            disabled={busy}
+            label="Memory 1 发生时间（北京时间）"
+            onChange={(date) => {
+              patch(drafts[0].item.id, { date });
+              setError(null);
+            }}
+          />
+        ) : (
+          ((date ?? memoryDay(initial[0]?.occurredAt ?? null))?.replaceAll(
+            "-",
+            ".",
+          ) ?? "未指定日期")
+        )
       }
       signature="Memory"
       triggerRef={triggerRef}
@@ -139,57 +191,55 @@ export function MemoryPaper({
         </>
       }
       bottomLeft={
-        onDelete ? (
-          <button
-            className="memory-paper-control"
-            disabled={busy}
-            onClick={() => {
-              if (!window.confirm("删除这条 Memory？")) return;
-              inFlight.current = true;
-              setBusy(true);
-              void onDelete()
-                .catch(() => setError("删除失败，请重试"))
-                .finally(() => {
-                  inFlight.current = false;
-                  setBusy(false);
-                });
-            }}
-          >
-            删除
-          </button>
-        ) : null
+        <>
+          {showEntryDates && drafts.length === 1 && drafts[0].date ? (
+            <button
+              className="memory-paper-control"
+              disabled={busy}
+              onClick={() => {
+                patch(drafts[0].item.id, { date: "" });
+                setError(null);
+              }}
+            >
+              未指定日期
+            </button>
+          ) : null}
+          {onDelete ? (
+            <button
+              className="memory-paper-control"
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm("删除这条 Memory？")) return;
+                inFlight.current = true;
+                setBusy(true);
+                void onDelete()
+                  .catch(() => setError("删除失败，请重试"))
+                  .finally(() => {
+                    inFlight.current = false;
+                    setBusy(false);
+                  });
+              }}
+            >
+              删除
+            </button>
+          ) : null}
+        </>
       }
     >
       <div className="memory-paper-entries">
         {drafts.map((draft, index) => (
           <section className="memory-paper-entry" key={draft.item.id}>
-            {showEntryDates ? (
+            {showEntryDates && drafts.length > 1 ? (
               <div className="memory-entry-date">
-                <label className="diary-paper-date-editor memory-entry-date-editor">
-                  <span>
-                    {draft.date
-                      ? draft.date
-                          .replace("T", " ")
-                          .slice(0, 16)
-                          .replaceAll("-", ".")
-                      : "未指定日期"}
-                  </span>
-                  <input
-                    type="datetime-local"
-                    aria-label={`Memory ${index + 1} 发生时间（北京时间）`}
-                    step="60"
-                    value={draft.date}
-                    disabled={busy}
-                    onChange={(e) => {
-                      patch(draft.item.id, { date: e.target.value });
-                      setError(null);
-                    }}
-                    onInput={(e) => {
-                      patch(draft.item.id, { date: e.currentTarget.value });
-                      setError(null);
-                    }}
-                  />
-                </label>
+                <MemoryPaperDateEditor
+                  value={draft.date}
+                  disabled={busy}
+                  label={`Memory ${index + 1} 发生时间（北京时间）`}
+                  onChange={(date) => {
+                    patch(draft.item.id, { date });
+                    setError(null);
+                  }}
+                />
                 {draft.date ? (
                   <button
                     className="memory-paper-control"
@@ -304,9 +354,13 @@ export function MemoryDetail({
   onSaved,
   onClose,
   onDelete,
+  triggerRef,
+  registerNavigationGuard,
 }: {
   api: WebApiClient;
   initial: MemoryItem;
+  registerNavigationGuard?(guard: (() => boolean) | null): void;
+  triggerRef?: RefObject<HTMLElement | null>;
   onSaved(item: MemoryItem): void;
   onClose(): void;
   onDelete?: () => Promise<void>;
@@ -316,9 +370,10 @@ export function MemoryDetail({
   );
   return (
     <MemoryPaper
+      registerNavigationGuard={registerNavigationGuard}
       api={api}
       initial={[initial]}
-      triggerRef={trigger}
+      triggerRef={triggerRef ?? trigger}
       onSaved={onSaved}
       onClose={onClose}
       onDelete={onDelete}
