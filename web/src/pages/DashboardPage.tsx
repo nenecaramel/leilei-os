@@ -112,7 +112,7 @@ export function DashboardPageContent({ api, now = defaultNow }: { api?: WebApiCl
     <div className="page home-prototype">
       <div className="home-page-heading">
         <h1 className="home-page-title">Todo</h1>
-        <div className="home-create-wrap memory-page-tool-wrap" ref={createWrapRef} onKeyDown={(event) => {
+        <div className="home-create-wrap" ref={createWrapRef} onKeyDown={(event) => {
           if (event.key === "Escape") {
             setCreateOpen(false);
             createTriggerRef.current?.focus();
