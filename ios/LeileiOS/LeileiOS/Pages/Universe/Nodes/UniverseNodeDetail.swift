@@ -232,11 +232,7 @@ extension UniverseNodeSheet {
                         Button(
                             role: .destructive
                         ) {
-                            Task {
-                                await deleteRelation(
-                                    connection.relation
-                                )
-                            }
+                            confirmation = .removeConnection(connection.relation)
                         } label: {
                             Label(
                                 "Remove Connection",

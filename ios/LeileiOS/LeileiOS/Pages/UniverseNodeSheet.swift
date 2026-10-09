@@ -7,6 +7,13 @@ struct UniverseNodeSheet: View {
         case create(UniversePosition)
     }
 
+    enum Confirmation: Equatable {
+        case discardChanges
+        case deleteNode
+        case restoreVersion
+        case removeConnection(UniverseRelation)
+    }
+
     let mode: Mode
     let node: UniverseNode?
     let galaxies: [UniverseGalaxy]
@@ -31,12 +38,13 @@ struct UniverseNodeSheet: View {
 
     @State var isEditing: Bool
     @State var draft: UniverseNodeDraft
+    @State var originalDraft: UniverseNodeDraft
     @State var sourceMetadata:
         [String: UniverseDiarySourceOption]
     @State var sourcePickerPresented = false
     @State var relationPresented = false
     @State var diarySourceSelection: UniverseDiarySourceSummary?
-    @State var deletePresented = false
+    @State var confirmation: Confirmation?
     @State var isSaving = false
     @State var errorMessage: String?
 
@@ -99,12 +107,12 @@ struct UniverseNodeSheet: View {
         }
 
         _isEditing = State(initialValue: creating)
-        _draft = State(
-            initialValue: UniverseNodeDraft(
-                node: node,
-                sourceDiaryIDs: sources.map(\.diaryId)
-            )
+        let initialDraft = UniverseNodeDraft(
+            node: node,
+            sourceDiaryIDs: sources.map(\.diaryId)
         )
+        _draft = State(initialValue: initialDraft)
+        _originalDraft = State(initialValue: initialDraft)
         _sourceMetadata = State(
             initialValue: Dictionary(
                 uniqueKeysWithValues: sources.map {
@@ -127,6 +135,7 @@ struct UniverseNodeSheet: View {
             Group {
                 if isEditing {
                     editor
+                        .disabled(isSaving)
                 } else if let node {
                     detail(node)
                 } else {
@@ -150,9 +159,7 @@ struct UniverseNodeSheet: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .interactiveDismissDisabled(
-            isSaving
-        )
+        .interactiveDismissDisabled(isEditing || isSaving)
         .sheet(isPresented: $sourcePickerPresented) {
             UniverseDiarySourcePicker(
                 initialSelection: draft.sourceDiaryIDs,
@@ -189,40 +196,46 @@ struct UniverseNodeSheet: View {
             .environment(\.colorScheme, .dark)
         }
         .confirmationDialog(
-            "Delete Node?",
-            isPresented: $deletePresented,
+            confirmationTitle,
+            isPresented: Binding(
+                get: { confirmation != nil },
+                set: { if !$0 { confirmation = nil } }
+            ),
             titleVisibility: .visible
         ) {
-            Button(
-                "Delete",
-                role: .destructive
-            ) {
-                guard let node else {
-                    return
+            switch confirmation {
+            case .discardChanges:
+                Button("Discard changes", role: .destructive) {
+                    discardChanges()
                 }
-
-                Task {
-                    await delete(node)
+                Button("Keep editing", role: .cancel) {}
+            case .deleteNode:
+                Button("Delete", role: .destructive) {
+                    if let node { Task { await delete(node) } }
                 }
-            }
-
-            Button(
-                "Cancel",
-                role: .cancel
-            ) {
+                Button("Cancel", role: .cancel) {}
+            case .restoreVersion:
+                Button("Restore", role: .destructive) {
+                    if let node { Task { await restore(node) } }
+                }
+                Button("Cancel", role: .cancel) {}
+            case .removeConnection(let relation):
+                Button("Remove", role: .destructive) {
+                    Task { await deleteRelation(relation) }
+                }
+                Button("Cancel", role: .cancel) {}
+            case nil:
+                EmptyView()
             }
         }
         .onChange(of: node) { _, updated in
             guard !isEditing,
-                  let updated
+                  updated != nil
             else {
                 return
             }
 
-            draft = UniverseNodeDraft(
-                node: updated,
-                sourceDiaryIDs: sources.map(\.diaryId)
-            )
+            resetDraft()
         }
         .onChange(of: sources) { _, updatedSources in
             for source in updatedSources {
@@ -236,8 +249,7 @@ struct UniverseNodeSheet: View {
             }
 
             if !isEditing {
-                draft.sourceDiaryIDs =
-                    updatedSources.map(\.diaryId)
+                resetDraft()
             }
         }
     }

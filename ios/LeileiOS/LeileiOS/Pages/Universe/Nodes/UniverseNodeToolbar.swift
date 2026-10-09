@@ -7,17 +7,13 @@ extension UniverseNodeSheet {
     var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button {
-                if isEditing, !isCreate {
-                    isEditing = false
-                    resetDraft()
-                } else {
-                    onClose()
-                }
+                cancel()
             } label: {
-                if isEditing, !isCreate {
+                if isEditing {
                     Text("Cancel")
                 } else {
                     Image(systemName: "xmark")
+                        .accessibilityLabel("Close")
                 }
             }
             .disabled(isSaving)
@@ -25,38 +21,6 @@ extension UniverseNodeSheet {
 
         ToolbarItemGroup(placement: .topBarTrailing) {
             if isEditing {
-                if let node, !isCreate {
-                    Menu {
-                        if revisionsAvailable {
-                            Button {
-                                Task {
-                                    await restore(node)
-                                }
-                            } label: {
-                                Label(
-                                    "Restore Previous Version",
-                                    systemImage: "clock.arrow.circlepath"
-                                )
-                            }
-                        }
-
-                        Button(
-                            role: .destructive
-                        ) {
-                            deletePresented = true
-                        } label: {
-                            Label(
-                                "Delete",
-                                systemImage: "trash"
-                            )
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .accessibilityLabel("Node actions")
-                    .disabled(isSaving)
-                }
-
                 Button {
                     Task {
                         await save()
@@ -91,10 +55,8 @@ extension UniverseNodeSheet {
                 Menu {
                     if revisionsAvailable {
                         Button {
-                            Task {
-                                await restore(node)
-                            }
-                        } label: {
+                                confirmation = .restoreVersion
+                            } label: {
                             Label(
                                 "Restore Previous Version",
                                 systemImage: "clock.arrow.circlepath"
@@ -105,7 +67,7 @@ extension UniverseNodeSheet {
                     Button(
                         role: .destructive
                     ) {
-                        deletePresented = true
+                        confirmation = .deleteNode
                     } label: {
                         Label(
                             "Delete",

@@ -29,8 +29,48 @@ extension UniverseNodeSheet {
         return nil
     }
 
+    var hasUnsavedChanges: Bool {
+        draft != originalDraft
+    }
+
+    var confirmationTitle: String {
+        switch confirmation {
+        case .discardChanges: return "Discard changes?"
+        case .deleteNode: return "Delete Node?"
+        case .restoreVersion: return "Restore previous version?"
+        case .removeConnection: return "Remove Connection?"
+        case nil: return ""
+        }
+    }
+
+    func cancel() {
+        guard !isSaving else { return }
+        if isEditing {
+            if hasUnsavedChanges {
+                confirmation = .discardChanges
+            } else {
+                discardChanges()
+            }
+        } else {
+            onClose()
+        }
+    }
+
+    func discardChanges() {
+        guard !isSaving else { return }
+        confirmation = nil
+        resetDraft()
+        errorMessage = nil
+        if isCreate {
+            onClose()
+        } else {
+            isEditing = false
+        }
+    }
+
     var canSave: Bool {
         !isSaving
+            && (isCreate || hasUnsavedChanges)
             && !draft.title
                 .trimmingCharacters(
                     in: .whitespacesAndNewlines
@@ -73,19 +113,21 @@ extension UniverseNodeSheet {
 
         isSaving = true
         errorMessage = nil
+        let submittedDraft = draft
         defer {
             isSaving = false
         }
 
         do {
             try await onSave(
-                draft,
+                submittedDraft,
                 createPosition
             )
 
             if isCreate {
                 onClose()
             } else {
+                originalDraft = submittedDraft
                 isEditing = false
             }
         } catch {
@@ -99,6 +141,7 @@ extension UniverseNodeSheet {
     func delete(
         _ node: UniverseNode
     ) async {
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer {
@@ -119,6 +162,7 @@ extension UniverseNodeSheet {
     func restore(
         _ node: UniverseNode
     ) async {
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer {
@@ -138,6 +182,7 @@ extension UniverseNodeSheet {
     func deleteRelation(
         _ relation: UniverseRelation
     ) async {
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         defer {
@@ -157,11 +202,12 @@ extension UniverseNodeSheet {
     }
 
     func resetDraft() {
-        draft = UniverseNodeDraft(
+        let fresh = UniverseNodeDraft(
             node: node,
-            sourceDiaryIDs:
-                sources.map(\.diaryId)
+            sourceDiaryIDs: sources.map(\.diaryId)
         )
+        draft = fresh
+        originalDraft = fresh
     }
 
     func formattedDate(
