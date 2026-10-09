@@ -1185,3 +1185,48 @@ test("Todo textarea selection is not clipped by inherited rounded form corners",
     /\.todo-paper-row textarea:focus\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*outline:\s*none;/s,
   );
 });
+
+test("Delete at the row end retains current ID/status and caret after merging next", async () => {
+  const harness = installDom();
+  try {
+    const editorRef = await renderTodoEditor(harness, { initialEntries: [
+      { id: "l-1", author: "L", kind: "completed", text: "First" },
+      { id: "l-2", author: "L", kind: "record", text: "Second" },
+    ] });
+    const first = harness.container.querySelector<HTMLTextAreaElement>('[aria-label="Todo 第 1 行"]')!;
+    await act(async () => {
+      first.focus();
+      first.setSelectionRange(5, 5);
+      first.dispatchEvent(new harness.dom.window.KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    assert.deepEqual(editorRef.current?.getNormalizedEntries(), [{ id: "l-1", kind: "completed", text: "FirstSecond" }]);
+    assert.equal(first.selectionStart, 5);
+    assert.equal(first.selectionEnd, 5);
+    assert.equal(harness.dom.window.document.activeElement, first);
+  } finally { await harness.cleanup(); }
+});
+
+test("CRLF paste over a selection keeps blank rows, suffix and caret before suffix", async () => {
+  const harness = installDom();
+  try {
+    const editorRef = await renderTodoEditor(harness);
+    const first = harness.container.querySelector<HTMLTextAreaElement>('[aria-label="Todo 第 1 行"]')!;
+    await act(async () => {
+      first.focus();
+      first.setSelectionRange(2, 4);
+      const event = new harness.dom.window.Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", { value: { getData: () => "A\r\n\r\nBC" } });
+      first.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const rows = harness.container.querySelectorAll<HTMLTextAreaElement>("textarea");
+    assert.deepEqual([...rows].slice(0, 3).map((row) => row.value), ["FiA", "", "BCt"]);
+    assert.equal(harness.dom.window.document.activeElement, rows[2]);
+    assert.equal(rows[2].selectionStart, 2);
+    assert.equal(rows[2].selectionEnd, 2);
+    const saved = editorRef.current?.getNormalizedEntries()!;
+    assert.deepEqual(saved.map((entry) => entry.text), ["FiA", "BCt"]);
+    assert.equal(new Set(saved.map((entry) => entry.id)).size, saved.length);
+  } finally { await harness.cleanup(); }
+});
