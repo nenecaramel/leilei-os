@@ -91,7 +91,7 @@ struct MindMemoryListView: View {
                     .pickerStyle(.inline)
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 15, weight: .light))
+                        .font(.system(size: 13, weight: .light))
                 }
                 .accessibilityLabel("Mind 排序")
             }
