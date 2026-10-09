@@ -7201,13 +7201,6 @@ body:has(.system-page) {
   cursor: pointer;
 }
 
-.memory-page .memory-editor { display: grid; gap: 16px; padding: 12px 0; }
-.memory-page .memory-editor label { display: grid; gap: 8px; font-size: 13px; }
-.memory-page .memory-editor textarea { min-height: 180px; resize: vertical; width: 100%; font: inherit; line-height: 1.7; background: transparent; border: 1px solid #bbb8; border-radius: 4px; padding: 8px; box-sizing: border-box; }
-.memory-page .memory-editor input { max-width: 100%; font: inherit; padding: 8px; background: transparent; border: 1px solid #bbb8; border-radius: 4px; }
-
-.memory-page .memory-editor .memory-paper-control,
-.memory-page .memory-paper-control,
 .paper-detail-paper[id^="memory-"] .memory-paper-control {
   width: fit-content;
   padding: 4px;
@@ -7218,9 +7211,7 @@ body:has(.system-page) {
   font-size: 13px;
   cursor: pointer;
 }
-.memory-page .memory-editor .memory-paper-control:disabled { opacity: 0.45; cursor: default; }
 .day-space-paper-memory .day-space-diary-preview { max-height: 100%; overflow: hidden; }
-@media (max-width: 760px) { .memory-page .memory-editor input, .memory-page .memory-editor textarea { font-size: 16px; } }
 
 /* Shared ruled-paper typography: one 30px grid in read and edit modes. */
 .paper-detail-paper:has(.todo-paper-editor, .diary-paper-editor, .memory-paper-entries, .memory-paper-content) {

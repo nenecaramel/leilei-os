@@ -1,177 +1,393 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebApiClient } from "../api/useWebApiClient";
+import { ModuleStateMessage } from "../components/ModuleSearch";
+import { ModulePageHeader } from "./ModulePageHeader";
+import {
+  ModuleMonthLoading,
+  ModuleMonthRows,
+  type ModuleMonthGroup,
+} from "./ModuleMonthRows";
 import { MemoryDetail } from "./MemoryDetail";
+import { MemoryCreatePaper } from "./MemoryCreatePaper";
+import { PaperDetailDialog } from "./PaperDetailDialog";
+import { formatDiaryRowDate } from "./diary-presentation";
 import {
   getMemory,
   searchMemory,
   type MemoryItem,
   type MemorySummary,
 } from "./memory-api";
+
+type Filters = { query: string; dateFrom: string; dateTo: string };
+function readLocation() {
+  const query = new URLSearchParams(window.location.search);
+  return {
+    filters: {
+      query: query.get("q") ?? "",
+      dateFrom: query.get("dateFrom") ?? "",
+      dateTo: query.get("dateTo") ?? "",
+    },
+    id: query.get("memoryId"),
+  };
+}
+function buildLocation(filters: Filters, id: string | null) {
+  const query = new URLSearchParams();
+  if (filters.query) query.set("q", filters.query);
+  if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) query.set("dateTo", filters.dateTo);
+  if (id) query.set("memoryId", id);
+  return `${window.location.pathname}${query.size ? `?${query}` : ""}`;
+}
+function monthGroups(rows: MemorySummary[]): ModuleMonthGroup[] {
+  const groups = new Map<string, ModuleMonthGroup>();
+  for (const row of rows) {
+    const key = row.date?.slice(0, 7) ?? "undated";
+    if (!groups.has(key))
+      groups.set(key, {
+        key,
+        label: row.date
+          ? `${Number(key.slice(0, 4))}年${Number(key.slice(5))}月`
+          : "",
+        rows: [],
+      });
+    groups.get(key)!.rows.push({
+      id: row.id,
+      title: row.snippet,
+      date: row.date ? formatDiaryRowDate(row.date) : "",
+      attributes: { "data-memory-id": row.id },
+    });
+  }
+  return [...groups.values()];
+}
+
 export function MindPageContent({ api }: { api: WebApiClient }) {
-  const [undated, setUndated] = useState(false);
+  const [location, setLocation] = useState(readLocation);
+  const { filters, id } = location;
+  const [searchDraft, setSearchDraft] = useState(filters.query);
   const [rows, setRows] = useState<MemorySummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreError, setMoreError] = useState(false);
   const [item, setItem] = useState<MemoryItem | null>(null);
-  const [error, setError] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [detailRevision, setDetailRevision] = useState(0);
   const [revision, setRevision] = useState(0);
+  const [readyRevision, setReadyRevision] = useState(-1);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState("");
+  const navigationGuard = useRef<(() => boolean) | null>(null);
+  const registerNavigationGuard = useCallback(
+    (guard: (() => boolean) | null) => {
+      navigationGuard.current = guard;
+    },
+    [],
+  );
+  const readyFilters = useRef<Filters | null>(null);
+  const focusAfterRefresh = useRef<string | null>(null);
   const generation = useRef(0);
-  const createIdentity = useRef<{ text: string; id: string } | null>(null);
+  const moreGate = useRef(false);
+  const detailTrigger = useRef<HTMLElement | null>(null);
+  const createTrigger = useRef<HTMLElement | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentLocation = useRef(location);
+  currentLocation.current = location;
+  const filterError =
+    filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo
+      ? "开始日期不能晚于结束日期"
+      : "";
+  const searchPending = searchDraft !== filters.query;
+  const filtered = Boolean(filters.query || filters.dateFrom || filters.dateTo);
+  function navigate(next: typeof location) {
+    const url = buildLocation(next.filters, next.id);
+    if (url !== `${window.location.pathname}${window.location.search}`)
+      window.history.pushState(null, "", url);
+    currentLocation.current = next;
+    setLocation(next);
+  }
+  function commitFilters(next: Filters) {
+    generation.current++;
+    navigate({ filters: next, id: null });
+  }
+  useEffect(() => {
+    function restore() {
+      if (navigationGuard.current && !navigationGuard.current()) {
+        const previous = currentLocation.current;
+        window.history.pushState(
+          null,
+          "",
+          buildLocation(previous.filters, previous.id),
+        );
+        return;
+      }
+      setAdding(false);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      generation.current++;
+      const next = readLocation();
+      const previous = currentLocation.current;
+      if (
+        next.filters.query === previous.filters.query &&
+        next.filters.dateFrom === previous.filters.dateFrom &&
+        next.filters.dateTo === previous.filters.dateTo
+      )
+        next.filters = previous.filters;
+      if (previous.id && !next.id) focusAfterRefresh.current = previous.id;
+      currentLocation.current = next;
+      setSearchDraft(next.filters.query);
+      setLocation(next);
+    }
+    window.addEventListener("popstate", restore);
+    return () => {
+      window.removeEventListener("popstate", restore);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      generation.current++;
+    };
+  }, []);
   useEffect(() => {
     const ticket = ++generation.current;
     const abort = new AbortController();
-    setBusy(true);
+    moreGate.current = false;
+    setMoreBusy(false);
+    setMoreError(false);
     setRows([]);
     setCursor(null);
-    setError(false);
-    void searchMemory(api, undated, null, abort.signal)
+    if (filterError) {
+      setStatus("ready");
+      return () => abort.abort();
+    }
+    setStatus("loading");
+    void searchMemory(api, filters, null, abort.signal)
       .then((page) => {
-        if (ticket === generation.current) {
-          setRows(page.items);
-          setCursor(page.nextCursor);
-        }
+        if (ticket !== generation.current || abort.signal.aborted) return;
+        setRows(page.items);
+        setCursor(page.nextCursor);
+        readyFilters.current = filters;
+        setReadyRevision(revision);
+        setStatus("ready");
       })
       .catch(() => {
-        if (!abort.signal.aborted) setError(true);
-      })
-      .finally(() => {
-        if (ticket === generation.current) setBusy(false);
+        if (ticket === generation.current && !abort.signal.aborted)
+          setStatus("error");
       });
     return () => abort.abort();
-  }, [api, undated, revision]);
+  }, [api, filters, revision, filterError]);
+  useEffect(() => {
+    if (
+      status !== "ready" ||
+      readyRevision !== revision ||
+      readyFilters.current !== filters ||
+      id ||
+      !focusAfterRefresh.current
+    )
+      return;
+    const row = [
+      ...document.querySelectorAll<HTMLElement>("[data-memory-id]"),
+    ].find((node) => node.dataset.memoryId === focusAfterRefresh.current);
+    (
+      row ?? document.querySelector<HTMLElement>('[aria-label="新增记忆"]')
+    )?.focus({ preventScroll: true });
+    focusAfterRefresh.current = null;
+  }, [status, rows, id, filters, readyRevision, revision]);
+  useEffect(() => {
+    const abort = new AbortController();
+    setItem(null);
+    setDetailError(false);
+    if (id)
+      void getMemory(api, id, abort.signal)
+        .then((value) => {
+          if (!abort.signal.aborted) setItem(value);
+        })
+        .catch(() => {
+          if (!abort.signal.aborted) setDetailError(true);
+        });
+    return () => abort.abort();
+  }, [api, id, detailRevision]);
   async function more() {
+    if (!cursor || moreGate.current) return;
     const ticket = generation.current;
-    setBusy(true);
+    moreGate.current = true;
+    setMoreBusy(true);
+    setMoreError(false);
     try {
-      const page = await searchMemory(api, undated, cursor);
-      if (ticket === generation.current) {
-        setRows((old) => [
-          ...old,
-          ...page.items.filter((row) => !old.some((x) => x.id === row.id)),
-        ]);
-        setCursor(page.nextCursor);
-      }
+      const page = await searchMemory(api, filters, cursor);
+      if (ticket !== generation.current) return;
+      setRows((old) => [
+        ...old,
+        ...page.items.filter((row) => !old.some((x) => x.id === row.id)),
+      ]);
+      setCursor(page.nextCursor);
     } catch {
-      if (ticket === generation.current) setError(true);
+      if (ticket === generation.current) setMoreError(true);
     } finally {
-      if (ticket === generation.current) setBusy(false);
+      if (ticket === generation.current) {
+        moreGate.current = false;
+        setMoreBusy(false);
+      }
     }
   }
+  function closeDetail() {
+    navigate({ ...currentLocation.current, id: null });
+    return true;
+  }
+  function clearFilters() {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setSearchDraft("");
+    commitFilters({ query: "", dateFrom: "", dateTo: "" });
+  }
   return (
-    <div className="page memory-page">
-      <header className="memory-page-header">
-        <div className="memory-page-title">Mind</div>
-        <div className="memory-page-tools">
+    <div className="page memory-page mind-page">
+      <ModulePageHeader
+        title="Mind"
+        countLabel={status === "ready" ? `已读取 ${rows.length} 条记忆` : ""}
+        searchLabel="搜索记忆"
+        searchPlaceholder="Search memories..."
+        createLabel="新增记忆"
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        searchDraft={searchDraft}
+        filterError={filterError}
+        busy={Boolean(id) || adding}
+        onDateFromChange={(dateFrom) => {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          commitFilters({ ...filters, query: searchDraft, dateFrom });
+        }}
+        onDateToChange={(dateTo) => {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          commitFilters({ ...filters, query: searchDraft, dateTo });
+        }}
+        onDateRangeClear={() => {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          commitFilters({
+            ...filters,
+            query: searchDraft,
+            dateFrom: "",
+            dateTo: "",
+          });
+        }}
+        onSearchChange={(query) => {
+          setSearchDraft(query);
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          searchTimer.current = setTimeout(
+            () => commitFilters({ ...currentLocation.current.filters, query }),
+            250,
+          );
+        }}
+        onCreate={(trigger) => {
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          if (searchPending) commitFilters({ ...filters, query: searchDraft });
+          createTrigger.current = trigger;
+          setAdding(true);
+        }}
+      />
+      {status === "loading" ? (
+        <ModuleMonthLoading label="Mind 加载中" loadingText="正在读取记忆…" />
+      ) : null}
+      {status === "error" ? (
+        <ModuleStateMessage
+          state="error"
+          placement="page"
+          emptyText=""
+          errorText="Unable to read memories."
+          onRetry={() => setRevision((n) => n + 1)}
+        />
+      ) : null}
+      {status === "ready" && !filterError ? (
+        rows.length ? (
+          <ModuleMonthRows
+            groups={monthGroups(rows)}
+            busy={Boolean(id) || adding || searchPending}
+            label="Mind 列表"
+            onOpen={(id, trigger) => {
+              detailTrigger.current = trigger;
+              navigate({ ...location, id });
+            }}
+          />
+        ) : (
+          <ModuleStateMessage
+            state="empty"
+            placement="page"
+            emptyText={filtered ? "没有符合条件的记忆" : "还没有记忆"}
+            errorText=""
+            action={
+              filtered ? (
+                <button
+                  className="secondary-button memory-empty-clear"
+                  onClick={clearFilters}
+                >
+                  清除条件
+                </button>
+              ) : undefined
+            }
+          />
+        )
+      ) : null}
+      {moreError ? (
+        <ModuleStateMessage
+          state="error"
+          emptyText=""
+          errorText="Unable to read more memories."
+          onRetry={() => void more()}
+        />
+      ) : null}
+      {cursor && !moreError ? (
+        <div className="global-search-load-more">
           <button
-            className="memory-paper-control"
-            onClick={() => setUndated(!undated)}
+            className="global-search-load-more-button"
+            disabled={moreBusy || searchPending}
+            onClick={() => void more()}
           >
-            {undated ? "全部 Memory" : "未指定日期"}
-          </button>
-          <button
-            className="memory-paper-control"
-            onClick={() => setAdding(true)}
-          >
-            新增 Memory
+            {moreBusy ? "Reading..." : "更多"}
           </button>
         </div>
-      </header>
+      ) : null}
       {adding ? (
-        <form
-          className="memory-editor"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setBusy(true);
-            if (createIdentity.current?.text !== draft)
-              createIdentity.current = { text: draft, id: crypto.randomUUID() };
-            void api
-              .request("/mind", {
-                method: "POST",
-                headers: { "Idempotency-Key": createIdentity.current!.id },
-                body: JSON.stringify({ kind: "memory", text: draft }),
-              })
-              .then(() => {
-                setAdding(false);
-                setDraft("");
-                createIdentity.current = null;
-                setRevision((n) => n + 1);
-              })
-              .catch(() => setError(true))
-              .finally(() => setBusy(false));
-          }}
+        <MemoryCreatePaper
+          registerNavigationGuard={registerNavigationGuard}
+          api={api}
+          triggerRef={createTrigger}
+          onClose={() => setAdding(false)}
+          onCreated={() => setRevision((n) => n + 1)}
+        />
+      ) : null}
+      {id && !item ? (
+        <PaperDetailDialog
+          id="memory-loading-paper"
+          open
+          label="Memory"
+          dateLabel=""
+          signature="Memory"
+          triggerRef={detailTrigger}
+          onRequestClose={closeDetail}
         >
-          <label>
-            正文
-            <textarea
-              required
-              maxLength={20000}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-          </label>
-          <button
-            className="memory-paper-control"
-            disabled={busy || !draft.trim()}
-          >
-            保存
-          </button>
-          <button
-            type="button"
-            className="memory-paper-control"
-            disabled={busy}
-            onClick={() => setAdding(false)}
-          >
-            取消
-          </button>
-        </form>
+          <ModuleStateMessage
+            state={detailError ? "error" : "loading"}
+            placement="paper"
+            emptyText=""
+            errorText="Unable to read memory."
+            loadingText="Reading..."
+            onRetry={() => setDetailRevision((n) => n + 1)}
+          />
+        </PaperDetailDialog>
       ) : null}
-      {error ? (
-        <p role="alert">
-          无法读取 Memory。
-          <button onClick={() => setRevision((n) => n + 1)}>重试</button>
-        </p>
-      ) : null}
-      {busy && rows.length === 0 ? <p role="status">Reading...</p> : null}
-      {!busy && !error && rows.length === 0 ? <p>没有 Memory</p> : null}
-      <div className="memory-month-card">
-        {rows.map((row) => (
-          <button
-            className="memory-row"
-            key={row.id}
-            onClick={() => {
-              void getMemory(api, row.id)
-                .then(setItem)
-                .catch(() => setError(true));
-            }}
-          >
-            <span className="memory-row-title">{row.snippet}</span>
-            <span className="memory-row-meta">{row.date ?? "未指定日期"}</span>
-          </button>
-        ))}
-      </div>
-      {cursor ? (
-        <button
-          className="memory-paper-control"
-          disabled={busy}
-          onClick={() => void more()}
-        >
-          更多
-        </button>
-      ) : null}
-      {item ? (
+      {id && item ? (
         <MemoryDetail
+          registerNavigationGuard={registerNavigationGuard}
           key={item.id}
           api={api}
           initial={item}
-          onClose={() => setItem(null)}
-          onSaved={() => setRevision((n) => n + 1)}
+          triggerRef={detailTrigger}
+          onClose={closeDetail}
+          onSaved={(saved) => {
+            focusAfterRefresh.current = saved.id;
+            setRevision((n) => n + 1);
+          }}
           onDelete={async () => {
             await api.request(`/mind/${encodeURIComponent(item.id)}`, {
               method: "DELETE",
             });
-            setItem(null);
+            focusAfterRefresh.current = item.id;
+            closeDetail();
             setRevision((n) => n + 1);
           }}
         />
