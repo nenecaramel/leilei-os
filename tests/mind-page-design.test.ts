@@ -674,7 +674,7 @@ test("Mind reuses Diary empty layout and search loading instead of list skeleton
   }
 });
 
-test("default occurrence is not a dirty draft; explicitly clearing it still creates an undated memory", async () => {
+test("default occurrence is not a dirty draft and creation has no undated action", async () => {
   let confirms = 0;
   let posted: any;
   const api = {
@@ -702,7 +702,16 @@ test("default occurrence is not a dirty draft; explicitly clearing it still crea
     assert.equal(confirms, 0);
     assert.ok(!ui.dom.window.document.querySelector('[role="dialog"]'));
     await ui.click(create);
-    await ui.click(ui.button("未指定日期"));
+    assert.ok(
+      ![...ui.dom.window.document.querySelectorAll("button")].some(
+        (x) => x.textContent === "未指定日期",
+      ),
+    );
+    await setInput(
+      ui,
+      ui.dom.window.document.querySelector('input[type="datetime-local"]')!,
+      "",
+    );
     await setInput(
       ui,
       ui.dom.window.document.querySelector("textarea")!,
@@ -712,6 +721,41 @@ test("default occurrence is not a dirty draft; explicitly clearing it still crea
     assert.equal(posted.occurred_at, null);
     assert.match(ui.dom.window.location.search, /memoryId=a/);
     assert.ok(ui.button("编辑"));
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("Memory date control opens the native picker from the visible date and has no undated action", async () => {
+  const ui = await render(
+    React.createElement(MemoryDetail, {
+      api: {} as any,
+      initial: item,
+      onSaved: () => {},
+      onClose: () => {},
+    }),
+  );
+  try {
+    await ui.click(ui.button("编辑"));
+    const input = ui.dom.window.document.querySelector(
+      'input[type="datetime-local"]',
+    ) as HTMLInputElement;
+    let opened = 0;
+    input.showPicker = () => {
+      opened++;
+    };
+    await ui.click(input);
+    assert.equal(opened, 1);
+    await React.act(async () => input.dispatchEvent(new ui.dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert.equal(opened, 2);
+    input.showPicker = () => { throw new Error("Picker unavailable"); };
+    await ui.click(input);
+    assert.ok(ui.dom.window.document.activeElement === input);
+    assert.ok(
+      ![...ui.dom.window.document.querySelectorAll("button")].some(
+        (x) => x.textContent === "未指定日期",
+      ),
+    );
   } finally {
     await ui.cleanup();
   }

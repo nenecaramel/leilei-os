@@ -105,7 +105,7 @@ export function ModulePageHeader({
       </div>
 
       <div className="memory-page-tools diary-page-tools">
-        <div className="memory-page-tool-wrap task-time-tool-wrap">
+        <div className="memory-page-tool-wrap memory-page-date-tool-wrap">
           <button
             type="button"
             aria-label="按日期筛选"

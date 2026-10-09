@@ -27,8 +27,8 @@ struct SidebarView: View {
                                 title: nil,
                                 pages: [
                                     .diary,
-                                    .daySpace,
                                     .mind,
+                                    .daySpace,
                                     .universe
                                 ],
                                 selectedPage: $selectedPage,

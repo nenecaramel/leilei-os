@@ -3,6 +3,7 @@ import type { WebApiClient } from "../api/useWebApiClient";
 import { useUnsavedChanges } from "./use-unsaved-changes";
 import { PaperDetailDialog } from "./PaperDetailDialog";
 import { PaperDetailActions } from "./PaperDetailActions";
+import { PaperDateEditor } from "./PaperDateEditor";
 import { PaperBodyEditor } from "./PaperBodyEditor";
 import {
   getMemory,
@@ -25,22 +26,14 @@ export function MemoryPaperDateEditor({
   onChange(value: string): void;
 }) {
   return (
-    <label className="diary-paper-date-editor memory-entry-date-editor">
-      <span>
-        {value
-          ? value.replace("T", " ").slice(0, 16).replaceAll("-", ".")
-          : "未指定日期"}
-      </span>
-      <input
-        type="datetime-local"
-        aria-label={label}
-        step="60"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        onInput={(event) => onChange(event.currentTarget.value)}
-      />
-    </label>
+    <PaperDateEditor
+      value={value}
+      disabled={disabled}
+      label={label}
+      type="datetime-local"
+      display={value.replace("T", " ").slice(0, 16).replaceAll("-", ".")}
+      onChange={onChange}
+    />
   );
 }
 
@@ -223,25 +216,6 @@ export function MemoryPaper({
           }
         />
       }
-      bottomLeft={
-        <>
-          {editing &&
-          showEntryDates &&
-          drafts.length === 1 &&
-          drafts[0].date ? (
-            <button
-              className="memory-paper-control"
-              disabled={busy}
-              onClick={() => {
-                patch(drafts[0].item.id, { date: "" });
-                setError(null);
-              }}
-            >
-              未指定日期
-            </button>
-          ) : null}
-        </>
-      }
     >
       <div className="memory-paper-entries">
         {drafts.map((draft, index) => (
@@ -257,18 +231,6 @@ export function MemoryPaper({
                     setError(null);
                   }}
                 />
-                {draft.date ? (
-                  <button
-                    className="memory-paper-control"
-                    disabled={busy}
-                    onClick={() => {
-                      patch(draft.item.id, { date: "" });
-                      setError(null);
-                    }}
-                  >
-                    未指定日期
-                  </button>
-                ) : null}
               </div>
             ) : null}
             {editing ? (
@@ -293,11 +255,11 @@ export function MemoryPaper({
                     <p className="memory-paper-conflict-text">
                       {draft.conflict.text}
                     </p>
-                    {showEntryDates ? (
+                    {showEntryDates && draft.conflict.occurredAt ? (
                       <p>
                         {memoryLocalTime(draft.conflict.occurredAt)
                           .replace("T", " ")
-                          .slice(0, 16) || "未指定日期"}
+                          .slice(0, 16)}
                       </p>
                     ) : null}
                     <button
