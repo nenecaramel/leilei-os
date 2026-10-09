@@ -44,13 +44,15 @@ test("pull to refresh does not silently mean load older history", () => {
 });
 
 
+const transforms = fs.readFileSync("ios/LeileiOS/LeileiOS/App/NativeLiveCurrentPathTransforms.swift", "utf8");
+
 test("forced current-path refresh replaces the recent suffix without dropping loaded older history", () => {
   assert.match(
     conversationCoordination,
     /let deltaAnchor =[\s\S]*requireForceRefresh[\s\S]*\? nil[\s\S]*existingSnapshot\?\.currentHeadMessageId/,
   );
   assert.match(
-    conversationCoordination,
+    transforms,
     /mergeNativeLiveRefresh\([\s\S]*preservedPrefix \+ refreshed\.messages/,
   );
   assert.match(
@@ -58,11 +60,11 @@ test("forced current-path refresh replaces the recent suffix without dropping lo
     /chatRefreshPendingForce = false[\s\S]*requireForceRefresh = true/,
   );
   assert.match(
-    conversationCoordination,
+    transforms,
     /truncated: existing\.truncated/,
   );
   assert.match(
-    conversationCoordination,
+    transforms,
     /olderCursor: existing\.olderCursor/,
   );
 });
