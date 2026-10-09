@@ -87,6 +87,8 @@ struct MindMemoryListView: View {
                             Text(order.displayName).tag(order)
                         }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.inline)
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
                 }
