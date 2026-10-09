@@ -340,9 +340,7 @@ struct DaySpaceView: View {
             if let completeTodoSearch {
                 all = completeTodoSearch
             } else {
-                let data = try await appModel.api.exportData(
-                    includeAudit: false
-                )
+                let data = try await appModel.api.exportData()
                 let snapshot = try JSONDecoder().decode(
                     LeileiExportSnapshot.self,
                     from: data

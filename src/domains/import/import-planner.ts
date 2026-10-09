@@ -13,7 +13,7 @@ import type {
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
   ExportMindSemanticGroupingResultRecord,
-  ExportMindStateRecord,
+  HistoricalMindStateRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
 } from "../export/export-types.js";
@@ -48,7 +48,7 @@ export type ImportCurrentState = {
   diary: ExportDiaryRecord[];
   diary_comments?: ExportDiaryCommentRecord[];
   todo: ExportTodoPaper[];
-  mind?: ExportMindStateRecord[];
+  mind?: HistoricalMindStateRecord[];
   mind_continuity?: ExportMindContinuityBundle;
   conversations?: ExportConversationsBundle;
   universe?: ExportUniverseBundle | null;
@@ -129,7 +129,7 @@ export type ImportPlanItem = {
     | ExportDiaryRecord
     | ExportDiaryCommentRecord
     | ExportTodoPaper
-    | ExportMindStateRecord
+    | HistoricalMindStateRecord
     | MindContinuityRestoreRecord
     | ConversationRestoreRecord
     | UniverseRestoreRecord;
@@ -164,7 +164,7 @@ function classify<
     | ExportDiaryRecord
     | ExportDiaryCommentRecord
     | ExportTodoPaper
-    | ExportMindStateRecord,
+    | HistoricalMindStateRecord,
 >(
   module: "diary" | "diary_comments" | "todo" | "mind",
   imported: T[],
@@ -257,7 +257,7 @@ function classifyMindContinuityEntity<T>(
 function mindContinuityItems(
   imported: ExportMindContinuityBundle,
   current: ImportCurrentState,
-  importedMind: ExportMindStateRecord[],
+  importedMind: HistoricalMindStateRecord[],
   importedConversations: ExportConversationsBundle | undefined,
 ): ImportPlanItem[] {
   const currentContinuity = current.mind_continuity ?? {
@@ -293,6 +293,11 @@ function mindContinuityItems(
       `${record.subject_id}:${record.kind}:${record.query_state_id}`,
   );
 
+  // Archive names describe historical events, not current state kinds. State FKs
+  // must resolve to owned Memory; never recreate retired states to satisfy them.
+  // Grouping candidates are self-contained historical snapshots without a state
+  // FK. Their kinds/scores are validated by import-schema, even if a candidate
+  // has since been deleted. Only the grouping query has a durable state FK.
   const states = new Map(
     [
       ...(current.mind ?? []),
@@ -371,7 +376,7 @@ function mindContinuityItems(
     ) {
       item.classification = "conflict";
     } else if (
-      state?.kind !== "drive"
+      state?.kind !== "memory"
       || state.subject_id !== record.subject_id
       || !conversations.has(record.conversation_id)
       || !message
@@ -417,7 +422,7 @@ function mindContinuityItems(
     ) {
       item.classification = "conflict";
     } else if (
-      state?.kind !== "curiosity"
+      state?.kind !== "memory"
       || state.subject_id !== record.subject_id
       || !conversations.has(record.conversation_id)
       || !message
@@ -446,9 +451,6 @@ function mindContinuityItems(
     const record =
       (item.record as MindContinuityRestoreRecord).value as ExportMindSemanticGroupingResultRecord;
     const queryState = states.get(record.query_state_id);
-    const candidateStates = record.candidates.map(
-      (candidate) => states.get(String(candidate.stateId)),
-    );
 
     if (
       (importedGroupingIdCounts.get(record.id) ?? 0) > 1
@@ -463,14 +465,8 @@ function mindContinuityItems(
     ) {
       item.classification = "conflict";
     } else if (
-      queryState?.kind !== record.kind
+      queryState?.kind !== "memory"
       || queryState.subject_id !== record.subject_id
-      || candidateStates.some(
-        (candidate) =>
-          candidate === undefined
-          || candidate.kind !== record.kind
-          || candidate.subject_id !== record.subject_id,
-      )
     ) {
       item.classification = "invalid";
     }
@@ -1050,7 +1046,7 @@ export function buildImportPlan(
     );
     for (const item of mindItems) {
       if (item.classification !== "create") continue;
-      const record = item.record as ExportMindStateRecord;
+      const record = item.record as HistoricalMindStateRecord;
       if (current.foreign_mind_ids?.has(record.id)) {
         item.classification = "conflict";
       }

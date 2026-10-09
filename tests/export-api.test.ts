@@ -9,9 +9,7 @@ import type { ExportDocument } from "../src/domains/export/export-types.js";
 const USER_ID =
   "00000000-0000-4000-8000-000000000099";
 
-function documentFor(
-  includeAudit: boolean,
-): ExportDocument {
+function documentFor(): ExportDocument {
   return {
     schema_version: 4,
     owner_fingerprint: "a".repeat(64),
@@ -41,15 +39,11 @@ function documentFor(
       },
       universe: null,
     },
-    ...(includeAudit
-      ? { audit: { lifecycle: [], tool_activity: [] } }
-      : {}),
   };
 }
 function dependencies(exportService: {
   createExport: (
     userId: string,
-    includeAudit: boolean,
   ) => Promise<ExportDocument>;
 }) {
   return {
@@ -68,7 +62,6 @@ async function withServer(
   exportService: {
     createExport: (
     userId: string,
-    includeAudit: boolean,
   ) => Promise<ExportDocument>;
   },
   callback: (baseUrl: string) => Promise<void>,
@@ -140,14 +133,13 @@ test("export requires authentication before service access", async () => {
 test("export creates one full backup and accepts legacy scope=all", async () => {
   const calls: Array<{
     userId: string;
-    includeAudit: boolean;
   }> = [];
 
   await withServer(
     {
-      async createExport(userId, includeAudit) {
-        calls.push({ userId, includeAudit });
-        return documentFor(includeAudit);
+      async createExport(userId) {
+        calls.push({ userId });
+        return documentFor();
       },
     },
     async (baseUrl) => {
@@ -174,8 +166,8 @@ test("export creates one full backup and accepts legacy scope=all", async () => 
   );
 
   assert.deepEqual(calls, [
-    { userId: USER_ID, includeAudit: true },
-    { userId: USER_ID, includeAudit: false },
+    { userId: USER_ID },
+    { userId: USER_ID },
   ]);
 });
 
@@ -195,8 +187,6 @@ test("export rejects partial, repeated, and unknown scopes", async () => {
         "scope=task",
         "scope=shared_paper",
         "scope=all&scope=all",
-        "include_audit=1",
-        "include_audit=false&include_audit=true",
       ]) {
         const response = await fetch(
           `${baseUrl}/api/v1/system/export${query ? `?${query}` : ""}`,

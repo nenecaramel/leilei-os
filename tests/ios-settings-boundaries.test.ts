@@ -13,7 +13,7 @@ test("Settings sheet owns navigation only and stays coordinator-sized", () => {
   assert.match(source, /navigationDestination\(for: SettingsDetailPage.self\)/);
   assert.match(source, /private struct SettingsDetailLayer/);
   assert.doesNotMatch(source, /struct Settings(?:HomeContent|SummaryContent|SectionState)|@AppStorage|func loadSummary|UNUserNotificationCenter/);
-  for (const name of ["Summary", "Export", "Restore", "Status", "Activity", "About"]) {
+  for (const name of ["Summary", "Export", "Restore", "Status", "About"]) {
     assert.match(source, new RegExp(`Settings${name}Content\\(`));
   }
 });
@@ -32,7 +32,7 @@ test("Settings home retains local appearance notification and auth coordination"
   assert.match(home, /try await appModel.signOut\(\)/);
   assert.match(home, /authErrorMessage = error.localizedDescription/);
   assert.match(home, /\.background\(Color.settingsBackground\)/);
-  for (const route of ["summary", "export", "restore", "status", "activity", "about"]) {
+  for (const route of ["summary", "export", "restore", "status", "about"]) {
     assert.match(home, new RegExp(`NavigationLink\\(value: SettingsDetailPage.${route}\\)`));
   }
 });
@@ -54,7 +54,7 @@ test("Settings shared presentation and existing detail boundaries stay separate"
   assert.match(presentation, /struct SettingsSectionState: View/);
   assert.match(presentation, /static let settingsBackground/);
   assert.match(presentation, /minHeight: 44/);
-  for (const name of ["About", "Activity", "Export", "Restore", "Status"]) {
+  for (const name of ["About", "Export", "Restore", "Status"]) {
     assert.match(read(`Settings/Settings${name}Content.swift`), new RegExp(`struct Settings${name}Content: View`));
   }
   const sources = [read("SettingsSheetView.swift"), ...readdirSync(navigation + "Settings")

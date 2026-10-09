@@ -322,9 +322,7 @@ struct UniverseDiarySourcePicker: View {
             if let completeResults {
                 all = completeResults
             } else {
-                let data = try await appModel.api.exportData(
-                    includeAudit: false
-                )
+                let data = try await appModel.api.exportData()
                 let snapshot = try JSONDecoder().decode(
                     LeileiExportSnapshot.self,
                     from: data

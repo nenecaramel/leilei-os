@@ -21,7 +21,7 @@ const runIntegration =
   );
 
 test(
-  "real v3 product backup round-trips linked durable state",
+  "real v4 memory-only backup round-trips historical Continuity with current foreign keys",
   { skip: !runIntegration },
   async () => {
     const client = postgres(
@@ -235,8 +235,12 @@ test(
         userId,
         subjectId: "claude",
         kind: "memory",
-        text: "Durable memory",
-        payload: null,
+        text: "  Durable memory\nwith its original whitespace  ",
+        payload: {
+          temporal_v1: { occurredAt: "2026-08-01T12:34:56.000Z" },
+          lifecycle_v1: { status: "active", reinforcementCount: 3, salience: 0.7 },
+          source: "manual",
+        },
         scopeApplicability: "path",
         scopeConversationId: conversationId,
         scopePathHeadMessageId: assistantMessageId,
@@ -245,15 +249,36 @@ test(
         validityStatus: "valid",
         envelope: {
           authority: "subject_authorized",
+          provenance: { sources: [{ kind: "conversation_message", id: assistantMessageId }] },
         },
         createdAt: now,
         updatedAt: now,
       });
+      const [storedMemory] = await db.select().from(schema.runtimeSubjectStates)
+        .where(eq(schema.runtimeSubjectStates.id, mindId));
+      assert.ok(storedMemory);
+      await assert.rejects(
+        db.insert(schema.runtimeSubjectStates).values({
+          ...storedMemory, id: randomUUID(), kind: "thought" as never,
+        }),
+        (error: unknown) => {
+          const cause = (error as { cause?: { code?: string; constraint_name?: string } }).cause;
+          return cause?.code === "23514"
+            && cause.constraint_name === "runtime_subject_states_kind_allowed";
+        },
+      );
+      await assert.rejects(new DrizzleImportRepository(db as never).insertMind(userId, {
+        id: randomUUID(), subject_id: "claude", kind: "drive", text: "retired",
+        payload: null, scope_applicability: "global", scope_conversation_id: null,
+        scope_path_head_message_id: null, settlement_status: "settled", path_status: "current",
+        validity_status: "valid", envelope: {}, created_at: now.toISOString(), updated_at: now.toISOString(),
+      }), /current memory kind/);
+
       await db.insert(schema.runtimeSubjectStates).values({
         id: driveId,
         userId,
         subjectId: "claude",
-        kind: "drive",
+        kind: "memory",
         text: "Durable drive",
         payload: {
           drive_v1: {
@@ -283,7 +308,7 @@ test(
         id: driveCandidateId,
         userId,
         subjectId: "claude",
-        kind: "drive",
+        kind: "memory",
         text: "Earlier durable drive",
         payload: {
           drive_v1: {
@@ -346,7 +371,7 @@ test(
         id: curiosityId,
         userId,
         subjectId: "claude",
-        kind: "curiosity",
+        kind: "memory",
         text: "Durable curiosity",
         payload: {
           curiosity_v1: {
@@ -390,14 +415,23 @@ test(
         updatedAt: now,
       });
 
+      await db.delete(schema.runtimeSubjectStates).where(eq(schema.runtimeSubjectStates.id, driveCandidateId));
+
       const exported = await new ExportService(
         new DrizzleExportRepository(
           db as never,
         ),
         () => now,
-      ).createExport(userId, "all", false);
+      ).createExport(userId);
 
       assert.equal(exported.schema_version, 4);
+      assert.equal("audit" in exported, false);
+      assert.equal(exported.data.mind?.length, 3);
+      assert.ok(exported.data.mind?.every(record => record.kind === "memory"));
+      assert.equal(exported.data.mind_continuity?.drive_satisfaction_events.length, 1);
+      assert.equal(exported.data.mind_continuity?.curiosity_resolution_events.length, 1);
+      assert.equal(exported.data.mind_continuity?.semantic_grouping_results.length, 1);
+      assert.equal(exported.data.mind_continuity?.distillation_watermarks.length, 1);
       assert.deepEqual(
         Object.keys(exported.data),
         [
@@ -492,7 +526,7 @@ test(
       );
       assert.equal(preview.summary.todo.create, 1);
       assert.equal(preview.summary.universe?.create, 1);
-      assert.equal(preview.summary.mind?.create, 8);
+      assert.equal(preview.summary.mind?.create, 7);
       assert.equal(
         preview.summary.conversations?.create,
         5,
@@ -577,7 +611,7 @@ test(
       assert.equal(messageCount[0]?.count, 2);
       assert.equal(blockCount[0]?.count, 1);
       assert.equal(checkpointCount[0]?.count, 1);
-      assert.equal(mindCount[0]?.count, 4);
+      assert.equal(mindCount[0]?.count, 3);
       assert.equal(driveEventCount[0]?.count, 1);
       assert.equal(curiosityEventCount[0]?.count, 1);
       assert.equal(groupingResultCount[0]?.count, 1);
@@ -728,6 +762,18 @@ test(
         conversationId,
         headMessageId: assistantMessageId,
       });
+
+      const reexported = await new ExportService(new DrizzleExportRepository(db as never), () => now)
+        .createExport(userId);
+      assert.deepEqual(reexported.data.mind, exported.data.mind);
+      assert.deepEqual(reexported.data.mind_continuity, exported.data.mind_continuity);
+      const repeated = await service.preview(raw, userId);
+      assert.equal(repeated.summary.mind?.create, 0);
+      assert.equal(repeated.summary.mind?.duplicate, 7);
+      assert.equal(repeated.can_execute, false);
+      await assert.rejects(service.execute(raw, userId, repeated.preview_fingerprint), /IMPORT_NOTHING_TO_RESTORE/);
+      assert.deepEqual((await new ExportService(new DrizzleExportRepository(db as never), () => now)
+        .createExport(userId)).data.mind_continuity, exported.data.mind_continuity);
 
     } finally {
       await db

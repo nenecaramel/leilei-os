@@ -11,7 +11,6 @@ import { DiaryPage } from "./pages/DiaryPageContainer";
 import { GlobalSearchPage } from "./pages/GlobalSearchPageContainer";
 import { SystemAboutPage } from "./pages/SystemAboutPage";
 import { SystemAccountPage } from "./pages/SystemAccountPage";
-import { SystemActivityPage } from "./pages/SystemActivityPage";
 import { SystemConnectionsPage } from "./pages/SystemConnectionsPage";
 import { SystemDataPage } from "./pages/SystemDataPage";
 import { UniversePage } from "./pages/UniversePageContainer";
@@ -33,33 +32,42 @@ export default function App() {
 
             <Route
               path="system"
-              element={<Navigate to="/system/account" replace />}
+              element={<Navigate to="/settings/account" replace />}
             />
             <Route
               path="settings"
-              element={<Navigate to="/system/account" replace />}
+              element={<Navigate to="/settings/account" replace />}
             />
 
             <Route
-              path="system/account"
+              path="settings/account"
               element={<SystemAccountPage />}
             />
             <Route
-              path="system/connections"
+              path="settings/status"
               element={<SystemConnectionsPage />}
             />
             <Route
-              path="system/data"
+              path="settings/data"
               element={<SystemDataPage />}
             />
             <Route
               path="system/activity"
-              element={<SystemActivityPage />}
+              element={<Navigate to="/settings/account" replace />}
             />
             <Route
-              path="system/about"
+              path="settings/about"
               element={<SystemAboutPage />}
             />
+
+            {[
+              ["system/account", "/settings/account"],
+              ["system/connections", "/settings/status"],
+              ["system/data", "/settings/data"],
+              ["system/about", "/settings/about"],
+            ].map(([path, to]) => (
+              <Route key={path} path={path} element={<Navigate to={to} replace />} />
+            ))}
 
             <Route
               path="universe"

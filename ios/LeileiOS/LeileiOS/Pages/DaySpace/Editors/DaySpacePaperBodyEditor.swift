@@ -5,10 +5,23 @@ enum DaySpacePaperTypography {
     static let bodySize: CGFloat = 14
     static let lineHeight: CGFloat = 30
 
-    // UIKit places the extra fixed-line leading above the glyphs by default.
-    // Raise the baseline by half that leading to center text between rules.
-    static var bodyBaselineOffset: CGFloat {
-        (lineHeight - UIFont.systemFont(ofSize: bodySize).lineHeight) / 2
+    static let bodyFont = UIFont.systemFont(ofSize: bodySize)
+
+    // Keep the font's natural line box. In TextKit 2, baselineOffset on a
+    // fixed-height paragraph changes the line advance and drifts off the rules.
+    static var bodyParagraphStyle: NSParagraphStyle {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = bodyFont.lineHeight
+        paragraph.maximumLineHeight = bodyFont.lineHeight
+        paragraph.lineSpacing = lineHeight - bodyFont.lineHeight
+        return paragraph
+    }
+
+    // Share the unused row height equally above and below the text. Together
+    // with lineSpacing this gives a centered first row and a 30pt line advance.
+    static var bodyInsets: UIEdgeInsets {
+        let leading = (lineHeight - bodyFont.lineHeight) / 2
+        return UIEdgeInsets(top: leading, left: 0, bottom: leading, right: 0)
     }
 
     static func layoutHeight(_ height: CGFloat, minimum: CGFloat) -> CGFloat {
@@ -32,7 +45,7 @@ struct DaySpacePaperBodyEditor: UIViewRepresentable {
         let textView = UITextView()
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
-        textView.textContainerInset = .zero
+        textView.textContainerInset = DaySpacePaperTypography.bodyInsets
         textView.textContainer.lineFragmentPadding = 0
         textView.delegate = context.coordinator
         textView.autocorrectionType = .default
@@ -106,20 +119,13 @@ struct DaySpacePaperBodyEditor: UIViewRepresentable {
     private var textAttributes: [
         NSAttributedString.Key: Any
     ] {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = DaySpacePaperTypography.lineHeight
-        paragraph.maximumLineHeight = DaySpacePaperTypography.lineHeight
-
         return [
-            .font: UIFont.systemFont(
-                ofSize: DaySpacePaperTypography.bodySize
-            ),
+            .font: DaySpacePaperTypography.bodyFont,
             .foregroundColor: UIColor(
                 white: 0.15,
                 alpha: 1
             ),
-            .paragraphStyle: paragraph,
-            .baselineOffset: DaySpacePaperTypography.bodyBaselineOffset,
+            .paragraphStyle: DaySpacePaperTypography.bodyParagraphStyle,
         ]
     }
 

@@ -16,6 +16,7 @@ import type {
   ExportUniverseBundle,
   ExportTodoPaper,
 } from "../src/domains/export/export-types.js";
+import { mindState as memoryFixture } from "./helpers/import-service-fixtures.js";
 import { createOwnerFingerprint } from "../src/domains/export/owner-fingerprint.js";
 
 const USER_ID = "user-export-service";
@@ -101,7 +102,7 @@ const toolActivity: ExportToolActivity[] = [{
 }];
 
 function createRepository(calls: string[] = []): ExportRepository {
-  const repository: ExportRepository = {
+  const repository: ExportRepository & { listLifecycleAudit(userId: string): Promise<ExportLifecycleEvent[]>; listToolActivity(userId: string): Promise<ExportToolActivity[]> } = {
     async withConsistentSnapshot(work) {
       calls.push("snapshot");
       return work(repository);
@@ -169,7 +170,7 @@ test("ExportService emits the owner-bound v4 contract", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, false);
+  ).createExport(USER_ID);
 
   assert.deepEqual(
     Object.keys(document),
@@ -194,7 +195,7 @@ test("ExportService preserves C exactly in the full backup", async () => {
   const document = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, false);
+  ).createExport(USER_ID);
 
   assert.equal(document.data.todo?.[0]?.author, "C");
 });
@@ -204,7 +205,7 @@ test("ExportService reads the full portable v4 scope", async () => {
   const document = await new ExportService(
     createRepository(calls),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, false);
+  ).createExport(USER_ID);
 
   assert.deepEqual(
     Object.keys(document.data),
@@ -239,9 +240,7 @@ test("ExportService does not block a portable snapshot on semantic grouping work
   };
 
   const document = await new ExportService(repository).createExport(
-      USER_ID,
-      false,
-    );
+      USER_ID);
   assert.equal(document.schema_version, 4);
 });
 
@@ -252,9 +251,7 @@ test("ExportService does not block a portable snapshot on background model work"
   };
 
   const document = await new ExportService(repository).createExport(
-      USER_ID,
-      false,
-    );
+      USER_ID);
   assert.equal(document.schema_version, 4);
 });
 
@@ -266,8 +263,7 @@ test("ExportService rejects all export while a native turn is prepared", async (
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      false,
-    ),
+      ),
     (error: unknown) =>
       error instanceof Error
       && "code" in error
@@ -284,8 +280,7 @@ test("ExportService rejects all export while Mind follow-up is incomplete", asyn
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      false,
-    ),
+      ),
     (error: unknown) =>
       error instanceof Error
       && "code" in error
@@ -325,8 +320,7 @@ test("ExportService rejects an all export while a canonical turn is in progress"
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      false,
-    ),
+      ),
     (error: unknown) =>
       error instanceof Error
       && "code" in error
@@ -336,34 +330,26 @@ test("ExportService rejects an all export while a canonical turn is in progress"
   );
 });
 
-test("ExportService includes audit only when requested", async () => {
+test("ExportService never exports or queries diagnostic audit", async () => {
   const calls: string[] = [];
-  const document = await new ExportService(
-    createRepository(calls),
-    () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, true);
-
-  assert.deepEqual(document.audit, {
-    lifecycle,
-    tool_activity: toolActivity,
-  });
-  assert.equal(calls.includes(`lifecycle:${USER_ID}`), true);
-  assert.equal(calls.includes(`tool:${USER_ID}`), true);
+  const document = await new ExportService(createRepository(calls)).createExport(USER_ID);
+  assert.equal("audit" in document, false);
+  assert.ok(!calls.some(call => /lifecycle|tool_activity/.test(call)));
 });
 
 test("ExportService owner fingerprint is deterministic and opaque", async () => {
   const first = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, false);
+  ).createExport(USER_ID);
   const second = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport(USER_ID, false);
+  ).createExport(USER_ID);
   const other = await new ExportService(
     createRepository(),
     () => new Date(EXPORTED_AT),
-  ).createExport("another-user", false);
+  ).createExport("another-user");
 
   assert.equal(first.owner_fingerprint, second.owner_fingerprint);
   assert.notEqual(first.owner_fingerprint, other.owner_fingerprint);
@@ -380,8 +366,20 @@ test("ExportService does not return a partial document after a repository failur
   await assert.rejects(
     new ExportService(repository).createExport(
       USER_ID,
-      false,
-    ),
+      ),
     /database unavailable/u,
   );
+});
+
+test("new v4 backups emit only memory without changing record data or order", async () => {
+  const repository = createRepository();
+  const first = { ...memoryFixture, text: "  remembered\nexactly  " };
+  const second = { ...memoryFixture, id: "00000000-0000-4000-8000-000000000070",
+    validity_status: "tombstoned" as const, text: null,
+    payload: { lifecycle_v1: { status: "forgotten" }, temporal_v1: { occurredAt: null } } };
+  repository.listMind = async () => [first, { ...first, kind: "thought" }, second] as ExportMindStateRecord[];
+  const expected = structuredClone([first, second]);
+  const document = await new ExportService(repository).createExport(USER_ID);
+  assert.equal(document.schema_version, 4);
+  assert.deepEqual(document.data.mind, expected);
 });

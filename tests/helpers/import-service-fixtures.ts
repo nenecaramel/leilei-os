@@ -15,7 +15,7 @@ import type {
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
   ExportMindSemanticGroupingResultRecord,
-  ExportMindStateRecord,
+  HistoricalMindStateRecord,
   ExportProjectConversationRecord,
   ExportProjectRecord,
   ExportProjectResourceRecord,
@@ -112,7 +112,7 @@ export const universeBundle: ExportUniverseBundle = {
 export const CONVERSATION_ID =
   "00000000-0000-4000-8000-000000000041";
 
-export const mindState: ExportMindStateRecord = {
+export const mindState: HistoricalMindStateRecord = {
   id: "00000000-0000-4000-8000-000000000061",
   subject_id: "claude",
   kind: "memory",
@@ -139,7 +139,7 @@ export const mindState: ExportMindStateRecord = {
   updated_at: NOW,
 };
 
-export const driveState: ExportMindStateRecord = {
+export const driveState: HistoricalMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000064",
   kind: "drive",
@@ -147,7 +147,7 @@ export const driveState: ExportMindStateRecord = {
   payload: { drive_v1: { phase: "active" } },
 };
 
-export const driveCandidateState: ExportMindStateRecord = {
+export const driveCandidateState: HistoricalMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000068",
   kind: "drive",
@@ -155,7 +155,7 @@ export const driveCandidateState: ExportMindStateRecord = {
   payload: { drive_v1: { phase: "active" } },
 };
 
-export const curiosityState: ExportMindStateRecord = {
+export const curiosityState: HistoricalMindStateRecord = {
   ...mindState,
   id: "00000000-0000-4000-8000-000000000065",
   kind: "curiosity",
@@ -705,7 +705,7 @@ export class FakeImportRepository implements ImportRepository {
 
   async insertMind(
     _userId: string,
-    record: ExportMindStateRecord,
+    record: HistoricalMindStateRecord,
   ) {
     const mind = this.state.mind ??= [];
     mind.push(structuredClone(record));

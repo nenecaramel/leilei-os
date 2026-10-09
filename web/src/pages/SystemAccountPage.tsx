@@ -15,7 +15,7 @@ export function SystemAccountPageContent({
   return (
     <div className="page system-page system-account-page">
       <PageHeader
-        eyebrow="System"
+        eyebrow="Settings"
         title="Account"
         description="Your signed-in identity."
       />

@@ -10,7 +10,7 @@ import type {
   ExportMindDistillationWatermarkRecord,
   ExportMindDriveSatisfactionEventRecord,
   ExportMindSemanticGroupingResultRecord,
-  ExportMindStateRecord,
+  HistoricalMindStateRecord,
   ExportTodoPaper,
   ExportUniverseBundle,
   RestorableExportDocument,
@@ -276,7 +276,7 @@ function hasExactCreatedValue(
         state,
       );
     }
-    const record = item.record as ExportMindStateRecord;
+    const record = item.record as HistoricalMindStateRecord;
     return (state.mind ?? []).some(
       (candidate) =>
         candidate.id === record.id
@@ -465,7 +465,7 @@ async function executeCreates(
     ) {
       await repository.insertMind(
         userId,
-        item.record as ExportMindStateRecord,
+        item.record as HistoricalMindStateRecord,
       );
     }
   }
