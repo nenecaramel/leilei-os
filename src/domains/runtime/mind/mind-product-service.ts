@@ -140,6 +140,7 @@ export interface MindProductRepository {
     subjectId: string;
     kind?: CurrentSubjectStateKind;
     sort?: MindProductSort;
+    undated?: boolean;
     limit: number;
     cursor?: MindProductCursor | null;
   }): Promise<{
@@ -204,6 +205,7 @@ export class MindProductService {
     userId: string;
     kind?: CurrentSubjectStateKind;
     sort?: MindProductSort;
+    undated?: boolean;
     limit?: number;
     cursor?: string | null;
   }): Promise<MindProductPage> {
@@ -225,14 +227,19 @@ export class MindProductService {
       );
     }
 
+    if (input.undated !== undefined && typeof input.undated !== "boolean") {
+      throw new MindProductServiceError("INVALID_MIND", "Mind undated filter is invalid.");
+    }
+    const undated = input.undated === true;
     const cursor = input.cursor
-      ? decodeCursor(input.cursor, sort)
+      ? decodeCursor(input.cursor, sort, undated)
       : null;
     const page = await this.repository.list({
       userId: input.userId,
       subjectId: this.subjectId,
       ...(input.kind ? { kind: input.kind } : {}),
       sort,
+      ...(undated ? { undated: true } : {}),
       limit,
       cursor,
     });
@@ -240,7 +247,7 @@ export class MindProductService {
     return {
       items: page.rows.map(projectRow),
       nextCursor: page.nextCursor
-        ? encodeCursor(page.nextCursor)
+        ? encodeCursor(page.nextCursor, undated)
         : null,
     };
   }
@@ -614,11 +621,11 @@ function provenanceProjection(
   };
 }
 
-function encodeCursor(cursor: MindProductCursor): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+function encodeCursor(cursor: MindProductCursor, undated: boolean): string {
+  return Buffer.from(JSON.stringify({ ...cursor, ...(undated ? { undated: true } : {}) }), "utf8").toString("base64url");
 }
 
-function decodeCursor(value: string, sort: MindProductSort): MindProductCursor {
+function decodeCursor(value: string, sort: MindProductSort, undated: boolean): MindProductCursor {
   try {
     if (value.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(value)) throw Error();
     const bytes = Buffer.from(value, "base64url");
@@ -631,7 +638,8 @@ function decodeCursor(value: string, sort: MindProductSort): MindProductCursor {
     requireUuid(record.id, "cursor.id");
     const hasOccurred = sort === "occurred_desc";
     const keys = Object.keys(record).sort().join(",");
-    if (keys !== (hasOccurred ? "id,occurredAt,updatedAt" : "id,updatedAt")) throw Error();
+    const expectedKeys = ["id", "updatedAt", ...(hasOccurred ? ["occurredAt"] : []), ...(undated ? ["undated"] : [])].sort().join(",");
+    if (keys !== expectedKeys || (undated && record.undated !== true)) throw Error();
     if (hasOccurred && record.occurredAt !== null
       && (typeof record.occurredAt !== "string"
         || !Number.isFinite(Date.parse(record.occurredAt)))) throw Error();

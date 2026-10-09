@@ -18,6 +18,8 @@ type ModulePageHeaderProps = {
   searchPlaceholder: string;
   createLabel: string;
   diaryTools?: boolean;
+  undated?: boolean;
+  onUndatedChange?(value: boolean): void;
   dateFrom: string;
   dateTo: string;
   moodDraft?: string;
@@ -44,6 +46,8 @@ export function ModulePageHeader({
   searchPlaceholder,
   createLabel,
   diaryTools = false,
+  undated = false,
+  onUndatedChange,
   dateFrom,
   dateTo,
   moodDraft = "",
@@ -110,7 +114,7 @@ export function ModulePageHeader({
             type="button"
             aria-label="按日期筛选"
             aria-expanded={openTool === "date"}
-            aria-pressed={Boolean(dateFrom || dateTo)}
+            aria-pressed={undated || Boolean(dateFrom || dateTo)}
             disabled={busy}
             onClick={() => toggleTool("date")}
           >
@@ -124,7 +128,7 @@ export function ModulePageHeader({
               <button
                 type="button"
                 role="menuitemradio"
-                aria-checked={!dateFrom && !dateTo}
+                aria-checked={!undated && !dateFrom && !dateTo}
                 onClick={() => {
                   setCustomDateOpen(false);
                   onDateRangeClear();
@@ -135,12 +139,28 @@ export function ModulePageHeader({
               <button
                 type="button"
                 role="menuitemradio"
-                aria-checked={Boolean(dateFrom || dateTo)}
-                onClick={() => setCustomDateOpen(true)}
+                aria-checked={!undated && Boolean(dateFrom || dateTo)}
+                onClick={() => {
+                  if (undated) onUndatedChange?.(false);
+                  setCustomDateOpen(true);
+                }}
               >
                 自定义范围
               </button>
-              {customDateOpen ? (
+              {onUndatedChange ? (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={undated}
+                  onClick={() => {
+                    setCustomDateOpen(false);
+                    onUndatedChange(true);
+                  }}
+                >
+                  未指定日期
+                </button>
+              ) : null}
+              {customDateOpen && !undated ? (
                 <div className="task-custom-range">
                   <NativeDateInput
                     type="date"

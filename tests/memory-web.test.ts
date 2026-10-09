@@ -198,3 +198,20 @@ test("complete list rejects cursor cycles and stops before another page after ca
   );
   assert.equal(calls, 1);
 });
+
+ test("object undated filter preserves keyword and cursor while excluding date bounds", async () => {
+  const {loadMemoryList} = await import("../web/src/pages/memory-api.js");
+  const calls: string[] = [];
+  const api = {async request(path: string) {
+    calls.push(path);
+    const params = new URL(path, "http://localhost").searchParams;
+    assert.equal(params.get("undated"), "true");
+    assert.equal(params.get("query"), "sample");
+    assert.equal(params.has("date_from"), false);
+    assert.equal(params.has("date_to"), false);
+    return {data: {items: [], nextCursor: calls.length === 1 ? "next+page" : null}};
+  }} as any;
+  await loadMemoryList(api, {query:" sample ",undated:true,dateFrom:"2026-10-01",dateTo:"2026-10-09"} as any);
+  assert.equal(calls.length,2);
+  assert.equal(new URL(calls[1]!,"http://localhost").searchParams.get("cursor"),"next+page");
+});

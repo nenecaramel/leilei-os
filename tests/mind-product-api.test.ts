@@ -360,3 +360,12 @@ test("Memory dates are authenticated, no-store and routed before state IDs", asy
  });
  await withServer(new FakeMindService(), async base => assert.equal((await fetch(base+"/dates")).status,401),false);
 });
+
+test("Mind list forwards undated filter and preserves sort; invalid filter is rejected",async () => {
+  const service = new FakeMindService();
+  await withServer(service,async baseUrl => {
+    assert.equal((await fetch(`${baseUrl}?kind=memory&sort=occurred_desc&undated=true`)).status,200);
+    assert.deepEqual(service.calls.at(-1),{name:"list",input:{userId,kind:"memory",sort:"occurred_desc",undated:true}});
+    assert.equal((await fetch(`${baseUrl}?undated=maybe`)).status,400);
+  });
+});

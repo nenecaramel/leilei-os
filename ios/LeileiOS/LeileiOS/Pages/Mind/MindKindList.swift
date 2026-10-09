@@ -10,6 +10,7 @@ struct MindMemoryListView: View {
     @State private var loadingMore = false
     @State private var failed = false
     @State private var reloadToken = UUID()
+    @State private var undatedOnly = false
     @State private var sort: MindListSort = .updatedDesc
     @State private var listGeneration = 0
     @State private var query = ""
@@ -89,6 +90,8 @@ struct MindMemoryListView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.inline)
+                    Divider()
+                    Toggle("Undated Only", isOn: $undatedOnly)
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
                         .font(.system(size: 13, weight: .light))
@@ -96,10 +99,10 @@ struct MindMemoryListView: View {
                 .accessibilityLabel("Mind 排序")
             }
         }
-        .task(id: "\(sort.rawValue)|\(reloadToken)") {
+        .task(id: "\(sort.rawValue)|\(undatedOnly)|\(reloadToken)") {
             await reload()
         }
-        .task(id: "\(query)|\(reloadToken)") {
+        .task(id: "\(query)|\(undatedOnly)|\(reloadToken)") {
             await searchIfNeeded()
         }
     }
@@ -165,6 +168,9 @@ struct MindMemoryListView: View {
     private func searchIfNeeded(skipDelay: Bool = false) async {
         searchGeneration += 1
         let ticket = searchGeneration
+        let requestedUndated = undatedOnly
+        let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchLoadingMore = false
         searchRows = []
         searchCursor = nil
         searchFailed = false
@@ -180,16 +186,17 @@ struct MindMemoryListView: View {
                 return
             }
         }
-        guard ticket == searchGeneration, !Task.isCancelled else { return }
+        guard ticket == searchGeneration, !Task.isCancelled, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         do {
             let page = try await appModel.api.memorySearch(
-                query: query.trimmingCharacters(in: .whitespacesAndNewlines)
+                query: requestedQuery,
+                undated: requestedUndated
             )
-            guard ticket == searchGeneration, !Task.isCancelled else { return }
+            guard ticket == searchGeneration, !Task.isCancelled, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchRows = page.items
             searchCursor = page.nextCursor
         } catch {
-            guard ticket == searchGeneration, !Task.isCancelled else { return }
+            guard ticket == searchGeneration, !Task.isCancelled, requestedUndated == undatedOnly, requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchFailed = true
         }
         if ticket == searchGeneration { searchLoading = false }
@@ -201,17 +208,20 @@ struct MindMemoryListView: View {
             return
         }
         let ticket = searchGeneration
+        let requestedUndated = undatedOnly
         let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchLoadingMore = true
         searchFailed = false
-        defer { searchLoadingMore = false }
+        defer { if ticket == searchGeneration { searchLoadingMore = false } }
         do {
             let page = try await appModel.api.memorySearch(
                 query: requestedQuery,
+                undated: requestedUndated,
                 cursor: cursor
             )
             guard ticket == searchGeneration,
                   !Task.isCancelled,
+                  requestedUndated == undatedOnly,
                   requestedQuery == query.trimmingCharacters(in: .whitespacesAndNewlines)
             else { return }
             var ids = Set(searchRows.map(\.id))
@@ -227,8 +237,10 @@ struct MindMemoryListView: View {
         listGeneration += 1
         let ticket = listGeneration
         let requestedSort = sort
+        let requestedUndated = undatedOnly
         loading = true
         failed = false
+        loadingMore = false
         items = []
         nextCursor = nil
         defer {
@@ -238,9 +250,10 @@ struct MindMemoryListView: View {
         do {
             let page = try await appModel.api.mindPage(
                 kind: .memory,
-                sort: requestedSort
+                sort: requestedSort,
+                undated: requestedUndated
             )
-            guard ticket == listGeneration, !Task.isCancelled else { return }
+            guard ticket == listGeneration, !Task.isCancelled, requestedSort == sort, requestedUndated == undatedOnly else { return }
             items = page.items
             nextCursor = page.nextCursor
         } catch {
@@ -255,17 +268,19 @@ struct MindMemoryListView: View {
             return
         }
         let requestedSort = sort
+        let requestedUndated = undatedOnly
         let ticket = listGeneration
         loadingMore = true
-        defer { loadingMore = false }
+        defer { if ticket == listGeneration { loadingMore = false } }
 
         do {
             let page = try await appModel.api.mindPage(
                 kind: .memory,
                 sort: requestedSort,
+                undated: requestedUndated,
                 cursor: nextCursor
             )
-            guard ticket == listGeneration, !Task.isCancelled else { return }
+            guard ticket == listGeneration, !Task.isCancelled, requestedSort == sort, requestedUndated == undatedOnly else { return }
             let existing = Set(items.map(\.id))
             items.append(
                 contentsOf: page.items.filter {
@@ -305,39 +320,5 @@ private struct MindItemRow: View {
 
     private var displayText: String {
         MindPresentation.normalized(item.text) ?? "Memory"
-    }
-}
-
-struct MindMemoryReadView: View {
-    @EnvironmentObject private var appModel: AppModel
-    let id: String
-    let onChanged: () -> Void
-
-    @State private var item: MindProductItem?
-    @State private var failed = false
-    @State private var retryToken = UUID()
-
-    var body: some View {
-        Group {
-            if let item {
-                MindItemDetailView(initialItem: item, onDeleted: onChanged)
-            } else if failed {
-                AppStateSurface(title: "Unavailable", actionTitle: "Retry") {
-                    retryToken = UUID()
-                }
-            } else {
-                ProgressView()
-            }
-        }
-        .task(id: retryToken) {
-            do {
-                let latest = try await appModel.api.mindItem(stateID: id)
-                guard !Task.isCancelled else { return }
-                item = latest
-                failed = false
-            } catch {
-                if !Task.isCancelled { failed = true }
-            }
-        }
     }
 }
