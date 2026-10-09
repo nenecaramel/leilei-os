@@ -235,24 +235,24 @@ final class UniverseAPIService {
 
     static func userMessage(for error: Error) -> String {
         if Self.isVersionConflict(error) {
-            return "Universe 已在其他设备发生变化，请重新读取后再试。"
+            return "Universe was changed on another device. Reload and try again."
         }
 
         guard case let LeileiAPIError.backend(_, code, _) = error else {
-            return "Universe 暂时无法读取，请稍后重试。"
+            return "Unable to read Universe. Try again later."
         }
 
         switch code {
         case "UNIVERSE_NOT_INITIALIZED":
-            return "Universe 尚未初始化。"
+            return "Universe has not been initialized."
         case "RELATION_CONFLICT":
-            return "这条思想连接已经存在。"
+            return "This connection already exists."
         case "NODE_CONFLICT":
-            return "这颗星球已经存在。"
+            return "This node already exists."
         case "REVISION_NOT_FOUND":
-            return "没有可以恢复的上一版本。"
+            return "No previous version available to restore."
         default:
-            return "Universe 暂时无法读取，请稍后重试。"
+            return "Unable to read Universe. Try again later."
         }
     }
 

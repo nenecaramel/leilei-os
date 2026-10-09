@@ -14,7 +14,7 @@ enum UniverseImportValidationError: LocalizedError {
     case invalid
 
     var errorDescription: String? {
-        "文件无法用于迁移"
+        "Unable to import this file."
     }
 }
 

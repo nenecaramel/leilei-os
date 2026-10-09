@@ -56,7 +56,7 @@ struct UniverseMapView: View {
                         Button {
                             fitAll(in: size)
                         } label: {
-                            Text("查看全部")
+                            Text("View All")
                                 .font(.subheadline)
                         }
                         .buttonStyle(.bordered)

@@ -50,14 +50,14 @@ extension UniverseView {
                     sourceDiaryIDs:
                         draft.sourceDiaryIDs,
                     reason:
-                        "Universe iOS 编辑",
+                        "Edited in Universe on iOS",
                     expectedVersion: version
                 )
             }
 
             selectedNodeID = existing.id
             sheetSelection = .node(existing.id)
-            showNotice("星球已更新")
+            showNotice("Node updated")
         } else {
             guard let position else {
                 throw LeileiAPIError.invalidResponse
@@ -95,7 +95,7 @@ extension UniverseView {
 
             mapMode = .browse
             showNotice(
-                "一颗新星已经亮起"
+                "Node added"
             )
         }
     }
@@ -114,7 +114,7 @@ extension UniverseView {
             selectedNodeID = nil
         }
         showNotice(
-            "星球已从当前宇宙移除"
+            "Node deleted"
         )
     }
 
@@ -131,7 +131,7 @@ extension UniverseView {
         selectedNodeID = node.id
         sheetSelection = .node(node.id)
         showNotice(
-            "已恢复最近的认知版本"
+            "Previous version restored"
         )
     }
 
@@ -146,7 +146,7 @@ extension UniverseView {
         }
 
         showNotice(
-            "新的思想连接已经出现"
+            "Connection added"
         )
     }
 
@@ -161,7 +161,7 @@ extension UniverseView {
         }
 
         showNotice(
-            "思想连接已移除"
+            "Connection removed"
         )
     }
 
@@ -188,14 +188,14 @@ extension UniverseView {
                     ),
                     sourceDiaryIDs: nil,
                     reason:
-                        "Universe iOS 移动星球",
+                        "Moved node in Universe on iOS",
                     expectedVersion: version
                 )
             }
 
             selectedNodeID = nodeID
             showNotice(
-                "星球位置已更新"
+                "Node position updated"
             )
         } catch {
             showNotice(

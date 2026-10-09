@@ -26,7 +26,7 @@ struct UniverseView: View {
 
     @State var exportPresented = false
     @State var exportDocument: UniverseJSONDocument?
-    @State var exportFilename = "蕾蕾宇宙备份"
+    @State var exportFilename = "Universe Backup"
 
     init(
         targetNodeID: String? = nil,
@@ -88,7 +88,7 @@ struct UniverseView: View {
             defaultFilename: exportFilename
         ) { result in
             if case .failure = result {
-                showNotice("导出未完成")
+                showNotice("Unable to export.")
             }
             exportDocument = nil
         }

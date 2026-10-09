@@ -575,9 +575,9 @@ struct DaySpaceTodoPaperDetail: View {
             _
         ) where code == "TODO_PAPER_CONFLICT" {
             errorMessage =
-                "这张纸张已在其他设备修改，请重新打开后再保存。"
+                "This todo was modified on another device. Reopen it before saving."
         } catch {
-            errorMessage = "保存失败，请重试"
+            errorMessage = "Unable to save. Try again."
         }
     }
 }

@@ -21,7 +21,7 @@ extension UniverseView {
 
             importPreview = nil
             importError =
-                "文件无法用于迁移"
+                "Unable to import this file."
             importUncertain = false
             return
         }
@@ -60,7 +60,7 @@ extension UniverseView {
                 url.lastPathComponent
             importPreview = nil
             importError =
-                "文件无法用于迁移"
+                "Unable to import this file."
         }
     }
 
@@ -98,10 +98,10 @@ extension UniverseView {
                     expected: preview.snapshot,
                     actual: fresh.snapshot
                 )
-                showNotice("Universe 已迁移")
+                showNotice("Universe imported")
             } catch {
                 showNotice(
-                    "Universe 已存在或状态已变化，未覆盖现有内容"
+                    "Universe already contains data or has changed. No data was overwritten."
                 )
             }
         } catch let error as
@@ -109,21 +109,21 @@ extension UniverseView {
             switch error {
             case .notWritten:
                 importError =
-                    "迁移未写入，可以重新确认。"
+                    "Import was not saved. You can confirm again."
 
             case .uncertain:
                 importUncertain = true
                 importError =
-                    "迁移状态暂时无法确认，请先重新读取；不要再次提交。"
+                    "Unable to confirm import status. Reload first; do not resubmit yet."
 
             case .alreadyInitialized:
                 importUncertain = true
                 importError =
-                    "服务器已有内容，未覆盖现有内容，请重新读取。"
+                    "Universe already contains data. No changes were made. Reload to continue."
             }
         } catch {
             importError =
-                "迁移未完成，请重新确认。"
+                "Import incomplete. Confirm again."
         }
     }
 
@@ -157,7 +157,7 @@ extension UniverseView {
             try? encoder.encode(payload)
         else {
             showNotice(
-                "导出未完成"
+                "Unable to export."
             )
             return
         }
@@ -174,7 +174,7 @@ extension UniverseView {
         filenameFormatter.dateFormat =
             "yyyy-MM-dd"
         exportFilename =
-            "蕾蕾宇宙备份-\(filenameFormatter.string(from: now))"
+            "Universe Backup-\(filenameFormatter.string(from: now))"
         exportPresented = true
     }
 }

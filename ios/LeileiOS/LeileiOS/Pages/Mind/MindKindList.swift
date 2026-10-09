@@ -96,7 +96,7 @@ struct MindMemoryListView: View {
                     Image(systemName: "arrow.up.arrow.down")
                         .font(.system(size: 13, weight: .light))
                 }
-                .accessibilityLabel("Mind 排序")
+                .accessibilityLabel("Sort Mind")
             }
         }
         .task(id: "\(sort.rawValue)|\(undatedOnly)|\(reloadToken)") {

@@ -46,7 +46,7 @@ extension UniverseView {
                 )
                 .foregroundStyle(.secondary)
 
-                Text("Universe 还没有内容")
+                Text("Universe is empty")
                     .font(.title3.weight(.medium))
 
                 if let importFileName {
@@ -58,10 +58,10 @@ extension UniverseView {
                 if let importPreview {
                     VStack(spacing: 6) {
                         Text(
-                            "\(importPreview.galaxies) 星系 · "
-                                + "\(importPreview.nodes) 星球 · "
-                                + "\(importPreview.relations) 连接 · "
-                                + "\(importPreview.revisions) 历史版本"
+                            "Galaxies: \(importPreview.galaxies) · "
+                                + "Nodes: \(importPreview.nodes) · "
+                                + "Connections: \(importPreview.relations) · "
+                                + "Revisions: \(importPreview.revisions)"
                         )
 
                         Text(
@@ -82,12 +82,12 @@ extension UniverseView {
                 }
 
                 if importCommitting {
-                    ProgressView("正在迁移…")
+                    ProgressView("Importing…")
                 }
 
                 VStack(spacing: 10) {
                     if importUncertain {
-                        Button("重新读取") {
+                        Button("Reload") {
                             Task {
                                 await recheckImport()
                             }
@@ -96,7 +96,7 @@ extension UniverseView {
                     } else {
                         if importFileName == nil {
                             Button(
-                                "选择旧 Universe JSON"
+                                "Select Universe JSON"
                             ) {
                                 importPresented = true
                             }
@@ -104,7 +104,7 @@ extension UniverseView {
                         }
 
                         if importPreview != nil {
-                            Button("确认迁移") {
+                            Button("Confirm Import") {
                                 Task {
                                     await confirmImport()
                                 }
@@ -114,7 +114,7 @@ extension UniverseView {
                         }
 
                         if importFileName != nil {
-                            Button("重新选择") {
+                            Button("Choose Another File") {
                                 importPresented = true
                             }
                             .buttonStyle(.bordered)
@@ -208,7 +208,7 @@ extension UniverseView {
                     "",
                     selection: $activeGalaxyID
                 ) {
-                    Text("全部星系")
+                    Text("All Galaxies")
                         .tag(String?.none)
 
                     ForEach(
@@ -242,7 +242,7 @@ extension UniverseView {
             } label: {
                 Image(systemName: "circle.grid.2x2")
             }
-            .accessibilityLabel("选择星系")
+            .accessibilityLabel("Select Galaxy")
             .simultaneousGesture(
                 TapGesture()
                     .onEnded {
@@ -269,8 +269,8 @@ extension UniverseView {
             }
             .accessibilityLabel(
                 mapMode == .placingNode
-                    ? "取消新增星球"
-                    : "新增星球"
+                    ? "Cancel Adding Node"
+                    : "Add Node"
             )
 
             Menu {
@@ -280,7 +280,7 @@ extension UniverseView {
                     )
                 } label: {
                     Label(
-                        "导出 Universe",
+                        "Export Universe",
                         systemImage:
                             "square.and.arrow.up"
                     )
@@ -289,7 +289,7 @@ extension UniverseView {
                 Image(systemName: "ellipsis")
             }
             .accessibilityLabel(
-                "更多 Universe 操作"
+                "Universe actions"
             )
             .simultaneousGesture(
                 TapGesture()
