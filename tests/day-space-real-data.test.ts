@@ -652,6 +652,11 @@ test("Day Space creates a missing Todo paper through its existing editor, withou
   await React.act(async () => { create.click(); });
   const choices = [...page.container.querySelectorAll<HTMLButtonElement>('.day-space-create-popover [role="menuitem"]')];
   assert.deepEqual(choices.map((button) => button.textContent?.trim()), ["L", "G", "C"]);
+  // A real pointer fires mousedown before click; this must not dismiss the author menu.
+  await React.act(async () => {
+    choices[1]!.dispatchEvent(new page.container.ownerDocument.defaultView!.MouseEvent("mousedown", { bubbles: true }));
+  });
+  assert.ok(page.container.querySelector('.day-space-create-popover [role="menuitem"]'));
   await React.act(async () => { choices[1]!.click(); });
   await page.settle();
   const dialog = page.container.querySelector('[role="dialog"]');

@@ -30,6 +30,17 @@ test("Day Space keeps the approved mobile shell and reuses its native paper cont
   assert.match(styles, /calc\(100% - 48px\)/);
 });
 
+test("Day Space create icon keeps its normal color while loading, and author choices sit above date navigation", () => {
+  assert.match(page, /day-space-header--create-open/);
+  const navigation = styles.match(/\.day-space-date-area\s*\{[^}]*z-index:\s*(\d+)/);
+  const popover = styles.match(/\.day-space-header--create-open\s*\{[^}]*z-index:\s*(\d+)/);
+  assert.ok(navigation, "Day Space date navigation layer exists");
+  assert.ok(popover, "Day Space create menu layer exists");
+  assert.ok(Number(popover[1]) > Number(navigation[1]), "create menu sits above the date navigator");
+  assert.match(styles, /\.day-space-header \.day-space-create-wrap > button:disabled\s*\{[^}]*opacity:\s*1\s*;/);
+  assert.match(styles, /\.day-space-header \.day-space-create-popover > button\s*\{[^}]*min-height:\s*44px/);
+});
+
 test("Day Space mixes signed Todo and Diary papers in one scatter stage", () => {
   assert.match(page, /layoutDaySpacePapers/);
   assert.match(page, /day-space-paper-\$\{paper\.type\}/);
