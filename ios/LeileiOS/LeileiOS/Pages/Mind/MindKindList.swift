@@ -10,6 +10,8 @@ struct MindMemoryListView: View {
     @State private var loadingMore = false
     @State private var failed = false
     @State private var reloadToken = UUID()
+    @State private var sort: MindListSort = .updatedDesc
+    @State private var listGeneration = 0
     @State private var query = ""
     @State private var searchRows: [MemorySearchPage.Entry] = []
     @State private var searchCursor: String?
@@ -77,7 +79,23 @@ struct MindMemoryListView: View {
             }
         }
         .searchable(text: $query, prompt: "Search")
-        .task(id: reloadToken) {
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Sort By", selection: $sort) {
+                        ForEach(MindListSort.allCases, id: \.self) { order in
+                            Text(order.displayName).tag(order)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+                .accessibilityLabel("Mind 排序")
+            }
+        }
+        .task(id: "\(sort.rawValue)|\(reloadToken)") {
             await reload()
         }
         .task(id: "\(query)|\(reloadToken)") {
@@ -205,19 +223,27 @@ struct MindMemoryListView: View {
 
     @MainActor
     private func reload() async {
-        guard !loading else { return }
+        listGeneration += 1
+        let ticket = listGeneration
+        let requestedSort = sort
         loading = true
         failed = false
-        defer { loading = false }
+        items = []
+        nextCursor = nil
+        defer {
+            if ticket == listGeneration { loading = false }
+        }
 
         do {
             let page = try await appModel.api.mindPage(
-                kind: .memory
+                kind: .memory,
+                sort: requestedSort
             )
+            guard ticket == listGeneration, !Task.isCancelled else { return }
             items = page.items
             nextCursor = page.nextCursor
         } catch {
-            failed = true
+            if ticket == listGeneration, !Task.isCancelled { failed = true }
         }
     }
 
@@ -227,14 +253,18 @@ struct MindMemoryListView: View {
               let nextCursor else {
             return
         }
+        let requestedSort = sort
+        let ticket = listGeneration
         loadingMore = true
         defer { loadingMore = false }
 
         do {
             let page = try await appModel.api.mindPage(
                 kind: .memory,
+                sort: requestedSort,
                 cursor: nextCursor
             )
+            guard ticket == listGeneration, !Task.isCancelled else { return }
             let existing = Set(items.map(\.id))
             items.append(
                 contentsOf: page.items.filter {

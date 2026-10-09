@@ -52,6 +52,18 @@ struct MindProductItem: Decodable, Sendable, Equatable, Identifiable {
     let updatedAt: String
 }
 
+enum MindListSort: String, Sendable, CaseIterable {
+    case updatedDesc = "updated_desc"
+    case occurredDesc = "occurred_desc"
+
+    var displayName: String {
+        switch self {
+        case .updatedDesc: "Last Updated"
+        case .occurredDesc: "Event Time"
+        }
+    }
+}
+
 struct MindProductPage: Decodable, Sendable, Equatable {
     let items: [MindProductItem]
     let nextCursor: String?
