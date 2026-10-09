@@ -58,8 +58,8 @@ enum MindListSort: String, Sendable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .updatedDesc: "默认顺序"
-        case .occurredDesc: "发生时间倒叙"
+        case .updatedDesc: "Last Updated"
+        case .occurredDesc: "Event Time"
         }
     }
 }
