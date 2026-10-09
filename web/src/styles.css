@@ -7277,3 +7277,61 @@ body:has(.system-page) {
   .day-space-page { min-height: calc(100dvh - 80px); }
   .day-space-page .memory-page-title { font: inherit; }
 }
+
+
+/* Day Space Todo creation follows the existing module-tool and paper popover pattern. */
+/* The date navigation is z-index: 30; raise the open author menu above it. */
+.day-space-header--create-open { position: relative; z-index: 40; }
+.day-space-header .day-space-create-wrap { position: relative; }
+@media (min-width: 761px) {
+  .day-space-header .day-space-create-wrap > button {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    color: #171717;
+    background: transparent;
+    cursor: pointer;
+  }
+  .day-space-header .day-space-create-wrap > button svg { width: 19px; height: 19px; }
+  .day-space-header .day-space-create-popover {
+    position: absolute;
+    z-index: 20;
+    top: 46px;
+    right: 0;
+    width: max-content;
+    min-width: 136px;
+    padding: 5px;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .08);
+  }
+  .day-space-header .day-space-create-popover button {
+    display: flex;
+    width: 100%;
+    min-height: 36px;
+    align-items: center;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    color: #303030;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+}
+.day-space-header .day-space-create-wrap > button:disabled { opacity: 1; cursor: default; }
+@media (max-width: 760px) {
+  .day-space-header .day-space-create-popover > button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+}
+.day-space-header .day-space-create-popover button:hover,
+.day-space-header .day-space-create-popover button:focus-visible { background: #f2f2f2; }

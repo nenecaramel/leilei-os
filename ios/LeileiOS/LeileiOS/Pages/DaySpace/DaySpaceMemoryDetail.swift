@@ -24,7 +24,7 @@ struct DaySpaceMemoryDetail: View {
 
     init(date: String, items: [MindProductItem], onSaved: @escaping ([MindProductItem]) -> Void, onClosed: @escaping () -> Void) {
         self.date = date; self.onSaved = onSaved; self.onClosed = onClosed
-        _drafts = State(initialValue: items.map(MemoryPaperDraft.init))
+        _drafts = State(initialValue: items.map { item in MemoryPaperDraft(item) })
     }
     private var dirty: Bool { drafts.contains { $0.dirty } }
     private var invalid: Bool {
