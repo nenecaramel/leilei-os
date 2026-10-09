@@ -61,6 +61,7 @@ struct UniverseDiarySourcePicker: View {
     @EnvironmentObject private var appModel: AppModel
 
     @State private var query = ""
+    @State private var discardPresented = false
     @State private var selected:
         Set<String>
     @State private var metadata:
@@ -229,7 +230,7 @@ struct UniverseDiarySourcePicker: View {
                     placement: .cancellationAction
                 ) {
                     Button("Cancel") {
-                        dismiss()
+                        cancelSelection()
                     }
                 }
 
@@ -237,25 +238,20 @@ struct UniverseDiarySourcePicker: View {
                     placement: .confirmationAction
                 ) {
                     Button("Done") {
-                        let ordered =
-                            selected.sorted {
-                                left,
-                                right in
-                                let leftDate =
-                                    metadata[
-                                        left
-                                    ]?.date ?? ""
-                                let rightDate =
-                                    metadata[
-                                        right
-                                    ]?.date ?? ""
-                                if leftDate
-                                    != rightDate {
-                                    return leftDate
-                                        < rightDate
+                        let originalIDs = Set(initialSelection)
+                        let retained = initialSelection.filter {
+                            selected.contains($0)
+                        }
+                        let added = selected.subtracting(originalIDs)
+                            .sorted { left, right in
+                                let leftDate = metadata[left]?.date ?? ""
+                                let rightDate = metadata[right]?.date ?? ""
+                                if leftDate != rightDate {
+                                    return leftDate < rightDate
                                 }
                                 return left < right
                             }
+                        let ordered = retained + added
 
                         onDone(
                             ordered,
@@ -274,6 +270,29 @@ struct UniverseDiarySourcePicker: View {
                 }
                 await load()
             }
+        }
+        .interactiveDismissDisabled(hasUnsavedChanges)
+        .confirmationDialog(
+            "Discard changes?",
+            isPresented: $discardPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Discard changes", role: .destructive) {
+                dismiss()
+            }
+            Button("Keep editing", role: .cancel) {}
+        }
+    }
+
+    private var hasUnsavedChanges: Bool {
+        selected != Set(initialSelection)
+    }
+
+    private func cancelSelection() {
+        if hasUnsavedChanges {
+            discardPresented = true
+        } else {
+            dismiss()
         }
     }
 

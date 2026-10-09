@@ -15,6 +15,7 @@ struct UniverseRelationSheet: View {
         UniverseRelationType = .relatedTo
     @State private var strength = 0.7
     @State private var isSaving = false
+    @State private var discardPresented = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -81,6 +82,7 @@ struct UniverseRelationSheet: View {
                     }
                 }
             }
+            .disabled(isSaving)
             .scrollContentBackground(.hidden)
             .background(
                 UniversePalette.background
@@ -96,7 +98,7 @@ struct UniverseRelationSheet: View {
                     placement: .cancellationAction
                 ) {
                     Button("Cancel") {
-                        dismiss()
+                        cancel()
                     }
                     .disabled(isSaving)
                 }
@@ -122,10 +124,34 @@ struct UniverseRelationSheet: View {
                 }
             }
         }
+        .interactiveDismissDisabled(isSaving || hasUnsavedChanges)
+        .confirmationDialog(
+            "Discard changes?",
+            isPresented: $discardPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Discard changes", role: .destructive) {
+                dismiss()
+            }
+            Button("Keep editing", role: .cancel) {}
+        }
+    }
+
+    private var hasUnsavedChanges: Bool {
+        !targetID.isEmpty || relationType != .relatedTo || strength != 0.7
+    }
+
+    private func cancel() {
+        guard !isSaving else { return }
+        if hasUnsavedChanges {
+            discardPresented = true
+        } else {
+            dismiss()
+        }
     }
 
     private func save() async {
-        guard !targetID.isEmpty else {
+        guard !isSaving, !targetID.isEmpty else {
             return
         }
 
