@@ -79,20 +79,19 @@ function response(name: string) {
     data: {
       results: [
         {
-          entity_type: "memory" as const,
+          entity_type: "mind" as const,
           entity_id: `${name.toLowerCase()}-1`,
-          stable_name: `${name} result`,
+          stable_name: "",
           snippet: `${name} snippet`,
-          matched_field: "content",
+          matched_field: "text",
           match_reason: "field_match",
           lifecycle_status: "active" as const,
-          business_time: "2026-08-09T07:30:00.000Z",
-          time_basis: "created_at",
+          business_time: null,
+          time_basis: "undated",
           updated_at: "2026-08-09T07:30:00.000Z",
           detail_tool: "get_memory" as const,
           detail_arguments: {
             id: `${name.toLowerCase()}-1`,
-            scope: "active" as const,
           },
         },
       ],
@@ -100,7 +99,7 @@ function response(name: string) {
         count: 1,
         has_more: false,
         next_cursor: null,
-        searched_modules: ["memory", "diary", "task"] as const,
+        searched_modules: ["diary", "todo", "universe", "mind"] as const,
         searched_scope: "active",
       },
     },
@@ -184,6 +183,7 @@ test("Quick Search aborts stale work and never lets an older response replace th
     assert.match(requests[0]!.path, /limit=5/);
     assert.match(requests[0]!.path, /scope=active/);
     assert.match(requests[0]!.path, /mode=normal/);
+    assert.equal(new URL(requests[0]!.path,"https://leilei.test").searchParams.get("modules"), "diary,todo,universe,mind");
 
     await React.act(async () => {
       reactChange(input, "new");
@@ -198,14 +198,22 @@ test("Quick Search aborts stale work and never lets an older response replace th
       requests[1]!.resolve(response("New"));
       await new Promise((resolve) => env.dom.window.setTimeout(resolve, 0));
     });
-    assert.match(container.textContent ?? "", /New result/);
+    assert.match(container.textContent ?? "", /New snippet/);
 
     await React.act(async () => {
       requests[0]!.resolve(response("Old"));
       await new Promise((resolve) => env.dom.window.setTimeout(resolve, 0));
     });
-    assert.match(container.textContent ?? "", /New result/);
-    assert.doesNotMatch(container.textContent ?? "", /Old result/);
+    assert.match(container.textContent ?? "", /New snippet/);
+    assert.doesNotMatch(container.textContent ?? "", /Old snippet/);
+    assert.equal(container.querySelector(".quick-search-result-module")?.textContent, "Mind");
+    assert.equal(container.querySelector(".quick-search-result-title")?.textContent, "New snippet");
+    assert.equal(container.querySelector(".quick-search-result-snippet")?.textContent, "");
+    await React.act(async () => container.querySelector<HTMLButtonElement>(".quick-search-result")?.click());
+    const location = new URL(env.dom.window.location.href);
+    assert.equal(location.pathname, "/mind");
+    assert.equal(location.searchParams.get("memoryId"), "new-1");
+    assert.equal(location.searchParams.get("returnTo"), "/search?q=new");
   } finally {
     await React.act(async () => root.unmount());
     env.restore();

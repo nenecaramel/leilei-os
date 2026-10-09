@@ -32,7 +32,7 @@ class Repository implements GlobalSearchRepository {
 test("Global Search includes Todo by default and returns an entry detail pointer", async () => {
   const repository = new Repository();
   const result = await new GlobalSearchService(repository).search({ userId: USER_ID, query: "release" });
-  assert.deepEqual(result.metadata.searched_modules, ["diary", "todo", "universe"]);
+  assert.deepEqual(result.metadata.searched_modules, ["diary", "todo", "universe", "mind"]);
   assert.deepEqual(result.results[0], {
     entity_type: "todo",
     entity_id: TODO_ROW.entityId,

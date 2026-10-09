@@ -5,6 +5,7 @@ struct GlobalSearchResultRow: View {
     let onOpenDiary: (DiaryNavigationTarget) -> Void
     let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
     let onOpenUniverseNode: (String) -> Void
+    let onOpenMemory: (String) -> Void
 
     var body: some View {
         switch result.entityType {
@@ -45,6 +46,12 @@ struct GlobalSearchResultRow: View {
                 GlobalSearchTodoRow(
                     result: result
                 )
+            }
+            .buttonStyle(.plain)
+
+        case .mind:
+            Button { onOpenMemory(result.entityID) } label: {
+                GlobalSearchResultContent(title: result.snippet, snippet: "", date: result.businessTime, metadata: "", timeZone: TimeZone(identifier: "Asia/Shanghai"))
             }
             .buttonStyle(.plain)
 
@@ -113,8 +120,9 @@ private struct GlobalSearchUniverseRow: View {
 private struct GlobalSearchResultContent: View {
     let title: String
     let snippet: String
-    let date: String
+    let date: String?
     let metadata: String
+    var timeZone: TimeZone? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -130,7 +138,7 @@ private struct GlobalSearchResultContent: View {
             }
 
             GlobalSearchMetadataLine(
-                left: GlobalSearchDate.row(date),
+                left: GlobalSearchDate.row(date, timeZone: timeZone),
                 right: metadata
             )
         }
@@ -162,7 +170,8 @@ private struct GlobalSearchMetadataLine: View {
 }
 
 private enum GlobalSearchDate {
-    static func row(_ value: String) -> String {
+    static func row(_ value: String?, timeZone: TimeZone?) -> String {
+        guard let value else { return "" }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [
             .withInternetDateTime,
@@ -178,7 +187,9 @@ private enum GlobalSearchDate {
             return ""
         }
 
-        let components = Calendar.current.dateComponents(
+        var calendar = Calendar.current
+        if let timeZone { calendar.timeZone = timeZone }
+        let components = calendar.dateComponents(
             [.month, .day],
             from: date
         )

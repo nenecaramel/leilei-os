@@ -28,6 +28,8 @@ import {
   createGlobalSearchResultDetailLocation,
   formatGlobalSearchBusinessDate,
   GLOBAL_SEARCH_MODULE_LABELS,
+  globalSearchResultTitle,
+  globalSearchResultSnippet,
   type GlobalSearchResult,
 } from "./global-search-result";
 
@@ -447,7 +449,9 @@ export function GlobalSearchPageContent({ api }: Props) {
 
     navigateWithinApp(
       target,
-      window.history.state,
+      result.entity_type === "mind"
+        ? { ...window.history.state, globalSearchReturnTo: returnTo }
+        : window.history.state,
     );
   };
 
@@ -587,7 +591,7 @@ export function GlobalSearchPageContent({ api }: Props) {
 
       {state === "idle" ? (
         <p className="global-search-state-line" role="status" aria-live="polite">
-          默认搜索 Diary、Todo 与 Universe；Conversations 可在模块筛选中开启
+          默认搜索 Diary、Todo、Universe 与 Mind
         </p>
       ) : null}
 
@@ -676,7 +680,7 @@ export function GlobalSearchPageContent({ api }: Props) {
                     >
                       <span className="global-search-result-title-line">
                         <span className="global-search-result-title">
-                          {result.stable_name || "未命名记录"}
+                          {globalSearchResultTitle(result)}
                         </span>
 
                         {result.lifecycle_status === "archived" ? (
@@ -688,12 +692,13 @@ export function GlobalSearchPageContent({ api }: Props) {
 
                       <span className="global-search-result-meta-line">
                         <span className="global-search-result-snippet">
-                          {result.snippet}
+                          {globalSearchResultSnippet(result)}
                         </span>
 
                         <span className="global-search-result-date">
                           {formatGlobalSearchBusinessDate(
                             result.business_time,
+                            result.time_basis,
                           )}
                         </span>
                       </span>

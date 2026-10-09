@@ -30,6 +30,7 @@ implements GlobalSearchRepository {
         "节点-中文-901",
         "Universe 目标",
       ),
+      {...row("mind", "00000000-0000-4000-8000-000000000003", ""), matchedField: "text" as const, timeBasis: "undated" as const},
     ];
   }
 }
@@ -70,12 +71,12 @@ test("global search keeps long active-module body matches compact and exact-read
   ).search({
     userId: USER_ID,
     query: "目标",
-    modules: ["diary", "universe"],
+    modules: ["diary", "universe", "mind"],
     scope: "active",
     limit: 25,
   });
 
-  assert.equal(result.results.length, 2);
+  assert.equal(result.results.length, 3);
   for (const item of result.results) {
     assert.equal(
       Object.hasOwn(item, "content"),

@@ -32,7 +32,7 @@ test("permanent deletion removes canonical Diary from search, export, and direct
       assert.equal(await diary.findArchivedDiaryById(userId, id), null);
       const exported = await new DrizzleExportRepository(tx as never).listDiary(userId);
       assert.equal(exported.some(row => row.id === id), false);
-      const found = await new DrizzleGlobalSearchRepository(tx as never).search({ userId, query: "Deleted diary", modules: ["diary"], scope: "all", mode: "normal", timezone: "Asia/Shanghai", limit: 20 });
+      const found = await new DrizzleGlobalSearchRepository(tx as never, "G").search({ userId, query: "Deleted diary", modules: ["diary"], scope: "all", mode: "normal", timezone: "Asia/Shanghai", limit: 20 });
       assert.equal(found.length, 0);
       const ledger = await tx.select({ resourceType: schema.mcpWriteIdempotency.resourceType }).from(schema.mcpWriteIdempotency).where(eq(schema.mcpWriteIdempotency.userId, userId));
       assert.deepEqual(ledger, [{ resourceType: "diary_entry" }]);

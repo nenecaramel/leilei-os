@@ -4,9 +4,10 @@ enum GlobalSearchModule: String, CaseIterable, Identifiable, Hashable, Codable {
     case diary
     case todo
     case universe
+    case mind
 
     static let defaultModules: Set<GlobalSearchModule> = [
-        .diary, .todo, .universe,
+        .diary, .todo, .universe, .mind,
     ]
 
     var id: String { rawValue }
@@ -16,6 +17,7 @@ enum GlobalSearchModule: String, CaseIterable, Identifiable, Hashable, Codable {
         case .diary: "Diary"
         case .todo: "Todo"
         case .universe: "Universe"
+        case .mind: "Mind"
         }
     }
 }
@@ -143,7 +145,7 @@ struct GlobalSearchResultItem: Identifiable, Decodable {
     let matchedField: String
     let matchReason: String
     let lifecycleStatus: String
-    let businessTime: String
+    let businessTime: String?
     let timeBasis: String
     let updatedAt: String
     let author: String?

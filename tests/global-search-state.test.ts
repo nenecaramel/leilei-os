@@ -41,9 +41,10 @@ test("Equal IDs in different modules remain distinct", () => {
 test("Groups follow module order while preserving each module's incoming order", () => {
   const todo = { ...result, entity_type: "todo" as const };
   const universe = { ...result, entity_type: "universe" as const };
+  const mind = { ...result, entity_type: "mind" as const, stable_name: "", business_time: null, time_basis: "undated", detail_tool: "get_memory" as const, detail_arguments: {id: "one"} };
   const later = { ...result, entity_id: "later" };
-  assert.deepEqual(groupGlobalSearchResults([universe, todo, result, later]), [
-    { module: "diary", items: [result, later] }, { module: "todo", items: [todo] }, { module: "universe", items: [universe] },
+  assert.deepEqual(groupGlobalSearchResults([mind, universe, todo, result, later]), [
+    { module: "diary", items: [result, later] }, { module: "todo", items: [todo] }, { module: "universe", items: [universe] }, { module: "mind", items: [mind] },
   ]);
   assert.deepEqual(groupGlobalSearchResults([]), []);
 });

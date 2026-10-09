@@ -23,3 +23,7 @@ struct DaySpaceNavigationTarget:
         "\(date):\(author ?? "-")"
     }
 }
+
+struct MemoryNavigationTarget: Hashable, Identifiable, Sendable {
+    let id: String
+}

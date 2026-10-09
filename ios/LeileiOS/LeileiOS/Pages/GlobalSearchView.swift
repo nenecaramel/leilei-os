@@ -5,7 +5,7 @@ struct GlobalSearchView: View {
     private let onOpenDiary: (DiaryNavigationTarget) -> Void
     private let onOpenDaySpace: (DaySpaceNavigationTarget) -> Void
     private let onOpenUniverseNode: (String) -> Void
-
+    @State private var memoryTarget: MemoryNavigationTarget?
     @State private var query = ""
     @State private var modules = GlobalSearchModule.defaultModules
     @State private var timePreset: GlobalSearchTimePreset = .anyTime
@@ -32,7 +32,6 @@ struct GlobalSearchView: View {
     @State private var loadMoreTask: Task<Void, Never>?
     @State private var isLoadingMore = false
     @State private var loadMoreFailed = false
-
     init(
         service: any GlobalSearchService = UnavailableGlobalSearchService(),
         onOpenDiary:
@@ -47,7 +46,6 @@ struct GlobalSearchView: View {
         self.onOpenDaySpace = onOpenDaySpace
         self.onOpenUniverseNode = onOpenUniverseNode
     }
-
     var body: some View {
         Group {
             switch state {
@@ -68,7 +66,8 @@ struct GlobalSearchView: View {
                     },
                     onOpenDiary: onOpenDiary,
                     onOpenDaySpace: onOpenDaySpace,
-                    onOpenUniverseNode: onOpenUniverseNode
+                    onOpenUniverseNode: onOpenUniverseNode,
+                    onOpenMemory: { memoryTarget = MemoryNavigationTarget(id: $0) }
                 )
 
             case .noResults:
@@ -92,6 +91,7 @@ struct GlobalSearchView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationDestination(item: $memoryTarget) { MindMemoryReadView(id: $0.id, onChanged: { memoryTarget = nil }) }
         .searchable(text: $query, prompt: "Search")
         .onChange(of: query) { _, _ in scheduleSearch() }
         .onChange(of: modules) { _, _ in scheduleSearch() }
@@ -127,6 +127,7 @@ struct GlobalSearchView: View {
         .onDisappear {
             searchTask?.cancel()
             loadMoreTask?.cancel()
+            isLoadingMore = false
         }
     }
 

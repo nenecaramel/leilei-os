@@ -19,6 +19,8 @@ import {
 import {
   createGlobalSearchResultDetailLocation,
   GLOBAL_SEARCH_MODULE_LABELS,
+  globalSearchResultTitle,
+  globalSearchResultSnippet,
   type GlobalSearchResult,
 } from "../pages/global-search-result";
 
@@ -317,11 +319,11 @@ export function QuickSearchPanel({
               </span>
 
               <span className="quick-search-result-title">
-                {result.stable_name || "未命名记录"}
+                {globalSearchResultTitle(result)}
               </span>
 
               <span className="quick-search-result-snippet">
-                {result.snippet}
+                {globalSearchResultSnippet(result)}
               </span>
             </button>
           ))}

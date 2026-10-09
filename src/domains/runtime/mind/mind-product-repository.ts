@@ -713,7 +713,7 @@ async function insertMindState(transaction: Transaction, state: SubjectStateWrit
   return row;
 }
 
-function memoryConditions(input: { userId: string; subjectId: string }) {
+export function memoryConditions(input: { userId: string; subjectId: string }) {
   return [
     eq(runtimeSubjectStates.userId, input.userId),
     eq(runtimeSubjectStates.subjectId, input.subjectId),
@@ -731,7 +731,7 @@ function productVisibilityCondition() {
 
 /** Match the canonical temporal reader, including legacy manual dates. Bad
  * metadata is undated, rather than making one row abort an entire date query. */
-function memoryOccurredAtSql() {
+export function memoryOccurredAtSql() {
   const payload = runtimeSubjectStates.payload;
   const raw = sql`CASE WHEN jsonb_typeof(${payload}->'temporal_v1') = 'object' THEN
     CASE WHEN jsonb_typeof(${payload}->'temporal_v1'->'occurredAt') = 'string' AND (
