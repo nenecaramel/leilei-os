@@ -274,3 +274,54 @@ A RED → GREEN pure regression and a real isolated prepare/relay/finalize/sync 
 verify this distinction. The latter adopts completed local messages without inserting
 new copies, keeps the existing canonical head and reader output identical, and
 continues enforcing the original-history fingerprint guard.
+
+
+## Minimal two-client implementation scope
+
+The user has selected a smaller first release: fixed-script selection, history
+restore/sync, same-native-session continuation and returning to Desktop. Old
+Edit/Retry/Fork, automatic branch discovery and handoff buttons are deferred.
+Only one client may continue the session. An idle peer is still an owner;
+unconfirmed release must refuse execution. The user's real `.claude` remains
+read-only during implementation. Real switching will be accepted jointly with
+the user, not exercised by unattended model calls.
+
+### Native query boundary (offline implementation, not enabled in the daemon)
+
+`createAgentSdkTurnHandle` has an opt-in `requireSameSessionBeforePrompt` guard.
+It requires a resume of the same parent at an exact checkpoint and holds all
+user input until a `system/init` event confirms that identity. A copied session,
+missing identity, EOF before init, startup timeout or cancellation ends the
+blocked input without sending it. The default existing turn path is unchanged.
+There is no automatic retry in this guard.
+
+`createNativeSessionMirror` keeps the existing store's durable `append` path,
+including subagent keys and rejection propagation, while returning null/empty
+for SDK resume `load`/`listSubkeys`. In the inspected SDK 0.3.286 implementation,
+`N2` returns before creating `claude-resume-*` when this load is null. The adapter
+pins the expected SDK project-directory key and session UUID. Its key is the
+SDK's encoded project-directory name, not necessarily the absolute cwd. It does
+not seed old records, mark a SessionStore complete, grant ownership or replace
+the existing append intent/outbox machinery. Only branded mirrors are accepted
+by the native identity guard; ordinary materializing stores are refused.
+
+Read-only inspection of the installed CLI 2.1.285 engine found its `Ks` output
+generator yielding the first system/init before reading commands from `qe`.
+This supports the proposed prompt gate, but is not a live characterization of
+the SDK's bundled CLI or Desktop version. Offline synthetic query tests prove
+our withholding/refusal and adapter contracts, not upstream version behavior.
+If a real version waits for user input before init, the guard must time out and
+refuse; it must never send a probe prompt to bypass the guard.
+
+Still pending: native source/cwd preflight, actual peer release check, durable
+baseline mirror synchronization, normal transport/terminal outbox integration,
+the fixed switching command and joint real Desktop/LeileiOS round-trip tests.
+The two-client feature is not yet ready for end-user switching. No query,
+`.claude` write, daemon restart, deployment or production mutation was performed
+for this implementation step.
+
+Validation for this step: full bridge offline suite 241 pass / 0 fail / 4 live
+skips; root typecheck and build pass; local production runtime gate pass; diff
+and hygiene checks pass. No full canonical-suite or real Desktop acceptance is
+claimed. Regression RED witnesses are the copied-session prompt, missing-init
+and startup-timeout failures; the subsequent offline suite is GREEN.
