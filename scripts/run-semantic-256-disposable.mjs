@@ -43,6 +43,8 @@ const environment = {
 };
 // Do not print environment, connection URI or local-only credentials.
 const commands = [
+  // Catch missing imports and type contract drift before mutating even the disposable DB.
+  ["typecheck"],
   ["db:migrate"],
   ["db:check"],
   ["exec", "tsx", "--test", "tests/native-live-semantic-256.integration.test.ts"],
