@@ -2518,9 +2518,9 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   assert.equal(call.options.systemPrompt.append.includes("send_meme"), false);
   assert.equal(call.options.systemPrompt.append.includes("leileios-album"), false);
   assert.match(call.options.systemPrompt.append, /<leileios_wake>/);
-    assert.match(call.options.systemPrompt.append, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
-    assert.match(call.options.systemPrompt.append, /<leileios_murmur>/);
-    assert.doesNotMatch(call.options.systemPrompt.append, /<leileios_mind_write>/);
+  assert.match(call.options.systemPrompt.append, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+  assert.match(call.options.systemPrompt.append, /<leileios_murmur>/);
+  assert.doesNotMatch(call.options.systemPrompt.append, /<leileios_mind_write>/);
 });
 
  test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {
