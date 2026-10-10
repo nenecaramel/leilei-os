@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT } from "../../shared/native-live-semantic-candidate-limit.js";
 import {
   check,
   foreignKey,
@@ -98,7 +99,7 @@ export const nativeLiveSemanticScoringRequests = pgTable(
     ),
     check(
       "native_live_semantic_scoring_requests_candidates_array",
-      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) BETWEEN 1 AND 64`,
+      sql`jsonb_typeof(${table.candidates}) = 'array' AND jsonb_array_length(${table.candidates}) BETWEEN 1 AND ${sql.raw(String(NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT))}`,
     ),
     check(
       "native_live_semantic_scoring_requests_snapshot_nonnegative",
