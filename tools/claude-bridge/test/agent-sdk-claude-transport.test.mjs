@@ -13,15 +13,9 @@ import { join } from "node:path";
 import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
-import { LEILEIOS_MIND_SYSTEM_PROMPT } from "../src/leileios-mind-system-prompt.mjs";
-import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "../src/leileios-wake-system-prompt.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "../src/leileios-murmur-system-prompt.mjs";
 
-const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [
-  LEILEIOS_MIND_SYSTEM_PROMPT,
-  LEILEIOS_WAKE_SYSTEM_PROMPT,
-  LEILEIOS_MURMUR_SYSTEM_PROMPT,
-].join("\n\n");
+const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = LEILEIOS_MURMUR_SYSTEM_PROMPT;
 
 function fakeQuery(messages, { error = null } = {}) {
   let closed = false;
@@ -101,7 +95,7 @@ test("sendNew preserves Claude Code settings and normalized event parity", async
       cwd: "/workspace/leilei-os",
       env: {
         HOME: "/Users/leilei",
-        LEILEI_MIND_HOOK_DISABLED: "1",
+        LEILEI_MIND_HOOK_DISABLED: "0",
         DISABLE_AUTO_COMPACT: "1",
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
@@ -2519,7 +2513,7 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   assert.deepEqual(call.options.mcpServers, {leileios_local: fileServer});
   assert.equal(call.options.systemPrompt.append.includes("send_meme"), false);
   assert.equal(call.options.systemPrompt.append.includes("leileios-album"), false);
-  assert.match(call.options.systemPrompt.append, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+  assert.doesNotMatch(call.options.systemPrompt.append, /<leileios_wake>|<leileios_mind_write>/);
 });
 
  test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {
@@ -2533,9 +2527,9 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   assert.deepEqual(rows.map(row => [row.sessionId, row.cwd]), [["historical", "/historical"]]);
 });
 
-test("Native Live SDK explicitly bypasses the standalone Claude Code Mind hook", () => {
-  const environment = {LEILEI_MIND_HOOK_DISABLED: "0", HOME: "/tmp/leileios-test"};
+test("Native Live SDK enables the installed Claude Code Mind hook", () => {
+  const environment = {LEILEI_MIND_HOOK_DISABLED: "1", HOME: "/tmp/leileios-test"};
   const transport = new AgentSdkClaudeTransport({environment});
-  assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "1");
-  assert.equal(environment.LEILEI_MIND_HOOK_DISABLED, "0");
+  assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "0");
+  assert.equal(environment.LEILEI_MIND_HOOK_DISABLED, "1");
 });
