@@ -96,6 +96,19 @@ test("disposable Postgres preserves full 256-candidate semantic scoring and reje
     });
     assert.equal(accepted.status, "completed");
 
+    // The original 64-item database cap must not reject a 65-item request.
+    const thresholdPreparation = await createPreparation("65-item threshold must work");
+    await scoring.stage({
+      userId,
+      preparation: thresholdPreparation,
+      plan: { ...plan, manifestId: crypto.randomUUID(), candidates: candidates.slice(0, 65) },
+    });
+    const thresholdRows = await database.db.select({
+      candidates: nativeLiveSemanticScoringRequests.candidates,
+    }).from(nativeLiveSemanticScoringRequests)
+      .where(eq(nativeLiveSemanticScoringRequests.prepareId, thresholdPreparation.prepareId));
+    assert.equal(thresholdRows[0]?.candidates.length, 65);
+
     const overflowPreparation = await createPreparation("Overflow must fail");
     await assert.rejects(() => scoring.stage({
       userId,
