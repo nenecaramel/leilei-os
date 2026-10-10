@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigserial,
+  boolean,
   check,
   index,
   integer,
@@ -101,6 +102,7 @@ export const nativeLiveProviderSessionStoreStatus = pgTable(
     state: varchar("state", { length: 16 })
       .$type<"complete" | "incomplete">()
       .notNull(),
+    preserveExternalSession: boolean("preserve_external_session").default(false).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

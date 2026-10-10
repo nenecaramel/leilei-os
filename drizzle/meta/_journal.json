@@ -750,6 +750,13 @@
       "when": 1791539010224,
       "tag": "0106_relay_finalize_rejection_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1791621320264,
+      "tag": "0107_native_session_preservation",
+      "breakpoints": true
     }
   ]
 }

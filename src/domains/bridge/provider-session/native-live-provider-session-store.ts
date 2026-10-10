@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import { nativeLiveProviderSessionEntries } from "../../../database/schema.js";
+import { providerSessionOwnershipLock } from "./native-live-provider-session-references.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
 
@@ -29,7 +30,9 @@ export class NativeLiveProviderSessionStoreError extends Error {
     readonly code:
       | "INVALID_KEY"
       | "INVALID_ENTRY"
-      | "BATCH_TOO_LARGE",
+      | "BATCH_TOO_LARGE"
+      | "EXTERNAL_SESSION_PRESERVED"
+      | "CLEANUP_IN_PROGRESS",
     message: string,
   ) {
     super(message);
@@ -107,16 +110,27 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     userId: string;
     key: NativeLiveProviderSessionStoreKey;
   }): Promise<void> {
-    if (input.key.subpath !== undefined) {
-      await this.db.execute(sql`
-        DELETE FROM native_live_provider_session_entries
+    await this.db.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
+      const preserved = await transaction.execute<{ preserve_external_session: boolean }>(sql`
+        SELECT preserve_external_session
+        FROM native_live_provider_session_store_status
         WHERE user_id = ${input.userId}::uuid
           AND provider_session_id = ${input.key.sessionId}
-          AND subpath = ${input.key.subpath}
+        FOR UPDATE
       `);
-      return;
-    }
-    await this.db.transaction(async (transaction) => {
+      if (preserved[0]?.preserve_external_session) {
+        throw new NativeLiveProviderSessionStoreError("EXTERNAL_SESSION_PRESERVED", "External native sessions cannot be deleted by LeileiOS cleanup.");
+      }
+      if (input.key.subpath !== undefined) {
+        await transaction.execute(sql`
+          DELETE FROM native_live_provider_session_entries
+          WHERE user_id = ${input.userId}::uuid
+            AND provider_session_id = ${input.key.sessionId}
+            AND subpath = ${input.key.subpath}
+        `);
+        return;
+      }
       await transaction.execute(sql`
         DELETE FROM native_live_provider_session_entries
         WHERE user_id = ${input.userId}::uuid
@@ -126,6 +140,37 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
         DELETE FROM native_live_provider_session_store_status
         WHERE user_id = ${input.userId}::uuid
           AND provider_session_id = ${input.key.sessionId}
+      `);
+    });
+  }
+
+  // Only a trusted native restore path should call this after verifying the
+  // selected source. The sticky marker is independent of projection lifetime.
+  async preserveExternalSession(input: { userId: string; sessionId: string }): Promise<void> {
+    await this.db.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.sessionId, wait: true })}`);
+      const cleanups = await transaction.execute<{ status: string }>(sql`
+        SELECT status FROM native_live_provider_session_cleanups
+        WHERE provider = 'claude_code'
+          AND provider_session_id = ${input.sessionId}
+        FOR UPDATE
+      `);
+      if (cleanups.some(cleanup => cleanup.status === "reserved")) {
+        throw new NativeLiveProviderSessionStoreError("CLEANUP_IN_PROGRESS", "Native session cleanup must finish before restoration.");
+      }
+      await transaction.execute(sql`
+        INSERT INTO native_live_provider_session_store_status
+          (user_id, provider_session_id, state, preserve_external_session, updated_at)
+        VALUES (${input.userId}::uuid, ${input.sessionId}, 'incomplete', true, now())
+        ON CONFLICT (user_id, provider_session_id) DO UPDATE
+        SET preserve_external_session = true, updated_at = now()
+      `);
+      await transaction.execute(sql`
+        UPDATE native_live_provider_session_cleanups
+        SET status = 'failed', last_error_code = 'EXTERNAL_SESSION_PRESERVED',
+            completed_at = now(), updated_at = now()
+        WHERE user_id = ${input.userId}::uuid AND provider = 'claude_code'
+          AND provider_session_id = ${input.sessionId} AND status = 'pending'
       `);
     });
   }

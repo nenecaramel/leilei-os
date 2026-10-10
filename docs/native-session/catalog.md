@@ -145,3 +145,35 @@ change; incomplete original history throws rather than returning a partial
 payload. Returned projection bodies are private and must never be logged or
 included in diagnostic CLI output. Callers still need authorization and atomic
 ledger/checkpoint persistence; reading does not grant execution ownership.
+
+## External source preservation (restore prerequisite)
+
+Migration 0107 adds a default-false `preserve_external_session` permission bit
+to the existing SessionStore status index. A trusted restore path can mark a
+verified original session through `preserveExternalSession`; no public endpoint
+currently exposes this operation. This is source-deletion protection, not an
+execution lease, a second session store, or a declaration that the remote
+transcript is complete.
+
+The marker survives removal of every conversation checkpoint and remains sticky
+through status updates. Physical-session cleanup checks it across client aliases;
+cached transcript operations remain tenant-scoped. Marking and cleanup reservation
+share a native-UUID transaction lock, including the window before a marker row
+exists. Already reserved cleanup blocks preservation. The final SessionStore
+delete path also refuses a marked source; main/subpath bytes are retained.
+
+Local validation: seven real PostgreSQL protection/race tests pass; removing the
+reservation lock makes the race test fail by reserving the protected source.
+Checked-in migrations apply to a fresh isolated database (108 ledger rows), and
+the 0106→0107 upgrade has exactly one pending migration, preserves all other
+tables and leaves zero pending migrations afterward. Root typecheck/build and
+the offline runtime gate pass. Existing SessionStore/conversation integration
+tests pass; the lifecycle-boundaries test reports `RESULT_MISMATCH` on both this
+branch and unchanged main `3af6817c` (a baseline failure, not a passing test).
+
+The existing Drizzle snapshot predates several current tables and retired tables.
+This change follows the repository's custom-SQL migration pattern, adding only
+0107 and its journal entry, rather than generating unrelated schema changes.
+Drizzle check passes; full snapshot regeneration is outside this scope. No
+production migration has run. The restore writer and execution handoff remain
+unimplemented at this point.

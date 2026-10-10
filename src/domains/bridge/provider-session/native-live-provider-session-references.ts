@@ -1,4 +1,13 @@
 import { sql, type SQL } from 'drizzle-orm';
+
+/** Native UUIDs address physical files; serialize preservation across client aliases. */
+export function providerSessionOwnershipLock(input: {
+    providerSessionId: string | SQL;
+    wait: boolean;
+}): SQL {
+    const key = sql`hashtextextended('leileios-native-session:' || ${input.providerSessionId}::text, 0)`;
+    return input.wait ? sql`pg_advisory_xact_lock(${key})` : sql`pg_try_advisory_xact_lock(${key})`;
+}
 /** All execution-state references, not just the conversation being purged. */
 export function providerSessionUnreferenced(input: {
     userId: string | SQL;
@@ -16,6 +25,10 @@ export function providerSessionUnreferenced(input: {
     const compactConversation = input.excludeConversationId ? sql `AND compact.conversation_id <> ${input.excludeConversationId}::uuid` : sql ``;
     return sql `
  NOT EXISTS (
+   SELECT 1 FROM native_live_provider_session_store_status AS preserved_native_session
+   WHERE preserved_native_session.provider_session_id = ${input.providerSessionId}
+     AND preserved_native_session.preserve_external_session = true
+ ) AND NOT EXISTS (
    SELECT 1 FROM conversation_provider_session_checkpoints AS surviving_checkpoint
    WHERE surviving_checkpoint.user_id = ${input.userId}::uuid
      AND surviving_checkpoint.provider = 'claude_code'
