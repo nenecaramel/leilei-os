@@ -31,10 +31,10 @@ struct PageContainer: View {
 
     var body: some View {
         // Single navigation and edge-background owner for all main pages.
-        // Content keeps its safe area; only the backdrop extends beyond it.
+        // Universe extends its map beneath the transparent navigation bar.
         NavigationStack {
             pageContent
-            .navigationTitle(selectedPage == .chat ? "" : pageTitle)
+            .navigationTitle(selectedPage == .chat || selectedPage == .universe ? "" : pageTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -45,6 +45,13 @@ struct PageContainer: View {
                         .reportingFloatingControlCenter(
                             FloatingControlCenter.menu
                         )
+                    }
+                }
+
+                if selectedPage == .universe {
+                    ToolbarItem(placement: .principal) {
+                        Text(pageTitle)
+                            .font(.headline)
                     }
                 }
 

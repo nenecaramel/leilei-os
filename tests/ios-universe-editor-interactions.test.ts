@@ -70,3 +70,35 @@ test("Universe editing overlays stable detail and owns its nested presentations"
   assert.match(actions, /if isCreate \{\s*onClose\(\)\s*\} else \{/);
   assert.match(actions, /originalDraft = submittedDraft\s*isEditing = false/);
 });
+
+test("Universe home keeps only Add in the trailing toolbar", () => {
+  const source = read("Universe/UniversePagePresentation.swift");
+  const toolbar = source.slice(source.indexOf("func readyToolbar("));
+  assert.doesNotMatch(toolbar, /Menu \{|Picker\(|prepareExport|Export Universe|ellipsis/);
+  assert.match(toolbar, /"Add Node"/);
+  assert.match(toolbar, /mapMode = \.placingNode/);
+  assert.match(toolbar, /mapMode = \.browse/);
+});
+
+test("Universe galaxy selector shares the map control row and native button style", () => {
+  const map = read("UniverseMapView.swift");
+  const controls = read("Universe/Map/UniverseMapPresentation.swift");
+  assert.match(map, /@Binding var activeGalaxyID: String\?/);
+  assert.match(map, /HStack \{\s*galaxyMenu\s*Spacer\(\)[\s\S]*Text\("View All"\)/);
+  assert.match(map, /\.padding\(16\)\s*\.padding\(\.top, controlsTopInset\)/);
+  assert.match(controls, /Picker\("", selection: \$activeGalaxyID\)/);
+  assert.match(controls, /pickerStyle\(\.inline\)/);
+  assert.match(controls, /\.buttonStyle\(\.bordered\)\s*\.controlSize\(\.small\)/);
+  assert.match(controls, /onOpenGalaxyMenu\(\)/);
+});
+
+test("Universe centers its title and extends only the map beneath floating navigation", () => {
+  const container = readFileSync(new URL("../ios/LeileiOS/LeileiOS/Navigation/PageContainer.swift", import.meta.url), "utf8");
+  assert.match(container, /if selectedPage == \.universe \{\s*ToolbarItem\(placement: \.principal\)/);
+  assert.match(container, /toolbarBackground\(\.hidden, for: \.navigationBar\)/);
+  const page = read("Universe/UniversePagePresentation.swift");
+  assert.match(page, /activeGalaxyID: \$activeGalaxyID/);
+  assert.match(page, /controlsTopInset: proxy.safeAreaInsets.top/);
+  assert.match(page, /onOpenGalaxyMenu: cancelPlacementForToolbarMenu/);
+  assert.match(page, /\.ignoresSafeArea\(\.container, edges: \.top\)/);
+});

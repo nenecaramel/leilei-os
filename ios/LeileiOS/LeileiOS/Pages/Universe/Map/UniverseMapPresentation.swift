@@ -3,6 +3,37 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UniverseMapView {
+    var galaxyMenu: some View {
+        Menu {
+            Picker("", selection: $activeGalaxyID) {
+                Text("All Galaxies")
+                    .tag(String?.none)
+
+                ForEach(galaxies.sorted { $0.order < $1.order }) { galaxy in
+                    Label {
+                        Text(galaxy.title)
+                    } icon: {
+                        Image(systemName: "circle.fill")
+                            .foregroundStyle(UniversePalette.color(hex: galaxy.color))
+                    }
+                    .tag(Optional(galaxy.id))
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.inline)
+        } label: {
+            Text(galaxies.first { $0.id == activeGalaxyID }?.title ?? "All Galaxies")
+                .font(.subheadline)
+                .lineLimit(1)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .accessibilityLabel("Select Galaxy")
+        .simultaneousGesture(
+            TapGesture().onEnded { onOpenGalaxyMenu() }
+        )
+    }
+
     @ViewBuilder
     var modeHint: some View {
         switch mode {

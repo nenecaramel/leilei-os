@@ -62,8 +62,8 @@ struct UniverseView: View {
         )
         .environment(\.colorScheme, .dark)
         .toolbar {
-            if case .ready(let result) = state {
-                readyToolbar(result)
+            if case .ready = state {
+                readyToolbar()
             }
         }
         .fullScreenCover(
