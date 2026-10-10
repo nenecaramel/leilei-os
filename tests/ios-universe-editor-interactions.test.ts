@@ -27,7 +27,13 @@ test("Universe destructive node and relation actions require confirmation", () =
   assert.match(sheet, /case \.restoreVersion:[\s\S]*Button\("Restore", role: \.destructive\)/);
   assert.match(detail, /confirmation = \.removeConnection\(connection\.relation\)/);
   assert.match(toolbar, /confirmation = \.deleteNode/);
-  assert.match(toolbar, /confirmation = \.restoreVersion/);
+  assert.doesNotMatch(toolbar, /restoreVersion|Restore Previous Version/);
+  const menu = toolbar.slice(toolbar.indexOf("Menu {"));
+  assert.match(menu, /Button\("Add Connection"\) \{\s*relationPresented = true/);
+  assert.match(menu, /Button\("Edit"\) \{\s*resetDraft\(\)\s*isEditing = true/);
+  assert.match(menu, /Button\("Delete", role: \.destructive\) \{\s*confirmation = \.deleteNode/);
+  assert.doesNotMatch(menu.split("} label: {")[0], /Label\(|Image\(/);
+  assert.doesNotMatch(toolbar.slice(toolbar.indexOf("} else if node != nil {"), toolbar.indexOf("Menu {")), /Button/);
 });
 
 test("Universe nested sheets protect selection and connection drafts", () => {

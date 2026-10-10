@@ -38,41 +38,18 @@ extension UniverseNodeSheet {
                 }
                 .disabled(!canSave)
             } else if node != nil {
-                Button {
-                    relationPresented = true
-                } label: {
-                    Image(systemName: "link")
-                }
-                .accessibilityLabel("Add Connection")
-                .disabled(isSaving)
-
-                Button("Edit") {
-                    resetDraft()
-                    isEditing = true
-                }
-                .disabled(isSaving)
-
                 Menu {
-                    if revisionsAvailable {
-                        Button {
-                            confirmation = .restoreVersion
-                        } label: {
-                            Label(
-                                "Restore Previous Version",
-                                systemImage: "clock.arrow.circlepath"
-                            )
-                        }
+                    Button("Add Connection") {
+                        relationPresented = true
                     }
 
-                    Button(
-                        role: .destructive
-                    ) {
+                    Button("Edit") {
+                        resetDraft()
+                        isEditing = true
+                    }
+
+                    Button("Delete", role: .destructive) {
                         confirmation = .deleteNode
-                    } label: {
-                        Label(
-                            "Delete",
-                            systemImage: "trash"
-                        )
                     }
                 } label: {
                     Image(systemName: "ellipsis")
