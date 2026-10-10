@@ -3,6 +3,38 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UniverseView {
+    var nodeDetailSelection: Binding<UniverseSheetSelection?> {
+        Binding(
+            get: {
+                guard case .node = sheetSelection else { return nil }
+                return sheetSelection
+            },
+            set: { selection in
+                if let selection {
+                    sheetSelection = selection
+                } else if case .node = sheetSelection {
+                    sheetSelection = nil
+                }
+            }
+        )
+    }
+
+    var nodeCreateSelection: Binding<UniverseSheetSelection?> {
+        Binding(
+            get: {
+                guard case .create = sheetSelection else { return nil }
+                return sheetSelection
+            },
+            set: { selection in
+                if let selection {
+                    sheetSelection = selection
+                } else if case .create = sheetSelection {
+                    sheetSelection = nil
+                }
+            }
+        )
+    }
+
     @ViewBuilder
     func nodeSheet(
         _ selection: UniverseSheetSelection

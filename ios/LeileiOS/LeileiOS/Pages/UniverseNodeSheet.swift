@@ -131,9 +131,49 @@ struct UniverseNodeSheet: View {
     }
 
     var body: some View {
+        Group {
+            if isCreate {
+                nodePresentation(editing: true)
+            } else {
+                nodePresentation(editing: false)
+                    .sheet(isPresented: $isEditing) {
+                        nodePresentation(editing: true)
+                            .presentationDetents([.large])
+                            .presentationDragIndicator(.visible)
+                            .presentationBackground(UniversePalette.background)
+                    }
+            }
+        }
+        .onChange(of: node) { _, updated in
+            guard !isEditing,
+                  updated != nil
+            else {
+                return
+            }
+
+            resetDraft()
+        }
+        .onChange(of: sources) { _, updatedSources in
+            for source in updatedSources {
+                sourceMetadata[source.diaryId] =
+                    UniverseDiarySourceOption(
+                        id: source.diaryId,
+                        title: source.title,
+                        date: source.date,
+                        status: source.status
+                    )
+            }
+
+            if !isEditing {
+                resetDraft()
+            }
+        }
+    }
+
+    private func nodePresentation(editing: Bool) -> some View {
         NavigationStack {
             Group {
-                if isEditing {
+                if editing {
                     editor
                         .disabled(isSaving)
                 } else if let node {
@@ -149,18 +189,21 @@ struct UniverseNodeSheet: View {
             .navigationTitle(
                 isCreate
                     ? "Add Node"
-                    : isEditing
+                    : editing
                         ? "Edit Node"
                         : "Universe"
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                toolbarContent
+                toolbarContent(editing: editing)
             }
         }
         .environment(\.colorScheme, .dark)
         .interactiveDismissDisabled(isEditing || isSaving)
-        .sheet(isPresented: $sourcePickerPresented) {
+        .sheet(isPresented: Binding(
+            get: { editing && sourcePickerPresented },
+            set: { if editing { sourcePickerPresented = $0 } }
+        )) {
             UniverseDiarySourcePicker(
                 initialSelection: draft.sourceDiaryIDs,
                 initialMetadata: sourceMetadata,
@@ -174,7 +217,10 @@ struct UniverseNodeSheet: View {
             }
             .environment(\.colorScheme, .dark)
         }
-        .sheet(isPresented: $relationPresented) {
+        .sheet(isPresented: Binding(
+            get: { !editing && relationPresented },
+            set: { if !editing { relationPresented = $0 } }
+        )) {
             if let node {
                 UniverseRelationSheet(
                     source: node,
@@ -186,7 +232,10 @@ struct UniverseNodeSheet: View {
                 .environment(\.colorScheme, .dark)
             }
         }
-        .sheet(item: $diarySourceSelection) { source in
+        .sheet(item: Binding(
+            get: { editing ? nil : diarySourceSelection },
+            set: { if !editing { diarySourceSelection = $0 } }
+        )) { source in
             UniverseDiarySourceSheet(
                 source: source,
                 onChanged: {
@@ -198,8 +247,8 @@ struct UniverseNodeSheet: View {
         .confirmationDialog(
             confirmationTitle,
             isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
+                get: { editing == isEditing && confirmation != nil },
+                set: { if editing == isEditing && !$0 { confirmation = nil } }
             ),
             titleVisibility: .visible
         ) {
@@ -226,30 +275,6 @@ struct UniverseNodeSheet: View {
                 Button("Cancel", role: .cancel) {}
             case nil:
                 EmptyView()
-            }
-        }
-        .onChange(of: node) { _, updated in
-            guard !isEditing,
-                  updated != nil
-            else {
-                return
-            }
-
-            resetDraft()
-        }
-        .onChange(of: sources) { _, updatedSources in
-            for source in updatedSources {
-                sourceMetadata[source.diaryId] =
-                    UniverseDiarySourceOption(
-                        id: source.diaryId,
-                        title: source.title,
-                        date: source.date,
-                        status: source.status
-                    )
-            }
-
-            if !isEditing {
-                resetDraft()
             }
         }
     }

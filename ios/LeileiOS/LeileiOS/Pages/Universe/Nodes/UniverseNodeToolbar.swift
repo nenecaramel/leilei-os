@@ -4,12 +4,12 @@ import UniformTypeIdentifiers
 
 extension UniverseNodeSheet {
     @ToolbarContentBuilder
-    var toolbarContent: some ToolbarContent {
+    func toolbarContent(editing: Bool) -> some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button {
                 cancel()
             } label: {
-                if isEditing {
+                if editing {
                     Text("Cancel")
                 } else {
                     Image(systemName: "xmark")
@@ -20,7 +20,7 @@ extension UniverseNodeSheet {
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if isEditing {
+            if editing {
                 Button {
                     Task {
                         await save()
@@ -37,7 +37,7 @@ extension UniverseNodeSheet {
                     }
                 }
                 .disabled(!canSave)
-            } else if let node {
+            } else if node != nil {
                 Button {
                     relationPresented = true
                 } label: {

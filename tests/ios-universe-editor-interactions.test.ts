@@ -44,3 +44,29 @@ test("Universe import preview can be cancelled without importing", () => {
   assert.match(read("Universe/UniversePagePresentation.swift"), /discardImportSelection\(\)/);
   assert.match(read("Universe/UniversePageIO.swift"), /func discardImportSelection\(\)/);
 });
+
+
+test("Universe creation uses a drawer while node detail stays fullscreen", () => {
+  const page = read("UniverseView.swift");
+  const navigation = read("Universe/UniverseNodeNavigation.swift");
+  assert.match(page, /fullScreenCover\(\s*item: nodeDetailSelection/);
+  assert.match(page, /\.sheet\(item: nodeCreateSelection\)/);
+  assert.match(navigation, /case \.node = sheetSelection/);
+  assert.match(navigation, /case \.create = sheetSelection/);
+  assert.match(page, /presentationDetents\(\[\.large\]\)/);
+  assert.match(page, /presentationDragIndicator\(\.visible\)/);
+});
+
+test("Universe editing overlays stable detail and owns its nested presentations", () => {
+  const sheet = read("UniverseNodeSheet.swift");
+  const toolbar = read("Universe/Nodes/UniverseNodeToolbar.swift");
+  assert.match(sheet, /nodePresentation\(editing: false\)[\s\S]*\.sheet\(isPresented: \$isEditing\)/);
+  assert.match(sheet, /nodePresentation\(editing: true\)[\s\S]*presentationDetents\(\[\.large\]\)/);
+  assert.match(sheet, /editing == isEditing && confirmation != nil/);
+  assert.match(sheet, /editing && sourcePickerPresented/);
+  assert.match(sheet, /toolbarContent\(editing: editing\)/);
+  assert.match(toolbar, /if editing/);
+  const actions = read("Universe/Nodes/UniverseNodeCoordination.swift");
+  assert.match(actions, /if isCreate \{\s*onClose\(\)\s*\} else \{/);
+  assert.match(actions, /originalDraft = submittedDraft\s*isEditing = false/);
+});

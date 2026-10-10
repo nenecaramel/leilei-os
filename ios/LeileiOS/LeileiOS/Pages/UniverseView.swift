@@ -67,12 +67,18 @@ struct UniverseView: View {
             }
         }
         .fullScreenCover(
-            item: $sheetSelection
+            item: nodeDetailSelection
         ) { selection in
             nodeSheet(selection)
                 .presentationBackground(
                     UniversePalette.background
                 )
+        }
+        .sheet(item: nodeCreateSelection) { selection in
+            nodeSheet(selection)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniversePalette.background)
         }
         .fileImporter(
             isPresented: $importPresented,
