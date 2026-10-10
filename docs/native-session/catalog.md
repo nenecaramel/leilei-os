@@ -77,8 +77,9 @@ previous blocks and UUIDs unchanged. Older message rewrites, truncation, changed
 session IDs and changed branches require explicit handling; no delete plan is
 created. A future authenticated writer must compare-and-swap the expected source
 revision, validate source ownership, map canonical IDs, and atomically persist
-the projection and checkpoint. This writer and its API/UI integration do not yet
-exist; the pure planner alone does not establish crash-safe synchronization.
+the projection and checkpoint. The atomic writer below is internal only; its
+API/UI integration does not yet exist. The pure planner alone does not establish
+crash-safe synchronization.
 
 `extractNativeHistoryAsset` extracts only embedded base64 image/document bytes
 with a configured size cap, exact snapshot/reference checks and SHA-256/size
@@ -175,5 +176,38 @@ The existing Drizzle snapshot predates several current tables and retired tables
 This change follows the repository's custom-SQL migration pattern, adding only
 0107 and its journal entry, rather than generating unrelated schema changes.
 Drizzle check passes; full snapshot regeneration is outside this scope. No
-production migration has run. The restore writer and execution handoff remain
-unimplemented at this point.
+production migration has run. Execution handoff remains unimplemented.
+
+## Atomic native-history projection (internal restore boundary)
+
+`restoreNativeSessionHistory` accepts a verified complete selected-head projection
+and a stable target conversation ID. It validates the native message fingerprints,
+then atomically writes existing conversation/message/content/checkpoint tables and
+the preservation marker. Original UUIDs map to `source_message_id`; canonical IDs
+remain distinct, so two explicit restored branches never share primary keys.
+Original dates populate the existing message date fields. Missing original dates
+remain null in `source_created_at`; the non-null database creation date is recording
+time, not evidence of an original timestamp.
+
+Conversation metadata stores only source identity/revision and per-message hashes,
+not another copy of transcript bodies. Every restored assistant has its exact
+native checkpoint and original working directory. Existing reader/prepare paths
+can therefore read synthetic restored history, plan ordinary send as same-session
+resume and plan non-root Retry/Edit from the historical parent checkpoint. This
+does not authorize provider execution or prove Desktop's ownership has been released.
+
+Repeated or concurrent delivery creates one projection. Appends require expected
+source revision and canonical head; locally changed heads/checkpoints, old-message
+rewrites, explicit branch changes and in-flight turns/compacts fail closed. A real
+content-insert fault rolls back messages, checkpoints, head and preservation together.
+The existing conversation row lock plus the production prepare path's serializable
+transaction prevent a concurrent old-head preparation and advancing restore from
+both committing; an actual PostgreSQL interleaving test verifies this without adding
+a second lock framework or retries. Completed projected messages are immutable;
+the reader's pure growing-assistant plan is not accepted as a completed restore.
+
+No route, daemon command or UI invokes this writer yet. Attachment references still
+need the existing owned attachment materializer before images/files are previewable.
+Root-message replacement, two-client execution handoff and syncing back after local
+canonical advancement still need their own explicit coordination; these are not
+silently treated as verified by the foundation tests.

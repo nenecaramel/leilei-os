@@ -4,6 +4,7 @@ import { nativeLiveProviderSessionEntries } from "../../../database/schema.js";
 import { providerSessionOwnershipLock } from "./native-live-provider-session-references.js";
 
 type Database = ReturnType<typeof createDatabase>["db"];
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 const MAX_SESSION_STORE_ENTRY_BYTES = 24_000_000;
 const MAX_SESSION_STORE_APPEND_BYTES = 28_000_000;
@@ -41,7 +42,7 @@ export class NativeLiveProviderSessionStoreError extends Error {
 }
 
 export class DrizzleNativeLiveProviderSessionStoreRepository {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database | Transaction) {}
 
   async append(input: {
     userId: string;
