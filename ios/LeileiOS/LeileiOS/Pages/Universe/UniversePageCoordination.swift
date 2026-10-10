@@ -13,6 +13,7 @@ extension UniverseView {
     func load() async {
         loadGeneration += 1
         let generation = loadGeneration
+        mapMode = .browse
         state = .loading
 
         do {

@@ -137,6 +137,11 @@ enum UniversePageState {
     case notInitialized
     case failed
     case ready(UniverseReadResult)
+
+    var canAddNode: Bool {
+        if case .ready = self { return true }
+        return false
+    }
 }
 
 enum UniverseSheetSelection:
