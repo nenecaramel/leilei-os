@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { providerSessionOwnershipLock } from "./native-live-provider-session-references.js";
 import type { createDatabase } from "../../../database/client.js";
 import { nativeLiveProviderSessionEntries } from "../../../database/schema.js";
 
@@ -29,7 +30,8 @@ export class NativeLiveProviderSessionStoreError extends Error {
     readonly code:
       | "INVALID_KEY"
       | "INVALID_ENTRY"
-      | "BATCH_TOO_LARGE",
+      | "BATCH_TOO_LARGE"
+      | "EXTERNAL_SESSION_PRESERVED",
     message: string,
   ) {
     super(message);
@@ -47,7 +49,9 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     entries: NativeLiveProviderSessionStoreEntry[];
   }): Promise<void> {
     if (input.entries.length === 0) return;
-    await this.db
+    await this.db.transaction(async transaction => {
+      await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
+      await transaction
       .insert(nativeLiveProviderSessionEntries)
       .values(
         input.entries.map((entry, appendOrdinal) => ({
@@ -60,6 +64,7 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
         })),
       )
       .onConflictDoNothing();
+    });
   }
 
   async load(input: {
@@ -107,16 +112,27 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     userId: string;
     key: NativeLiveProviderSessionStoreKey;
   }): Promise<void> {
-    if (input.key.subpath !== undefined) {
-      await this.db.execute(sql`
-        DELETE FROM native_live_provider_session_entries
+    await this.db.transaction(async (transaction) => {
+      await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
+      const preserved = await transaction.execute<{ preserve_external_session: boolean }>(sql`
+        SELECT preserve_external_session
+        FROM native_live_provider_session_store_status
         WHERE user_id = ${input.userId}::uuid
           AND provider_session_id = ${input.key.sessionId}
-          AND subpath = ${input.key.subpath}
+        FOR UPDATE
       `);
-      return;
-    }
-    await this.db.transaction(async (transaction) => {
+      if (preserved[0]?.preserve_external_session) {
+        throw new NativeLiveProviderSessionStoreError("EXTERNAL_SESSION_PRESERVED", "External native sessions cannot be deleted by LeileiOS cleanup.");
+      }
+      if (input.key.subpath !== undefined) {
+        await transaction.execute(sql`
+          DELETE FROM native_live_provider_session_entries
+          WHERE user_id = ${input.userId}::uuid
+            AND provider_session_id = ${input.key.sessionId}
+            AND subpath = ${input.key.subpath}
+        `);
+        return;
+      }
       await transaction.execute(sql`
         DELETE FROM native_live_provider_session_entries
         WHERE user_id = ${input.userId}::uuid
