@@ -2,9 +2,9 @@
 // Diagnostic-only offline checks for the PR #1001 + production 0108 compatibility branch.
 // No deploys, migrations, database writes, Claude queries or daemon restarts.
 import { spawnSync } from "node:child_process";
-import { closeSync, mkdtempSync, openSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { closeSync, mkdtempSync, openSync, readFileSync, readdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repository = fileURLToPath(new URL("../", import.meta.url));
@@ -16,8 +16,50 @@ function stop(message) {
   process.exit(2);
 }
 
-if (Number(process.versions.node.split(".")[0]) !== 22) {
-  stop(`Node 22 required; found ${process.versions.node}`);
+// The user's shell may default to Node 26 even when Node 22 is installed.
+ // Select an existing local Node 22 for every pnpm subprocess. Never install
+ // Node, mutate the shell, or silently run the test suite using Node 26.
+function existingNode22() {
+  const home = homedir();
+  const candidatePaths = [process.execPath];
+  const brewPrefixes = ["/opt/homebrew", "/usr/local", process.env.HOMEBREW_PREFIX].filter(Boolean);
+  for (const prefix of brewPrefixes) {
+    candidatePaths.push(join(prefix, "opt", "node@22", "bin", "node"));
+  }
+  if (process.env.FNM_MULTISHELL_PATH) {
+    candidatePaths.push(join(process.env.FNM_MULTISHELL_PATH, "bin", "node"));
+  }
+  const installations = [
+    { root: join(process.env.NVM_DIR || join(home, ".nvm"), "versions", "node"), pattern: /^v22\./u, suffix: ["bin", "node"] },
+    { root: join(process.env.FNM_DIR || join(home, ".local", "share", "fnm"), "node-versions"), pattern: /^v22\./u, suffix: ["installation", "bin", "node"] },
+    { root: join(process.env.VOLTA_HOME || join(home, ".volta"), "tools", "image", "node"), pattern: /^22\./u, suffix: ["bin", "node"] },
+    { root: join(home, ".local", "share", "mise", "installs", "node"), pattern: /^22\./u, suffix: ["bin", "node"] },
+    { root: join(home, ".asdf", "installs", "nodejs"), pattern: /^22\./u, suffix: ["bin", "node"] },
+  ];
+  for (const { root, pattern, suffix } of installations) {
+    try {
+      for (const version of readdirSync(root).filter(name => pattern.test(name)).sort().reverse()) {
+        candidatePaths.push(join(root, version, ...suffix));
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT" && error?.code !== "ENOTDIR") {
+        console.error(`Node 22 discovery skipped an unreadable install directory: ${root}`);
+      }
+    }
+  }
+  for (const candidate of new Set(candidatePaths)) {
+    const result = spawnSync(candidate, ["-p", "process.versions.node"], {
+      encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (result.status === 0 && /^22\./u.test(result.stdout.trim())) {
+      return { path: candidate, version: result.stdout.trim() };
+    }
+  }
+  return null;
+}
+const selectedNode = existingNode22();
+if (!selectedNode) {
+  stop(`Node 22 required; shell uses ${process.versions.node}, and no existing Node 22 installation was found. Try 'nvm use 22' or 'fnm use 22' in this terminal and rerun.`);
 }
 if (process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT_ID ||
     process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "production") {
@@ -38,6 +80,14 @@ for (const key of Object.keys(safeEnvironment)) {
     "LEILEI_NATIVE_LIVE_RELAY_URL", "LEILEI_NATIVE_LIVE_WAKE_BROKER_TOKEN",
     "LEILEI_NATIVE_LIVE_WAKE_BROKER_URL", "MCP_SERVER_URL",
   ].includes(key)) delete safeEnvironment[key];
+}
+
+safeEnvironment.PATH = dirname(selectedNode.path) + delimiter + (safeEnvironment.PATH || "");
+const verified = spawnSync("node", ["-p", "process.versions.node"], {
+  env: safeEnvironment, encoding: "utf8", timeout: 3000,
+});
+if (verified.status !== 0 || !/^22\./u.test(verified.stdout.trim())) {
+  stop("Could not activate the discovered Node 22 for child processes.");
 }
 
 const steps = [
@@ -73,6 +123,7 @@ function printFailure(logFile) {
   }
 }
 
+console.log(`Using existing Node ${selectedNode.version} for offline checks.`);
 console.log("Checking PR #1005 offline. Full output saved to private temporary logs.");
 for (let i = 0; i < steps.length; i++) {
   const [name, args] = steps[i];
