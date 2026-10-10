@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT } from "../../../shared/native-live-semantic-candidate-limit.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
