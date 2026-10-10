@@ -44,3 +44,11 @@ test("broker retry outcome backs off and does not advertise a work wake", () => 
     /if\s*\(wake\s*===\s*"retry"\)\s*\{[\s\S]*?await sleep\(5_000\);[\s\S]*?continue;/u,
   );
 });
+
+
+test("ambiguous relay errors trigger bounded durable rechecks on broker timeout", () => {
+  assert.match(daemonSource, /let durableRecoveryDeadline = 0;/u);
+  assert.match(daemonSource, /durableRecoveryDeadline = Date\.now\(\) \+ 6 \* 60_000;/u);
+  assert.match(daemonSource, /result\.outcome === "timeout" && Date\.now\(\) < durableRecoveryDeadline/u);
+  assert.match(daemonSource, /if \(outcome\.outcome === "completed"[\s\S]*?durableRecoveryDeadline = 0;/u);
+});
