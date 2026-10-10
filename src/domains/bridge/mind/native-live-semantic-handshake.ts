@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT } from "../../../shared/native-live-semantic-candidate-limit.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { createDatabase } from "../../../database/client.js";
 import {
@@ -748,7 +749,7 @@ function candidateRecord(
 }
 
 function parseCandidates(value: unknown): BreathSemanticCandidate[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT) {
     throw new Error("Semantic candidate snapshot is invalid.");
   }
 

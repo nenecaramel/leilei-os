@@ -757,6 +757,13 @@
       "when": 1791621320264,
       "tag": "0107_native_session_preservation",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1791644300000,
+      "tag": "0108_native_live_semantic_candidates_256",
+      "breakpoints": true
     }
   ]
 }

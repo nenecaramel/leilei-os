@@ -7,6 +7,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY drizzle ./drizzle
 COPY tests ./tests
 COPY tools/claude-bridge ./tools/claude-bridge
 COPY scripts/build-mcp-browser.mjs ./scripts/build-mcp-browser.mjs
