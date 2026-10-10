@@ -217,3 +217,19 @@ Root-message replacement and two-client execution handoff still need their own
 explicit coordination; these are not silently treated as verified by foundation
 tests. A synthetic production prepare/relay/finalize lifecycle proves switch-back
 projection after local canonical advancement, with no SDK query or native file write.
+
+### Execution boundary still closed
+
+The pinned SDK 0.3.286 implementation materializes `sessionStore.load()` entries
+into a temporary `claude-resume-*` configuration directory before resume. Its
+`Options.sessionStore` documentation describes a mirror, not ownership of Desktop's
+original JSONL. The existing transport also checks checkpoints against the configured
+store before local backfill. A restored source marker alone does not make that
+remote transcript complete or authorize continuing Desktop's original file.
+
+Consequently the next execution stage must prove native-source selection, mirror
+freshness and single-client handoff together. Do not silently use a stale remote
+snapshot, drop mirroring/durability guarantees, or infer an execution lease from an
+idle peer observation. This foundation deliberately adds no caller to the restore
+writer and no native execution mode. SDK version, native persistence location,
+source revision and exact checkpoint remain acceptance requirements, not assumptions.
