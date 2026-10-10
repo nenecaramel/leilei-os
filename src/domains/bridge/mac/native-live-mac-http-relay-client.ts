@@ -962,10 +962,19 @@ implements NativeLiveMacDaemonRelayClient {
     let payload: unknown;
     try {
       payload = await response.json();
-    } catch {
+    } catch (error) {
+      const invalidJson = error instanceof SyntaxError;
       throw Object.assign(new Error("Native live relay returned malformed JSON."), {
         httpStatus: response.status,
         relayPath: path,
+        relayCode: invalidJson
+          ? "RELAY_RESPONSE_INVALID_JSON"
+          : "RELAY_RESPONSE_BODY_UNAVAILABLE",
+        // Whitelist the type only. Parse/transport messages can contain body
+        // fragments, credentials or transcript text and must not reach logs.
+        responseErrorName: invalidJson
+          ? "SyntaxError"
+          : error instanceof TypeError ? "TypeError" : "Error",
       });
     }
 
