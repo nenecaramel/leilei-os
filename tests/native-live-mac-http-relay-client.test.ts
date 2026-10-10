@@ -1272,3 +1272,41 @@ test("Mac HTTP relay client parses silence wake ignore reason", async () => {
     },
   );
 });
+
+
+test("malformed relay JSON retains safe status and route diagnostics without leaking body", async () => {
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", async () =>
+    new Response("private body secret-token", { status: 502, headers: { "content-type": "text/html" } }));
+  await assert.rejects(() => client.reserveSemanticScoring({ listenerInstanceId: listenerId, dispatchTarget: "claude_code" }),
+    (error: unknown) => {
+      const record = error as Error & { httpStatus?: number; relayPath?: string };
+      assert.equal(record.httpStatus, 502);
+      assert.equal(record.relayPath, "/semantic/reserve");
+      assert.equal(record.message.includes("private body"), false);
+      assert.equal(record.message.includes("secret-token"), false);
+      return true;
+    });
+});
+
+
+test("relay distinguishes HTTP 200 body transport loss from invalid JSON without leaking the cause", async () => {
+  for (const [responseErrorName, makeResponse] of [
+    ["TypeError", () => new Response(new ReadableStream({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"success":true,"data":'));
+      controller.error(new TypeError("private transcript and token must not reach logs"));
+    } }), { status: 200 })],
+    ["SyntaxError", () => new Response('{"success":true,"data":', { status: 200 })],
+  ] as const) {
+    const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", async () => makeResponse());
+    await assert.rejects(() => client.reserveSemanticScoring({ listenerInstanceId: listenerId, dispatchTarget: "claude_code" }),
+      (error: unknown) => {
+        const record = error as Error & { httpStatus?: number; responseErrorName?: string; relayCode?: string };
+        assert.equal(record.httpStatus, 200);
+        assert.equal(record.responseErrorName, responseErrorName);
+        assert.equal(record.relayCode, responseErrorName === "TypeError" ? "RELAY_RESPONSE_BODY_UNAVAILABLE" : "RELAY_RESPONSE_INVALID_JSON");
+        assert.equal(record.message.includes("private transcript"), false);
+        assert.equal(JSON.stringify(record).includes("secret-token"), false);
+        return true;
+      });
+  }
+});
