@@ -100,3 +100,35 @@ remain unknown; any non-idle status remains busy/unknown. No timestamp timeout
 turns an uncertain session into an idle one. Output omits credentials/socket
 paths. **Every result has `isWriteLease: false`**: this observation does not stop
 Desktop from starting another turn and must never independently grant takeover.
+
+## Combined read-only inspection
+
+```sh
+node tools/claude-bridge/scripts/native-session-inspect.mjs \
+  --desktop-index /path/to/local-session-index.json \
+  --project-dir /path/to/native/project
+```
+
+`--peer-dir` optionally overrides the native `sessions` directory. This command
+verifies the exact Desktop-selected session/checkpoint, projects its ancestry to
+count display messages/blocks, and observes native process activity. It rechecks
+both index and transcript revisions after the activity probe; changing sources
+invalidate the inspection. JSON output contains identity/counts/reasons only,
+never transcript bodies, image bytes, titles or connector credentials. Index
+files use the same stable, bounded, non-symlink reader as transcripts/peer files.
+
+Exit 2 means original history is unavailable (including overwritten compact
+history); exit 1 means invalid arguments or an unsafe/unavailable inspection.
+An idle observation is independent of history completeness. Successful output
+always has `handoffAllowed: false`: no writer, ownership protocol, SDK query,
+database update or Desktop launch is performed. Complete ancestry also does not
+prove all referenced attachment bytes are available.
+
+`native-session-catalog.mjs --desktop` automatically enumerates Desktop's local
+indices and finds each exact native session across project directories. There is
+no mtime fallback; duplicate native locations fail as ambiguous. Index filenames
+must match their embedded Desktop identity. Missing sources stay individually
+visible with reason codes. `--desktop-dir`, `--projects-dir` and `--peer-dir` allow
+explicit fixture locations. The default Desktop index location is macOS-specific
+and private/version-sensitive. This is a local diagnostic entry point, not yet
+the authenticated LeileiOS restore-list API or a product UI.

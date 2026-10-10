@@ -1,14 +1,12 @@
-import { constants } from "node:fs";
-import { open, readdir, lstat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { TextDecoder } from "node:util";
 import { durableCheckpointPrefix } from "./provider-checkpoint-prefix.mjs";
+import { readOnlyFileSnapshot } from "./read-only-file-snapshot.mjs";
 
 const sessionPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const carrierTypes = new Set(["user", "assistant", "system", "attachment"]);
 const failure = code => Object.assign(new Error(code), { code });
-const stamp = stat => `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
 
 // Never opens a transcript for writing or invokes the SDK. A snapshot is an
 // observation, not an execution lease or proof that the producer is idle.
@@ -16,37 +14,24 @@ export async function readNativeSession(projectDirectory, sessionId, { maxBytes 
   if (!sessionPattern.test(sessionId)) throw failure("INVALID_SESSION_ID");
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw failure("INVALID_READ_LIMIT");
   const file = path.join(projectDirectory, `${sessionId}.jsonl`);
-  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let source;
   try {
-    const before = await handle.stat({ bigint: true });
-    if (!before.isFile()) throw failure("INVALID_TRANSCRIPT_FILE");
-    if (before.size > BigInt(maxBytes)) throw failure("TRANSCRIPT_TOO_LARGE");
-    const buffer = Buffer.alloc(Number(before.size) + 1);
-    let length = 0;
-    while (length < buffer.length) {
-      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
-      if (!bytesRead) break;
-      length += bytesRead;
-    }
-    const after = await handle.stat({ bigint: true });
-    const named = await lstat(file, { bigint: true });
-    if (stamp(before) !== stamp(after) || stamp(after) !== stamp(named) || length !== Number(before.size)) throw failure("TRANSCRIPT_CHANGED_DURING_READ");
-    const bytes = buffer.subarray(0, length);
-    let entries;
-    try {
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      entries = text.split("\n").filter(line => line.trim()).map(line => {
-        const entry = JSON.parse(line);
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw failure("INVALID_TRANSCRIPT");
-        return entry;
-      });
-    } catch {
-      throw failure("INVALID_TRANSCRIPT");
-    }
-    return { sessionId, file, revision: createHash("sha256").update(bytes).digest("hex"), entries };
-  } finally {
-    await handle.close();
+    source = await readOnlyFileSnapshot(file, maxBytes);
+  } catch (error) {
+    const aliases = { NATIVE_FILE_TOO_LARGE: "TRANSCRIPT_TOO_LARGE", INVALID_NATIVE_FILE: "INVALID_TRANSCRIPT_FILE", NATIVE_FILE_CHANGED_DURING_READ: "TRANSCRIPT_CHANGED_DURING_READ" };
+    if (Object.hasOwn(aliases, error.code)) throw failure(aliases[error.code]);
+    throw error;
   }
+  let entries;
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(source.bytes);
+    entries = text.split("\n").filter(line => line.trim()).map(line => {
+      const entry = JSON.parse(line);
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw failure("INVALID_TRANSCRIPT");
+      return entry;
+    });
+  } catch { throw failure("INVALID_TRANSCRIPT"); }
+  return { sessionId, file, revision: source.revision, entries };
 }
 
 export function readNativeBranch(snapshot, checkpointId) {

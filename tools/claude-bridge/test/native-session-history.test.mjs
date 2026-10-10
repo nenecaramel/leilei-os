@@ -5,6 +5,14 @@ const row = (uuid, parentUuid, type, content, extra = {}) => ({ uuid, parentUuid
 const snapshot = entries => ({ sessionId: "A", revision: "revision", entries });
 const initial = [row("u", null, "user", "hello"), row("a1", "u", "assistant", [{ type: "tool_use", id: "t", name: "Read", input: { file_path: "/fixture" } }]), row("r", "a1", "user", [{ type: "tool_result", tool_use_id: "t", content: "result" }]), row("a2", "r", "assistant", [{ type: "text", text: "reply" }])];
 
+test("a retained compact summary without its boundary is never complete original history", async () => {
+  const { projectNativeHistory } = await import(moduleUrl);
+  assert.throws(() => projectNativeHistory(snapshot([
+    row("summary", null, "user", "SYNTHETIC_SUMMARY", { isCompactSummary: true }),
+    row("a", "summary", "assistant", "reply"),
+  ]), "a"), e => e.code === "COMPACT_SOURCE_HISTORY_REQUIRED");
+});
+
 test("history groups SDK fragments and tool responses into one assistant turn", async () => {
   const { projectNativeHistory } = await import(moduleUrl);
   const source = snapshot(initial);

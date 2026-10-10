@@ -36,7 +36,9 @@ function displayChain(snapshot, checkpointId) {
       id = entry.logicalParentUuid;
     }
   }
-  return chain.reverse();
+  chain.reverse();
+  if (chain[0]?.isCompactSummary === true) throw fail("COMPACT_SOURCE_HISTORY_REQUIRED");
+  return chain;
 }
 
 function contentBlocks(entry) {
