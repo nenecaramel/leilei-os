@@ -4,6 +4,7 @@ import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "./leileios-murmur-system-prompt.mjs";
+import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
 import {
   normalizeAgentSdkExecutionSelection,
 } from "./agent-sdk-execution-selection.mjs";
@@ -18,7 +19,10 @@ import {
 } from "./local-checkpoint-fork.mjs";
 
 // Mind recall and writing are shared with Desktop through the installed hook and MCP.
-const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = LEILEIOS_MURMUR_SYSTEM_PROMPT;
+const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [
+  LEILEIOS_WAKE_SYSTEM_PROMPT,
+  LEILEIOS_MURMUR_SYSTEM_PROMPT,
+].join("\n\n");
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
