@@ -8,6 +8,7 @@ import {
   nativeLiveManualCompactions,
 } from "../../database/schema.js";
 import { DrizzleNativeLiveProviderSessionStoreRepository } from "../bridge/provider-session/native-live-provider-session-store.js";
+import { providerSessionOwnershipLock } from "../bridge/provider-session/native-live-provider-session-references.js";
 import { inFlightConversationTurns } from "./native-live-conversation-repository.js";
 import { storedContentKind, storedContentPayload } from "./native-live-content-contract.js";
 import type { NativeLiveContentBlockInput } from "./native-live-conversation-types.js";
@@ -39,6 +40,7 @@ type SourceIndex = {
   effectiveWorkingDirectory: string;
   headMessageId: string;
   messages: Array<{ sourceMessageId: string; fingerprint: string }>;
+  owner?: "leileios" | "desktop";
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[0-9a-f]{64}$/;
@@ -96,6 +98,11 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     const source = existing?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (existing && !source) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     if (source && (source.schemaVersion !== 1 || source.sessionId !== p.sessionId || source.effectiveWorkingDirectory !== input.effectiveWorkingDirectory)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
+    await tx.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: p.sessionId, wait: true })}`);
+    const otherOwners = await tx.execute(sql`SELECT id FROM conversations WHERE id <> ${input.conversationId}::uuid
+      AND origin = 'native_live' AND lifecycle_status = 'active'
+      AND provider_metadata->'nativeSessionSource'->>'sessionId' = ${p.sessionId} LIMIT 1`);
+    if (otherOwners.length) throw fail("NATIVE_SESSION_ALREADY_ATTACHED");
     const activeTurns = await tx.select({ id: nativeLiveTurnPreparations.id }).from(nativeLiveTurnPreparations).where(inFlightConversationTurns(input)).limit(1);
     const compacts = await tx.select({ id: nativeLiveManualCompactions.id }).from(nativeLiveManualCompactions).where(and(
       eq(nativeLiveManualCompactions.userId, input.userId), eq(nativeLiveManualCompactions.conversationId, input.conversationId),
@@ -146,7 +153,12 @@ export async function restoreNativeSessionHistory(db: Database, input: {
       await store.preserveExternalSession({ userId: input.userId, sessionId: p.sessionId });
       await store.synchronizeNativeSnapshot({ userId: input.userId, key: { sessionId: p.sessionId }, entries: snapshot.entries });
     }
-    if (unchanged) return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0 };
+    if (unchanged) {
+      if (source!.owner === "desktop") await tx.update(conversations).set({ providerMetadata: {
+        ...existing!.providerMetadata, nativeSessionSource: { ...source, owner: "leileios" },
+      }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
+      return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0 };
+    }
 
     // Nested transaction is a savepoint: source protection and projection roll back together.
     await new DrizzleNativeLiveProviderSessionStoreRepository(tx).preserveExternalSession({ userId: input.userId, sessionId: p.sessionId });
@@ -182,10 +194,50 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     }
     if (!parent) throw fail("INVALID_NATIVE_PROJECTION");
     const nextSource: SourceIndex = { schemaVersion: 1, sessionId: p.sessionId, revision: p.revision, checkpointId: p.checkpointId,
+      owner: "leileios",
       effectiveWorkingDirectory: input.effectiveWorkingDirectory, headMessageId: parent,
       messages: p.messages.map(m => ({ sourceMessageId: m.sourceMessageId, fingerprint: m.fingerprint })) };
     await tx.update(conversations).set({ currentHeadMessageId: parent, updatedAt: new Date(), providerMetadata: { ...existing?.providerMetadata, nativeSessionSource: nextSource } }).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
     return { outcome: "restored" as const, conversationId: input.conversationId, headMessageId: parent, inserted: p.messages.length - rows.length };
+  });
+}
+
+/** Explicit internal handoff after local release and durable snapshot sync. */
+export async function releaseNativeSessionToDesktop(db: Database, input: {
+  userId: string; conversationId: string; sessionId: string;
+  expectedHeadMessageId: string; expectedRevision: string; expectedCheckpointId: string;
+}) {
+  if (![input.userId, input.conversationId, input.sessionId, input.expectedHeadMessageId, input.expectedCheckpointId].every(value => uuid.test(value))
+    || !hash.test(input.expectedRevision)) throw fail("INVALID_NATIVE_PROJECTION");
+  return db.transaction(async tx => {
+    const [conversation] = await tx.select().from(conversations).where(and(
+      eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId),
+    )).for("update");
+    const source = conversation?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
+    if (!conversation || conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source
+      || source.sessionId !== input.sessionId) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
+    await tx.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.sessionId, wait: true })}`);
+    const turns = await tx.select({ id: nativeLiveTurnPreparations.id }).from(nativeLiveTurnPreparations).where(inFlightConversationTurns(input)).limit(1);
+    const compacts = await tx.select({ id: nativeLiveManualCompactions.id }).from(nativeLiveManualCompactions).where(and(
+      eq(nativeLiveManualCompactions.userId, input.userId), eq(nativeLiveManualCompactions.conversationId, input.conversationId),
+      inArray(nativeLiveManualCompactions.status, ["pending", "reserved"]),
+    )).limit(1);
+    if (turns.length || compacts.length) throw fail("NATIVE_CONVERSATION_BUSY");
+    if (conversation.currentHeadMessageId !== input.expectedHeadMessageId || source.headMessageId !== input.expectedHeadMessageId
+      || source.revision !== input.expectedRevision || source.checkpointId !== input.expectedCheckpointId) throw fail("STALE_NATIVE_PROJECTION");
+    const [checkpoint] = await tx.select().from(conversationProviderSessionCheckpoints).where(and(
+      eq(conversationProviderSessionCheckpoints.userId, input.userId), eq(conversationProviderSessionCheckpoints.conversationId, input.conversationId),
+      eq(conversationProviderSessionCheckpoints.canonicalMessageId, input.expectedHeadMessageId),
+    ));
+    if (!checkpoint || checkpoint.providerSessionId !== input.sessionId || checkpoint.providerCheckpointId !== input.expectedCheckpointId
+      || checkpoint.effectiveWorkingDirectory !== source.effectiveWorkingDirectory) throw fail("CANONICAL_CHECKPOINT_CHANGED");
+    if (await new DrizzleNativeLiveProviderSessionStoreRepository(tx).getStatus({ userId: input.userId, sessionId: input.sessionId }) !== "complete") {
+      throw fail("NATIVE_SESSION_RECOVERY_REQUIRED");
+    }
+    await tx.update(conversations).set({ providerMetadata: { ...conversation.providerMetadata,
+      nativeSessionSource: { ...source, owner: "desktop" } }, updatedAt: new Date() }).where(eq(conversations.id, input.conversationId));
+    return { owner: "desktop" as const, conversationId: input.conversationId, providerSessionId: input.sessionId,
+      providerCheckpointId: input.expectedCheckpointId, headMessageId: input.expectedHeadMessageId };
   });
 }
 

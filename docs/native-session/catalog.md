@@ -1,4 +1,53 @@
-# Native session catalog (stage 1)
+# Native session switching
+
+## Current minimal implementation (offline verified)
+
+The fixed entry now supports listing, selecting by native/Desktop session ID,
+history synchronization into LeileiOS, and releasing that conversation before
+requesting the official Desktop launcher. No command sends a Claude prompt:
+
+```sh
+node tools/claude-bridge/scripts/native-session-switch.mjs --list
+node tools/claude-bridge/scripts/native-session-switch.mjs --check --session-id UUID
+node tools/claude-bridge/scripts/native-session-switch.mjs --restore --session-id UUID
+node tools/claude-bridge/scripts/native-session-switch.mjs --desktop --session-id UUID
+```
+
+Restore/Desktop require explicit `LEILEI_NATIVE_LIVE_RELAY_URL` and
+`LEILEI_NATIVE_LIVE_RELAY_TOKEN`; credentials are never printed. The default
+conversation ID is the native session UUID. An earlier import with a different
+conversation ID must supply `--conversation-id`; a second active conversation
+for the same native session is refused, not created as another owner.
+
+An unchanged restore reacquires LeileiOS ownership without duplicating history.
+A stale Desktop index may follow only completed descendants in that same native
+session; unfinished tails and detached branches are refused. Desktop handoff
+syncs the complete snapshot, checks canonical head/checkpoint/revision and busy
+states, releases ownership, rechecks the local source and peer, then runs
+`claude --desktop --resume UUID` in the original working directory. While owned
+by Desktop, new LeileiOS send/edit/retry/compact requests are blocked. A failed
+launcher never silently rolls back ownership, because its acknowledgment may
+have been lost.
+
+Pending local terminal results or SessionStore append receipts conservatively
+block switching across all scopes. They must be recovered through the existing
+daemon, never deleted by this command. Backend unresolved turns and pending
+compact also block release. These gates do not create an atomic lease honored
+by the official Desktop client: the one-client-at-a-time rule remains required.
+
+Tests use synthetic native files, a fake Desktop launcher and isolated local
+Postgres. No real Desktop was opened, no Claude query was issued, and no real
+`.claude` file or production record was written. Launcher success reports
+`desktopSessionVerified: false`; actual same-session Desktop continuation still
+requires joint acceptance. Native image/file references remain pending normal
+owned-attachment materialization: complete raw records are preserved, but this
+does not yet prove images/files can be previewed in LeileiOS. Old Edit/Retry/Fork
+and automatic Desktop branch selection remain outside the minimal release.
+
+The sections below record the incremental foundations and their limitations
+at the time of each stage; this section describes the current connected path.
+
+## Read-only catalog foundation (stage 1)
 
 The catalog reads Claude Code JSONL files without importing the SDK, starting a
 provider, opening Desktop, or writing session files. It is not a handoff command.

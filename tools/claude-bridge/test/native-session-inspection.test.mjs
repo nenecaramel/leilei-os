@@ -17,6 +17,35 @@ const entries = [
   { type: "user", uuid: U, parentUuid: null, message: { content: "PRIVATE_PROMPT" } },
   { type: "assistant", uuid: CP, parentUuid: U, message: { content: "PRIVATE_REPLY" } },
 ];
+
+test("switch selection resolves a unique native or Desktop ID without exposing private index fields", async () => {
+  const { resolveDesktopNativeSelection } = await import(moduleUrl);
+  assert.equal(typeof resolveDesktopNativeSelection, 'function');
+  await fixture(async ({ root, indexFile }) => {
+    const desktopSessionsDirectory = path.join(root, 'indices');
+    const projectsDirectory = path.join(root, 'projects');
+    const org = path.join(desktopSessionsDirectory, 'account', 'org');
+    const project = path.join(projectsDirectory, '-fixture');
+    await mkdir(org, { recursive: true });
+    await mkdir(project, { recursive: true });
+    await copyFile(indexFile, path.join(org, `local_${D}.json`));
+    await copyFile(path.join(root, `${A}.jsonl`), path.join(project, `${A}.jsonl`));
+    const input = { desktopSessionsDirectory, projectsDirectory, peerDirectory: root, probeProcessStart: async () => started };
+    for (const sessionId of [A, `local_${D}`]) {
+      const selected = await resolveDesktopNativeSelection({ ...input, sessionId });
+      assert.equal(selected.indexFile, path.join(org, `local_${D}.json`));
+      assert.equal(selected.projectDirectory, project);
+      assert.equal(selected.inspection.providerSessionId, A);
+      assert.doesNotMatch(JSON.stringify(selected), /PRIVATE_SECRET|PRIVATE_PROMPT|PRIVATE_REPLY/);
+    }
+    await assert.rejects(resolveDesktopNativeSelection({ ...input, sessionId: C }), e => e.code === 'NATIVE_SELECTION_NOT_FOUND');
+    await assert.rejects(resolveDesktopNativeSelection({ ...input, sessionId: '../escape' }), e => e.code === 'INVALID_SESSION_ID');
+    const another = path.join(desktopSessionsDirectory, 'account', 'other-org');
+    await mkdir(another);
+    await copyFile(indexFile, path.join(another, `local_${D}.json`));
+    await assert.rejects(resolveDesktopNativeSelection({ ...input, sessionId: A }), e => e.code === 'AMBIGUOUS_NATIVE_SELECTION');
+  });
+});
 async function fixture(run) {
   const root = await mkdtemp(path.join(tmpdir(), "native-inspection-test-"));
   const indexFile = path.join(root, "desktop.json");
@@ -40,6 +69,35 @@ test("inspection connects verified identity, history and activity without granti
     assert.equal(result.readOnly, true);
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE_SECRET|PRIVATE_PROMPT|PRIVATE_REPLY/);
     assert.deepEqual(await readFile(transcriptFile), before);
+  });
+});
+
+test("switch continuation follows completed native additions without changing the Desktop index", async () => {
+  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const newUser = '00000000-0000-4000-8000-000000000006';
+    const newAssistant = '00000000-0000-4000-8000-000000000007';
+    const next = [...entries,
+      { type: 'user', uuid: newUser, parentUuid: CP, message: { content: 'PRIVATE_NEW_INPUT' } },
+      { type: 'assistant', uuid: newAssistant, parentUuid: newUser, message: { content: 'PRIVATE_NEW_OUTPUT' } },
+    ];
+    await writeFile(transcriptFile, next.map(JSON.stringify).join('\n'));
+    const beforeIndex = await readFile(indexFile);
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, followNativeContinuation: true };
+    const selection = await inspectDesktopNativeSession(input);
+    assert.equal(selection.providerCheckpointId, newAssistant);
+    assert.equal(selection.history.messageCount, 4);
+    const history = await readDesktopNativeHistory({ ...input, expectedSessionId: A,
+      expectedCheckpointId: newAssistant, expectedRevision: selection.nativeRevision });
+    assert.equal(history.projection.messages.at(-1).sourceMessageId, newAssistant);
+    assert.equal(history.nativeSnapshot.entries.length, 4);
+    assert.deepEqual(await readFile(indexFile), beforeIndex);
+    assert.doesNotMatch(JSON.stringify(selection), /PRIVATE_/);
+    await writeFile(transcriptFile, next.slice(0, -1).map(JSON.stringify).join('\n'));
+    await assert.rejects(inspectDesktopNativeSession(input), e => e.code === 'NATIVE_TURN_UNFINISHED');
+    await writeFile(transcriptFile, [...entries, { type: 'assistant', uuid: newAssistant, parentUuid: null,
+      message: { content: 'detached' } }].map(JSON.stringify).join('\n'));
+    await assert.rejects(inspectDesktopNativeSession(input), e => e.code === 'EXPLICIT_BRANCH_SELECTION_REQUIRED');
   });
 });
 

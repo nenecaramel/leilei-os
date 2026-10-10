@@ -1,4 +1,4 @@
-import { restoreNativeSessionHistory, readNativeSessionRestoreState } from "../domains/conversation/native-session-history-repository.js";
+import { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop } from "../domains/conversation/native-session-history-repository.js";
 import { DrizzleClaudeCodeRecallReceipts } from "../domains/runtime/mind/claude-code-recall-receipts.js";
 import { requireActiveUser } from "../domains/require-active-user.js";
 import { ClaudeCodeMindRecallService } from "../domains/runtime/mind/claude-code-mind-recall.js";
@@ -821,6 +821,7 @@ export function createProcessRuntime(
             nativeLiveProviderSessionStoreService,
           restoreNativeHistory: input => restoreNativeSessionHistory(database.db, input),
           readNativeHistoryState: input => readNativeSessionRestoreState(database.db, input),
+          releaseNativeHistory: input => releaseNativeSessionToDesktop(database.db, input),
           ...(nativeLiveAttachmentService
             ? {
                 attachmentService:

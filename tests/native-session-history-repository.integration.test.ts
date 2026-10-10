@@ -60,6 +60,38 @@ test("native restore atomically maps original UUIDs, timestamps and exact checkp
   assert.equal(protectedRows[0].preserve_external_session, true);
 }));
 
+test("Desktop handoff fences new send/retry/edit/compact until a released native snapshot is restored", { skip: !enabled }, async () => fixture(async f => {
+  const { releaseNativeSessionToDesktop } = await import(modulePath.href);
+  assert.equal(typeof releaseNativeSessionToDesktop, 'function');
+  f.input.nativeSnapshot = { sessionId: f.sessionId, revision: revision(1), entries: f.entries };
+  const restored = await f.write();
+  const before = await f.state();
+  const input = { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId,
+    expectedHeadMessageId: restored.headMessageId, expectedRevision: revision(1), expectedCheckpointId: f.entries[1].uuid };
+  const release = () => releaseNativeSessionToDesktop(f.database.db, input);
+  assert.equal((await release()).owner, 'desktop');
+  assert.equal((await release()).owner, 'desktop');
+  const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
+  for (const operation of ['send', 'retry', 'edit'] as const) {
+    const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId,
+      dispatch_target: 'claude_code', operation, ...(operation === 'send'
+        ? { expected_head_message_id: restored.headMessageId, text: 'blocked input' }
+        : { target_user_message_id: before.messages[0].id, ...(operation === 'edit' ? { text: 'blocked edit' } : {}) }) });
+    assert.equal(prepared.ok, false);
+    assert.equal(prepared.code, 'SESSION_OWNED_BY_DESKTOP');
+  }
+  const { NativeLiveManualCompactService } = await import('../src/domains/bridge/turn/native-live-manual-compact.js');
+  const compact = new NativeLiveManualCompactService(f.database.db, undefined, { isListenerOnline: async () => true });
+  await assert.rejects(compact.create({ userId: f.owner, conversationId: f.input.conversationId }), { code: 'CONVERSATION_BUSY' });
+  assert.deepEqual((await f.state()).messages, before.messages);
+  assert.equal((await f.write({ ...f.input, expectedHeadMessageId: restored.headMessageId, expectedRevision: revision(1) })).outcome, 'already_current');
+  assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, 'leileios');
+  const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId,
+    dispatch_target: 'claude_code', operation: 'send', expected_head_message_id: restored.headMessageId, text: 'allowed input' });
+  assert.equal(prepared.ok, true);
+  await assert.rejects(release(), { code: 'NATIVE_CONVERSATION_BUSY' });
+}));
+
 test("native sync appends under revision/head CAS and lost-response replay remains idempotent", { skip: !enabled }, async () => fixture(async f => {
   const initial = await f.write();
   const u = randomUUID(), a = randomUUID();
@@ -116,6 +148,13 @@ test("concurrent delivery of the same native snapshot commits only one canonical
   assert.deepEqual(results.map(r => r.outcome).sort(), ["already_current", "restored"]);
   assert.equal(results[0].headMessageId, results[1].headMessageId);
   assert.equal((await f.messages()).length, 2);
+}));
+
+test("one physical native session cannot acquire two active LeileiOS conversations", { skip: !enabled }, async () => fixture(async f => {
+  const outcomes = await Promise.allSettled([f.write(), f.write({ ...f.input, conversationId: randomUUID() })]);
+  assert.equal(outcomes.filter(value => value.status === 'fulfilled').length, 1);
+  const rejected = outcomes.find(value => value.status === 'rejected');
+  assert.equal(rejected?.status === 'rejected' ? rejected.reason.code : null, 'NATIVE_SESSION_ALREADY_ATTACHED');
 }));
 
 test("native snapshot replay cannot conceal a changed canonical provider checkpoint", { skip: !enabled }, async () => fixture(async f => {
@@ -262,6 +301,9 @@ test("native sync follows the selected parent chain and leaves off-path messages
 
 test("native sync preserves in-flight turn evidence and refuses pending/reserved manual compact", { skip: !enabled }, async () => fixture(async f => {
   const first = await f.write(), before = await f.state();
+  const { releaseNativeSessionToDesktop } = await import(modulePath.href);
+  const release = () => releaseNativeSessionToDesktop(f.database.db, { userId: f.owner, conversationId: f.input.conversationId,
+    sessionId: f.sessionId, expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1), expectedCheckpointId: f.entries[1].uuid });
   const next = { ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1), projection: { ...f.input.projection, revision: revision(2) } };
   for (const dispatchStatus of ["staged", "pending", "reserved", "executing", "delivery_unknown"] as const) {
     const id = randomUUID(), started = ["executing", "delivery_unknown"].includes(dispatchStatus), reserved = started || dispatchStatus === "reserved";
@@ -269,6 +311,7 @@ test("native sync preserves in-flight turn evidence and refuses pending/reserved
       requestHash: revision(1), runtimeMode: "resume", parentProviderSessionId: f.sessionId, parentProviderCheckpointId: f.entries[1].uuid, prompt: "synthetic pending turn", dispatchStatus,
       reservedBy: reserved ? randomUUID() : null, reservedAt: reserved ? new Date() : null, reservationExpiresAt: reserved ? new Date(Date.now() + 60_000) : null, executionStartedAt: started ? new Date() : null });
     await assert.rejects(f.write(next), { code: "NATIVE_CONVERSATION_BUSY" });
+    await assert.rejects(release(), { code: "NATIVE_CONVERSATION_BUSY" });
     assert.deepEqual(await f.state(), before);
     await f.database.db.delete(nativeLiveTurnPreparations).where(eq(nativeLiveTurnPreparations.id, id));
   }
@@ -276,6 +319,7 @@ test("native sync preserves in-flight turn evidence and refuses pending/reserved
     const [compact] = await f.database.db.insert(nativeLiveManualCompactions).values({ userId: f.owner, conversationId: f.input.conversationId, sourceMessageId: first.headMessageId,
       expectedHeadMessageId: first.headMessageId, providerSessionId: f.sessionId, status, expiresAt: new Date(Date.now() + 60_000) }).returning();
     await assert.rejects(f.write(next), { code: "NATIVE_CONVERSATION_BUSY" });
+    await assert.rejects(release(), { code: "NATIVE_CONVERSATION_BUSY" });
     assert.deepEqual(await f.state(), before);
     await f.database.db.delete(nativeLiveManualCompactions).where(eq(nativeLiveManualCompactions.id, compact.id));
   }
@@ -403,8 +447,8 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
   const { createHash } = await import("node:crypto");
   const { withServer } = await import("./helpers/native-live-http-relay-fixtures.js");
   const { createNativeLiveProviderSessionStoreInternalRouter } = await import("../src/web-api/native-live-provider-session-store-internal-router.js");
-  const { restoreNativeSessionHistory, readNativeSessionRestoreState } = await import(modulePath.href);
-  const { restoreDesktopNativeSession } = await import("../tools/claude-bridge/src/native-session-switch-restore.mjs");
+  const { restoreNativeSessionHistory, readNativeSessionRestoreState, releaseNativeSessionToDesktop } = await import(modulePath.href);
+  const { restoreDesktopNativeSession, handoffNativeSessionToDesktop } = await import("../tools/claude-bridge/src/native-session-switch-restore.mjs");
   const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
   const root = await mkdtemp(join(tmpdir(), "native-restore-e2e-"));
   const configDirectory = join(root, "config"), projectDirectory = join(configDirectory, "projects", "-synthetic-workspace"), peerDirectory = join(configDirectory, "sessions");
@@ -415,6 +459,7 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
     await writeFile(transcriptFile, bytes);
     await writeFile(indexFile, JSON.stringify({ sessionId: "local_" + randomUUID(), cliSessionId: f.sessionId, lastAssistantUuid: f.entries[1].uuid, cwd: "/synthetic/workspace" }));
     const input = { configDirectory, projectDirectory, peerDirectory, indexFile, expectedSessionId: f.sessionId,
+      recoveryDirectory: join(root, 'recovery'),
       expectedCheckpointId: f.entries[1].uuid, expectedRevision: createHash("sha256").update(bytes).digest("hex") };
     await withServer(app => {
       app.use((request, response, next) => {
@@ -425,6 +470,7 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
         providerSessionStoreService: {} as any,
         restoreNativeHistory: value => restoreNativeSessionHistory(f.database.db, value),
         readNativeHistoryState: value => readNativeSessionRestoreState(f.database.db, value),
+        releaseNativeHistory: value => releaseNativeSessionToDesktop(f.database.db, value),
       }));
     }, async relayUrl => {
       const options = { input, conversationId: f.input.conversationId, relayUrl, relayToken: "synthetic-restore-token" };
@@ -443,6 +489,16 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
       assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), f.entries);
       assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), "complete");
       assert.equal((await f.state()).checkpoints.length, 1);
+      let launches = 0;
+      await handoffNativeSessionToDesktop({ ...options, recoveryDirectory: input.recoveryDirectory, launchImpl: async selection => {
+        launches++; assert.equal(selection.providerSessionId, f.sessionId);
+        assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, 'desktop');
+      } });
+      assert.equal(launches, 1);
+      assert.equal((await f.messages()).length, 2);
+      assert.equal((await restoreDesktopNativeSession(options)).outcome, 'already_current');
+      assert.equal((await f.state()).conversation.providerMetadata.nativeSessionSource.owner, 'leileios');
+      assert.equal((await f.messages()).length, 2);
     });
     assert.equal(await readFile(transcriptFile, "utf8"), bytes);
   } finally { await rm(root, { recursive: true, force: true }); }

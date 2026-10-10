@@ -1,4 +1,4 @@
-import { validateNativeHistoryRestoreInput, type restoreNativeSessionHistory, type readNativeSessionRestoreState } from "../domains/conversation/native-session-history-repository.js";
+import { validateNativeHistoryRestoreInput, type restoreNativeSessionHistory, type readNativeSessionRestoreState, type releaseNativeSessionToDesktop } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
 import {
   NativeLiveProviderSessionStoreError,
@@ -10,6 +10,7 @@ import {
 export type NativeLiveProviderSessionStoreInternalDependencies = {
   restoreNativeHistory?: (input: Parameters<typeof restoreNativeSessionHistory>[1]) => ReturnType<typeof restoreNativeSessionHistory>;
   readNativeHistoryState?: (input: Parameters<typeof readNativeSessionRestoreState>[1]) => ReturnType<typeof readNativeSessionRestoreState>;
+  releaseNativeHistory?: (input: Parameters<typeof releaseNativeSessionToDesktop>[1]) => ReturnType<typeof releaseNativeSessionToDesktop>;
   providerSessionStoreService: Pick<
     NativeLiveProviderSessionStoreService,
     "append" | "load" | "listSessions" | "delete" | "listSubkeys"
@@ -27,6 +28,7 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
   });
   router.post("/native-history/restore", nativeHistoryRestoreHandler(dependencies));
   router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
+  router.post("/native-history/release", nativeHistoryReleaseHandler(dependencies));
   router.post("/append", appendHandler(dependencies));
   router.post("/load", loadHandler(dependencies));
   router.post("/list-sessions", listSessionsHandler(dependencies));
@@ -355,9 +357,24 @@ function nativeHistoryStateHandler(dependencies: NativeLiveProviderSessionStoreI
     catch (error) { sendNativeHistoryError(response, error); }
   };
 }
+function nativeHistoryReleaseHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    const ids = ["conversationId", "sessionId", "expectedHeadMessageId", "expectedCheckpointId"];
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!body || Object.keys(body).some(key => ![...ids, "expectedRevision"].includes(key)) ||
+      ids.some(key => typeof body[key] !== "string" || !uuid.test(body[key] as string)) ||
+      typeof body.expectedRevision !== "string" || !/^[0-9a-f]{64}$/.test(body.expectedRevision)) { sendInvalid(response); return; }
+    if (!dependencies.releaseNativeHistory) { sendNativeHistoryError(response, null); return; }
+    try { response.json({ success: true, data: await dependencies.releaseNativeHistory({ ...body, userId } as Parameters<typeof releaseNativeSessionToDesktop>[1]) }); }
+    catch (error) { sendNativeHistoryError(response, error); }
+  };
+}
 function sendNativeHistoryError(response: Response, error: unknown) {
   const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
-  const conflicts = new Set(["NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND"]);
+  const conflicts = new Set(["NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND", "NATIVE_SESSION_ALREADY_ATTACHED"]);
   const invalid = new Set(["INVALID_NATIVE_PROJECTION", "INVALID_NATIVE_SNAPSHOT", "INVALID_KEY", "INVALID_ENTRY", "BATCH_TOO_LARGE"]);
   response.status(conflicts.has(code) ? 409 : invalid.has(code) ? 400 : 503).json({ success: false, error: {
     code: conflicts.has(code) || invalid.has(code) ? code : "NATIVE_HISTORY_UNAVAILABLE",

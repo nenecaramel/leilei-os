@@ -60,6 +60,7 @@ export type NativeLivePrepareFailureCode =
   | "BRANCH_POINT_INVALID"
   | "CHECKPOINT_NOT_FOUND"
   | "REQUEST_CONFLICT"
+  | "SESSION_OWNED_BY_DESKTOP"
   | "INTERNAL_ERROR";
 
 export type NativeLivePreparePortResult =

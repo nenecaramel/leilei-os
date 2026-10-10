@@ -46,3 +46,23 @@ test("native history surfaces busy/stale conflict without leaking database error
     assert.doesNotMatch(await response.text(), /PRIVATE_SQL/);
   });
 });
+
+test("Desktop release endpoint binds owner and accepts only exact handoff evidence", async () => {
+  let calls = 0;
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      releaseNativeHistory: async input => {
+        calls++; assert.equal(input.userId, userId);
+        assert.equal(input.expectedCheckpointId, cp);
+        return { owner: 'desktop', conversationId, providerSessionId: sid, providerCheckpointId: cp, headMessageId: cp };
+      } } as any));
+  }, async url => {
+    const send = (value: any) => fetch(url + '/store/native-history/release', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) });
+    const input = { conversationId, sessionId: sid, expectedHeadMessageId: cp, expectedRevision: revision, expectedCheckpointId: cp };
+    assert.equal((await send(input)).status, 200);
+    assert.equal((await send({ ...input, userId: sid })).status, 400);
+    assert.equal((await send({ ...input, expectedRevision: 'bad' })).status, 400);
+    assert.equal(calls, 1);
+  });
+});

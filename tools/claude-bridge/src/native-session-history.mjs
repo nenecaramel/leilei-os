@@ -41,6 +41,23 @@ function displayChain(snapshot, checkpointId) {
   return chain;
 }
 
+// Desktop does not update its index while another client appends to the native
+// session. Follow only a completed descendant, never infer a different branch.
+export function nativeContinuationCheckpoint(snapshot, desktopCheckpointId) {
+  const tail = snapshot.entries.findLast(entry => entry && !entry.isSidechain
+    && carrierTypes.has(entry.type) && typeof entry.uuid === 'string' && Object.hasOwn(entry, 'parentUuid'));
+  if (!tail) throw fail('NATIVE_HISTORY_GAP');
+  const chain = displayChain(snapshot, tail.uuid);
+  if (!chain.some(entry => entry.uuid === desktopCheckpointId)) throw fail('EXPLICIT_BRANCH_SELECTION_REQUIRED');
+  const last = chain.findLast(entry => !entry.isMeta && !entry.isCompactSummary
+    && ['user', 'assistant'].includes(entry.type));
+  if (last?.type !== 'assistant' || last.message?.stop_reason === 'tool_use'
+    || (Array.isArray(last.message?.content) && last.message.content.at(-1)?.type === 'tool_use')) {
+    throw fail('NATIVE_TURN_UNFINISHED');
+  }
+  return last.uuid;
+}
+
 function contentBlocks(entry) {
   const content = entry.message?.content;
   if (typeof content === "string") return [{ type: "text", text: content }];
