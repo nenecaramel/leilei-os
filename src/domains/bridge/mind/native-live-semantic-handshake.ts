@@ -748,7 +748,7 @@ function candidateRecord(
 }
 
 function parseCandidates(value: unknown): BreathSemanticCandidate[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT) {
     throw new Error("Semantic candidate snapshot is invalid.");
   }
 
