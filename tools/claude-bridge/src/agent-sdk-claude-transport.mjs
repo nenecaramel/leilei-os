@@ -1,5 +1,9 @@
+import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { durableCheckpointPrefix, checkpointForkSessionStore } from "./provider-checkpoint-prefix.mjs";
 import { EventEmitter } from "node:events";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { listDesktopNativeSessions } from "./native-session-inspection.mjs";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
@@ -481,6 +485,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       trustedReadPaths = [],
       sendFileHandler = null,
       controlPump = null,
+      nativeSessionMirror = null,
     } = {},
   ) {
     if (this.activeQuery || this.activeTurnHandle) {
@@ -514,6 +519,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
+    if (nativeSessionMirror !== null && (mode !== "resume" || !requireProviderCheckpoint ||
+      !nonblankString(parentProviderCheckpointId) || !this.sessionStore ||
+      !isNativeSessionMirror(nativeSessionMirror, parentProviderSessionId, this.sessionStore))) {
+      throw runtimeError("Native resume requires an exact durable checkpoint and its original-source mirror.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+    }
     let checkpointPreflight = null;
     if (parentProviderCheckpointId !== null) {
       checkpointPreflight = await this.#requireCheckpoint(
@@ -539,6 +549,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           parentProviderSessionId,
           mode,
           parentProviderCheckpointId,
+          nativeSessionMirror === null,
+          nativeSessionMirror === null,
         );
       } catch (cause) {
         throw attachSessionStoreHealth(
@@ -572,6 +584,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       normalizeAgentSdkExecutionSelection(execution);
     const nativeScheduleCommand =
       isNativeClaudeScheduleCommand(prompt);
+    if (mode === "resume" && parentProviderCheckpointId !== null
+      && !this.sessionStore && !nativeScheduleCommand) {
+      await this.#validateLocalResumeTail(
+        parentProviderSessionId, parentProviderCheckpointId, userMessageUuid,
+      );
+    }
     const localSendFileServer =
       sendFileHandler
         ? await this.createSendFileMcpServerImpl(
@@ -611,6 +629,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       forkSession: mode === "fork",
       resumeSessionAt: parentProviderCheckpointId,
       queryImpl,
+      // The deployed daemon uses local SDK storage (no remote materializer).
+      // Protect that actual path too, not only the optional native mirror.
+      requireSameSessionBeforePrompt: nativeSessionMirror !== null || (
+        mode === "resume"
+        && parentProviderCheckpointId !== null
+        && !this.sessionStore
+        && !nativeScheduleCommand
+      ),
       environment: this.environment,
       cwd: this.cwd,
       queryOptions: {
@@ -626,9 +652,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           localSendFileServer,
         ),
         ...(this.sessionStore
-          ? { sessionStore: mode === "fork" || portability.checkpointRecovered
+          ? { sessionStore: nativeSessionMirror ?? (mode === "fork" || portability.checkpointRecovered
             ? checkpointForkSessionStore(this.sessionStore, parentProviderSessionId, parentProviderCheckpointId, portability.checkpointRecovered)
-            : this.sessionStore }
+            : this.sessionStore) }
           : {}),
       },
       streaming,
@@ -957,6 +983,20 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
   }
 
+  async inspectDesktopSessions({
+    desktopSessionsDirectory = join(homedir(), "Library", "Application Support", "Claude", "claude-code-sessions"),
+  } = {}) {
+    if (this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError("Native Desktop inspection is unavailable during an active LeileiOS turn.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+    }
+    const configDirectory = this.environment.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+    return listDesktopNativeSessions({
+      desktopSessionsDirectory,
+      projectsDirectory: join(configDirectory, "projects"),
+      peerDirectory: join(configDirectory, "sessions"),
+    });
+  }
+
   async listSessions({
     allDirectories = false,
     limit = 100,
@@ -1071,6 +1111,40 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     return entries.filter(entry => entry && !entry.isSidechain
       && ["user", "assistant", "system", "attachment"].includes(entry.type)
       && typeof entry.uuid === "string" && Object.hasOwn(entry, "parentUuid"));
+  }
+
+  async #validateLocalResumeTail(sessionId, checkpointId, userMessageUuid) {
+    // An ancestry cache proves presence, not that Desktop has stayed at that
+    // checkpoint. Read again before query so an unseen native turn is not rewound.
+    const allEntries = await this.#checkpointEntries(sessionId, true);
+    const entries = this.#chainEntries(allEntries);
+    const tailId = entries.at(-1)?.uuid;
+    const conflict = () => runtimeError(
+      "Native session has unsynchronized history; restore it before continuing.",
+      { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
+    );
+    if (!tailId) throw conflict();
+    let verified;
+    try { verified = durableCheckpointPrefix(allEntries, tailId); }
+    catch { throw conflict(); }
+    if (!verified.ancestry.has(checkpointId)) throw conflict();
+    const byId = new Map(this.#chainEntries(verified.prefix).map(entry => [entry.uuid, entry]));
+    const suffix = [];
+    for (let id = tailId; id !== checkpointId; id = byId.get(id).parentUuid) suffix.push(byId.get(id));
+    let sameCanonicalTurn = false;
+    for (const entry of suffix.reverse()) {
+      const toolResult = entry.type === "user" && Array.isArray(entry.message?.content)
+        && entry.message.content.length > 0
+        && entry.message.content.every(block => block?.type === "tool_result");
+      if (entry.type === "user" && !toolResult) {
+        if (!userMessageUuid || entry.uuid !== userMessageUuid) throw conflict();
+        sameCanonicalTurn = true;
+      } else if ((entry.type === "assistant" || toolResult) && !sameCanonicalTurn) {
+        throw conflict();
+      }
+    }
+    // A failed/interrupted tail for this exact canonical user UUID is the
+    // existing re-delivery case, not a different Desktop conversation turn.
   }
 
   async #requireCheckpoint(
@@ -1238,16 +1312,19 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
   }
 
-  async #prepareSessionForTurn(sessionId, mode, checkpointId = null, recoverIncomplete = true) {
+  async #prepareSessionForTurn(sessionId, mode, checkpointId = null, recoverIncomplete = true, allowBackfill = true) {
     const id = nonblankString(sessionId);
     const exactCheckpoint = checkpointId !== null;
     const preflight = await this.#requireSession(id, recoverIncomplete ? checkpointId : null);
+    if (!allowBackfill && (!preflight.localAvailable || preflight.status !== "complete")) {
+      throw runtimeError("Original native source and complete durable baseline are required.", { runtimeCode: "NO_PROVIDER_SESSION" });
+    }
     let status = preflight.status;
     let backfillStatus = "not_needed";
     let backfillFailureReason = null;
 
     if (
-      preflight.localAvailable
+      allowBackfill && preflight.localAvailable
       && (status === null || (status === "incomplete" && exactCheckpoint))
     ) {
       const backfill = await this.#tryBackfillLocalSession(id);

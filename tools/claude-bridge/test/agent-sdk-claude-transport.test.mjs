@@ -1435,7 +1435,7 @@ test("default local historical fork locates the parent by session id and cleans 
   );
 });
 
-test("steady local resume reparses the transcript only after the turn", async () => {
+test("steady local resume checks fresh native history before query and records it after the turn", async () => {
   const root = {
     type: "user",
     uuid: "61111111-1111-4111-8111-111111111111",
@@ -1466,18 +1466,21 @@ test("steady local resume reparses the transcript only after the turn", async ()
     [root, first, second, third],
   ];
 
-  let importCalls = 0;
+  let importCalls = 0, queryCalls = 0;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     cwd: "/workspace/leilei-os",
     sessionMessagesImpl: async () => [{ type: "assistant" }],
     importSessionToStoreImpl: async (_sessionId, store) => {
-      const entries = snapshots[importCalls];
+      const entries = snapshots[queryCalls];
       importCalls += 1;
-      assert.ok(entries, "unexpected extra local transcript parse");
+      assert.ok(entries, "unexpected extra local turn");
       await store.append({ subpath: undefined }, entries);
     },
-    queryImpl: () => fakeQuery(successFixture("provider-root")),
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("provider-root"));
+    },
   });
 
   const firstResult = await transport.executeTurn(
@@ -1503,7 +1506,8 @@ test("steady local resume reparses the transcript only after the turn", async ()
     },
   );
   assert.equal(secondResult.providerCheckpointId, third.uuid);
-  assert.equal(importCalls, 3);
+  assert.equal(queryCalls, 2);
+  assert.equal(importCalls, 5);
 });
 
 test("local checkpoint preflight rejects a broken ancestry before query", async () => {
@@ -2538,4 +2542,235 @@ test("Native Live SDK explicitly bypasses the standalone Claude Code Mind hook",
   const transport = new AgentSdkClaudeTransport({environment});
   assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "1");
   assert.equal(environment.LEILEI_MIND_HOOK_DISABLED, "0");
+});
+
+test("native interactive resume uses original-source mirror and refuses copied identity before prompt delivery", async () => {
+  const { createNativeSessionMirror } = await import('../src/native-session-mirror.mjs');
+  const sessionId = '00000000-0000-4000-8000-000000000011';
+  const cp = '00000000-0000-4000-8000-000000000012';
+  const store = {
+    async load() { return [{ type: 'assistant', uuid: cp, parentUuid: null, message: { role: 'assistant', content: 'synthetic' } }]; },
+    async append() {}, async getStatus() { return 'complete'; },
+    async markIncomplete() {}, async markComplete() {},
+  };
+  const mirror = createNativeSessionMirror(store, { projectKey: '-synthetic-workspace', sessionId });
+  let delivered = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/workspace', sessionStore: store,
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async () => assert.fail('native resume must not backfill/materialize'),
+    queryImpl: input => {
+      assert.strictEqual(input.options.sessionStore, mirror);
+      return { close() {}, async *[Symbol.asyncIterator]() {
+        const next = input.prompt[Symbol.asyncIterator]().next();
+        yield { type: 'system', subtype: 'init', session_id: 'copied-session' };
+        if (!(await next).done) delivered++;
+      } };
+    },
+  });
+  await assert.rejects(transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true, nativeSessionMirror: mirror }), error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(delivered, 0);
+});
+
+test("native interactive mode rejects unbranded mirrors and non-exact/fork requests before query", async () => {
+  let calls = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic', queryImpl() { calls++; assert.fail('invalid native request queried'); } });
+  await assert.rejects(transport.executeTurn('synthetic', { mode: 'new', nativeSessionMirror: {} }), error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(calls, 0);
+});
+
+test("native interactive continuation sends once on original identity and completes existing durable checkpoint path", async () => {
+  const { createNativeSessionMirror } = await import('../src/native-session-mirror.mjs');
+  const sessionId = '00000000-0000-4000-8000-000000000021';
+  const cp = '00000000-0000-4000-8000-000000000022';
+  const user = '00000000-0000-4000-8000-000000000023';
+  const child = '00000000-0000-4000-8000-000000000024';
+  const entries = [{ type: 'assistant', uuid: cp, parentUuid: null, message: { role: 'assistant', content: 'synthetic parent' } }];
+  let state = 'complete', delivered = 0;
+  const store = { async load() { return entries; }, async append(key, batch) { entries.push(...batch); },
+    async getStatus() { return state; }, async markIncomplete() { state = 'incomplete'; }, async markComplete() { state = 'complete'; } };
+  const mirror = createNativeSessionMirror(store, { projectKey: '-synthetic-workspace', sessionId });
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/workspace', sessionStore: store,
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async () => assert.fail('no materialized/backfilled copy'),
+    queryImpl: input => ({ close() {}, async *[Symbol.asyncIterator]() {
+      assert.equal(state, 'incomplete');
+      assert.equal(await input.options.sessionStore.load({ projectKey: '-synthetic-workspace', sessionId }), null);
+      yield { type: 'system', subtype: 'init', session_id: sessionId };
+      const prompt = await input.prompt[Symbol.asyncIterator]().next();
+      assert.equal(prompt.done, false); delivered++;
+      assert.equal(prompt.value.uuid, user);
+      await input.options.sessionStore.append({ projectKey: '-synthetic-workspace', sessionId }, [
+        { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+        { type: 'assistant', uuid: child, parentUuid: user, message: { role: 'assistant', content: 'READY' } },
+      ]);
+      yield successFixture(sessionId)[1];
+      yield successFixture(sessionId)[2];
+    } }),
+  });
+  const result = await transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true, userMessageUuid: user, nativeSessionMirror: mirror });
+  assert.equal(delivered, 1);
+  assert.equal(result.providerSessionId, sessionId);
+  assert.equal(result.providerCheckpointId, child);
+  assert.equal(state, 'complete');
+  assert.equal(entries.length, 3);
+});
+
+test("native interactive resume refuses missing local source or incomplete baseline without backfill or query", async () => {
+  const { createNativeSessionMirror } = await import('../src/native-session-mirror.mjs');
+  const sessionId = '00000000-0000-4000-8000-000000000031';
+  const cp = '00000000-0000-4000-8000-000000000032';
+  for (const [local, state] of [[false, 'complete'], [true, 'incomplete']]) {
+    const store = { async load() { return [{ type: 'assistant', uuid: cp, parentUuid: null }]; },
+      async append() {}, async getStatus() { return state; }, async markIncomplete() { assert.fail('refusal must precede mutation'); } };
+    const mirror = createNativeSessionMirror(store, { projectKey: '-synthetic', sessionId });
+    const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic', sessionStore: store,
+      sessionMessagesImpl: async () => local ? [{ type: 'assistant' }] : [],
+      importSessionToStoreImpl: async () => assert.fail('native source must not be backfilled'),
+      queryImpl() { assert.fail('unsafe original resume queried'); } });
+    await assert.rejects(transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+      parentProviderCheckpointId: cp, requireProviderCheckpoint: true, nativeSessionMirror: mirror }), error => error.runtimeCode === 'NO_PROVIDER_SESSION');
+  }
+});
+
+test("daemon local-SDK exact resume rejects a copied session before consuming canonical user input", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000041';
+  const cp = '00000000-0000-4000-8000-000000000042';
+  let delivered = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async (_id, store) => store.append({}, [{ type: 'assistant', uuid: cp, parentUuid: null }]),
+    queryImpl: input => ({ close() {}, async *[Symbol.asyncIterator]() {
+      assert.equal('sessionStore' in input.options, false);
+      yield { type: 'system', subtype: 'init', session_id: 'copied-session' };
+      const next = await input.prompt[Symbol.asyncIterator]().next();
+      if (!next.done) delivered++;
+      yield successFixture('copied-session')[2];
+    } }),
+  });
+  await assert.rejects(transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true }), error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(delivered, 0, 'canonical prompt must never reach a copied native session');
+});
+
+test("daemon local-SDK exact resume delivers once and records the original session's new checkpoint", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000051';
+  const cp = '00000000-0000-4000-8000-000000000052';
+  const user = '00000000-0000-4000-8000-000000000053';
+  const child = '00000000-0000-4000-8000-000000000054';
+  const entries = [{ type: 'assistant', uuid: cp, parentUuid: null,
+    message: { role: 'assistant', content: 'synthetic parent' } }];
+  let delivered = 0, queries = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async (id, store) => {
+      assert.equal(id, sessionId);
+      await store.append({}, entries);
+    },
+    queryImpl: input => {
+      queries++;
+      assert.equal(input.options.resume, sessionId);
+      assert.equal(input.options.resumeSessionAt, cp);
+      assert.notEqual(input.options.forkSession, true);
+      assert.equal('sessionStore' in input.options, false);
+      return { close() {}, async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: sessionId };
+        const iterator = input.prompt[Symbol.asyncIterator]();
+        const prompt = await iterator.next();
+        assert.equal(prompt.done, false);
+        assert.equal(prompt.value.uuid, user);
+        delivered++;
+        entries.push(
+          { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+          { type: 'assistant', uuid: child, parentUuid: user, message: { role: 'assistant', content: 'READY' } },
+        );
+        yield successFixture(sessionId)[1];
+        yield successFixture(sessionId)[2];
+      } };
+    },
+  });
+  const result = await transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true, userMessageUuid: user });
+  assert.equal(queries, 1);
+  assert.equal(delivered, 1);
+  assert.equal(result.providerSessionId, sessionId);
+  assert.equal(result.providerCheckpointId, child);
+});
+
+test("local exact resume refuses a newer Desktop turn even when the old checkpoint ancestry is cached", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000061';
+  const cp = '00000000-0000-4000-8000-000000000062';
+  const laterUser = '00000000-0000-4000-8000-000000000063';
+  const laterAssistant = '00000000-0000-4000-8000-000000000064';
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async (_id, store) => store.append({}, [
+      { type: 'assistant', uuid: cp, parentUuid: null },
+      { type: 'user', uuid: laterUser, parentUuid: cp, message: { role: 'user', content: 'Desktop continuation' } },
+      { type: 'assistant', uuid: laterAssistant, parentUuid: laterUser },
+    ]),
+    queryImpl() { assert.fail('must not query or rewind unsynchronized native history'); },
+  });
+  transport.localCheckpointAncestry.set(sessionId, new Set([cp]));
+  await assert.rejects(transport.executeTurn('new canonical input', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true,
+    userMessageUuid: '00000000-0000-4000-8000-000000000065' }),
+    error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+});
+
+test("local exact resume permits same-user interrupted re-delivery but refuses unbound assistant and detached tails", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000071';
+  const cp = '00000000-0000-4000-8000-000000000072';
+  const user = '00000000-0000-4000-8000-000000000073';
+  const child = '00000000-0000-4000-8000-000000000074';
+  const root = { type: 'assistant', uuid: cp, parentUuid: null };
+  const interrupted = [
+    { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+    { type: 'assistant', uuid: 'failed-tail', parentUuid: user },
+    { type: 'user', uuid: 'tool-output', parentUuid: 'failed-tail',
+      message: { role: 'user', content: [{ type: 'tool_result', content: 'synthetic' }] } },
+  ];
+  for (const [suffix, allowed] of [
+    [interrupted, true],
+    [[{ type: 'attachment', uuid: 'context', parentUuid: cp }], true],
+    [[{ type: 'assistant', uuid: 'unknown-assistant', parentUuid: cp }], false],
+    [[{ type: 'assistant', uuid: 'detached', parentUuid: null }], false],
+    [[...interrupted, { type: 'user', uuid: 'another-user', parentUuid: 'tool-output' }], false],
+  ]) {
+    const entries = [root, ...suffix];
+    let queries = 0, delivered = 0;
+    const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+      sessionMessagesImpl: async () => [{ type: 'assistant' }],
+      importSessionToStoreImpl: async (_id, store) => store.append({}, entries),
+      queryImpl: input => {
+        queries++;
+        return { close() {}, async *[Symbol.asyncIterator]() {
+          yield successFixture(sessionId)[0];
+          const prompt = await input.prompt[Symbol.asyncIterator]().next();
+          assert.equal(prompt.value.uuid, user);
+          delivered++;
+          entries.push(
+            { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+            { type: 'assistant', uuid: child, parentUuid: user },
+          );
+          yield successFixture(sessionId)[1];
+          yield successFixture(sessionId)[2];
+        } };
+      },
+    });
+    const turn = transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+      parentProviderCheckpointId: cp, requireProviderCheckpoint: true, userMessageUuid: user });
+    if (allowed) {
+      const result = await turn;
+      assert.equal(result.providerSessionId, sessionId);
+      assert.equal(result.providerCheckpointId, child);
+      assert.equal(delivered, 1);
+      assert.equal(queries, 1);
+    } else {
+      await assert.rejects(turn, error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+      assert.equal(queries, 0);
+      assert.equal(delivered, 0);
+    }
+  }
 });

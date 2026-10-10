@@ -88,6 +88,7 @@ function sendPrepareFailure(
         ? 404
         : result.code === "STALE_HEAD"
           || result.code === "REQUEST_CONFLICT"
+          || result.code === "SESSION_OWNED_BY_DESKTOP"
           ? 409
           : 503;
 

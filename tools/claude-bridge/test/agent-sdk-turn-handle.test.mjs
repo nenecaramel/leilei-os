@@ -1243,3 +1243,148 @@ test("installed Agent SDK cannot write a native command before MCP readiness", a
   assert.equal(sent[0].message.content[0].text, "/schedule list");
   assert.equal(sent[0].client_composed, undefined);
 });
+
+// A copied-session init must be refused before even one user message is sent.
+test("native resume holds the prompt until the original session init is confirmed", async () => {
+  let sent = 0;
+  let pending;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello", environment: {}, mode: "resume",
+    parentProviderSessionId: "original", resume: "original", resumeSessionAt: "checkpoint",
+    requireSameSessionBeforePrompt: true,
+    queryImpl: ({ prompt }) => {
+      pending = prompt[Symbol.asyncIterator]().next();
+      pending.then(step => { if (!step.done) sent++; });
+      return { close() {}, async *[Symbol.asyncIterator]() {
+        assert.equal(sent, 0);
+        yield { type: "system", subtype: "init", session_id: "original" };
+        const step = await pending;
+        assert.equal(step.value.message.content[0].text, "hello");
+        yield { type: "result", subtype: "success", session_id: "original", result: "OK" };
+      } };
+    },
+  });
+  await Promise.resolve();
+  assert.equal(sent, 0);
+  assert.equal((await handle.start()).providerSessionId, "original");
+  assert.equal(sent, 1);
+});
+
+test("native resume refuses an SDK copy without delivering the prompt", async () => {
+  let pending;
+  let closed = 0;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello", environment: {}, mode: "resume",
+    parentProviderSessionId: "original", resume: "original", resumeSessionAt: "checkpoint",
+    requireSameSessionBeforePrompt: true,
+    queryImpl: ({ prompt }) => {
+      pending = prompt[Symbol.asyncIterator]().next();
+      return { close() { closed++; }, async *[Symbol.asyncIterator]() {
+        yield { type: "system", subtype: "init", session_id: "copy" };
+        yield { type: "result", subtype: "success", session_id: "copy" };
+      } };
+    },
+  });
+  await assert.rejects(handle.start(), error => error.runtimeCode === "PROVIDER_SESSION_CONFLICT");
+  assert.deepEqual(await pending, { value: undefined, done: true });
+  assert.equal(closed, 1);
+});
+
+test("native identity guard cannot be combined with forks or materializing SessionStore", async () => {
+  for (const extra of [{ mode: "fork", forkSession: true }, { queryOptions: { sessionStore: {} } }, { resumeSessionAt: null }]) {
+    await assert.rejects(() => createAgentSdkTurnHandle({
+      prompt: "hello", environment: {}, mode: "resume", parentProviderSessionId: "original",
+      resume: "original", resumeSessionAt: "checkpoint", requireSameSessionBeforePrompt: true,
+      queryImpl() { assert.fail("invalid native selection must fail before query"); }, ...extra,
+    }), /Native resume/);
+  }
+});
+
+test("native resume refuses output without init and releases queued input on abort", async () => {
+  let pending;
+  const make = async messages => createAgentSdkTurnHandle({
+    prompt: "hello", environment: {}, mode: "resume", parentProviderSessionId: "original",
+    resume: "original", resumeSessionAt: "checkpoint", requireSameSessionBeforePrompt: true,
+    queryImpl: ({ prompt }) => {
+      pending = prompt[Symbol.asyncIterator]().next();
+      return { close() {}, async *[Symbol.asyncIterator]() { yield* messages; } };
+    },
+  });
+  const invalid = await make([
+    { type: "system", subtype: "status", session_id: "original" },
+    { type: "assistant", session_id: "original", message: { content: [] } },
+  ]);
+  await assert.rejects(invalid.start(), error => error.runtimeCode === "PROVIDER_SESSION_CONFLICT");
+  assert.equal((await pending).done, true);
+  const aborted = await make([]);
+  aborted.abort();
+  assert.equal((await pending).done, true);
+});
+
+test("native resume startup timeout ends blocked prompt without sending or retrying", async () => {
+  let pending;
+  let closed = 0;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello", environment: {}, mode: "resume", parentProviderSessionId: "original",
+    resume: "original", resumeSessionAt: "checkpoint", requireSameSessionBeforePrompt: true,
+    mcpStartupTimeoutMs: 15,
+    queryImpl: ({ prompt }) => {
+      pending = prompt[Symbol.asyncIterator]().next();
+      return { close() { closed++; }, async *[Symbol.asyncIterator]() { await new Promise(() => {}); } };
+    },
+  });
+  let watchdog;
+  try {
+    await assert.rejects(Promise.race([handle.start(), new Promise((_, reject) => {
+      watchdog = setTimeout(() => reject(new Error("native startup did not time out")), 100);
+    })]), error => error.runtimeCode === "RUNTIME_UNAVAILABLE");
+  } finally { clearTimeout(watchdog); }
+  assert.equal((await pending).done, true);
+  assert.equal(closed, 1);
+});
+
+test("native same-session query retains durable mirroring without remote resume materialization", async () => {
+  const { createNativeSessionMirror } = await import("../src/native-session-mirror.mjs");
+  const sessionId = "00000000-0000-4000-8000-000000000001";
+  const key = { projectKey: "-synthetic-workspace", sessionId };
+  const saved = [];
+  const mirror = createNativeSessionMirror({ async append(key, entries) { saved.push({ key, entries }); } }, key);
+  let input;
+  let pending;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello", environment: {}, mode: "resume", parentProviderSessionId: sessionId,
+    resume: sessionId, resumeSessionAt: "checkpoint", requireSameSessionBeforePrompt: true,
+    queryOptions: { sessionStore: mirror },
+    queryImpl: call => {
+      input = call;
+      pending = call.prompt[Symbol.asyncIterator]().next();
+      return { close() {}, async *[Symbol.asyncIterator]() {
+        yield { type: "system", subtype: "init", session_id: sessionId };
+        await pending;
+        await call.options.sessionStore.append(key, [{ uuid: "new-native-entry" }]);
+        yield { type: "result", subtype: "success", session_id: sessionId, result: "OK" };
+      } };
+    },
+  });
+  assert.equal(input.options.resume, sessionId);
+  assert.equal(input.options.resumeSessionAt, "checkpoint");
+  assert.equal(input.options.forkSession, undefined);
+  assert.equal(input.options.env.CLAUDE_CONFIG_DIR, undefined);
+  assert.equal(await input.options.sessionStore.load(key), null);
+  assert.equal((await handle.start()).providerSessionId, sessionId);
+  assert.deepEqual(saved, [{ key, entries: [{ uuid: "new-native-entry" }] }]);
+});
+
+test("native resume cannot return a successful handle result after EOF without identity", async () => {
+  let pending;
+  const handle = await createAgentSdkTurnHandle({
+    prompt: "hello", environment: {}, mode: "resume", parentProviderSessionId: "original",
+    resume: "original", resumeSessionAt: "checkpoint", requireSameSessionBeforePrompt: true,
+    queryImpl: ({ prompt }) => {
+      pending = prompt[Symbol.asyncIterator]().next();
+      return { close() {}, async *[Symbol.asyncIterator]() {} };
+    },
+  });
+  await assert.rejects(handle.start(), error => error.runtimeCode === "PROVIDER_SESSION_CONFLICT");
+  assert.equal((await pending).done, true);
+});
