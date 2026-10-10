@@ -63,7 +63,8 @@ export const DEFAULT_MIND_LOOP_CONFIG: MindLoopConfig = {
   breathSemanticMedianMargin: 0.03,
   breathRecentRecallPenalty: true,
   breathDiversityMaxTokenOverlap: 0.75,
-  breathSemanticCandidateLimit: 256,
+  // Match the 1..64 persisted semantic scoring request constraint.
+  breathSemanticCandidateLimit: 64,
   breathSemanticCandidateMaxChars: 2_000,
   maxContextItems: 16,
   maxContextChars: 8_000,
