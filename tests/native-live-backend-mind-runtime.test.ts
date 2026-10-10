@@ -127,19 +127,6 @@ class Reader {
   }
 }
 
-class LineageReader {
-  calls: unknown[] = [];
-  value: ContextLineageState = {
-    epoch: 2,
-    seenStateIds: ["memory-seen"],
-  };
-
-  async readForMessage(input: unknown) {
-    this.calls.push(input);
-    return this.value;
-  }
-}
-
 class Mind implements NativeLiveMindRuntime {
   calls: string[] = [];
   excludedReferenceIds: string[][] = [];
@@ -197,283 +184,150 @@ class Mind implements NativeLiveMindRuntime {
   }
 }
 
-test("send preparation settles the continued path, then assembles context", async () => {
+test("ordinary sends settle existing memory scope without new memory context or timestamps", async () => {
   const reader = new Reader();
   const mind = new Mind();
-  mind.transitions = [{
-    stateId: "memory-1",
-    stateKind: "memory",
-    reason: "user_continued_current_path",
-    settlementStatus: "settled",
-    pathStatus: "current",
-    validityStatus: "valid",
-    promoteScopeToGlobal: true,
-  }];
   const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-
   const prompt = await runtime.preparePrompt({
     userId,
-    preparation: prepared("send"),
+    preparation: { ...prepared("send"), prompt: "Hello <Claude> & G" },
   });
 
-  assert.equal(prompt, "ASSEMBLED_PROMPT");
-  // A settled memory becomes eligible for recall; nothing else has to run
-  // between settlement and context assembly.
-  assert.deepEqual(mind.calls, [
-    `reconcile:${userMessageId}`,
-    `prepare:${parentId}:hello`,
-  ]);
-  assert.deepEqual(mind.excludedReferenceIds, [[]]);
-  assert.deepEqual(mind.manifestIds, [prepared("send").prepareId]);
+  assert.equal(prompt, "<user_message>Hello &lt;Claude&gt; &amp; G</user_message>");
+  assert.deepEqual(mind.calls, [`reconcile:${userMessageId}`]);
+  assert.deepEqual(mind.manifestIds, []);
+  assert.doesNotMatch(prompt, /leileios_context|Relevant memories:|\[\d{2}-\d{2}/);
 });
 
-
-test("Mind preparation inherits context lineage from the canonical parent message", async () => {
-  const reader = new Reader();
-  const mind = new Mind();
-  const lineage = new LineageReader();
-  const runtime = new DefaultNativeLiveBackendMindRuntime(
-    reader,
-    mind,
-    lineage,
-  );
-
-  await runtime.preparePrompt({
-    userId,
-    preparation: prepared("send"),
-  });
-
-  assert.deepEqual(lineage.calls, [{
-    userId,
-    conversationId,
-    canonicalMessageId: parentId,
-  }]);
-  assert.deepEqual(mind.contextLineages, [lineage.value]);
+test("only canonical voice input keeps the voice flag", async () => {
+  for (const mode of ["voice", "text", "audio", null] as const) {
+    const reader = new Reader();
+    const user = userMessage();
+    user.blocks[0]!.payload = mode === null ? null : { input_mode: mode };
+    reader.value = { ...conversation(), messages: [parentAssistant(), user] };
+    const runtime = new DefaultNativeLiveBackendMindRuntime(reader, new Mind());
+    const prompt = await runtime.preparePrompt({ userId, preparation: prepared("send") });
+    assert.equal(
+      prompt,
+      mode === "voice"
+        ? '<user_message input_mode="voice">[voice] hello</user_message>'
+        : "<user_message>hello</user_message>",
+    );
+  }
 });
 
-test("bootstrap fork with no canonical parent uses the current memory lineage", async () => {
-  const reader = new Reader();
-  const bootstrapUser = {
-    ...userMessage(),
-    parentMessageId: null,
-  };
-  reader.value = {
-    ...conversation(null),
-    currentHeadMessageId: null,
-    messages: [bootstrapUser],
-  };
-  const mind = new Mind();
-  const lineage = new LineageReader();
-  lineage.value = {
-    epoch: 0,
-    seenStateIds: [],
-  };
-  const runtime = new DefaultNativeLiveBackendMindRuntime(
-    reader,
-    mind,
-    lineage,
-  );
-
-  await runtime.preparePrompt({
-    userId,
-    preparation: prepared("send"),
-  });
-
-  assert.deepEqual(lineage.calls, [{
-    userId,
-    conversationId,
-    canonicalMessageId: null,
-  }]);
-  assert.deepEqual(mind.contextLineages, [{
-    ...lineage.value,
-  }]);
+test("native schedule and routines remain verbatim on send", async () => {
+  for (const command of ["/schedule daily at 9am", "/routines list"]) {
+    const runtime = new DefaultNativeLiveBackendMindRuntime(new Reader(), new Mind());
+    assert.equal(
+      await runtime.preparePrompt({
+        userId, preparation: { ...prepared("send"), prompt: command },
+      }),
+      command,
+    );
+  }
 });
 
-test("native Claude schedule command bypasses Mind prompt assembly but still settles the current path", async () => {
-  const reader = new Reader();
-  const mind = new Mind();
-  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-  const preparation = {
-    ...prepared("send"),
-    prompt: "/schedule daily at 9am review open pull requests",
-  };
-
-  const prompt = await runtime.preparePrompt({
-    userId,
-    preparation,
-  });
-
-  assert.equal(prompt, preparation.prompt);
-  assert.deepEqual(mind.calls, [
-    `reconcile:${userMessageId}`,
-  ]);
-});
-
-test("schedule aliases bypass semantic planning while retry remains an ordinary replacement turn", async () => {
-  const reader = new Reader();
-  const mind = new Mind();
-  Object.assign(mind, {
-    planSemanticUserTurn: async () => {
-      throw new Error("native schedule must not enter semantic planning");
-    },
-  });
-  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-
-  assert.equal(
-    await runtime.planSemanticPrompt({
-      userId,
-      preparation: {
-        ...prepared("send"),
-        prompt: "/routines list",
-      },
-    }),
-    null,
-  );
-
-  reader.value = conversation(oldAssistantId);
-  await runtime.preparePrompt({
-    userId,
-    preparation: {
-      ...prepared("retry"),
-      prompt: "/schedule daily at 9am must not execute on retry",
-    },
-  });
-  assert.deepEqual(mind.calls, [
-    `prepare:${parentId}:/schedule daily at 9am must not execute on retry`,
-  ]);
-});
-
-test("retry preparation excludes the old assistant suffix before replacement generation", async () => {
-  const reader = new Reader();
-  reader.value = conversation(oldAssistantId);
-  const mind = new Mind();
-  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-
-  await runtime.preparePrompt({
-    userId,
-    preparation: prepared("retry"),
-  });
-
-  assert.deepEqual(mind.calls, [
-    `prepare:${parentId}:hello`,
-  ]);
-  assert.deepEqual(mind.excludedReferenceIds, [[oldAssistantId]]);
-  assert.deepEqual(mind.manifestIds, [prepared("retry").prepareId]);
-});
-
-test("Retry and Edit inherit lineage from the replacement branch point, not the abandoned suffix", async () => {
+test("retry and edit are still ordinary prompts with no second Mind recall", async () => {
   for (const operation of ["retry", "edit"] as const) {
     const reader = new Reader();
     reader.value = conversation(oldAssistantId);
     const mind = new Mind();
-    const lineage = new LineageReader();
-    lineage.value = {
-      epoch: 3,
-      seenStateIds: ["seen-before-branch"],
-    };
-    const runtime = new DefaultNativeLiveBackendMindRuntime(
-      reader,
-      mind,
-      lineage,
-    );
-
-    await runtime.preparePrompt({
+    const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+    const prompt = await runtime.preparePrompt({
       userId,
-      preparation: prepared(operation),
+      preparation: { ...prepared(operation), prompt: "/schedule must not execute here" },
     });
-
-    assert.deepEqual(lineage.calls, [{
-      userId,
-      conversationId,
-      canonicalMessageId: parentId,
-    }]);
-    assert.deepEqual(mind.contextLineages, [lineage.value]);
+    assert.equal(prompt, "<user_message>/schedule must not execute here</user_message>");
+    assert.deepEqual(mind.calls, []);
   }
 });
 
-test("branch finalize records intents and then reconciles the finalized canonical head", async () => {
+test("semantic Mind preparation stays disabled even when legacy runtime offers it", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+  assert.equal(await runtime.planSemanticPrompt({
+    userId, preparation: prepared("send"),
+  }), null);
+  assert.deepEqual(mind.calls, []);
+  assert.deepEqual(reader.calls, []);
+});
+
+test("already queued semantic request completes without adding legacy memories", async () => {
+  const reader = new Reader();
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
+  const prompt = await runtime.completeSemanticPrompt({
+    userId,
+    preparation: prepared("send"),
+    plan: {
+      manifestId: prepared("send").prepareId,
+      assembledAt: now,
+      snapshotSequence: 1,
+      query: "hello",
+      candidates: [],
+    },
+    scores: null,
+  });
+  assert.equal(prompt, "<user_message>hello</user_message>");
+  assert.deepEqual(mind.calls, []);
+});
+
+test("new assistant <memory> tags are not parsed into Mind writes", () => {
+  const mind = new Mind();
+  const runtime = new DefaultNativeLiveBackendMindRuntime(new Reader(), mind);
+  const blocks: NativeLiveContentBlockInput[] = [{
+    kind: "text",
+    rawType: "text",
+    text: "Hello <memory>an old memory tag</memory>",
+  }];
+  const parsed = runtime.parseAssistantBlocks(blocks);
+  assert.deepEqual(parsed.intents, []);
+  assert.deepEqual(parsed.actions, []);
+  assert.deepEqual(parsed.visibleBlocks, blocks);
+  assert.deepEqual(mind.calls, []);
+});
+
+test("an already queued legacy Mind intent can still finalize without discarding existing data", async () => {
   const reader = new Reader();
   reader.value = conversation(assistantId);
   const mind = new Mind();
   const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-
   await runtime.afterFinalize({
     userId,
     preparation: prepared("edit"),
     assistantMessageId: assistantId,
     intents: [{
       kind: "memory",
-      text: "remember",
+      text: "historical queued memory",
       sourceStart: 0,
       sourceEnd: 1,
-      raw: "<memory>remember</memory>",
+      raw: "<memory>historical queued memory</memory>",
     }],
   });
-
-  assert.deepEqual(mind.calls, [
-    "recall",
-    "record",
-    `reconcile:${assistantId}`,
-  ]);
-  assert.deepEqual(mind.recallInputs, [{
-    userId,
-    manifestId: prepared("edit").prepareId,
-  }]);
-  assert.equal(
-    (mind.recordInputs[0] as { assistantMessageCreatedAt: string })
-      .assistantMessageCreatedAt,
-    "2026-09-22T11:02:03.000Z",
-  );
+  assert.deepEqual(mind.calls, ["recall", "record", `reconcile:${assistantId}`]);
 });
 
-test("ordinary send finalize records intents but leaves the new state provisional until next user continuation", async () => {
+test("normal completed turns make no new Mind writes", async () => {
   const reader = new Reader();
   reader.value = conversation(assistantId);
   const mind = new Mind();
   const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-
   await runtime.afterFinalize({
-    userId,
-    preparation: prepared("send"),
-    assistantMessageId: assistantId,
-    intents: [{
-      kind: "memory",
-      text: "warm",
-      sourceStart: 0,
-      sourceEnd: 1,
-      raw: "<memory>warm</memory>",
-    }],
+    userId, preparation: prepared("send"), assistantMessageId: assistantId, intents: [],
   });
-
-  assert.deepEqual(mind.calls, ["recall", "record"]);
-  assert.deepEqual(mind.recallInputs, [{
-    userId,
-    manifestId: prepared("send").prepareId,
-  }]);
-  assert.equal(reader.calls.length, 1);
+  assert.deepEqual(mind.calls, ["recall"]);
 });
 
-test("archived conversation blocks delayed Mind finalization before any mutation", async () => {
+test("archived conversations still reject a stale finalization", async () => {
   const reader = new Reader();
-  reader.value = {
-    ...conversation(assistantId),
-    lifecycleStatus: "archived",
-  };
+  reader.value = { ...conversation(assistantId), lifecycleStatus: "archived" };
   const mind = new Mind();
   const runtime = new DefaultNativeLiveBackendMindRuntime(reader, mind);
-
   await assert.rejects(
     runtime.afterFinalize({
-      userId,
-      preparation: prepared("send"),
-      assistantMessageId: assistantId,
-      intents: [{
-        kind: "memory",
-        text: "must not write",
-        sourceStart: 0,
-        sourceEnd: 1,
-        raw: "<memory>must not write</memory>",
-      }],
+      userId, preparation: prepared("send"), assistantMessageId: assistantId, intents: [],
     }),
     /not active/i,
   );
