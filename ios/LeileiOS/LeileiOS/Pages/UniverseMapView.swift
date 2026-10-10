@@ -6,13 +6,15 @@ struct UniverseMapView: View {
     let galaxies: [UniverseGalaxy]
     let relations: [UniverseRelation]
     let selectedNodeID: String?
-    let activeGalaxyID: String?
+    @Binding var activeGalaxyID: String?
     let mode: UniverseMapMode
+    let controlsTopInset: CGFloat
     let onSelectNode: (String?) -> Void
     let onOpenNode: (String) -> Void
     let onPlaceNode: (UniversePosition) -> Void
     let onMoveNode: (String, UniversePosition) async -> Void
     let onModeChange: (UniverseMapMode) -> Void
+    let onOpenGalaxyMenu: () -> Void
 
     @State var viewport = UniverseViewport(x: 0, y: 0, scale: 1)
     @State var dragOrigin: UniverseViewport?
@@ -47,10 +49,7 @@ struct UniverseMapView: View {
 
                 VStack {
                     HStack {
-                        if mode != .browse {
-                            modeHint
-                        }
-
+                        galaxyMenu
                         Spacer()
 
                         Button {
@@ -58,14 +57,23 @@ struct UniverseMapView: View {
                         } label: {
                             Text("View All")
                                 .font(.subheadline)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                     }
 
+                    if mode != .browse {
+                        HStack {
+                            modeHint
+                            Spacer()
+                        }
+                    }
+
                     Spacer()
                 }
                 .padding(16)
+                .padding(.top, controlsTopInset)
             }
             .coordinateSpace(name: "UniverseNativeMap")
             .simultaneousGesture(

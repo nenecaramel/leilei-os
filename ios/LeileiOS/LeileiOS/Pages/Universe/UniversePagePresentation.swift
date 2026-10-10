@@ -140,122 +140,78 @@ extension UniverseView {
     func universeReady(
         _ result: UniverseReadResult
     ) -> some View {
-        ZStack(alignment: .top) {
-            UniverseMapView(
-                nodes: result.snapshot.nodes,
-                galaxies: result.snapshot.galaxies,
-                relations: result.snapshot.relations,
-                selectedNodeID: selectedNodeID,
-                activeGalaxyID: activeGalaxyID,
-                mode: mapMode,
-                onSelectNode: { nodeID in
-                    selectedNodeID = nodeID
-                },
-                onOpenNode: { nodeID in
-                    selectedNodeID = nodeID
-                    sheetSelection = .node(nodeID)
-                },
-                onPlaceNode: { position in
-                    selectedNodeID = nil
-                    sheetSelection = .create(position)
-                },
-                onMoveNode: {
-                    nodeID,
-                    position in
-                    await moveNode(
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                UniverseMapView(
+                    nodes: result.snapshot.nodes,
+                    galaxies: result.snapshot.galaxies,
+                    relations: result.snapshot.relations,
+                    selectedNodeID: selectedNodeID,
+                    activeGalaxyID: $activeGalaxyID,
+                    mode: mapMode,
+                    controlsTopInset: proxy.safeAreaInsets.top,
+                    onSelectNode: { nodeID in
+                        selectedNodeID = nodeID
+                    },
+                    onOpenNode: { nodeID in
+                        selectedNodeID = nodeID
+                        sheetSelection = .node(nodeID)
+                    },
+                    onPlaceNode: { position in
+                        selectedNodeID = nil
+                        sheetSelection = .create(position)
+                    },
+                    onMoveNode: {
                         nodeID,
-                        to: position
-                    )
-                },
-                onModeChange: {
-                    mapMode = $0
-                }
-            )
+                        position in
+                        await moveNode(
+                            nodeID,
+                            to: position
+                        )
+                    },
+                    onModeChange: {
+                        mapMode = $0
+                    },
+                    onOpenGalaxyMenu: cancelPlacementForToolbarMenu
+                )
+                .ignoresSafeArea(.container, edges: .top)
 
-            if let notice {
-                Text(notice)
-                    .font(.subheadline)
-                    .foregroundStyle(
-                        Color.white.opacity(0.82)
-                    )
-                    .padding(
-                        .horizontal,
-                        13
-                    )
-                    .padding(
-                        .vertical,
-                        8
-                    )
-                    .background(
-                        .thinMaterial,
-                        in: Capsule()
-                    )
-                    .padding(.top, 8)
-                    .transition(
-                        .opacity.combined(
-                            with: .move(
-                                edge: .top
+                if let notice {
+                    Text(notice)
+                        .font(.subheadline)
+                        .foregroundStyle(
+                            Color.white.opacity(0.82)
+                        )
+                        .padding(
+                            .horizontal,
+                            13
+                        )
+                        .padding(
+                            .vertical,
+                            8
+                        )
+                        .background(
+                            .thinMaterial,
+                            in: Capsule()
+                        )
+                        .padding(.top, 8)
+                        .transition(
+                            .opacity.combined(
+                                with: .move(
+                                    edge: .top
+                                )
                             )
                         )
-                    )
+                }
             }
         }
     }
 
     @ToolbarContentBuilder
-    func readyToolbar(
-        _ result: UniverseReadResult
-    ) -> some ToolbarContent {
+    func readyToolbar() -> some ToolbarContent {
         ToolbarItemGroup(
             placement: .topBarTrailing
         ) {
-            Menu {
-                Picker(
-                    "",
-                    selection: $activeGalaxyID
-                ) {
-                    Text("All Galaxies")
-                        .tag(String?.none)
-
-                    ForEach(
-                        result.snapshot.galaxies
-                            .sorted {
-                                $0.order < $1.order
-                            }
-                    ) { galaxy in
-                        Label {
-                            Text(galaxy.title)
-                        } icon: {
-                            Image(
-                                systemName:
-                                    "circle.fill"
-                            )
-                            .foregroundStyle(
-                                UniversePalette.color(
-                                    hex: galaxy.color
-                                )
-                            )
-                        }
-                        .tag(
-                            Optional(
-                                galaxy.id
-                            )
-                        )
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.inline)
-            } label: {
-                Image(systemName: "circle.grid.2x2")
-            }
-            .accessibilityLabel("Select Galaxy")
-            .simultaneousGesture(
-                TapGesture()
-                    .onEnded {
-                        cancelPlacementForToolbarMenu()
-                    }
-            )
-
             Button {
                 notice = nil
 
@@ -277,31 +233,6 @@ extension UniverseView {
                 mapMode == .placingNode
                     ? "Cancel Adding Node"
                     : "Add Node"
-            )
-
-            Menu {
-                Button {
-                    prepareExport(
-                        result.snapshot
-                    )
-                } label: {
-                    Label(
-                        "Export Universe",
-                        systemImage:
-                            "square.and.arrow.up"
-                    )
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .accessibilityLabel(
-                "Universe actions"
-            )
-            .simultaneousGesture(
-                TapGesture()
-                    .onEnded {
-                        cancelPlacementForToolbarMenu()
-                    }
             )
         }
     }
