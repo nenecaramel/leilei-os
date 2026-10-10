@@ -204,6 +204,24 @@ test("switch-back sync adopts completed local turns by native UUID/checkpoint an
   assert.equal((await f.write(next)).outcome, "already_current");
 }));
 
+test("switch-back accepts next-turn native context without rewriting the prior completed assistant", { skip: !enabled }, async () => fixture(async f => {
+  const local = await localContinuation(f);
+  const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
+  const before = await reader.readCurrentPath({ userId: f.owner, conversationId: f.input.conversationId, limit: 100 });
+  const context = randomUUID(), meta = randomUUID();
+  const entries = [...f.entries,
+    { uuid: context, parentUuid: f.entries[1].uuid, type: "attachment", attachment: { type: "hook_context", content: "synthetic next-turn context" } },
+    { ...row(meta, context, "user", "synthetic internal meta"), isMeta: true },
+    { ...local.entries[2], parentUuid: meta }, local.entries[3],
+  ];
+  const projection = projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries }, local.entries[3].uuid);
+  assert.deepEqual(projection.messages.slice(0, 2), f.input.projection.messages);
+  const result = await f.write({ ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1), projection });
+  assert.equal(result.inserted, 0);
+  assert.equal(result.headMessageId, local.finalized.assistantMessageId);
+  assert.deepEqual((await reader.readCurrentPath({ userId: f.owner, conversationId: f.input.conversationId, limit: 100 }))!.messages, before!.messages);
+}));
+
 test("switch-back never matches a local user by identical text when its native UUID is different", { skip: !enabled }, async () => fixture(async f => {
   const local = await localContinuation(f), before = await f.state();
   const entries = structuredClone(local.entries);

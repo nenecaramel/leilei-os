@@ -163,3 +163,20 @@ test("asset references cannot cross sessions or resolve to changed image content
   source.entries[0].message.content[0].source.data = "AQAA";
   assert.throws(() => extractNativeHistoryAsset(source, ref, { expectedRevision: source.revision, maxBytes: 10 }), e => e.code === "STALE_NATIVE_ASSET");
 });
+
+test("next-turn internal context does not rewrite a completed assistant checkpoint or fingerprint", async () => {
+  const { projectNativeHistory, planNativeHistorySync } = await import(moduleUrl);
+  const previous = projectNativeHistory(snapshot(initial), "a2");
+  const entries = [...initial,
+    row("next-context", "a2", "attachment", null, { attachment: { type: "hook_context", content: "PRIVATE_NEXT_CONTEXT" } }),
+    row("next-meta", "next-context", "user", "PRIVATE_META", { isMeta: true }),
+    row("u2", "next-meta", "user", "next real user"),
+    row("a3", "u2", "assistant", "next reply"),
+  ];
+  const next = projectNativeHistory({ ...snapshot(entries), revision: "next" }, "a3");
+  assert.deepEqual(next.messages.slice(0, 2), previous.messages);
+  assert.equal(next.messages[2].parentProviderCheckpointId, "next-meta", "the next turn still retains its exact native parent");
+  assert.doesNotMatch(JSON.stringify(next), /PRIVATE_NEXT_CONTEXT|PRIVATE_META/);
+  const plan = planNativeHistorySync(previous, next);
+  assert.deepEqual(plan.upserts, next.messages.slice(2));
+});

@@ -261,3 +261,16 @@ Do not infer same-session execution eligibility from `idle_observed`. Before the
 execution stage is enabled, the original peer must genuinely release the session
 through a supported handoff/close path, and returned session identity must still be
 verified. This task has neither closed a peer nor opened a Desktop session.
+
+### Completed turns stay stable across next-turn context
+
+A later native attachment/isMeta context record belongs to the ancestry leading
+into the next real user turn; it must not change the preceding completed assistant's
+checkpoint or fingerprint. Assistant fragments and tool responses still advance
+that assistant's own checkpoint. The next user's `parentProviderCheckpointId`
+retains the exact hidden native parent, with no synthetic visible message.
+
+A RED → GREEN pure regression and a real isolated prepare/relay/finalize/sync case
+verify this distinction. The latter adopts completed local messages without inserting
+new copies, keeps the existing canonical head and reader output identical, and
+continues enforcing the original-history fingerprint guard.

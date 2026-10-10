@@ -115,8 +115,6 @@ export function projectNativeHistory(snapshot, checkpointId) {
       assistant.sourceEntryUuids.push(entry.uuid);
       assistant.blocks.push(...blocks.map((block, ordinal) => projectBlock(block, entry, ordinal, snapshot.sessionId)));
       assistant.providerCheckpointId = entry.uuid;
-    } else if (assistant) {
-      assistant.providerCheckpointId = entry.uuid;
     }
   }
   for (const message of messages) message.fingerprint = fingerprint(message);
