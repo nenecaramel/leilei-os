@@ -144,21 +144,23 @@ test("Agent SDK appends the exact silence-wake prompt with real paragraph breaks
     "tools/claude-bridge/src/agent-sdk-claude-transport.mjs",
     "utf8",
   );
-  assert.match(
-    transport,
-    /leileios-mind-system-prompt\.mjs";\nimport \{ LEILEIOS_WAKE_SYSTEM_PROMPT \}/u,
-  );
+  // Mind recall is supplied by the installed Claude Code hook, not the
+  // retired LeileiOS Mind system-prompt import.
   assert.doesNotMatch(
     transport,
-    /leileios-mind-system-prompt\.mjs";\\\\nimport/u,
+    /LEILEIOS_MIND_SYSTEM_PROMPT|leileios-mind-system-prompt\.mjs/u,
   );
   assert.match(
     transport,
-    /LEILEIOS_MURMUR_SYSTEM_PROMPT/u,
+    /import \{ LEILEIOS_WAKE_SYSTEM_PROMPT \} from "\.\/leileios-wake-system-prompt\.mjs";/u,
   );
   assert.match(
     transport,
-    /\[LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT\]\.join\("\\n\\n"\)/u,
+    /import \{ LEILEIOS_MURMUR_SYSTEM_PROMPT \} from "\.\/leileios-murmur-system-prompt\.mjs";/u,
+  );
+  assert.match(
+    transport,
+    /const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = \[\s*LEILEIOS_WAKE_SYSTEM_PROMPT,\s*LEILEIOS_MURMUR_SYSTEM_PROMPT,\s*\]\.join\("\\n\\n"\);/u,
   );
   assert.doesNotMatch(
     transport,
