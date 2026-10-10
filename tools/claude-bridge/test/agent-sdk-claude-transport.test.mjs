@@ -14,8 +14,12 @@ import {
   AgentSdkClaudeTransport,
 } from "../src/agent-sdk-claude-transport.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "../src/leileios-murmur-system-prompt.mjs";
+import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "../src/leileios-wake-system-prompt.mjs";
 
-const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = LEILEIOS_MURMUR_SYSTEM_PROMPT;
+const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [
+  LEILEIOS_WAKE_SYSTEM_PROMPT,
+  LEILEIOS_MURMUR_SYSTEM_PROMPT,
+].join("\n\n");
 
 function fakeQuery(messages, { error = null } = {}) {
   let closed = false;
@@ -2513,7 +2517,10 @@ test("retired meme options cannot register a server or inject a hint; send_file 
   assert.deepEqual(call.options.mcpServers, {leileios_local: fileServer});
   assert.equal(call.options.systemPrompt.append.includes("send_meme"), false);
   assert.equal(call.options.systemPrompt.append.includes("leileios-album"), false);
-  assert.doesNotMatch(call.options.systemPrompt.append, /<leileios_wake>|<leileios_mind_write>/);
+  assert.match(call.options.systemPrompt.append, /<leileios_wake>/);
+    assert.match(call.options.systemPrompt.append, /To pass this wake without sending anything to the user, output exactly <quiet \/> and nothing else\./);
+    assert.match(call.options.systemPrompt.append, /<leileios_murmur>/);
+    assert.doesNotMatch(call.options.systemPrompt.append, /<leileios_mind_write>/);
 });
 
  test("all-directory listing preserves SDK cwd and never invents a default for unknown directories", async () => {
