@@ -25,6 +25,10 @@ test("Mind scoring queue capacity preserves 256 candidates across config, schema
     scoringReader,
     /value\.length > NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT/,
   );
+  assert.match(
+    scoringReader,
+    /import \{ NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT \} from "\.\.\/\.\.\/\.\.\/shared\/native-live-semantic-candidate-limit\.js";/,
+  );
 
   const migration = readFileSync(
     new URL("../drizzle/0108_native_live_semantic_candidates_256.sql", import.meta.url),
