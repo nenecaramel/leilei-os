@@ -164,6 +164,42 @@ implements NativeLiveSemanticPreparationStager {
           AND reservation_expires_at <= now()
       `);
 
+      // A reserve can commit even when its HTTP response is lost. Return the
+      // active listener's existing lease before allocating another task.
+      // Do not extend it: expiry still allows safe recovery by a new listener.
+      const owned = await transaction.execute<{ prepare_id: string }>(sql`
+        SELECT semantic.prepare_id
+        FROM native_live_semantic_scoring_requests AS semantic
+        INNER JOIN native_live_turn_preparations AS preparation
+          ON preparation.id = semantic.prepare_id
+         AND preparation.user_id = semantic.user_id
+        INNER JOIN conversations AS conversation
+          ON conversation.id = semantic.conversation_id
+         AND conversation.user_id = semantic.user_id
+        WHERE semantic.user_id = ${input.userId}::uuid
+          AND semantic.status = 'reserved'
+          AND semantic.reserved_by = ${input.listenerInstanceId}::uuid
+          AND semantic.reservation_expires_at > now()
+          AND preparation.status = 'prepared'
+          AND preparation.mind_prepared = false
+          AND conversation.origin = 'native_live'
+          AND conversation.lifecycle_status = 'active'
+        ORDER BY semantic.created_at ASC, semantic.prepare_id ASC
+        FOR UPDATE OF semantic
+        LIMIT 1
+      `);
+      if (owned[0]) {
+        const request = await this.getWithExecutor(
+          transaction as Transaction, input.userId, owned[0].prepare_id,
+        );
+        if (!request) throw new Error("Reserved semantic scoring request disappeared.");
+        return {
+          reservationId: request.prepareId,
+          query: request.query,
+          candidates: request.candidates,
+        };
+      }
+
       const reserved = await transaction.execute<{ prepare_id: string }>(sql`
         WITH candidate AS (
           SELECT semantic.prepare_id

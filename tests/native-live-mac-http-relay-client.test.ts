@@ -1272,3 +1272,18 @@ test("Mac HTTP relay client parses silence wake ignore reason", async () => {
     },
   );
 });
+
+
+test("malformed relay JSON retains safe status and route diagnostics without leaking body", async () => {
+  const client = new NativeLiveMacHttpRelayClient("https://relay.example", "secret-token", async () =>
+    new Response("private body secret-token", { status: 502, headers: { "content-type": "text/html" } }));
+  await assert.rejects(() => client.reserveSemanticScoring({ listenerInstanceId: listenerId, dispatchTarget: "claude_code" }),
+    (error: unknown) => {
+      const record = error as Error & { httpStatus?: number; relayPath?: string };
+      assert.equal(record.httpStatus, 502);
+      assert.equal(record.relayPath, "/semantic/reserve");
+      assert.equal(record.message.includes("private body"), false);
+      assert.equal(record.message.includes("secret-token"), false);
+      return true;
+    });
+});

@@ -963,7 +963,10 @@ implements NativeLiveMacDaemonRelayClient {
     try {
       payload = await response.json();
     } catch {
-      throw new Error("Native live relay returned malformed JSON.");
+      throw Object.assign(new Error("Native live relay returned malformed JSON."), {
+        httpStatus: response.status,
+        relayPath: path,
+      });
     }
 
     const record = readRecord(payload);

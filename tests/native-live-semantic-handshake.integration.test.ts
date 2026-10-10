@@ -211,6 +211,24 @@ test(
       true,
     );
 
+    await t.test("lost reserve response returns the same leased semantic task to its owner", async () => {
+      const before = await semanticRepository.get({ userId: user.id, prepareId: scoring.reservationId });
+      await assert.rejects(() => semanticService.reserveNext({
+        userId: user.id, listenerInstanceId: crypto.randomUUID(),
+      }), (error: unknown) => (error as { code?: string }).code === "LISTENER_NOT_ACTIVE");
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const redelivered = await semanticService.reserveNext({ userId: user.id, listenerInstanceId: listenerId });
+        assert.deepEqual(redelivered, scoring, "a committed reservation must not disappear before its owner receives it");
+      }
+      assert.deepEqual(await semanticRepository.get({ userId: user.id, prepareId: scoring.reservationId }), before);
+      await database.db.update(nativeLiveSemanticScoringRequests)
+        .set({ reservationExpiresAt: new Date(Date.now() - 1_000) })
+        .where(eq(nativeLiveSemanticScoringRequests.prepareId, scoring.reservationId));
+      assert.deepEqual(await semanticService.reserveNext({ userId: user.id, listenerInstanceId: listenerId }), scoring,
+        "expired leases must still recover through the existing pending transition");
+
+    });
+
     const scores = Object.fromEntries(
       scoring.candidates.map((candidate) => [
         candidate.stateId,
@@ -224,6 +242,9 @@ test(
       prepareId: scoring.reservationId,
       scores,
     });
+    assert.equal(await semanticService.reserveNext({ userId: user.id, listenerInstanceId: listenerId }), null,
+      "completed semantic tasks must not be redelivered");
+
     await semanticRepository.acceptScores({
       userId: user.id,
       listenerInstanceId: listenerId,
