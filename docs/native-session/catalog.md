@@ -233,3 +233,31 @@ snapshot, drop mirroring/durability guarantees, or infer an execution lease from
 idle peer observation. This foundation deliberately adds no caller to the restore
 writer and no native execution mode. SDK version, native persistence location,
 source revision and exact checkpoint remain acceptance requirements, not assumptions.
+
+
+### Native records versus display projection
+
+`readDesktopNativeHistory` returns an internal `nativeSnapshot` containing the
+complete original records, session ID and exact file revision alongside the
+selected display projection. Sidechains, thinking signatures, image source bytes
+and file-history records are preserved in this transient native payload. They are
+not reconstructed from display messages, persisted into conversation metadata or
+printed by either diagnostic command. This is a record-preservation interface,
+not a byte-for-byte file export or permission to materialize/execute it.
+
+An executable synthetic fixture checks exact record equality, selected display
+isolation, CLI redaction and unchanged source bytes. It fails before this addition
+because the native payload is absent; the display projection alone is insufficient
+for native restoration.
+
+### Open-but-idle is not released ownership
+
+Read-only inspection of the installed official CLI 2.1.285 found `kt(sessionId)`
+checking registered peer processes, including open interactive peers. Its `yr`
+resume diagnostics explicitly distinguish `open-elsewhere`/`running` and explain
+that resume started a copy with a new session ID. This is evidence from the installed
+CLI, not a live SDK test or proof that every embedded CLI version behaves identically.
+Do not infer same-session execution eligibility from `idle_observed`. Before the
+execution stage is enabled, the original peer must genuinely release the session
+through a supported handoff/close path, and returned session identity must still be
+verified. This task has neither closed a peer nor opened a Desktop session.

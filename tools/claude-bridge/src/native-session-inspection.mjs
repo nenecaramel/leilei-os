@@ -43,7 +43,8 @@ async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirec
     readNativeSession(projectDirectory, snapshot.sessionId),
   ]);
   if (currentIndex.revision !== index.revision || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
-  return { inspection: { readOnly: true, ...identity, activity, history, handoffAllowed: false }, projection };
+  return { inspection: { readOnly: true, ...identity, activity, history, handoffAllowed: false }, projection,
+    nativeSnapshot: { sessionId: snapshot.sessionId, revision: snapshot.revision, entries: snapshot.entries } };
 }
 
 export async function inspectDesktopNativeSession(input) {

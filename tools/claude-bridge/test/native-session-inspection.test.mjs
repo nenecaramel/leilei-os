@@ -202,3 +202,34 @@ test("a Desktop-selected head change is stale even when native file bytes have n
     await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
   });
 });
+
+test("internal selected history retains complete native records without leaking them into diagnostics", async () => {
+  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const nativeEntries = [
+      { ...entries[0], message: { content: [
+        { type: "text", text: "PRIVATE_PROMPT" },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "c3ludGhldGlj" } },
+      ] } },
+      { ...entries[1], message: { content: [
+        { type: "thinking", thinking: "PRIVATE_THINKING", signature: "synthetic-signature" },
+        { type: "text", text: "PRIVATE_REPLY" },
+      ] } },
+      { ...entries[1], uuid: C, isSidechain: true, message: { content: "PRIVATE_SIDECHAIN" } },
+      { type: "file-history-snapshot", messageId: U, snapshot: { synthetic: true } },
+    ];
+    await writeFile(transcriptFile, nativeEntries.map(JSON.stringify).join("\n"));
+    const bytes = await readFile(transcriptFile);
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
+    const selected = await inspectDesktopNativeSession(input);
+    const result = await readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision });
+    assert.deepEqual(result.nativeSnapshot, { sessionId: A, revision: selected.nativeRevision, entries: nativeEntries });
+    assert.equal(result.projection.messages.length, 2);
+    assert.doesNotMatch(JSON.stringify(result.projection), /PRIVATE_THINKING|PRIVATE_SIDECHAIN|synthetic-signature|c3ludGhldGlj/);
+    assert.doesNotMatch(JSON.stringify(selected), /PRIVATE|synthetic-signature|c3ludGhldGlj|file-history-snapshot/);
+    const stdout = execFileSync(process.execPath, [new URL("../scripts/native-session-inspect.mjs", import.meta.url).pathname,
+      "--desktop-index", indexFile, "--project-dir", root, "--peer-dir", root], { encoding: "utf8" });
+    assert.doesNotMatch(stdout, /PRIVATE|synthetic-signature|c3ludGhldGlj|nativeSnapshot/);
+    assert.deepEqual(await readFile(transcriptFile), bytes);
+  });
+});
