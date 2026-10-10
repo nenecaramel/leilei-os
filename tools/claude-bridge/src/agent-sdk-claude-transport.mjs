@@ -1,5 +1,8 @@
 import { durableCheckpointPrefix, checkpointForkSessionStore } from "./provider-checkpoint-prefix.mjs";
 import { EventEmitter } from "node:events";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { listDesktopNativeSessions } from "./native-session-inspection.mjs";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
@@ -955,6 +958,20 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         postCompact: lifecycle.postCompact,
       },
     };
+  }
+
+  async inspectDesktopSessions({
+    desktopSessionsDirectory = join(homedir(), "Library", "Application Support", "Claude", "claude-code-sessions"),
+  } = {}) {
+    if (this.activeQuery || this.activeTurnHandle) {
+      throw runtimeError("Native Desktop inspection is unavailable during an active LeileiOS turn.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
+    }
+    const configDirectory = this.environment.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+    return listDesktopNativeSessions({
+      desktopSessionsDirectory,
+      projectsDirectory: join(configDirectory, "projects"),
+      peerDirectory: join(configDirectory, "sessions"),
+    });
   }
 
   async listSessions({

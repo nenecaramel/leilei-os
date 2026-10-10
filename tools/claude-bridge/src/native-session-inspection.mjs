@@ -10,7 +10,7 @@ import { readNativeSessionActivity } from "./native-session-activity.mjs";
 const fail = code => Object.assign(new Error(code), { code });
 const historyErrors = new Set(["COMPACT_SOURCE_HISTORY_REQUIRED", "NATIVE_HISTORY_GAP", "INVALID_NATIVE_PARENT", "CONFLICTING_NATIVE_UUID"]);
 const sessionPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const publicErrors = new Set(["INVALID_NATIVE_JSON", "NATIVE_FILE_TOO_LARGE", "NATIVE_FILE_CHANGED_DURING_READ", "INVALID_SESSION_ID", "UNSUPPORTED_DESKTOP_SESSION_INDEX", "DESKTOP_NATIVE_SESSION_UNAVAILABLE", "DESKTOP_CHECKPOINT_UNAVAILABLE", "NATIVE_INSPECTION_CHANGED", "AMBIGUOUS_NATIVE_SESSION_LOCATION", "DESKTOP_INDEX_IDENTITY_MISMATCH"]);
+const publicErrors = new Set(["INVALID_NATIVE_JSON", "NATIVE_FILE_TOO_LARGE", "NATIVE_FILE_CHANGED_DURING_READ", "INVALID_SESSION_ID", "UNSUPPORTED_DESKTOP_SESSION_INDEX", "DESKTOP_NATIVE_SESSION_UNAVAILABLE", "DESKTOP_CHECKPOINT_UNAVAILABLE", "NATIVE_INSPECTION_CHANGED", "AMBIGUOUS_NATIVE_SESSION_LOCATION", "DESKTOP_INDEX_IDENTITY_MISMATCH", "STALE_NATIVE_SELECTION"]);
 export const nativeInspectionErrorCode = error => publicErrors.has(error?.code) ? error.code : "NATIVE_INSPECTION_UNAVAILABLE";
 
 async function readIndex(indexFile) {
@@ -23,14 +23,15 @@ async function readIndex(indexFile) {
 }
 
 // Read-only preparation evidence. This deliberately has no resume/fork/write API.
-export async function inspectDesktopNativeSession({ indexFile, projectDirectory, peerDirectory, probeProcessStart }) {
+async function loadDesktopNativeSession({ indexFile, projectDirectory, peerDirectory, probeProcessStart }) {
   const index = await readIndex(indexFile);
   const { metadata } = index;
   const snapshot = await readNativeSession(projectDirectory, metadata.cliSessionId);
   const identity = resolveDesktopSession(metadata, new Map([[snapshot.sessionId, snapshot]]));
   let history;
+  let projection = null;
   try {
-    const projection = projectNativeHistory(snapshot, identity.providerCheckpointId);
+    projection = projectNativeHistory(snapshot, identity.providerCheckpointId);
     history = { state: "complete", messageCount: projection.messages.length, blockCount: projection.messages.reduce((sum, message) => sum + message.blocks.length, 0) };
   } catch (error) {
     if (!historyErrors.has(error.code)) throw error;
@@ -42,7 +43,24 @@ export async function inspectDesktopNativeSession({ indexFile, projectDirectory,
     readNativeSession(projectDirectory, snapshot.sessionId),
   ]);
   if (currentIndex.revision !== index.revision || currentSource.revision !== snapshot.revision) throw fail("NATIVE_INSPECTION_CHANGED");
-  return { readOnly: true, ...identity, activity, history, handoffAllowed: false };
+  return { inspection: { readOnly: true, ...identity, activity, history, handoffAllowed: false }, projection };
+}
+
+export async function inspectDesktopNativeSession(input) {
+  return (await loadDesktopNativeSession(input)).inspection;
+}
+
+// Internal history payload for a future authenticated restore writer; never log
+// or expose it through the diagnostic CLI. Selection is pinned before any write.
+export async function readDesktopNativeHistory(input) {
+  if (!sessionPattern.test(input.expectedSessionId ?? "") || !sessionPattern.test(input.expectedCheckpointId ?? "") ||
+      !/^[0-9a-f]{64}$/.test(input.expectedRevision ?? "")) throw fail("STALE_NATIVE_SELECTION");
+  const result = await loadDesktopNativeSession(input);
+  if (result.inspection.providerSessionId !== input.expectedSessionId ||
+      result.inspection.providerCheckpointId !== input.expectedCheckpointId ||
+      result.inspection.nativeRevision !== input.expectedRevision) throw fail("STALE_NATIVE_SELECTION");
+  if (!result.projection) throw fail(result.inspection.history.reason);
+  return result;
 }
 
 export async function listDesktopNativeSessions({ desktopSessionsDirectory, projectsDirectory, peerDirectory, probeProcessStart }) {

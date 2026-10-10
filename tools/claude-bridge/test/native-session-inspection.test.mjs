@@ -137,3 +137,68 @@ test("Desktop catalog isolates missing native sessions but refuses mismatched lo
     assert.deepEqual(new Set(result.sessions.map(session => session.error)), new Set(["DESKTOP_NATIVE_SESSION_UNAVAILABLE", "DESKTOP_INDEX_IDENTITY_MISMATCH"]));
   });
 });
+
+test("existing transport exposes inspection without loading SDK execution or changing its turn state", async () => {
+  const { AgentSdkClaudeTransport } = await import("../src/agent-sdk-claude-transport.mjs");
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const desktopSessionsDirectory = path.join(root, "indices");
+    const configDirectory = path.join(root, "config");
+    const org = path.join(desktopSessionsDirectory, "account", "org");
+    const project = path.join(configDirectory, "projects", "project");
+    await mkdir(org, { recursive: true });
+    await mkdir(project, { recursive: true });
+    await mkdir(path.join(configDirectory, "sessions"));
+    await copyFile(indexFile, path.join(org, `local_${D}.json`));
+    await copyFile(transcriptFile, path.join(project, `${A}.jsonl`));
+    const transport = new AgentSdkClaudeTransport({ environment: { CLAUDE_CONFIG_DIR: configDirectory }, cwd: "/fixture", loadQuery: async () => assert.fail("inspection must not load provider execution") });
+    const result = await transport.inspectDesktopSessions({ desktopSessionsDirectory });
+    assert.equal(result.sessions[0].history.messageCount, 2);
+    assert.equal(result.sessions[0].activity.state, "unknown");
+    assert.equal(transport.activeQuery, null);
+    assert.equal(transport.activeTurnHandle, null);
+    assert.equal(transport.queryImpl, null);
+    transport.activeQuery = {};
+    await assert.rejects(() => transport.inspectDesktopSessions({ desktopSessionsDirectory }), e => e.runtimeCode === "RUNTIME_UNAVAILABLE");
+  });
+});
+
+test("history read requires the exact selected session and snapshot revision", async () => {
+  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
+    const selected = await inspectDesktopNativeSession(input);
+    const result = await readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision });
+    assert.equal(result.projection.messages[0].blocks[0].text, "PRIVATE_PROMPT");
+    assert.equal(result.projection.messages[1].blocks[0].text, "PRIVATE_REPLY");
+    assert.equal(result.projection.checkpointId, CP);
+    assert.equal(result.inspection.handoffAllowed, false);
+    await assert.rejects(() => readDesktopNativeHistory(input), e => e.code === "STALE_NATIVE_SELECTION");
+    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: D, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
+    await writeFile(transcriptFile, [...entries, { type: "attachment", uuid: C, parentUuid: CP }].map(JSON.stringify).join("\n"));
+    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
+  });
+});
+
+test("missing original compact history cannot be downloaded as a complete history payload", async () => {
+  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    await writeFile(transcriptFile, [
+      { type: "system", subtype: "compact_boundary", uuid: C, parentUuid: null, logicalParentUuid: CP },
+      { ...entries[0], parentUuid: C, isCompactSummary: true }, entries[1],
+    ].map(JSON.stringify).join("\n"));
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
+    const selected = await inspectDesktopNativeSession(input);
+    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "COMPACT_SOURCE_HISTORY_REQUIRED");
+  });
+});
+
+test("a Desktop-selected head change is stale even when native file bytes have not changed", async () => {
+  const { inspectDesktopNativeSession, readDesktopNativeHistory } = await import(moduleUrl);
+  await fixture(async ({ root, indexFile, transcriptFile }) => {
+    await writeFile(transcriptFile, [...entries, { ...entries[1], uuid: C }].map(JSON.stringify).join("\n"));
+    const input = { indexFile, projectDirectory: root, peerDirectory: root, probeProcessStart: async () => started };
+    const selected = await inspectDesktopNativeSession(input);
+    await writeFile(indexFile, JSON.stringify({ ...metadata, lastAssistantUuid: C }));
+    await assert.rejects(() => readDesktopNativeHistory({ ...input, expectedSessionId: A, expectedCheckpointId: CP, expectedRevision: selected.nativeRevision }), e => e.code === "STALE_NATIVE_SELECTION");
+  });
+});

@@ -132,3 +132,16 @@ visible with reason codes. `--desktop-dir`, `--projects-dir` and `--peer-dir` al
 explicit fixture locations. The default Desktop index location is macOS-specific
 and private/version-sensitive. This is a local diagnostic entry point, not yet
 the authenticated LeileiOS restore-list API or a product UI.
+
+The existing `AgentSdkClaudeTransport.inspectDesktopSessions()` exposes this
+read-only catalog without loading provider execution. It refuses inspection
+during its own active turn; it does not replace legacy `listSessions`, change
+runtime selection, or begin a provider turn.
+
+`readDesktopNativeHistory` is an internal payload reader for the future restore
+writer. It requires the selection's exact provider session ID, checkpoint UUID
+and SHA-256 native revision. A head change is stale even if file bytes did not
+change; incomplete original history throws rather than returning a partial
+payload. Returned projection bodies are private and must never be logged or
+included in diagnostic CLI output. Callers still need authorization and atomic
+ledger/checkpoint persistence; reading does not grant execution ownership.
