@@ -30,7 +30,7 @@ test("Universe source/relation sheets and map rendering have focused view bounda
 test("Universe node and page presentation are composed from existing view members", () => {
   assert.match(read("Nodes/UniverseNodeEditor.swift"), /extension UniverseNodeSheet[\s\S]*var editor:/);
   assert.match(read("Nodes/UniverseNodeDetail.swift"), /func detail\(/);
-  assert.match(read("Nodes/UniverseNodeToolbar.swift"), /var toolbarContent:/);
+  assert.match(read("Nodes/UniverseNodeToolbar.swift"), /func toolbarContent\(editing: Bool\)/);
   assert.match(read("UniversePagePresentation.swift"), /extension UniverseView[\s\S]*func universeReady\(/);
   assert.match(read("UniverseNodeNavigation.swift"), /func nodeSheet\(/);
   assert.match(read("Map/UniverseMapPresentation.swift"), /extension UniverseMapView[\s\S]*func planet\(/);
