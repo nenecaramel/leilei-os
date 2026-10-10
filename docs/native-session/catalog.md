@@ -363,3 +363,34 @@ Latest validation: bridge 247 pass / 0 fail / 4 live skips, including executable
 CLI fixtures; source/release checks use synthetic directories only. These tests
 prove our source/release refusal and sanitization behavior, not an atomic native
 lock or a real Desktop handoff. No real SDK query or original `.claude` write.
+
+### Atomic native baseline and existing foreground execution
+
+The internal `restoreNativeSessionHistory` accepts the stable reader's optional
+`nativeSnapshot` (original records, matching session/revision/checkpoint). When
+provided, preservation, full main-transcript replica synchronization and display
+projection commit in the same transaction. It never substitutes display blocks
+for native records. Old replica records must be an exact ordered prefix; a
+shorter/rewritten source fails `NATIVE_TRANSCRIPT_DIVERGED` without replacing
+history. JSONB object-key order is ignored, array order and identical records at
+distinct positions are retained. Import chunks, normal SDK append and cleanup
+serialize on the same physical-session advisory lock. Repeating an acknowledged
+or lost-response import adds no duplicate records. Subagent import cannot claim
+main-transcript completeness. Legacy projection-only callers do not gain a
+completeness claim.
+
+`AgentSdkClaudeTransport.executeTurn` now accepts the opt-in branded
+`nativeSessionMirror`. It must belong to the transport's exact durable store and
+original session; only exact-checkpoint resume is allowed. The original local
+source and complete baseline must already exist. This path refuses backfill,
+remote-copy materialization and incomplete-tail recovery. It marks the existing
+baseline incomplete before execution, waits for original-SID init before sending
+the prompt, and keeps the existing mirror-failure, completion/checkpoint and
+terminal-result delivery paths. Default new/resume/fork behavior is unchanged.
+
+These are connected internal write/execution paths, not a finished switching UI
+or executable handoff script. The fixed script remains `--check` only. Caller
+coordination still must enforce release, durable pending-intent/result replay,
+fresh snapshot and canonical ownership before enabling this mode. Real Desktop
+handoff, native file mutation and provider queries remain unexecuted; all tests
+use synthetic transcripts/fake queries or the isolated local PostgreSQL database.

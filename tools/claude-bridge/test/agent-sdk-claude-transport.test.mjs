@@ -2539,3 +2539,93 @@ test("Native Live SDK explicitly bypasses the standalone Claude Code Mind hook",
   assert.equal(transport.environment.LEILEI_MIND_HOOK_DISABLED, "1");
   assert.equal(environment.LEILEI_MIND_HOOK_DISABLED, "0");
 });
+
+test("native interactive resume uses original-source mirror and refuses copied identity before prompt delivery", async () => {
+  const { createNativeSessionMirror } = await import('../src/native-session-mirror.mjs');
+  const sessionId = '00000000-0000-4000-8000-000000000011';
+  const cp = '00000000-0000-4000-8000-000000000012';
+  const store = {
+    async load() { return [{ type: 'assistant', uuid: cp, parentUuid: null, message: { role: 'assistant', content: 'synthetic' } }]; },
+    async append() {}, async getStatus() { return 'complete'; },
+    async markIncomplete() {}, async markComplete() {},
+  };
+  const mirror = createNativeSessionMirror(store, { projectKey: '-synthetic-workspace', sessionId });
+  let delivered = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/workspace', sessionStore: store,
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async () => assert.fail('native resume must not backfill/materialize'),
+    queryImpl: input => {
+      assert.strictEqual(input.options.sessionStore, mirror);
+      return { close() {}, async *[Symbol.asyncIterator]() {
+        const next = input.prompt[Symbol.asyncIterator]().next();
+        yield { type: 'system', subtype: 'init', session_id: 'copied-session' };
+        if (!(await next).done) delivered++;
+      } };
+    },
+  });
+  await assert.rejects(transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true, nativeSessionMirror: mirror }), error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(delivered, 0);
+});
+
+test("native interactive mode rejects unbranded mirrors and non-exact/fork requests before query", async () => {
+  let calls = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic', queryImpl() { calls++; assert.fail('invalid native request queried'); } });
+  await assert.rejects(transport.executeTurn('synthetic', { mode: 'new', nativeSessionMirror: {} }), error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(calls, 0);
+});
+
+test("native interactive continuation sends once on original identity and completes existing durable checkpoint path", async () => {
+  const { createNativeSessionMirror } = await import('../src/native-session-mirror.mjs');
+  const sessionId = '00000000-0000-4000-8000-000000000021';
+  const cp = '00000000-0000-4000-8000-000000000022';
+  const user = '00000000-0000-4000-8000-000000000023';
+  const child = '00000000-0000-4000-8000-000000000024';
+  const entries = [{ type: 'assistant', uuid: cp, parentUuid: null, message: { role: 'assistant', content: 'synthetic parent' } }];
+  let state = 'complete', delivered = 0;
+  const store = { async load() { return entries; }, async append(key, batch) { entries.push(...batch); },
+    async getStatus() { return state; }, async markIncomplete() { state = 'incomplete'; }, async markComplete() { state = 'complete'; } };
+  const mirror = createNativeSessionMirror(store, { projectKey: '-synthetic-workspace', sessionId });
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/workspace', sessionStore: store,
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async () => assert.fail('no materialized/backfilled copy'),
+    queryImpl: input => ({ close() {}, async *[Symbol.asyncIterator]() {
+      assert.equal(state, 'incomplete');
+      assert.equal(await input.options.sessionStore.load({ projectKey: '-synthetic-workspace', sessionId }), null);
+      yield { type: 'system', subtype: 'init', session_id: sessionId };
+      const prompt = await input.prompt[Symbol.asyncIterator]().next();
+      assert.equal(prompt.done, false); delivered++;
+      assert.equal(prompt.value.uuid, user);
+      await input.options.sessionStore.append({ projectKey: '-synthetic-workspace', sessionId }, [
+        { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+        { type: 'assistant', uuid: child, parentUuid: user, message: { role: 'assistant', content: 'READY' } },
+      ]);
+      yield successFixture(sessionId)[1];
+      yield successFixture(sessionId)[2];
+    } }),
+  });
+  const result = await transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true, userMessageUuid: user, nativeSessionMirror: mirror });
+  assert.equal(delivered, 1);
+  assert.equal(result.providerSessionId, sessionId);
+  assert.equal(result.providerCheckpointId, child);
+  assert.equal(state, 'complete');
+  assert.equal(entries.length, 3);
+});
+
+test("native interactive resume refuses missing local source or incomplete baseline without backfill or query", async () => {
+  const { createNativeSessionMirror } = await import('../src/native-session-mirror.mjs');
+  const sessionId = '00000000-0000-4000-8000-000000000031';
+  const cp = '00000000-0000-4000-8000-000000000032';
+  for (const [local, state] of [[false, 'complete'], [true, 'incomplete']]) {
+    const store = { async load() { return [{ type: 'assistant', uuid: cp, parentUuid: null }]; },
+      async append() {}, async getStatus() { return state; }, async markIncomplete() { assert.fail('refusal must precede mutation'); } };
+    const mirror = createNativeSessionMirror(store, { projectKey: '-synthetic', sessionId });
+    const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic', sessionStore: store,
+      sessionMessagesImpl: async () => local ? [{ type: 'assistant' }] : [],
+      importSessionToStoreImpl: async () => assert.fail('native source must not be backfilled'),
+      queryImpl() { assert.fail('unsafe original resume queried'); } });
+    await assert.rejects(transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+      parentProviderCheckpointId: cp, requireProviderCheckpoint: true, nativeSessionMirror: mirror }), error => error.runtimeCode === 'NO_PROVIDER_SESSION');
+  }
+});

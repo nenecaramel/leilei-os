@@ -1,3 +1,4 @@
+import { isNativeSessionMirror } from "./native-session-mirror.mjs";
 import { durableCheckpointPrefix, checkpointForkSessionStore } from "./provider-checkpoint-prefix.mjs";
 import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
@@ -484,6 +485,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       trustedReadPaths = [],
       sendFileHandler = null,
       controlPump = null,
+      nativeSessionMirror = null,
     } = {},
   ) {
     if (this.activeQuery || this.activeTurnHandle) {
@@ -517,6 +519,11 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
         "Resume/fork Agent SDK interactive turn requires a parent provider session.",
       );
     }
+    if (nativeSessionMirror !== null && (mode !== "resume" || !requireProviderCheckpoint ||
+      !nonblankString(parentProviderCheckpointId) || !this.sessionStore ||
+      !isNativeSessionMirror(nativeSessionMirror, parentProviderSessionId, this.sessionStore))) {
+      throw runtimeError("Native resume requires an exact durable checkpoint and its original-source mirror.", { runtimeCode: "PROVIDER_SESSION_CONFLICT" });
+    }
     let checkpointPreflight = null;
     if (parentProviderCheckpointId !== null) {
       checkpointPreflight = await this.#requireCheckpoint(
@@ -542,6 +549,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           parentProviderSessionId,
           mode,
           parentProviderCheckpointId,
+          nativeSessionMirror === null,
+          nativeSessionMirror === null,
         );
       } catch (cause) {
         throw attachSessionStoreHealth(
@@ -614,6 +623,7 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       forkSession: mode === "fork",
       resumeSessionAt: parentProviderCheckpointId,
       queryImpl,
+      requireSameSessionBeforePrompt: nativeSessionMirror !== null,
       environment: this.environment,
       cwd: this.cwd,
       queryOptions: {
@@ -629,9 +639,9 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
           localSendFileServer,
         ),
         ...(this.sessionStore
-          ? { sessionStore: mode === "fork" || portability.checkpointRecovered
+          ? { sessionStore: nativeSessionMirror ?? (mode === "fork" || portability.checkpointRecovered
             ? checkpointForkSessionStore(this.sessionStore, parentProviderSessionId, parentProviderCheckpointId, portability.checkpointRecovered)
-            : this.sessionStore }
+            : this.sessionStore) }
           : {}),
       },
       streaming,
@@ -1255,16 +1265,19 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     };
   }
 
-  async #prepareSessionForTurn(sessionId, mode, checkpointId = null, recoverIncomplete = true) {
+  async #prepareSessionForTurn(sessionId, mode, checkpointId = null, recoverIncomplete = true, allowBackfill = true) {
     const id = nonblankString(sessionId);
     const exactCheckpoint = checkpointId !== null;
     const preflight = await this.#requireSession(id, recoverIncomplete ? checkpointId : null);
+    if (!allowBackfill && (!preflight.localAvailable || preflight.status !== "complete")) {
+      throw runtimeError("Original native source and complete durable baseline are required.", { runtimeCode: "NO_PROVIDER_SESSION" });
+    }
     let status = preflight.status;
     let backfillStatus = "not_needed";
     let backfillFailureReason = null;
 
     if (
-      preflight.localAvailable
+      allowBackfill && preflight.localAvailable
       && (status === null || (status === "incomplete" && exactCheckpoint))
     ) {
       const backfill = await this.#tryBackfillLocalSession(id);

@@ -327,3 +327,60 @@ test("native sync and a concurrently prepared turn cannot both commit against th
   const failure = results.find(r => !r.ok) as any;
   assert.ok(failure.error.code === "NATIVE_CONVERSATION_BUSY" || (failure.error.cause?.code ?? failure.error.code) === "40001");
 }));
+
+test("native restore durably seeds original transcript and lost-ack retry does not duplicate records", { skip: !enabled }, async () => fixture(async f => {
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  const entries = [...f.entries, { type: "file-history-snapshot", snapshot: { original: true }, messageId: randomUUID() }];
+  const input = { ...f.input, nativeSnapshot: { sessionId: f.sessionId, revision: revision(1), entries } };
+  await f.write(input);
+  assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), entries);
+  assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), "complete");
+  assert.equal((await f.write(input)).outcome, "already_current");
+  assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), entries);
+}));
+
+test("native cache extends exact prefix, retains identical distinct records and rejects rewritten or shorter sources atomically", { skip: !enabled }, async () => fixture(async f => {
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  await store.preserveExternalSession({ userId: f.owner, sessionId: f.sessionId });
+  const repeated = { type: "progress", data: "same payload at distinct transcript positions" };
+  const sync = (entries: any[]) => store.synchronizeNativeSnapshot({ userId: f.owner, key: { sessionId: f.sessionId }, entries });
+  assert.equal((await sync([...f.entries, repeated])).inserted, 3);
+  assert.equal((await sync([...f.entries, repeated, repeated])).inserted, 1);
+  assert.equal((await sync([...f.entries, repeated, repeated])).inserted, 0);
+  const before = await store.load({ userId: f.owner, key: { sessionId: f.sessionId } });
+  await assert.rejects(sync(f.entries), { code: "NATIVE_TRANSCRIPT_DIVERGED" });
+  const changed = structuredClone(before!); changed[0].message.content[0].text = "changed";
+  await assert.rejects(sync(changed), { code: "NATIVE_TRANSCRIPT_DIVERGED" });
+  assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), before);
+  await assert.rejects(store.synchronizeNativeSnapshot({ userId: f.owner, key: { sessionId: randomUUID() }, entries: f.entries }), { code: "EXTERNAL_SESSION_NOT_PRESERVED" });
+}));
+
+test("concurrent native imports serialize and chunked identical records retain every position", { skip: !enabled }, async () => fixture(async f => {
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  await store.preserveExternalSession({ userId: f.owner, sessionId: f.sessionId });
+  const entries = [...f.entries, ...Array.from({ length: 205 }, () => ({ type: "progress", data: "repeat" }))];
+  const input = { userId: f.owner, key: { sessionId: f.sessionId }, entries };
+  const results = await Promise.all([store.synchronizeNativeSnapshot(input), store.synchronizeNativeSnapshot(input)]);
+  assert.deepEqual(results.map(result => result.inserted).sort((a, b) => a - b), [0, 207]);
+  assert.deepEqual(await store.load(input), entries);
+  await store.synchronizeNativeSnapshot({ ...input, key: { sessionId: f.sessionId, subpath: "subagents/synthetic" }, entries: [entries[2]] });
+  assert.deepEqual(await store.load(input), entries);
+  assert.deepEqual(await store.load({ ...input, key: { sessionId: f.sessionId, subpath: "subagents/synthetic" } }), [entries[2]]);
+}));
+
+test("failed canonical restore rolls back transcript seeding and its completeness/preservation claims", { skip: !enabled }, async () => fixture(async f => {
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  // Roll back the outer restore transaction after its nested writes succeed.
+  await assert.rejects(f.database.db.transaction(async (tx: any) => {
+    const { restoreNativeSessionHistory } = await import(modulePath.href);
+    await restoreNativeSessionHistory(tx, { ...f.input, nativeSnapshot: { sessionId: f.sessionId, revision: revision(1), entries: f.entries } });
+    throw new Error("synthetic lost transaction");
+  }), /synthetic lost transaction/);
+  assert.equal(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), null);
+  assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), null);
+  assert.equal((await f.state()).messages.length, 0);
+}));

@@ -79,9 +79,13 @@ export async function restoreNativeSessionHistory(db: Database, input: {
   expectedRevision: string | null;
   effectiveWorkingDirectory: string;
   projection: NativeHistoryProjection;
+  nativeSnapshot?: { sessionId: string; revision: string; entries: Array<Record<string, unknown> & { type: string }> };
 }): Promise<{ outcome: "restored" | "already_current"; conversationId: string; headMessageId: string; inserted: number }> {
   validate(input);
   const p = input.projection;
+  const snapshot = input.nativeSnapshot;
+  if (snapshot && (snapshot.sessionId !== p.sessionId || snapshot.revision !== p.revision ||
+    !snapshot.entries.some(entry => entry.uuid === p.checkpointId))) throw fail("INVALID_NATIVE_SNAPSHOT");
   return db.transaction(async tx => {
     // Serialize the initial insert too, when no conversation row exists yet.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('leileios-native-history:' || ${input.conversationId}, 0))`);
@@ -135,6 +139,11 @@ export async function restoreNativeSessionHistory(db: Database, input: {
         cp.providerCheckpointId !== message.providerCheckpointId || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");
     if (!unchanged && (input.expectedRevision !== (source?.revision ?? null) || input.expectedHeadMessageId !== (existing?.currentHeadMessageId ?? null))) throw fail("STALE_NATIVE_PROJECTION");
+    if (snapshot) {
+      const store = new DrizzleNativeLiveProviderSessionStoreRepository(tx);
+      await store.preserveExternalSession({ userId: input.userId, sessionId: p.sessionId });
+      await store.synchronizeNativeSnapshot({ userId: input.userId, key: { sessionId: p.sessionId }, entries: snapshot.entries });
+    }
     if (unchanged) return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0 };
 
     // Nested transaction is a savepoint: source protection and projection roll back together.

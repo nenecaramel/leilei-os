@@ -4,8 +4,8 @@
 const mirrors = new WeakMap();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function isNativeSessionMirror(value, sessionId = null) {
-  return mirrors.has(value) && (sessionId === null || mirrors.get(value) === sessionId);
+export function isNativeSessionMirror(value, sessionId = null, store = null) {
+  return mirrors.has(value) && (sessionId === null || mirrors.get(value).sessionId === sessionId) && (store === null || mirrors.get(value).store === store);
 }
 
 export function createNativeSessionMirror(store, { projectKey, sessionId }) {
@@ -22,6 +22,6 @@ export function createNativeSessionMirror(store, { projectKey, sessionId }) {
     async listSubkeys(key) { verify(key); return []; },
     async append(key, entries) { verify(key); await store.append(key, entries); },
   });
-  mirrors.set(mirror, sessionId);
+  mirrors.set(mirror, { sessionId, store });
   return mirror;
 }
