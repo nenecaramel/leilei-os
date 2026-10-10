@@ -10,7 +10,6 @@ import type {
   NativeLiveMindSemanticPlan,
 } from "../../runtime/mind/native-live-mind-runtime.js";
 import type { NativeLivePreparedTurn } from "../turn/native-live-backend-turn-coordinator.js";
-import { planReplacementMessagePurge } from "../turn/native-live-replacement-purge.js";
 import type {
   NativeLiveContextLineageReader,
 } from "../turn/native-live-context-lineage-repository.js";
@@ -79,6 +78,29 @@ function requirePreparedUserMessage(
   return message;
 }
 
+
+function renderHookOwnedUserPrompt(
+  userMessage: NativeLiveMessage,
+  prompt: string,
+): string {
+  // Preserve the canonical voice identity, but leave clock/context to the
+  // installed Claude Code hooks. No per-message timestamp is injected here.
+  const isVoice = userMessage.blocks.some(
+    (block) =>
+      block.kind === "text"
+      && block.payload !== null
+      && typeof block.payload === "object"
+      && !Array.isArray(block.payload)
+      && block.payload.input_mode === "voice",
+  );
+  const escaped = prompt
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+  const mode = isVoice ? ' input_mode="voice"' : "";
+  return `<user_message${mode}>${isVoice ? "[voice] " : ""}${escaped}</user_message>`;
+}
+
 /**
  * Cross-device adapter between the persisted backend preparation and the
  * existing branch-safe Mind runtime.
@@ -92,7 +114,7 @@ implements NativeLiveBackendMindRuntime {
   constructor(
     private readonly conversations: NativeLiveBackendMindConversationReader,
     private readonly mind: NativeLiveMindRuntime,
-    private readonly contextLineage: NativeLiveContextLineageReader | null = null,
+    _contextLineage: NativeLiveContextLineageReader | null = null,
   ) {}
 
   async preparePrompt(input: {
@@ -108,96 +130,27 @@ implements NativeLiveBackendMindRuntime {
       input.preparation.canonicalUserMessageId,
     );
 
+    // Existing path-scoped memories remain valid historical records, so retain
+    // their branch settlement/retirement bookkeeping while retiring new writes.
     if (input.preparation.operation === "send") {
       await this.mind.reconcileSelectedPath({
         userId: input.userId,
-        conversation: {
-          ...conversation,
-          currentHeadMessageId: userMessage.id,
-        },
+        conversation: { ...conversation, currentHeadMessageId: userMessage.id },
       });
     }
-
+    // Native slash commands must reach Claude Code unwrapped.
     if (isNativeClaudeScheduleCommand(input.preparation)) {
       return input.preparation.prompt;
     }
-
-    const excludedReferenceIds =
-      this.replacementExcludedReferenceIds(
-        conversation,
-        input.preparation,
-      );
-
-    const contextLineage = await this.readContextLineage({
-      userId: input.userId,
-      conversationId: input.preparation.conversationId,
-      parentMessageId: userMessage.parentMessageId,
-      runtimeMode: input.preparation.runtimeMode,
-    });
-
-    return this.mind.prepareUserTurn({
-      userId: input.userId,
-      conversation,
-      userMessage,
-      userText: input.preparation.prompt,
-      surfaceHeadMessageId: userMessage.parentMessageId,
-      manifestId: input.preparation.prepareId,
-      excludedReferenceIds,
-      contextLineage,
-    });
+    return renderHookOwnedUserPrompt(userMessage, input.preparation.prompt);
   }
 
-  async planSemanticPrompt(input: {
+  async planSemanticPrompt(_input: {
     userId: string;
     preparation: NativeLivePreparedTurn;
   }): Promise<NativeLiveMindSemanticPlan | null> {
-    if (isNativeClaudeScheduleCommand(input.preparation)) {
-      return null;
-    }
-    if (!this.mind.planSemanticUserTurn) return null;
-
-    const conversation = await this.requireConversation(
-      input.userId,
-      input.preparation.conversationId,
-    );
-    const userMessage = requirePreparedUserMessage(
-      conversation,
-      input.preparation.canonicalUserMessageId,
-    );
-
-    if (input.preparation.operation === "send") {
-      await this.mind.reconcileSelectedPath({
-        userId: input.userId,
-        conversation: {
-          ...conversation,
-          currentHeadMessageId: userMessage.id,
-        },
-      });
-    }
-
-    const excludedReferenceIds =
-      this.replacementExcludedReferenceIds(
-        conversation,
-        input.preparation,
-      );
-
-    const contextLineage = await this.readContextLineage({
-      userId: input.userId,
-      conversationId: input.preparation.conversationId,
-      parentMessageId: userMessage.parentMessageId,
-      runtimeMode: input.preparation.runtimeMode,
-    });
-
-    return this.mind.planSemanticUserTurn({
-      userId: input.userId,
-      conversation,
-      userMessage,
-      userText: input.preparation.prompt,
-      surfaceHeadMessageId: userMessage.parentMessageId,
-      manifestId: input.preparation.prepareId,
-      excludedReferenceIds,
-      contextLineage,
-    });
+    // UserPromptSubmit owns all new recall, including semantic retrieval.
+    return null;
   }
 
   async completeSemanticPrompt(input: {
@@ -206,10 +159,8 @@ implements NativeLiveBackendMindRuntime {
     plan: NativeLiveMindSemanticPlan;
     scores: ReadonlyMap<string, number> | null;
   }): Promise<string> {
-    if (!this.mind.prepareUserTurnFromSemanticPlan) {
-      throw new Error("Backend Mind runtime does not support semantic completion.");
-    }
-
+    // Backward-compatible completion of an already queued semantic request:
+    // never inject the old Context Assembly on top of the hook.
     const conversation = await this.requireConversation(
       input.userId,
       input.preparation.conversationId,
@@ -218,85 +169,18 @@ implements NativeLiveBackendMindRuntime {
       conversation,
       input.preparation.canonicalUserMessageId,
     );
-
-    const excludedReferenceIds =
-      this.replacementExcludedReferenceIds(
-        conversation,
-        input.preparation,
-      );
-
-    const contextLineage = await this.readContextLineage({
-      userId: input.userId,
-      conversationId: input.preparation.conversationId,
-      parentMessageId: userMessage.parentMessageId,
-      runtimeMode: input.preparation.runtimeMode,
-    });
-
-    return this.mind.prepareUserTurnFromSemanticPlan({
-      userId: input.userId,
-      conversation,
-      userMessage,
-      userText: input.preparation.prompt,
-      surfaceHeadMessageId: userMessage.parentMessageId,
-      excludedReferenceIds,
-      contextLineage,
-      plan: input.plan,
-      scores: input.scores,
-    });
-  }
-
-  private async readContextLineage(input: {
-    userId: string;
-    conversationId: string;
-    parentMessageId: string | null;
-    runtimeMode: NativeLivePreparedTurn["runtimeMode"];
-  }) {
-    const lineage = this.contextLineage
-      ? await this.contextLineage.readForMessage({
-          userId: input.userId,
-          conversationId: input.conversationId,
-          canonicalMessageId: input.parentMessageId,
-        })
-      : null;
-
-    return lineage;
-  }
-
-  private replacementExcludedReferenceIds(
-    conversation: NativeLiveConversation,
-    preparation: NativeLivePreparedTurn,
-  ): ReadonlySet<string> | undefined {
-    if (
-      preparation.operation === "send"
-      || preparation.operation === "wake"
-    ) {
-      return undefined;
-    }
-
-    const targetUserMessageId =
-      preparation.replacementTargetUserMessageId
-      ?? (
-        preparation.operation === "retry"
-          ? preparation.canonicalUserMessageId
-          : null
-      );
-    const plan = planReplacementMessagePurge({
-      operation: preparation.operation,
-      conversation,
-      targetUserMessageId,
-    });
-    if (!plan) {
-      throw new Error(
-        "Replacement branch is no longer a valid current-path target.",
-      );
-    }
-    return new Set(plan.messageIds);
+    return isNativeClaudeScheduleCommand(input.preparation)
+      ? input.preparation.prompt
+      : renderHookOwnedUserPrompt(userMessage, input.preparation.prompt);
   }
 
   parseAssistantBlocks(
     blocks: readonly NativeLiveContentBlockInput[],
   ): ParsedAssistantBlocks {
-    return this.mind.parseAssistantBlocks(blocks);
+    // Do not interpret newly emitted <memory> tags as writes; MCP write_memory
+    // is the only active authoring path. Historical queued intents can still
+    // finish through afterFinalize for backward compatibility.
+    return { visibleBlocks: blocks.map((block) => ({ ...block })), intents: [], actions: [] };
   }
 
   async afterFinalize(input: {
