@@ -442,3 +442,28 @@ Root typecheck/build and diff check pass. One initial concurrent database-group
 run returned `INTERNAL_ERROR` in the existing synthetic same-session prepare
 case; its isolated rerun and the full serialized groups pass. Its transient root
 cause is not established, so this is recorded rather than called a proven fix.
+
+### Existing daemon local-SDK continuation identity
+
+The deployed daemon constructs the transport without a remote SessionStore. Its
+ordinary exact-checkpoint `executeTurn` resume now enables the same pre-prompt
+identity gate as the optional native mirror. This needs no daemon configuration
+or additional wire field. It waits for SDK `system/init` with the original session
+ID before delivering canonical user input. A copied ID fails before prompt
+delivery. Fork/new, remote materializing stores and native schedule commands
+retain their existing behavior; schedule commands use non-verbatim prompts and
+are outside this native conversational resume gate.
+
+The pre-fix offline witness observed one prompt delivered to a copied session;
+after the fix it observes zero. The positive local-SDK fixture verifies one query,
+one canonical user UUID, no fork or remote materializer, original session identity
+and the new native assistant checkpoint. These are simulated SDK responses, not
+live compatibility or ownership acceptance. Identity checking does not acquire a
+client lease or protect an unsynchronized newer Desktop tail by itself. Those
+handoff gates and reverse Desktop opening remain incomplete.
+
+Node 22.23.3 validation for this change: complete Bridge offline 256 pass / 0 fail /
+4 live skips; production runtime gate 400 root + 138 Bridge = 538 pass / 0 fail /
+0 skip. Root typecheck/build and diff check pass. The first sandboxed Bridge run
+could not bind its mock loopback HTTP server (`EPERM`); the authorized local-socket
+rerun passes. No database test rerun was needed for this transport-only change.

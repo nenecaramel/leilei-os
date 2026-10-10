@@ -2629,3 +2629,67 @@ test("native interactive resume refuses missing local source or incomplete basel
       parentProviderCheckpointId: cp, requireProviderCheckpoint: true, nativeSessionMirror: mirror }), error => error.runtimeCode === 'NO_PROVIDER_SESSION');
   }
 });
+
+test("daemon local-SDK exact resume rejects a copied session before consuming canonical user input", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000041';
+  const cp = '00000000-0000-4000-8000-000000000042';
+  let delivered = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async (_id, store) => store.append({}, [{ type: 'assistant', uuid: cp, parentUuid: null }]),
+    queryImpl: input => ({ close() {}, async *[Symbol.asyncIterator]() {
+      assert.equal('sessionStore' in input.options, false);
+      yield { type: 'system', subtype: 'init', session_id: 'copied-session' };
+      const next = await input.prompt[Symbol.asyncIterator]().next();
+      if (!next.done) delivered++;
+      yield successFixture('copied-session')[2];
+    } }),
+  });
+  await assert.rejects(transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true }), error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(delivered, 0, 'canonical prompt must never reach a copied native session');
+});
+
+test("daemon local-SDK exact resume delivers once and records the original session's new checkpoint", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000051';
+  const cp = '00000000-0000-4000-8000-000000000052';
+  const user = '00000000-0000-4000-8000-000000000053';
+  const child = '00000000-0000-4000-8000-000000000054';
+  const entries = [{ type: 'assistant', uuid: cp, parentUuid: null,
+    message: { role: 'assistant', content: 'synthetic parent' } }];
+  let delivered = 0, queries = 0;
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async (id, store) => {
+      assert.equal(id, sessionId);
+      await store.append({}, entries);
+    },
+    queryImpl: input => {
+      queries++;
+      assert.equal(input.options.resume, sessionId);
+      assert.equal(input.options.resumeSessionAt, cp);
+      assert.notEqual(input.options.forkSession, true);
+      assert.equal('sessionStore' in input.options, false);
+      return { close() {}, async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: sessionId };
+        const iterator = input.prompt[Symbol.asyncIterator]();
+        const prompt = await iterator.next();
+        assert.equal(prompt.done, false);
+        assert.equal(prompt.value.uuid, user);
+        delivered++;
+        entries.push(
+          { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+          { type: 'assistant', uuid: child, parentUuid: user, message: { role: 'assistant', content: 'READY' } },
+        );
+        yield successFixture(sessionId)[1];
+        yield successFixture(sessionId)[2];
+      } };
+    },
+  });
+  const result = await transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true, userMessageUuid: user });
+  assert.equal(queries, 1);
+  assert.equal(delivered, 1);
+  assert.equal(result.providerSessionId, sessionId);
+  assert.equal(result.providerCheckpointId, child);
+});

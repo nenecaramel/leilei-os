@@ -623,7 +623,14 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       forkSession: mode === "fork",
       resumeSessionAt: parentProviderCheckpointId,
       queryImpl,
-      requireSameSessionBeforePrompt: nativeSessionMirror !== null,
+      // The deployed daemon uses local SDK storage (no remote materializer).
+      // Protect that actual path too, not only the optional native mirror.
+      requireSameSessionBeforePrompt: nativeSessionMirror !== null || (
+        mode === "resume"
+        && parentProviderCheckpointId !== null
+        && !this.sessionStore
+        && !nativeScheduleCommand
+      ),
       environment: this.environment,
       cwd: this.cwd,
       queryOptions: {
