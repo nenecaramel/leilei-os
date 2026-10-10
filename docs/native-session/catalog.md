@@ -42,3 +42,46 @@ execution ownership and acknowledged terminal-result persistence. Until those
 checks exist, this stage must never be used to grant a write lease or resume a
 real conversation. Stage 2 will add an idempotent display projection, without
 changing or reconstructing the native transcript.
+
+## Desktop identity and history projection (stage 2 foundation)
+
+`resolveDesktopSession(metadata, snapshotsBySessionId)` reads only Desktop's
+identity fields: local session ID, exact CLI session ID, selected assistant UUID,
+working directory, previous CLI IDs and rewind edges. The selected UUID must be
+an assistant with valid native execution ancestry in that exact file. Missing
+files, stale indices and unknown shapes do not fall back to another session.
+Desktop's index is private and version-sensitive; it does not prove idleness.
+No connector configuration, appended instructions or titles are exported.
+
+`projectNativeHistory(snapshot, checkpointId)` creates a deterministic display
+projection, not canonical database rows. Tool responses stored as user records
+join the assistant turn; assistant SDK fragments stay grouped. Meta reminders,
+compact summaries and hidden reasoning are not displayed as human prompts.
+Original timestamps are retained; absent timestamps remain null. Image/document
+blocks hold pending extraction references; raw binary content is not embedded in
+the projected payload. Tool compatibility uses the existing bounded-output
+contract. Truncation/redaction remains explicit; raw source entries are unchanged.
+
+Compaction display ancestry is distinct from execution ancestry. A backwards
+logical parent can retain earlier history. Desktop can also rewrite preserved
+records, including reusing an old user UUID for a compact summary and making the
+logical parent point forward into the preserved tail. This latter case reports
+`COMPACT_SOURCE_HISTORY_REQUIRED`: a summary must never masquerade as complete
+old messages. Neither current projection nor this error changes SDK fork rules.
+Archived historical JSONLs may supply missing source evidence, but archives are
+not restored or merged automatically by these modules.
+
+`planNativeHistorySync(previous, next)` is a pure append/update plan. Repeated
+snapshots produce no upserts. A currently last assistant can grow while keeping
+previous blocks and UUIDs unchanged. Older message rewrites, truncation, changed
+session IDs and changed branches require explicit handling; no delete plan is
+created. A future authenticated writer must compare-and-swap the expected source
+revision, validate source ownership, map canonical IDs, and atomically persist
+the projection and checkpoint. This writer and its API/UI integration do not yet
+exist; the pure planner alone does not establish crash-safe synchronization.
+
+`extractNativeHistoryAsset` extracts only embedded base64 image/document bytes
+with a configured size cap, exact snapshot/reference checks and SHA-256/size
+results. It does not re-encode images, read arbitrary paths, fetch URLs or upload.
+Materialization and attachment ownership must later use the normal attachment
+service. Missing file/URL assets remain explicitly unavailable.
