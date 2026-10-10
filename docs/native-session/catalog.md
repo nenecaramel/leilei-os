@@ -467,3 +467,33 @@ Node 22.23.3 validation for this change: complete Bridge offline 256 pass / 0 fa
 0 skip. Root typecheck/build and diff check pass. The first sandboxed Bridge run
 could not bind its mock loopback HTTP server (`EPERM`); the authorized local-socket
 rerun passes. No database test rerun was needed for this transport-only change.
+
+### Fresh local transcript tail before ordinary resume
+
+Local-SDK exact conversational resume now rereads the native transcript before
+query, even when checkpoint ancestry is cached. The current main-chain tail must
+descend from the requested canonical checkpoint. Any later user UUID other than
+this preparation's canonical user UUID, detached branch or assistant activity
+without that user fails before query (`PROVIDER_SESSION_CONFLICT`). This keeps a
+closed Desktop's newly appended turn from being silently rewound by an older
+LeileiOS checkpoint. Restore/sync must happen first.
+
+The existing same-canonical-user interrupted re-delivery case remains allowed:
+the same user UUID followed by assistant/tool-result activity is not treated as a
+different turn. Auxiliary system/attachment ancestry can also follow the parent
+checkpoint. This check neither recovers terminal results nor bypasses existing
+outbox recovery. It does not grant an atomic cross-client ownership lease: source
+changes after the read and simultaneous client openings remain joint acceptance
+risks, with the existing pre-prompt original-identity guard still required.
+
+RED→GREEN: the cached-ancestry fixture previously reached query after a newer
+Desktop turn; it now refuses before query. Additional executable fixtures cover
+same-user interrupted retry, tool results, attachment-only context, unbound
+assistant activity and detached/different-user tails. The older parse-count
+fixture now models transcript advancement at query rather than at each read and
+pins the intentional fresh pre-query read instead of the unsafe cache shortcut.
+
+Node 22.23.3: transport 60 pass; complete offline Bridge 258 pass / 0 fail / 4 live
+skips; runtime gate 400 root + 140 Bridge = 540 pass / 0 fail / 0 skip. Root
+typecheck/build and diff check pass. No actual Claude query, native file write,
+database mutation, daemon restart or Desktop launch was performed.

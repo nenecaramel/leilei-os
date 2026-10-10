@@ -584,6 +584,12 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
       normalizeAgentSdkExecutionSelection(execution);
     const nativeScheduleCommand =
       isNativeClaudeScheduleCommand(prompt);
+    if (mode === "resume" && parentProviderCheckpointId !== null
+      && !this.sessionStore && !nativeScheduleCommand) {
+      await this.#validateLocalResumeTail(
+        parentProviderSessionId, parentProviderCheckpointId, userMessageUuid,
+      );
+    }
     const localSendFileServer =
       sendFileHandler
         ? await this.createSendFileMcpServerImpl(
@@ -1105,6 +1111,40 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     return entries.filter(entry => entry && !entry.isSidechain
       && ["user", "assistant", "system", "attachment"].includes(entry.type)
       && typeof entry.uuid === "string" && Object.hasOwn(entry, "parentUuid"));
+  }
+
+  async #validateLocalResumeTail(sessionId, checkpointId, userMessageUuid) {
+    // An ancestry cache proves presence, not that Desktop has stayed at that
+    // checkpoint. Read again before query so an unseen native turn is not rewound.
+    const allEntries = await this.#checkpointEntries(sessionId, true);
+    const entries = this.#chainEntries(allEntries);
+    const tailId = entries.at(-1)?.uuid;
+    const conflict = () => runtimeError(
+      "Native session has unsynchronized history; restore it before continuing.",
+      { runtimeCode: "PROVIDER_SESSION_CONFLICT" },
+    );
+    if (!tailId) throw conflict();
+    let verified;
+    try { verified = durableCheckpointPrefix(allEntries, tailId); }
+    catch { throw conflict(); }
+    if (!verified.ancestry.has(checkpointId)) throw conflict();
+    const byId = new Map(this.#chainEntries(verified.prefix).map(entry => [entry.uuid, entry]));
+    const suffix = [];
+    for (let id = tailId; id !== checkpointId; id = byId.get(id).parentUuid) suffix.push(byId.get(id));
+    let sameCanonicalTurn = false;
+    for (const entry of suffix.reverse()) {
+      const toolResult = entry.type === "user" && Array.isArray(entry.message?.content)
+        && entry.message.content.length > 0
+        && entry.message.content.every(block => block?.type === "tool_result");
+      if (entry.type === "user" && !toolResult) {
+        if (!userMessageUuid || entry.uuid !== userMessageUuid) throw conflict();
+        sameCanonicalTurn = true;
+      } else if ((entry.type === "assistant" || toolResult) && !sameCanonicalTurn) {
+        throw conflict();
+      }
+    }
+    // A failed/interrupted tail for this exact canonical user UUID is the
+    // existing re-delivery case, not a different Desktop conversation turn.
   }
 
   async #requireCheckpoint(

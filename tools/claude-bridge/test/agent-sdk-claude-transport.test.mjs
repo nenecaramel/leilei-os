@@ -1435,7 +1435,7 @@ test("default local historical fork locates the parent by session id and cleans 
   );
 });
 
-test("steady local resume reparses the transcript only after the turn", async () => {
+test("steady local resume checks fresh native history before query and records it after the turn", async () => {
   const root = {
     type: "user",
     uuid: "61111111-1111-4111-8111-111111111111",
@@ -1466,18 +1466,21 @@ test("steady local resume reparses the transcript only after the turn", async ()
     [root, first, second, third],
   ];
 
-  let importCalls = 0;
+  let importCalls = 0, queryCalls = 0;
   const transport = new AgentSdkClaudeTransport({
     environment: {},
     cwd: "/workspace/leilei-os",
     sessionMessagesImpl: async () => [{ type: "assistant" }],
     importSessionToStoreImpl: async (_sessionId, store) => {
-      const entries = snapshots[importCalls];
+      const entries = snapshots[queryCalls];
       importCalls += 1;
-      assert.ok(entries, "unexpected extra local transcript parse");
+      assert.ok(entries, "unexpected extra local turn");
       await store.append({ subpath: undefined }, entries);
     },
-    queryImpl: () => fakeQuery(successFixture("provider-root")),
+    queryImpl: () => {
+      queryCalls += 1;
+      return fakeQuery(successFixture("provider-root"));
+    },
   });
 
   const firstResult = await transport.executeTurn(
@@ -1503,7 +1506,8 @@ test("steady local resume reparses the transcript only after the turn", async ()
     },
   );
   assert.equal(secondResult.providerCheckpointId, third.uuid);
-  assert.equal(importCalls, 3);
+  assert.equal(queryCalls, 2);
+  assert.equal(importCalls, 5);
 });
 
 test("local checkpoint preflight rejects a broken ancestry before query", async () => {
@@ -2692,4 +2696,81 @@ test("daemon local-SDK exact resume delivers once and records the original sessi
   assert.equal(delivered, 1);
   assert.equal(result.providerSessionId, sessionId);
   assert.equal(result.providerCheckpointId, child);
+});
+
+test("local exact resume refuses a newer Desktop turn even when the old checkpoint ancestry is cached", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000061';
+  const cp = '00000000-0000-4000-8000-000000000062';
+  const laterUser = '00000000-0000-4000-8000-000000000063';
+  const laterAssistant = '00000000-0000-4000-8000-000000000064';
+  const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+    sessionMessagesImpl: async () => [{ type: 'assistant' }],
+    importSessionToStoreImpl: async (_id, store) => store.append({}, [
+      { type: 'assistant', uuid: cp, parentUuid: null },
+      { type: 'user', uuid: laterUser, parentUuid: cp, message: { role: 'user', content: 'Desktop continuation' } },
+      { type: 'assistant', uuid: laterAssistant, parentUuid: laterUser },
+    ]),
+    queryImpl() { assert.fail('must not query or rewind unsynchronized native history'); },
+  });
+  transport.localCheckpointAncestry.set(sessionId, new Set([cp]));
+  await assert.rejects(transport.executeTurn('new canonical input', { mode: 'resume', parentProviderSessionId: sessionId,
+    parentProviderCheckpointId: cp, requireProviderCheckpoint: true,
+    userMessageUuid: '00000000-0000-4000-8000-000000000065' }),
+    error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+});
+
+test("local exact resume permits same-user interrupted re-delivery but refuses unbound assistant and detached tails", async () => {
+  const sessionId = '00000000-0000-4000-8000-000000000071';
+  const cp = '00000000-0000-4000-8000-000000000072';
+  const user = '00000000-0000-4000-8000-000000000073';
+  const child = '00000000-0000-4000-8000-000000000074';
+  const root = { type: 'assistant', uuid: cp, parentUuid: null };
+  const interrupted = [
+    { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+    { type: 'assistant', uuid: 'failed-tail', parentUuid: user },
+    { type: 'user', uuid: 'tool-output', parentUuid: 'failed-tail',
+      message: { role: 'user', content: [{ type: 'tool_result', content: 'synthetic' }] } },
+  ];
+  for (const [suffix, allowed] of [
+    [interrupted, true],
+    [[{ type: 'attachment', uuid: 'context', parentUuid: cp }], true],
+    [[{ type: 'assistant', uuid: 'unknown-assistant', parentUuid: cp }], false],
+    [[{ type: 'assistant', uuid: 'detached', parentUuid: null }], false],
+    [[...interrupted, { type: 'user', uuid: 'another-user', parentUuid: 'tool-output' }], false],
+  ]) {
+    const entries = [root, ...suffix];
+    let queries = 0, delivered = 0;
+    const transport = new AgentSdkClaudeTransport({ environment: {}, cwd: '/synthetic/local-daemon',
+      sessionMessagesImpl: async () => [{ type: 'assistant' }],
+      importSessionToStoreImpl: async (_id, store) => store.append({}, entries),
+      queryImpl: input => {
+        queries++;
+        return { close() {}, async *[Symbol.asyncIterator]() {
+          yield successFixture(sessionId)[0];
+          const prompt = await input.prompt[Symbol.asyncIterator]().next();
+          assert.equal(prompt.value.uuid, user);
+          delivered++;
+          entries.push(
+            { type: 'user', uuid: user, parentUuid: cp, message: { role: 'user', content: 'synthetic' } },
+            { type: 'assistant', uuid: child, parentUuid: user },
+          );
+          yield successFixture(sessionId)[1];
+          yield successFixture(sessionId)[2];
+        } };
+      },
+    });
+    const turn = transport.executeTurn('synthetic', { mode: 'resume', parentProviderSessionId: sessionId,
+      parentProviderCheckpointId: cp, requireProviderCheckpoint: true, userMessageUuid: user });
+    if (allowed) {
+      const result = await turn;
+      assert.equal(result.providerSessionId, sessionId);
+      assert.equal(result.providerCheckpointId, child);
+      assert.equal(delivered, 1);
+      assert.equal(queries, 1);
+    } else {
+      await assert.rejects(turn, error => error.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+      assert.equal(queries, 0);
+      assert.equal(delivered, 0);
+    }
+  }
 });
