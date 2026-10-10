@@ -62,9 +62,7 @@ struct UniverseView: View {
         )
         .environment(\.colorScheme, .dark)
         .toolbar {
-            if case .ready = state {
-                readyToolbar()
-            }
+            pageToolbar()
         }
         .fullScreenCover(
             item: nodeDetailSelection

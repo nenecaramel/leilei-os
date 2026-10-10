@@ -208,11 +208,12 @@ extension UniverseView {
     }
 
     @ToolbarContentBuilder
-    func readyToolbar() -> some ToolbarContent {
+    func pageToolbar() -> some ToolbarContent {
         ToolbarItemGroup(
             placement: .topBarTrailing
         ) {
             Button {
+                guard state.canAddNode else { return }
                 notice = nil
 
                 if case .placingNode = mapMode {
@@ -234,6 +235,7 @@ extension UniverseView {
                     ? "Cancel Adding Node"
                     : "Add Node"
             )
+            .disabled(!state.canAddNode)
         }
     }
 }

@@ -79,9 +79,18 @@ test("Universe editing overlays stable detail and owns its nested presentations"
 
 test("Universe home keeps only Add in the trailing toolbar", () => {
   const source = read("Universe/UniversePagePresentation.swift");
-  const toolbar = source.slice(source.indexOf("func readyToolbar("));
+  const toolbar = source.slice(source.indexOf("func pageToolbar("));
   assert.doesNotMatch(toolbar, /Menu \{|Picker\(|prepareExport|Export Universe|ellipsis/);
   assert.match(toolbar, /"Add Node"/);
+  const page = read("UniverseView.swift");
+  assert.match(page, /\.toolbar \{\s*pageToolbar\(\)\s*\}/);
+  assert.match(toolbar, /\.disabled\(!state.canAddNode\)/);
+  assert.match(toolbar, /guard state.canAddNode else \{ return \}/);
+  const models = read("Universe/UniverseViewModels.swift");
+  assert.match(models, /var canAddNode: Bool \{\s*if case \.ready = self \{ return true \}\s*return false/);
+  const coordination = read("Universe/UniversePageCoordination.swift");
+  assert.match(coordination, /mapMode = \.browse\s*state = \.loading/);
+
   assert.match(toolbar, /mapMode = \.placingNode/);
   assert.match(toolbar, /mapMode = \.browse/);
 });
