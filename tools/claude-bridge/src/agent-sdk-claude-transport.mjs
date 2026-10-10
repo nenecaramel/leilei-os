@@ -3,8 +3,6 @@ import { EventEmitter } from "node:events";
 import { ClaudeTransport } from "./claude-transport.mjs";
 import { ClaudeEventNormalizer } from "./normalized-events.mjs";
 import { createAgentSdkTurnHandle } from "./agent-sdk-turn-handle.mjs";
-import { LEILEIOS_MIND_SYSTEM_PROMPT } from "./leileios-mind-system-prompt.mjs";
-import { LEILEIOS_WAKE_SYSTEM_PROMPT } from "./leileios-wake-system-prompt.mjs";
 import { LEILEIOS_MURMUR_SYSTEM_PROMPT } from "./leileios-murmur-system-prompt.mjs";
 import {
   normalizeAgentSdkExecutionSelection,
@@ -19,7 +17,8 @@ import {
   prepareLocalCheckpointFork,
 } from "./local-checkpoint-fork.mjs";
 
-const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = [LEILEIOS_MIND_SYSTEM_PROMPT, LEILEIOS_WAKE_SYSTEM_PROMPT, LEILEIOS_MURMUR_SYSTEM_PROMPT].join("\n\n");
+// Mind recall and writing are shared with Desktop through the installed hook and MCP.
+const LEILEIOS_INTERACTIVE_SYSTEM_PROMPT = LEILEIOS_MURMUR_SYSTEM_PROMPT;
 
 function runtimeError(message, details = {}) {
   return Object.assign(new Error(message), details);
@@ -415,8 +414,8 @@ export class AgentSdkClaudeTransport extends ClaudeTransport {
     this.localCheckpointAncestry = new Map();
     this.environment = {
       ...environment,
-      // Native Live already supplies canonical Mind context and owns its recall accounting.
-      LEILEI_MIND_HOOK_DISABLED: "1",
+      // Let the installed UserPromptSubmit/Stop Mind hook run in the SDK session.
+      LEILEI_MIND_HOOK_DISABLED: "0",
       DISABLE_AUTO_COMPACT: "1",
       CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
     };
