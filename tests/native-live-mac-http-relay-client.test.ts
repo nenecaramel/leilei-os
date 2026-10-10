@@ -1272,3 +1272,33 @@ test("Mac HTTP relay client parses silence wake ignore reason", async () => {
     },
   );
 });
+
+
+test("non-JSON gateway response preserves HTTP status without replaying reserve", async () => {
+  let calls = 0;
+  const fakeFetch: typeof fetch = async () => {
+    calls += 1;
+    return new Response("<html>gateway unavailable</html>", {
+      status: 503,
+      headers: { "content-type": "text/html" },
+    });
+  };
+  const client = new NativeLiveMacHttpRelayClient(
+    "https://relay.example", "test-token", fakeFetch,
+  );
+  await assert.rejects(
+    () => client.reserveSemanticScoring({
+      listenerInstanceId: listenerId,
+      dispatchTarget: "claude_code",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /malformed JSON/u);
+      assert.equal((error as Error & { httpStatus?: number }).httpStatus, 503);
+      return true;
+    },
+  );
+  // The server may have committed this reservation. It must be recovered by
+  // same-owner lookup, not blindly replayed by this HTTP client.
+  assert.equal(calls, 1);
+});
