@@ -274,6 +274,26 @@ export async function createAgentSdkTurnHandle({
   const nativeIdentity = requireSameSessionBeforePrompt
     ? new Promise(resolve => { settleNativeIdentity = resolve; }) : null;
 
+  let rejectNativeStartup;
+  const nativeStartupFailure = requireSameSessionBeforePrompt
+    ? new Promise(resolve => { rejectNativeStartup = resolve; })
+    : new Promise(() => {});
+  const nativeSessionStart = async input => {
+    const sessionId = nonblankString(input?.session_id);
+    if (input?.hook_event_name !== "SessionStart" || sessionId !== parentProviderSessionId) {
+      const error = runtimeError("Native resume startup did not retain the original provider session.", {
+        runtimeCode: "PROVIDER_SESSION_CONFLICT",
+      });
+      settleNativeIdentity(false);
+      rejectNativeStartup(error);
+      return { continue: false, stopReason: error.message };
+    }
+    // SessionStart runs during resume initialization. The stream's system/init
+    // is emitted per turn, after input; waiting for it here deadlocks the SDK.
+    settleNativeIdentity(true);
+    return {};
+  };
+
   const initialUserMessageUuid =
     nonblankString(userMessageUuid) ?? randomUUID();
 
@@ -400,6 +420,15 @@ export async function createAgentSdkTurnHandle({
         ? { canUseTool: interactiveCallback }
         : {}
     ),
+    ...(requireSameSessionBeforePrompt
+      ? { hooks: {
+          ...queryOptions.hooks,
+          SessionStart: [
+            { hooks: [nativeSessionStart] },
+            ...(queryOptions.hooks?.SessionStart ?? []),
+          ],
+        } }
+      : {}),
     ...(resume ? { resume } : {}),
     ...(forkSession ? { forkSession: true } : {}),
     ...(resumeSessionAt ? { resumeSessionAt } : {}),
@@ -478,6 +507,7 @@ export async function createAgentSdkTurnHandle({
     executionReadback,
     settleNativeIdentity,
     nativeStartupTimeoutMs: mcpStartupTimeoutMs,
+    nativeStartupFailure,
   });
 }
 
@@ -492,10 +522,12 @@ export class AgentSdkTurnHandle {
     executionReadback = false,
     settleNativeIdentity = null,
     nativeStartupTimeoutMs = 120_000,
+    nativeStartupFailure = new Promise(() => {}),
   }) {
     this.settleNativeIdentity = settleNativeIdentity;
     this.nativeIdentityConfirmed = false;
     this.nativeStartupTimeoutMs = nativeStartupTimeoutMs;
+    this.nativeStartupFailure = nativeStartupFailure;
     this.query = query;
     this.mode = mode;
     this.parentProviderSessionId = parentProviderSessionId;
@@ -655,6 +687,8 @@ export class AgentSdkTurnHandle {
       ? new Promise(resolve => { nativeStartupTimer = setTimeout(() => resolve({ kind: "native_startup_timeout" }), this.nativeStartupTimeoutMs); })
       : new Promise(() => {});
 
+    const nativeStartupFailure = this.nativeStartupFailure.then(error => ({ kind: "native_startup_failure", error }));
+
     try {
       const iterator = this.query[Symbol.asyncIterator]();
       while (true) {
@@ -667,7 +701,10 @@ export class AgentSdkTurnHandle {
             kind: "interrupt",
           })),
           nativeStartupDeadline,
+          ...(this.settleNativeIdentity && !this.nativeIdentityConfirmed
+            ? [nativeStartupFailure] : []),
         ]);
+        if (step.kind === "native_startup_failure") throw step.error;
         if (step.kind === "native_startup_timeout") {
           throw runtimeError("Native resume init did not confirm the original session before startup deadline.", { runtimeCode: "RUNTIME_UNAVAILABLE" });
         }

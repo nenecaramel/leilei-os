@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PassThrough } from "node:stream";
+import { EventEmitter } from "node:events";
 import {
   createAgentSdkTurnHandle,
 } from "../src/agent-sdk-turn-handle.mjs";
@@ -1387,4 +1389,91 @@ test("native resume cannot return a successful handle result after EOF without i
   });
   await assert.rejects(handle.start(), error => error.runtimeCode === "PROVIDER_SESSION_CONFLICT");
   assert.equal((await pending).done, true);
+});
+
+const original = '00000000-0000-4000-8000-000000000001';
+const copied = '00000000-0000-4000-8000-000000000002';
+
+async function fixture(t, { startIdentity = original, initIdentity = original, additionalHooks = [] } = {}) {
+  let query;
+  try { ({ query } = await import('@anthropic-ai/claude-agent-sdk')); }
+  catch (e) { if (e.code === 'ERR_MODULE_NOT_FOUND') { t.skip('Mac SDK dependency is not installed.'); return; } throw e; }
+  const child = new EventEmitter();
+  child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.killed = false; child.exitCode = null;
+  child.kill = () => { child.killed = true; child.stdout.end(); child.stderr.end(); return true; };
+  t.after(() => child.kill());
+  const sent = []; const hookReplies = []; let ready = false; let spawns = 0; let buffer = '';
+  const emit = value => child.stdout.write(JSON.stringify(value) + '\n');
+  child.stdin.on('data', data => {
+    buffer += data.toString();
+    while (buffer.includes('\n')) {
+      const i = buffer.indexOf('\n'); const line = buffer.slice(0, i); buffer = buffer.slice(i + 1);
+      if (!line) continue;
+      const message = JSON.parse(line);
+      if (message.type === 'control_request') {
+        const kind = message.request.subtype;
+        if (kind === 'mcp_status') ready = true;
+        emit({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id,
+          response: kind === 'mcp_status' ? { mcpServers: [{ name: 'leileios', status: 'connected' }] } : {} } });
+        if (kind === 'initialize') {
+          for (const [index, id] of (message.request.hooks?.SessionStart ?? []).flatMap(h => h.hookCallbackIds).entries()) {
+            emit({ type: 'control_request', request_id: `session-start-${index}`, request: { subtype: 'hook_callback', callback_id: id,
+              input: { hook_event_name: 'SessionStart', session_id: startIdentity, source: 'resume', cwd: '/synthetic', transcript_path: '/synthetic/session.jsonl' } } });
+          }
+        }
+      } else if (message.type === 'control_response') {
+        hookReplies.push(message.response);
+      } else if (message.type === 'user') {
+        sent.push(message); assert.equal(ready, true, 'MCP must be ready before prompt delivery');
+        // Native CLI emits its per-turn init only once a user command is delivered.
+        emit({ type: 'system', subtype: 'init', session_id: initIdentity });
+        emit({ type: 'result', subtype: 'success', session_id: initIdentity, result: 'OK' });
+        queueMicrotask(() => { child.exitCode = 0; child.stdout.end(); child.stderr.end(); child.emit('exit', 0, null); });
+      }
+    }
+  });
+  const handle = await createAgentSdkTurnHandle({
+    prompt: 'hello', environment: {}, mode: 'resume', parentProviderSessionId: original,
+    resume: original, resumeSessionAt: 'historical-checkpoint', requireSameSessionBeforePrompt: true,
+    userMessageUuid: '00000000-0000-4000-8000-000000000003', mcpStartupTimeoutMs: 100,
+    queryImpl: query, queryOptions: {
+      mcpServers: { leileios: { type: 'http', url: 'https://example.invalid/mcp' } },
+      hooks: { SessionStart: additionalHooks },
+      spawnClaudeCodeProcess: () => { spawns++; return child; },
+    },
+  });
+  return { handle, sent, hookReplies, get spawns() { return spawns; } };
+}
+
+test('installed SDK native resume uses startup identity before the per-turn init without deadlock', async t => {
+  const f = await fixture(t); if (!f) return;
+  const result = await f.handle.start();
+  assert.equal(result.providerSessionId, original); assert.equal(f.spawns, 1);
+  assert.equal(f.sent.length, 1); assert.equal(f.sent[0].uuid, '00000000-0000-4000-8000-000000000003');
+});
+
+test('copied startup identity refuses native prompt before delivery', async t => {
+  const f = await fixture(t, { startIdentity: copied }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(f.sent.length, 0);
+});
+
+test('missing startup identity refuses native prompt without stale approval', async t => {
+  const f = await fixture(t, { startIdentity: null }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(f.sent.length, 0);
+});
+
+test('per-turn init remains authoritative after startup identity approval', async t => {
+  const f = await fixture(t, { initIdentity: copied }); if (!f) return;
+  await assert.rejects(f.handle.start(), e => e.runtimeCode === 'PROVIDER_SESSION_CONFLICT');
+  assert.equal(f.sent.length, 1);
+});
+
+test('native startup guard preserves existing SessionStart callbacks', async t => {
+  let calls = 0;
+  const f = await fixture(t, { additionalHooks: [{ hooks: [async () => { calls++; return {}; }] }] }); if (!f) return;
+  assert.equal((await f.handle.start()).providerSessionId, original);
+  assert.equal(calls, 1); assert.equal(f.sent.length, 1);
 });
