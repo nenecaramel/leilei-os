@@ -5,9 +5,10 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { materializeNativeSessionHistoryAssets } from './native-session-assets.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = code => Object.assign(new Error(code), { code });
-const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED']);
+const publicCodes = new Set(['NATIVE_CONVERSATION_BUSY', 'STALE_NATIVE_PROJECTION', 'CANONICAL_HEAD_CHANGED', 'CANONICAL_HISTORY_CHANGED', 'CANONICAL_CHECKPOINT_CHANGED', 'NATIVE_SOURCE_BINDING_REQUIRED', 'EXPLICIT_BRANCH_SELECTION_REQUIRED', 'NATIVE_HISTORY_REWRITTEN', 'NATIVE_TRANSCRIPT_DIVERGED', 'NATIVE_SESSION_RECOVERY_REQUIRED', 'CLEANUP_IN_PROGRESS', 'NATIVE_CONVERSATION_NOT_FOUND', 'INVALID_NATIVE_PROJECTION', 'INVALID_NATIVE_SNAPSHOT', 'BATCH_TOO_LARGE', 'NATIVE_SESSION_ALREADY_ATTACHED', 'INVALID_NATIVE_ASSET', 'NATIVE_ASSET_UNAVAILABLE', 'NATIVE_ASSET_MISMATCH']);
 
 // Explicit history restore only: no SDK query, native file writes, Desktop
 // launching or execution lease. The server binds ownership to internal auth.
@@ -25,7 +26,11 @@ function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }) {
     // request rather than truncate records or silently split a restore txn.
     if (Buffer.byteLength(body, 'utf8') > 30 * 1024 * 1024) throw fail('NATIVE_RESTORE_PAYLOAD_TOO_LARGE');
     try {
-      const response = await fetchImpl(new URL('internal/native-live-session-store/native-history/' + route, endpoint).href, {
+      const routePath = route === 'attachment-upload-slot' ? 'internal/native-live-relay/attachments/upload-slots'
+        : route.startsWith('attachment-complete/') && uuid.test(route.slice('attachment-complete/'.length))
+          ? 'internal/native-live-relay/attachments/' + route.slice('attachment-complete/'.length) + '/complete'
+          : 'internal/native-live-session-store/native-history/' + route;
+      const response = await fetchImpl(new URL(routePath, endpoint).href, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + relayToken }, body,
       });
@@ -42,7 +47,7 @@ function nativeHistoryRequest({ relayUrl, relayToken, fetchImpl = fetch }) {
 }
 
 export async function restoreDesktopNativeSession({ input, conversationId, relayUrl, relayToken, fetchImpl = fetch,
-  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios') }) {
+  recoveryDirectory = input?.recoveryDirectory ?? path.join(homedir(), '.leileios'), uploadImpl = fetch }) {
   if (!uuid.test(conversationId ?? '')) throw fail('INVALID_NATIVE_RESTORE_ENDPOINT');
   const request = nativeHistoryRequest({ relayUrl, relayToken, fetchImpl });
   await assertNativeHandoffRecoveryClear(recoveryDirectory);
@@ -60,9 +65,11 @@ export async function restoreDesktopNativeSession({ input, conversationId, relay
     projection: history.projection, nativeSnapshot: history.nativeSnapshot });
   if (!result || !['restored', 'already_current'].includes(result.outcome) || result.conversationId !== conversationId ||
     !uuid.test(result.headMessageId ?? '') || !Number.isSafeInteger(result.inserted) || result.inserted < 0) throw fail('NATIVE_RESTORE_INVALID_RESPONSE');
+  await preflightNativeSessionSwitch(input);
+  const assets = await materializeNativeSessionHistoryAssets({ history, conversationId, request, uploadImpl });
   return { outcome: result.outcome, conversationId, headMessageId: result.headMessageId, inserted: result.inserted,
     providerSessionId: selection.providerSessionId, providerCheckpointId: selection.providerCheckpointId,
-    nativeRevision: selection.nativeRevision, executionAuthorized: false };
+    nativeRevision: selection.nativeRevision, executionAuthorized: false, assets };
 }
 
 // Conservative local gate: outstanding recovery on this Mac must be replayed by

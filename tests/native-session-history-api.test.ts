@@ -66,3 +66,23 @@ test("Desktop release endpoint binds owner and accepts only exact handoff eviden
     assert.equal(calls, 1);
   });
 });
+
+test('native asset endpoint binds authenticated owner, validates references and never exposes bytes', async () => {
+  let calls = 0;
+  await withServer(app => {
+    app.use((request, _response, next) => { request.mcpUserId = userId; next(); });
+    app.use('/store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      nativeHistoryAsset: async (input: any) => {
+        calls++; assert.equal(input.userId, userId); assert.equal(input.sourceBlockOrdinal, 0);
+        return { attachmentId: null, mimeType: 'image/png', sizeBytes: 3, sha256: revision, kind: 'image', filename: 'native.png' };
+      } } as any));
+  }, async url => {
+    const send = (body: any) => fetch(url + '/store/native-history/asset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const body = { conversationId, sessionId: sid, expectedRevision: revision, sourceEntryUuid: cp, sourceBlockOrdinal: 0 };
+    assert.equal((await send(body)).status, 200);
+    assert.equal((await send({ ...body, userId: sid })).status, 400);
+    assert.equal((await send({ ...body, sourceBlockOrdinal: -1 })).status, 400);
+    assert.equal((await send({ ...body, attachmentId: 'bad' })).status, 400);
+    assert.equal(calls, 1);
+  });
+});

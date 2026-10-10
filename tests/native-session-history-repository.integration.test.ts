@@ -503,3 +503,103 @@ test("fixed restore entry reaches authenticated HTTP writer and isolated DB; los
     assert.equal(await readFile(transcriptFile, "utf8"), bytes);
   } finally { await rm(root, { recursive: true, force: true }); }
 }));
+
+test("native historical assets bind only verified owned bytes in place; retries and later sync preserve history", { skip: !enabled }, async () => fixture(async f => {
+  const { nativeSessionAsset } = await import('../src/domains/conversation/native-session-asset-repository.js');
+  const { nativeLiveChatAttachments, conversationContentBlocks, conversationAttachments } = await import('../src/database/schema.js');
+  const { createHash } = await import('node:crypto');
+  const source = { type: 'base64', media_type: 'image/png', data: Buffer.from('synthetic image bytes').toString('base64') };
+  f.entries[0].message.content.push({ type: 'image', source });
+  f.input.projection = projectNativeHistory({ sessionId: f.sessionId, revision: revision(1), entries: f.entries }, f.entries[1].uuid);
+  f.input.nativeSnapshot = { sessionId: f.sessionId, revision: revision(1), entries: f.entries };
+  await f.write();
+  const request = { userId: f.owner, conversationId: f.input.conversationId, sessionId: f.sessionId,
+    expectedRevision: revision(1), sourceEntryUuid: f.entries[0].uuid, sourceBlockOrdinal: 1 };
+  const asset = await nativeSessionAsset(f.database.db, request);
+  assert.equal(asset.attachmentId, null); assert.equal(asset.mimeType, 'image/png');
+  assert.equal(asset.sizeBytes, Buffer.from(source.data, 'base64').length);
+  assert.equal(asset.sha256, createHash('sha256').update(Buffer.from(source.data, 'base64')).digest('hex'));
+  const [bad] = await f.database.db.insert(nativeLiveChatAttachments).values({ id: randomUUID(), userId: f.owner, objectKey: 'synthetic/' + randomUUID(), filename: 'image.png', mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes, sha256: '0'.repeat(64), kind: 'image', status: 'ready', readyAt: new Date(), expiresAt: new Date(Date.now()+60000) }).returning();
+  await assert.rejects(nativeSessionAsset(f.database.db, { ...request, attachmentId: bad.id }), { code: 'NATIVE_ASSET_MISMATCH' });
+  const [ready] = await f.database.db.insert(nativeLiveChatAttachments).values({ id: randomUUID(), userId: f.owner, objectKey: 'synthetic/' + randomUUID(), filename: asset.filename, mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes, sha256: asset.sha256, kind: 'image', status: 'ready', readyAt: new Date(), expiresAt: new Date(Date.now()+60000) }).returning();
+  const before = await f.state();
+  const result = await nativeSessionAsset(f.database.db, { ...request, attachmentId: ready.id });
+  assert.equal(result.attachmentId, ready.id);
+  assert.deepEqual(await f.state(), before, 'materialization never changes message/head/checkpoint');
+  assert.equal((await nativeSessionAsset(f.database.db, { ...request, attachmentId: ready.id })).attachmentId, ready.id);
+  const attachments = await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.userId, f.owner));
+  assert.equal(attachments.length, 1);
+  const blocks = await f.database.db.select().from(conversationContentBlocks).where(eq(conversationContentBlocks.userId, f.owner));
+  const image = blocks.find((b: any) => b.rawType === 'image');
+  assert.equal(image.kind, 'attachment'); assert.equal(image.payload.attachment_id, ready.id); assert.equal(image.ordinal, 1);
+  assert.equal((await f.write()).outcome, 'already_current');
+  assert.equal((await nativeSessionAsset(f.database.db, request)).attachmentId, ready.id);
+  const payload = { ...image.payload };
+  for (const key of ['source_entry_uuid','source_block_ordinal','source_session_id','source_asset_hash','source_type']) delete payload[key];
+  await f.database.db.update(conversationContentBlocks).set({ payload }).where(eq(conversationContentBlocks.id,image.id));
+  assert.equal((await nativeSessionAsset(f.database.db, request)).attachmentId,ready.id,'reuse an existing canonical attachment by exact native user UUID and bytes');
+  await assert.rejects(nativeSessionAsset(f.database.db, { ...request, expectedRevision: revision(2) }), { code: 'STALE_NATIVE_PROJECTION' });
+  await assert.rejects(nativeSessionAsset(f.database.db, { ...request, userId: randomUUID() }), { code: 'NATIVE_SOURCE_BINDING_REQUIRED' });
+}));
+
+test('native restore materializes original image and PDF through upload/HEAD/complete then ordinary download; lost bind ack is idempotent', { skip: !enabled }, async () => fixture(async f => {
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { createHash } = await import('node:crypto'); const { default: express } = await import('express');
+  const { withServer } = await import('./helpers/native-live-http-relay-fixtures.js');
+  const { createNativeLiveProviderSessionStoreInternalRouter } = await import('../src/web-api/native-live-provider-session-store-internal-router.js');
+  const { createInternalAttachmentUploadSlotHandler, completeInternalAttachmentUploadHandler } = await import('../src/web-api/native-live-internal/attachments.js');
+  const { NativeLiveAttachmentService } = await import('../src/domains/bridge/attachment/native-live-attachment-service.js');
+  const { nativeSessionAsset } = await import('../src/domains/conversation/native-session-asset-repository.js');
+  const { restoreNativeSessionHistory, readNativeSessionRestoreState } = await import(modulePath.href);
+  const { restoreDesktopNativeSession } = await import('../tools/claude-bridge/src/native-session-switch-restore.mjs');
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j99kAAAAASUVORK5CYII=', 'base64');
+  const document = Buffer.from('%PDF-1.4\nsynthetic document fixture\n%%EOF');
+  f.entries[0].message.content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: image.toString('base64') } }, { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: document.toString('base64') } });
+  const root = await mkdtemp(join(tmpdir(), 'native-asset-e2e-')), configDirectory = join(root, 'config'), projectDirectory = join(configDirectory, 'projects', '-synthetic'), peerDirectory = join(configDirectory, 'sessions');
+  await mkdir(projectDirectory, { recursive: true }); await mkdir(peerDirectory);
+  const transcriptFile = join(projectDirectory, f.sessionId+'.jsonl'), text = f.entries.map(JSON.stringify).join('\n');
+  await writeFile(transcriptFile, text); const indexFile = join(root, 'index.json');
+  await writeFile(indexFile, JSON.stringify({ sessionId: 'local_'+randomUUID(), cliSessionId: f.sessionId, lastAssistantUuid: f.entries[1].uuid, cwd: '/synthetic/workspace' }));
+  const input = { configDirectory, projectDirectory, peerDirectory, indexFile, expectedSessionId: f.sessionId, expectedCheckpointId: f.entries[1].uuid, expectedRevision: createHash('sha256').update(text).digest('hex') };
+  const objects = new Map<string, any>(); let base = '', puts = 0, heads = 0, lostBind = true;
+  const store = {
+    createUploadSlot: ({ objectKey, mimeType, sha256 }: any) => ({ url: base+'/objects/'+encodeURIComponent(objectKey), method: 'PUT', headers: { 'content-type': mimeType, 'x-amz-meta-sha256': sha256 }, expiresAt: new Date(Date.now()+60000).toISOString() }),
+    createDownloadSlot: ({ objectKey }: any) => ({ url: base+'/objects/'+encodeURIComponent(objectKey), method: 'GET', headers: {}, expiresAt: new Date(Date.now()+60000).toISOString() }),
+    headObject: async ({ objectKey }: any) => { heads++; const obj=objects.get(objectKey); return obj ? { sizeBytes: obj.bytes.length, mimeType: obj.mimeType, sha256: obj.sha256 } : null; },
+    deleteObject: async () => assert.fail('restore must not delete objects'),
+  };
+  const attachments = new NativeLiveAttachmentService(f.database.db, store as any, { maxFileBytes: 1024*1024, unboundTtlSeconds: 600 });
+  try { await withServer(app => {
+    app.use((req, _res, next) => { req.mcpUserId=f.owner; next(); });
+    app.put('/objects/:key', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => { assert.equal(req.headers.authorization, undefined); puts++; objects.set(String(req.params.key), { bytes: req.body, mimeType: req.headers['content-type'], sha256: req.headers['x-amz-meta-sha256'] }); res.sendStatus(200); });
+    app.get('/objects/:key', (req, res) => { const obj=objects.get(String(req.params.key)); obj ? res.type(obj.mimeType).send(obj.bytes) : res.sendStatus(404); });
+    app.use('/internal/native-live-session-store', createNativeLiveProviderSessionStoreInternalRouter({ providerSessionStoreService: {} as any,
+      restoreNativeHistory: v => restoreNativeSessionHistory(f.database.db, v), readNativeHistoryState: v => readNativeSessionRestoreState(f.database.db,v),
+      nativeHistoryAsset: async v => { const result=await nativeSessionAsset(f.database.db,v); if(v.attachmentId && lostBind) {lostBind=false; throw new Error('synthetic bind response lost after commit');} return result; },
+    }));
+    app.post('/internal/native-live-relay/attachments/upload-slots', createInternalAttachmentUploadSlotHandler({ attachmentService: attachments } as any));
+    app.post('/internal/native-live-relay/attachments/:attachmentId/complete', completeInternalAttachmentUploadHandler({ attachmentService: attachments } as any));
+  }, async url => {
+    base=url;
+    const restore = () => restoreDesktopNativeSession({ input, conversationId: f.input.conversationId, relayUrl: url, relayToken: 'SYNTHETIC', recoveryDirectory: join(root,'recovery') });
+    await assert.rejects(restore(), { code: 'NATIVE_RESTORE_UNAVAILABLE' });
+    const result=await restore(); assert.deepEqual(result.assets,{ materialized:2,unavailable:0 });
+    const { conversationAttachments } = await import('../src/database/schema.js');
+    const rows=await f.database.db.select().from(conversationAttachments).where(eq(conversationAttachments.userId,f.owner)).orderBy(conversationAttachments.ordinal);
+    assert.equal(rows.length,2); assert.equal((await f.messages()).length,2); assert.equal(puts,2); assert.equal(heads,2);
+    const current = await new DrizzleNativeLiveCurrentPathReader(f.database.db).readCurrentPath({userId:f.owner,conversationId:f.input.conversationId,limit:100});
+    const visible = current!.messages[0]!.blocks.filter(block => block.kind === 'attachment');
+    assert.equal(visible.length,2);
+    assert.deepEqual(visible.map(block => block.payload?.attachment_id),rows.map(row => row.sourceAttachmentId));
+    for(const [i,row] of rows.entries()) {
+      const slot=await attachments.createDownloadSlot({ userId:f.owner,attachmentId:row.sourceAttachmentId! });
+      const bytes=Buffer.from(await (await fetch(slot.download.url)).arrayBuffer());
+      assert.deepEqual(bytes,[image,document][i]); assert.equal(slot.attachment.sha256,createHash('sha256').update(bytes).digest('hex'));
+    }
+    assert.equal((await restore()).assets.materialized,2); assert.equal(puts,2);
+    assert.equal(await readFile(transcriptFile,'utf8'),text);
+  }); } finally { await rm(root,{recursive:true,force:true}); }
+}));

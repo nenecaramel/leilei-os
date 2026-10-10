@@ -5,6 +5,7 @@ import { boundedOutput, isReasoning, structuredToolOutput } from "./output-contr
 const carrierTypes = new Set(["user", "assistant", "system", "attachment"]);
 const fail = code => Object.assign(new Error(code), { code });
 const fingerprint = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const assetFingerprint = source => fingerprint(Object.fromEntries(Object.entries(source).sort(([a], [b]) => a.localeCompare(b))));
 
 // Display ancestry may cross a compaction boundary. This is deliberately NOT
 // the provider resume/fork prefix: never substitute it for execution validation.
@@ -73,7 +74,7 @@ function projectBlock(raw, entry, ordinal, sessionId) {
     const source = raw.source ?? {};
     return { kind: rawType === "image" ? "image" : "file", rawType, text: null, payload: {
       source_entry_uuid: entry.uuid, source_block_ordinal: ordinal,
-      source_session_id: sessionId, source_asset_hash: fingerprint(source),
+      source_session_id: sessionId, source_asset_hash: assetFingerprint(source),
       mime_type: typeof source.media_type === "string" ? source.media_type : null,
       materialization: "pending",
       // Raw bytes and URLs stay in the local native snapshot until an authorized
@@ -184,6 +185,6 @@ export function extractNativeHistoryAsset(snapshot, reference, { expectedRevisio
   const bytes = Buffer.from(data, "base64");
   if (bytes.length > maxBytes) throw fail("NATIVE_ASSET_TOO_LARGE");
   if (bytes.toString("base64") !== data) throw fail("INVALID_NATIVE_ASSET");
-  if (reference.source_asset_hash !== fingerprint(raw.source)) throw fail("STALE_NATIVE_ASSET");
+  if (reference.source_asset_hash !== assetFingerprint(raw.source)) throw fail("STALE_NATIVE_ASSET");
   return { bytes, mimeType, sizeBytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
 }

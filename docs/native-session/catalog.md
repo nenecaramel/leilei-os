@@ -13,6 +13,11 @@ node tools/claude-bridge/scripts/native-session-switch.mjs --restore --session-i
 node tools/claude-bridge/scripts/native-session-switch.mjs --desktop --session-id UUID
 ```
 
+For a fixed local runtime configuration, Node 22 can load the existing secure
+file with `node --env-file=/path/to/private-runtime.env ...`; do not copy tokens
+into commands, documentation or this repository. No new config is created by
+the switching entry.
+
 Restore/Desktop require explicit `LEILEI_NATIVE_LIVE_RELAY_URL` and
 `LEILEI_NATIVE_LIVE_RELAY_TOKEN`; credentials are never printed. The default
 conversation ID is the native session UUID. An earlier import with a different
@@ -39,9 +44,11 @@ Tests use synthetic native files, a fake Desktop launcher and isolated local
 Postgres. No real Desktop was opened, no Claude query was issued, and no real
 `.claude` file or production record was written. Launcher success reports
 `desktopSessionVerified: false`; actual same-session Desktop continuation still
-requires joint acceptance. Native image/file references remain pending normal
-owned-attachment materialization: complete raw records are preserved, but this
-does not yet prove images/files can be previewed in LeileiOS. Old Edit/Retry/Fork
+requires joint acceptance. Native base64 image/document blocks now use normal owned-attachment
+upload/HEAD/complete/download and existing reader envelopes. Exact bytes and
+metadata are verified; already-owned LeileiOS attachments are reused. Files
+referenced only by a URL/path are reported unavailable without fetching or
+reading them. Actual iPhone preview still requires joint acceptance. Old Edit/Retry/Fork
 and automatic Desktop branch selection remain outside the minimal release.
 
 The sections below record the incremental foundations and their limitations
@@ -546,3 +553,50 @@ Node 22.23.3: transport 60 pass; complete offline Bridge 258 pass / 0 fail / 4 l
 skips; runtime gate 400 root + 140 Bridge = 540 pass / 0 fail / 0 skip. Root
 typecheck/build and diff check pass. No actual Claude query, native file write,
 database mutation, daemon restart or Desktop launch was performed.
+
+
+## Native history attachment completion (offline verified)
+
+After atomic history sync, the fixed restore entry resolves each embedded native
+image/document against its authenticated conversation/source revision and full
+complete SessionStore snapshot. It extracts exact bytes locally and verifies
+size/MIME/SHA against backend-derived metadata before using the existing internal
+attachment upload-slot/complete APIs. Only declared storage headers go to the
+upload URL, never relay authorization; redirects and insecure remote URLs fail.
+A dedicated internal asset endpoint binds a ready owned attachment into the
+original content-block ordinal using an atomic transaction and the same object
+lock as retention. Message IDs, dates, parents, head/checkpoints and native source
+files are unchanged. Existing canonical attachments can be reused only under the
+exact native user UUID with identical byte metadata. Matching text is never used.
+
+The snapshot's source reference uses stable source-field ordering because JSONB
+normalizes object-key order. Full native data is unchanged. A response lost after
+binding is recoverable by repeating the fixed restore: one bound attachment and
+one message remain. Interrupted pre-bind uploads remain unbound under existing
+retention, never manually deleted by the script. Subsequent native sync preserves
+materialized display blocks and original checkpoint identity.
+
+The entry reports `assets.materialized` and `assets.unavailable`. Only embedded
+base64 image/document blocks are materialized: expired/external URLs, local paths
+and media nested solely in bounded tool outputs are not silently fetched or
+claimed previewable. No fake bytes, placeholder images or summaries are generated.
+Missing filenames get explicit generated native-reference names; the full
+original native metadata remains in the snapshot. Reused attachments retain
+their original filename. This is the existing attachment pipeline, not a new
+archive or a new media renderer.
+
+Node 22.23.3 final local verification: authenticated API/isolated PostgreSQL
+combined groups **46 PASS / 0 FAIL / 0 SKIP**, complete offline Bridge **267 PASS /
+0 FAIL / 4 deliberately disabled live SKIP**, production runtime gate **400 root
++ 140 Bridge = 540 PASS**, root typecheck/build and diff checks PASS. Tests include
+synthetic PNG/PDF upload, HEAD/complete, production current-path reader envelopes,
+ordinary download with byte/hash comparison, lost bind acknowledgment, repeated
+restore, canonical attachment reuse, checksum rejection, URL non-fetch and both
+S3/inline upload header contracts. No whole canonical-suite delta is claimed.
+
+Implementation is ready for the minimal joint acceptance boundary, subject to
+these explicit source availability limitations. Before any real switching:
+review/merge/deploy/migration/runtime refresh need separate authorization; this
+work did none of them. Joint acceptance must verify original Desktop identity,
+continued same-session generation in each direction, repeated tail sync, official
+Rewind/Fork and iPhone image/file preview. No unattended live Claude query is used.

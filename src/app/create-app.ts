@@ -108,7 +108,7 @@ export type NativeLiveProductionDependencies = {
     & {
       providerSessionStoreService:
         NativeLiveProviderSessionStoreService;
-    } & Pick<NativeLiveProviderSessionStoreInternalDependencies, "restoreNativeHistory" | "readNativeHistoryState" | "releaseNativeHistory">;
+    } & Pick<NativeLiveProviderSessionStoreInternalDependencies, "restoreNativeHistory" | "readNativeHistoryState" | "releaseNativeHistory" | "nativeHistoryAsset">;
 };
 
 export type AppDependencies = {
@@ -523,6 +523,7 @@ export function createApp(
         restoreNativeHistory: dependencies.nativeLiveProduction.internal.restoreNativeHistory,
         readNativeHistoryState: dependencies.nativeLiveProduction.internal.readNativeHistoryState,
         releaseNativeHistory: dependencies.nativeLiveProduction.internal.releaseNativeHistory,
+        nativeHistoryAsset: dependencies.nativeLiveProduction.internal.nativeHistoryAsset,
       }),
     );
   }
