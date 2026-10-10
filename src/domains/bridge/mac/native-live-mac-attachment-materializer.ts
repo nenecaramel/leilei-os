@@ -93,11 +93,8 @@ export class NativeLiveMacAttachmentMaterializer {
     if (attachments.length === 0) return prompt;
 
     const manifest = attachments.map((attachment) => [
-      "- attachment_id: " + attachment.attachmentId,
-      "  filename: " + JSON.stringify(attachment.filename),
+      "- filename: " + JSON.stringify(attachment.filename),
       "  mime_type: " + attachment.mimeType,
-      "  size_bytes: " + attachment.sizeBytes,
-      "  sha256: " + attachment.sha256,
       "  local_path: " + JSON.stringify(attachment.localPath),
     ].join("\n")).join("\n");
 
