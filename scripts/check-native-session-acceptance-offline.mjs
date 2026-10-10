@@ -9,6 +9,12 @@ import { fileURLToPath } from "node:url";
 
 const repository = fileURLToPath(new URL("../", import.meta.url));
 const compatibilityBase = "fde5dd14effdb30c09a66c29e08cd3d1bc9627a2";
+// Use --from-step-5 only after the operator has verified steps 1–4 PASS on this exact checkout.
+const fromStep5 = process.argv.length === 3 && process.argv[2] === "--from-step-5";
+if (process.argv.length > (fromStep5 ? 3 : 2)) {
+  console.error("Usage: node scripts/check-native-session-acceptance-offline.mjs [--from-step-5]");
+  process.exit(2);
+}
 const logDirectory = mkdtempSync(join(tmpdir(), "leileios-native-handoff-offline-"));
 
 function stop(message) {
@@ -125,13 +131,20 @@ function printFailure(logFile) {
 
 console.log(`Using existing Node ${selectedNode.version} for offline checks.`);
 console.log("Checking PR #1005 offline. Full output saved to private temporary logs.");
+if (fromStep5) console.log("Steps 1–4: skipped (previous run reported PASS; not reverified).");
 for (let i = 0; i < steps.length; i++) {
+  if (fromStep5 && i < 4) continue;
   const [name, args] = steps[i];
+  // drizzle-kit check requires DATABASE_URL merely to parse drizzle.config.ts.
+  // Give only this read-only check an unroutable localhost placeholder; never use production credentials.
+  const stepEnvironment = i === 4
+    ? { ...safeEnvironment, DATABASE_URL: "postgresql://offline:offline@127.0.0.1:1/leileios_never_connect" }
+    : safeEnvironment;
   const logFile = join(logDirectory, `step-${i + 1}.log`);
   const logFd = openSync(logFile, "w", 0o600);
   process.stdout.write(`[${i + 1}/${steps.length}] ${name} ... `);
   const result = spawnSync("pnpm", args, {
-    cwd: repository, env: safeEnvironment,
+    cwd: repository, env: stepEnvironment,
     stdio: ["ignore", logFd, logFd],
     timeout: 15 * 60 * 1000,
   });
@@ -148,4 +161,4 @@ for (let i = 0; i < steps.length; i++) {
   }
   console.log("PASS");
 }
-console.log("OFFLINE_ACCEPTANCE_PASS");
+console.log(fromStep5 ? "OFFLINE_ACCEPTANCE_REMAINING_STEPS_PASS" : "OFFLINE_ACCEPTANCE_PASS");
