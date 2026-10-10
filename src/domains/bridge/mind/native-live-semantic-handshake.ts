@@ -164,6 +164,46 @@ implements NativeLiveSemanticPreparationStager {
           AND reservation_expires_at <= now()
       `);
 
+      // A relay response can disappear *after* the reservation commits.
+      // The same active listener can safely re-read its one outstanding
+      // scoring job: its daemon executes runOnce serially, and completed
+      // jobs no longer have status='reserved'. Do not extend the lease here.
+      // Other listener IDs cannot reclaim it before expiry.
+      const owned = await transaction.execute<{ prepare_id: string }>(sql`
+        SELECT semantic.prepare_id
+        FROM native_live_semantic_scoring_requests AS semantic
+        INNER JOIN native_live_turn_preparations AS preparation
+          ON preparation.id = semantic.prepare_id
+         AND preparation.user_id = semantic.user_id
+        INNER JOIN conversations AS conversation
+          ON conversation.id = semantic.conversation_id
+         AND conversation.user_id = semantic.user_id
+        WHERE semantic.user_id = ${input.userId}::uuid
+          AND semantic.status = 'reserved'
+          AND semantic.reserved_by = ${input.listenerInstanceId}::uuid
+          AND semantic.reservation_expires_at > now()
+          AND preparation.status = 'prepared'
+          AND preparation.mind_prepared = false
+          AND conversation.origin = 'native_live'
+          AND conversation.lifecycle_status = 'active'
+        ORDER BY semantic.reserved_at ASC, semantic.prepare_id ASC
+        FOR UPDATE OF semantic SKIP LOCKED
+        LIMIT 1
+      `);
+      if (owned[0]) {
+        const request = await this.getWithExecutor(
+          transaction as Transaction,
+          input.userId,
+          owned[0].prepare_id,
+        );
+        if (!request) throw new Error("Owned semantic scoring request disappeared.");
+        return {
+          reservationId: request.prepareId,
+          query: request.query,
+          candidates: request.candidates,
+        };
+      }
+
       const reserved = await transaction.execute<{ prepare_id: string }>(sql`
         WITH candidate AS (
           SELECT semantic.prepare_id
