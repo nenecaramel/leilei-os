@@ -1,3 +1,4 @@
+import type { NativeLiveProviderSessionStoreInternalDependencies } from "../web-api/native-live-provider-session-store-internal-router.js";
 import { createMindRecallRouter } from "../web-api/mind-recall-internal-router.js";
 import express from "express";
 import { createInternalAuthMiddleware } from "../auth/internal-auth.js";
@@ -107,7 +108,7 @@ export type NativeLiveProductionDependencies = {
     & {
       providerSessionStoreService:
         NativeLiveProviderSessionStoreService;
-    };
+    } & Pick<NativeLiveProviderSessionStoreInternalDependencies, "restoreNativeHistory" | "readNativeHistoryState">;
 };
 
 export type AppDependencies = {
@@ -519,6 +520,8 @@ export function createApp(
         providerSessionStoreService:
           dependencies.nativeLiveProduction.internal
             .providerSessionStoreService,
+        restoreNativeHistory: dependencies.nativeLiveProduction.internal.restoreNativeHistory,
+        readNativeHistoryState: dependencies.nativeLiveProduction.internal.readNativeHistoryState,
       }),
     );
   }

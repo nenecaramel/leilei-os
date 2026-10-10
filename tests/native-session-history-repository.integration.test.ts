@@ -384,3 +384,66 @@ test("failed canonical restore rolls back transcript seeding and its completenes
   assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), null);
   assert.equal((await f.state()).messages.length, 0);
 }));
+
+test("native restore cannot mark an interrupted nonempty replica complete", { skip: !enabled }, async () => fixture(async f => {
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+  await store.preserveExternalSession({ userId: f.owner, sessionId: f.sessionId });
+  await store.append({ userId: f.owner, key: { sessionId: f.sessionId }, appendBatchId: randomUUID(), entries: f.entries });
+  await assert.rejects(f.write({ ...f.input, nativeSnapshot: { sessionId: f.sessionId, revision: revision(1), entries: f.entries } }), { code: "NATIVE_SESSION_RECOVERY_REQUIRED" });
+  assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), "incomplete");
+  assert.equal((await f.state()).messages.length, 0);
+  assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), f.entries);
+}));
+
+test("fixed restore entry reaches authenticated HTTP writer and isolated DB; lost HTTP ack retry creates one history", { skip: !enabled }, async () => fixture(async f => {
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createHash } = await import("node:crypto");
+  const { withServer } = await import("./helpers/native-live-http-relay-fixtures.js");
+  const { createNativeLiveProviderSessionStoreInternalRouter } = await import("../src/web-api/native-live-provider-session-store-internal-router.js");
+  const { restoreNativeSessionHistory, readNativeSessionRestoreState } = await import(modulePath.href);
+  const { restoreDesktopNativeSession } = await import("../tools/claude-bridge/src/native-session-switch-restore.mjs");
+  const { DrizzleNativeLiveProviderSessionStoreRepository } = await import("../src/domains/bridge/provider-session/native-live-provider-session-store.js");
+  const root = await mkdtemp(join(tmpdir(), "native-restore-e2e-"));
+  const configDirectory = join(root, "config"), projectDirectory = join(configDirectory, "projects", "-synthetic-workspace"), peerDirectory = join(configDirectory, "sessions");
+  const indexFile = join(root, "desktop.json"), transcriptFile = join(projectDirectory, f.sessionId + ".jsonl");
+  try {
+    await mkdir(projectDirectory, { recursive: true }); await mkdir(peerDirectory);
+    const bytes = f.entries.map(JSON.stringify).join("\n");
+    await writeFile(transcriptFile, bytes);
+    await writeFile(indexFile, JSON.stringify({ sessionId: "local_" + randomUUID(), cliSessionId: f.sessionId, lastAssistantUuid: f.entries[1].uuid, cwd: "/synthetic/workspace" }));
+    const input = { configDirectory, projectDirectory, peerDirectory, indexFile, expectedSessionId: f.sessionId,
+      expectedCheckpointId: f.entries[1].uuid, expectedRevision: createHash("sha256").update(bytes).digest("hex") };
+    await withServer(app => {
+      app.use((request, response, next) => {
+        if (request.header("authorization") !== "Bearer synthetic-restore-token") { response.sendStatus(401); return; }
+        request.mcpUserId = f.owner; next();
+      });
+      app.use("/internal/native-live-session-store", createNativeLiveProviderSessionStoreInternalRouter({
+        providerSessionStoreService: {} as any,
+        restoreNativeHistory: value => restoreNativeSessionHistory(f.database.db, value),
+        readNativeHistoryState: value => readNativeSessionRestoreState(f.database.db, value),
+      }));
+    }, async relayUrl => {
+      const options = { input, conversationId: f.input.conversationId, relayUrl, relayToken: "synthetic-restore-token" };
+      let requests = 0;
+      await assert.rejects(restoreDesktopNativeSession({ ...options, fetchImpl: async (url: any, value: any) => {
+        requests++; const response = await fetch(url, value);
+        if (String(url).endsWith("/restore")) { await response.text(); throw new Error("synthetic lost HTTP response after commit"); }
+        return response;
+      } }), { code: "NATIVE_RESTORE_UNAVAILABLE" });
+      assert.equal(requests, 2, "no automatic HTTP replay");
+      assert.equal((await f.messages()).length, 2);
+      const retry = await restoreDesktopNativeSession(options);
+      assert.equal(retry.outcome, "already_current"); assert.equal(retry.inserted, 0);
+      assert.equal((await f.messages()).length, 2);
+      const store = new DrizzleNativeLiveProviderSessionStoreRepository(f.database.db);
+      assert.deepEqual(await store.load({ userId: f.owner, key: { sessionId: f.sessionId } }), f.entries);
+      assert.equal(await store.getStatus({ userId: f.owner, sessionId: f.sessionId }), "complete");
+      assert.equal((await f.state()).checkpoints.length, 1);
+    });
+    assert.equal(await readFile(transcriptFile, "utf8"), bytes);
+  } finally { await rm(root, { recursive: true, force: true }); }
+}));

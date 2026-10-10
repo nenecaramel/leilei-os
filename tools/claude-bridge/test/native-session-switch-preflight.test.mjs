@@ -93,3 +93,86 @@ test('fixed preflight command prints only sanitized evidence and refuses actual 
     assert.deepEqual(await readFile(transcriptFile), before);
   });
 });
+
+test('restore entry submits complete original records through state CAS without invoking Claude or changing source', async () => {
+  const { restoreDesktopNativeSession } = await import('../src/native-session-switch-restore.mjs');
+  await fixture(async ({ input, transcriptFile }) => {
+    const before = await readFile(transcriptFile);
+    const calls = [];
+    const result = await restoreDesktopNativeSession({ input, conversationId: D, relayUrl: 'https://relay.invalid', relayToken: 'PRIVATE_TOKEN',
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        assert.equal(options.redirect, 'error');
+        assert.equal(options.headers.Authorization, 'Bearer PRIVATE_TOKEN');
+        const body = JSON.parse(options.body);
+        if (url.endsWith('/state')) {
+          assert.deepEqual(body, { conversationId: D, sessionId: A });
+          return new Response(JSON.stringify({ success: true, data: { expectedHeadMessageId: null, expectedRevision: null } }));
+        }
+        assert.equal(body.nativeSnapshot.entries.length, 2);
+        assert.equal(body.nativeSnapshot.entries[0].message.content, 'PRIVATE_PROMPT');
+        assert.equal(body.projection.sessionId, A);
+        assert.equal(body.effectiveWorkingDirectory, '/fixture');
+        assert.equal(body.expectedHeadMessageId, null);
+        assert.equal('userId' in body, false);
+        return new Response(JSON.stringify({ success: true, data: { outcome: 'restored', conversationId: D, headMessageId: CP, inserted: 2 } }));
+      } });
+    assert.equal(calls.length, 2);
+    assert.equal(result.executionAuthorized, false);
+    assert.equal(result.providerSessionId, A);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_|entries|nativeSnapshot/);
+    assert.deepEqual(await readFile(transcriptFile), before);
+  });
+});
+test('restore entry refuses insecure endpoint, open owner and backend conflicts with no automatic retries', async () => {
+  const { restoreDesktopNativeSession } = await import('../src/native-session-switch-restore.mjs');
+  await fixture(async ({ input }) => {
+    let calls = 0;
+    const options = { input, conversationId: D, relayUrl: 'http://relay.invalid', relayToken: 'PRIVATE_TOKEN', fetchImpl: async () => { calls++; throw new Error('PRIVATE_DETAIL'); } };
+    await assert.rejects(restoreDesktopNativeSession(options), e => e.code === 'INVALID_NATIVE_RESTORE_ENDPOINT');
+    assert.equal(calls, 0);
+    await assert.rejects(restoreDesktopNativeSession({ ...options, relayUrl: 'https://relay.invalid', fetchImpl: async () => {
+      calls++; return new Response(JSON.stringify({ success: false, error: { code: 'NATIVE_CONVERSATION_BUSY', message: 'PRIVATE_DETAIL' } }), { status: 409 });
+    } }), e => e.code === 'NATIVE_CONVERSATION_BUSY' && !e.message.includes('PRIVATE'));
+    assert.equal(calls, 1);
+    const started = 'Sat Oct 10 03:13:09 2026';
+    await writeFile(path.join(input.peerDirectory, '123.json'), JSON.stringify({ sessionId: A, pid: 123, pidDomain: 'darwin', peerProtocol: 1, procStart: started, status: 'idle' }));
+    await assert.rejects(restoreDesktopNativeSession({ ...options, relayUrl: 'https://relay.invalid', input: { ...input, probeProcessStart: async () => started } }), e => e.code === 'NATIVE_SESSION_STILL_OPEN');
+    assert.equal(calls, 1);
+  });
+});
+
+test('fixed restore command writes only to explicitly configured mock relay and prints sanitized completion', async () => {
+  const { createServer } = await import('node:http');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await fixture(async ({ input, transcriptFile }) => {
+    let requests = 0;
+    const server = createServer(async (request, response) => {
+      assert.equal(request.headers.authorization, 'Bearer PRIVATE_TOKEN');
+      requests++;
+      let text = ''; for await (const chunk of request) text += chunk;
+      const body = JSON.parse(text);
+      response.setHeader('Content-Type', 'application/json');
+      if (request.url.endsWith('/state')) response.end(JSON.stringify({ success: true, data: { expectedHeadMessageId: null, expectedRevision: null } }));
+      else {
+        assert.equal(body.nativeSnapshot.entries[0].message.content, 'PRIVATE_PROMPT');
+        response.end(JSON.stringify({ success: true, data: { outcome: 'restored', conversationId: D, headMessageId: CP, inserted: 2 } }));
+      }
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const before = await readFile(transcriptFile);
+      const script = new URL('../scripts/native-session-switch.mjs', import.meta.url).pathname;
+      const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, '--restore', '--desktop-index', input.indexFile,
+        '--project-dir', input.projectDirectory, '--config-dir', input.configDirectory, '--conversation-id', D], {
+        env: { ...process.env, LEILEI_NATIVE_LIVE_RELAY_URL: `http://127.0.0.1:${server.address().port}`, LEILEI_NATIVE_LIVE_RELAY_TOKEN: 'PRIVATE_TOKEN' },
+      });
+      assert.equal(stderr, ''); assert.equal(requests, 2);
+      assert.equal(JSON.parse(stdout).outcome, 'restored');
+      assert.equal(JSON.parse(stdout).executionAuthorized, false);
+      assert.doesNotMatch(stdout, /PRIVATE_|entries|nativeSnapshot/);
+      assert.deepEqual(await readFile(transcriptFile), before);
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
+});

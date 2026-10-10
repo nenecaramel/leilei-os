@@ -346,7 +346,7 @@ identity/count evidence with `readOnly: true` and `executionAuthorized: false`.
 Canonical in-flight and baseline-mirror checks are not yet wired into this
 entry, so it cannot authorize a real turn.
 
-A fixed script now exposes only this check:
+The fixed script supports read-only `--check` and explicit authenticated `--restore` (described below):
 
 ```sh
 node tools/claude-bridge/scripts/native-session-switch.mjs --check \
@@ -354,8 +354,8 @@ node tools/claude-bridge/scripts/native-session-switch.mjs --check \
 ```
 
 `--config-dir` is available for an explicitly selected native configuration;
-otherwise the existing `CLAUDE_CONFIG_DIR` or `~/.claude` is used. Actual switch
-verbs are intentionally rejected while integration is unfinished. File paths
+otherwise the existing `CLAUDE_CONFIG_DIR` or `~/.claude` is used. Execution and
+Desktop launch verbs are rejected while integration is unfinished. File paths
 are currently inspection inputs; the final selection entry still needs catalog
 resolution so the user does not need to find JSONL or index files manually.
 
@@ -389,8 +389,56 @@ the prompt, and keeps the existing mirror-failure, completion/checkpoint and
 terminal-result delivery paths. Default new/resume/fork behavior is unchanged.
 
 These are connected internal write/execution paths, not a finished switching UI
-or executable handoff script. The fixed script remains `--check` only. Caller
+or complete executable handoff script. The fixed script also supports history-only `--restore`. Caller
 coordination still must enforce release, durable pending-intent/result replay,
 fresh snapshot and canonical ownership before enabling this mode. Real Desktop
 handoff, native file mutation and provider queries remain unexecuted; all tests
 use synthetic transcripts/fake queries or the isolated local PostgreSQL database.
+
+
+### Explicit authenticated history restore
+
+```sh
+node tools/claude-bridge/scripts/native-session-switch.mjs --restore \
+  --desktop-index INDEX_FILE --project-dir PROJECT_DIRECTORY \
+  --conversation-id STABLE_CONVERSATION_UUID
+```
+
+The command requires explicitly configured `LEILEI_NATIVE_LIVE_RELAY_URL` and
+`LEILEI_NATIVE_LIVE_RELAY_TOKEN`; it does not discover credentials, invoke Railway
+or fall back to production. Remote endpoints require HTTPS, local fixture HTTP is
+limited to loopback; redirects and credential-bearing URLs are rejected. Native
+records are never printed. Keep the same conversation UUID for retries/sync.
+
+The authenticated existing session-store mount exposes `native-history/state`
+and `native-history/restore`. Ownership comes only from internal auth, never the
+payload. State returns head/revision CAS evidence only. The client checks a pinned
+complete native source and release, fetches CAS evidence, rechecks source/release,
+then submits the original snapshot and display projection to the atomic writer.
+Backend checks canonical busy/head/source binding again. An interrupted nonempty
+SessionStore replica is refused (`NATIVE_SESSION_RECOVERY_REQUIRED`); history
+restore is not a way to mark unfinished append/result recovery complete.
+
+This is a history-only write, not a lease or permission to start Claude. It does
+not automatically retry HTTP requests. If server commit succeeds but its response
+is lost, rerunning with the same conversation UUID reads the committed CAS state
+and returns `already_current`, preserving message and transcript identities.
+Request bodies above 30 MB fail locally (existing authenticated parser is 32 MB);
+records are never truncated. Responses are bounded to 64 KB, output/errors contain
+only allowlisted status and identity fields.
+
+The actual CLI is tested against a synthetic local HTTP relay; the same restore
+entry is separately tested through the authenticated router and isolated real
+PostgreSQL, including commit followed by lost response. No original `.claude`
+files, actual account sessions, daemon, Desktop or production were changed. Native
+runtime ownership/caller wiring, catalog-based friendly selection, reverse
+Desktop handoff and joint live acceptance remain incomplete. Do not enable this
+Draft feature for real switching until those execution gates are connected.
+
+Restore-entry validation under Node 22.23.3: authenticated API 3 pass;
+serialized isolated database/API groups 40 pass / 0 fail / 0 skip; complete
+bridge offline 254 pass / 0 fail / 4 live skips; existing runtime gate 536 pass.
+Root typecheck/build and diff check pass. One initial concurrent database-group
+run returned `INTERNAL_ERROR` in the existing synthetic same-session prepare
+case; its isolated rerun and the full serialized groups pass. Its transient root
+cause is not established, so this is recorded rather than called a proven fix.

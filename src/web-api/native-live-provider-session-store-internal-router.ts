@@ -1,3 +1,4 @@
+import { validateNativeHistoryRestoreInput, type restoreNativeSessionHistory, type readNativeSessionRestoreState } from "../domains/conversation/native-session-history-repository.js";
 import { Router, type RequestHandler, type Response } from "express";
 import {
   NativeLiveProviderSessionStoreError,
@@ -7,6 +8,8 @@ import {
 } from "../domains/bridge/provider-session/native-live-provider-session-store.js";
 
 export type NativeLiveProviderSessionStoreInternalDependencies = {
+  restoreNativeHistory?: (input: Parameters<typeof restoreNativeSessionHistory>[1]) => ReturnType<typeof restoreNativeSessionHistory>;
+  readNativeHistoryState?: (input: Parameters<typeof readNativeSessionRestoreState>[1]) => ReturnType<typeof readNativeSessionRestoreState>;
   providerSessionStoreService: Pick<
     NativeLiveProviderSessionStoreService,
     "append" | "load" | "listSessions" | "delete" | "listSubkeys"
@@ -22,6 +25,8 @@ export function createNativeLiveProviderSessionStoreInternalRouter(
     response.setHeader("Cache-Control", "private, no-store");
     next();
   });
+  router.post("/native-history/restore", nativeHistoryRestoreHandler(dependencies));
+  router.post("/native-history/state", nativeHistoryStateHandler(dependencies));
   router.post("/append", appendHandler(dependencies));
   router.post("/load", loadHandler(dependencies));
   router.post("/list-sessions", listSessionsHandler(dependencies));
@@ -321,4 +326,41 @@ function sendStoreError(response: Response, error: unknown): void {
       message: "Session store is temporarily unavailable.",
     },
   });
+}
+
+function nativeHistoryRestoreHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    const allowed = new Set(["conversationId", "expectedHeadMessageId", "expectedRevision", "effectiveWorkingDirectory", "projection", "nativeSnapshot"]);
+    if (!body || Object.keys(body).some(key => !allowed.has(key)) || !readRecord(body.nativeSnapshot)) { sendInvalid(response); return; }
+    const input = { ...body, userId } as Parameters<typeof restoreNativeSessionHistory>[1];
+    try { validateNativeHistoryRestoreInput(input); }
+    catch { sendInvalid(response); return; }
+    if (!dependencies.restoreNativeHistory) { sendNativeHistoryError(response, null); return; }
+    try { response.json({ success: true, data: await dependencies.restoreNativeHistory(input) }); }
+    catch (error) { sendNativeHistoryError(response, error); }
+  };
+}
+function nativeHistoryStateHandler(dependencies: NativeLiveProviderSessionStoreInternalDependencies): RequestHandler {
+  return async (request, response) => {
+    const userId = requireInternalUser(response, request.mcpUserId);
+    if (!userId) return;
+    const body = readRecord(request.body);
+    if (!body || Object.keys(body).some(key => key !== "conversationId" && key !== "sessionId") ||
+      typeof body.conversationId !== "string" || typeof body.sessionId !== "string") { sendInvalid(response); return; }
+    if (!dependencies.readNativeHistoryState) { sendNativeHistoryError(response, null); return; }
+    try { response.json({ success: true, data: await dependencies.readNativeHistoryState({ userId, conversationId: body.conversationId, sessionId: body.sessionId }) }); }
+    catch (error) { sendNativeHistoryError(response, error); }
+  };
+}
+function sendNativeHistoryError(response: Response, error: unknown) {
+  const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+  const conflicts = new Set(["NATIVE_CONVERSATION_BUSY", "STALE_NATIVE_PROJECTION", "CANONICAL_HEAD_CHANGED", "CANONICAL_HISTORY_CHANGED", "CANONICAL_CHECKPOINT_CHANGED", "NATIVE_SOURCE_BINDING_REQUIRED", "EXPLICIT_BRANCH_SELECTION_REQUIRED", "NATIVE_HISTORY_REWRITTEN", "NATIVE_TRANSCRIPT_DIVERGED", "NATIVE_SESSION_RECOVERY_REQUIRED", "CLEANUP_IN_PROGRESS", "NATIVE_CONVERSATION_NOT_FOUND"]);
+  const invalid = new Set(["INVALID_NATIVE_PROJECTION", "INVALID_NATIVE_SNAPSHOT", "INVALID_KEY", "INVALID_ENTRY", "BATCH_TOO_LARGE"]);
+  response.status(conflicts.has(code) ? 409 : invalid.has(code) ? 400 : 503).json({ success: false, error: {
+    code: conflicts.has(code) || invalid.has(code) ? code : "NATIVE_HISTORY_UNAVAILABLE",
+    message: "Native history restore could not be completed.",
+  } });
 }

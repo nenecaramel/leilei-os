@@ -36,7 +36,8 @@ export class NativeLiveProviderSessionStoreError extends Error {
       | "EXTERNAL_SESSION_PRESERVED"
       | "CLEANUP_IN_PROGRESS"
       | "NATIVE_TRANSCRIPT_DIVERGED"
-      | "EXTERNAL_SESSION_NOT_PRESERVED",
+      | "EXTERNAL_SESSION_NOT_PRESERVED"
+      | "NATIVE_SESSION_RECOVERY_REQUIRED",
     message: string,
   ) {
     super(message);
@@ -89,8 +90,8 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
     input.entries.forEach(normalizeEntry);
     return this.db.transaction(async transaction => {
       await transaction.execute(sql`SELECT ${providerSessionOwnershipLock({ providerSessionId: input.key.sessionId, wait: true })}`);
-      const [status] = await transaction.execute<{ preserve_external_session: boolean }>(sql`
-        SELECT preserve_external_session FROM native_live_provider_session_store_status
+      const [status] = await transaction.execute<{ preserve_external_session: boolean; state: string }>(sql`
+        SELECT preserve_external_session, state FROM native_live_provider_session_store_status
         WHERE user_id = ${input.userId}::uuid AND provider_session_id = ${input.key.sessionId}
         FOR UPDATE
       `);
@@ -99,6 +100,9 @@ export class DrizzleNativeLiveProviderSessionStoreRepository {
       }
       const repository = new DrizzleNativeLiveProviderSessionStoreRepository(transaction);
       const old = await repository.load(input) ?? [];
+      if (old.length > 0 && status.state !== "complete") {
+        throw new NativeLiveProviderSessionStoreError("NATIVE_SESSION_RECOVERY_REQUIRED", "Interrupted transcript durability must be resolved before restoration.");
+      }
       if (old.length > input.entries.length || old.some((entry, index) => stableEntryJson(entry) !== stableEntryJson(input.entries[index]))) {
         throw new NativeLiveProviderSessionStoreError("NATIVE_TRANSCRIPT_DIVERGED", "Native transcript is not an exact extension of its durable replica.");
       }

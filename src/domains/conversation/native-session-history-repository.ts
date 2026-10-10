@@ -44,7 +44,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[0-9a-f]{64}$/;
 const fail = (code: string) => Object.assign(new Error(code), { code });
 
-function validate(input: Parameters<typeof restoreNativeSessionHistory>[1]) {
+export function validateNativeHistoryRestoreInput(input: Parameters<typeof restoreNativeSessionHistory>[1]) {
   const p = input.projection;
   if (!uuid.test(input.userId) || !uuid.test(input.conversationId) ||
     (input.expectedHeadMessageId !== null && !uuid.test(input.expectedHeadMessageId)) ||
@@ -53,6 +53,10 @@ function validate(input: Parameters<typeof restoreNativeSessionHistory>[1]) {
     !uuid.test(p.sessionId) || !uuid.test(p.checkpointId) || !hash.test(p.revision) ||
     !p.messages.length || p.messages.length > 10_000 || p.messages.at(-1)?.role !== "assistant" ||
     p.messages.at(-1)?.providerCheckpointId !== p.checkpointId) throw fail("INVALID_NATIVE_PROJECTION");
+  const snapshot = input.nativeSnapshot;
+  if (snapshot && (snapshot.sessionId !== p.sessionId || snapshot.revision !== p.revision ||
+    !Array.isArray(snapshot.entries) || !snapshot.entries.some(entry => entry?.uuid === p.checkpointId))) throw fail("INVALID_NATIVE_SNAPSHOT");
+
   const seen = new Set<string>();
   for (const [index, message] of p.messages.entries()) {
     const { fingerprint, ...body } = message;
@@ -81,11 +85,9 @@ export async function restoreNativeSessionHistory(db: Database, input: {
   projection: NativeHistoryProjection;
   nativeSnapshot?: { sessionId: string; revision: string; entries: Array<Record<string, unknown> & { type: string }> };
 }): Promise<{ outcome: "restored" | "already_current"; conversationId: string; headMessageId: string; inserted: number }> {
-  validate(input);
+  validateNativeHistoryRestoreInput(input);
   const p = input.projection;
   const snapshot = input.nativeSnapshot;
-  if (snapshot && (snapshot.sessionId !== p.sessionId || snapshot.revision !== p.revision ||
-    !snapshot.entries.some(entry => entry.uuid === p.checkpointId))) throw fail("INVALID_NATIVE_SNAPSHOT");
   return db.transaction(async tx => {
     // Serialize the initial insert too, when no conversation row exists yet.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('leileios-native-history:' || ${input.conversationId}, 0))`);
@@ -185,4 +187,14 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     await tx.update(conversations).set({ currentHeadMessageId: parent, updatedAt: new Date(), providerMetadata: { ...existing?.providerMetadata, nativeSessionSource: nextSource } }).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
     return { outcome: "restored" as const, conversationId: input.conversationId, headMessageId: parent, inserted: p.messages.length - rows.length };
   });
+}
+
+/** CAS evidence only. No history body, credentials or execution authority. */
+export async function readNativeSessionRestoreState(db: Database, input: { userId: string; conversationId: string; sessionId: string }) {
+  if (![input.userId, input.conversationId, input.sessionId].every(value => uuid.test(value))) throw fail("INVALID_NATIVE_PROJECTION");
+  const [conversation] = await db.select().from(conversations).where(and(eq(conversations.id, input.conversationId), eq(conversations.userId, input.userId)));
+  if (!conversation) return { expectedHeadMessageId: null, expectedRevision: null };
+  const source = conversation.providerMetadata.nativeSessionSource as SourceIndex | undefined;
+  if (conversation.origin !== "native_live" || conversation.lifecycleStatus !== "active" || !source || source.sessionId !== input.sessionId) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
+  return { expectedHeadMessageId: conversation.currentHeadMessageId, expectedRevision: source.revision };
 }
