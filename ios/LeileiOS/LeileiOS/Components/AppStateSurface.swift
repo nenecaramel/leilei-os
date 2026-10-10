@@ -30,6 +30,7 @@ private struct AppConfirmationAlertModifier: ViewModifier {
     let title: String
     let message: String
     let actionTitle: String
+    let cancelTitle: String
     let actionRole: ButtonRole?
     @Binding var isPresented: Bool
     let onConfirm: () -> Void
@@ -39,7 +40,7 @@ private struct AppConfirmationAlertModifier: ViewModifier {
             title,
             isPresented: $isPresented
         ) {
-            Button("Cancel", role: .cancel) {
+            Button(cancelTitle, role: .cancel) {
             }
 
             Button(actionTitle, role: actionRole) {
@@ -52,11 +53,23 @@ private struct AppConfirmationAlertModifier: ViewModifier {
 }
 
 extension View {
+    func appFailureAlert(
+        message: String,
+        isPresented: Binding<Bool>
+    ) -> some View {
+        self.alert("Failed", isPresented: isPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(message)
+        }
+    }
+
     func appConfirmationAlert(
         title: String,
         message: String,
         actionTitle: String,
         actionRole: ButtonRole? = nil,
+        cancelTitle: String = "Cancel",
         isPresented: Binding<Bool>,
         onConfirm: @escaping () -> Void
     ) -> some View {
@@ -65,6 +78,7 @@ extension View {
                 title: title,
                 message: message,
                 actionTitle: actionTitle,
+                cancelTitle: cancelTitle,
                 actionRole: actionRole,
                 isPresented: isPresented,
                 onConfirm: onConfirm

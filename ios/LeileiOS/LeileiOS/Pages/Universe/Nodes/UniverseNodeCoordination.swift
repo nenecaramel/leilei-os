@@ -36,9 +36,23 @@ extension UniverseNodeSheet {
     var confirmationTitle: String {
         switch confirmation {
         case .discardChanges: return "Discard changes?"
-        case .deleteNode: return "Delete Node?"
+        case .deleteNode: return "Delete node?"
         case .restoreVersion: return "Restore previous version?"
-        case .removeConnection: return "Remove Connection?"
+        case .removeConnection: return "Remove connection?"
+        case nil: return ""
+        }
+    }
+
+    var confirmationCancelTitle: String {
+        confirmation == .discardChanges ? "Keep Editing" : "Cancel"
+    }
+
+    var confirmationMessage: String {
+        switch confirmation {
+        case .discardChanges: return "Your unsaved changes will be lost."
+        case .deleteNode: return "This node and its connections will be deleted."
+        case .restoreVersion: return "This node will be replaced with its previous version."
+        case .removeConnection: return "This connection will be removed. The connected nodes will be kept."
         case nil: return ""
         }
     }

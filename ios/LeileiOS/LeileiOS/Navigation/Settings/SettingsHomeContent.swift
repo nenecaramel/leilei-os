@@ -110,29 +110,22 @@ struct SettingsHomeContent: View {
                 await refreshAuthorizationStatus()
             }
         }
-        .confirmationDialog(
-            "Sign Out?",
-            isPresented: $showingSignOutConfirmation,
-            titleVisibility: .visible
+        .appConfirmationAlert(
+            title: "Sign out?",
+            message: "You will need to sign in again to access your account.",
+            actionTitle: "Sign Out",
+            actionRole: .destructive,
+            isPresented: $showingSignOutConfirmation
         ) {
-            Button("Sign Out", role: .destructive) {
-                Task {
-                    await signOut()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+            Task { await signOut() }
         }
-        .alert(
-            "Authentication failed",
+        .appFailureAlert(
+            message: authErrorMessage ?? "Authentication could not be completed.",
             isPresented: Binding(
                 get: { authErrorMessage != nil },
                 set: { if !$0 { authErrorMessage = nil } }
             )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(authErrorMessage ?? "")
-        }
+        )
     }
 
     private var notificationStatusTitle: String {

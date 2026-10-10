@@ -134,15 +134,15 @@ struct MemoryEditorSheet: View {
                     )
                 }
             }
-            .confirmationDialog(
-                "Discard changes?",
-                isPresented: $confirmDiscard,
-                titleVisibility: .visible
+            .appConfirmationAlert(
+                title: "Discard changes?",
+                message: "Your unsaved changes will be lost.",
+                actionTitle: "Discard",
+                actionRole: .destructive,
+                cancelTitle: "Keep Editing",
+                isPresented: $confirmDiscard
             ) {
-                Button("Discard changes", role: .destructive) {
-                    dismiss()
-                }
-                Button("Keep editing", role: .cancel) {}
+                dismiss()
             }
             .interactiveDismissDisabled()
         }

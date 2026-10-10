@@ -140,22 +140,15 @@ struct DaySpaceDiaryPaperDetail: View {
                 )
             }
         }
-        .confirmationDialog(
-            "放弃未保存的修改？",
-            isPresented: $discardConfirmationPresented,
-            titleVisibility: .visible
+        .appConfirmationAlert(
+            title: "Discard changes?",
+            message: "Your unsaved changes will be lost.",
+            actionTitle: "Discard",
+            actionRole: .destructive,
+            cancelTitle: "Keep Editing",
+            isPresented: $discardConfirmationPresented
         ) {
-            Button(
-                "放弃",
-                role: .destructive
-            ) {
-                onClosed()
-            }
-
-            Button(
-                "继续编辑",
-                role: .cancel
-            ) {}
+            onClosed()
         }
     }
 

@@ -126,8 +126,8 @@ struct ClaudeSessionForkSheet: View {
         ) { result in
             importHistory(result)
         }
-        .alert(
-            "History import failed",
+        .appFailureAlert(
+            message: historyImportError ?? "The history could not be imported.",
             isPresented: Binding(
                 get: { historyImportError != nil },
                 set: { visible in
@@ -136,13 +136,7 @@ struct ClaudeSessionForkSheet: View {
                     }
                 }
             )
-        ) {
-            Button("OK", role: .cancel) {
-                historyImportError = nil
-            }
-        } message: {
-            Text(historyImportError ?? "")
-        }
+        )
     }
 
     @MainActor

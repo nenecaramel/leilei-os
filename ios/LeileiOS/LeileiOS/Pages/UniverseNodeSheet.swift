@@ -244,38 +244,36 @@ struct UniverseNodeSheet: View {
             )
             .environment(\.colorScheme, .dark)
         }
-        .confirmationDialog(
+        .alert(
             confirmationTitle,
             isPresented: Binding(
                 get: { editing == isEditing && confirmation != nil },
                 set: { if editing == isEditing && !$0 { confirmation = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
+            Button(confirmationCancelTitle, role: .cancel) {}
             switch confirmation {
             case .discardChanges:
-                Button("Discard changes", role: .destructive) {
+                Button("Discard", role: .destructive) {
                     discardChanges()
                 }
-                Button("Keep editing", role: .cancel) {}
             case .deleteNode:
                 Button("Delete", role: .destructive) {
                     if let node { Task { await delete(node) } }
                 }
-                Button("Cancel", role: .cancel) {}
             case .restoreVersion:
                 Button("Restore", role: .destructive) {
                     if let node { Task { await restore(node) } }
                 }
-                Button("Cancel", role: .cancel) {}
             case .removeConnection(let relation):
                 Button("Remove", role: .destructive) {
                     Task { await deleteRelation(relation) }
                 }
-                Button("Cancel", role: .cancel) {}
             case nil:
                 EmptyView()
             }
+        } message: {
+            Text(confirmationMessage)
         }
     }
 }
