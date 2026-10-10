@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { conversations, nativeLiveSemanticScoringRequests, users } from "../src/database/schema.js";
+import { conversations, nativeLiveRuntimeListenerLeases, nativeLiveSemanticScoringRequests, users } from "../src/database/schema.js";
 import { NativeLiveConversationService } from "../src/domains/conversation/native-live-conversation-service.js";
 import { DrizzleNativeLiveConversationRepository } from "../src/domains/conversation/native-live-conversation-repository.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
@@ -142,6 +142,10 @@ test("disposable Postgres preserves full 256-candidate semantic scoring and reje
   } finally {
     try {
       if (userId) {
+        // Relay renewal creates a user-scoped listener lease with ON DELETE RESTRICT.
+        // Remove only this test user's lease before deleting its conversations/user.
+        await database.db.delete(nativeLiveRuntimeListenerLeases)
+          .where(eq(nativeLiveRuntimeListenerLeases.userId, userId));
         await database.db.delete(conversations).where(eq(conversations.userId, userId));
         await database.db.delete(users).where(eq(users.id, userId));
       }
