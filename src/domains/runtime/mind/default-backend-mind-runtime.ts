@@ -1,4 +1,5 @@
 import type { createDatabase } from "../../../database/client.js";
+import { NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT } from "../../../shared/native-live-semantic-candidate-limit.js";
 import { DrizzleNativeLiveConversationRepository } from "../../conversation/native-live-conversation-repository.js";
 import {
   DefaultNativeLiveBackendMindRuntime,
@@ -63,8 +64,7 @@ export const DEFAULT_MIND_LOOP_CONFIG: MindLoopConfig = {
   breathSemanticMedianMargin: 0.03,
   breathRecentRecallPenalty: true,
   breathDiversityMaxTokenOverlap: 0.75,
-  // Match the 1..64 persisted semantic scoring request constraint.
-  breathSemanticCandidateLimit: 64,
+  breathSemanticCandidateLimit: NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT,
   breathSemanticCandidateMaxChars: 2_000,
   maxContextItems: 16,
   maxContextChars: 8_000,
