@@ -963,7 +963,13 @@ implements NativeLiveMacDaemonRelayClient {
     try {
       payload = await response.json();
     } catch {
-      throw new Error("Native live relay returned malformed JSON.");
+      // A gateway may answer with HTML or a truncated 502/503 body.
+      // Preserve HTTP status for diagnostics and for the *existing*
+      // bounded retry policy on explicitly retry-safe endpoints.
+      // Reservation POSTs remain non-replayed here.
+      throw Object.assign(new Error("Native live relay returned malformed JSON."), {
+        httpStatus: response.status,
+      });
     }
 
     const record = readRecord(payload);
