@@ -211,6 +211,24 @@ test(
       true,
     );
 
+    // If the first reserve reply is lost or malformed after commit, the
+    // same listener must be able to recover the *same* request immediately
+    // (no 5-minute lease wait, no new preparation, no duplicate provider turn).
+    const recoveredSameLease = await semanticService.reserveNext({
+      userId: user.id,
+      listenerInstanceId: listenerId,
+    });
+    assert.deepEqual(recoveredSameLease, scoring);
+    const [leaseAfterReplay] = await database.db
+      .select({
+        status: nativeLiveSemanticScoringRequests.status,
+        reservedBy: nativeLiveSemanticScoringRequests.reservedBy,
+      })
+      .from(nativeLiveSemanticScoringRequests)
+      .where(eq(nativeLiveSemanticScoringRequests.prepareId, scoring.reservationId));
+    assert.equal(leaseAfterReplay?.status, "reserved");
+    assert.equal(leaseAfterReplay?.reservedBy, listenerId);
+
     const scores = Object.fromEntries(
       scoring.candidates.map((candidate) => [
         candidate.stateId,
