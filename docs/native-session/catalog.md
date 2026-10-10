@@ -197,7 +197,12 @@ resume and plan non-root Retry/Edit from the historical parent checkpoint. This
 does not authorize provider execution or prove Desktop's ownership has been released.
 
 Repeated or concurrent delivery creates one projection. Appends require expected
-source revision and canonical head; locally changed heads/checkpoints, old-message
+source revision and canonical head. Completed local continuation is adopted only
+when native user UUIDs equal canonical user IDs and durable assistant checkpoints
+prove the same native session and working directory. Existing canonical IDs, bodies,
+parents, dates and activity remain untouched; only native identity/path indexes
+are added. The actual parent chain determines the current path, so off-path evidence
+is not deleted or merged by text. Unproved local heads/checkpoints, old-message
 rewrites, explicit branch changes and in-flight turns/compacts fail closed. A real
 content-insert fault rolls back messages, checkpoints, head and preservation together.
 The existing conversation row lock plus the production prepare path's serializable
@@ -208,6 +213,7 @@ the reader's pure growing-assistant plan is not accepted as a completed restore.
 
 No route, daemon command or UI invokes this writer yet. Attachment references still
 need the existing owned attachment materializer before images/files are previewable.
-Root-message replacement, two-client execution handoff and syncing back after local
-canonical advancement still need their own explicit coordination; these are not
-silently treated as verified by the foundation tests.
+Root-message replacement and two-client execution handoff still need their own
+explicit coordination; these are not silently treated as verified by foundation
+tests. A synthetic production prepare/relay/finalize lifecycle proves switch-back
+projection after local canonical advancement, with no SDK query or native file write.

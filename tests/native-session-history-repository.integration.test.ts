@@ -4,11 +4,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase } from "../src/database/client.js";
-import { users, conversations, conversationMessages, conversationProviderSessionCheckpoints, nativeLiveTurnPreparations, nativeLiveManualCompactions } from "../src/database/schema.js";
+import { users, conversations, conversationMessages, conversationProviderSessionCheckpoints, nativeLiveTurnPreparations, nativeLiveManualCompactions, nativeLiveRuntimeListenerLeases } from "../src/database/schema.js";
 import { projectNativeHistory } from "../tools/claude-bridge/src/native-session-history.mjs";
 import { DrizzleNativeLiveCurrentPathReader } from "../src/domains/conversation/native-live-current-path-read-repository.js";
 import { NativeLiveBackendTurnCoordinator } from "../src/domains/bridge/turn/native-live-backend-turn-coordinator.js";
 import { DrizzleNativeLiveBackendTurnPort } from "../src/domains/bridge/turn/native-live-backend-turn-repository.js";
+
+import { DrizzleNativeLiveBackendRelayRepository } from "../src/domains/bridge/relay/native-live-backend-relay.js";
 
 const enabled = process.env.RUN_NATIVE_SESSION_PRESERVATION_DATABASE_TEST === "1";
 const modulePath = new URL("../src/domains/conversation/native-session-history-repository.ts", import.meta.url);
@@ -33,6 +35,7 @@ async function fixture(run: (f: any) => Promise<void>) {
   try { await run({ database, input, entries, write, messages, state, owner: owner!.id, sessionId }); }
   finally {
     await database.db.delete(conversations).where(eq(conversations.userId, owner!.id));
+    await database.db.delete(nativeLiveRuntimeListenerLeases).where(eq(nativeLiveRuntimeListenerLeases.userId, owner!.id));
     await database.db.delete(users).where(eq(users.id, owner!.id));
     await database.close();
   }
@@ -153,6 +156,90 @@ for (const operation of ["retry", "edit"] as const) test(`restored ${operation} 
   assert.equal(prepared.command.parent_provider_session_id, f.sessionId);
   assert.equal(prepared.command.parent_provider_checkpoint_id, f.entries[1].uuid);
   assert.notEqual(prepared.command.parent_provider_checkpoint_id, a);
+}));
+
+async function localContinuation(f: any) {
+  const restored = await f.write();
+  const coordinator = new NativeLiveBackendTurnCoordinator(new DrizzleNativeLiveBackendTurnPort(f.database.db));
+  const prepared = await coordinator.prepare(f.owner, { request_id: randomUUID(), conversation_id: f.input.conversationId, dispatch_target: "claude_code", operation: "send", expected_head_message_id: restored.headMessageId, text: "local synthetic user" });
+  assert.ok(prepared.ok, JSON.stringify(prepared));
+  const relay = new DrizzleNativeLiveBackendRelayRepository(f.database.db);
+  const listenerInstanceId = randomUUID();
+  assert.equal(await relay.enqueuePreparation({ userId: f.owner, prepareId: prepared.command.prepare_id }), "applied");
+  await relay.renewLease({ userId: f.owner, listenerInstanceId });
+  const reserved = await relay.reserveNext({ userId: f.owner, listenerInstanceId });
+  assert.ok(reserved);
+  const reservation = { userId: f.owner, listenerInstanceId, reservationId: prepared.command.prepare_id };
+  assert.equal(await relay.markExecutionStarted(reservation), "applied");
+  const cp = randomUUID();
+  const finalized = await coordinator.finalize(f.owner, {
+    protocol_version: prepared.command.protocol_version, prepare_id: prepared.command.prepare_id, request_id: prepared.command.request_id,
+    conversation_id: f.input.conversationId, status: "success", provider_session_id: f.sessionId, provider_checkpoint_id: cp,
+    effective_working_directory: "/synthetic/workspace",
+    normalized_events: [{ type: "text", payload: { text: "local synthetic reply" } }, { type: "result", payload: { status: "success", final_text: "local synthetic reply" } }],
+  });
+  assert.ok(finalized.ok && finalized.outcome === "completed", JSON.stringify(finalized));
+  assert.equal(await relay.markCompleted(reservation), "applied");
+  const entries = [...f.entries, row(prepared.command.canonical_user_message_id, f.entries[1].uuid, "user", "local synthetic user"), row(cp, prepared.command.canonical_user_message_id, "assistant", "local synthetic reply")];
+  return { entries, finalized };
+}
+
+test("switch-back sync adopts completed local turns by native UUID/checkpoint and appends only the Desktop extension", { skip: !enabled }, async () => fixture(async f => {
+  const local = await localContinuation(f);
+  const reader = new DrizzleNativeLiveCurrentPathReader(f.database.db);
+  const before = await reader.readCurrentPath({ userId: f.owner, conversationId: f.input.conversationId, limit: 100 });
+  const u = randomUUID(), a = randomUUID();
+  const entries = [...local.entries, row(u, local.entries.at(-1)!.uuid, "user", "Desktop synthetic user"), row(a, u, "assistant", "Desktop synthetic reply")];
+  const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1), projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(3), entries }, a) };
+  const result = await f.write(next);
+  assert.equal(result.inserted, 2);
+  const after = await reader.readCurrentPath({ userId: f.owner, conversationId: f.input.conversationId, limit: 100 });
+  assert.equal(after!.messages.length, 6);
+  assert.deepEqual(after!.messages.slice(0, 4), before!.messages, "local canonical IDs, blocks, dates and activity must not be rewritten");
+  const messages = await f.messages();
+  assert.equal(messages[2].id, local.finalized.userMessageId);
+  assert.equal(messages[2].sourceMessageId, local.finalized.userMessageId);
+  assert.equal(messages[3].id, local.finalized.assistantMessageId);
+  assert.equal(messages[3].sourceMessageId, local.entries.at(-1)!.uuid);
+  assert.equal((await f.write(next)).outcome, "already_current");
+}));
+
+test("switch-back never matches a local user by identical text when its native UUID is different", { skip: !enabled }, async () => fixture(async f => {
+  const local = await localContinuation(f), before = await f.state();
+  const entries = structuredClone(local.entries);
+  const wrongUser = randomUUID(); entries[2].uuid = wrongUser; entries[3].parentUuid = wrongUser;
+  const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1), projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries }, entries[3].uuid) };
+  await assert.rejects(f.write(next), { code: "CANONICAL_HEAD_CHANGED" });
+  assert.deepEqual(await f.state(), before);
+}));
+
+test("switch-back rejects a mismatched local assistant checkpoint without changing evidence", { skip: !enabled }, async () => fixture(async f => {
+  const local = await localContinuation(f);
+  await f.database.db.update(conversationProviderSessionCheckpoints).set({ providerCheckpointId: randomUUID() })
+    .where(eq(conversationProviderSessionCheckpoints.canonicalMessageId, local.finalized.assistantMessageId));
+  const before = await f.state();
+  const next = { ...f.input, expectedHeadMessageId: local.finalized.assistantMessageId, expectedRevision: revision(1),
+    projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries: local.entries }, local.entries.at(-1)!.uuid) };
+  await assert.rejects(f.write(next), { code: "CANONICAL_CHECKPOINT_CHANGED" });
+  assert.deepEqual(await f.state(), before);
+}));
+
+test("native sync follows the selected parent chain and leaves off-path messages/checkpoints intact", { skip: !enabled }, async () => fixture(async f => {
+  const first = await f.write();
+  const offPath = randomUUID(), offCheckpoint = randomUUID();
+  await f.database.db.insert(conversationMessages).values({ id: offPath, userId: f.owner, conversationId: f.input.conversationId,
+    parentMessageId: first.headMessageId, role: "assistant", status: "completed", isCurrentPath: false, displayText: "off-path synthetic evidence" });
+  await f.database.db.insert(conversationProviderSessionCheckpoints).values({ userId: f.owner, conversationId: f.input.conversationId,
+    canonicalMessageId: offPath, provider: "claude_code", providerSessionId: randomUUID(), providerCheckpointId: offCheckpoint, effectiveWorkingDirectory: "/synthetic/workspace" });
+  const before = await f.state();
+  const u = randomUUID(), a = randomUUID();
+  const entries = [...f.entries, row(u, f.entries[1].uuid, "user", "Desktop user"), row(a, u, "assistant", "Desktop reply")];
+  const result = await f.write({ ...f.input, expectedHeadMessageId: first.headMessageId, expectedRevision: revision(1),
+    projection: projectNativeHistory({ sessionId: f.sessionId, revision: revision(2), entries }, a) });
+  assert.equal(result.inserted, 2);
+  const after = await f.state();
+  assert.deepEqual(after.messages.find((m: any) => m.id === offPath), before.messages.find((m: any) => m.id === offPath));
+  assert.deepEqual(after.checkpoints.find((cp: any) => cp.canonicalMessageId === offPath), before.checkpoints.find((cp: any) => cp.canonicalMessageId === offPath));
 }));
 
 test("native sync preserves in-flight turn evidence and refuses pending/reserved manual compact", { skip: !enabled }, async () => fixture(async f => {

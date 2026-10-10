@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { createDatabase } from "../../database/client.js";
 import {
   conversations, conversationMessages, conversationContentBlocks,
@@ -90,7 +90,6 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     const source = existing?.providerMetadata.nativeSessionSource as SourceIndex | undefined;
     if (existing && !source) throw fail("NATIVE_SOURCE_BINDING_REQUIRED");
     if (source && (source.schemaVersion !== 1 || source.sessionId !== p.sessionId || source.effectiveWorkingDirectory !== input.effectiveWorkingDirectory)) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
-    if (source && existing?.currentHeadMessageId !== source.headMessageId) throw fail("CANONICAL_HEAD_CHANGED");
     const activeTurns = await tx.select({ id: nativeLiveTurnPreparations.id }).from(nativeLiveTurnPreparations).where(inFlightConversationTurns(input)).limit(1);
     const compacts = await tx.select({ id: nativeLiveManualCompactions.id }).from(nativeLiveManualCompactions).where(and(
       eq(nativeLiveManualCompactions.userId, input.userId), eq(nativeLiveManualCompactions.conversationId, input.conversationId),
@@ -99,26 +98,53 @@ export async function restoreNativeSessionHistory(db: Database, input: {
     if (activeTurns.length || compacts.length) throw fail("NATIVE_CONVERSATION_BUSY");
     if (source && (source.messages.length > p.messages.length || source.messages.some((old, i) => old.sourceMessageId !== p.messages[i]?.sourceMessageId))) throw fail("EXPLICIT_BRANCH_SELECTION_REQUIRED");
     if (source?.messages.some((old, i) => old.fingerprint !== p.messages[i]?.fingerprint)) throw fail("NATIVE_HISTORY_REWRITTEN");
-    const unchanged = source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === p.messages.length;
-    if (!unchanged && (input.expectedRevision !== (source?.revision ?? null) || input.expectedHeadMessageId !== (existing?.currentHeadMessageId ?? null))) throw fail("STALE_NATIVE_PROJECTION");
+    const unchanged = existing?.currentHeadMessageId === source?.headMessageId && source?.revision === p.revision && source.checkpointId === p.checkpointId && source.messages.length === p.messages.length;
 
-    const rows = await tx.select().from(conversationMessages).where(and(eq(conversationMessages.userId, input.userId), eq(conversationMessages.conversationId, input.conversationId))).orderBy(asc(conversationMessages.currentPathIndex));
-    if (rows.length !== (source?.messages.length ?? 0) || rows.some((row, i) => row.sourceMessageId !== source?.messages[i]?.sourceMessageId || row.parentMessageId !== (rows[i - 1]?.id ?? null))) throw fail("CANONICAL_HISTORY_CHANGED");
+    const allRows = await tx.select().from(conversationMessages).where(and(eq(conversationMessages.userId, input.userId), eq(conversationMessages.conversationId, input.conversationId)));
+    const byId = new Map(allRows.map(row => [row.id, row]));
+    const rows: typeof allRows = [];
+    const visited = new Set<string>();
+    let cursor = existing?.currentHeadMessageId ?? null;
+    while (cursor !== null) {
+      const row = byId.get(cursor);
+      if (!row || visited.has(cursor) || row.status !== "completed") throw fail("CANONICAL_HEAD_CHANGED");
+      visited.add(cursor); rows.push(row); cursor = row.parentMessageId;
+    }
+    rows.reverse();
+    const indexedCount = source?.messages.length ?? 0;
+    if (rows.length > p.messages.length || rows.length < indexedCount ||
+      (source && rows[indexedCount - 1]?.id !== source.headMessageId)) throw fail("CANONICAL_HEAD_CHANGED");
+    for (const [i, row] of rows.entries()) {
+      const message = p.messages[i]!;
+      if (row.role !== message.role) throw fail("CANONICAL_HEAD_CHANGED");
+      if (i < indexedCount) {
+        if (row.sourceMessageId !== source!.messages[i]!.sourceMessageId) throw fail("CANONICAL_HISTORY_CHANGED");
+      } else if (row.role === "user" && row.id !== message.sourceMessageId) {
+        // SDK sends canonical user UUIDs. Never adopt by matching text.
+        throw fail("CANONICAL_HEAD_CHANGED");
+      }
+    }
     const checkpoints = await tx.select().from(conversationProviderSessionCheckpoints).where(and(
       eq(conversationProviderSessionCheckpoints.userId, input.userId), eq(conversationProviderSessionCheckpoints.conversationId, input.conversationId),
     ));
     const checkpointByMessage = new Map(checkpoints.map(cp => [cp.canonicalMessageId, cp]));
     const assistants = rows.flatMap((row, i) => row.role === "assistant" ? [{ row, message: p.messages[i]! }] : []);
-    if (checkpoints.length !== assistants.length || assistants.some(({ row, message }) => {
+    if (assistants.some(({ row, message }) => {
       const cp = checkpointByMessage.get(row.id);
       return !cp || cp.provider !== "claude_code" || cp.providerSessionId !== p.sessionId ||
         cp.providerCheckpointId !== message.providerCheckpointId || cp.effectiveWorkingDirectory !== input.effectiveWorkingDirectory;
     })) throw fail("CANONICAL_CHECKPOINT_CHANGED");
+    if (!unchanged && (input.expectedRevision !== (source?.revision ?? null) || input.expectedHeadMessageId !== (existing?.currentHeadMessageId ?? null))) throw fail("STALE_NATIVE_PROJECTION");
     if (unchanged) return { outcome: "already_current" as const, conversationId: input.conversationId, headMessageId: source!.headMessageId, inserted: 0 };
 
     // Nested transaction is a savepoint: source protection and projection roll back together.
     await new DrizzleNativeLiveProviderSessionStoreRepository(tx).preserveExternalSession({ userId: input.userId, sessionId: p.sessionId });
     if (!existing) await tx.insert(conversations).values({ id: input.conversationId, userId: input.userId, origin: "native_live", lifecycleStatus: "active" });
+    // Adopt only identity-proven completed local rows; preserve bodies, dates and parents.
+    for (let index = indexedCount; index < rows.length; index++) {
+      await tx.update(conversationMessages).set({ sourceMessageId: p.messages[index]!.sourceMessageId,
+        isCurrentPath: true, currentPathIndex: index }).where(eq(conversationMessages.id, rows[index]!.id));
+    }
     let parent = rows.at(-1)?.id ?? null;
     for (let index = rows.length; index < p.messages.length; index++) {
       const message = p.messages[index]!;
