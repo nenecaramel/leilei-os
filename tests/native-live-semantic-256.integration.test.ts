@@ -110,13 +110,30 @@ test("disposable Postgres preserves full 256-candidate semantic scoring and reje
     assert.equal(thresholdRows[0]?.candidates.length, 65);
 
     const overflowPreparation = await createPreparation("Overflow must fail");
-    await assert.rejects(() => scoring.stage({
-      userId,
-      preparation: overflowPreparation,
-      plan: { ...plan, manifestId: crypto.randomUUID(), candidates: [...candidates, {
-        stateId: crypto.randomUUID(), kind: "memory", text: "overflow",
-      }] },
-    }));
+    await assert.rejects(
+      () => scoring.stage({
+        userId,
+        preparation: overflowPreparation,
+        plan: { ...plan, manifestId: crypto.randomUUID(), candidates: [...candidates, {
+          stateId: crypto.randomUUID(), kind: "memory", text: "overflow",
+        }] },
+      }),
+      (error: unknown) => {
+        // Drizzle wraps the SQLSTATE/constraint error; only the intended
+        // 257-item CHECK violation satisfies this assertion.
+        let current: unknown = error;
+        while (typeof current === "object" && current !== null) {
+          const pg = current as { code?: unknown; constraint_name?: unknown; constraint?: unknown; cause?: unknown };
+          if (pg.code === "23514" &&
+              (pg.constraint_name === "native_live_semantic_scoring_requests_candidates_array" ||
+               pg.constraint === "native_live_semantic_scoring_requests_candidates_array")) {
+            return true;
+          }
+          current = pg.cause;
+        }
+        return false;
+      },
+    );
     const overflowRows = await database.db.select({
       prepareId: nativeLiveSemanticScoringRequests.prepareId,
     }).from(nativeLiveSemanticScoringRequests)
