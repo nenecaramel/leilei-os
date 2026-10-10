@@ -94,3 +94,31 @@ test("process probe pins UTC and C locale, and never uses a shell", async () => 
   await assert.rejects(() => probeNativeProcessStart(-1, execute));
   assert.equal(await probeNativeProcessStart(123, async () => ({ stdout: "" })), null);
 });
+
+test("release observation refuses even an idle native peer and never grants a write lease", async () => {
+  const { readNativeSessionRelease } = await import(moduleUrl);
+  const directory = await mkdtemp(path.join(tmpdir(), "native-release-test-"));
+  try {
+    await writeFile(path.join(directory, "123.json"), JSON.stringify(record));
+    const result = await readNativeSessionRelease(directory, A, { probeProcessStart: async () => started });
+    assert.equal(result.state, "still_open");
+    assert.equal(result.ownerPid, 123);
+    assert.equal(result.isWriteLease, false);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_KEY|PRIVATE_SOCKET/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("release observation distinguishes a verified empty scan from unavailable or ambiguous peers", async () => {
+  const { readNativeSessionRelease } = await import(moduleUrl);
+  const directory = await mkdtemp(path.join(tmpdir(), "native-release-test-"));
+  try {
+    assert.deepEqual(await readNativeSessionRelease(directory, A), { state: "not_open_observed", isWriteLease: false });
+    assert.equal((await readNativeSessionRelease(path.join(directory, "missing"), A)).state, "unknown");
+    await writeFile(path.join(directory, "123.json"), JSON.stringify({ ...record, sessionId: B }));
+    assert.equal((await readNativeSessionRelease(directory, A)).state, "not_open_observed");
+    await writeFile(path.join(directory, "123.json"), JSON.stringify({ ...record, sessionId: undefined }));
+    assert.equal((await readNativeSessionRelease(directory, A)).state, "unknown");
+    await writeFile(path.join(directory, "123.json"), JSON.stringify(record));
+    assert.equal((await readNativeSessionRelease(directory, A, { probeProcessStart: async () => null })).state, "unknown");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

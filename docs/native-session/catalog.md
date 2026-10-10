@@ -325,3 +325,41 @@ skips; root typecheck and build pass; local production runtime gate pass; diff
 and hygiene checks pass. No full canonical-suite or real Desktop acceptance is
 claimed. Regression RED witnesses are the copied-session prompt, missing-init
 and startup-timeout failures; the subsequent offline suite is GREEN.
+
+
+### Switching source/release preflight
+
+The next implementation step adds `readNativeSessionRelease`: a successfully
+read, identified peer scan with no matching UUID is `not_open_observed`; an
+idle verified owner is still `still_open`. Missing/unreadable peer directories,
+malformed or unidentified records, stale/reused PID identities and unsupported
+matching owners remain unknown. UUID comparison is case-insensitive. No peer
+key, socket credential or original source is modified. This is still an
+observation, never an atomic lease; the native init identity guard remains
+necessary against an official-client race after the scan.
+
+`preflightNativeSessionSwitch` pins Desktop identity/checkpoint/revision and
+requires complete display history, the actual project beneath the selected
+config's `projects` directory and that config's `sessions` peer directory. It
+rechecks source and index after scanning for release. It returns sanitized
+identity/count evidence with `readOnly: true` and `executionAuthorized: false`.
+Canonical in-flight and baseline-mirror checks are not yet wired into this
+entry, so it cannot authorize a real turn.
+
+A fixed script now exposes only this check:
+
+```sh
+node tools/claude-bridge/scripts/native-session-switch.mjs --check \
+  --desktop-index INDEX_FILE --project-dir PROJECT_DIRECTORY
+```
+
+`--config-dir` is available for an explicitly selected native configuration;
+otherwise the existing `CLAUDE_CONFIG_DIR` or `~/.claude` is used. Actual switch
+verbs are intentionally rejected while integration is unfinished. File paths
+are currently inspection inputs; the final selection entry still needs catalog
+resolution so the user does not need to find JSONL or index files manually.
+
+Latest validation: bridge 247 pass / 0 fail / 4 live skips, including executable
+CLI fixtures; source/release checks use synthetic directories only. These tests
+prove our source/release refusal and sanitization behavior, not an atomic native
+lock or a real Desktop handoff. No real SDK query or original `.claude` write.

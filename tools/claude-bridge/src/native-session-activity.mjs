@@ -16,23 +16,44 @@ export async function probeNativeProcessStart(pid, execute = executeFile) {
   return stdout.trim() || null;
 }
 
+async function readNativePeerRecords(directory) {
+  const records = [];
+  const fail = reason => { throw Object.assign(new Error(reason), { reason }); };
+  const files = await readdir(directory, { withFileTypes: true });
+  const peers = files.filter(file => /^[1-9][0-9]*\.json$/.test(file.name));
+  if (peers.length > 1000) fail("NATIVE_OWNER_SCAN_LIMIT");
+  for (const file of peers.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!file.isFile()) fail("UNSAFE_NATIVE_OWNER_FILE");
+    const { bytes } = await readOnlyFileSnapshot(path.join(directory, file.name), 65536);
+    const record = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!record || Array.isArray(record) || typeof record !== "object" || record.pid !== Number(file.name.slice(0, -5))) fail("INVALID_NATIVE_OWNER_FILE");
+    records.push(record);
+  }
+  return records;
+}
+
 export async function readNativeSessionActivity(directory, sessionId, { probeProcessStart = probeNativeProcessStart } = {}) {
   if (!uuid(sessionId)) return unknown("INVALID_ACTIVITY_INPUT");
-  const records = [];
-  try {
-    const files = await readdir(directory, { withFileTypes: true });
-    const peers = files.filter(file => /^[1-9][0-9]*\.json$/.test(file.name));
-    if (peers.length > 1000) return unknown("NATIVE_OWNER_SCAN_LIMIT");
-    for (const file of peers.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!file.isFile()) return unknown("UNSAFE_NATIVE_OWNER_FILE");
-      const filename = path.join(directory, file.name);
-      const { bytes } = await readOnlyFileSnapshot(filename, 65536);
-      const record = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-      if (!record || Array.isArray(record) || typeof record !== "object" || record.pid !== Number(file.name.slice(0, -5))) return unknown("INVALID_NATIVE_OWNER_FILE");
-      records.push(record);
-    }
-  } catch { return unknown("NATIVE_OWNER_FILES_UNAVAILABLE"); }
+  let records;
+  try { records = await readNativePeerRecords(directory); }
+  catch (error) { return unknown(error.reason ?? "NATIVE_OWNER_FILES_UNAVAILABLE"); }
   return observeNativeSessionActivity(sessionId, records, probeProcessStart);
+}
+
+// Absence is a point-in-time observation, not an atomic execution lease. The
+// SDK identity guard must still refuse copies before releasing any user input.
+export async function readNativeSessionRelease(directory, sessionId, { probeProcessStart = probeNativeProcessStart } = {}) {
+  if (!uuid(sessionId)) return unknown("INVALID_ACTIVITY_INPUT");
+  let records;
+  try { records = await readNativePeerRecords(directory); }
+  catch (error) { return unknown(error.reason ?? "NATIVE_OWNER_FILES_UNAVAILABLE"); }
+  if (records.some(record => !uuid(record.sessionId))) return unknown("UNIDENTIFIED_NATIVE_PEER");
+  const selected = records.filter(record => record.sessionId.toLowerCase() === sessionId.toLowerCase());
+  if (!selected.length) return { state: "not_open_observed", isWriteLease: false };
+  const activity = await observeNativeSessionActivity(sessionId,
+    selected.map(record => ({ ...record, sessionId })), probeProcessStart);
+  if (activity.state === "unknown") return activity;
+  return { state: "still_open", ownerPid: activity.ownerPid, isWriteLease: false };
 }
 
 // Native peer records are observations, never an atomic handoff/ownership lease.
