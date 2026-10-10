@@ -85,3 +85,18 @@ with a configured size cap, exact snapshot/reference checks and SHA-256/size
 results. It does not re-encode images, read arbitrary paths, fetch URLs or upload.
 Materialization and attachment ownership must later use the normal attachment
 service. Missing file/URL assets remain explicitly unavailable.
+
+## Native activity observation
+
+`readNativeSessionActivity` reads only numeric PID `.json` peer records, never
+`.key` files or IPC sockets. Files are bounded, non-symlink, stable snapshots.
+The PID in the filename must match the record. `probeNativeProcessStart` invokes
+`/bin/ps` without a shell, with UTC/C output and a two-second timeout; the exact
+process start must match the native record to guard against PID reuse.
+
+Only one matching live Darwin/protocol-1 peer explicitly reporting `idle` yields
+`idle_observed`. Missing, stale, malformed, unsupported or multiple peer records
+remain unknown; any non-idle status remains busy/unknown. No timestamp timeout
+turns an uncertain session into an idle one. Output omits credentials/socket
+paths. **Every result has `isWriteLease: false`**: this observation does not stop
+Desktop from starting another turn and must never independently grant takeover.
