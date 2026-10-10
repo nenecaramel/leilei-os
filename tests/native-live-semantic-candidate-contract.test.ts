@@ -16,6 +16,16 @@ test("Mind scoring queue capacity preserves 256 candidates across config, schema
   assert.match(schema, /native_live_semantic_scoring_requests_candidates_array/);
   assert.match(schema, /BETWEEN 1 AND \$\{sql\.raw\(String\(NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT\)\)\}/);
 
+  // The repository read path must accept every snapshot the DB can persist.
+  const scoringReader = readFileSync(
+    new URL("../src/domains/bridge/mind/native-live-semantic-handshake.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    scoringReader,
+    /value\.length > NATIVE_LIVE_SEMANTIC_CANDIDATE_LIMIT/,
+  );
+
   const migration = readFileSync(
     new URL("../drizzle/0108_native_live_semantic_candidates_256.sql", import.meta.url),
     "utf8",
